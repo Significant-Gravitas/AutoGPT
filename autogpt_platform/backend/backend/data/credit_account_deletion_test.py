@@ -11,7 +11,6 @@ from prisma.enums import SubscriptionTier
 from pytest_mock import MockerFixture
 
 from backend.data import credit
-from backend.util.exceptions import InsufficientBalanceError
 
 CHECKOUT = "backend.data.subscription_checkout"
 CUSTOMER = "cus_123"
@@ -266,54 +265,16 @@ async def _clean_up_after_upgrade() -> None:
     await credit._cleanup_stale_subscriptions(CUSTOMER, "sub_new")
 
 
-async def _fail_an_uncovered_renewal() -> None:
-    invoice = {
-        "id": "in_1",
-        "customer": CUSTOMER,
-        "subscription": "sub_active",
-        "amount_due": 2000,
-        "billing_reason": "subscription_cycle",
-    }
-    with (
-        patch(
-            "backend.data.credit.get_subscription_trial",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch(
-            "backend.data.credit.stripe.Invoice.retrieve_async",
-            new_callable=AsyncMock,
-            return_value={**invoice, "status": "open"},
-        ),
-    ):
-        await credit.handle_subscription_payment_failure(invoice)
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "caller",
-    [_cancel_plan_at_period_end, _clean_up_after_upgrade, _fail_an_uncovered_renewal],
+    [_cancel_plan_at_period_end, _clean_up_after_upgrade],
 )
 async def test_other_cancels_still_reach_only_active_and_trialing_plans(caller):
     """Only an account deletion ends a past-due or other unsettled plan."""
     every_status = (*BILLABLE, *UNSETTLED, *ENDED)
-    user_row = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
-    uncovered = InsufficientBalanceError(
-        message="no balance", user_id="user-1", balance=0, amount=2000
-    )
     with (
         _stripe(_one_per_status(*every_status)) as (listed, cancel, modify),
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=user_row)),
-        ),
-        patch(
-            "backend.data.credit.UserCredit._add_transaction",
-            new_callable=AsyncMock,
-            side_effect=uncovered,
-        ),
-        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
-        patch("backend.data.credit._track_billing_event"),
         patch("backend.data.credit.invalidate_billing_lookups", new_callable=AsyncMock),
     ):
         await caller()
@@ -445,7 +406,7 @@ async def test_the_deletion_webhook_drops_the_tier_without_touching_the_person(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "comment", [None, credit.PAYMENT_FAILURE_CANCELLATION_COMMENT, "other"]
+    "comment", [None, credit.REPLACED_PLAN_CANCELLATION_COMMENT, "other"]
 )
 async def test_any_other_cancel_still_refreshes_the_person(comment):
     with (
@@ -466,7 +427,7 @@ def test_only_the_account_deletion_comment_marks_a_deletion():
         _deleted_event(credit.ACCOUNT_DELETION_CANCELLATION_COMMENT)
     )
     assert not credit.is_account_deletion_cancellation(
-        _deleted_event(credit.PAYMENT_FAILURE_CANCELLATION_COMMENT)
+        _deleted_event(credit.REPLACED_PLAN_CANCELLATION_COMMENT)
     )
     assert not credit.is_account_deletion_cancellation({"id": "sub_paid"})
     assert not credit.is_account_deletion_cancellation(
