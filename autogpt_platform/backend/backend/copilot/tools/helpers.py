@@ -51,8 +51,8 @@ from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.request import HTTPClientError
+from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
@@ -1436,15 +1436,10 @@ async def check_spend_approval(
 
 
 async def metered_expert_id(user_id: str, expert_id: str | None) -> str | None:
-    """The expert whose spend counters a chat block charge lands on; None
-    keeps the pre-SECRT-2599 behaviour of not counting chat block spend.
-
-    Narrower than the scope id ``execute_block`` takes: the flag gates who
-    gets metered, never whose file scope a ``workspace://`` input resolves in.
-    """
+    """The expert to meter when billing is enabled, independently of file scope."""
     if expert_id is None:
         return None
-    if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
+    if not Settings().config.enable_credit:
         return None
     return expert_id
 

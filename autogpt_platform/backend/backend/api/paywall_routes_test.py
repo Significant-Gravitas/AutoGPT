@@ -393,10 +393,6 @@ def test_the_open_lists_name_only_routes_that_exist():
 def test_an_account_without_a_plan_gets_402_from_a_closed_route(
     call: str, mock_jwt_user, paywalled_user, mocker
 ):
-    mocker.patch(
-        "backend.api.features.store.skill_routes.is_feature_enabled",
-        new=mocker.AsyncMock(return_value=True),
-    )
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     try:
         method, path = call.split(" ", 1)

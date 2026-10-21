@@ -3,17 +3,6 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
-// With the flag off the recommendation endpoint 404s and is never called,
-// so nothing will ever settle the section on its own — the panel has to
-// treat "flag off" as an answer or it shows an empty list forever.
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useGetFlag: () => false };
-});
-
 import { ConnectToolsPanel } from "../ConnectToolsPanel";
 
 const PROVIDERS_URL =
@@ -23,8 +12,8 @@ const CREDENTIALS_URL =
 const RECOMMENDED_URL =
   "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-providers";
 
-describe("ConnectToolsPanel — brain dump flag off", () => {
-  it("shows the popular providers without asking for recommendations", async () => {
+describe("ConnectToolsPanel — empty recommendations", () => {
+  it("shows popular providers after recommendations return empty", async () => {
     let recommendationRequests = 0;
     server.use(
       http.get(PROVIDERS_URL, () =>
@@ -52,6 +41,6 @@ describe("ConnectToolsPanel — brain dump flag off", () => {
 
     expect(await screen.findByText("Popular places to start")).toBeDefined();
     expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined();
-    expect(recommendationRequests).toBe(0);
+    expect(recommendationRequests).toBe(1);
   });
 });
