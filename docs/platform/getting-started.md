@@ -640,7 +640,7 @@ pnpm test
 
 #### Running the backend locally
 
-To run the backend locally, you need to have Python 3.10 or higher installed on your machine.
+To run the backend locally, you need to have Python 3.11 or higher installed on your machine.
 
 Install [Poetry](https://python-poetry.org/docs/#installation) to manage dependencies and virtual environments.
 
