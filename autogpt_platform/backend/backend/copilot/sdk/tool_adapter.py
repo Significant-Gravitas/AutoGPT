@@ -1139,7 +1139,9 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # ListAgents/SendMessage: reach other CLI sessions in the same pod.
 # NotebookEdit: writes files outside the MCP Write/Edit tools.
 # Skill: Claude Code's own skills; copilot skills go through read_skill.
-# Workflow: spawns multi-agent runs with no copilot budget or UI.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.  With
+#   slash commands disabled its description also grows from ~5K to ~20K
+#   chars on every request.
 # EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
 # TaskStop: unused here, and permissions cannot name it, so filtered sessions
 #   would drop it anyway.

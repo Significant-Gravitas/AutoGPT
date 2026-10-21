@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,13 +22,15 @@ from backend.copilot.graphiti.context_marker import (
     append_injected_memory_block,
     mark_injected_memory_block,
 )
+from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
-from .compaction import CompactionStats
+from .compaction import CompactionStats, CompactionTracker
 from .cost_tracking import TokenUsage
+from .response_adapter import SDKResponseAdapter
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
@@ -48,8 +51,10 @@ from .service import (
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _RetryState,
+    _run_stream_attempt,
     _safe_close_sdk_client,
     _start_follow_up_warm_context,
+    _StreamContext,
     _strip_ephemeral_memory_from_cli_jsonl,
     _strip_synthetic_reprompt_from_cli_jsonl,
     _TokenUsage,
@@ -2201,6 +2206,92 @@ class TestStreamEndedWithoutResultMessage:
         assert STREAM_INCOMPLETE_MARKER not in contents, contents
         assert pause_of(ctx.session.messages[-1]) is not None
         assert governor.landed is True
+
+
+class TestCliBoundUserText:
+    """A message such as "/compact" reaches the CLI with a leading space, so
+    the CLI sends it to the model instead of answering it as a command, while
+    the transcript keeps what the user typed."""
+
+    def _ctx_and_state(self, image_blocks: list[dict]):
+        now = datetime.now(UTC)
+        session = ChatSession(
+            session_id="s1",
+            user_id="u-1",
+            usage=[],
+            started_at=now,
+            updated_at=now,
+            messages=[],
+        )
+        ctx = _StreamContext(
+            session=session,
+            session_id="s1",
+            log_prefix="[SDK] [s1]",
+            sdk_cwd="/tmp/test",
+            current_message="/compact",
+            file_ids=None,
+            message_id="m-1",
+            attachments=MagicMock(image_blocks=image_blocks),
+            compaction=CompactionTracker(),
+            lock=MagicMock(refresh=AsyncMock()),
+        )
+        state = _RetryState(
+            options=MagicMock(resume=None, session_id="s1"),
+            query_message="/compact",
+            compaction_stats=None,
+            use_resume=True,
+            resume_file="s1",
+            transcript_msg_count=0,
+            adapter=SDKResponseAdapter(message_id="m-1", session_id="s1"),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+        )
+        return ctx, state
+
+    async def _send(self, image_blocks: list[dict]):
+        async def no_messages(_client, wake=None, tool_display_wake=None):
+            for message in ():
+                yield message
+
+        ctx, state = self._ctx_and_state(image_blocks)
+        client = MagicMock(query=AsyncMock(), _transport=MagicMock(write=AsyncMock()))
+        sdk_client = MagicMock(
+            __aenter__=AsyncMock(return_value=client),
+            __aexit__=AsyncMock(return_value=False),
+        )
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=no_messages),
+        ):
+            async for _ in _run_stream_attempt(ctx, state):
+                pass
+        return client, state.transcript_builder
+
+    @pytest.mark.asyncio
+    async def test_text_turn(self):
+        client, transcript = await self._send(image_blocks=[])
+
+        client.query.assert_awaited_once_with(" /compact", session_id="s1")
+        transcript.append_user.assert_called_once_with(content="/compact")
+
+    @pytest.mark.asyncio
+    async def test_turn_with_images(self):
+        image = {"type": "image", "source": {"type": "base64", "data": "x"}}
+        client, transcript = await self._send(image_blocks=[image])
+
+        line = json.loads(client._transport.write.await_args.args[0])
+        assert line["message"]["content"] == [
+            image,
+            {"type": "text", "text": " /compact"},
+        ]
+        # The SDK's verbatim_prompts mark only reaches lines it writes itself.
+        assert line["client_composed"] is True
+        transcript.append_user.assert_called_once_with(
+            content=[image, {"type": "text", "text": "/compact"}]
+        )
 
 
 class TestHiddenShortNamesForPermissions:

@@ -80,6 +80,10 @@ def _make_patches():
                 side_effect=AssertionError("Provider construction is outside this test")
             ),
         ),
+        (
+            f"{_SVC}.require_verbatim_prompts_cli",
+            dict(return_value="/opt/claude/claude"),
+        ),
         (f"{_SVC}.create_copilot_mcp_server", dict(new=mcp_server_mock)),
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
