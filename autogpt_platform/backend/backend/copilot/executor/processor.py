@@ -999,3 +999,8 @@ class CoPilotProcessor:
                         # lands.
                         if await close_browser_daemon(entry.session_id):
                             log.info("Browser daemon teardown attempted for this turn")
+
+# Do-not-merge probe (#15739 integration preview).
+from backend.copilot import perf_route_probe  # noqa: E402
+
+perf_route_probe.install_executor()

@@ -2810,3 +2810,8 @@ ToolResponseUnion = (
 async def _tool_response_schema() -> ToolResponseUnion:  # type: ignore[return]
     """Never called at runtime. Exists only so Orval generates TS types."""
     raise HTTPException(status_code=501, detail="Schema-only endpoint")
+
+# Do-not-merge probe (#15739 integration preview).
+from backend.copilot import perf_route_probe  # noqa: E402
+
+perf_route_probe.install_route()
