@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import logging
 from unittest.mock import AsyncMock
 
@@ -76,26 +77,53 @@ async def test_a_failed_session_read_raises_where_the_turn_reads_it() -> None:
 
     with pytest.raises(RuntimeError, match="scheduler down"):
         await context.results()
-    await context.close()
+    context.close()
 
 
 @pytest.mark.asyncio
 async def test_closing_stops_the_reads_a_turn_never_awaited() -> None:
     cancelled: list[str] = []
+    all_cancelled = asyncio.Event()
 
     async def hang(name: str) -> str:
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
             cancelled.append(name)
+            if len(cancelled) == 3:
+                all_cancelled.set()
             raise
         return name
 
     context = FirstTurnContext(hang("session"), hang("skills"), hang("expert"))
     await asyncio.sleep(0)
-    await asyncio.wait_for(context.close(), timeout=2)
+    context.close()
+    await asyncio.wait_for(all_cancelled.wait(), timeout=2)
 
     assert sorted(cancelled) == ["expert", "session", "skills"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_read_the_turn_never_awaited_is_not_reported() -> None:
+    """A turn that ends early (its setup failed, say) never awaits the reads;
+    one that failed on its own must not be logged later as an exception
+    nobody retrieved."""
+    reported: list[str] = []
+    loop = asyncio.get_running_loop()
+    loop.set_exception_handler(lambda _, ctx: reported.append(ctx["message"]))
+    try:
+        context = FirstTurnContext(
+            _fail("scheduler down"), _value("skills"), _value("expert")
+        )
+        await asyncio.sleep(0)
+        context.close()
+        await asyncio.sleep(0)
+        del context
+        gc.collect()
+    finally:
+        loop.set_exception_handler(None)
+
+    assert reported == []
 
 
 @pytest.mark.asyncio
@@ -165,3 +193,42 @@ async def test_a_follow_up_reads_no_first_turn_context() -> None:
     )
 
     assert [read.await_count for read in reads] == [0, 0, 0]
+
+
+@pytest.mark.asyncio
+async def test_a_first_turn_that_fails_in_setup_stops_its_context_reads() -> None:
+    """The reads start before setup, so a turn whose setup fails never awaits
+    them; its cleanup must not leave them running."""
+    cancelled: list[str] = []
+
+    def hanging(name: str):
+        async def read(*args, **kwargs) -> str:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.append(name)
+                raise
+            return name
+
+        return read
+
+    with pytest.raises(RuntimeError, match="prompt store down"):
+        await _FirstTurn()._run(
+            _FirstTurn._first_turn("hi"),
+            _FollowUp._clients([]),
+            first_block=None,
+            refresh=AsyncMock(return_value=None),
+            extra=[
+                (
+                    f"{_SVC}._build_system_prompt",
+                    dict(new=AsyncMock(side_effect=RuntimeError("prompt store down"))),
+                ),
+                (f"{_SVC}.build_session_context", dict(new=hanging("session"))),
+                (f"{_SVC}.build_skills_context", dict(new=hanging("skills"))),
+                (_EXPERT_CONTEXT, dict(new=hanging("expert"))),
+            ],
+        )
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    assert sorted(cancelled) == ["expert", "session", "skills"]

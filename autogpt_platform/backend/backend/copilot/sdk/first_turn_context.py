@@ -37,13 +37,14 @@ class FirstTurnContext:
         before; a failed skills read is logged and leaves the index empty."""
         return await self._session_ctx, await self._skills_ctx, await self._expert_ctx
 
-    async def close(self) -> None:
-        tasks = (self._session_ctx, self._skills_ctx, self._expert_ctx)
-        for task in tasks:
+    def close(self) -> None:
+        """Cancel the reads without waiting for them, so it adds no await to
+        the turn's cleanup, where a second cancellation could cut the rest
+        of it short."""
+        for task in (self._session_ctx, self._skills_ctx, self._expert_ctx):
+            # Also on a read that already failed: cancelling it marks the
+            # error handled, so it isn't logged as never retrieved.
             task.cancel()
-        # The reads' own failures and cancellations come back as results;
-        # only a cancellation of the turn itself propagates from here.
-        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _or_empty(read: Coroutine[Any, Any, str] | None) -> str:

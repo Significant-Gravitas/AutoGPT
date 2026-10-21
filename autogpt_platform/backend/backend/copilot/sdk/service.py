@@ -6700,7 +6700,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         turn_error = sys.exception()
         tool_display_bridge.reset()
         if first_turn_context is not None:
-            await first_turn_context.close()
+            first_turn_context.close()
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
