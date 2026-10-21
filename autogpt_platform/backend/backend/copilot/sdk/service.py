@@ -7386,3 +7386,8 @@ def _stamp_turn_trace_id(
             msg.langfuse_trace_id = trace_id
             if msg.sequence is not None:
                 msg.stamps_pending_save = True
+
+
+from backend.copilot.sdk import perf_step_probe  # do-not-merge probe (#15739)
+
+perf_step_probe.install(sys.modules[__name__])
