@@ -158,6 +158,37 @@ async def test_report_shows_bans_in_force_and_the_blocks_that_cover_the_account(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_parent_domain_block_covers_the_account_as_it_does_at_sign_up(
+    server: SpinTestServer, accounts
+):
+    make, tag = accounts
+    target = await make("a@mail.{tag}.example")
+    # The parent block is the newer one, so only specificity picks the exact.
+    exact, parent = [
+        await AuthAccessBlock.prisma().create(
+            data={
+                "kind": AuthAccessBlockKind.EMAIL_DOMAIN,
+                "value": value,
+                "reason": "test",
+            }
+        )
+        for value in (f"mail.{tag}.example", f"{tag}.example")
+    ]
+    try:
+        both = await get_account_ip_report(target.id, RETENTION_DAYS)
+        await AuthAccessBlock.prisma().delete(where={"id": exact.id})
+        parent_only = await get_account_ip_report(target.id, RETENTION_DAYS)
+    finally:
+        await AuthAccessBlock.prisma().delete_many(
+            where={"id": {"in": [parent.id, exact.id]}}
+        )
+
+    assert both.domain.block is not None and both.domain.block.id == exact.id
+    assert parent_only.domain.block is not None
+    assert parent_only.domain.block.id == parent.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_report_for_an_unknown_account_is_not_found(server: SpinTestServer):
     with pytest.raises(NotFoundError):
         await get_account_ip_report(str(uuid4()), RETENTION_DAYS)

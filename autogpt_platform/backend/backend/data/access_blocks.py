@@ -221,7 +221,8 @@ async def list_active_access_blocks(
 async def find_active_access_blocks(
     ip_addresses: list[str], email_domain: str
 ) -> list[AccessBlock]:
-    """The blocks in force on any of these IPs or on this exact domain."""
+    """The blocks in force on any of these IPs, or on this domain or a parent
+    of it, as sign-up checks them."""
     rows = await AuthAccessBlock.prisma().find_many(
         where={
             "AND": [
@@ -234,7 +235,7 @@ async def find_active_access_blocks(
                         },
                         {
                             "kind": AuthAccessBlockKind.EMAIL_DOMAIN,
-                            "value": email_domain,
+                            "value": {"in": email_domain_and_parents(email_domain)},
                         },
                     ]
                 },
@@ -347,6 +348,13 @@ def _public_suffixes() -> PublicSuffixList:
 
 def get_email_domain(email: str) -> str:
     return email.rsplit("@", 1)[-1].lower()
+
+
+def email_domain_and_parents(domain: str) -> list[str]:
+    """Most specific first, never the bare TLD: the domains a sign-up is
+    checked against (getDomainAndParents in frontend lib/auth/access-blocks.ts)."""
+    labels = domain.split(".")
+    return [".".join(labels[i:]) for i in range(len(labels) - 1)]
 
 
 async def _conflict(kind: AuthAccessBlockKind, value: str) -> ConflictError:

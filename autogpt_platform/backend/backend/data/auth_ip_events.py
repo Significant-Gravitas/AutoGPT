@@ -18,6 +18,7 @@ from backend.data.access_blocks import (
     IPV6_SUBNET_PREFIX,
     PUBLIC_EMAIL_DOMAINS,
     AccessBlock,
+    email_domain_and_parents,
     find_active_access_blocks,
     get_email_domain,
 )
@@ -142,8 +143,16 @@ async def get_account_ip_report(user_id: str, retention_days: int) -> AccountIPR
     domain_count = await _count_domain_accounts(user_id, linked_domain)
     blocks = await find_active_access_blocks(ip_addresses, email_domain)
     ip_blocks = {b.value: b for b in blocks if b.kind == AuthAccessBlockKind.IP}
+    domain_blocks = {
+        b.value: b for b in blocks if b.kind == AuthAccessBlockKind.EMAIL_DOMAIN
+    }
     domain_block = next(
-        (b for b in blocks if b.kind == AuthAccessBlockKind.EMAIL_DOMAIN), None
+        (
+            domain_blocks[domain]
+            for domain in email_domain_and_parents(email_domain)
+            if domain in domain_blocks
+        ),
+        None,
     )
 
     return AccountIPReport(
