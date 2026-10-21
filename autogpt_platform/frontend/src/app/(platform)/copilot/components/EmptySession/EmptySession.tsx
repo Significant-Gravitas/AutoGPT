@@ -1,29 +1,28 @@
 "use client";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import type { ComponentProps, ReactNode } from "react";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
+import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
+import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
+import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
+import { EmptyHero } from "./components/EmptyHero";
+import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
+import { GreetingLoader } from "./components/GreetingLoader";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
   getIntroLine,
 } from "./helpers";
-import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
-import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
-import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
-import { EmptyHero } from "./components/EmptyHero";
-import { GreetingLoader } from "./components/GreetingLoader";
-import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
-import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
-import { RecipientChip } from "../ChatInput/components/RecipientChip";
-import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
-import { useRecipientPicker } from "./useRecipientPicker";
 import { useHomeComposer } from "./useHomeComposer";
+import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
   isCreatingSession: boolean;
@@ -73,8 +72,7 @@ export function EmptySession({
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+
   const {
     options,
     recipient,
@@ -84,21 +82,18 @@ export function EmptySession({
   } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
-  const recipientPicker = isExpertsEnabled ? (
+  const recipientPicker = (
     <RecipientChip
       recipient={recipient}
       options={options}
       isLoading={isLoadingRecipient}
       onSelect={selectRecipient}
     />
-  ) : undefined;
+  );
 
   const { inputPlaceholder } = useHomeComposer({
     enabled:
-      isExpertsEnabled &&
-      !intro.isVisible &&
-      !intro.isAwaitingGreeting &&
-      !isKickoffStarting,
+      !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
   });
 
   if (isKickoffStarting) {
@@ -117,17 +112,7 @@ export function EmptySession({
         <ConnectionPicker className="ml-0" />
       </div>
       <motion.div
-        className={cn(
-          "relative z-10 w-full text-center",
-          isExpertsEnabled ? "max-w-[1120px]" : "max-w-[52rem]",
-          // The whole greeting flow reads top-down like a letter, so it
-          // anchors to the top from its first visible frame; the regular
-          // hero centers itself. `my-auto` rather than the parent's
-          // `items-center`: auto margins collapse to 0 once the content is
-          // taller than the scroller, where centering would push the top of
-          // the page above the scroll origin and make it unreachable.
-          !intro.anchorTop && !isExpertsEnabled && "my-auto",
-        )}
+        className={cn("relative z-10 w-full text-center", "max-w-[1120px]")}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -164,18 +149,15 @@ export function EmptySession({
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
               <div
                 className={cn(
-                  isBrainDumpEnabled
-                    ? "text-left transition-colors duration-300 ease-out"
-                    : "w-full px-2",
+                  "text-left transition-colors duration-300 ease-out",
                   // The greeting's prompt card bleeds 1.25rem past the text
                   // (-mx-5); the composer stretches the same amount so their
                   // edges line up. No chrome of its own: the composer card is
                   // the only outline on screen. The regular hero keeps it
                   // centered.
-                  isBrainDumpEnabled &&
-                    (intro.isVisible
-                      ? "-mx-5 max-w-[50.5rem]"
-                      : "mx-auto w-full max-w-[42rem]"),
+                  intro.isVisible
+                    ? "-mx-5 max-w-[50.5rem]"
+                    : "mx-auto w-full max-w-[42rem]",
                 )}
               >
                 {usageNotice && (
@@ -200,7 +182,7 @@ export function EmptySession({
                   }
                   className={cn(
                     "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
-                    isBrainDumpEnabled && "[&_textarea]:min-h-[4.5rem]",
+                    "[&_textarea]:min-h-[4.5rem]",
                   )}
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
@@ -216,9 +198,7 @@ export function EmptySession({
           )}
         </div>
 
-        {!intro.isVisible && !intro.isAwaitingGreeting && isExpertsEnabled && (
-          <HomeRecap />
-        )}
+        {!intro.isVisible && !intro.isAwaitingGreeting && <HomeRecap />}
       </motion.div>
     </div>
   );
