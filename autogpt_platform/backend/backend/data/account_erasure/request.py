@@ -18,11 +18,12 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from prisma.enums import AccountDeletionSource
-from prisma.models import AccountDeletionRequest
+from prisma.models import AccountDeletionRequest, AuthUser
 
 from backend.api.features.account_deletion.service import delete_account
 from backend.data.account_deletion import mark_confirmation_sent
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.preflight import banned_for_another_reason
 from backend.data.user import get_user_by_id
 from backend.notifications.auth import send_account_deleted_email
 
@@ -46,13 +47,26 @@ async def pending_user_ids(
     return [row.userId for row in rows]
 
 
-async def close_for_email_request(user_id: str) -> None:
+class AccountBannedError(Exception):
+    """The account is banned for another reason, and the operator did not
+    allow closing it anyway. Nothing was changed."""
+
+
+async def close_for_email_request(user_id: str, *, allow_banned: bool = False) -> None:
     """Close the account for a request made by email, exactly as the Settings
     button does (`delete_account`): Stripe cancelled, apps disconnected, work
     stopped, email switched off, sign-in banned, sessions ended, listings
     taken down, the request row written and the confirmation sent. A no-op
     for an account already closed. Raises `PlanCancellationError`, with the
-    account still open, when Stripe refuses the cancel."""
+    account still open, when Stripe refuses the cancel.
+
+    Like the Settings route, it refuses an account banned for another reason
+    (`AccountBannedError`, before Stripe or anything else is touched) unless
+    `allow_banned`; `close_account` then keeps that ban's reason and expiry."""
+    if not allow_banned and banned_for_another_reason(
+        await AuthUser.prisma().find_unique(where={"id": user_id})
+    ):
+        raise AccountBannedError()
     user = await get_user_by_id(user_id)
     await delete_account(user_id, user.email, AccountDeletionSource.EMAIL)
 

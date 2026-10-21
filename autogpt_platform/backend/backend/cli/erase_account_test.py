@@ -151,10 +151,32 @@ def test_close_closes_an_open_account_before_erasing_it(run):
     result = run.invoke(EMAIL, "--close", "--apply", "--yes")
 
     assert result.exit_code == 0, result.output
-    run.closing.assert_awaited_once_with(USER_ID)
+    run.closing.assert_awaited_once_with(USER_ID, allow_banned=False)
     # The dry run is not refused for the request the close will write.
     assert run.erasing.await_args_list[0].kwargs["closing"] is True
+    assert run.erasing.await_args_list[0].kwargs["allow_banned"] is False
     assert "closes it as a request made by email" in result.output
+
+
+def test_allow_banned_reaches_the_dry_run_and_the_close(run):
+    run.closed.return_value = False
+
+    result = run.invoke(EMAIL, "--close", "--allow-banned", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert run.erasing.await_args_list[0].kwargs["allow_banned"] is True
+    run.closing.assert_awaited_once_with(USER_ID, allow_banned=True)
+
+
+def test_a_ban_that_appears_after_the_dry_run_erases_nothing(run):
+    run.closed.return_value = False
+    run.closing.side_effect = request.AccountBannedError()
+
+    result = run.invoke(EMAIL, "--close", "--apply", "--yes")
+
+    assert result.exit_code == 1
+    assert _dry_runs(run.erasing) == [True]
+    assert "nothing was closed or erased" in result.output
 
 
 def test_close_without_apply_closes_nothing(run):
@@ -186,7 +208,10 @@ def test_a_stripe_refusal_on_close_erases_nothing(run):
     assert "still open" in result.output
 
 
-@pytest.mark.parametrize("args", [(), (EMAIL, "--pending"), ("--pending", "--close")])
+@pytest.mark.parametrize(
+    "args",
+    [(), (EMAIL, "--pending"), ("--pending", "--close"), (EMAIL, "--allow-banned")],
+)
 def test_conflicting_arguments_are_refused(run, args):
     result = run.invoke(*args)
 

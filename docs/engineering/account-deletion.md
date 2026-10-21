@@ -48,11 +48,12 @@ Every command is a dry run unless it has `--apply`, and prints counts only, neve
    poetry run cli erase-account sam@example.com --close --apply
    ```
 
-   `--close` closes the account the way Settings does, with source `EMAIL`, then the erasure runs. The confirmation email is the one Settings sends, with its own reason line: "You asked us by email to delete your account." Closing also sends the anonymous `account_deletion_completed` count, with `surface: email`, which the tracking plan does not list yet. If Stripe refuses the plan cancel, nothing is closed or erased: run it again. An account already closed (from Settings, say) is only erased; `--close` changes nothing then.
+   `--close` closes the account the way Settings does, with source `EMAIL`, then the erasure runs. The confirmation email is the one Settings sends, with its own reason line: "You asked us by email to delete your account." Closing also sends the anonymous `account_deletion_completed` count, with `surface: email`, which the tracking plan does not list yet. If Stripe refuses the plan cancel, nothing is closed or erased: run it again. An account already closed (from Settings, say) is only erased; `--close` changes nothing then. Like Settings, `--close` refuses an account banned for another reason (abuse, say), before it touches Stripe or anything else.
 
    It refuses while a blocker remains, and nothing is deleted then:
    - `not_closed`: the account has no deletion request. Pass `--close` for a request made by email.
    - `shared_orgs_without_another_owner`: the account is the only owner of an organization with other active members. Ask the requester to make someone else an owner, or decide with the org's members. Invited, suspended and removed members do not count: an organization only they are left in goes with the account, and its subscription is cancelled. The job logs this account at every run until it is resolved.
+   - `banned`: with `--close`, the account is banned for a reason other than closing it. Check with whoever banned it. To close and erase it anyway, add `--allow-banned`: the ban keeps its reason and expiry.
    - `invalid_account_id`: the ID is not a user ID. Nothing runs.
    - `system_account`: the "deleted user" placeholder (below) is never erased.
 

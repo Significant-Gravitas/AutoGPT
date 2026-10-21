@@ -84,6 +84,10 @@ class Subject(BaseModel):
     # Whether the account-deleted email went out (the request's
     # `confirmationSentAt`); the erasure sends it first when it did not.
     confirmation_sent: bool = False
+    # Its sign-in is banned for a reason other than closing it (an abuse
+    # ban, say). Settings refuses to delete such an account, and so does
+    # `--close` unless the operator allows it (`preflight.find_blockers`).
+    banned_for_another_reason: bool = False
     # The request's `completedAt` is set: an earlier erasure finished.
     request_completed: bool = False
     # Its agents other accounts still use (`shared_agents.py`): handed to the

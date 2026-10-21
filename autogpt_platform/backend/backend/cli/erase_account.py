@@ -21,10 +21,21 @@ if TYPE_CHECKING:
     help="For a request made by email: close the account the way Settings "
     "does first, then erase it.",
 )
+@click.option(
+    "--allow-banned",
+    is_flag=True,
+    help="With --close: close an account banned for another reason too, "
+    "keeping that ban.",
+)
 @click.option("--apply", is_flag=True, help="Make the change. Without it, dry run.")
 @click.option("--yes", is_flag=True, help="With --apply, skip the confirmation.")
 def erase_account_command(
-    account: str | None, pending: bool, close: bool, apply: bool, yes: bool
+    account: str | None,
+    pending: bool,
+    close: bool,
+    allow_banned: bool,
+    apply: bool,
+    yes: bool,
 ):
     """Erase a closed account and everything it holds (SECRT-2854).
 
@@ -36,7 +47,9 @@ def erase_account_command(
     --close is for a request made by email to privacy@: it closes the account
     exactly as the Settings button does (Stripe plan cancelled, apps
     disconnected, work and email stopped, sign-in banned, the confirmation
-    email sent), then erases it.
+    email sent), then erases it. Like Settings, it refuses an account banned
+    for another reason (abuse, say); --allow-banned closes it anyway and
+    keeps that ban's reason and expiry.
 
     The erasure stops the account's work again, sends the confirmation if it
     has not gone out, cancels the subscriptions of the orgs that go with the
@@ -54,13 +67,23 @@ def erase_account_command(
         raise click.UsageError("Pass an ACCOUNT or --pending, not both.")
     if close and pending:
         raise click.UsageError("--close applies to one account.")
+    if allow_banned and not close:
+        raise click.UsageError("--allow-banned applies with --close.")
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
     if pending:
         asyncio.run(_with_db(_run_pending(apply=apply, yes=yes)))
     else:
         asyncio.run(
-            _with_db(_run_one(account or "", close=close, apply=apply, yes=yes))
+            _with_db(
+                _run_one(
+                    account or "",
+                    close=close,
+                    allow_banned=allow_banned,
+                    apply=apply,
+                    yes=yes,
+                )
+            )
         )
 
 
@@ -74,14 +97,22 @@ async def _with_db(work):
         await disconnect()
 
 
-async def _run_one(account: str, *, close: bool, apply: bool, yes: bool):
+async def _run_one(
+    account: str, *, close: bool, allow_banned: bool, apply: bool, yes: bool
+):
     from backend.data.account_deletion import is_account_closed
     from backend.data.account_erasure.models import AccountErasureBlocked
     from backend.data.account_erasure.routine import erase_account
 
     user_id, email = await _resolve(account)
     closing = close and not await is_account_closed(user_id)
-    plan = await erase_account(user_id, dry_run=True, email=email, closing=closing)
+    plan = await erase_account(
+        user_id,
+        dry_run=True,
+        email=email,
+        closing=closing,
+        allow_banned=allow_banned,
+    )
     _report(plan)
     if closing:
         click.echo(_CLOSE_FIRST)
@@ -95,7 +126,7 @@ async def _run_one(account: str, *, close: bool, apply: bool, yes: bool):
     if not yes:
         click.confirm(f"\nErase account {user_id} for good?", abort=True)
     if closing:
-        await _close(user_id)
+        await _close(user_id, allow_banned=allow_banned)
     try:
         result = await erase_account(user_id, dry_run=False, email=email)
     except AccountErasureBlocked as e:
@@ -113,12 +144,21 @@ _CLOSE_FIRST = (
 )
 
 
-async def _close(user_id: str) -> None:
+async def _close(user_id: str, *, allow_banned: bool) -> None:
     from backend.api.features.account_deletion.service import PlanCancellationError
-    from backend.data.account_erasure.request import close_for_email_request
+    from backend.data.account_erasure.request import (
+        AccountBannedError,
+        close_for_email_request,
+    )
 
     try:
-        await close_for_email_request(user_id)
+        await close_for_email_request(user_id, allow_banned=allow_banned)
+    except AccountBannedError:
+        raise click.ClickException(
+            "The account was banned for another reason since the dry run, so "
+            "nothing was closed or erased. Pass --allow-banned to close it "
+            "anyway, keeping that ban."
+        )
     except PlanCancellationError:
         raise click.ClickException(
             "Stripe refused or timed out on the plan cancel, so the account "

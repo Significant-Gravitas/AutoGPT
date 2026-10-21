@@ -55,12 +55,14 @@ async def erase_account(
     dry_run: bool = True,
     email: str | None = None,
     closing: bool = False,
+    allow_banned: bool = False,
 ) -> ErasureReport:
     """Erase the account, or with `dry_run` (the default) only count what
     would go. `email` finds the MailerLite subscriber of an account whose rows
     are already gone. `closing` says the caller closes the account first (a
     request made by email), so a dry run is not refused for having no
-    request yet.
+    request yet, and `allow_banned` lets it close an account banned for
+    another reason.
 
     Raises `AccountErasureBlocked` before deleting anything when a blocker
     needs a decision; a dry run reports blockers instead. Returns the report;
@@ -69,7 +71,7 @@ async def erase_account(
     plan = await plan_transfer(user_id)
     subject.shared_graph_ids = plan.graph_ids
     subject.kept_listing_ids = plan.listing_ids
-    blockers = await find_blockers(subject, closing=closing)
+    blockers = await find_blockers(subject, closing=closing, allow_banned=allow_banned)
     return await _run(subject, _erasure_steps(), blockers, dry_run)
 
 

@@ -17,6 +17,7 @@ from prisma.models import (
     UserWorkspace,
 )
 
+from backend.data.account_deletion import ACCOUNT_DELETED_BAN_REASON
 from backend.data.account_erasure.deleted_user import DELETED_USER_ID
 from backend.data.account_erasure.models import SAFE_ID, Blocker, Subject
 
@@ -42,18 +43,43 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
         org_stripe_customer_ids=await _org_stripe_customers(user, sole_orgs),
         expert_ids=[expert.id for expert in experts],
         request_source=request.source if request else None,
+        banned_for_another_reason=banned_for_another_reason(identity),
         confirmation_sent=bool(request and request.confirmationSentAt),
         request_completed=bool(request and request.completedAt),
     )
 
 
-async def find_blockers(subject: Subject, *, closing: bool = False) -> list[Blocker]:
+def banned_for_another_reason(identity: AuthUser | None) -> bool:
+    """A Better Auth ban that closing the account did not set."""
+    return bool(
+        identity
+        and identity.banned
+        and identity.banReason != ACCOUNT_DELETED_BAN_REASON
+    )
+
+
+async def find_blockers(
+    subject: Subject, *, closing: bool = False, allow_banned: bool = False
+) -> list[Blocker]:
     """What stops the erasure. Only a closed account (one with a deletion
     request) is erased; `closing` says the caller closes it first, as the
-    CLI does for a request made by email."""
+    CLI does for a request made by email. An account banned for another
+    reason is not closed that way unless `allow_banned`, as the Settings
+    route refuses it too."""
     if refused := invalid_id(subject.user_id) or system_account(subject.user_id):
         return refused
     blockers: list[Blocker] = []
+    if closing and subject.banned_for_another_reason and not allow_banned:
+        blockers.append(
+            Blocker(
+                name="banned",
+                count=1,
+                resolution="This account is banned for another reason (abuse, "
+                "say), and Settings would refuse to delete it. Check with "
+                "whoever banned it. To close and erase it anyway, keeping "
+                "that ban, pass --allow-banned.",
+            )
+        )
     if not (subject.has_request or closing):
         blockers.append(
             Blocker(

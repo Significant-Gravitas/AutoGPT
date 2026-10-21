@@ -147,14 +147,44 @@ async def test_a_completion_dry_run_writes_nothing(requests_table):
     requests_table.update_many.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_an_email_request_is_closed_the_way_settings_closes_one(monkeypatch):
+@pytest.fixture
+def closing(monkeypatch):
+    """`delete_account` faked, and an identity banned the way `ban` says."""
     monkeypatch.setattr(
         request, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(email=EMAIL))
     )
     close = AsyncMock()
     monkeypatch.setattr(request, "delete_account", close)
+    identity = SimpleNamespace(banned=None, banReason=None)
+    identities = MagicMock()
+    identities.prisma.return_value.find_unique = AsyncMock(return_value=identity)
+    monkeypatch.setattr(request, "AuthUser", identities)
+    return SimpleNamespace(close=close, identity=identity)
 
+
+@pytest.mark.asyncio
+async def test_an_email_request_is_closed_the_way_settings_closes_one(closing):
     await request.close_for_email_request(USER_ID)
 
-    close.assert_awaited_once_with(USER_ID, EMAIL, AccountDeletionSource.EMAIL)
+    closing.close.assert_awaited_once_with(USER_ID, EMAIL, AccountDeletionSource.EMAIL)
+
+
+@pytest.mark.asyncio
+async def test_an_account_banned_for_another_reason_is_not_closed(closing):
+    """Refused before Stripe, revokes or the email, as the Settings route
+    refuses it."""
+    closing.identity.banned, closing.identity.banReason = True, "spam"
+
+    with pytest.raises(request.AccountBannedError):
+        await request.close_for_email_request(USER_ID)
+
+    closing.close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_operator_can_close_a_banned_account_anyway(closing):
+    closing.identity.banned, closing.identity.banReason = True, "spam"
+
+    await request.close_for_email_request(USER_ID, allow_banned=True)
+
+    closing.close.assert_awaited_once_with(USER_ID, EMAIL, AccountDeletionSource.EMAIL)

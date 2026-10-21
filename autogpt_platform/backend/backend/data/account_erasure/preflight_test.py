@@ -137,6 +137,46 @@ async def test_an_account_the_caller_closes_first_is_not_blocked(no_orgs):
     assert await preflight.find_blockers(open_account, closing=True) == []
 
 
+BANNED = Subject(user_id=USER_ID, has_user_row=True, banned_for_another_reason=True)
+
+
+@pytest.mark.asyncio
+async def test_closing_refuses_an_account_banned_for_another_reason(no_orgs):
+    """The Settings route refuses it too: deleting must not stand in for an
+    abuse ban."""
+    blockers = await preflight.find_blockers(BANNED, closing=True)
+
+    assert [(b.name, b.count) for b in blockers] == [("banned", 1)]
+    assert "--allow-banned" in blockers[0].resolution
+
+
+@pytest.mark.asyncio
+async def test_the_operator_can_allow_closing_a_banned_account(no_orgs):
+    assert await preflight.find_blockers(BANNED, closing=True, allow_banned=True) == []
+
+
+@pytest.mark.asyncio
+async def test_a_banned_account_closed_already_is_erased(no_orgs):
+    closed = BANNED.model_copy(update={"request_source": AccountDeletionSource.EMAIL})
+
+    assert await preflight.find_blockers(closed) == []
+
+
+@pytest.mark.parametrize(
+    "identity, banned",
+    [
+        (None, False),
+        (SimpleNamespace(banned=None, banReason=None), False),
+        (SimpleNamespace(banned=False, banReason="spam"), False),
+        (SimpleNamespace(banned=True, banReason="account_deleted"), False),
+        (SimpleNamespace(banned=True, banReason="spam"), True),
+        (SimpleNamespace(banned=True, banReason=None), True),
+    ],
+)
+def test_only_a_ban_closing_did_not_set_counts_as_another_reason(identity, banned):
+    assert preflight.banned_for_another_reason(identity) is banned
+
+
 @pytest.mark.asyncio
 async def test_a_closed_account_is_erased(no_orgs):
     assert await preflight.find_blockers(CLOSED) == []
