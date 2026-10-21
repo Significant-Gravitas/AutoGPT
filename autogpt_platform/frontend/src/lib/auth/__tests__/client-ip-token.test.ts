@@ -12,6 +12,7 @@ function forwardedFor(value: string) {
 }
 
 beforeEach(() => {
+  vi.stubEnv("VERCEL", "1");
   vi.useFakeTimers();
   mintServiceTokenMock.mockReset();
   mintServiceTokenMock.mockImplementation(
@@ -22,6 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("getClientIPToken", () => {
@@ -56,6 +58,17 @@ describe("getClientIPToken", () => {
       expect(await getClientIPToken(forwardedFor(junk))).toBeNull();
     }
     expect(mintServiceTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("signs an address only where the proxy in front vouches for it", async () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+
+    expect(await getClientIPToken(forwardedFor("198.51.100.8"))).toBeNull();
+    expect(mintServiceTokenMock).not.toHaveBeenCalled();
+
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
+    expect(await getClientIPToken(forwardedFor("198.51.100.8"))).not.toBeNull();
   });
 
   it("answers null when signing fails", async () => {

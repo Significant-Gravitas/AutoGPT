@@ -17,15 +17,14 @@ async def client_ip(
 
     Browser calls arrive from the frontend's server, so the frontend signs the
     visitor's IP into a short-lived service token. Without a valid one, the
-    caller is keyed by the address it connected from.
+    caller is keyed by its connecting address, which uvicorn reads from
+    X-Forwarded-For only when the peer is a proxy listed in FORWARDED_ALLOW_IPS.
     """
     if token:
         claims = await frontend_service_claims(token, CLIENT_IP_SCOPE)
         ip = claims.get("ip") if claims else None
         if isinstance(ip, str) and ip:
             return ip
-    if forwarded := request.headers.get("cf-connecting-ip"):
-        return forwarded
     return request.client.host if request.client else "unknown"
 
 

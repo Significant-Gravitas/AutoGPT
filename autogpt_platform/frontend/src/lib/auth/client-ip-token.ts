@@ -1,3 +1,4 @@
+import { environment } from "@/services/environment";
 import { mintServiceToken } from "./service-token";
 
 export const CLIENT_IP_SCOPE = "client-ip";
@@ -10,10 +11,10 @@ const MAX_CACHED = 1_000;
 const minted = new Map<string, { token: string; mintedAt: number }>();
 
 /**
- * The visitor's IP, as the edge forwarded it, in a frontend service token the
- * backend can verify. Backend limits on public routes count per visitor by it;
- * without one, every visitor arrives from this server's address. Null when the
- * request carries no usable IP or signing fails.
+ * The visitor's IP, as a proxy in front of this server reported it, in a frontend
+ * service token the backend can verify. Backend limits on public routes count per
+ * visitor by it. Null when no trusted proxy reports the address, when it is not
+ * usable, or when signing fails; the backend then keys on its own peer address.
  */
 export async function getClientIPToken(requestHeaders: Headers) {
   const ip = readClientIP(requestHeaders);
@@ -31,7 +32,13 @@ export async function getClientIPToken(requestHeaders: Headers) {
   }
 }
 
+// x-forwarded-for is the visitor's address only where the proxy in front of this
+// server overwrites it: Vercel's edge does, and so does one an operator vouches for
+// with TRUST_X_FORWARDED_FOR. Next's own server keeps whatever the caller sent.
 function readClientIP(requestHeaders: Headers) {
+  if (!environment.isVercel() && process.env.TRUST_X_FORWARDED_FOR !== "true") {
+    return null;
+  }
   const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
   return ip && /^[0-9A-Fa-f:.]{2,45}$/.test(ip) ? ip : null;
 }

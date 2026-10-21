@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from contextvars import ContextVar
 from typing import Any
 
 import prisma
@@ -173,6 +174,13 @@ class PublicSearchBudgetSpent(Exception):
     """Store search has requested all the new query embeddings it may this minute."""
 
 
+# A caller that needs to know whether its search was refused an embedding sets a
+# list here; a list, so a refusal made in a task the search spawns still reaches it.
+refused_public_queries: ContextVar[list[str] | None] = ContextVar(
+    "refused_public_queries", default=None
+)
+
+
 async def embed_query(query: str, *, public_search: bool = False) -> list[float]:
     """
     Generate embedding for a search query, reusing the embedding of the same
@@ -188,6 +196,8 @@ async def embed_query(query: str, *, public_search: bool = False) -> list[float]
     if cached := await _cached_query_embedding(key):
         return cached
     if public_search and not await take_public_search_embedding_slot():
+        if (refused := refused_public_queries.get()) is not None:
+            refused.append(query)
         raise PublicSearchBudgetSpent()
     embedding = await generate_embedding(query)
     await _cache_query_embedding(key, embedding)

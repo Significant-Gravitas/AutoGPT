@@ -1,6 +1,8 @@
+from backend.api.features.search.embeddings import refused_public_queries
 from backend.util.cache import cached
 
 from . import db as store_db
+from . import model as store_model
 
 ##############################################
 ############### Caches #######################
@@ -13,6 +15,47 @@ def clear_all_caches():
     _get_cached_agent_details.cache_clear()
     _get_cached_store_creators.cache_clear()
     _get_cached_creator_details.cache_clear()
+
+
+async def get_public_store_agents(
+    featured: bool,
+    creator: str | None,
+    sorted_by: store_db.StoreAgentsSortOptions | None,
+    search_query: str | None,
+    category: str | None,
+    page: int,
+    page_size: int,
+) -> store_model.StoreAgentsResponse:
+    """Cached store agents for a public route, whose searches count against the store
+    search embedding budget. A search ranked by text alone because that budget was
+    spent is dropped from the cache, so it is ranked fully once the budget refills."""
+    refused: list[str] = []
+    token = refused_public_queries.set(refused)
+    try:
+        agents = await _get_cached_store_agents(
+            featured=featured,
+            creator=creator,
+            sorted_by=sorted_by,
+            search_query=search_query,
+            category=category,
+            page=page,
+            page_size=page_size,
+            public_search=True,
+        )
+    finally:
+        refused_public_queries.reset(token)
+    if refused:
+        _get_cached_store_agents.cache_delete(
+            featured=featured,
+            creator=creator,
+            sorted_by=sorted_by,
+            search_query=search_query,
+            category=category,
+            page=page,
+            page_size=page_size,
+            public_search=True,
+        )
+    return agents
 
 
 # Cache store agents list for 5 minutes

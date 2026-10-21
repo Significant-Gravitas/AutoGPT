@@ -192,7 +192,7 @@ async def get_agents(
     """
     if search_query and search_query.strip():
         await enforce_public_search_rate_limit(client)
-    agents = await store_cache._get_cached_store_agents(
+    agents = await store_cache.get_public_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -200,7 +200,6 @@ async def get_agents(
         category=category,
         page=page,
         page_size=page_size,
-        public_search=True,
     )
     return agents
 

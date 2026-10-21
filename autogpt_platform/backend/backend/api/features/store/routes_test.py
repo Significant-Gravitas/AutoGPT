@@ -419,15 +419,16 @@ def one_search_a_minute(monkeypatch):
 @pytest.mark.parametrize(
     "path", ["/search?query=sheets", "/agents?search_query=sheets"]
 )
-def test_a_client_past_the_search_limit_gets_429(
+def test_a_caller_without_the_frontends_token_is_held_to_the_search_limit(
     mocker: pytest_mock.MockFixture, one_search_a_minute, path: str
 ) -> None:
     _mock_search_backends(mocker)
-    headers = {"CF-Connecting-IP": f"client-{uuid.uuid4().hex}"}
+    caller = _a_new_caller()
 
-    assert client.get(path, headers=headers).status_code == 200
-    blocked = client.get(path, headers=headers)
+    first = caller.get(path, headers=_claimed_address("192.0.2.1"))
+    blocked = caller.get(path, headers=_claimed_address("192.0.2.2"))
 
+    assert first.status_code == 200
     assert blocked.status_code == 429
     assert blocked.headers["Retry-After"] == "30"
 
@@ -436,9 +437,9 @@ def test_listing_agents_without_a_search_is_not_limited(
     mocker: pytest_mock.MockFixture, one_search_a_minute
 ) -> None:
     _mock_search_backends(mocker)
-    headers = {"CF-Connecting-IP": f"client-{uuid.uuid4().hex}"}
+    caller = _a_new_caller()
 
-    statuses = [client.get("/agents", headers=headers).status_code for _ in range(3)]
+    statuses = [caller.get("/agents").status_code for _ in range(3)]
 
     assert statuses == [200, 200, 200]
 
@@ -447,12 +448,20 @@ def test_store_search_counts_against_the_public_embedding_budget(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     engine = _mock_search_backends(mocker)
-    headers = {"CF-Connecting-IP": f"client-{uuid.uuid4().hex}"}
 
-    response = client.get("/search?query=sheets", headers=headers)
+    response = _a_new_caller().get("/search?query=sheets")
 
     assert response.status_code == 200
     assert engine.await_args.kwargs["public_search"] is True
+
+
+def _a_new_caller() -> fastapi.testclient.TestClient:
+    """A client with a socket address of its own, so no test shares its window."""
+    return fastapi.testclient.TestClient(app, client=(f"caller-{uuid.uuid4().hex}", 1))
+
+
+def _claimed_address(ip: str) -> dict[str, str]:
+    return {"CF-Connecting-IP": ip, "X-Forwarded-For": ip, "X-Real-IP": ip}
 
 
 def _mock_search_backends(mocker: pytest_mock.MockFixture):

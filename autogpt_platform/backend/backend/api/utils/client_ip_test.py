@@ -12,8 +12,14 @@ from jwt.algorithms import ECAlgorithm
 
 from backend.api.utils.client_ip import CLIENT_IP_SCOPE, ClientIP
 
-CLOUDFLARE_IP = "192.0.2.10"
 SOCKET_IP = "198.51.100.1"
+# Every header a proxy might use for the client, set by the caller itself.
+CLAIMED_ADDRESS = {
+    "CF-Connecting-IP": "192.0.2.10",
+    "X-Forwarded-For": "192.0.2.10",
+    "X-Real-IP": "192.0.2.10",
+    "True-Client-IP": "192.0.2.10",
+}
 
 app = fastapi.FastAPI()
 
@@ -40,7 +46,7 @@ def frontend_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_the_ip_the_frontend_signed_is_the_client(frontend_key):
     token = _ip_token(frontend_key, "203.0.113.7")
-    headers = {"X-Client-IP-Token": token, "CF-Connecting-IP": CLOUDFLARE_IP}
+    headers = {"X-Client-IP-Token": token, **CLAIMED_ADDRESS}
 
     assert await _client_of(headers) == "203.0.113.7"
 
@@ -79,16 +85,11 @@ async def test_the_ip_the_frontend_signed_is_the_client(frontend_key):
 async def test_without_a_token_the_frontend_issued_the_caller_is_its_own_address(
     frontend_key, forge
 ):
-    headers = {"CF-Connecting-IP": CLOUDFLARE_IP}
+    headers = dict(CLAIMED_ADDRESS)
     if token := forge(frontend_key):
         headers["X-Client-IP-Token"] = token
 
-    assert await _client_of(headers) == CLOUDFLARE_IP
-
-
-@pytest.mark.asyncio
-async def test_outside_cloudflare_the_client_is_the_connecting_socket():
-    assert await _client_of({}) == SOCKET_IP
+    assert await _client_of(headers) == SOCKET_IP
 
 
 def _ip_token(key, ip, **overrides) -> str:
