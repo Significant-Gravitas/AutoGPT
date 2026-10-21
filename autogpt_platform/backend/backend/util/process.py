@@ -157,9 +157,9 @@ class AppProcess(ABC):
         # secret. Deliberately here rather than at import time so tooling and
         # tests that merely import backend modules are unaffected.
         check_secrets()
-        # Raises on a malformed INTERNAL_API_KEY here, rather than inside
-        # get_service_client's connection retries, which would retry it for
-        # most of an hour.
+        # Raises on a malformed INTERNAL_API_KEY, or an ENCRYPTION_KEY the key
+        # cannot be derived from, here rather than inside get_service_client's
+        # connection retries, which would retry it for most of an hour.
         internal_api_key()
 
         if not background:

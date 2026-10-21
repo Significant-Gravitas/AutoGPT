@@ -207,9 +207,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     internal_api_key_optional: bool = Field(
         default=False,
         description="Temporary, for rolling the internal service key out to a "
-        "deployment whose older instances cannot send it yet: accept internal "
-        "calls that carry no key (a wrong key is still refused). Turn it off "
-        "once none of those instances is still running.",
+        "deployment whose older instances cannot send it yet: accept calls to a "
+        "service's methods that carry no key (a wrong key is still refused). "
+        "Turn it off once none of those instances is still running, and back on "
+        "before rolling back to a release that does not send the key.",
     )
     pyro_client_comm_timeout: float = Field(
         default=15,

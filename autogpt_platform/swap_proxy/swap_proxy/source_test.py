@@ -78,17 +78,18 @@ async def test_the_key_is_the_backends_own_setting(monkeypatch):
     assert seen == [f"Bearer {KEY}"]
 
 
-@pytest.mark.parametrize("key", ["too-short", "a key with spaces " * 3, "é" * 40])
-def test_a_malformed_key_stops_the_proxy_starting(monkeypatch, key):
+@pytest.mark.parametrize("key", ["", "too-short", "a key with spaces " * 3, "é" * 40])
+def test_a_missing_or_malformed_key_stops_the_proxy_starting(monkeypatch, key):
     monkeypatch.setenv("INTERNAL_API_KEY", key)
     with pytest.raises(ValueError, match="INTERNAL_API_KEY"):
         BackendCredentialSource.from_settings(Settings())
 
 
-def test_no_key_warns_that_nothing_will_be_swapped(monkeypatch, caplog):
+def test_an_unset_key_stops_the_proxy_starting(monkeypatch):
+    """Every lookup would be refused, while the proxy looked healthy."""
     monkeypatch.delenv("INTERNAL_API_KEY", raising=False)
-    BackendCredentialSource.from_settings(Settings())
-    assert "INTERNAL_API_KEY is not set" in caplog.text
+    with pytest.raises(ValueError, match="INTERNAL_API_KEY"):
+        BackendCredentialSource.from_settings(Settings())
 
 
 async def test_an_environment_proxy_never_sees_a_call(monkeypatch):

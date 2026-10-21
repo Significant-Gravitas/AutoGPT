@@ -552,9 +552,11 @@ class AppService(BaseAppService, ABC):
             )
 
         # Register the exposed API routes.
+        rpc_paths: set[str] = set()
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
+                rpc_paths.add(route_path)
                 app.add_api_route(
                     route_path,
                     self._create_fastapi_endpoint(attr),
@@ -567,7 +569,7 @@ class AppService(BaseAppService, ABC):
         self._register_exception_handlers(app)
         # Last, so it is the outermost middleware: every request but the health
         # checks and /metrics needs the internal key before anything reads it.
-        require_internal_key(app, self.service_name)
+        require_internal_key(app, self.service_name, frozenset(rpc_paths))
         return app
 
     @asynccontextmanager

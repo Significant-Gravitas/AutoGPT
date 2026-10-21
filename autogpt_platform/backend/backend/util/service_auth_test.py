@@ -12,6 +12,7 @@ from typing import Protocol, cast
 import httpx
 import pytest
 import uvicorn
+from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
@@ -29,6 +30,8 @@ from backend.util.service import (
 from backend.util.settings import Settings
 
 KEY = "internal-key-for-tests-0123456789abcdef"
+ENC_1 = base64.urlsafe_b64encode(b"1" * 32).decode()
+ENC_2 = base64.urlsafe_b64encode(b"2" * 32).decode()
 _port = 0
 
 
@@ -118,16 +121,50 @@ def _derived(encryption_key: str) -> str:
 
 
 def test_unset_the_key_is_derived_from_the_encryption_key():
-    key = service_auth.internal_api_key(_settings("", encryption_key="enc-1"))
+    key = service_auth.internal_api_key(_settings("", encryption_key=ENC_1))
 
-    assert key == _derived("enc-1")
+    assert key == _derived(ENC_1)
     assert re.fullmatch(r"[A-Za-z0-9_-]{43}", key)
-    assert key != service_auth.internal_api_key(_settings("", encryption_key="enc-2"))
+    assert key != service_auth.internal_api_key(_settings("", encryption_key=ENC_2))
 
 
 def test_a_set_key_wins_over_the_derived_one():
-    settings = _settings(KEY, encryption_key="enc-1")
+    settings = _settings(KEY, encryption_key=ENC_1)
     assert service_auth.internal_api_key(settings) == KEY
+
+
+@pytest.mark.parametrize(
+    "encryption_key",
+    [
+        "e",
+        "changeme",
+        "0" * 64,  # hex: 32 bytes written out, not encoded
+        base64.urlsafe_b64encode(b"x" * 31).decode(),
+        "not base64 at all!",
+    ],
+)
+def test_no_key_is_derived_from_an_encryption_key_fernet_refuses(encryption_key):
+    """A guessable ENCRYPTION_KEY would make the derived key guessable too."""
+    with pytest.raises(ValueError):
+        Fernet(encryption_key.encode())
+    with pytest.raises(ValueError, match="ENCRYPTION_KEY is not a Fernet key"):
+        service_auth.internal_api_key(_settings("", encryption_key=encryption_key))
+    # A set key does not depend on it.
+    assert service_auth.internal_api_key(_settings(KEY, encryption_key=encryption_key))
+
+
+@pytest.mark.parametrize(
+    "encryption_key",
+    [
+        Fernet.generate_key().decode(),
+        base64.b64encode(b"\xfb\xff" * 16).decode(),  # standard alphabet: + and /
+    ],
+)
+def test_any_key_fernet_accepts_derives_one(encryption_key):
+    """No stricter than Fernet: an install whose credentials decrypt starts."""
+    Fernet(encryption_key.encode())
+    key = service_auth.internal_api_key(_settings("", encryption_key=encryption_key))
+    assert key == _derived(encryption_key)
 
 
 @pytest.mark.parametrize(
@@ -138,12 +175,21 @@ def test_a_malformed_key_is_refused(malformed):
         service_auth.internal_api_key(_settings(malformed))
 
 
-def test_a_malformed_key_stops_every_process_starting(use_settings, monkeypatch):
+@pytest.mark.parametrize(
+    "settings, refused",
+    [
+        (_settings("short"), "INTERNAL_API_KEY"),
+        (_settings("", encryption_key="changeme"), "ENCRYPTION_KEY"),
+    ],
+)
+def test_a_bad_key_stops_every_process_starting(
+    use_settings, monkeypatch, settings, refused
+):
     monkeypatch.setattr(process, "check_secrets", lambda: None)
-    use_settings(_settings("short"))
+    use_settings(settings)
     unstarted = _Unstarted()
 
-    with pytest.raises(ValueError, match="INTERNAL_API_KEY"):
+    with pytest.raises(ValueError, match=refused):
         unstarted.start()
     assert not unstarted.ran
 
@@ -152,8 +198,8 @@ def test_client_headers_carry_the_key():
     assert service_auth.internal_auth_headers(_settings()) == {
         "Authorization": f"Bearer {KEY}"
     }
-    assert service_auth.internal_auth_headers(_settings("", encryption_key="e")) == {
-        "Authorization": f"Bearer {_derived('e')}"
+    assert service_auth.internal_auth_headers(_settings("", encryption_key=ENC_1)) == {
+        "Authorization": f"Bearer {_derived(ENC_1)}"
     }
     assert service_auth.internal_auth_headers(_settings("")) == {}
 
@@ -176,10 +222,10 @@ def test_an_exposed_method_needs_the_key(use_settings):
 
 
 def test_the_derived_key_is_enforced(use_settings):
-    client = TestClient(_app(use_settings, _settings("", encryption_key="enc-1")))
+    client = TestClient(_app(use_settings, _settings("", encryption_key=ENC_1)))
 
     assert _call_add(client).status_code == 401
-    assert _call_add(client, Authorization=f"Bearer {_derived('enc-1')}").json() == 5
+    assert _call_add(client, Authorization=f"Bearer {_derived(ENC_1)}").json() == 5
 
 
 def test_the_key_is_checked_before_the_body_is_read(use_settings):
@@ -197,12 +243,25 @@ def test_the_key_is_checked_before_the_body_is_read(use_settings):
     )
 
 
-async def test_the_middleware_never_reads_a_refused_body():
+async def _through_middleware(
+    *,
+    key: str = KEY,
+    authorization: bytes | None = None,
+    scope_type: str = "http",
+    optional: bool = False,
+) -> tuple[list[dict], bool]:
+    """One request straight through the middleware: what it sent back, and
+    whether the service behind it was reached. Reading the body fails."""
+    reached = False
+
     async def app(scope, receive, send):
-        raise AssertionError("a refused request reached the service")
+        nonlocal reached
+        reached = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
 
     async def receive():
-        raise AssertionError("a refused request's body was read")
+        raise AssertionError("the middleware read a request body")
 
     sent: list[dict] = []
 
@@ -210,33 +269,44 @@ async def test_the_middleware_never_reads_a_refused_body():
         sent.append(message)
 
     middleware = service_auth.InternalKeyMiddleware(
-        app, service_name="svc", key=KEY, optional=False
+        app,
+        service_name="svc",
+        key=key,
+        rpc_paths=frozenset({"/add"}),
+        optional=optional,
     )
-    scope = {"type": "http", "path": "/add", "headers": [], "client": ("10.0.0.9", 1)}
-    await middleware(scope, receive, send)
+    headers = [] if authorization is None else [(b"authorization", authorization)]
+    scope = {"type": scope_type, "path": "/add", "headers": headers}
+    await middleware({**scope, "client": ("10.0.0.9", 1)}, receive, send)
+    return sent, reached
 
+
+async def test_the_middleware_never_reads_a_refused_body():
+    sent, reached = await _through_middleware()
+
+    assert not reached
     assert sent[0]["type"] == "http.response.start"
     assert sent[0]["status"] == 401
 
 
 async def test_a_websocket_without_the_key_is_closed():
-    async def app(scope, receive, send):
-        raise AssertionError("a refused websocket reached the service")
+    sent, reached = await _through_middleware(scope_type="websocket")
 
-    async def receive():
-        raise AssertionError("a refused websocket was read")
-
-    sent: list[dict] = []
-
-    async def send(message):
-        sent.append(message)
-
-    middleware = service_auth.InternalKeyMiddleware(
-        app, service_name="svc", key=KEY, optional=False
-    )
-    await middleware({"type": "websocket", "path": "/x", "headers": []}, receive, send)
-
+    assert not reached
     assert sent == [{"type": "websocket.close", "code": 1008}]
+
+
+@pytest.mark.parametrize("authorization", [b"Bearer ", b"Bearer", b"Basic abc"])
+@pytest.mark.parametrize("optional", [False, True])
+async def test_without_a_key_not_even_an_empty_token_gets_through(
+    authorization, optional
+):
+    sent, reached = await _through_middleware(
+        key="", authorization=authorization, optional=optional
+    )
+
+    assert not reached
+    assert sent[0]["status"] == 401
 
 
 def test_a_non_ascii_key_is_refused_not_an_error(use_settings):
@@ -287,10 +357,17 @@ def _without_key(service: str) -> float:
     return sample or 0.0
 
 
+def _optional_gauge(service: str) -> float | None:
+    return REGISTRY.get_sample_value(
+        "autogpt_internal_rpc_key_optional", {"service": service}
+    )
+
+
 def test_while_optional_only_a_missing_key_is_accepted(use_settings, caplog):
     client = TestClient(_app(use_settings, _settings(optional=True)))
     before = _without_key("KeyedService")
 
+    assert _optional_gauge("KeyedService") == 1
     assert _call_add(client).status_code == 200
     assert _without_key("KeyedService") == before + 1
     assert _call_add(client, Authorization="Bearer wrong-key").status_code == 401
@@ -300,10 +377,33 @@ def test_while_optional_only_a_missing_key_is_accepted(use_settings, caplog):
     assert "INTERNAL_API_KEY_OPTIONAL is on" in caplog.text
 
 
-def test_no_key_at_all_leaves_a_service_open_and_says_so(use_settings, caplog):
-    client = TestClient(_app(use_settings, _settings("")))
+def test_while_optional_a_call_without_the_key_reaches_only_a_method(use_settings):
+    """Nothing but a method is opened, and nothing else adds to the count:
+    a stray request must not look like an instance still without the key."""
+    client = TestClient(_app(use_settings, _settings(optional=True)))
+    before = _without_key("KeyedService")
 
+    assert client.post("/not_a_method", json={}).status_code == 401
+    assert client.get("/openapi.json").status_code == 401
+    assert _without_key("KeyedService") == before
     assert _call_add(client).status_code == 200
+    assert _without_key("KeyedService") == before + 1
+
+
+def test_the_gauge_reads_0_once_the_key_is_required(use_settings):
+    _app(use_settings, _settings(optional=True))
+    _app(use_settings, _settings())
+
+    assert _optional_gauge("KeyedService") == 0
+
+
+@pytest.mark.parametrize("optional", [False, True])
+def test_without_any_key_a_service_refuses_every_call(use_settings, caplog, optional):
+    client = TestClient(_app(use_settings, _settings("", optional=optional)))
+
+    assert _call_add(client).status_code == 401
+    assert client.get("/health_check").status_code == 200
+    assert _optional_gauge("KeyedService") == 0
     assert "No internal service key" in caplog.text
 
 

@@ -74,17 +74,15 @@ class BackendCredentialSource:
     def from_settings(
         cls, settings: Settings, client: Optional[httpx.AsyncClient] = None
     ) -> "BackendCredentialSource":
-        """Raises on a malformed key, so the proxy does not start with one."""
+        """Raises on a missing or malformed key, so the proxy does not start
+        without one: the backend refuses every swap lookup that has none."""
         key = settings.internal_api_key
-        if key and not _VALID_KEY.fullmatch(key):
+        if not _VALID_KEY.fullmatch(key):
             raise ValueError(
-                "INTERNAL_API_KEY must be at least 32 URL-safe characters: "
-                "letters, digits, '-', '_', '.', '~' (and '=' padding)."
-            )
-        if not key:
-            logger.warning(
-                "INTERNAL_API_KEY is not set: the backend refuses swap lookups "
-                "without it, so no request will get a credential."
+                "INTERNAL_API_KEY must be the backend's internal service key, "
+                "at least 32 URL-safe characters: letters, digits, '-', '_', "
+                "'.', '~' (and '=' padding). The backend refuses swap lookups "
+                "without it."
             )
         return cls(settings.backend_url, client, key)
 
