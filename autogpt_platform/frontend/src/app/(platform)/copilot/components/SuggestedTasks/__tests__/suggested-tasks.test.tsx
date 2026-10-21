@@ -206,6 +206,55 @@ describe("Suggested first tasks — the greeting page", () => {
   });
 });
 
+describe("Suggested first tasks — while the greeting is being written", () => {
+  it("shows the personalised list once the greeting lands, never the generic set before it", async () => {
+    const generic: SuggestedTask[] = [
+      {
+        id: "0",
+        title: "Get a sourced research brief on any topic in minutes",
+        prompt: "I need research support.",
+        icon: "magnifying-glass",
+        state: "open",
+      },
+    ];
+    // The pipeline writes the greeting and the personalised list together.
+    let introReads = 0;
+    let written = false;
+    server.use(
+      http.get("*/api/onboarding/brain-dump/intro", () => {
+        introReads += 1;
+        written = introReads > 1;
+        return HttpResponse.json({
+          path: "A",
+          greeting: written ? "You have an invoicing problem." : "",
+          prompts: [],
+          greeting_done: false,
+          greeting_pending: !written,
+          team: null,
+          team_pending: false,
+        });
+      }),
+      http.get(URL, () =>
+        HttpResponse.json(
+          written
+            ? { tasks: stored, stored: true }
+            : { tasks: generic, stored: false },
+        ),
+      ),
+    );
+    renderHome();
+
+    expect(
+      await screen.findByRole(
+        "button",
+        { name: TASKS[0].title },
+        { timeout: 5000 },
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(generic[0].title)).toBeNull();
+  });
+});
+
 describe("Suggested first tasks — Home after the first message", () => {
   it("shows the rest of the list, and the started one as in progress", async () => {
     stored[0] = { ...stored[0], state: "sent", session_id: "session-1" };

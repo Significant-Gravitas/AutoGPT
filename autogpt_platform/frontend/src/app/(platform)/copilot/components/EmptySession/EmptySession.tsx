@@ -91,6 +91,7 @@ export function EmptySession({
   const suggestions = useSuggestedTasks({
     surface: intro.isVisible ? "intro" : "home",
     onSend: onStartTask ?? onSend,
+    enabled: !intro.isAwaitingGreeting,
   });
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
   const recipientPicker = isExpertsEnabled ? (

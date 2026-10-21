@@ -47,7 +47,6 @@ function makeSuggestions(
   sendTask: (task: SuggestedTask) => void = vi.fn(),
 ) {
   return {
-    isReady: true,
     isStored: true,
     tasks,
     sendingId: null,

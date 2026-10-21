@@ -27,18 +27,21 @@ interface Args {
   surface: SuggestionSurface;
   /** Resolves to the chat the message went to, once it exists. */
   onSend: (message: string) => void | Promise<string | undefined | void>;
+  /** False while the greeting is being written: the personalised list lands
+   *  with it, and a read before then caches the generic set. */
+  enabled: boolean;
 }
 
 const UNDO_TOAST_MS = 6000;
 const QUERY_KEY = getGetBrainDumpSuggestedTasksQueryKey();
 
-export function useSuggestedTasks({ surface, onSend }: Args) {
+export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const queryClient = useQueryClient();
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const { data: response, isFetched } = useGetBrainDumpSuggestedTasks({
-    query: { enabled: Boolean(isBrainDumpEnabled) },
+  const { data: response } = useGetBrainDumpSuggestedTasks({
+    query: { enabled: Boolean(isBrainDumpEnabled) && enabled },
   });
   const list = response?.status === 200 ? response.data : null;
   const tasks = list?.tasks ?? [];
@@ -169,7 +172,6 @@ export function useSuggestedTasks({ surface, onSend }: Args) {
   }
 
   return {
-    isReady: !isBrainDumpEnabled || isFetched,
     isStored: Boolean(list?.stored),
     tasks: shownTasks,
     sendingId,
