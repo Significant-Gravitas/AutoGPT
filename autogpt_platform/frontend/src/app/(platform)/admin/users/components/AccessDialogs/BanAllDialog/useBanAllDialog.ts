@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountIpReport } from "@/app/api/__generated__/models/accountIpReport";
+import type { AccountIPReport } from "@/app/api/__generated__/models/accountIPReport";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
 import {
@@ -12,15 +12,22 @@ import {
 } from "../../../helpers";
 import { useAccessBlocks } from "../../../useAccessBlocks";
 import { type BanAccountResult, useBanAccounts } from "../../../useBanAccounts";
-import type { ChecklistAccount } from "../AccountChecklist";
-import { getAlsoBlockOptions, getBanAllAccounts } from "./helpers";
-
-export const BAN_SENTENCE =
-  "Their sessions are signed out. Tokens they hold or get in the next 5 minutes work for up to an hour, and their API keys, schedules and triggers keep running.";
+import {
+  BAN_SENTENCE,
+  getBanTargets,
+  hasFailedBans,
+  mergeBanResults,
+  partialBanFailure,
+} from "../helpers";
+import {
+  type AlsoBlockOption,
+  getAlsoBlockOptions,
+  getBanAllAccounts,
+} from "./helpers";
 
 interface Args {
   user: AdminUser;
-  report: AccountIpReport;
+  report: AccountIPReport;
   signedInUserId: string | undefined;
 }
 
@@ -45,22 +52,21 @@ export function useBanAllDialog({ user, report, signedInUserId }: Args) {
   );
   const [blocksDone, setBlocksDone] = useState<Set<string>>(new Set());
 
-  const failedIds = [...results.values()]
-    .filter((result) => !result.ok)
-    .map((result) => result.userId);
-  const isRetry = failedIds.length > 0;
-  const toBan = isRetry ? failedIds : banTargets(accounts, ticked);
+  const toBan = getBanTargets({ accounts, ticked, results });
   const toBlock = blockOptions.filter(
     (option) => blocksTicked.has(option.key) && !blocksDone.has(option.key),
   );
-  const tickedAdmins = accounts.filter(
-    (account) => account.role === "admin" && toBan.includes(account.id),
-  ).length;
 
   function handleOpenChange(open: boolean) {
     setIsOpen(open);
     if (!open) return;
-    setTicked(new Set(accounts.filter((a) => !a.banned).map((a) => a.id)));
+    setTicked(
+      new Set(
+        accounts
+          .filter((account) => !account.banned && account.isTickedByDefault)
+          .map((account) => account.id),
+      ),
+    );
     setBlocksTicked(new Set());
     setReason("");
     setDuration("permanent");
@@ -68,11 +74,23 @@ export function useBanAllDialog({ user, report, signedInUserId }: Args) {
     setBlocksDone(new Set());
   }
 
-  function toggle(set: Set<string>, key: string) {
-    const next = new Set(set);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    return next;
+  async function blockTicked() {
+    const blocked = new Set(blocksDone);
+    const errors: string[] = [];
+    for (const option of toBlock) {
+      try {
+        await createBlock({
+          ...blockArgs(option),
+          reason,
+          expiresAt: getBanEnd(duration),
+        });
+        blocked.add(option.key);
+      } catch (error) {
+        errors.push(`${option.label}: ${getErrorMessage(error)}`);
+      }
+    }
+    setBlocksDone(blocked);
+    return { blocked: blocked.size, errors };
   }
 
   async function submit() {
@@ -89,48 +107,26 @@ export function useBanAllDialog({ user, report, signedInUserId }: Args) {
         return;
       }
     }
-    const merged = new Map(results);
-    for (const result of banResults) merged.set(result.userId, result);
+    const { merged, total, failed } = mergeBanResults(results, banResults);
     setResults(merged);
-
-    const blocked = new Set(blocksDone);
-    const blockErrors: string[] = [];
-    for (const option of toBlock) {
-      try {
-        await createBlock({
-          kind: option.kind,
-          value: option.value,
-          reason,
-          expiresAt: getBanEnd(duration),
-        });
-        blocked.add(option.key);
-      } catch (error) {
-        blockErrors.push(`${option.label}: ${getErrorMessage(error)}`);
-      }
-    }
-    setBlocksDone(blocked);
-
-    const total = [...merged.values()];
-    const failed = total.filter((result) => !result.ok).length;
+    const blocks = await blockTicked();
     if (failed > 0) {
-      toast({
-        title: `Banned ${total.length - failed} of ${pluralize(total.length, "account")}`,
-        description: `${failed} failed; the dialog shows which.`,
-        variant: "destructive",
-      });
+      toast(partialBanFailure(total, failed, blocks.errors));
       return;
     }
-    if (blockErrors.length > 0) {
+    if (blocks.errors.length > 0) {
       toast({
         title: "Couldn't block every address",
-        description: blockErrors.join(" "),
+        description: blocks.errors.join(" "),
         variant: "destructive",
       });
       return;
     }
     setIsOpen(false);
+    const bans = `Banned ${pluralize(total, "account")}`;
     toast({
-      title: summarise(total.length, blocked.size),
+      title:
+        blocks.blocked > 0 ? `${bans} and blocked ${blocks.blocked}` : bans,
       description: BAN_SENTENCE,
       variant: "success",
     });
@@ -154,20 +150,22 @@ export function useBanAllDialog({ user, report, signedInUserId }: Args) {
     results,
     banCount: toBan.length,
     blockCount: toBlock.length,
-    tickedAdmins,
-    isRetry,
+    tickedAdmins: accounts.filter(
+      (account) => account.role === "admin" && toBan.includes(account.id),
+    ).length,
+    isRetry: hasFailedBans(results),
     isSubmitting: isBanning || isCreating,
     submit,
   };
 }
 
-function banTargets(accounts: ChecklistAccount[], ticked: Set<string>) {
-  return accounts
-    .filter((account) => !account.banned && ticked.has(account.id))
-    .map((account) => account.id);
+function toggle(set: Set<string>, key: string) {
+  const next = new Set(set);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
 }
 
-function summarise(banned: number, blocked: number) {
-  const bans = `Banned ${pluralize(banned, "account")}`;
-  return blocked > 0 ? `${bans} and blocked ${blocked}` : bans;
+function blockArgs(option: AlsoBlockOption) {
+  return { kind: option.kind, value: option.value };
 }

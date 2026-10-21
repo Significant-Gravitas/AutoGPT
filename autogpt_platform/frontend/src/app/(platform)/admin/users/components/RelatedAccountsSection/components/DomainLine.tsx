@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountIpReport } from "@/app/api/__generated__/models/accountIpReport";
+import type { AccountIPReport } from "@/app/api/__generated__/models/accountIPReport";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
 import { pluralize } from "../../../helpers";
@@ -8,7 +8,7 @@ import { BlockDomainDialog } from "../../AccessDialogs/BlockDomainDialog/BlockDo
 import { UnblockDialog } from "../../AccessDialogs/UnblockDialog";
 
 interface Props {
-  report: AccountIpReport;
+  report: AccountIPReport;
   signedInUserId: string | undefined;
 }
 
@@ -32,16 +32,21 @@ export function DomainLine({ report, signedInUserId }: Props) {
           ? pluralize(domain.other_account_count, "other account")
           : "no other accounts"}
       </Text>
-      {domain.block ? (
-        <div className="flex items-center gap-2">
-          <Badge variant="warning" size="small">
-            Blocked
-          </Badge>
-          <UnblockDialog block={domain.block} triggerVariant="link" />
-        </div>
-      ) : (
-        <BlockDomainDialog report={report} signedInUserId={signedInUserId} />
-      )}
+      <div className="flex items-center gap-2">
+        {domain.block ? (
+          <>
+            <Badge variant="warning" size="small">
+              Blocked
+            </Badge>
+            <UnblockDialog block={domain.block} triggerVariant="link" />
+          </>
+        ) : null}
+        <BlockDomainDialog
+          report={report}
+          signedInUserId={signedInUserId}
+          showTrigger={!domain.block}
+        />
+      </div>
     </div>
   );
 }

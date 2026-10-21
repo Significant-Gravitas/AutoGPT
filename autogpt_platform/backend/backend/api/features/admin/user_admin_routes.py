@@ -5,7 +5,7 @@ from fastapi import APIRouter, Security
 
 from backend.api.features.orgs import db as org_db
 from backend.api.features.orgs.model import OrgResponse
-from backend.data.auth_ip_events import AccountIpReport, get_account_ip_report
+from backend.data.auth_ip_events import AccountIPReport, get_account_ip_report
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -29,7 +29,7 @@ async def get_user_organizations(user_id: str) -> list[OrgResponse]:
     "/{user_id}/ip-report",
     summary="Get user IP report",
 )
-async def get_user_ip_report(user_id: str) -> AccountIpReport:
+async def get_user_ip_report(user_id: str) -> AccountIPReport:
     """Where an account signed up and signed in from, the other accounts on
     those IPs or its email domain, and the blocks covering them. Admin-only."""
     return await get_account_ip_report(

@@ -41,6 +41,8 @@ function related(
     banned: boolean;
     via_ips: string[];
     via_domain: boolean;
+    plan: string | null;
+    payment_status: string;
   }> = {},
 ) {
   return {
@@ -54,6 +56,8 @@ function related(
     has_profile: true,
     via_ips: [],
     via_domain: false,
+    plan: null,
+    payment_status: "no_subscription",
     ...fields,
   };
 }
@@ -139,23 +143,33 @@ beforeEach(() => {
 });
 
 describe("Ban all", () => {
-  it("bans exactly the ticked accounts: never a banned one, never yourself", async () => {
+  it("ticks the accounts on this account's addresses but not those on its domain alone, and bans exactly the ticked ones", async () => {
     const bans = mockBanAccounts();
     renderPage(`?user=${ALEX.id}`);
 
     const dialog = await openBanAll();
-    expect(within(dialog).getByText("Ban 3 accounts?")).toBeDefined();
+    expect(within(dialog).getByText("Ban 2 accounts?")).toBeDefined();
     expect(
-      within(dialog).getByText("1 of these accounts is an admin."),
+      within(dialog).getByRole("checkbox", {
+        name: "Ban riley@example.com",
+        checked: false,
+      }),
     ).toBeDefined();
+    expect(within(dialog).queryByText(/is an admin/)).toBeNull();
     expect(
       within(dialog).getByText("Your own account isn't included."),
     ).toBeDefined();
 
     fireEvent.click(
+      within(dialog).getByRole("checkbox", { name: "Ban riley@example.com" }),
+    );
+    expect(within(dialog).getByText("Ban 3 accounts?")).toBeDefined();
+    expect(
+      within(dialog).getByText("1 of these accounts is an admin."),
+    ).toBeDefined();
+    fireEvent.click(
       within(dialog).getByRole("checkbox", { name: "Ban sam@example.com" }),
     );
-    expect(within(dialog).getByText("Ban 2 accounts?")).toBeDefined();
     fireEvent.change(within(dialog).getByLabelText(/reason/i), {
       target: { value: "Signup farm" },
     });
@@ -175,37 +189,43 @@ describe("Ban all", () => {
     );
   });
 
-  it("keeps the dialog open after a partial failure and retries only the failed ones", async () => {
+  it("after a partial failure, says which block failed too and retries only the failed accounts still ticked", async () => {
     const bans = mockBanAccounts((userIds) =>
       userIds.map((userId) =>
-        userId === RILEY.id && bans.length === 1
-          ? { userId, ok: false, error: "You cannot ban an admin" }
+        bans.length === 1
+          ? { userId, ok: false, error: "Ban refused" }
           : { userId, ok: true },
       ),
     );
+    mockCreateBlock(409);
     renderPage(`?user=${ALEX.id}`);
 
     const dialog = await openBanAll();
+    fireEvent.click(
+      within(dialog).getByRole("checkbox", { name: /block 203\.0\.113\.7/i }),
+    );
     fireEvent.change(within(dialog).getByLabelText(/reason/i), {
       target: { value: "Signup farm" },
     });
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Ban 3 accounts" }),
+      within(dialog).getByRole("button", { name: "Ban 2 accounts, block 1" }),
     );
 
-    expect(
-      await within(dialog).findByText("You cannot ban an admin"),
-    ).toBeDefined();
+    expect((await within(dialog).findAllByText("Ban refused")).length).toBe(2);
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Banned 2 of 3 accounts",
+        title: "Banned 0 of 2 accounts",
+        description: expect.stringContaining("is already blocked"),
         variant: "destructive",
       }),
     );
     fireEvent.click(
+      within(dialog).getByRole("checkbox", { name: "Ban sam@example.com" }),
+    );
+    fireEvent.click(
       within(dialog).getByRole("button", { name: "Retry 1 failed" }),
     );
-    await waitFor(() => expect(bans.at(-1)?.userIds).toEqual([RILEY.id]));
+    await waitFor(() => expect(bans.at(-1)?.userIds).toEqual([ALEX.id]));
   });
 });
 
@@ -316,6 +336,117 @@ describe("Block domain", () => {
   });
 });
 
+describe("Block domain, while the page refreshes", () => {
+  it("stays open with its failed bans when the refreshed report shows the domain blocked", async () => {
+    mockCreateBlock();
+    mockBanAccounts((userIds) =>
+      userIds.map((userId) =>
+        userId === RILEY.id
+          ? { userId, ok: false, error: "Ban refused" }
+          : { userId, ok: true },
+      ),
+    );
+    let blocked = false;
+    server.use(
+      http.post("*/api/admin/access-blocks", () => {
+        blocked = true;
+        return HttpResponse.json({ ...BLOCK, id: "new" }, { status: 201 });
+      }),
+      http.get(`*/api/admin/users/${ALEX.id}/ip-report`, () =>
+        HttpResponse.json(
+          blocked
+            ? report({
+                domain: {
+                  value: "example.com",
+                  is_public_provider: false,
+                  other_account_count: 2,
+                  block: {
+                    ...BLOCK,
+                    kind: "EMAIL_DOMAIN",
+                    value: "example.com",
+                  },
+                },
+              })
+            : report(),
+        ),
+      ),
+    );
+    renderPage(`?user=${ALEX.id}`);
+
+    const dialog = await openDialog(/block domain…/i);
+    fireEvent.click(
+      within(dialog).getByRole("checkbox", { name: /also ban/i }),
+    );
+    fireEvent.change(within(dialog).getByLabelText(/reason/i), {
+      target: { value: "Throwaway domain" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Block domain and ban 2 accounts",
+      }),
+    );
+
+    // The address row's Unblock was there already; the domain's joins it.
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Unblock", hidden: true }),
+      ).toHaveLength(2),
+    );
+    const open = screen.getByRole("dialog");
+    expect(within(open).getByText("Ban refused")).toBeDefined();
+    expect(
+      within(open).getByRole("button", { name: "Retry 1 failed" }),
+    ).toBeDefined();
+  });
+
+  it("offers to block a private domain before any related account exists", async () => {
+    mockReport(
+      report({
+        domain: {
+          value: "example.com",
+          is_public_provider: false,
+          other_account_count: 0,
+          block: null,
+        },
+        related: [],
+        related_total: 0,
+      }),
+    );
+    renderPage(`?user=${ALEX.id}`);
+
+    expect(
+      await screen.findByRole("button", { name: /block domain…/i }),
+    ).toBeDefined();
+  });
+});
+
+describe("Related accounts", () => {
+  it("shows each account's plan and payment status", async () => {
+    const statuses = [
+      ["paying@example.com", "PRO", "active", "Pro · Active"],
+      ["owing@example.com", "MAX", "past_due", "Max · Past due"],
+      ["granted@example.com", "PRO", "granted", "Pro · Granted, not billed"],
+      ["trial@example.com", "TRIAL", "trialing", "Trial"],
+      ["lapsed@example.com", "NO_TIER", "canceled", "No plan · Canceled"],
+      ["bare@example.com", null, "no_subscription", "No plan"],
+    ] as const;
+    mockReport(
+      report({
+        related: statuses.map(([email, plan, payment_status]) =>
+          related(email, email, { via_domain: true, plan, payment_status }),
+        ),
+        related_total: statuses.length,
+      }),
+    );
+    renderPage(`?user=${ALEX.id}`);
+
+    for (const [email, , , label] of statuses) {
+      const row = (await screen.findByText(email)).closest("li");
+      expect(within(row!).getByText(label)).toBeDefined();
+    }
+  });
+});
+
 describe("Sign-ins", () => {
   it("shows a lost admin role instead of offering a retry", async () => {
     server.use(
@@ -356,6 +487,39 @@ describe("Blocks tab", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Unblock" }));
 
     await waitFor(() => expect(deleted).toEqual([BLOCK.id]));
+  });
+});
+
+describe("Blocks tab, paging", () => {
+  it("loads further blocks by offset until it has them all", async () => {
+    const offsets: number[] = [];
+    const TOTAL = 120;
+    server.use(
+      http.get("*/api/admin/access-blocks", ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        const limit = Number(params.get("limit"));
+        const offset = Number(params.get("offset") ?? 0);
+        if (limit !== 1) offsets.push(offset);
+        const count = Math.max(0, Math.min(limit, TOTAL - offset));
+        const blocks = Array.from({ length: count }, (_, i) => ({
+          ...BLOCK,
+          id: `block-${offset + i}`,
+          value: `198.51.100.${offset + i}`,
+          reason: `Reason ${offset + i}`,
+        }));
+        return HttpResponse.json({ blocks, total: TOTAL });
+      }),
+    );
+    renderPage("?tab=blocks");
+
+    expect(await screen.findByText("Reason 0")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Show 50 more" }));
+    expect(await screen.findByText("Reason 50")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Show 50 more" }));
+    expect(await screen.findByText("Reason 119")).toBeDefined();
+
+    expect(screen.queryByRole("button", { name: "Show 50 more" })).toBeNull();
+    expect(offsets).toEqual([0, 50, 100]);
   });
 });
 

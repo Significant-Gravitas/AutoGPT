@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
 import { AdminSection } from "../../../components/AdminSection";
 import type { AdminUser } from "../../helpers";
-import { useIpReport, useOwnSessionIp } from "../../useIpReport";
+import { useIPReport, useOwnSessionIP } from "../../useIPReport";
 import { BanAllDialog } from "../AccessDialogs/BanAllDialog/BanAllDialog";
 import { ReportError, ReportLoading } from "../ReportStates";
 import { DomainLine } from "./components/DomainLine";
@@ -19,9 +19,9 @@ interface Props {
 }
 
 export function RelatedAccountsSection({ user }: Props) {
-  const { report, isLoading, isForbidden, refetch } = useIpReport(user.id);
+  const { report, isLoading, isForbidden, refetch } = useIPReport(user.id);
   const { user: signedInUser } = useAuth();
-  const ownIp = useOwnSessionIp();
+  const ownIP = useOwnSessionIP();
   const [showAll, setShowAll] = useState(false);
 
   return (
@@ -39,11 +39,7 @@ export function RelatedAccountsSection({ user }: Props) {
         />
       ) : (
         <div className="flex flex-col gap-3">
-          {report.related.length > 0 ||
-          report.domain.block ||
-          report.domain.is_public_provider ? (
-            <DomainLine report={report} signedInUserId={signedInUser?.id} />
-          ) : null}
+          <DomainLine report={report} signedInUserId={signedInUser?.id} />
           {report.related.length === 0 ? (
             <Text variant="small" className="text-zinc-500">
               {report.ips.length === 0
@@ -84,7 +80,7 @@ export function RelatedAccountsSection({ user }: Props) {
                   user={user}
                   report={report}
                   signedInUserId={signedInUser?.id}
-                  ownIp={ownIp}
+                  ownIP={ownIP}
                 />
               </div>
             </>

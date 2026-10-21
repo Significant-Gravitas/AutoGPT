@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountIpReport } from "@/app/api/__generated__/models/accountIpReport";
+import type { AccountIPReport } from "@/app/api/__generated__/models/accountIPReport";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
@@ -14,12 +14,12 @@ import { useBanAllDialog } from "./useBanAllDialog";
 
 interface Props {
   user: AdminUser;
-  report: AccountIpReport;
+  report: AccountIPReport;
   signedInUserId: string | undefined;
-  ownIp: string | null;
+  ownIP: string | null;
 }
 
-export function BanAllDialog({ user, report, signedInUserId, ownIp }: Props) {
+export function BanAllDialog({ user, report, signedInUserId, ownIP }: Props) {
   const dialog = useBanAllDialog({ user, report, signedInUserId });
   const accountWord = dialog.banCount === 1 ? "account" : "accounts";
   const confirmLabel = dialog.isRetry
@@ -80,7 +80,7 @@ export function BanAllDialog({ user, report, signedInUserId, ownIp }: Props) {
             alreadyBlockedDomain={
               report.domain.block ? report.domain.value : null
             }
-            ownIp={ownIp}
+            ownIP={ownIP}
           />
           <ReasonFields
             idPrefix="ban-all"

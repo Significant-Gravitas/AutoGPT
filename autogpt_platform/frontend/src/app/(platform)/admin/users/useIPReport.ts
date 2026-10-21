@@ -5,7 +5,7 @@ import { okData } from "@/app/api/helpers";
 import { authClient } from "@/lib/auth/client";
 import { useQuery } from "@tanstack/react-query";
 
-export function useIpReport(userId: string) {
+export function useIPReport(userId: string) {
   const query = useGetAdminGetUserIpReport(userId, {
     query: { select: okData },
   });
@@ -19,11 +19,12 @@ export function useIpReport(userId: string) {
 
 // The address the signed-in admin's own session came from, so a dialog can
 // warn before they block themselves.
-export function useOwnSessionIp() {
+export function useOwnSessionIP() {
   const query = useQuery({
     queryKey: ["admin", "own-session-ip"],
     queryFn: async () => {
-      const { data } = await authClient.getSession();
+      const { data, error } = await authClient.getSession();
+      if (error) throw new Error(error.message || "Failed to read the session");
       return data?.session.ipAddress ?? null;
     },
     staleTime: Infinity,

@@ -2,17 +2,17 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { AdminSection } from "../../../components/AdminSection";
-import { useIpReport, useOwnSessionIp } from "../../useIpReport";
+import { useIPReport, useOwnSessionIP } from "../../useIPReport";
 import { ReportError, ReportLoading } from "../ReportStates";
-import { IpRow } from "./components/IpRow";
+import { IPRow } from "./components/IPRow";
 
 interface Props {
   userId: string;
 }
 
 export function SignInsSection({ userId }: Props) {
-  const { report, isLoading, isForbidden, refetch } = useIpReport(userId);
-  const ownIp = useOwnSessionIp();
+  const { report, isLoading, isForbidden, refetch } = useIPReport(userId);
+  const ownIP = useOwnSessionIP();
 
   return (
     <AdminSection
@@ -46,7 +46,7 @@ export function SignInsSection({ userId }: Props) {
           )}
           <ul className="divide-y divide-zinc-200">
             {report.ips.map((ip) => (
-              <IpRow key={ip.ip_address} ip={ip} ownIp={ownIp} />
+              <IPRow key={ip.ip_address} ip={ip} ownIP={ownIP} />
             ))}
           </ul>
         </div>

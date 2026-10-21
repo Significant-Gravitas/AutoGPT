@@ -34,7 +34,7 @@ model AuthUser {
 
   sessions AuthSession[]
   accounts AuthAccount[]
-  ipEvents AuthIpEvent[]
+  ipEvents AuthIPEvent[]
 
   @@map("UserAuthIdentity")
 }
@@ -104,10 +104,10 @@ model AuthJwks {
 
 // Where each sign-up and sign-in came from. Sessions can't answer that: a ban
 // deletes them and they expire. Kept `auth_ip_event_retention_days`.
-model AuthIpEvent {
+model AuthIPEvent {
   id        String          @id @default(dbgenerated("gen_random_uuid()"))
   userId    String
-  kind      AuthIpEventKind
+  kind      AuthIPEventKind
   // As Better Auth records a session's IP: an IPv6 address masked to its /64.
   ipAddress String
   userAgent String?
@@ -118,10 +118,10 @@ model AuthIpEvent {
   @@index([userId, createdAt])
   @@index([ipAddress])
   @@index([createdAt])
-  @@map("UserAuthIpEvent")
+  @@map("UserAuthIPEvent")
 }
 
-enum AuthIpEventKind {
+enum AuthIPEventKind {
   SIGN_UP
   SIGN_IN
 }

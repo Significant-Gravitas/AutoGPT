@@ -4,17 +4,17 @@ import type { Pool } from "pg";
 // after `auth_ip_event_retention_days`. Sessions can't stand in for it: a ban
 // deletes them.
 
-export type AuthIpEventKind = "SIGN_UP" | "SIGN_IN";
+export type AuthIPEventKind = "SIGN_UP" | "SIGN_IN";
 
 interface Args {
   userId: string;
-  kind: AuthIpEventKind;
+  kind: AuthIPEventKind;
   ipAddress: string | null | undefined;
   userAgent: string | null | undefined;
 }
 
 // Never throws: a sign-in must not fail because its IP wasn't written down.
-export async function recordAuthIp(
+export async function recordAuthIP(
   pool: Pick<Pool, "query">,
   { userId, kind, ipAddress, userAgent }: Args,
 ) {

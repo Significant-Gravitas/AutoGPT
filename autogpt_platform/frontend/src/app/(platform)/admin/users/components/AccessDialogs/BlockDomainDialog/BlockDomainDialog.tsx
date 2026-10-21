@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountIpReport } from "@/app/api/__generated__/models/accountIpReport";
+import type { AccountIPReport } from "@/app/api/__generated__/models/accountIPReport";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
@@ -13,11 +13,18 @@ import { useBlockSubmit } from "../useBlockSubmit";
 import { useBlockDomainDialog } from "./useBlockDomainDialog";
 
 interface Props {
-  report: AccountIpReport;
+  report: AccountIPReport;
   signedInUserId: string | undefined;
+  // Hidden, not unmounted, once the domain is blocked: the dialog may still be
+  // banning its accounts when the refreshed report arrives.
+  showTrigger: boolean;
 }
 
-export function BlockDomainDialog({ report, signedInUserId }: Props) {
+export function BlockDomainDialog({
+  report,
+  signedInUserId,
+  showTrigger,
+}: Props) {
   const block = useBlockSubmit();
   const dialog = useBlockDomainDialog({
     report,
@@ -39,11 +46,13 @@ export function BlockDomainDialog({ report, signedInUserId }: Props) {
       styling={{ maxWidth: "520px" }}
       controlled={{ isOpen: dialog.isOpen, set: handleOpenChange }}
     >
-      <Dialog.Trigger>
-        <Button variant="ghost" size="small">
-          Block domain…
-        </Button>
-      </Dialog.Trigger>
+      {showTrigger ? (
+        <Dialog.Trigger>
+          <Button variant="ghost" size="small">
+            Block domain…
+          </Button>
+        </Dialog.Trigger>
+      ) : null}
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <Text variant="body" className="text-zinc-600">

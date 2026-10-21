@@ -20,7 +20,7 @@ interface Props {
 }
 
 export function BlockRow({ block }: Props) {
-  const isIp = block.kind === "IP";
+  const isIP = block.kind === "IP";
   const endsSoon =
     block.expires_at !== null &&
     block.expires_at.getTime() - Date.now() < HOUR_MS;
@@ -29,17 +29,17 @@ export function BlockRow({ block }: Props) {
     <li className="grid grid-cols-1 gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0 lg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,9rem)_8rem_minmax(0,10rem)_auto] lg:items-center">
       <div className="flex min-w-0 items-center gap-2">
         <Icon
-          icon={isIp ? GlobeIcon : MailAtSign01Icon}
+          icon={isIP ? GlobeIcon : MailAtSign01Icon}
           size={16}
           className="shrink-0 text-zinc-500"
         />
         <Text
-          variant={isIp ? "body" : "body-medium"}
+          variant={isIP ? "body" : "body-medium"}
           as="span"
-          className={cn("truncate", isIp && "font-mono text-[13px]")}
+          className={cn("truncate", isIP && "font-mono text-[13px]")}
           translate="no"
         >
-          {isIp ? formatBlockedAddress(block.value) : block.value}
+          {isIP ? formatBlockedAddress(block.value) : block.value}
         </Text>
       </div>
       <OverflowText

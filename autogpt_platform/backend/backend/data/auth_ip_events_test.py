@@ -2,12 +2,19 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from prisma.enums import AuthAccessBlockKind, AuthIpEventKind
-from prisma.models import AuthAccessBlock, AuthIpEvent, AuthUser
+from prisma.enums import AuthAccessBlockKind, AuthIPEventKind, SubscriptionTier
+from prisma.models import (
+    AuthAccessBlock,
+    AuthIPEvent,
+    AuthUser,
+    SubscriptionTrial,
+    User,
+)
 
 from backend.data.auth_ip_events import delete_expired_ip_events, get_account_ip_report
 from backend.data.db import execute_raw_with_schema
 from backend.util.exceptions import NotFoundError
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 RETENTION_DAYS = 90
@@ -31,11 +38,12 @@ async def accounts():
         return user
 
     yield make, tag
+    await User.prisma().delete_many(where={"id": {"in": created}})
     await AuthUser.prisma().delete_many(where={"id": {"in": created}})
 
 
-async def _log(user: AuthUser, kind: AuthIpEventKind, ip: str, days_ago: float = 0):
-    await AuthIpEvent.prisma().create(
+async def _log(user: AuthUser, kind: AuthIPEventKind, ip: str, days_ago: float = 0):
+    await AuthIPEvent.prisma().create(
         data={
             "userId": user.id,
             "kind": kind,
@@ -56,12 +64,12 @@ async def test_report_merges_accounts_linked_by_ip_and_by_domain(
     ip_only = await make("third@other-{tag}.example")
     domain_only = await make("fourth@{tag}-farm.example")
     unrelated = await make("fifth@unrelated-{tag}.example")
-    await _log(target, AuthIpEventKind.SIGN_UP, "203.0.113.10", days_ago=3)
-    await _log(target, AuthIpEventKind.SIGN_IN, "198.51.100.20", days_ago=1)
-    await _log(target, AuthIpEventKind.SIGN_IN, "198.51.100.20")
-    await _log(ip_and_domain, AuthIpEventKind.SIGN_UP, "203.0.113.10")
-    await _log(ip_only, AuthIpEventKind.SIGN_IN, "198.51.100.20")
-    await _log(unrelated, AuthIpEventKind.SIGN_IN, "192.0.2.30")
+    await _log(target, AuthIPEventKind.SIGN_UP, "203.0.113.10", days_ago=3)
+    await _log(target, AuthIPEventKind.SIGN_IN, "198.51.100.20", days_ago=1)
+    await _log(target, AuthIPEventKind.SIGN_IN, "198.51.100.20")
+    await _log(ip_and_domain, AuthIPEventKind.SIGN_UP, "203.0.113.10")
+    await _log(ip_only, AuthIPEventKind.SIGN_IN, "198.51.100.20")
+    await _log(unrelated, AuthIPEventKind.SIGN_IN, "192.0.2.30")
 
     report = await get_account_ip_report(target.id, RETENTION_DAYS)
 
@@ -101,8 +109,8 @@ async def test_a_public_mail_domain_links_no_accounts(server: SpinTestServer, ac
     make, _ = accounts
     target = await make("a-{tag}@gmail.com")
     mate = await make("b-{tag}@gmail.com")
-    await _log(target, AuthIpEventKind.SIGN_IN, "203.0.113.60")
-    await _log(mate, AuthIpEventKind.SIGN_IN, "203.0.113.60")
+    await _log(target, AuthIPEventKind.SIGN_IN, "203.0.113.60")
+    await _log(mate, AuthIPEventKind.SIGN_IN, "203.0.113.60")
     await make("c-{tag}@gmail.com")
 
     report = await get_account_ip_report(target.id, RETENTION_DAYS)
@@ -126,7 +134,7 @@ async def test_report_shows_bans_in_force_and_the_blocks_that_cover_the_account(
     )
     for user in (target, banned, lapsed):
         await _log(
-            user, AuthIpEventKind.SIGN_IN, "2001:0db8:0000:0001:0000:0000:0000:0000"
+            user, AuthIPEventKind.SIGN_IN, "2001:0db8:0000:0001:0000:0000:0000:0000"
         )
     block = await AuthAccessBlock.prisma().create(
         data={
@@ -162,15 +170,15 @@ async def test_retention_deletes_only_records_older_than_the_window(
     make, _ = accounts
     user = await make("a@{tag}.example")
     await _log(
-        user, AuthIpEventKind.SIGN_UP, "203.0.113.50", days_ago=RETENTION_DAYS + 1
+        user, AuthIPEventKind.SIGN_UP, "203.0.113.50", days_ago=RETENTION_DAYS + 1
     )
     await _log(
-        user, AuthIpEventKind.SIGN_IN, "203.0.113.51", days_ago=RETENTION_DAYS - 1
+        user, AuthIPEventKind.SIGN_IN, "203.0.113.51", days_ago=RETENTION_DAYS - 1
     )
 
     await delete_expired_ip_events(RETENTION_DAYS)
 
-    remaining = await AuthIpEvent.prisma().find_many(where={"userId": user.id})
+    remaining = await AuthIPEvent.prisma().find_many(where={"userId": user.id})
     assert [e.ipAddress for e in remaining] == ["203.0.113.51"]
 
 
@@ -196,3 +204,62 @@ async def test_the_hooks_write_a_row_the_report_reads(server: SpinTestServer, ac
         True,
         None,
     )
+
+
+async def _billing(
+    user: AuthUser,
+    tier: SubscriptionTier,
+    *,
+    stripe_customer: bool = True,
+    trial_status: str | None = None,
+):
+    customer = f"cus_{user.id[:8]}" if stripe_customer else None
+    await User.prisma().create(
+        data={
+            "id": user.id,
+            "email": user.email,
+            "subscriptionTier": tier,
+            "stripeCustomerId": customer,
+        }
+    )
+    if trial_status:
+        await SubscriptionTrial.prisma().create(
+            data={
+                "userId": user.id,
+                "offer": SafeJson({}),
+                "stripeCustomerId": customer or "cus_none",
+                "checkoutSuccessUrl": "https://example.test/ok",
+                "checkoutCancelUrl": "https://example.test/cancel",
+                "status": trial_status,
+            }
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_related_accounts_carry_their_plan_and_payment_status(
+    server: SpinTestServer, accounts
+):
+    make, _ = accounts
+    target = await make("target@{tag}.example")
+    paying = await make("paying@{tag}.example")
+    owing = await make("owing@{tag}.example")
+    granted = await make("granted@{tag}.example")
+    trialing = await make("trialing@{tag}.example")
+    lapsed = await make("lapsed@{tag}.example")
+    bare = await make("bare@{tag}.example")
+    await _billing(paying, SubscriptionTier.PRO)
+    await _billing(owing, SubscriptionTier.MAX, trial_status="past_due")
+    await _billing(granted, SubscriptionTier.PRO, stripe_customer=False)
+    await _billing(trialing, SubscriptionTier.TRIAL, trial_status="trialing")
+    await _billing(lapsed, SubscriptionTier.NO_TIER, trial_status="canceled")
+
+    report = await get_account_ip_report(target.id, RETENTION_DAYS)
+
+    assert {a.id: (a.plan, a.payment_status) for a in report.related} == {
+        paying.id: (SubscriptionTier.PRO, "active"),
+        owing.id: (SubscriptionTier.MAX, "past_due"),
+        granted.id: (SubscriptionTier.PRO, "granted"),
+        trialing.id: (SubscriptionTier.TRIAL, "trialing"),
+        lapsed.id: (SubscriptionTier.NO_TIER, "canceled"),
+        bare.id: (None, "no_subscription"),
+    }

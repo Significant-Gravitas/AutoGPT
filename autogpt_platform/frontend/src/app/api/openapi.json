@@ -3100,7 +3100,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/AccountIpReport" }
+                "schema": { "$ref": "#/components/schemas/AccountIPReport" }
               }
             }
           },
@@ -19388,7 +19388,7 @@
         "required": ["blocks", "total"],
         "title": "AccessBlockPage"
       },
-      "AccountIp": {
+      "AccountIP": {
         "properties": {
           "ip_address": { "type": "string", "title": "Ip Address" },
           "display_address": { "type": "string", "title": "Display Address" },
@@ -19420,7 +19420,7 @@
             ]
           },
           "events": {
-            "items": { "$ref": "#/components/schemas/IpEventEntry" },
+            "items": { "$ref": "#/components/schemas/IPEventEntry" },
             "type": "array",
             "title": "Events"
           },
@@ -19441,13 +19441,13 @@
           "events",
           "event_count"
         ],
-        "title": "AccountIp"
+        "title": "AccountIP"
       },
-      "AccountIpReport": {
+      "AccountIPReport": {
         "properties": {
           "retention_days": { "type": "integer", "title": "Retention Days" },
           "ips": {
-            "items": { "$ref": "#/components/schemas/AccountIp" },
+            "items": { "$ref": "#/components/schemas/AccountIP" },
             "type": "array",
             "title": "Ips"
           },
@@ -19467,7 +19467,7 @@
           "related",
           "related_total"
         ],
-        "title": "AccountIpReport"
+        "title": "AccountIPReport"
       },
       "AccuracyAlertData": {
         "properties": {
@@ -20271,10 +20271,10 @@
         "required": ["type", "to", "url"],
         "title": "AuthEmailRequest"
       },
-      "AuthIpEventKind": {
+      "AuthIPEventKind": {
         "type": "string",
         "enum": ["SIGN_UP", "SIGN_IN"],
-        "title": "AuthIpEventKind"
+        "title": "AuthIPEventKind"
       },
       "AuthorizeRequest": {
         "properties": {
@@ -28019,6 +28019,23 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
+      "IPEventEntry": {
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/AuthIPEventKind" },
+          "user_agent": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Agent"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "user_agent", "created_at"],
+        "title": "IPEventEntry"
+      },
       "ImageURLResponse": {
         "properties": {
           "image_url": { "type": "string", "title": "Image Url" }
@@ -28281,23 +28298,6 @@
         ],
         "title": "InvoiceListItem",
         "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to\nshow outstanding balances separately."
-      },
-      "IpEventEntry": {
-        "properties": {
-          "kind": { "$ref": "#/components/schemas/AuthIpEventKind" },
-          "user_agent": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "User Agent"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": ["kind", "user_agent", "created_at"],
-        "title": "IpEventEntry"
       },
       "JobTriggerResponse": {
         "properties": {
@@ -32483,7 +32483,23 @@
             "type": "array",
             "title": "Via Ips"
           },
-          "via_domain": { "type": "boolean", "title": "Via Domain" }
+          "via_domain": { "type": "boolean", "title": "Via Domain" },
+          "plan": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "trialing",
+              "active",
+              "past_due",
+              "canceled",
+              "granted",
+              "no_subscription"
+            ],
+            "title": "Payment Status"
+          }
         },
         "type": "object",
         "required": [
@@ -32496,7 +32512,9 @@
           "ban_expires",
           "has_profile",
           "via_ips",
-          "via_domain"
+          "via_domain",
+          "plan",
+          "payment_status"
         ],
         "title": "RelatedAccount"
       },

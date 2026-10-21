@@ -17,22 +17,22 @@ const DISPOSABLE_EMAIL_MESSAGE =
 
 const MX_TIMEOUT_MS = 1500;
 
-type ResolveMx = (domain: string) => Promise<Array<{ exchange: string }>>;
+type ResolveMX = (domain: string) => Promise<Array<{ exchange: string }>>;
 
 interface Options {
-  resolveMx?: ResolveMx;
+  resolveMX?: ResolveMX;
   timeoutMs?: number;
 }
 
 // Sign-up only. Set AUTH_ALLOW_DISPOSABLE_EMAILS=true to turn it off.
 export async function assertNotDisposableEmail(
   email: string,
-  { resolveMx = resolveMxWithTimeout, timeoutMs = MX_TIMEOUT_MS }: Options = {},
+  { resolveMX = resolveMXWithTimeout, timeoutMs = MX_TIMEOUT_MS }: Options = {},
 ) {
   if (process.env.AUTH_ALLOW_DISPOSABLE_EMAILS === "true") return;
   const domains = getDomainAndParents(email);
   const listed = domains.some((domain) => DISPOSABLE_DOMAINS.has(domain));
-  if (listed || (await hasDisposableMx(domains[0], resolveMx, timeoutMs))) {
+  if (listed || (await hasDisposableMX(domains[0], resolveMX, timeoutMs))) {
     throw new APIError("FORBIDDEN", {
       code: DISPOSABLE_EMAIL_CODE,
       message: DISPOSABLE_EMAIL_MESSAGE,
@@ -41,9 +41,9 @@ export async function assertNotDisposableEmail(
 }
 
 // Fails open: a DNS error or a slow answer lets the sign-up through.
-async function hasDisposableMx(
+async function hasDisposableMX(
   domain: string | undefined,
-  resolveMx: ResolveMx,
+  resolveMX: ResolveMX,
   timeoutMs: number,
 ) {
   if (!domain) return false;
@@ -52,7 +52,7 @@ async function hasDisposableMx(
     timer = setTimeout(() => resolve(null), timeoutMs);
   });
   try {
-    const records = await Promise.race([resolveMx(domain), timedOut]);
+    const records = await Promise.race([resolveMX(domain), timedOut]);
     return (records ?? []).some((record) =>
       DISPOSABLE_MX_HOSTS.has(record.exchange.toLowerCase().replace(/\.$/, "")),
     );
@@ -63,6 +63,6 @@ async function hasDisposableMx(
   }
 }
 
-function resolveMxWithTimeout(domain: string) {
+function resolveMXWithTimeout(domain: string) {
   return new Resolver({ timeout: MX_TIMEOUT_MS, tries: 1 }).resolveMx(domain);
 }

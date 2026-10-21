@@ -1,7 +1,12 @@
 "use client";
 
-import { useGetAdminListAccessBlocks } from "@/app/api/__generated__/endpoints/admin/admin";
+import {
+  getAdminListAccessBlocks,
+  getGetAdminListAccessBlocksQueryKey,
+  useGetAdminListAccessBlocks,
+} from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { formatBlockedAddress } from "../../helpers";
 
@@ -10,15 +15,28 @@ export const BLOCKS_PAGE_SIZE = 50;
 export type KindFilter = "all" | "IP" | "EMAIL_DOMAIN";
 
 export function useBlocksTab() {
-  const [pages, setPages] = useState(1);
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
-  const limit = BLOCKS_PAGE_SIZE * pages;
-  const query = useGetAdminListAccessBlocks(
-    { limit },
-    { query: { select: okData, placeholderData: (previous) => previous } },
-  );
-  const blocks = query.data?.blocks ?? [];
+  // Fixed-size pages by offset, so any number of blocks stays reachable.
+  const query = useInfiniteQuery({
+    queryKey: [...getGetAdminListAccessBlocksQueryKey(), "pages"],
+    queryFn: async ({ pageParam }) => {
+      const page = okData(
+        await getAdminListAccessBlocks({
+          limit: BLOCKS_PAGE_SIZE,
+          offset: pageParam,
+        }),
+      );
+      if (!page) throw new Error("Failed to load the blocks");
+      return page;
+    },
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((sum, page) => sum + page.blocks.length, 0);
+      return loaded < last.total && last.blocks.length > 0 ? loaded : undefined;
+    },
+  });
+  const blocks = query.data?.pages.flatMap((page) => page.blocks) ?? [];
   const needle = search.trim().toLowerCase();
   const visible = blocks.filter(
     (block) =>
@@ -32,13 +50,12 @@ export function useBlocksTab() {
   return {
     blocks,
     visible,
-    total: query.data?.total ?? 0,
     isLoading: query.isLoading,
-    isError: !query.isLoading && !query.data,
+    isError: query.isError,
     error: query.error,
     refetch: query.refetch,
-    hasMore: blocks.length === limit,
-    showMore: () => setPages(pages + 1),
+    hasMore: query.hasNextPage,
+    showMore: () => void query.fetchNextPage(),
     search,
     setSearch,
     kind,
@@ -46,10 +63,10 @@ export function useBlocksTab() {
   };
 }
 
-// The count beside the tab: the same first page the tab loads.
+// The count beside the tab.
 export function useActiveBlockCount() {
   const query = useGetAdminListAccessBlocks(
-    { limit: BLOCKS_PAGE_SIZE },
+    { limit: 1 },
     { query: { select: okData } },
   );
   return query.data?.total;

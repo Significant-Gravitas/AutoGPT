@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -51,7 +52,15 @@ def test_normalize_email_domain(raw: str, expected: str):
 
 
 @pytest.mark.parametrize(
-    "raw", ["gmail.com", "@Outlook.com", "user@example.com", "example", "-x.example"]
+    "raw",
+    [
+        "gmail.com",
+        "@Outlook.com",
+        "t-online.de",
+        "user@example.com",
+        "example",
+        "-x.example",
+    ],
 )
 def test_normalize_email_domain_refuses_public_providers_and_non_domains(raw: str):
     with pytest.raises(ValueError):
@@ -186,3 +195,34 @@ async def test_the_hooks_block_check(
     )
 
     assert rows[0]["blocked"] is expected
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_blocks_on_one_value_leave_exactly_one(
+    server: SpinTestServer,
+):
+    domain = f"{uuid4().hex[:8]}.example"
+    try:
+        results = await asyncio.gather(
+            *[
+                create_access_block(
+                    kind=AuthAccessBlockKind.EMAIL_DOMAIN,
+                    value=domain,
+                    reason=f"admin {i}",
+                    expires_at=None,
+                    created_by_id=f"admin-{i}",
+                )
+                for i in range(5)
+            ],
+            return_exceptions=True,
+        )
+
+        won = [r for r in results if not isinstance(r, BaseException)]
+        assert len(won) == 1
+        assert all(isinstance(r, ConflictError) for r in results if r not in won)
+        stored = await AuthAccessBlock.prisma().find_many(where={"value": domain})
+        assert [(b.reason, b.createdById) for b in stored] == [
+            (won[0].reason, won[0].created_by_id)
+        ]
+    finally:
+        await AuthAccessBlock.prisma().delete_many(where={"value": domain})

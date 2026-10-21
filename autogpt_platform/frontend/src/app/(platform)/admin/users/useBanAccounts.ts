@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type BanDuration, getBanDurationSeconds } from "./helpers";
-import { isIpReportQuery } from "./useAccessBlocks";
+import { isIPReportQuery } from "./useAccessBlocks";
 
 export interface BanAccountResult {
   userId: string;
@@ -42,7 +42,7 @@ export function useBanAccounts() {
       return body.results;
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ predicate: isIpReportQuery });
+      void queryClient.invalidateQueries({ predicate: isIPReportQuery });
       void queryClient.invalidateQueries({
         queryKey: ["admin", "user-lookup"],
       });

@@ -17,7 +17,7 @@ import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP } from "./ip-email-cap";
-import { recordAuthIp } from "./ip-log";
+import { recordAuthIP } from "./ip-log";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
@@ -112,7 +112,7 @@ type HookContext = {
 // up or in from the admin's IP.
 const ADMIN_CREATE_USER_PATH = "/admin/create-user";
 
-function getRequestIp(ctx: HookContext) {
+function getRequestIP(ctx: HookContext) {
   const headers = ctx?.headers ?? ctx?.request?.headers;
   if (!headers || !ctx?.context) return null;
   return getIp(headers, ctx.context.options);
@@ -179,7 +179,7 @@ export const auth = betterAuth({
           if (ctx?.path === ADMIN_CREATE_USER_PATH) return;
           await assertSignUpAllowed(authDbPool, {
             email: user.email,
-            ipAddress: getRequestIp(ctx),
+            ipAddress: getRequestIP(ctx),
           });
           await assertNotDisposableEmail(user.email);
         },
@@ -196,10 +196,10 @@ export const auth = betterAuth({
           ctx: HookContext,
         ) => {
           if (ctx?.path !== ADMIN_CREATE_USER_PATH) {
-            await recordAuthIp(authDbPool, {
+            await recordAuthIP(authDbPool, {
               userId: user.id,
               kind: "SIGN_UP",
-              ipAddress: getRequestIp(ctx),
+              ipAddress: getRequestIP(ctx),
               userAgent: (ctx?.headers ?? ctx?.request?.headers)?.get(
                 "user-agent",
               ),
@@ -252,7 +252,7 @@ export const auth = betterAuth({
           impersonatedBy?: string | null;
         }) => {
           if (session.impersonatedBy) return;
-          await recordAuthIp(authDbPool, {
+          await recordAuthIP(authDbPool, {
             userId: session.userId,
             kind: "SIGN_IN",
             ipAddress: session.ipAddress,

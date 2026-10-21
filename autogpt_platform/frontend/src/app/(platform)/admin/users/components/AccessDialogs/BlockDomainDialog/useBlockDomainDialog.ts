@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountIpReport } from "@/app/api/__generated__/models/accountIpReport";
+import type { AccountIPReport } from "@/app/api/__generated__/models/accountIPReport";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { type ReactNode, useState } from "react";
 import {
@@ -11,10 +11,16 @@ import {
 } from "../../../helpers";
 import { type BanAccountResult, useBanAccounts } from "../../../useBanAccounts";
 import type { ChecklistAccount } from "../AccountChecklist";
-import { BAN_SENTENCE } from "../BanAllDialog/useBanAllDialog";
+import {
+  BAN_SENTENCE,
+  getBanTargets,
+  hasFailedBans,
+  mergeBanResults,
+  partialBanFailure,
+} from "../helpers";
 
 interface Args {
-  report: AccountIpReport;
+  report: AccountIPReport;
   signedInUserId: string | undefined;
   submitBlock: (args: {
     kind: "EMAIL_DOMAIN";
@@ -55,16 +61,7 @@ export function useBlockDomainDialog({
     new Map(),
   );
 
-  const failedIds = [...results.values()]
-    .filter((result) => !result.ok)
-    .map((result) => result.userId);
-  const toBan = !alsoBan
-    ? []
-    : failedIds.length > 0
-      ? failedIds
-      : accounts
-          .filter((account) => !account.banned && ticked.has(account.id))
-          .map((account) => account.id);
+  const toBan = alsoBan ? getBanTargets({ accounts, ticked, results }) : [];
 
   function handleOpenChange(open: boolean) {
     setIsOpen(open);
@@ -120,22 +117,15 @@ export function useBlockDomainDialog({
       });
       return;
     }
-    const merged = new Map(results);
-    for (const result of banResults) merged.set(result.userId, result);
+    const { merged, total, failed } = mergeBanResults(results, banResults);
     setResults(merged);
-    const total = [...merged.values()];
-    const failed = total.filter((result) => !result.ok).length;
     if (failed > 0) {
-      toast({
-        title: `Banned ${total.length - failed} of ${pluralize(total.length, "account")}`,
-        description: `${failed} failed; the dialog shows which.`,
-        variant: "destructive",
-      });
+      toast(partialBanFailure(total, failed));
       return;
     }
     setIsOpen(false);
     toast({
-      title: `Blocked ${domain} and banned ${pluralize(total.length, "account")}`,
+      title: `Blocked ${domain} and banned ${pluralize(total, "account")}`,
       description: BAN_SENTENCE,
       variant: "success",
       action: viewBlocksAction,
@@ -157,7 +147,7 @@ export function useBlockDomainDialog({
     setDuration,
     results,
     banCount: toBan.length,
-    isRetry: failedIds.length > 0,
+    isRetry: hasFailedBans(results),
     isBanning,
     submit,
   };

@@ -24,7 +24,7 @@ export function useAccessBlocks() {
     void queryClient.invalidateQueries({
       queryKey: getGetAdminListAccessBlocksQueryKey().slice(0, 1),
     });
-    void queryClient.invalidateQueries({ predicate: isIpReportQuery });
+    void queryClient.invalidateQueries({ predicate: isIPReportQuery });
   }
 
   async function createBlock({
@@ -64,7 +64,7 @@ export function useAccessBlocks() {
 }
 
 // Every account's report: a block or a ban changes the badges on all of them.
-export function isIpReportQuery(query: Query) {
+export function isIPReportQuery(query: Query) {
   const [key] = query.queryKey;
   return (
     typeof key === "string" &&

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountIp } from "@/app/api/__generated__/models/accountIp";
+import type { AccountIP } from "@/app/api/__generated__/models/accountIP";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
@@ -21,11 +21,13 @@ import { useBlockSubmit } from "./useBlockSubmit";
 const SHARED_ADDRESS_WARNING_AT = 5;
 
 interface Props {
-  ip: AccountIp;
-  ownIp: string | null;
+  ip: AccountIP;
+  ownIP: string | null;
+  // Hidden, not unmounted, once the address is blocked, so a 409 stays readable.
+  showTrigger: boolean;
 }
 
-export function BlockIpDialog({ ip, ownIp }: Props) {
+export function BlockIPDialog({ ip, ownIP, showTrigger }: Props) {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -70,11 +72,13 @@ export function BlockIpDialog({ ip, ownIp }: Props) {
       styling={{ maxWidth: "480px" }}
       controlled={{ isOpen, set: handleOpenChange }}
     >
-      <Dialog.Trigger>
-        <Button variant="ghost" size="small">
-          Block…
-        </Button>
-      </Dialog.Trigger>
+      {showTrigger ? (
+        <Dialog.Trigger>
+          <Button variant="ghost" size="small">
+            Block…
+          </Button>
+        </Dialog.Trigger>
+      ) : null}
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <Text variant="body" className="text-zinc-600">
@@ -92,7 +96,7 @@ export function BlockIpDialog({ ip, ownIp }: Props) {
               </AlertDescription>
             </Alert>
           ) : null}
-          {ownIp && ownIp === ip.ip_address ? (
+          {ownIP && ownIP === ip.ip_address ? (
             <Alert variant="warning">
               <AlertDescription>
                 You&apos;re signed in from this address. You&apos;d be refused

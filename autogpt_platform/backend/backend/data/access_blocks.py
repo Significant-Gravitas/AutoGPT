@@ -14,6 +14,7 @@ from prisma.models import AuthAccessBlock, AuthUser
 from prisma.types import AuthAccessBlockWhereInput
 from pydantic import BaseModel
 
+from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import ConflictError, NotFoundError
 
 # Better Auth stores an IPv6 client by its /64 (`advanced.ipAddress.ipv6Subnet`
@@ -23,39 +24,135 @@ IPV6_SUBNET_PREFIX = 64
 MAX_REASON_LENGTH = 500
 DEFAULT_PAGE_SIZE = 50
 
-# Blocking one of these would refuse a large share of real sign-ups.
+# Consumer mail providers: blocking one would refuse a large share of real
+# sign-ups, and sharing one links no two accounts.
 PUBLIC_EMAIL_DOMAINS = frozenset(
     {
         "126.com",
+        "139.com",
         "163.com",
+        "aim.com",
+        "alice.it",
+        "aliyun.com",
         "aol.com",
+        "att.net",
+        "bellsouth.net",
+        "bigpond.com",
+        "bk.ru",
+        "bol.com.br",
+        "btinternet.com",
+        "charter.net",
+        "comcast.net",
+        "cox.net",
+        "daum.net",
+        "earthlink.net",
+        "email.com",
         "fastmail.com",
+        "fastmail.fm",
+        "foxmail.com",
+        "free.fr",
+        "freenet.de",
         "gmail.com",
+        "gmx.at",
+        "gmx.ch",
         "gmx.com",
         "gmx.de",
+        "gmx.fr",
         "gmx.net",
         "googlemail.com",
+        "hanmail.net",
         "hey.com",
+        "hotmail.co.uk",
         "hotmail.com",
+        "hotmail.de",
+        "hotmail.es",
+        "hotmail.fr",
+        "hotmail.it",
         "icloud.com",
+        "inbox.ru",
+        "interia.pl",
+        "juno.com",
+        "laposte.net",
+        "libero.it",
+        "list.ru",
+        "live.co.uk",
         "live.com",
+        "live.de",
+        "live.fr",
+        "live.it",
+        "live.nl",
         "mac.com",
         "mail.com",
+        "mail.de",
         "mail.ru",
+        "mailbox.org",
         "me.com",
         "msn.com",
+        "naver.com",
+        "o2.pl",
+        "onet.pl",
+        "optonline.net",
+        "optusnet.com.au",
+        "orange.fr",
         "outlook.com",
+        "outlook.de",
+        "outlook.es",
+        "outlook.fr",
+        "outlook.it",
         "pm.me",
+        "posteo.de",
         "proton.me",
+        "protonmail.ch",
         "protonmail.com",
         "qq.com",
+        "rambler.ru",
+        "rediffmail.com",
+        "rocketmail.com",
+        "rogers.com",
+        "sbcglobal.net",
+        "seznam.cz",
+        "sfr.fr",
+        "shaw.ca",
+        "sina.com",
+        "sky.com",
+        "sohu.com",
+        "t-online.de",
+        "telenet.be",
+        "terra.com.br",
+        "tuta.io",
         "tutanota.com",
+        "tutanota.de",
+        "uol.com.br",
+        "verizon.net",
+        "virgilio.it",
+        "virginmedia.com",
+        "wanadoo.fr",
         "web.de",
+        "windowslive.com",
+        "wp.pl",
+        "ya.ru",
+        "yahoo.ca",
+        "yahoo.co.in",
+        "yahoo.co.jp",
+        "yahoo.co.uk",
         "yahoo.com",
+        "yahoo.com.au",
+        "yahoo.com.br",
+        "yahoo.de",
+        "yahoo.es",
+        "yahoo.fr",
+        "yahoo.in",
+        "yahoo.it",
+        "yandex.by",
         "yandex.com",
+        "yandex.kz",
         "yandex.ru",
+        "yandex.ua",
+        "yeah.net",
         "ymail.com",
+        "ziggo.nl",
         "zoho.com",
+        "zohomail.com",
     }
 )
 
@@ -143,29 +240,32 @@ async def create_access_block(
     if expires_at is not None and expires_at <= datetime.now(timezone.utc):
         raise ValueError("The block would expire before it starts.")
 
-    existing = await AuthAccessBlock.prisma().find_first(
-        where={"AND": [{"kind": kind, "value": normalized}, _active_where()]}
+    # One statement, so two admins blocking the same value at once can't both
+    # pass a check and then overwrite each other: only a lapsed row is replaced.
+    rows = await query_raw_with_schema(
+        """
+        INSERT INTO {schema_prefix}"UserAuthAccessBlock"
+            ("kind", "value", "reason", "expiresAt", "createdById")
+        VALUES ($1::{schema_prefix}"AuthAccessBlockKind", $2, $3, $4::timestamptz, $5)
+        ON CONFLICT ("kind", "value") DO UPDATE SET
+            "reason" = EXCLUDED."reason",
+            "expiresAt" = EXCLUDED."expiresAt",
+            "createdById" = EXCLUDED."createdById",
+            "createdAt" = CURRENT_TIMESTAMP
+        WHERE "UserAuthAccessBlock"."expiresAt" IS NOT NULL
+          AND "UserAuthAccessBlock"."expiresAt" <= CURRENT_TIMESTAMP
+        RETURNING "id"
+        """,
+        kind.value,
+        normalized,
+        reason,
+        expires_at.isoformat() if expires_at else None,
+        created_by_id,
     )
-    if existing is not None:
-        (block,) = await _to_access_blocks([existing])
-        by = f", by {block.created_by_email}" if block.created_by_email else ""
-        raise ConflictError(
-            f"{normalized} is already blocked{by} on "
-            f"{block.created_at.strftime('%-d %b %Y')}."
-        )
-
-    fields = {
-        "reason": reason,
-        "expiresAt": expires_at,
-        "createdById": created_by_id,
-        "createdAt": datetime.now(timezone.utc),
-    }
-    row = await AuthAccessBlock.prisma().upsert(
-        where={"kind_value": {"kind": kind, "value": normalized}},
-        data={
-            "create": {"kind": kind, "value": normalized, **fields},
-            "update": fields,
-        },
+    if not rows:
+        raise await _conflict(kind, normalized)
+    row = await AuthAccessBlock.prisma().find_unique_or_raise(
+        where={"id": rows[0]["id"]}
     )
     return (await _to_access_blocks([row]))[0]
 
@@ -208,6 +308,19 @@ def normalize_email_domain(raw: str) -> str:
 
 def get_email_domain(email: str) -> str:
     return email.rsplit("@", 1)[-1].lower()
+
+
+async def _conflict(kind: AuthAccessBlockKind, value: str) -> ConflictError:
+    existing = await AuthAccessBlock.prisma().find_first(
+        where={"AND": [{"kind": kind, "value": value}, _active_where()]}
+    )
+    if existing is None:
+        return ConflictError(f"{value} is already blocked.")
+    (block,) = await _to_access_blocks([existing])
+    by = f", by {block.created_by_email}" if block.created_by_email else ""
+    return ConflictError(
+        f"{value} is already blocked{by} on {block.created_at.strftime('%-d %b %Y')}."
+    )
 
 
 async def _to_access_blocks(rows: list[AuthAccessBlock]) -> list[AccessBlock]:

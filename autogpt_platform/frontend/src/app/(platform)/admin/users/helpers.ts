@@ -1,3 +1,5 @@
+import type { RelatedAccountPaymentStatus } from "@/app/api/__generated__/models/relatedAccountPaymentStatus";
+
 export const USER_QUERY_PARAM = "user";
 
 export interface LookupQuery {
@@ -240,4 +242,25 @@ export function formatBlockedAddress(value: string) {
 export function formatEnds(expiresAt: Date | null, now = new Date()) {
   if (!expiresAt) return "Permanent";
   return `${formatDateTime(expiresAt)} (${formatTimeUntil(expiresAt, now)})`;
+}
+
+const PAYMENT_STATUS_LABELS: Record<RelatedAccountPaymentStatus, string> = {
+  trialing: "Trialing",
+  active: "Active",
+  past_due: "Past due",
+  canceled: "Canceled",
+  granted: "Granted, not billed",
+  no_subscription: "No subscription",
+};
+
+// "Pro · Active"; an account with neither reads "No plan".
+export function getSubscriptionLabel(
+  plan: string | null | undefined,
+  status: RelatedAccountPaymentStatus,
+) {
+  if (status === "no_subscription" && (!plan || plan === "NO_TIER")) {
+    return "No plan";
+  }
+  if (status === "trialing" && plan === "TRIAL") return "Trial";
+  return `${getPlanName(plan ?? "NO_TIER")} · ${PAYMENT_STATUS_LABELS[status]}`;
 }

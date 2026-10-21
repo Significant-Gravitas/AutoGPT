@@ -1,6 +1,6 @@
 "use client";
 
-import type { AccountIp } from "@/app/api/__generated__/models/accountIp";
+import type { AccountIP } from "@/app/api/__generated__/models/accountIP";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -22,15 +22,15 @@ import {
   pluralize,
   summariseUserAgent,
 } from "../../../helpers";
-import { BlockIpDialog } from "../../AccessDialogs/BlockIpDialog";
+import { BlockIPDialog } from "../../AccessDialogs/BlockIPDialog";
 import { UnblockDialog } from "../../AccessDialogs/UnblockDialog";
 
 interface Props {
-  ip: AccountIp;
-  ownIp: string | null;
+  ip: AccountIP;
+  ownIP: string | null;
 }
 
-export function IpRow({ ip, ownIp }: Props) {
+export function IPRow({ ip, ownIP }: Props) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hiddenEvents = ip.event_count - ip.events.length;
 
@@ -68,9 +68,8 @@ export function IpRow({ ip, ownIp }: Props) {
               </Badge>
               <UnblockDialog block={ip.block} triggerVariant="link" />
             </>
-          ) : (
-            <BlockIpDialog ip={ip} ownIp={ownIp} />
-          )}
+          ) : null}
+          <BlockIPDialog ip={ip} ownIP={ownIP} showTrigger={!ip.block} />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 pl-9">
@@ -95,8 +94,10 @@ export function IpRow({ ip, ownIp }: Props) {
       </div>
       {isExpanded ? (
         <ul className="flex flex-col gap-1 pl-9 pt-1">
-          {ip.events.map((event) => (
-            <li key={`${event.kind}-${event.created_at.toISOString()}`}>
+          {ip.events.map((event, index) => (
+            <li
+              key={`${event.kind}-${event.created_at.toISOString()}-${index}`}
+            >
               <Text variant="small" className="break-words text-zinc-500">
                 {formatDateTime(event.created_at)} ·{" "}
                 {event.kind === "SIGN_UP" ? "Sign-up" : "Sign-in"} ·{" "}
@@ -117,7 +118,7 @@ export function IpRow({ ip, ownIp }: Props) {
   );
 }
 
-function Address({ ip }: { ip: AccountIp }) {
+function Address({ ip }: { ip: AccountIP }) {
   const address = (
     <Text
       variant="body"

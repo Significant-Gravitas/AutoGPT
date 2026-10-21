@@ -1,19 +1,19 @@
 -- CreateEnum
-CREATE TYPE "AuthIpEventKind" AS ENUM ('SIGN_UP', 'SIGN_IN');
+CREATE TYPE "AuthIPEventKind" AS ENUM ('SIGN_UP', 'SIGN_IN');
 
 -- CreateEnum
 CREATE TYPE "AuthAccessBlockKind" AS ENUM ('IP', 'EMAIL_DOMAIN');
 
 -- CreateTable
-CREATE TABLE "UserAuthIpEvent" (
+CREATE TABLE "UserAuthIPEvent" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
     "userId" TEXT NOT NULL,
-    "kind" "AuthIpEventKind" NOT NULL,
+    "kind" "AuthIPEventKind" NOT NULL,
     "ipAddress" TEXT NOT NULL,
     "userAgent" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "UserAuthIpEvent_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserAuthIPEvent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -30,24 +30,24 @@ CREATE TABLE "UserAuthAccessBlock" (
 );
 
 -- CreateIndex
-CREATE INDEX "UserAuthIpEvent_userId_createdAt_idx" ON "UserAuthIpEvent"("userId", "createdAt");
+CREATE INDEX "UserAuthIPEvent_userId_createdAt_idx" ON "UserAuthIPEvent"("userId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "UserAuthIpEvent_ipAddress_idx" ON "UserAuthIpEvent"("ipAddress");
+CREATE INDEX "UserAuthIPEvent_ipAddress_idx" ON "UserAuthIPEvent"("ipAddress");
 
 -- CreateIndex
-CREATE INDEX "UserAuthIpEvent_createdAt_idx" ON "UserAuthIpEvent"("createdAt");
+CREATE INDEX "UserAuthIPEvent_createdAt_idx" ON "UserAuthIPEvent"("createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "UserAuthAccessBlock_kind_value_key" ON "UserAuthAccessBlock"("kind", "value");
 
 -- AddForeignKey
-ALTER TABLE "UserAuthIpEvent" ADD CONSTRAINT "UserAuthIpEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserAuthIdentity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserAuthIPEvent" ADD CONSTRAINT "UserAuthIPEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserAuthIdentity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Seed the log with the IPs of the sessions that exist now, so the admin page
 -- has something to correlate before the first new sign-in. Impersonation
 -- sessions carry the admin's IP, not the user's.
-INSERT INTO "UserAuthIpEvent" ("userId", "kind", "ipAddress", "userAgent", "createdAt")
+INSERT INTO "UserAuthIPEvent" ("userId", "kind", "ipAddress", "userAgent", "createdAt")
 SELECT "userId", 'SIGN_IN', "ipAddress", NULLIF("userAgent", ''), "createdAt"
 FROM "UserAuthSession"
 WHERE "ipAddress" IS NOT NULL
@@ -76,6 +76,6 @@ RETURNS VOID
 LANGUAGE sql
 SET search_path FROM CURRENT
 AS $$
-  INSERT INTO "UserAuthIpEvent" ("userId", "kind", "ipAddress", "userAgent")
-  VALUES (event_user_id, event_kind::"AuthIpEventKind", event_ip, NULLIF(event_user_agent, ''))
+  INSERT INTO "UserAuthIPEvent" ("userId", "kind", "ipAddress", "userAgent")
+  VALUES (event_user_id, event_kind::"AuthIPEventKind", event_ip, NULLIF(event_user_agent, ''))
 $$;

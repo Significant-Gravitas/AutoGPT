@@ -17,7 +17,7 @@ import {
   getBanEnd,
   getDisplayName,
 } from "../../../helpers";
-import { useIpReport } from "../../../useIpReport";
+import { useIPReport } from "../../../useIPReport";
 import { useUserBan } from "../../../useUserBan";
 
 interface Props {
@@ -34,7 +34,7 @@ export function BanDialog({ user }: Props) {
   const [reason, setReason] = useState("");
   const [duration, setDuration] = useState<BanDuration>("permanent");
   const { banUser, isBanning } = useUserBan(user);
-  const { report } = useIpReport(user.id);
+  const { report } = useIPReport(user.id);
   const related = report?.related_total ?? 0;
   const banEnd = getBanEnd(duration);
 

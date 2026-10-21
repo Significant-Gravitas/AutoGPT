@@ -1,4 +1,4 @@
-import type { AccountIpReport } from "@/app/api/__generated__/models/accountIpReport";
+import type { AccountIPReport } from "@/app/api/__generated__/models/accountIPReport";
 import type { AuthAccessBlockKind } from "@/app/api/__generated__/models/authAccessBlockKind";
 import type { RelatedAccount } from "@/app/api/__generated__/models/relatedAccount";
 import { type AdminUser, pluralize } from "../../../helpers";
@@ -6,11 +6,14 @@ import type { ChecklistAccount } from "../AccountChecklist";
 
 export interface BanAllAccount extends ChecklistAccount {
   role: string | null;
+  // Linked by an address (or this account itself). One linked by email domain
+  // alone may share only a mail provider the public list misses.
+  isTickedByDefault: boolean;
 }
 
 interface Args {
   user: AdminUser;
-  report: AccountIpReport;
+  report: AccountIPReport;
   signedInUserId: string | undefined;
 }
 
@@ -23,6 +26,7 @@ export function getBanAllAccounts({ user, report, signedInUserId }: Args) {
     banned: user.banned,
     role: user.role,
     badges: ["This account"],
+    isTickedByDefault: true,
   };
   const related = report.related.map(toBanAllAccount);
   const all = [self, ...related];
@@ -48,7 +52,7 @@ export interface AlsoBlockOption {
 }
 
 export function getAlsoBlockOptions(
-  report: AccountIpReport,
+  report: AccountIPReport,
 ): AlsoBlockOption[] {
   const ips = report.ips
     .filter((ip) => !ip.block)
@@ -93,5 +97,6 @@ function toBanAllAccount(account: RelatedAccount): BanAllAccount {
     banned: account.banned,
     role: account.role ?? null,
     badges: getLinkBadges(account),
+    isTickedByDefault: account.via_ips.length > 0,
   };
 }

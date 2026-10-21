@@ -8,7 +8,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.orgs.model import OrgResponse
-from backend.data.auth_ip_events import AccountIpReport, EmailDomainInfo
+from backend.data.auth_ip_events import AccountIPReport, EmailDomainInfo
 
 from .user_admin_routes import router as user_admin_router
 
@@ -72,7 +72,7 @@ def test_get_user_ip_report_passes_the_configured_retention(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocker.patch(f"{_MOCK_MODULE}.settings.config.auth_ip_event_retention_days", 30)
-    report = AccountIpReport(
+    report = AccountIPReport(
         retention_days=30,
         ips=[],
         domain=EmailDomainInfo(

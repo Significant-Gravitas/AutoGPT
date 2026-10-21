@@ -8,6 +8,7 @@ import {
   formatBlockedAddress,
   formatDate,
   getAdminUsersHref,
+  getSubscriptionLabel,
 } from "../../../helpers";
 
 // More than this many shared IPs collapse into "+N IP".
@@ -36,6 +37,16 @@ export function RelatedAccountRow({ account }: Props) {
             {account.name}
           </Text>
         ) : null}
+        <Text
+          variant="small"
+          className={
+            account.payment_status === "past_due"
+              ? "text-amber-700"
+              : "text-zinc-500"
+          }
+        >
+          {getSubscriptionLabel(account.plan, account.payment_status)}
+        </Text>
       </div>
       <div className="flex flex-wrap gap-1">
         {ips.slice(0, SHOWN_IPS).map((ip) => (

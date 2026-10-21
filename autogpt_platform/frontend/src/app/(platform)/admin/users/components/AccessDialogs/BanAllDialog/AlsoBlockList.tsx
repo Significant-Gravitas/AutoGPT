@@ -11,7 +11,7 @@ interface Props {
   done: Set<string>;
   onToggle: (key: string) => void;
   alreadyBlockedDomain: string | null;
-  ownIp: string | null;
+  ownIP: string | null;
 }
 
 export function AlsoBlockList({
@@ -20,11 +20,11 @@ export function AlsoBlockList({
   done,
   onToggle,
   alreadyBlockedDomain,
-  ownIp,
+  ownIP,
 }: Props) {
-  const blocksOwnIp = options.some(
+  const blocksOwnIP = options.some(
     (option) =>
-      option.kind === "IP" && option.value === ownIp && ticked.has(option.key),
+      option.kind === "IP" && option.value === ownIP && ticked.has(option.key),
   );
 
   if (options.length === 0 && !alreadyBlockedDomain) return null;
@@ -62,10 +62,10 @@ export function AlsoBlockList({
           blocked
         </Text>
       ) : null}
-      {blocksOwnIp ? (
+      {blocksOwnIP ? (
         <Alert variant="warning">
           <AlertDescription>
-            You&apos;re signed in from {ownIp}. You&apos;d be refused at your
+            You&apos;re signed in from {ownIP}. You&apos;d be refused at your
             next sign-in too.
           </AlertDescription>
         </Alert>

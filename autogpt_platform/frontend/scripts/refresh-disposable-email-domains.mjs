@@ -9,7 +9,7 @@ const OUTPUT = new URL(
   import.meta.url,
 );
 
-const commit = await fetchJson(
+const commit = await fetchJSON(
   `https://api.github.com/repos/${REPO}/commits/main`,
 );
 const text = await fetchText(
@@ -30,7 +30,7 @@ await writeFile(
 );
 console.log(`${domains.length} domains from ${commit.sha}`);
 
-async function fetchJson(url) {
+async function fetchJSON(url) {
   return JSON.parse(await fetchText(url));
 }
 

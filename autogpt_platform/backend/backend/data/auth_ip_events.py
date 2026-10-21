@@ -8,9 +8,10 @@ the scheduler deletes rows older than `auth_ip_event_retention_days`.
 import ipaddress
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
-from prisma.enums import AuthAccessBlockKind, AuthIpEventKind
-from prisma.models import AuthIpEvent, AuthUser
+from prisma.enums import AuthAccessBlockKind, AuthIPEventKind, SubscriptionTier
+from prisma.models import AuthIPEvent, AuthUser
 from pydantic import BaseModel
 
 from backend.data.access_blocks import (
@@ -29,14 +30,19 @@ ACCOUNT_IP_LIMIT = 50
 EVENTS_PER_IP = 20
 RELATED_ACCOUNT_LIMIT = 200
 
+# Read from our own billing rows, never Stripe: see `_payment_status`.
+PaymentStatus = Literal[
+    "trialing", "active", "past_due", "canceled", "granted", "no_subscription"
+]
 
-class IpEventEntry(BaseModel):
-    kind: AuthIpEventKind
+
+class IPEventEntry(BaseModel):
+    kind: AuthIPEventKind
     user_agent: str | None
     created_at: datetime
 
 
-class AccountIp(BaseModel):
+class AccountIP(BaseModel):
     ip_address: str
     display_address: str
     is_ipv6_prefix: bool
@@ -47,7 +53,7 @@ class AccountIp(BaseModel):
     last_user_agent: str | None
     other_account_count: int
     block: AccessBlock | None
-    events: list[IpEventEntry]
+    events: list[IPEventEntry]
     event_count: int
 
 
@@ -69,17 +75,20 @@ class RelatedAccount(BaseModel):
     has_profile: bool
     via_ips: list[str]
     via_domain: bool
+    # A `SubscriptionTier` value; plain text so the API keeps one tier enum.
+    plan: str | None
+    payment_status: PaymentStatus
 
 
-class AccountIpReport(BaseModel):
+class AccountIPReport(BaseModel):
     retention_days: int
-    ips: list[AccountIp]
+    ips: list[AccountIP]
     domain: EmailDomainInfo
     related: list[RelatedAccount]
     related_total: int
 
 
-class _IpRow(BaseModel):
+class _IPRow(BaseModel):
     ip_address: str
     has_sign_up: bool
     sign_in_count: int
@@ -92,7 +101,7 @@ class _IpRow(BaseModel):
 
 class _EventRow(BaseModel):
     ip_address: str
-    kind: AuthIpEventKind
+    kind: AuthIPEventKind
     user_agent: str | None
     created_at: datetime
 
@@ -108,13 +117,17 @@ class _RelatedRow(BaseModel):
     has_profile: bool
     via_ips: list[str]
     via_domain: bool
+    plan: str | None
+    has_stripe_customer: bool
+    trial_status: str | None
     total: int
 
 
-async def get_account_ip_report(user_id: str, retention_days: int) -> AccountIpReport:
-    """Read from the auth identity table, so an account with no platform
-    `User` row (one that never finished signing up) still shows. A public
-    mail provider's domain links no accounts: that would be the user base."""
+async def get_account_ip_report(user_id: str, retention_days: int) -> AccountIPReport:
+    """Any account's IPs and related emails, so admin-only: the route enforces
+    it (`requires_admin_user`). Read from the auth identity table, so an
+    account with no platform `User` row still shows. A public mail provider's
+    domain links no accounts: that would be the user base."""
     user = await AuthUser.prisma().find_unique(where={"id": user_id})
     if user is None:
         raise NotFoundError(f"User {user_id} not found")
@@ -133,7 +146,7 @@ async def get_account_ip_report(user_id: str, retention_days: int) -> AccountIpR
         (b for b in blocks if b.kind == AuthAccessBlockKind.EMAIL_DOMAIN), None
     )
 
-    return AccountIpReport(
+    return AccountIPReport(
         retention_days=retention_days,
         ips=[
             _to_account_ip(row, events.get(row.ip_address, []), ip_blocks)
@@ -152,7 +165,7 @@ async def get_account_ip_report(user_id: str, retention_days: int) -> AccountIpR
 
 async def delete_expired_ip_events(retention_days: int) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-    deleted = await AuthIpEvent.prisma().delete_many(
+    deleted = await AuthIPEvent.prisma().delete_many(
         where={"createdAt": {"lt": cutoff}}
     )
     if deleted > 0:
@@ -160,7 +173,7 @@ async def delete_expired_ip_events(retention_days: int) -> int:
     return deleted
 
 
-async def _summarise_account_ips(user_id: str) -> list[_IpRow]:
+async def _summarise_account_ips(user_id: str) -> list[_IPRow]:
     # The sign-up address first, whenever it was last used: "where was this
     # account created" is the first question.
     return await query_raw_with_schema(
@@ -174,7 +187,7 @@ async def _summarise_account_ips(user_id: str) -> list[_IpRow]:
                    max("createdAt") AS last_seen,
                    (array_agg("userAgent" ORDER BY "createdAt" DESC))[1]
                        AS last_user_agent
-            FROM {schema_prefix}"UserAuthIpEvent"
+            FROM {schema_prefix}"UserAuthIPEvent"
             WHERE "userId" = $1
             GROUP BY "ipAddress"
             ORDER BY has_sign_up DESC, last_seen DESC
@@ -183,7 +196,7 @@ async def _summarise_account_ips(user_id: str) -> list[_IpRow]:
         SELECT mine."ipAddress" AS ip_address, has_sign_up, sign_in_count,
                event_count, first_seen, last_seen, last_user_agent,
                (SELECT count(DISTINCT other."userId")
-                FROM {schema_prefix}"UserAuthIpEvent" other
+                FROM {schema_prefix}"UserAuthIPEvent" other
                 WHERE other."ipAddress" = mine."ipAddress"
                   AND other."userId" <> $1) AS other_account_count
         FROM mine
@@ -191,13 +204,13 @@ async def _summarise_account_ips(user_id: str) -> list[_IpRow]:
         """,
         user_id,
         ACCOUNT_IP_LIMIT,
-        model=_IpRow,
+        model=_IPRow,
     )
 
 
 async def _latest_events_per_ip(
     user_id: str, ip_addresses: list[str]
-) -> dict[str, list[IpEventEntry]]:
+) -> dict[str, list[IPEventEntry]]:
     if not ip_addresses:
         return {}
     rows = await query_raw_with_schema(
@@ -209,7 +222,7 @@ async def _latest_events_per_ip(
                    row_number() OVER (
                        PARTITION BY "ipAddress" ORDER BY "createdAt" DESC
                    ) AS position
-            FROM {schema_prefix}"UserAuthIpEvent"
+            FROM {schema_prefix}"UserAuthIPEvent"
             WHERE "userId" = $1 AND "ipAddress" = ANY($2::text[])
         ) ranked
         WHERE position <= $3
@@ -220,10 +233,10 @@ async def _latest_events_per_ip(
         EVENTS_PER_IP,
         model=_EventRow,
     )
-    events: dict[str, list[IpEventEntry]] = {}
+    events: dict[str, list[IPEventEntry]] = {}
     for row in rows:
         events.setdefault(row.ip_address, []).append(
-            IpEventEntry(
+            IPEventEntry(
                 kind=row.kind, user_agent=row.user_agent, created_at=row.created_at
             )
         )
@@ -240,7 +253,7 @@ async def _find_related_accounts(
         """
         WITH ip_links AS (
             SELECT "userId" AS id, array_agg(DISTINCT "ipAddress") AS via_ips
-            FROM {schema_prefix}"UserAuthIpEvent"
+            FROM {schema_prefix}"UserAuthIPEvent"
             WHERE "ipAddress" = ANY($2::text[]) AND "userId" <> $1
             GROUP BY "userId"
         ),
@@ -257,15 +270,19 @@ async def _find_related_accounts(
         SELECT u."id" AS id, u."email" AS email, u."name" AS name, u."role" AS role,
                u."createdAt" AS created_at, u."banned" AS banned,
                u."banExpires" AS ban_expires,
-               EXISTS (SELECT 1 FROM {schema_prefix}"User" p WHERE p."id" = u."id")
-                   AS has_profile,
+               p."id" IS NOT NULL AS has_profile,
                COALESCE(i.via_ips, ARRAY[]::text[]) AS via_ips,
                d."id" IS NOT NULL AS via_domain,
+               p."subscriptionTier" AS plan,
+               p."stripeCustomerId" IS NOT NULL AS has_stripe_customer,
+               t."status" AS trial_status,
                count(*) OVER () AS total
         FROM related r
         JOIN {schema_prefix}"UserAuthIdentity" u ON u."id" = r.id
         LEFT JOIN ip_links i ON i.id = r.id
         LEFT JOIN domain_links d ON d."id" = r.id
+        LEFT JOIN {schema_prefix}"User" p ON p."id" = r.id
+        LEFT JOIN {schema_prefix}"SubscriptionTrial" t ON t."userId" = r.id
         ORDER BY (i.id IS NOT NULL AND d."id" IS NOT NULL) DESC,
                  (i.id IS NOT NULL) DESC,
                  u."createdAt" DESC
@@ -295,10 +312,10 @@ async def _count_domain_accounts(user_id: str, email_domain: str | None) -> int:
 
 
 def _to_account_ip(
-    row: _IpRow, events: list[IpEventEntry], ip_blocks: dict[str, AccessBlock]
-) -> AccountIp:
+    row: _IPRow, events: list[IPEventEntry], ip_blocks: dict[str, AccessBlock]
+) -> AccountIP:
     display = _display_address(row.ip_address)
-    return AccountIp(
+    return AccountIP(
         ip_address=row.ip_address,
         display_address=display,
         is_ipv6_prefix=display != row.ip_address,
@@ -341,4 +358,36 @@ def _to_related_account(row: _RelatedRow) -> RelatedAccount:
         has_profile=row.has_profile,
         via_ips=sorted(row.via_ips),
         via_domain=row.via_domain,
+        plan=row.plan,
+        payment_status=_payment_status(
+            row.plan, row.has_stripe_customer, row.trial_status
+        ),
     )
+
+
+# Stripe statuses of a live subscription, as the trial row mirrors them.
+_LIVE_TRIAL_STATUSES: dict[str, PaymentStatus] = {
+    "trialing": "trialing",
+    "active": "active",
+    "past_due": "past_due",
+    "unpaid": "past_due",
+    "incomplete": "past_due",
+}
+
+
+def _payment_status(
+    plan: str | None, has_stripe_customer: bool, trial_status: str | None
+) -> PaymentStatus:
+    """From our own rows, so a report costs no Stripe call. Every Stripe
+    subscription webhook re-syncs the trial row's status, so a subscription
+    that began as a trial reports past due. One started directly keeps only
+    its tier, which the reconcile sweep holds only while Stripe has it active."""
+    if trial_status in _LIVE_TRIAL_STATUSES:
+        return _LIVE_TRIAL_STATUSES[trial_status]
+    if plan is None or plan == SubscriptionTier.NO_TIER.value:
+        return "canceled" if trial_status == "canceled" else "no_subscription"
+    if plan == SubscriptionTier.TRIAL.value:
+        return "trialing"
+    if plan == SubscriptionTier.ENTERPRISE.value or not has_stripe_customer:
+        return "granted"
+    return "active"
