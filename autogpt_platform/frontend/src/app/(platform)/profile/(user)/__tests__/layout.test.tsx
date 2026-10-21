@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const { usePathnameMock } = vi.hoisted(() => ({
-  usePathnameMock: vi.fn(() => "/profile"),
+  usePathnameMock: vi.fn(() => "/profile/credits"),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -16,37 +16,36 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
 }));
 
 import Layout from "../layout";
-import UserProfilePage from "../page";
-import UserIntegrationsPage from "../integrations/page";
 
 describe("legacy /profile layout", () => {
-  it.each([
-    ["/profile", UserProfilePage],
-    ["/profile/integrations", UserIntegrationsPage],
-  ])("renders nothing on %s, which redirects to /settings", (path, Page) => {
-    usePathnameMock.mockReturnValue(path);
+  it.each(["/profile/dashboard", "/profile/credits", "/profile/api-keys"])(
+    "renders nothing on %s, which redirects to /settings",
+    (path) => {
+      usePathnameMock.mockReturnValue(path);
 
-    expect(
-      render(
+      const { container } = render(
         <Layout>
-          <Page />
+          <p>legacy page</p>
         </Layout>,
-      ).container.innerHTML,
-    ).toBe("");
-    // The page is a placeholder the layout never mounts; content added here would never show.
-    expect(render(<Page />).container.innerHTML).toBe("");
-  });
+      );
 
-  it("still renders the old shell on /profile/settings, which keeps its page", () => {
-    usePathnameMock.mockReturnValue("/profile/settings");
+      expect(container.innerHTML).toBe("");
+    },
+  );
 
-    const { getByText, getAllByText } = render(
-      <Layout>
-        <p>settings page</p>
-      </Layout>,
-    );
+  it.each(["/profile/settings", "/profile/oauth-apps"])(
+    "still renders the old shell on %s, which keeps its page",
+    (path) => {
+      usePathnameMock.mockReturnValue(path);
 
-    expect(getByText("settings page")).toBeDefined();
-    expect(getAllByText("Integrations").length).toBeGreaterThan(0);
-  });
+      const { getByText, getAllByText } = render(
+        <Layout>
+          <p>legacy page</p>
+        </Layout>,
+      );
+
+      expect(getByText("legacy page")).toBeDefined();
+      expect(getAllByText("Integrations").length).toBeGreaterThan(0);
+    },
+  );
 });

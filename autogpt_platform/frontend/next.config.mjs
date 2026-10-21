@@ -30,6 +30,21 @@ const nextConfig = {
   // PostHog proxy path must reach middleware untouched. Middleware redoes the
   // trailing-slash redirect for every other path (see src/middleware.ts).
   skipTrailingSlashRedirect: true,
+  // These /profile pages have no page left for the layout's redirect to run on.
+  async redirects() {
+    return [
+      {
+        source: "/profile",
+        destination: "/settings/profile",
+        permanent: false,
+      },
+      {
+        source: "/profile/integrations",
+        destination: "/settings/integrations",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
