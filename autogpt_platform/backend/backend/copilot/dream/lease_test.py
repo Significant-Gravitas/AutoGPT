@@ -157,7 +157,7 @@ class TestTheSyncLease:
 
         result = await orchestrator_mod.execute_dream_pass("u")
 
-        assert result.error == "recombine: dream lock lost before recombine"
+        assert result.error == "recombine: lock_lost"
         assert phases.await_count == 1
         assert result.usage is not None
         assert [p.phase for p in result.usage.phases] == ["consolidate"]
@@ -182,7 +182,7 @@ class TestTheSyncLease:
         with caplog.at_level(logging.WARNING):
             result = await orchestrator_mod.execute_dream_pass("u")
 
-        assert result.error == "apply: dream lease could not be renewed"
+        assert result.error == "apply: lease_unrenewed"
         assert phases.await_count == 3
         assert result.usage is not None and len(result.usage.phases) == 3
         apply.assert_not_awaited()
@@ -220,14 +220,16 @@ class TestTheSyncLease:
         its row, not just the lock it lost."""
         run = DreamPassRun.begin("u", "sync_baseline")
         fake_dream_db.seed(_draft(run.pass_id))
-        assert await write_stop(run.pass_id, expired("stale", not_updated_since=None))
+        assert await write_stop(
+            run.pass_id, expired("expired: forced", not_updated_since=None)
+        )
         async with locks_mod.dream_lock(_SCOPE, token=run.lease_token) as handle:
             run.hold(handle)
             fake_dream_redis.store[_LOCK_KEY] = "newer-token"
             with pytest.raises(PassEnded) as ended:
                 await renew_sync_lease(run, "apply")
 
-        assert ended.value.result.error == "expired: stale"
+        assert ended.value.result.error == "expired: forced"
         assert fake_dream_redis.store[_LOCK_KEY] == "newer-token"
 
 
@@ -266,8 +268,8 @@ class TestAClosingRow:
         [
             lambda: outcome(_result(), None, marked=True),
             lambda: failed("boom", None, datetime.now(timezone.utc), marked=True),
-            lambda: cancelled("testing", owner_user_id="u"),
-            lambda: expired("stale", not_updated_since=None),
+            lambda: cancelled("cancelled: by_admin", owner_user_id="u"),
+            lambda: expired("expired: forced", not_updated_since=None),
         ],
         ids=["batch complete", "batch errored", "cancelled", "expired"],
     )
@@ -336,7 +338,7 @@ class TestAClosingRow:
         )
 
         assert await fake_dream_db.update_dream_pass(
-            "p1", reaped("lapsed", not_updated_since=now)
+            "p1", reaped("consolidate: reaped", not_updated_since=now)
         )
         row = fake_dream_db.rows["p1"]
         assert (row["status"], row["lease_token"]) == (DreamPassStatus.EXPIRED, "tok")
@@ -347,7 +349,10 @@ class TestAClosingRow:
 
         assert await fake_dream_db.update_dream_pass("p1", cleanup_finished())
         assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
-        assert (row["status"], row["error"]) == (DreamPassStatus.EXPIRED, "lapsed")
+        assert (row["status"], row["error"]) == (
+            DreamPassStatus.EXPIRED,
+            "consolidate: reaped",
+        )
 
     def test_the_cleanup_write_goes_to_closed_rows_and_only_clears(self):
         with pytest.raises(ValidationError, match="a closed row only has columns"):

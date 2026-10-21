@@ -15,11 +15,7 @@ import {
   SETUP_POLL_MS,
 } from "./helpers";
 
-interface Args {
-  enabled: boolean;
-}
-
-export function useTeamPage({ enabled }: Args) {
+export function useTeamPage() {
   const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
   const [soulExpertId, setSoulExpertId] = useState<string | null>(null);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
@@ -29,7 +25,6 @@ export function useTeamPage({ enabled }: Args) {
   const expertsQuery = useListExperts({
     query: {
       select: (res) => (okData(res) ?? []) as Expert[],
-      enabled,
       // A fresh hire's skills land after the hire returns; follow them in.
       refetchInterval: (query) =>
         isSettingUp((okData(query.state.data) ?? []) as Expert[])
@@ -38,7 +33,7 @@ export function useTeamPage({ enabled }: Args) {
     },
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [], enabled },
+    query: { select: (res) => okData(res) ?? [] },
   });
   const hiredExperts = getHiredExperts(expertsQuery.data ?? []);
   const schedules = schedulesQuery.data ?? [];
@@ -86,7 +81,7 @@ export function useTeamPage({ enabled }: Args) {
     schedulesForExpert,
     // Only the roster decides the page's loading and error states: a slow or
     // failing schedules fetch must not hide experts that loaded fine.
-    isLoading: enabled && expertsQuery.isPending,
+    isLoading: expertsQuery.isPending,
     isError: expertsQuery.isError,
     refetch,
     installWorkflow,

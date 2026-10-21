@@ -1,9 +1,11 @@
 import { test as base } from "@playwright/test";
 import { addCoverageReport } from "monocart-reporter";
+import { dismissTabIntros } from "./utils/onboarding";
 
 const test = base.extend<{ autoTestFixture: void }>({
   autoTestFixture: [
     async ({ page }, use) => {
+      await dismissTabIntros(page);
       let hasCoverage = false;
       try {
         await page.coverage.startJSCoverage({ resetOnNavigation: false });

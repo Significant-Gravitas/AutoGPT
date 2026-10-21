@@ -704,6 +704,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Must be a transactional stream, separate from marketing mail."
         ),
     )
+    # Off until the privacy policy names email tracking. Auth mail is never
+    # tracked: its links carry sign-in tokens.
+    postmark_track_opens_and_clicks: bool = Field(
+        default=False,
+        description=(
+            "Ask Postmark to track opens (a tracking pixel) and clicks (links "
+            "rewritten through Postmark) in notification emails. Postmark "
+            "reports them to the webhook, which sends email_opened and "
+            "email_clicked to PostHog. Overrides the stream's own setting."
+        ),
+    )
     email_asset_base_url: str = Field(
         default="https://platform.agpt.co/email",
         description=(
@@ -846,6 +857,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=24,
         description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
+    auth_ip_event_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days the sign-up and sign-in IP of an account is kept for the admin "
+            "users page before the daily retention job deletes it (1-3650 days)"
+        ),
     )
 
     dream_pass_retention_days: int = Field(

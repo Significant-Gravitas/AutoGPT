@@ -42,6 +42,10 @@ export const ExpertsFunnelEvent = {
   BRIEFING_OUTCOME_CLICKED: "briefing_outcome_clicked",
   HOME_ATTENTION_ACTIONED: "home_attention_actioned",
   HOME_TEAM_MEMBER_CLICKED: "home_team_member_clicked",
+  // The greeting's suggested first tasks, on the greeting (`surface: intro`)
+  // or under the Home composer (`surface: home`).
+  HOME_SUGGESTION_CLICKED: "home_suggestion_clicked",
+  HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
 } as const;
 
 export const HireFlowEvent = {

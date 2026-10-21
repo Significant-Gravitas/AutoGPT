@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 import stripe
 from prisma.enums import NotificationType
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import REPLACED_PLAN_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     NotificationEventModel,
@@ -54,7 +54,6 @@ from backend.notifications.queue import queue_audience_change, queue_notificatio
 from backend.notifications.subscriber_fields import audience_event
 from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger
 from backend.util.product_analytics import track_subscription_ended
 from backend.util.settings import Settings
@@ -139,11 +138,6 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         return
 
     plan = await plan_from_subscription(subscription)
-    experts_enabled = False
-    try:
-        experts_enabled = await is_feature_enabled(Flag.HIRE_EXPERTS, user.id)
-    except Exception:
-        logger.warning("Could not check Expert access; using the workflow welcome")
     try:
         await _publish(
             NotificationEventModel[SubscriptionWelcomeData](
@@ -153,7 +147,7 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
                     user_name=_greeting_name(user),
                     plan=plan,
                     renews_label=format_date(subscription.get("current_period_end")),
-                    experts_enabled=experts_enabled,
+                    experts_enabled=True,
                 ),
             )
         )
@@ -305,6 +299,10 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
 async def on_subscription_deleted(subscription: dict) -> None:
     """Two roads lead here — a cancellation reaching period end, and dunning
     exhaustion — so the copy branches on which one the customer took."""
+    details = subscription.get("cancellation_details") or {}
+    if details.get("comment") == REPLACED_PLAN_CANCELLATION_COMMENT:
+        # Ended because the customer has another plan; they did not leave.
+        return
     if await notify_trial(subscription, "ended"):
         return
     user = await _user_for(subscription.get("customer"))
@@ -346,11 +344,9 @@ async def on_subscription_deleted(subscription: dict) -> None:
 
 
 def _churn_reason(subscription: dict) -> str | None:
-    """Stripe's ``cancellation_details.reason``, except that our own cancel
-    after a failed renewal is involuntary churn, not a requested one."""
+    """Stripe's ``cancellation_details.reason``: ``payment_failed`` when
+    Stripe ended the subscription after its retries failed."""
     details = subscription.get("cancellation_details") or {}
-    if details.get("comment") == PAYMENT_FAILURE_CANCELLATION_COMMENT:
-        return "payment_failed"
     return details.get("reason")
 
 

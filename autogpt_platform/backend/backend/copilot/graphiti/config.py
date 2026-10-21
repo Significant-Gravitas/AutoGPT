@@ -46,7 +46,7 @@ _LOCAL_EMBEDDER_MODEL = "nomic-embed-text"
 class GraphitiConfig(BaseSettings):
     """Configuration for Graphiti memory integration.
 
-    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
+    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_FALKORDB_HOST``.
     LLM/embedder keys fall back to the Otto-dedicated keys
     (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
     tracked under Otto, then to the platform-wide OpenRouter / OpenAI
@@ -395,42 +395,3 @@ class _LazyConfigProxy:
 
 
 graphiti_config = _LazyConfigProxy()  # type: ignore[assignment]
-
-
-async def is_enabled_for_user(user_id: str | None) -> bool:
-    """Check if Graphiti memory is enabled for a specific user.
-
-    Gated solely by LaunchDarkly flag ``graphiti-memory``
-    (Flag.GRAPHITI_MEMORY).  When LD is not configured, defaults to False.
-    """
-    if not user_id:
-        return False
-
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
-    return await is_feature_enabled(
-        Flag.GRAPHITI_MEMORY,
-        user_id,
-        default=False,
-    )
-
-
-async def is_communities_enabled_for_user(user_id: str | None) -> bool:
-    """Check if per-user community-detection rebuilds are enabled.
-
-    Distinct from ``is_enabled_for_user`` — a user can have Graphiti
-    memory enabled (writes + reads work) without the weekly Leiden
-    rebuild + LLM summarization running on their graph. Gated by
-    ``Flag.GRAPHITI_COMMUNITIES_ENABLED``; defaults False so the cost
-    only lands behind explicit opt-in.
-    """
-    if not user_id:
-        return False
-
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
-    return await is_feature_enabled(
-        Flag.GRAPHITI_COMMUNITIES_ENABLED,
-        user_id,
-        default=False,
-    )

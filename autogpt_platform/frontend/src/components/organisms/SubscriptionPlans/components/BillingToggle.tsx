@@ -2,16 +2,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import type { SubscriptionPlansProps } from "../helpers";
 
-type Props = Pick<
-  SubscriptionPlansProps,
-  "billing" | "onBillingChange" | "goalSurface"
->;
+type Props = Pick<SubscriptionPlansProps, "billing" | "onBillingChange">;
 
-export function BillingToggle({
-  billing,
-  onBillingChange,
-  goalSurface,
-}: Props) {
+export function BillingToggle({ billing, onBillingChange }: Props) {
   return (
     <div
       role="group"
@@ -26,9 +19,6 @@ export function BillingToggle({
           size="xs"
           aria-pressed={billing === cycle}
           onClick={() => onBillingChange(cycle)}
-          data-fast-goal="paywall_billing_toggle"
-          data-fast-goal-cycle={cycle}
-          data-fast-goal-surface={goalSurface}
           className={cn(
             "rounded-full px-4 text-xs",
             billing === cycle

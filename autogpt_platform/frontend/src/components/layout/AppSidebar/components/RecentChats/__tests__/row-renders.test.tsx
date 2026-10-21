@@ -62,11 +62,14 @@ function toSummary(seed: SessionSeed) {
   };
 }
 
-function renderRecentChats() {
-  return render(
+async function renderRecentChats() {
+  render(
     <SidebarProvider>
       <RecentChats />
     </SidebarProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load all Otto chats" }),
   );
 }
 
@@ -115,7 +118,7 @@ afterEach(() => {
 
 describe("RecentChats — chat rows", () => {
   it("re-renders no row when a refetch returns the same sessions", async () => {
-    renderRecentChats();
+    await renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
     itemRenders.mockClear();
@@ -131,7 +134,7 @@ describe("RecentChats — chat rows", () => {
   });
 
   it("re-renders only the pinned row when one chat is pinned", async () => {
-    renderRecentChats();
+    await renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
     itemRenders.mockClear();
@@ -146,7 +149,7 @@ describe("RecentChats — chat rows", () => {
   });
 
   it("re-renders only the edited row while typing a rename", async () => {
-    renderRecentChats();
+    await renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
 
