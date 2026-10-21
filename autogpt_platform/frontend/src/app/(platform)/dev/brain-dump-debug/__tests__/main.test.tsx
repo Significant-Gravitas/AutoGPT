@@ -136,7 +136,7 @@ describe("brain dump debug page — gating", () => {
   });
 
   it("waits with skeletons instead of 404ing while the flag is unresolved", async () => {
-    // Short-circuiting to notFound() before LaunchDarkly answers would 404
+    // Short-circuiting to notFound() before the flag service answers would 404
     // users who actually have the flag on.
     flagStatus.ready = false;
     flagStatus.enabled = false;

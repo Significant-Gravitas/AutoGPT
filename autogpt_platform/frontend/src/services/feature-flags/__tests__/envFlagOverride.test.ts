@@ -1,16 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { envFlagOverride, Flag } from "../use-get-flag";
 
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useFlags: () => ({}),
-}));
-
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => false },
 }));
 
 const ENV_KEY = "NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION";

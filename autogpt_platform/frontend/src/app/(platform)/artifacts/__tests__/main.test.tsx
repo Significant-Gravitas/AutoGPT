@@ -330,7 +330,7 @@ describe("ArtifactsPage - search filter", () => {
 });
 
 describe("ArtifactsPage - feature flag gating", () => {
-  test("shows the flag-loading skeleton while LaunchDarkly is resolving", async () => {
+  test("shows the flag-loading skeleton while the flag service is resolving", async () => {
     setFlagStatusMock.mockReturnValue({ enabled: false, ready: false });
 
     render(<ArtifactsPage />);

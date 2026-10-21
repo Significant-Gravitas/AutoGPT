@@ -52,7 +52,7 @@ export function useExpertPage({ expertId }: Args) {
     systemProviders: systemProvidersQuery.data,
     isLoggedIn,
     isHiringOpen,
-    // Which header action to show is only decided once LaunchDarkly has
+    // Which header action to show is only decided once the flag service has
     // answered and the roster is in: rendering "Coming soon" or a "Hire"
     // button first would flash the wrong state at users who have hiring, or
     // have already hired this expert. A disabled roster query never blocks —

@@ -81,7 +81,7 @@ describe("useTabIntroCard — when it opens", () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
-  it("stays closed until LaunchDarkly has answered", () => {
+  it("stays closed until the flag service has answered", () => {
     flagsReady.current = false;
 
     expect(renderGate().result.current.isOpen).toBe(false);

@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useEffect } from "react";
 
-export type AssignmentSource = "posthog" | "launchdarkly";
+export type AssignmentSource = "posthog";
 
 interface Args {
   experimentKey: string;

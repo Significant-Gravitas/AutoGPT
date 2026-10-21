@@ -1,25 +1,17 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
-vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
-});
 import { Flag, useGetFlag } from "../use-get-flag";
 
-// LD is enabled but has not answered for any key — the exact window
-// (init lag, outage, missing flag key) where useGetFlag falls through
+// The flag service has not answered for any key — the exact window
+// (load lag, outage, missing flag key) where useGetFlag falls through
 // to defaultFlags in production.
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useFlags: () => ({}),
+vi.mock("../flag-source", () => ({
+  useFlagSource: () => ({ value: undefined, resolved: false }),
 }));
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => true },
 }));
 
 const DREAM_GRAPHITI_FLAGS = [
@@ -37,7 +29,7 @@ describe("dream/graphiti flag defaults fail closed", () => {
   });
 
   it.each(DREAM_GRAPHITI_FLAGS)(
-    "resolves %s to false when LaunchDarkly has not answered, mirroring the backend's default=False gating",
+    "resolves %s to false when the flag service has not answered, mirroring the backend's default=False gating",
     (flag) => {
       const { result } = renderHook(() => useGetFlag(flag));
       expect(result.current).toBe(false);
@@ -53,7 +45,7 @@ describe("dream/graphiti flag defaults fail closed", () => {
 
 // This one has been flipped to `true` in the defaults map twice now, and
 // both times it silently swapped the onboarding wizard for every
-// LaunchDarkly-less environment — local dev, CI, Playwright — which is how
+// environment without a flag service — local dev, CI, Playwright — which is how
 // auth-happy-path stopped finding the pillbox step.
 const ONBOARDING_FLAGS = [Flag.ONBOARDING_BRAIN_DUMP] as const;
 
@@ -65,7 +57,7 @@ describe("onboarding flag defaults fail closed", () => {
   });
 
   it.each(ONBOARDING_FLAGS)(
-    "resolves %s to false when LaunchDarkly has not answered, so the default flow renders untouched",
+    "resolves %s to false when the flag service has not answered, so the default flow renders untouched",
     (flag) => {
       const { result } = renderHook(() => useGetFlag(flag));
       expect(result.current).toBe(false);

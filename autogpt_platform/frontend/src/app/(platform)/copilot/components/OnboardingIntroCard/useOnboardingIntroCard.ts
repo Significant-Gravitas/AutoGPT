@@ -74,7 +74,7 @@ export function useOnboardingIntroCard() {
 
   useEffect(() => {
     // The handoff keys are written by the wizard while the flag is on, so
-    // they can outlive it: wait for LaunchDarkly, then either run the
+    // they can outlive it: wait for the flag, then either run the
     // handoff or drop it. Consuming it with the flag off would put the
     // overlay and its 404-ing polls in front of a rolled-back user.
     if (!isFlagReady) return;
@@ -125,7 +125,7 @@ export function useOnboardingIntroCard() {
   // failed request counts as an answer so the composer is never held
   // hostage by an unavailable endpoint — and so does a flag we know is
   // off, since that query is disabled and will never answer at all. Wait
-  // for LaunchDarkly to actually say so: treating "not answered yet" as
+  // for the flag service to actually say so: treating "not answered yet" as
   // off is what flashes the composer before the greeting page arrives.
   const hasIntroAnswer =
     (isFlagReady && !isBrainDumpEnabled) || data !== undefined || isError;
@@ -159,7 +159,7 @@ export function useOnboardingIntroCard() {
 
   // Holding the composer is only ever right while this flow is in play:
   // the overlay is up (seeded synchronously from the handoff) or the flag
-  // already reads on. Holding on "LaunchDarkly has not answered" alone
+  // already reads on. Holding on "the flag has not answered" alone
   // hid the composer on every flag-off /copilot load until it did.
   const isGreetingExpected = isWelcomeOpen || Boolean(isBrainDumpEnabled);
   // `serverSaysDone` as well as `isDone`: the effect that caches the verdict
