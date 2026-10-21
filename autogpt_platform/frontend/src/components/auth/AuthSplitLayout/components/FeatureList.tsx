@@ -12,7 +12,7 @@ export function FeatureList({ itemsTitle, items }: Props) {
       {itemsTitle ? (
         <Text
           variant="small-medium"
-          className="uppercase tracking-[0.14em] !text-zinc-400"
+          className="uppercase tracking-[0.14em] !text-zinc-500"
         >
           {itemsTitle}
         </Text>
