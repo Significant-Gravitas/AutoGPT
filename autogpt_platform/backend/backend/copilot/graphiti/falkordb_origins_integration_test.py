@@ -36,7 +36,9 @@ async def test_walking_each_origin_once_returns_the_same_facts_in_order(
     origins = [alice, bob, alice, alice, bob, alice]
 
     once = await _walk(driver, scope.group_id, origins, limit)
-    mocker.patch.object(falkordb_driver, "distinct_origins", lambda params: params)
+    mocker.patch.object(
+        falkordb_driver, "distinct_origins", lambda cypher_query, params: params
+    )
     every_repeat = await _walk(driver, scope.group_id, origins, limit)
 
     assert once == every_repeat

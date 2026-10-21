@@ -9,12 +9,18 @@ from graphiti_core.search.search_config import (
     EdgeSearchMethod,
 )
 from graphiti_core.search.search_filters import SearchFilters
-from graphiti_core.search.search_utils import edge_bfs_search
+from graphiti_core.search.search_utils import edge_bfs_search, node_bfs_search
 
 from .falkordb_driver import AutoGPTFalkorDriver
 from .falkordb_origins import BFS_ORIGINS, distinct_origins
 
 _GROUP = ["user_test"]
+_DISTINCT_READ = (
+    "UNWIND $bfs_origin_node_uuids AS o MATCH (n {uuid: o}) RETURN DISTINCT n"
+)
+_EVERY_ROW_READ = (
+    "UNWIND $bfs_origin_node_uuids AS o MATCH (n {uuid: o}) RETURN n LIMIT 4"
+)
 _EDGE_COLUMNS = (
     "uuid",
     "source_node_uuid",
@@ -43,15 +49,26 @@ class _Result:
 def test_each_origin_is_kept_once_where_it_first_appears() -> None:
     params = {BFS_ORIGINS: ["hub", "a", "hub", "b", "a", "hub"], "limit": 40}
 
-    assert distinct_origins(params) == {BFS_ORIGINS: ["hub", "a", "b"], "limit": 40}
+    assert distinct_origins(_DISTINCT_READ, params) == {
+        BFS_ORIGINS: ["hub", "a", "b"],
+        "limit": 40,
+    }
     assert params[BFS_ORIGINS] == ["hub", "a", "hub", "b", "a", "hub"]
+
+
+def test_a_read_that_returns_every_row_keeps_its_repeats() -> None:
+    """Without ``DISTINCT`` the repeats are rows of their own, so fewer
+    origins would change which rows survive the read's ``LIMIT``."""
+    params = {BFS_ORIGINS: ["hub", "a", "hub"], "limit": 4}
+
+    assert distinct_origins(_EVERY_ROW_READ, params) == params
 
 
 @pytest.mark.parametrize(
     "params", [{}, {"limit": 10}, {BFS_ORIGINS: None}, {BFS_ORIGINS: []}]
 )
 def test_a_read_without_origins_is_left_alone(params: dict) -> None:
-    assert distinct_origins(params) == params
+    assert distinct_origins(_DISTINCT_READ, params) == params
 
 
 @pytest.mark.asyncio
@@ -65,6 +82,15 @@ async def test_a_bfs_read_reaches_falkordb_with_each_origin_once() -> None:
     params = ro_query.await_args.args[1]
     assert params[BFS_ORIGINS] == ["hub", "a"]
     assert params["limit"] == 40
+
+
+@pytest.mark.asyncio
+async def test_graphitis_entity_bfs_keeps_its_repeated_origins() -> None:
+    driver, ro_query = _driver(lambda query: _Result([], []))
+
+    await node_bfs_search(driver, ["hub", "a", "hub"], SearchFilters(), 3, _GROUP, 40)
+
+    assert ro_query.await_args.args[1][BFS_ORIGINS] == ["hub", "a", "hub"]
 
 
 @pytest.mark.asyncio

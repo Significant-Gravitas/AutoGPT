@@ -159,9 +159,9 @@ class AutoGPTFalkorDriver(FalkorDriver):
     6. graphiti's reads return every property of a fact or entity but its
        embedding, which graphiti would drop unread after the read had sent
        and parsed it (``falkordb_projection.py``).
-    7. A graphiti BFS read walks out from each of its origins once, where
-       graphiti hands its second stage the same origin once per fact found
-       (``falkordb_origins.py``).
+    7. A graphiti BFS read that returns distinct rows walks out from each of
+       its origins once, where graphiti hands its second stage the same
+       origin once per fact found (``falkordb_origins.py``).
     """
 
     def __init__(
@@ -271,7 +271,7 @@ class AutoGPTFalkorDriver(FalkorDriver):
         # runtime call upstream ``FalkorDriver.execute_query`` makes.
         params = cast(
             dict[str, object],
-            convert_datetimes_to_strings(distinct_origins(dict(kwargs))),
+            convert_datetimes_to_strings(distinct_origins(cypher_query_, dict(kwargs))),
         )
         attempts = max(1, graphiti_config.falkordb_query_max_attempts)
         read_only = _is_read_only_cypher(cypher_query_)
