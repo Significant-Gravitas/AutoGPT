@@ -117,10 +117,15 @@ async function answerFirstStep() {
   await screen.findByText("Which service should I be connected to?");
 }
 
-async function answerAllSteps() {
-  await answerFirstStep();
+// The last question moves on to the review, not to Send.
+async function answerLastStep() {
   fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
   await screen.findByText("Check your answers");
+}
+
+async function answerAllSteps() {
+  await answerFirstStep();
+  await answerLastStep();
 }
 
 function multiSelectPart() {
@@ -201,7 +206,7 @@ describe("ExpertOnboardingCard", () => {
 
     expect(actionButton("Review answers").disabled).toBe(true);
 
-    await answerAllSteps();
+    await answerLastStep();
 
     expect(onSend).not.toHaveBeenCalled();
     expect(
@@ -346,8 +351,15 @@ describe("ExpertOnboardingCard", () => {
 
     renderCard(onboardingPart());
 
-    expect(questionNumber()).toBe("Question 2 of 2");
-    expect(isChecked(/Linear/)).toBe("true");
+    // The last pick was saved as a move to the review, so that is where the
+    // reload lands, with both answers in place.
+    expect(screen.getByText("Check your answers")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Which outcome.*Social listening/ }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Which service.*Linear/ }),
+    ).toBeDefined();
   });
 
   it("starts a different card from the beginning", async () => {
