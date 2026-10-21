@@ -154,7 +154,7 @@ DEFAULT_TIER = SubscriptionTier.NO_TIER
 
 # Per-tier workspace storage caps in MB. NO_TIER keeps the same baseline as
 # BASIC so users who cancel retain a small quota and see a real overage cap,
-# while LaunchDarkly can still tune tiers without a deploy.
+# while PostHog can still tune tiers without a deploy.
 _DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 250,  # 250 MB
     SubscriptionTier.TRIAL: 250,
@@ -1424,9 +1424,9 @@ async def get_global_rate_limits(
     config_daily: int,
     config_weekly: int,
 ) -> tuple[int, int, SubscriptionTier]:
-    """Resolve global rate limits from LaunchDarkly, falling back to config.
+    """Resolve global rate limits from PostHog, falling back to config.
 
-    Values are microdollars. The base limits (from LD or config) are
+    Values are microdollars. The base limits (from the flag or config) are
     multiplied by the user's tier multiplier so that higher tiers receive
     proportionally larger allowances.
 

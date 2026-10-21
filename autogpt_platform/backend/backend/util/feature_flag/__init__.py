@@ -1,32 +1,22 @@
-import asyncio
-import contextlib
-import hashlib
-import json
 import logging
 import os
 import uuid
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, TypeVar
+from typing import Any, Awaitable, Callable, Mapping, TypeVar
 
-import ldclient
 import sentry_sdk.feature_flags
 from autogpt_libs.auth.dependencies import get_optional_user_id
 from fastapi import HTTPException, Security
-from ldclient import Context, LDClient
-from ldclient.config import Config
-from ldclient.evaluation import EvaluationDetail
-from ldclient.interfaces import DataSourceState
 from typing_extensions import ParamSpec
 
 from backend.util.cache import cached
-from backend.util.settings import AppEnvironment, FeatureFlagBackend, Settings
+from backend.util.settings import AppEnvironment, Settings
 
 from . import posthog
 
 logger = logging.getLogger(__name__)
-# Own logger so a dual-run diff week can be queried without trawling the rest.
-mismatch_logger = logging.getLogger(f"{__name__}.mismatch")
 
 # Load settings at module level
 settings = Settings()
@@ -36,18 +26,6 @@ T = TypeVar("T")
 
 # The one key every signed-out caller without a consented analytics id is read as.
 ANONYMOUS_USER = "anonymous"
-
-_is_initialized = False
-_init_attempted = False
-
-# Strong references to in-flight shadow evaluations; without them asyncio only
-# holds a weak one and the task can be collected mid-flight.
-_shadow_evaluations: set[asyncio.Task] = set()
-_shadow_evaluations_stopped = False
-MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
-# Flags PostHog could not answer while LaunchDarkly could, already reported
-# once: such a flag fails every read, so one record per flag keeps the signal.
-_unanswered_flags_reported: set[str] = set()
 
 
 # Flags that run a PostHog experiment. Only a read of one of these sends the
@@ -79,7 +57,7 @@ class Flag(str, Enum):
     COPILOT_UNIFIED_APPROVALS = "copilot-unified-approvals"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>
-    # context block).  Default-on — flip off in LaunchDarkly to disable
+    # context block).  Default-on — flip off in PostHog to disable
     # the feature without a redeploy.
     COPILOT_SKILLS = "copilot-skills"
     # Scheduled copilot turn followups (schedule_followup MCP tool +
@@ -115,13 +93,13 @@ class Flag(str, Enum):
 
     # --- Dream-system gates (P0) ---
     #
-    # No "enabled-users list" flag — LD's per-flag targeting natively
+    # No "enabled-users list" flag — per-flag targeting natively
     # cohorts the canary (internal team → 5 → 50 → 500 → 5k), and
     # ``is_feature_enabled(..., user_id, ...)`` evaluates each user.
     # The flags below are the master gate + its per-feature
     # gates. Helper functions live next to the code that consumes them
     # (added when each feature lands); these enum entries are
-    # scaffolding so the LD keys can be configured ahead of code.
+    # scaffolding so the flag keys can be configured ahead of code.
 
     # Master gate for the dream pass. When off, no dream-related code
     # paths fire for the user — no schedule registration, no batch
@@ -129,7 +107,7 @@ class Flag(str, Enum):
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
 
-    # Mirror of the frontend `hire-experts` flag (same LaunchDarkly key,
+    # Mirror of the frontend `hire-experts` flag (same flag key,
     # so both sides evaluate one cohort switch). Gates the experts
     # surface, including the scheduled morning-briefing job end-to-end:
     # schedule registration, generation, and delivery. Deliberately no
@@ -202,7 +180,7 @@ class Flag(str, Enum):
     # ``{"fast": {"standard": "...", "advanced": "..."},
     #   "thinking": {"standard": "...", "advanced": "..."}}``.
     # Missing mode, missing tier-within-mode, non-string value, non-dict
-    # payload, or LD failure all fall back to the corresponding
+    # payload, or a failed read all fall back to the corresponding
     # ``ChatConfig`` default.  Evaluated per user_id so cohorts can be
     # targeted.
     COPILOT_MODEL_ROUTING = "copilot-model-routing"
@@ -216,135 +194,35 @@ class Flag(str, Enum):
 
 
 def initialize_feature_flags() -> None:
-    """Start whichever vendor(s) the configured backend reads from."""
-    global _shadow_evaluations_stopped
-    _shadow_evaluations_stopped = False
-    _unanswered_flags_reported.clear()
-    backend = settings.config.feature_flag_backend
-    if backend is not FeatureFlagBackend.POSTHOG:
-        initialize_launchdarkly()
-    if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-        if posthog.is_configured() and not settings.secrets.posthog_secret_key:
-            logger.warning(
-                f"Feature flag backend is {backend.value} without "
-                "POSTHOG_SECRET_KEY: every flag read becomes a remote "
-                "/flags call instead of an in-process evaluation"
-            )
-        posthog.initialize_posthog_flags()
+    """Start the PostHog flag client and load its definitions."""
+    if posthog.is_configured() and not settings.secrets.posthog_secret_key:
+        logger.warning(
+            "Feature flags without POSTHOG_SECRET_KEY: every flag read becomes a "
+            "remote /flags call instead of an in-process evaluation"
+        )
+    posthog.initialize_posthog_flags()
 
 
 def shutdown_feature_flags() -> None:
     """Reverse of :func:`initialize_feature_flags`."""
-    _stop_shadow_evaluations()
-    backend = settings.config.feature_flag_backend
-    try:
-        if backend is not FeatureFlagBackend.POSTHOG:
-            shutdown_launchdarkly()
-    finally:
-        # `ldclient.close()` can raise; skipping PostHog teardown would leak its
-        # poller and latch `_init_attempted` against an in-process restart.
-        if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-            posthog.shutdown_posthog_flags()
+    posthog.shutdown_posthog_flags()
 
 
-def _stop_shadow_evaluations() -> None:
-    """Cancel in-flight shadow reads and refuse new ones until the next init.
+@dataclass(frozen=True)
+class _UserContext:
+    """Who a flag read is for, as the targeting rules see them.
 
-    A shadow read that resumed after teardown would call ``get_flag_client()``
-    again and, since shutdown clears the "did we try" gate so an in-process
-    restart works, build a fresh PostHog client with a poller thread nothing
-    closes. This is the same hazard ``shutdown_launchdarkly`` documents.
+    ``attributes`` holds the targeted facts (role, email, signup date and any
+    per-request ones such as the country); an anonymous context carries none.
     """
-    global _shadow_evaluations_stopped
-    _shadow_evaluations_stopped = True
-    for task in list(_shadow_evaluations):
-        # A service's cleanup can close the task's loop first, and cancelling
-        # a task on a closed loop raises.
-        if not task.get_loop().is_closed():
-            task.cancel()
-    _shadow_evaluations.clear()
+
+    key: str
+    anonymous: bool = True
+    attributes: Mapping[str, Any] = field(default_factory=dict)
 
 
-def serves_launchdarkly() -> bool:
-    """Whether LaunchDarkly answers flag reads under the configured backend."""
-    return settings.config.feature_flag_backend is not FeatureFlagBackend.POSTHOG
-
-
-def is_configured() -> bool:
-    """Check if LaunchDarkly is configured with an SDK key."""
-    return bool(settings.secrets.launch_darkly_sdk_key)
-
-
-def get_client() -> LDClient:
-    """Get the LaunchDarkly client singleton."""
-    # Gate on "did we try" rather than "did it work". Without a key
-    # `_is_initialized` never becomes True, so gating on it re-entered
-    # `initialize_launchdarkly` on every flag evaluation -- a warning and a
-    # raise per call on the unconfigured deployments this appliance ships as.
-    if not _init_attempted:
-        initialize_launchdarkly()
-    return ldclient.get()
-
-
-def initialize_launchdarkly() -> None:
-    global _init_attempted
-    _init_attempted = True
-
-    sdk_key = settings.secrets.launch_darkly_sdk_key
-    logger.debug(
-        f"Initializing LaunchDarkly with SDK key: {'present' if sdk_key else 'missing'}"
-    )
-
-    if not sdk_key:
-        logger.warning("LaunchDarkly SDK key not configured")
-        return
-
-    config = Config(sdk_key)
-    ldclient.set_config(config)
-
-    # Read the client before recording that one exists: if constructing it
-    # raised, `shutdown_launchdarkly` would otherwise build a fresh one purely
-    # to close it. Being unreachable is not a construction failure -- that
-    # returns an uninitialized client rather than raising -- so this only
-    # covers the abnormal case.
-    global _is_initialized
-    connected = ldclient.get().is_initialized()
-    _is_initialized = True
-    if connected:
-        logger.info("LaunchDarkly client initialized successfully")
-    else:
-        logger.error("LaunchDarkly client failed to initialize")
-
-
-def shutdown_launchdarkly() -> None:
-    """Shutdown the LaunchDarkly client."""
-    if not _is_initialized:
-        # `initialize_launchdarkly` returns early when no SDK key is configured,
-        # so `ldclient.set_config` was never called and `ldclient.get()` would
-        # raise "set_config was not called". `AppProcess.execute_run_command`
-        # pairs init/shutdown on app_env alone, so an unconfigured
-        # non-LOCAL deployment would otherwise raise out of service teardown and
-        # leave the process alive instead of exiting.
-        return
-
-    # Close whenever a client was constructed, not just when it connected, so
-    # buffered events are flushed and sockets are torn down in order. This is
-    # not about keeping the process alive: every SDK thread is a daemon, so
-    # they never blocked interpreter exit -- it was the escaping exception that
-    # did. Note `close()` flushes synchronously, so an unreachable
-    # LaunchDarkly can make it wait on the SDK's HTTP timeouts.
-    #
-    # `_is_initialized` is deliberately left set: `get_client` reads a false
-    # value as "never started", and clearing it here would let a flag
-    # evaluation arriving during shutdown -- an in-flight request served through
-    # FastAPI's lifespan teardown -- rebuild the client we just closed.
-    ldclient.get().close()
-    logger.info("LaunchDarkly client closed successfully")
-
-
-async def _fetch_user_context_data(user_id: str) -> Context:
-    """
-    Fetch user context for LaunchDarkly from the auth user table.
+async def _fetch_user_context_status(user_id: str) -> tuple[_UserContext, bool]:
+    """``(context, resolved)`` for the user a flag is read for.
 
     Successful lookups are cached for 24h (see ``_fetch_user_context``).
     Failed lookups are NOT cached: the degraded anonymous fallback is built
@@ -353,19 +231,6 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     would make its email/role-targeted flag evaluations silently diverge
     from peer processes.  The degraded path costs one failed lookup per
     evaluation; bounded, and acceptable versus a 24h-poisoned cache.
-
-    Args:
-        user_id: The user ID to fetch data for
-
-    Returns:
-        LaunchDarkly Context object
-    """
-    context, _ = await _fetch_user_context_status(user_id)
-    return context
-
-
-async def _fetch_user_context_status(user_id: str) -> tuple[Context, bool]:
-    """``(context, resolved)`` — see :func:`_fetch_user_context_data`.
 
     ``resolved`` is False only when the lookup FAILED and the anonymous
     context is standing in for real user data. A non-UUID key such as
@@ -392,29 +257,28 @@ async def _fetch_user_context_status(user_id: str) -> tuple[Context, bool]:
         return _anonymous_context(user_id), False
 
 
-def _with_request_attributes(context: Context, attributes: dict[str, str]) -> Context:
+def _with_request_attributes(
+    context: _UserContext, attributes: dict[str, str]
+) -> _UserContext:
     """*context* plus facts known only for this request, such as the country.
 
     The user context is cached for a day, so anything that can change between
     requests has to be layered on per evaluation rather than baked into it.
-    A copy is returned; the cached context is never modified. ``key`` and
-    ``kind`` are identity and cannot be overridden this way.
+    A copy is returned; the cached context is never modified. An anonymous
+    context still sends none of them (see ``_context_properties``).
     """
-    merged = {**context.to_dict(), **attributes}
-    merged.update(key=context.key, kind=context.kind)
-    return Context.from_dict(merged)
+    return replace(context, attributes={**context.attributes, **attributes})
 
 
-def _anonymous_context(user_id: str) -> Context:
-    """Build a minimal anonymous LD context carrying only the user key."""
-    return Context.builder(user_id).kind("user").anonymous(True).build()
+def _anonymous_context(user_id: str) -> _UserContext:
+    """A minimal anonymous context carrying only the user key."""
+    return _UserContext(key=user_id)
 
 
 @cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
-async def _fetch_user_context(user_id: str) -> Context:
+async def _fetch_user_context(user_id: str) -> _UserContext:
     """
-    Build the full LaunchDarkly context for ``user_id`` from the auth user
-    table.
+    Build the full flag context for ``user_id`` from the auth user table.
 
     Raises on lookup failure: ``@cached`` never stores results of calls
     that raise, so a degraded context can't be cached here — the caller
@@ -434,22 +298,19 @@ async def _fetch_user_context(user_id: str) -> Context:
         # back to an uncached anonymous context.
         raise LookupError(f"No auth user row for {user_id}")
 
-    builder = Context.builder(user_id).kind("user").anonymous(False)
     # Keep the same role values previously issued in JWTs so existing
-    # LaunchDarkly targeting rules keep matching.
-    role = "admin" if fields.role == "admin" else "authenticated"
-    builder.set("role", role)
-    # It's weird, I know, but it is what it is.
-    builder.set("custom", {"role": role})
+    # targeting rules keep matching.
+    attributes: dict[str, Any] = {
+        "role": "admin" if fields.role == "admin" else "authenticated"
+    }
     if fields.email:
-        builder.set("email", fields.email)
-        builder.set("email_domain", fields.email.split("@")[-1])
+        attributes["email"] = fields.email
+        attributes["email_domain"] = fields.email.split("@")[-1]
     if fields.created_at:
-        # ISO-8601 string — LD supports RFC3339 date targeting on
-        # this attribute (e.g. cohort users by signup window).
-        builder.set("created_at", fields.created_at.isoformat())
+        # ISO-8601 string, so rules can cohort users by signup window.
+        attributes["created_at"] = fields.created_at.isoformat()
 
-    return builder.build()
+    return _UserContext(key=user_id, anonymous=False, attributes=attributes)
 
 
 async def get_feature_flag_value(
@@ -468,10 +329,12 @@ async def get_feature_flag_value(
     Args:
         flag_key: The feature flag key
         user_id: The user ID to evaluate the flag for
-        default: Default value if the vendor is unavailable or evaluation fails
+        default: Default value if PostHog is unavailable or evaluation fails
+        attributes: Facts known only for this request, such as ``country``,
+            sent with the user's person properties for this read only
 
     Returns:
-        The flag value from the configured backend
+        The flag value from PostHog
     """
     value, _ = await _evaluate_flag_value(
         flag_key, user_id, default, attributes=attributes
@@ -480,18 +343,14 @@ async def get_feature_flag_value(
 
 
 def evaluate_flags_in_memory(flag_keys: list[str], key: str) -> dict[str, Any]:
-    """Each of *flag_keys* the vendor answers in memory for the anonymous *key*.
+    """Each of *flag_keys* PostHog answers in memory for the anonymous *key*.
 
     No network, no analytics event and no executor, so a caller may pick *key*:
     a new one costs only the hashing. A flag that needs more is left out.
     """
-    context = _anonymous_context(key)
-    if settings.config.feature_flag_backend is FeatureFlagBackend.POSTHOG:
-        values = posthog.evaluate_flags_in_memory(
-            flag_keys, key, _person_properties(context)
-        )
-    else:
-        values = _launchdarkly_flags_in_memory(context)
+    values = posthog.evaluate_flags_in_memory(
+        flag_keys, key, _person_properties(_anonymous_context(key))
+    )
     return {
         flag_key: values[flag_key]
         for flag_key in flag_keys
@@ -500,13 +359,11 @@ def evaluate_flags_in_memory(flag_keys: list[str], key: str) -> dict[str, Any]:
 
 
 def defined_flag_keys() -> frozenset[str] | None:
-    """Every flag the serving vendor has a definition of, or None if it cannot tell yet.
+    """Every flag PostHog has a definition of, or None if it cannot tell yet.
 
     A key outside the set will never be answered, so a reader can stop waiting on it.
     """
-    if settings.config.feature_flag_backend is FeatureFlagBackend.POSTHOG:
-        return posthog.defined_flag_keys()
-    return _launchdarkly_flag_keys()
+    return posthog.defined_flag_keys()
 
 
 async def _evaluate_flag_value(
@@ -516,40 +373,36 @@ async def _evaluate_flag_value(
     *,
     attributes: dict[str, str] | None = None,
 ) -> tuple[Any, bool]:
-    """``(value, evaluated)`` for one raw flag read, from the configured vendor.
+    """``(value, evaluated)`` for one raw flag read.
 
-    ``evaluated`` is False whenever *default* is standing in for an answer the
-    vendor could not give.
+    ``evaluated`` is False whenever *default* is standing in for an answer
+    PostHog could not give. A degraded context lookup makes the answer
+    unauthoritative too: the flag evaluates fine, it just answers for a user
+    without the targeted attributes. Only a read of an experiment flag sends
+    PostHog its exposure event.
     """
-    backend = settings.config.feature_flag_backend
-    if backend is FeatureFlagBackend.POSTHOG and posthog.get_flag_client() is None:
-        # As on LaunchDarkly: no client means the default, without a user lookup.
+    if posthog.get_flag_client() is None:
+        # No client means the default, without a user lookup.
         result = (default, False)
     else:
-        context = None
+        context, resolved = await _fetch_user_context_status(user_id)
         if attributes:
-            # Layered once, so every vendor evaluates the same per-request facts.
-            user_context, resolved = await _fetch_user_context_status(user_id)
-            context = (_with_request_attributes(user_context, attributes), resolved)
-        if backend is FeatureFlagBackend.POSTHOG:
-            result = await _evaluate_posthog(
-                flag_key,
-                user_id,
-                default,
-                context,
-                exposure=flag_key in EXPERIMENT_FLAGS,
-            )
-        elif backend is FeatureFlagBackend.DUAL:
-            result = await _evaluate_dual(flag_key, user_id, default, context)
-        else:
-            result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
+            context = _with_request_attributes(context, attributes)
+        value, evaluated = await posthog.evaluate_flag(
+            flag_key,
+            user_id,
+            _person_properties(context),
+            default,
+            exposure=flag_key in EXPERIMENT_FLAGS,
+        )
+        result = (value, evaluated and resolved)
     _record_flag_for_sentry(flag_key, *result)
     return result
 
 
 def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
     """Put a served flag on Sentry's scope so errors show which flags were on,
-    and which of them were a stand-in rather than the vendor's answer."""
+    and which of them were a stand-in rather than PostHog's answer."""
     try:
         # Sentry's flag context holds booleans only; JSON and string flags are skipped.
         if not isinstance(value, bool):
@@ -567,194 +420,11 @@ def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
         logger.debug(f"Could not record flag {flag_key} for Sentry", exc_info=True)
 
 
-async def _evaluate_dual(
-    flag_key: str,
-    user_id: str,
-    default: Any = None,
-    context: tuple[Context, bool] | None = None,
-) -> tuple[Any, bool]:
-    """Evaluate both vendors, serve LaunchDarkly's answer, log disagreements.
-
-    Serving LaunchDarkly is what makes the diff week free of user-visible
-    risk: PostHog's answer is only ever observed, never acted on.
-    """
-    # One lookup for both vendors: the failure path is deliberately uncached,
-    # so evaluating them independently would double its database reads.
-    context = context or await _fetch_user_context_status(user_id)
-    ld_result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
-    _probe_posthog(flag_key, user_id, default, context, ld_result)
-    return ld_result
+# The person properties a read may send; anything else a caller layers on is dropped.
+_PERSON_PROPERTY_KEYS = ("role", "email", "email_domain", "created_at", "country")
 
 
-def _probe_posthog(
-    flag_key: str,
-    user_id: str,
-    default: Any,
-    context: tuple[Context, bool],
-    ld_result: tuple[Any, bool],
-) -> None:
-    """Compare PostHog's answer to LaunchDarkly's without making a caller wait.
-
-    The shadow answer is never served, so awaiting it would only add PostHog's
-    latency to the request path — up to a 3s remote ``/flags`` call wherever
-    ``POSTHOG_SECRET_KEY`` is unset and local evaluation is off.
-    """
-    if _shadow_evaluations_stopped:
-        return
-
-    if len(_shadow_evaluations) >= MAX_CONCURRENT_SHADOW_EVALUATIONS:
-        # A slow PostHog must cost the diff week its samples, not the process
-        # its memory.
-        logger.debug(f"Shadow evaluation backlog full, skipping {flag_key}")
-        return
-
-    task = asyncio.create_task(
-        _record_mismatch(flag_key, user_id, default, context, ld_result)
-    )
-    _shadow_evaluations.add(task)
-    task.add_done_callback(_shadow_evaluations.discard)
-
-
-async def _record_mismatch(
-    flag_key: str,
-    user_id: str,
-    default: Any,
-    context: tuple[Context, bool],
-    ld_result: tuple[Any, bool],
-) -> None:
-    try:
-        ph_result = await _evaluate_posthog(flag_key, user_id, default, context)
-    except Exception as e:
-        logger.warning(f"PostHog shadow evaluation raised for {flag_key}: {e}")
-        return
-
-    ld_value, ld_evaluated = ld_result
-    ph_value, ph_evaluated = ph_result
-    # A mismatch is a read whose served value would change at the switch, or
-    # one PostHog cannot answer where LaunchDarkly can.
-    if ph_value == ld_value and (ph_evaluated or not ld_evaluated):
-        return
-    if not ph_evaluated:
-        if flag_key in _unanswered_flags_reported:
-            return
-        _unanswered_flags_reported.add(flag_key)
-    mismatch_logger.warning(
-        "feature-flag mismatch: "
-        + json.dumps(
-            {
-                "flag": flag_key,
-                "user": _user_digest(user_id),
-                "launchdarkly": {"value": ld_value, "evaluated": ld_evaluated},
-                "posthog": {"value": ph_value, "evaluated": ph_evaluated},
-            },
-            default=repr,
-            sort_keys=True,
-        )
-    )
-
-
-async def _evaluate_posthog(
-    flag_key: str,
-    user_id: str,
-    default: Any = None,
-    context: tuple[Context, bool] | None = None,
-    *,
-    exposure: bool = False,
-) -> tuple[Any, bool]:
-    """``(value, evaluated)`` from PostHog for one raw flag read.
-
-    A degraded context lookup makes the answer unauthoritative for the same
-    reason it does on LaunchDarkly: the flag evaluates fine, it just answers
-    for a user without the targeted attributes. Only a served *exposure*
-    sends the experiment's event; dual mode's shadow read never does.
-    """
-    user_context, context_resolved = context or await _fetch_user_context_status(
-        user_id
-    )
-    value, evaluated = await posthog.evaluate_flag(
-        flag_key,
-        user_id,
-        _person_properties(user_context),
-        default,
-        exposure=exposure,
-    )
-    return value, evaluated and context_resolved
-
-
-async def _evaluate_launchdarkly(
-    flag_key: str,
-    user_id: str,
-    default: Any = None,
-    context: tuple[Context, bool] | None = None,
-) -> tuple[Any, bool]:
-    """``(value, evaluated)`` from LaunchDarkly for one raw flag read.
-
-    ``evaluated`` is False whenever *default* is standing in for an answer
-    LaunchDarkly could not give — no client, an uninitialised one, a failed
-    user-context lookup, a flag LaunchDarkly does not have (or has switched
-    off with no off variation), or an evaluation that raised. An initialised
-    client is not on its own enough: the context lookup is a database read,
-    so a live client can still fail to produce a value.
-    """
-    try:
-        client = get_client()
-
-        # Check if client is initialized
-        if not client.is_initialized():
-            logger.debug(
-                f"LaunchDarkly not initialized, using default={default} for {flag_key}"
-            )
-            return default, False
-
-        # Get user context (role/email) from the Better Auth user table
-        user_context, context_resolved = context or await _fetch_user_context_status(
-            user_id
-        )
-
-        detail = client.variation_detail(flag_key, user_context, default)
-
-        logger.debug(
-            "Feature flag %s for user %s: %r (%s)",
-            flag_key,
-            user_id,
-            detail.value,
-            detail.reason,
-        )
-        # A degraded context evaluates fine, it just answers for an anonymous
-        # user rather than this one — so the value is a guess, not an answer.
-        return detail.value, context_resolved and not detail.is_default_value()
-
-    except Exception as e:
-        logger.warning(
-            f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
-        )
-        return default, False
-
-
-def _launchdarkly_flags_in_memory(context: Context) -> dict[str, Any]:
-    # all_flags_state, unlike variation, sends LaunchDarkly no event per context.
-    if not is_configured():
-        return {}
-    try:
-        state = get_client().all_flags_state(context)
-    except Exception as e:
-        logger.warning(f"LaunchDarkly in-memory flag evaluation failed: {e}")
-        return {}
-    return state.to_values_map() if state.valid else {}
-
-
-def _launchdarkly_flag_keys() -> frozenset[str] | None:
-    if not is_configured():
-        return None
-    try:
-        state = get_client().all_flags_state(_anonymous_context(ANONYMOUS_USER))
-    except Exception as e:
-        logger.warning(f"Listing LaunchDarkly flags failed: {e}")
-        return None
-    return frozenset(state.to_values_map()) if state.valid else None
-
-
-def _person_properties(context: Context) -> dict[str, Any]:
+def _person_properties(context: _UserContext) -> dict[str, Any]:
     """PostHog person properties for one read: the user's, plus ``environment``.
 
     ``environment`` rides on every read, anonymous ones included, so a release
@@ -767,29 +437,23 @@ def _person_properties(context: Context) -> dict[str, Any]:
     }
 
 
-def _context_properties(context: Context) -> dict[str, Any]:
-    """PostHog person properties from the shared user context.
+def _context_properties(context: _UserContext) -> dict[str, Any]:
+    """PostHog person properties from the user context.
 
-    Reads the LaunchDarkly context rather than the auth row so both vendors
-    see one cached lookup and cannot drift; ``custom.role`` is dropped
-    because PostHog targets flat properties. ``email`` is sent because the
-    ported email rules and the ``ld:employee`` cohort match on it, and a rule
-    on a property the read omits cannot be evaluated in-process.
-    ``is_anonymous`` is true only for the shared ``ANONYMOUS_USER`` key, so a
-    rollout can leave out the visitors nobody can measure.
+    ``email`` is sent because the email rules and the ``ld:employee`` cohort
+    match on it, and a rule on a property the read omits cannot be evaluated
+    in-process. These ride on the read only and are never stored on the
+    person profile. ``is_anonymous`` is true only for the shared
+    ``ANONYMOUS_USER`` key, so a rollout can leave out the visitors nobody
+    can measure.
     """
     if context.anonymous:
         return {"is_anonymous": context.key == ANONYMOUS_USER}
     return {
-        attribute: context.get(attribute)
-        for attribute in ("role", "email", "email_domain", "created_at", "country")
-        if context.get(attribute) is not None
+        attribute: context.attributes[attribute]
+        for attribute in _PERSON_PROPERTY_KEYS
+        if context.attributes.get(attribute) is not None
     } | {"is_anonymous": False}
-
-
-def _user_digest(user_id: str) -> str:
-    """Short stable hash — a mismatch record must be joinable, not identifying."""
-    return hashlib.sha256(user_id.encode()).hexdigest()[:12]
 
 
 _TRUTHY = ("1", "true", "yes", "on")
@@ -824,7 +488,7 @@ def _force_all_flags_enabled() -> bool:
     frontend reads, so one shared var flips both sides) to force every boolean
     flag on without listing them. A per-flag ``FORCE_FLAG_<NAME>`` still wins,
     so a single flag can be excluded with ``=false`` while the rest stay on.
-    Defaults off. Intended for local dev, where LaunchDarkly is unconfigured
+    Defaults off. Intended for local dev, where PostHog is unconfigured
     and every flag is otherwise off.
 
     Ignored (with an error log) unless ``app_env`` is local: one env var must
@@ -865,9 +529,9 @@ def _env_flag_override(flag_key: Flag | str) -> bool | None:
     """Return a local override for ``flag_key`` from the environment.
 
     Set ``FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value with
-    ``-`` → ``_``, upper-cased) to bypass the flag vendor for a single
+    ``-`` → ``_``, upper-cased) to bypass PostHog for a single
     flag in local dev or tests.  Returns ``None`` when no override is
-    configured so the caller falls through to the configured backend.
+    configured so the caller falls through to PostHog.
 
     The ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` prefix is also accepted so a
     single shared env var can toggle a flag across backend and
@@ -876,10 +540,10 @@ def _env_flag_override(flag_key: Flag | str) -> bool | None:
 
     When no per-flag override is set, the ``FORCE_ALL_FLAGS`` master switch
     (see :func:`_force_all_flags_enabled`) forces every boolean flag on;
-    non-boolean flags are left to the configured backend.
+    non-boolean flags are left to PostHog.
 
     Example: ``FORCE_FLAG_CHAT_MODE_OPTION=true`` forces
-    ``Flag.CHAT_MODE_OPTION`` on regardless of the vendor's answer.
+    ``Flag.CHAT_MODE_OPTION`` on regardless of PostHog's answer.
 
     Accepts a raw flag key string as well as a :class:`Flag`, so the
     ``feature_flag`` decorator (which holds a raw key) shares this path.
@@ -906,7 +570,7 @@ async def is_feature_enabled(
     Args:
         flag_key: The Flag enum value
         user_id: The user ID to evaluate the flag for
-        default: Default value if the vendor is unavailable or evaluation fails
+        default: Default value if PostHog is unavailable or evaluation fails
 
     Returns:
         True if feature is enabled, False otherwise
@@ -950,7 +614,7 @@ async def _evaluate_boolean_flag(
     # Log a warning if the flag is not returning a boolean
     logger.warning(
         f"Feature flag {flag_key} returned non-boolean value: {result} (type: {type(result).__name__}). "
-        f"This flag should be configured as a boolean in LaunchDarkly. Using default={default}"
+        f"This flag should be configured as a boolean in PostHog. Using default={default}"
     )
 
     # A misconfigured flag is not an answer either: fall back to the default,
@@ -983,9 +647,9 @@ def feature_flag(
                     raise ValueError("user_id is required")
 
                 # A local env override (per-flag FORCE_FLAG_*, or the
-                # FORCE_ALL_FLAGS master switch) wins over whichever vendor is
-                # configured, and applies even when it cannot answer — the
-                # normal local-dev state, where this would otherwise 404.
+                # FORCE_ALL_FLAGS master switch) wins over PostHog, and applies
+                # even when PostHog cannot answer — the normal local-dev
+                # state, where this would otherwise 404.
                 override = _env_flag_override(flag_key)
                 if override is not None:
                     logger.debug(
@@ -1071,8 +735,8 @@ def create_feature_flag_dependency(
         check_user_id = user_id or ANONYMOUS_USER
 
         # A local env override (per-flag FORCE_FLAG_*, or the FORCE_ALL_FLAGS
-        # master switch) wins over whichever vendor is configured, and applies
-        # even when none is — the normal local-dev state, where this dependency
+        # master switch) wins over PostHog, and applies even when PostHog is
+        # not configured — the normal local-dev state, where this dependency
         # would otherwise 404.
         override = _env_flag_override(flag_key)
         if override is not None:
@@ -1120,39 +784,18 @@ def create_feature_flag_dependency(
 
 
 def _flag_backend_configured() -> bool:
-    """Whether the configured backend has the credentials a read needs."""
-    # Dual serves LaunchDarkly's answer, so LaunchDarkly is what gates a route.
-    if serves_launchdarkly():
-        return is_configured()
+    """Whether PostHog has the credentials a read needs."""
     return posthog.is_configured()
 
 
 def _flag_backend_gave_up() -> bool:
-    """Whether the serving vendor has stopped trying to start, as on a rejected key."""
-    if serves_launchdarkly():
-        status = get_client().data_source_status_provider.status
-        return status.state is DataSourceState.OFF
+    """Whether the flag client has stopped trying to start, as on a rejected key.
+
+    PostHog keeps retrying, so it never gives up for good.
+    """
     return False
 
 
 def _flag_backend_initialized() -> bool:
-    """Whether the configured backend can answer right now."""
-    if serves_launchdarkly():
-        return get_client().is_initialized()
+    """Whether PostHog can answer right now."""
     return posthog.get_flag_client() is not None
-
-
-@contextlib.contextmanager
-def mock_flag_variation(flag_key: str, return_value: Any):
-    """Context manager for testing feature flags."""
-    client = get_client()
-    original = client.variation_detail
-    client.variation_detail = lambda key, context, default: (
-        EvaluationDetail(return_value, 0, {"kind": "FALLTHROUGH"})
-        if key == flag_key
-        else original(key, context, default)
-    )
-    try:
-        yield
-    finally:
-        client.variation_detail = original

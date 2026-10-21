@@ -23,7 +23,7 @@ async def resolve_use_sdk(
     """Pick the SDK vs baseline engine.
 
     Entirely the server's call: the Claude Code subscription override, then
-    the ``COPILOT_SDK`` LaunchDarkly flag, then the config default. Callers
+    the ``COPILOT_SDK`` feature flag, then the config default. Callers
     used to be able to name an engine per request; nothing can now, so this
     is one decision rather than a request overriding it — which is also what
     makes it answerable ahead of a turn.

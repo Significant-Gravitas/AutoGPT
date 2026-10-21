@@ -436,7 +436,7 @@ async def test_cron_schedules_recurring(tool, session):
 
 
 # ---------------------------------------------------------------------------
-# COPILOT_SCHEDULED_FOLLOWUPS LaunchDarkly kill-switch
+# COPILOT_SCHEDULED_FOLLOWUPS PostHog kill-switch
 # ---------------------------------------------------------------------------
 
 

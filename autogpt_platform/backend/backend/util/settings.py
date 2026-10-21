@@ -61,20 +61,6 @@ class BehaveAs(str, Enum):
     CLOUD = "cloud"
 
 
-class FeatureFlagBackend(str, Enum):
-    """Which vendor answers a feature flag read.
-
-    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
-    disagreement is measurable before the switch. The backend always serves
-    LaunchDarkly in this mode; the frontend falls back to PostHog where
-    LaunchDarkly is not configured, because there its answer never arrives.
-    """
-
-    LAUNCHDARKLY = "launchdarkly"
-    POSTHOG = "posthog"
-    DUAL = "dual"
-
-
 class FlagDefinitionCacheBackend(str, Enum):
     """Where PostHog flag definitions are shared between processes.
 
@@ -953,38 +939,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the app environment: local or dev or prod",
     )
 
-    feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.POSTHOG,
-        description="Which vendor answers feature flag reads: posthog "
-        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
-        "log every disagreement).",
-    )
-
-    @field_validator("feature_flag_backend", mode="before")
-    @classmethod
-    def _default_unknown_flag_backend(cls, v):
-        """A typo here must not stop the process from booting.
-
-        Settings is built at import of every module that reads a flag, so a
-        rejected value is a boot crash rather than a misconfigured flag read.
-        """
-        if not isinstance(v, str):
-            return v
-        try:
-            return FeatureFlagBackend(v.strip().lower())
-        except ValueError:
-            logger.warning(
-                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
-            )
-            return FeatureFlagBackend.POSTHOG
-
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
         description="Where PostHog flag definitions are shared: redis "
         "(default; one elected refresher, every other process reads its copy), "
-        "memory (process-local), or none (every process polls PostHog itself). "
-        "Only read when PostHog answers flag reads.",
+        "memory (process-local), or none (every process polls PostHog itself).",
     )
 
     @field_validator("posthog_flag_definition_cache", mode="before")
@@ -1424,12 +1383,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     # AutoMod API credentials
     automod_api_key: str = Field(default="", description="AutoMod API key")
-
-    # LaunchDarkly feature flags
-    launch_darkly_sdk_key: str = Field(
-        default="",
-        description="The LaunchDarkly SDK key for feature flag management",
-    )
 
     agentmail_api_key: str = Field(default="", description="AgentMail API Key")
 

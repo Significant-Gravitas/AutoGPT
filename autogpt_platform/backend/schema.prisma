@@ -244,16 +244,16 @@ model ExperimentAssignment {
 
 // Where a user came from, captured once around signup. Holds the identities
 // the analytics tools know the user by before they had a user id, so the
-// database can join marketing attribution (DataFast), product analytics
-// (PostHog) and feature-flag bucketing (LaunchDarkly, via the shared
-// anonymous id) to activation and revenue. Fields are filled at most once.
+// database can join marketing attribution (DataFast) and product analytics
+// and feature-flag bucketing (PostHog) to activation and revenue. Fields are
+// filled at most once.
 model UserAttribution {
   userId    String   @id
   User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  // First-party anonymous id shared with PostHog and LaunchDarkly pre-login.
+  // First-party anonymous id shared with PostHog pre-login.
   anonymousId       String?
   // PostHog $device_id at the time of reporting, when it differs.
   posthogDistinctId String?

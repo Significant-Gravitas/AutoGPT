@@ -11,7 +11,7 @@ app.include_router(skill_routes.router, prefix="/api/store/skills")
 client = fastapi.testclient.TestClient(app)
 
 # ``require_skills_hub_flag`` runs the real ``is_feature_enabled``, which
-# consults this env override before LaunchDarkly — so the gate is driven here
+# consults this env override before PostHog — so the gate is driven here
 # exactly the way it is driven locally, with no mock in the path.
 FLAG_ENV_VAR = "FORCE_FLAG_SKILLS_HUB"
 

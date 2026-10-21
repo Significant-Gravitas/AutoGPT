@@ -1,6 +1,6 @@
 """Global seat cap for concurrent introductory trials.
 
-LaunchDarkly can hold the *number*, but not enforce it: a cap on how many
+A feature flag can hold the *number*, but not enforce it: a cap on how many
 people are on trial at once is a count over our own rows, so the count and
 the reservation have to happen together, here.
 

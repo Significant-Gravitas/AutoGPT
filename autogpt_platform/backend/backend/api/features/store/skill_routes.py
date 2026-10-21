@@ -11,7 +11,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import skill_db, skill_model, skill_submission_db
 
-# Browse is anonymous, and LaunchDarkly needs a context key: a non-UUID key is
+# Browse is anonymous, and a flag read needs a key: a non-UUID key is
 # evaluated as an anonymous context, which with the flag off answers False.
 _ANONYMOUS_FLAG_KEY = "anonymous"
 
@@ -26,7 +26,7 @@ async def require_skills_hub_flag(
     """Gate every skills route on the skills-hub flag, fail-closed.
 
     Deliberately not ``create_feature_flag_dependency``: that helper 404s
-    whenever LaunchDarkly has no SDK key, before consulting the
+    whenever PostHog is not configured, before consulting the
     ``FORCE_FLAG_SKILLS_HUB`` override every local environment relies on.
     """
     if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or _ANONYMOUS_FLAG_KEY):

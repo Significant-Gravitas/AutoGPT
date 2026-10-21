@@ -16,7 +16,7 @@ timezone and only rewrites the job when it actually differs — re-adding an
 existing cron would reset a pending ``next_run_time`` and drop that day's
 briefing.
 
-**Hot-path cost.** This helper runs on every chat turn. The LaunchDarkly
+**Hot-path cost.** This helper runs on every chat turn. The PostHog
 gate runs first (in-process cached), then the Redis marker short-circuits
 the rest. Only the first call after the marker expires pays for the
 timezone lookup (a DB read) and the scheduler RPC.
