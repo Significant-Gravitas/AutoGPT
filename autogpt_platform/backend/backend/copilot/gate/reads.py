@@ -236,9 +236,13 @@ async def screen_read(
         mode = await active_mode(user_id, session)
         if mode is None or mode == "unsupervised":
             return None
+        parts = None
         if outside is not None:
             # AutoGPT writes no images, so a declaration narrows only the text.
-            text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
+            parts = await asyncio.to_thread(
+                outside_parts, outside, full, text, tool_name
+            )
+            text = "\n".join(parts)
         # Bytes nobody can read are not instructions until something decodes
         # them, and that later read is judged.
         if not text.strip() and not images:
@@ -269,7 +273,9 @@ async def screen_read(
             output,
             success,
             judged=verdict.judged,
-            excerpt=_excerpt(verdict.excerpt or text) if unquoted else "",
+            excerpt=(
+                _excerpt(readable(verdict.excerpt or text, parts)) if unquoted else ""
+            ),
         )
     except Exception:
         logger.warning(f"Held-read screen failed for {tool_name}", exc_info=True)
@@ -340,20 +346,37 @@ def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
     return f"{output}\n\n{decoded}", ()
 
 
-def outside_view(
+def outside_parts(
     outside: tuple[Any, ...], full: str, text: str, tool_name: str = ""
-) -> str:
+) -> dict[str, bool]:
     """What of the declared parts the model reads in ``text``, each as the caps
-    left it; ``text`` whole when a part is not in ``full``, so a mark that
-    misses the bytes it names fails closed."""
-    pieces: dict[str, None] = {}
+    left it and True where it reads it JSON-escaped; ``text`` whole when a part
+    is not in ``full``, so a mark that misses the bytes it names fails closed."""
+    pieces: dict[str, bool] = {}
     budget = [_MAX_OUTSIDE_VALUES]
     if not all(_locate(part, full, text, pieces, budget) for part in outside):
         logger.warning(
             f"Declared outside parts of {tool_name} not located; judged whole"
         )
-        return text
-    return "\n".join(pieces)
+        return {text: False}
+    return pieces
+
+
+def readable(chunk: str, parts: dict[str, bool] | None) -> str:
+    """``chunk``, a slice of the judged parts, as a person reads it: the escapes
+    in a part the model read JSON-escaped are decoded."""
+    if not parts or not any(parts.values()):
+        return chunk
+    start = "\n".join(parts).find(chunk)
+    if start < 0:
+        return chunk
+    end, offset, shown = start + len(chunk), 0, []
+    for part, escaped in parts.items():
+        low, high = max(start - offset, 0), min(end - offset, len(part))
+        if low < high:
+            shown.append(_unescaped(part[low:high]) if escaped else part[low:high])
+        offset += len(part) + 1
+    return "\n".join(shown)
 
 
 # Past this many values a declaration is judged whole: locating each is a scan
@@ -367,7 +390,7 @@ _OPAQUE = (int, float, bool, type(None), datetime, date, time, UUID, Decimal)
 
 
 def _locate(
-    value: Any, full: str, view: str, pieces: dict[str, None], budget: list[int]
+    value: Any, full: str, view: str, pieces: dict[str, bool], budget: list[int]
 ) -> bool:
     """Add what of ``value`` shows in ``view``; False when it is not in ``full``."""
     budget[0] -= 1
@@ -392,12 +415,12 @@ def _locate(
         return False
     for dumped in _dumps(value):
         if dumped in view:
-            pieces[dumped] = None
+            pieces[dumped] = False
             return True
     return all(_locate(child, full, view, pieces, budget) for child in children)
 
 
-def _locate_text(value: str, full: str, view: str, pieces: dict[str, None]) -> bool:
+def _locate_text(value: str, full: str, view: str, pieces: dict[str, bool]) -> bool:
     if not value.strip():
         return True
     encodings = list(dict.fromkeys(_encodings(value)))
@@ -405,10 +428,13 @@ def _locate_text(value: str, full: str, view: str, pieces: dict[str, None]) -> b
         return False
     for encoded in encodings:
         if encoded in view:
-            pieces[encoded] = None
+            pieces[encoded] = encoded != value
             return True
-    kept = max((_fragments(encoded, view) for encoded in encodings), key=_coverage)
-    pieces.update(dict.fromkeys(kept))
+    escaped, kept = max(
+        ((encoded != value, _fragments(encoded, view)) for encoded in encodings),
+        key=lambda found: _coverage(found[1]),
+    )
+    pieces.update(dict.fromkeys(kept, escaped))
     return True
 
 
@@ -579,6 +605,28 @@ def held_reason(passage: str, judged: bool) -> str:
 
 def _excerpt(text: str) -> str:
     return text if len(text) <= _EXCERPT_CHARS else f"{text[:_EXCERPT_CHARS]}…"
+
+
+_JSON_ESCAPE = re.compile(r'\\(u[0-9a-fA-F]{4}|["\\/bfnrt])')
+_ESCAPED = {
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "b": "\b",
+    "f": "\f",
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+}
+
+
+def _unescaped(text: str) -> str:
+    """JSON string escapes decoded; one a slice cut short is left as it stands."""
+    decoded = _JSON_ESCAPE.sub(
+        lambda m: chr(int(m[1][1:], 16)) if len(m[1]) == 5 else _ESCAPED[m[1]], text
+    )
+    # Pairs an ASCII-escaped emoji, and replaces a surrogate a cut left alone.
+    return decoded.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
 
 
 async def _actor(user_id: str, session: ChatSession) -> str:

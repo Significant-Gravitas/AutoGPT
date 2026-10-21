@@ -168,6 +168,31 @@ export function reasonLine(item: ApprovalItem): string | null {
   return null;
 }
 
+// A held read is untrusted, so its markdown is reduced to plain lines and never
+// rendered: a link in it cannot be followed, an image cannot fetch.
+export function passageLines(passage: string) {
+  return passage.split("\n").flatMap((raw) => {
+    const heading = HEADING.test(raw);
+    const text = raw
+      .replace(HEADING, "")
+      .replace(IMAGE, (_, alt: string) => wordsOf(alt))
+      .replace(LINK, (_, label: string) => wordsOf(label))
+      .replace(BULLET, "$1• ")
+      .trimEnd();
+    return WORD.test(text) ? [{ text, heading }] : [];
+  });
+}
+
+const HEADING = /^\s{0,3}#{1,6}(?:\s+|$)/;
+const IMAGE = /!\[([^\]]*)\]\([^)]*\)/g;
+const LINK = /\[([^\]]*)\]\([^)]*\)/g;
+const BULLET = /^(\s*)[*+-]\s+/;
+const WORD = /[\p{L}\p{N}]/u;
+
+function wordsOf(label: string) {
+  return WORD.test(label) ? label.trim() : "";
+}
+
 // Home and an expert's page say a held call's reason in its card's words.
 export function attentionReason(
   review: PendingHumanReviewModel | null | undefined,

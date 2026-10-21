@@ -61,9 +61,8 @@ def card_for(row: PendingHumanReviewModel) -> CardView:
     reason = _reason_line(payload)
     if reason:
         lines.append(reason)
-    # A held read with no quotable passage shows what was flagged instead.
-    passage = str(payload.get("passage") or payload.get("excerpt") or "")
-    passage = passage[:_PASSAGE_CHARS]
+    # Never the unquoted excerpt: a chat platform renders its markdown links live.
+    passage = str(payload.get("passage") or "")[:_PASSAGE_CHARS]
     if _is_held_read(payload) and passage:
         lines.append("\n".join(f"> {line}" for line in passage.splitlines()))
     return CardView(

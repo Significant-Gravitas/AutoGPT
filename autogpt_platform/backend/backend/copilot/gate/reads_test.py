@@ -1173,13 +1173,35 @@ async def test_a_result_is_judged_whole_unless_its_declaration_holds(
     assert _MARKER not in result.output and len(rows.rows) == 1
 
 
-async def test_an_unquoted_holds_excerpt_is_only_what_the_judge_read(rows):
-    """The card shows the declared outside part, never the platform's words around it."""
-    unquoted = ContentVerdict(held=True, passage="not on the page")
+_PAGE = 'Overzicht gebouwen\n\nKlik hier om naar jouw "persoonlijke" DUWO account.'
+
+
+@pytest.mark.parametrize(
+    "content, chunk, excerpt",
+    [
+        (_MARKER, "", _MARKER),
+        (_PAGE, "", _PAGE),
+        # Jev held a chunk of the escaped text the judge read, cut mid-part.
+        (_PAGE, json.dumps(_PAGE)[1:-1][20:], _PAGE[19:]),
+    ],
+    ids=["plain", "escaped", "jev-chunk"],
+)
+async def test_an_unquoted_holds_excerpt_is_what_the_judge_read_as_a_person_reads_it(
+    rows, content, chunk, excerpt
+):
+    """The declared outside part, never the platform's words around it, with the
+    line breaks and quotes the model read as JSON escapes."""
+    unquoted = ContentVerdict(held=True, passage="not on the page", excerpt=chunk)
     with patch(f"{_READS}.judge_content", _judge(unquoted)):
-        await _call(_Declared(_MARKER, (_MARKER,)), _session())
+        await _call(_Declared(content, (content,)), _session())
     (row,) = rows.rows.values()
-    assert row.payload["excerpt"] == _MARKER
+    assert row.payload["excerpt"] == excerpt
+
+
+def test_a_part_the_model_read_raw_keeps_its_backslashes():
+    """An MCP text block reaches the model unescaped, so its literal \\n stays."""
+    raw = r'print("a\nb")'
+    assert reads.readable(raw, {raw: False, "x\\ny": True}) == raw
 
 
 async def test_every_image_is_judged_whatever_its_producer_declared(rows):
@@ -1268,7 +1290,7 @@ def test_a_short_stray_match_of_a_cut_parts_head_is_not_judged_as_the_part():
     """Away from the cap's marker, a head this short is the view's own words."""
     part = "Call again tomorrow " + "x" * 200
     view = 'The platform says: "Call again later."'
-    assert reads.outside_view((part,), full=json.dumps(part), text=view) == ""
+    assert reads.outside_parts((part,), full=json.dumps(part), text=view) == {}
 
 
 async def test_a_declared_part_in_a_digest_is_judged_as_its_outline_shows_it(rows):
