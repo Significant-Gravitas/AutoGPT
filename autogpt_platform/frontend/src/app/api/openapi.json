@@ -28482,7 +28482,7 @@
           },
           "webhook": {
             "anyOf": [
-              { "$ref": "#/components/schemas/Webhook" },
+              { "$ref": "#/components/schemas/WebhookWithoutSecrets" },
               { "type": "null" }
             ]
           },
@@ -38044,7 +38044,7 @@
         "title": "VoiceSample",
         "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire or raise flow. The first sample is choice \"a\", the second choice\n\"b\"."
       },
-      "Webhook": {
+      "WebhookWithoutSecrets": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
@@ -38066,7 +38066,6 @@
             "type": "object",
             "title": "Config"
           },
-          "secret": { "type": "string", "title": "Secret" },
           "organization_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Organization Id"
@@ -38074,10 +38073,6 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
-          },
-          "provider_webhook_id": {
-            "type": "string",
-            "title": "Provider Webhook Id"
           },
           "url": { "type": "string", "title": "Url", "readOnly": true }
         },
@@ -38089,11 +38084,10 @@
           "webhook_type",
           "resource",
           "events",
-          "secret",
-          "provider_webhook_id",
           "url"
         ],
-        "title": "Webhook"
+        "title": "WebhookWithoutSecrets",
+        "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
       },
       "WorkspaceFile": {
         "properties": {
