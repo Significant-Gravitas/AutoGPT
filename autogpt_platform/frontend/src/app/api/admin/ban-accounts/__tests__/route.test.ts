@@ -10,7 +10,7 @@ vi.mock("@/lib/auth/auth", () => ({
   auth: { api: { getSession, banUser } },
 }));
 
-import { POST } from "../route";
+import { maxDuration, POST } from "../route";
 
 function post(body: unknown) {
   return POST(
@@ -25,6 +25,10 @@ function post(body: unknown) {
 const ADMIN = { user: { id: "admin-1", role: "admin" } };
 
 describe("POST /api/admin/ban-accounts", () => {
+  test("has the function budget of the proxy route, not the platform default", () => {
+    expect(maxDuration).toBe(300);
+  });
+
   beforeEach(() => {
     getSession.mockReset();
     banUser.mockReset();

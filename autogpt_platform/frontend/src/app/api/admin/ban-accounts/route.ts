@@ -5,6 +5,9 @@ import { z } from "zod";
 
 const MAX_ACCOUNTS = 500;
 
+// Bans run one at a time, a few queries each: the largest batch has to fit.
+export const maxDuration = 300;
+
 const bodySchema = z.object({
   userIds: z.array(z.string().min(1)).min(1).max(MAX_ACCOUNTS),
   reason: z.string().trim().min(1).max(500),
