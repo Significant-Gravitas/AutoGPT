@@ -1,4 +1,4 @@
-from backend.blocks.notion._auth import TEST_CREDENTIALS
+from backend.blocks.notion._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.notion.append_to_page import NotionAppendToPageBlock
 
 PAGE_ID = "12345678-1234-1234-1234-123456789012"
@@ -50,3 +50,17 @@ async def test_more_than_a_hundred_blocks_go_in_order_over_several_requests(
         [_paragraph(line) for line in chunk]
         for chunk in (lines[:100], lines[100:200], lines[200:])
     ]
+
+
+async def test_a_notion_error_is_the_blocks_only_output(notion_api):
+    notion_api({"object": "error", "code": "object_not_found"}, status=404)
+    block = NotionAppendToPageBlock()
+    input_data = block.Input(
+        credentials=TEST_CREDENTIALS_INPUT, page_id=PAGE_ID, content="Shipped today."
+    )
+
+    outputs = [out async for out in block.run(input_data, credentials=TEST_CREDENTIALS)]
+
+    assert [name for name, _ in outputs] == ["error"]
+    assert "HTTP 404 Error: Not Found" in outputs[0][1]
+    assert "object_not_found" in outputs[0][1]

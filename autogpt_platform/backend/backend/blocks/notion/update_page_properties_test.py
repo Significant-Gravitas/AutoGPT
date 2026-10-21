@@ -1,11 +1,13 @@
 import pytest
+from pydantic import ValidationError
 
-from backend.blocks.notion._auth import TEST_CREDENTIALS
+from backend.blocks.notion._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.notion.update_page_properties import NotionUpdatePagePropertiesBlock
 
 PAGE_ID = "12345678-1234-1234-1234-123456789012"
 PAGE_URL = f"https://api.notion.com/v1/pages/{PAGE_ID}"
 UPDATED = {"id": PAGE_ID, "url": "https://notion.so/Renamed-12345678"}
+NOT_FOUND = {"object": "error", "status": 404, "code": "object_not_found"}
 
 
 def _text(content: str) -> list[dict]:
@@ -80,6 +82,55 @@ async def test_trash_state_is_sent_only_when_asked(notion_api, in_trash: bool | 
     if in_trash is not None:
         expected["archived"] = in_trash
     assert sent == [("PATCH", PAGE_URL, expected)]
+
+
+async def test_a_trash_only_update_sends_only_the_trash_flag(notion_api):
+    sent = notion_api(UPDATED)
+
+    await NotionUpdatePagePropertiesBlock.update_page(
+        TEST_CREDENTIALS, PAGE_ID, in_trash=True
+    )
+
+    assert sent == [("PATCH", PAGE_URL, {"archived": True})]
+
+
+@pytest.mark.parametrize(
+    "change, valid",
+    [
+        ({}, False),
+        ({"in_trash": False}, True),
+        ({"cover_url": "https://x.io/c.png"}, True),
+    ],
+)
+def test_an_update_must_change_something(change: dict, valid: bool):
+    def build():
+        return NotionUpdatePagePropertiesBlock.Input(
+            credentials=TEST_CREDENTIALS_INPUT,
+            page_id=PAGE_ID,
+            **change,
+        )
+
+    if valid:
+        build()
+    else:
+        with pytest.raises(ValidationError, match="Provide at least one of"):
+            build()
+
+
+async def test_a_notion_error_is_the_blocks_only_output(notion_api):
+    notion_api(NOT_FOUND, status=404)
+    block = NotionUpdatePagePropertiesBlock()
+    input_data = block.Input(
+        credentials=TEST_CREDENTIALS_INPUT,
+        page_id=PAGE_ID,
+        title="Renamed",
+    )
+
+    outputs = [out async for out in block.run(input_data, credentials=TEST_CREDENTIALS)]
+
+    assert [name for name, _ in outputs] == ["error"]
+    assert "HTTP 404 Error: Not Found" in outputs[0][1]
+    assert "object_not_found" in outputs[0][1]
 
 
 async def test_null_clears_each_property_the_way_its_type_allows(notion_api):
