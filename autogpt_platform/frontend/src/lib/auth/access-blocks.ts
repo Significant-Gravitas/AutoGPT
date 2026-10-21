@@ -74,15 +74,13 @@ async function isBlocked(
 ) {
   if (!ipAddress && emailDomains.length === 0) return false;
   try {
+    // The rule lives in the database (migration
+    // 20261021120000_add_auth_ip_events_and_access_blocks), tested by the backend.
     const result = await pool.query(
-      `SELECT 1 FROM "UserAuthAccessBlock"
-       WHERE ("expiresAt" IS NULL OR "expiresAt" > now())
-         AND ((kind = 'IP' AND value = $1)
-           OR (kind = 'EMAIL_DOMAIN' AND value = ANY($2::text[])))
-       LIMIT 1`,
+      "SELECT is_auth_access_blocked($1, $2::text[]) AS blocked",
       [ipAddress ?? "", emailDomains],
     );
-    return (result.rowCount ?? 0) > 0;
+    return result.rows[0]?.blocked === true;
   } catch (error) {
     const code =
       typeof error === "object" && error !== null && "code" in error

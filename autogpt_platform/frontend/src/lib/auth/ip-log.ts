@@ -20,11 +20,12 @@ export async function recordAuthIp(
 ) {
   if (!ipAddress) return;
   try {
-    await pool.query(
-      `INSERT INTO "UserAuthIpEvent" ("userId", kind, "ipAddress", "userAgent")
-       VALUES ($1, $2::"AuthIpEventKind", $3, $4)`,
-      [userId, kind, ipAddress, userAgent || null],
-    );
+    await pool.query("SELECT record_auth_ip_event($1, $2, $3, $4)", [
+      userId,
+      kind,
+      ipAddress,
+      userAgent ?? "",
+    ]);
   } catch (error) {
     console.error("Failed to record a sign-in IP", {
       userId,

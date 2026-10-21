@@ -53,3 +53,29 @@ FROM "UserAuthSession"
 WHERE "ipAddress" IS NOT NULL
   AND "ipAddress" <> ''
   AND "impersonatedBy" IS NULL;
+
+-- The frontend's Better Auth hooks call these (lib/auth/access-blocks.ts and
+-- ip-log.ts), so the rules they run are tested here, against a database.
+CREATE FUNCTION "is_auth_access_blocked"(blocked_ip TEXT, email_domains TEXT[])
+RETURNS BOOLEAN
+LANGUAGE sql STABLE
+SET search_path FROM CURRENT
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM "UserAuthAccessBlock"
+    WHERE ("expiresAt" IS NULL OR "expiresAt" > now())
+      AND (("kind" = 'IP' AND "value" = blocked_ip)
+        OR ("kind" = 'EMAIL_DOMAIN' AND "value" = ANY(email_domains)))
+  )
+$$;
+
+CREATE FUNCTION "record_auth_ip_event"(
+  event_user_id TEXT, event_kind TEXT, event_ip TEXT, event_user_agent TEXT
+)
+RETURNS VOID
+LANGUAGE sql
+SET search_path FROM CURRENT
+AS $$
+  INSERT INTO "UserAuthIpEvent" ("userId", "kind", "ipAddress", "userAgent")
+  VALUES (event_user_id, event_kind::"AuthIpEventKind", event_ip, NULLIF(event_user_agent, ''))
+$$;

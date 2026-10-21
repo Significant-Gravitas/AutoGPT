@@ -6,6 +6,7 @@ from prisma.enums import AuthAccessBlockKind, AuthIpEventKind
 from prisma.models import AuthAccessBlock, AuthIpEvent, AuthUser
 
 from backend.data.auth_ip_events import delete_expired_ip_events, get_account_ip_report
+from backend.data.db import execute_raw_with_schema
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
@@ -171,3 +172,27 @@ async def test_retention_deletes_only_records_older_than_the_window(
 
     remaining = await AuthIpEvent.prisma().find_many(where={"userId": user.id})
     assert [e.ipAddress for e in remaining] == ["203.0.113.51"]
+
+
+# The frontend's hooks write the log through this function
+# (frontend/src/lib/auth/ip-log.ts); a typo in its cast would lose every row.
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_hooks_write_a_row_the_report_reads(server: SpinTestServer, accounts):
+    make, _ = accounts
+    user = await make("a@{tag}.example")
+
+    await execute_raw_with_schema(
+        'SELECT {schema_prefix}"record_auth_ip_event"($1, $2, $3, $4)',
+        user.id,
+        "SIGN_UP",
+        "203.0.113.90",
+        "",
+    )
+
+    report = await get_account_ip_report(user.id, RETENTION_DAYS)
+    (ip,) = report.ips
+    assert (ip.ip_address, ip.has_sign_up, ip.last_user_agent) == (
+        "203.0.113.90",
+        True,
+        None,
+    )

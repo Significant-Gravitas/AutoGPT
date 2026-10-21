@@ -4,8 +4,8 @@ import { DISPOSABLE_EMAIL_CODE } from "../disposable-email";
 
 // Runs the real Better Auth handler with this app's auth options, as
 // email-verification-flow.test.ts does, to prove the hooks refuse and log
-// where they should. The SQL itself is proven against Postgres in
-// access-blocks.test.ts; here the pool answers it from `blocks`.
+// where they should. The SQL functions they call are tested against Postgres
+// by the backend (data/access_blocks_test.py, data/auth_ip_events_test.py).
 
 const blocks = vi.hoisted(() => ({
   ips: [] as string[],
@@ -17,14 +17,14 @@ const loggedIps = vi.hoisted(
 vi.mock("pg", () => ({
   Pool: class {
     async query(sql: string, params: unknown[]) {
-      if (sql.includes('FROM "UserAuthAccessBlock"')) {
+      if (sql.includes("is_auth_access_blocked(")) {
         const [ip, domains] = params as [string, string[]];
-        const hit =
+        const blocked =
           blocks.ips.includes(ip) ||
           domains.some((domain) => blocks.domains.includes(domain));
-        return { rowCount: hit ? 1 : 0, rows: hit ? [{}] : [] };
+        return { rowCount: 1, rows: [{ blocked }] };
       }
-      if (sql.includes('INSERT INTO "UserAuthIpEvent"')) {
+      if (sql.includes("record_auth_ip_event(")) {
         const [userId, kind, ip] = params as string[];
         loggedIps.push({ userId, kind, ip });
         return { rowCount: 1, rows: [] };

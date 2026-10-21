@@ -12,6 +12,7 @@ from backend.data.access_blocks import (
     normalize_email_domain,
     normalize_ip,
 )
+from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import ConflictError, NotFoundError
 from backend.util.test import SpinTestServer
 
@@ -132,3 +133,56 @@ async def test_create_refuses_a_blank_reason_and_a_past_expiry(
 async def test_deleting_an_unknown_block_is_not_found(server: SpinTestServer):
     with pytest.raises(NotFoundError):
         await delete_access_block(str(uuid4()))
+
+
+@pytest.fixture
+async def seeded_blocks():
+    domain = f"{uuid4().hex[:8]}.example"
+    now = datetime.now(timezone.utc)
+    rows = [
+        ("IP", "198.51.100.81", None),
+        ("IP", "198.51.100.82", now - timedelta(minutes=1)),
+        ("EMAIL_DOMAIN", domain, now + timedelta(days=1)),
+    ]
+    for kind, value, expires_at in rows:
+        await AuthAccessBlock.prisma().create(
+            data={
+                "kind": AuthAccessBlockKind(kind),
+                "value": value,
+                "reason": "test",
+                "expiresAt": expires_at,
+            }
+        )
+    yield domain
+    await AuthAccessBlock.prisma().delete_many(
+        where={"value": {"in": [value for _, value, _ in rows]}}
+    )
+
+
+# The frontend's sign-up and sign-in hooks call this function
+# (frontend/src/lib/auth/access-blocks.ts) with the email domain and its parents.
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "ip, domains, expected",
+    [
+        ("198.51.100.81", [], True),
+        ("192.0.2.1", ["{domain}"], True),
+        ("192.0.2.1", ["mail.{domain}", "{domain}"], True),
+        ("198.51.100.82", [], False),
+        ("192.0.2.1", ["not{domain}"], False),
+    ],
+)
+async def test_the_hooks_block_check(
+    server: SpinTestServer,
+    seeded_blocks: str,
+    ip: str,
+    domains: list[str],
+    expected: bool,
+):
+    rows = await query_raw_with_schema(
+        'SELECT {schema_prefix}"is_auth_access_blocked"($1, $2::text[]) AS blocked',
+        ip,
+        [d.replace("{domain}", seeded_blocks) for d in domains],
+    )
+
+    assert rows[0]["blocked"] is expected
