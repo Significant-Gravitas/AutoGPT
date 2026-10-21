@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ClarifyingQuestion } from "../../../tools/clarifying-questions";
 import { buildAnswersMessage } from "../helpers";
 import { getAnsweredQuestions } from "../answeredQuestions";
+import { buildOnboardingAnswersMessage } from "../../ExpertOnboardingCard/helpers";
 
 type Message = UIMessage<unknown, UIDataTypes, UITools>;
 type Part = Message["parts"][number];
@@ -80,7 +81,10 @@ describe("getAnsweredQuestions", () => {
     const answers = getAnsweredQuestions([
       assistant([part]),
       reply(
-        buildAnswersMessage(steps, { source: "Email", destination: "Drive" }),
+        buildOnboardingAnswersMessage(steps, {
+          source: "Email",
+          destination: "Drive",
+        }),
       ),
     ]);
     expect(answers.get("hire")).toEqual(

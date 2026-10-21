@@ -17,6 +17,7 @@ import { getCurrentPause } from "../../TurnPausedCard/helpers";
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   children: React.ReactNode;
+  readOnly?: boolean;
 }
 
 const NO_HELD_OUTCOMES: ReadonlyMap<string, HeldOutcome> = new Map();
@@ -26,7 +27,11 @@ const NO_HELD_OUTCOMES: ReadonlyMap<string, HeldOutcome> = new Map();
  *  decide from here whether they are live or already history, rather than
  *  from local state a reload would lose. A question card that is history
  *  reads the user's answers from here too. */
-export function PendingAnswerContexts({ messages, children }: Props) {
+export function PendingAnswerContexts({
+  messages,
+  children,
+  readOnly = false,
+}: Props) {
   // The questions and held outcomes are rebuilt as new objects on every call,
   // and `messages` changes on every streamed flush, so each one keeps the
   // object it last published while its content is the same; otherwise every
@@ -45,6 +50,13 @@ export function PendingAnswerContexts({ messages, children }: Props) {
       return outcomes.size === 0 ? NO_HELD_OUTCOMES : outcomes;
     }, [messages]),
   );
+  if (readOnly) {
+    return (
+      <AnsweredQuestionsContext.Provider value={answeredQuestions}>
+        {children}
+      </AnsweredQuestionsContext.Provider>
+    );
+  }
   return (
     <PendingQuestionsContext.Provider value={pendingQuestions}>
       <AnsweredQuestionsContext.Provider value={answeredQuestions}>
