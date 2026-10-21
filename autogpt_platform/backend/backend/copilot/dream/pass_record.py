@@ -46,7 +46,13 @@ from .fetch import DreamInput
 from .locks import DEFAULT_LOCK_TTL_SECONDS
 from .pass_errors import is_pass_error, pass_error
 from .routing import ExecutionPath
-from .schemas import DreamOperations, DreamPassResult, DreamPassUsage, DreamPhase
+from .schemas import (
+    DreamOperations,
+    DreamPassResult,
+    DreamPassUsage,
+    DreamPhase,
+    IngestionDrainStatus,
+)
 
 # What started a pass: the nightly job, the admin trigger, or an eval run.
 DreamTrigger = Literal["cron", "admin", "eval"]
@@ -349,7 +355,8 @@ def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
     A pass still in flight reads as neither skipped nor errored, with no
     completion time and no usage yet.
     """
-    applied = row.operations.applied or DreamPassApplied()
+    applied_record = row.operations.applied
+    applied = applied_record or DreamPassApplied()
     return DreamPassResult(
         user_id=row.user_id,
         pass_id=row.id,
@@ -372,7 +379,11 @@ def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
         demotion_accounting_complete=applied.demotion_accounting_complete,
         summary_for_user=applied.summary_for_user,
         dream_session_id=applied.dream_session_id,
-        ingestion_drain_status=applied.ingestion_drain_status,
+        ingestion_drain_status=(
+            applied.ingestion_drain_status
+            if applied_record is not None
+            else IngestionDrainStatus.not_applied
+        ),
         operations=applied.snapshot,
         usage=row.usage,
         error=row.error,

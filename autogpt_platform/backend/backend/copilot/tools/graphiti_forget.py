@@ -325,17 +325,28 @@ def _build_confirm_message(
     full per-UUID list stays available in the structured ``failures`` field.
     """
     mode = "permanently deleted" if hard else "retracted from memory"
-    summary = f"{deleted_count} memory edge(s) {mode}."
-    if derived_count:
+    if deleted_count:
+        summary = f"{deleted_count} memory edge(s) {mode}."
+        if derived_count:
+            summary = (
+                f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
+                "derived from them retracted too."
+            )
+        if resumed_count:
+            summary += (
+                f" {resumed_count} memory edge(s) had already been erased; what "
+                "was derived from them was retracted and erased."
+            )
+    elif resumed_count or derived_count:
         summary = (
-            f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
-            "derived from them retracted too."
+            f"{resumed_count} memory edge(s) had already been erased."
+            if resumed_count
+            else "Previously erased memory edge(s) were revisited."
         )
-    if resumed_count:
-        summary += (
-            f" {resumed_count} memory edge(s) had already been erased; what "
-            "was derived from them was retracted and erased."
-        )
+        if derived_count:
+            summary += f" {derived_count} derived fact(s) retracted and erased."
+    else:
+        summary = f"0 memory edge(s) {mode}."
     if deleted_count and not hard:
         summary += f" {SOFT_FORGET_NOTE}"
     if not failures:

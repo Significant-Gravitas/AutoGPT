@@ -30,7 +30,7 @@ class IngestionDrainStatus(str, Enum):
     """Fate of a dream pass's enqueued graph writes at the moment the pass
     was reported complete.
 
-    Three distinct states, so consumers (and a future Memory Visualizer)
+    Four distinct states, so consumers (and a future Memory Visualizer)
     can tell a healthy by-design skip from a real failure:
 
       * ``drained`` — the worker finished every one of the pass's own
@@ -41,6 +41,7 @@ class IngestionDrainStatus(str, Enum):
         a shared serial loop (batch path). The episodes process
         fire-and-forget, counted pending; healthy by design, NOT a failure
         signal.
+      * ``not_applied`` — this pass never reached apply, so no drain ran.
       * ``timed_out`` — the sync-path drain was attempted but did not finish
         within its budget. The episodes not written yet are counted pending,
         not written; they stay queued in-process, and are lost if the
@@ -48,6 +49,7 @@ class IngestionDrainStatus(str, Enum):
         operator warning.
     """
 
+    not_applied = "not_applied"
     drained = "drained"
     skipped = "skipped"
     timed_out = "timed_out"

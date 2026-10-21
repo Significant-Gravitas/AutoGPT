@@ -613,6 +613,16 @@ class TestReadSide:
             False,
         )
 
+    def test_a_pass_without_apply_did_not_drain(self):
+        for status in (
+            DreamPassStatus.SUBMITTED,
+            DreamPassStatus.SKIPPED,
+            DreamPassStatus.ERRORED,
+        ):
+            row = _row(status=status, operations=DreamPassOperations())
+            result = dream_pass_result_from_row(row)
+            assert result.ingestion_drain_status.value == "not_applied"
+
     def test_a_pass_in_flight_has_no_end_yet(self):
         row = _row(
             route=DreamPassRoute.ANTHROPIC_BATCH,
