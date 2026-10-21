@@ -31,10 +31,12 @@ Browsers reach the backend through the frontend's server, so the backend sees th
 
 ## Signing in
 
-Signing in uses the visitor's address in two ways, and they read it differently:
+Signing in uses the visitor's address in two ways:
 
-- **The authentication API's [rate limits](rate-limits.md#the-authentication-api)** are kept by Better Auth, the frontend's sign-in library. Better Auth reads the address from `X-Forwarded-For` itself, and `TRUST_X_FORWARDED_FOR` doesn't change how.
+- **The authentication API's [rate limits](rate-limits.md#the-authentication-api)** count per IP address. Better Auth, the frontend's sign-in library, keeps them.
 - **The sign-in history and IP blocks** follow [the frontend](#the-frontend) rule above: they use the address only on Vercel or with `TRUST_X_FORWARDED_FOR=true`. Without it, no sign-in address is recorded and IP blocks have no address to match. Blocks on an email domain still apply.
+
+Behind a proxy that overwrites `X-Forwarded-For` with the visitor's address, set `TRUST_X_FORWARDED_FOR=true` on the frontend.
 
 The backend deletes the sign-in history of an account after 90 days, or after the number of days in `AUTH_IP_EVENT_RETENTION_DAYS` (1 to 3650).
 

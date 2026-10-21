@@ -178,16 +178,6 @@ Each path counts on its own. A path allows that many requests in a row, and star
 
 These limits apply to production builds of the frontend and aren't configurable. On a self-hosted install behind a reverse proxy, see [Client IP Addresses](client-ip.md).
 
-## Shared capacity
-
-A few things are limited by how much the servers do at once. These never refuse a request; it waits for its turn.
-
-| What                                     | At once                 | Setting                  |
-| ---------------------------------------- | ----------------------- | ------------------------ |
-| File previews being generated            | 4 per backend process   | Not configurable         |
-| Uploaded files being scanned for viruses | 10 per backend process  | `CLAMAV_MAX_CONCURRENCY` |
-| Workflow runs on one executor            | 10 per executor process | `NUM_GRAPH_WORKERS`      |
-
 ## Not on this page
 
 - Limits of other services that blocks and Otto use, such as an AI provider's own rate limits. Their errors are passed on as they come.
