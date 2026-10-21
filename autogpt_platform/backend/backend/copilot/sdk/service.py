@@ -9,6 +9,7 @@ import base64
 import functools
 from copy import copy
 import json
+import hashlib
 import logging
 import os
 import random
@@ -5734,7 +5735,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # A backstop above the turn's budget, in the CLI's price units:
             # the governor lands the turn before it fires.
             sdk_options.max_budget_usd = governor.cli_budget_usd(sdk_model)
-            sdk_options.thinking = {"type": "adaptive"}
+            sdk_options.thinking = (
+                {"type": "adaptive", "display": "summarized"}
+                if _perf_thinking_summarized(session_id)
+                else {"type": "adaptive"}
+            )
             if config.claude_agent_max_thinking_tokens > 0:
                 sdk_options.max_thinking_tokens = (
                     config.claude_agent_max_thinking_tokens
@@ -7452,3 +7457,18 @@ def _stamp_turn_trace_id(
 from backend.copilot.sdk import perf_step_probe  # do-not-merge probe (#15739)
 
 perf_step_probe.install(sys.modules[__name__])
+
+
+def _perf_thinking_summarized(session_id: str | None) -> bool:
+    """Do-not-merge probe (#15739): half the chats, by session id, ask for the
+    model's summarized thinking, so the time to the first visible reasoning can
+    be compared with the time to the first answer text."""
+    arm = bool(session_id) and (
+        int(hashlib.sha1((session_id or "").encode()).hexdigest(), 16) % 2 == 1
+    )
+    logger.info(
+        "perf-step thinking_display_arm %d session=%s",
+        int(arm),
+        (session_id or "?")[:12],
+    )
+    return arm
