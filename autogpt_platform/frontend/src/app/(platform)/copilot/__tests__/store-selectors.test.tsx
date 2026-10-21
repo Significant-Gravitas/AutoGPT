@@ -1,19 +1,13 @@
 import { getGetV2ListChatConnectionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
-import {
-  act,
-  render,
-  renderHook,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { Profiler, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatInput } from "../components/ChatInput/useChatInput";
 import { useConnectionPicker } from "../components/ChatInput/components/ConnectionPicker/useConnectionPicker";
 import { useLockedTierFallback } from "../components/ChatInput/components/ConnectionPicker/useLockedTierFallback";
-import { NotificationDialog } from "../components/NotificationDialog/NotificationDialog";
 import { DEFAULT_PANEL_WIDTH, useCopilotUIStore } from "../store";
 import { useSessionDeletion } from "../useSessionDeletion";
 import { useWorkflowImportAutoSubmit } from "../useWorkflowImportAutoSubmit";
@@ -65,16 +59,6 @@ function countHookRenders<T>(useHook: () => T) {
   return { ...view, counter };
 }
 
-function countComponentCommits(ui: ReactNode) {
-  const onRender = vi.fn();
-  const view = render(
-    <Profiler id="subject" onRender={onRender}>
-      {ui}
-    </Profiler>,
-  );
-  return { ...view, onRender };
-}
-
 const initialState = useCopilotUIStore.getState();
 
 beforeEach(() => {
@@ -86,7 +70,6 @@ beforeEach(() => {
     sessionToDelete: null,
     isNotificationsEnabled: false,
     isSoundEnabled: true,
-    showNotificationDialog: false,
   });
 });
 
@@ -170,17 +153,5 @@ describe("copilot UI store readers", () => {
 
     act(() => useCopilotUIStore.getState().setInitialPrompt("Hello Otto"));
     await waitFor(() => expect(result.current.value).toBe("Hello Otto"));
-  });
-
-  it("NotificationDialog ignores unrelated writes", async () => {
-    const { onRender } = countComponentCommits(<NotificationDialog />);
-    await settle();
-    onRender.mockClear();
-
-    writeUnrelatedField();
-    expect(onRender).not.toHaveBeenCalled();
-
-    act(() => useCopilotUIStore.getState().setShowNotificationDialog(true));
-    expect(onRender).toHaveBeenCalled();
   });
 });

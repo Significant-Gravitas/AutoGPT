@@ -100,7 +100,6 @@ export function MainAgentPage({ params }: Props) {
           <div className="w-full lg:w-2/5">
             <AgentInfo
               user={user}
-              agentId={agentData.active_version_id ?? "–"}
               name={agentData.agent_name ?? ""}
               creator={agentData.creator ?? ""}
               creatorAvatar={agentData.creator_avatar ?? ""}

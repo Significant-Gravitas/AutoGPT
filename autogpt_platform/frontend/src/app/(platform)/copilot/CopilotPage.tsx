@@ -3,7 +3,6 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
@@ -12,7 +11,6 @@ import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAuto
 import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
-import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useIsMobile } from "./useIsMobile";
 
@@ -35,7 +33,7 @@ const ContextPanel = dynamic(
 export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+
   const { isUserLoading, isLoggedIn } = useAuth();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -75,7 +73,7 @@ export function CopilotPage() {
       />
       {isMobile && sessionId && <ContextPanel sessionId={sessionId} mobile />}
       {isMobile && <ArtifactPanel mobile />}
-      {!isBrainDumpEnabled && <NotificationDialog />}
+
       <CopilotModals />
     </SidebarProvider>
   );

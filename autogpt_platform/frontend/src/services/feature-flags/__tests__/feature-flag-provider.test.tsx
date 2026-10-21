@@ -54,7 +54,7 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 
 function HireProbe() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { enabled, ready } = useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
   return (
     <span>
       hire: {String(enabled)} ready: {String(ready)}
@@ -175,7 +175,7 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
     });
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
 
-    ld.flags = { "hire-experts": true };
+    ld.flags = { "generic-trigger-agents": true };
     rerender(
       <FeatureFlagProvider>
         <HireProbe />

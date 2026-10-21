@@ -1,4 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import type { ChatStatus, UIMessage } from "ai";
 
@@ -25,6 +26,8 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
  * Returns HTTP headers required for direct backend requests from copilot:
  * - Authorization Bearer token (JWT)
  * - X-Act-As-User-Id impersonation header (if an admin is impersonating a user)
+ * - X-PostHog-Session-Id (with analytics consent), so the chat's backend
+ *   events join the browser's PostHog session
  *
  * Use this for all direct-to-backend fetch/SSE calls so that admin user
  * impersonation works consistently across the entire copilot feature.
@@ -38,6 +41,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
+    ...getPostHogSessionHeader(),
   };
 }
 

@@ -68,6 +68,19 @@ describe("PostHogProvider", () => {
     );
   });
 
+  it("marks the events an admin sends while acting as a user", async () => {
+    const { PostHogProvider } = await import("../posthog-provider");
+    const { markImpersonatedEvent } = await import(
+      "@/services/analytics/posthog-request-context"
+    );
+
+    render(<PostHogProvider>app</PostHogProvider>);
+
+    expect(posthog.init.mock.calls[0][1].before_send).toBe(
+      markImpersonatedEvent,
+    );
+  });
+
   it("talks to a self-hosted PostHog directly", async () => {
     credentials.host = "https://posthog.example.com";
     const { PostHogProvider } = await import("../posthog-provider");
