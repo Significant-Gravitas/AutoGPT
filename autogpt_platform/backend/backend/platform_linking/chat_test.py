@@ -310,6 +310,38 @@ class TestStartChatTurn:
         mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_dm_attachment_rejects_session_of_archived_expert(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        expert_session = MagicMock(session_id="expert-session", expert_id="expert-1")
+        mock_append = AsyncMock()
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=expert_session),
+            ),
+            patch(
+                "backend.platform_linking.chat.append_and_save_message",
+                new=mock_append,
+            ),
+            patch(
+                "backend.platform_linking.chat_experts.experts_db",
+                return_value=MagicMock(owns_active_expert=_owns(False)),
+            ),
+        ):
+            with pytest.raises(NotFoundError, match="no longer exists"):
+                await start_chat_turn(
+                    _request(session_id="expert-session", file_ids=["file-1"])
+                )
+
+        mock_append.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_dm_can_resume_owned_expert_session_in_personal_scope(self):
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")

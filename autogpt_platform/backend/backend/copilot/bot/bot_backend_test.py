@@ -759,7 +759,7 @@ class TestStreamChatDenial:
 
 class TestStreamChatOptions:
     @pytest.mark.asyncio
-    async def test_expert_and_model_reach_the_request_and_notice_leads(
+    async def test_expert_and_model_reach_the_request_and_notice_goes_to_its_callback(
         self, api: BotBackend
     ):
         handle = ChatTurnHandle(
@@ -780,6 +780,11 @@ class TestStreamChatOptions:
                 new=AsyncMock(),
             ),
         ):
+            notices: list[str] = []
+
+            async def capture(notice: str) -> None:
+                notices.append(notice)
+
             chunks = [
                 c
                 async for c in api.stream_chat(
@@ -788,12 +793,14 @@ class TestStreamChatOptions:
                     message="hi",
                     expert_id="e1",
                     model="advanced",
+                    on_notice=capture,
                 )
             ]
 
         request = api._client.start_chat_turn.await_args.kwargs["request"]
         assert request.expert_id == "e1" and request.model == "advanced"
-        assert "".join(chunks) == "Fell back.\n\nHi"
+        assert notices == ["Fell back."]
+        assert "".join(chunks) == "Hi"
 
     @pytest.mark.asyncio
     async def test_list_user_experts_passes_through(self, api: BotBackend):

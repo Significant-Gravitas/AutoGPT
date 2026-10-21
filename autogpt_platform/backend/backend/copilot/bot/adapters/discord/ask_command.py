@@ -27,6 +27,7 @@ AUTOCOMPLETE_LIMIT = 25
 CHOICE_LABEL_LIMIT = 100
 # Room for the "**name** asked X: " prefix under Discord's 2000-char cap.
 STARTER_PROMPT_LIMIT = 1800
+DISPATCH_FAILED_REPLY = "Otto couldn't start on that. Try again in a moment."
 
 MODE_CHOICES = [
     app_commands.Choice(name="fast", value="fast"),
@@ -126,7 +127,11 @@ async def handle_autogpt(
         expert_name=chosen.name if chosen else None,
         model=MODE_TIERS.get(mode) if mode else None,
     )
-    await dispatch(interaction, starter, prompt, options)
+    try:
+        await dispatch(interaction, starter, prompt, options)
+    except Exception:
+        logger.exception("Dispatching /autogpt failed")
+        await interaction.followup.send(DISPATCH_FAILED_REPLY, ephemeral=True)
 
 
 async def _pick_expert(

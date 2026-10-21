@@ -15,6 +15,7 @@ from backend.platform_linking.models import BotExpert
 from .adapter import DiscordAdapter
 from .ask_command import (
     AUTOCOMPLETE_LIMIT,
+    DISPATCH_FAILED_REPLY,
     STARTER_PROMPT_LIMIT,
     expert_choices,
     handle_autogpt,
@@ -150,6 +151,15 @@ class TestHandleAutogpt:
         await handle_autogpt(_api(), interaction, dispatch, "hi", None, None)
         assert "can't post" in interaction.followup.send.await_args.args[0]
         dispatch.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_failure_tells_the_user_privately(self):
+        interaction = _interaction(guild=True)
+        dispatch = AsyncMock(side_effect=RuntimeError("boom"))
+        await handle_autogpt(_api(), interaction, dispatch, "hi", None, None)
+        interaction.followup.send.assert_awaited_once_with(
+            DISPATCH_FAILED_REPLY, ephemeral=True
+        )
 
 
 def test_starter_text_clamps_long_prompts():

@@ -523,6 +523,7 @@ class BotBackend:
         expert_id: str | None = None,
         model: CopilotLLMModel | None = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_notice: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
         on_clarification_needed: ClarificationNeededCallback | None = None,
@@ -554,8 +555,8 @@ class BotBackend:
             raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
-        if handle.notice:
-            yield handle.notice + "\n\n"
+        if handle.notice and on_notice:
+            await on_notice(handle.notice)
         async for chunk in self.stream_turn(
             handle,
             on_setup_required=on_setup_required,

@@ -379,9 +379,12 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await get_chat_session(request.session_id, owner_user_id)
         if session is None:
             raise NotFoundError("The session for the uploaded files no longer exists.")
-        if request.platform_server_id is not None and session.expert_id is not None:
-            raise NotFoundError("The session for the uploaded files no longer exists.")
-        if request.expert_id is not None and session.expert_id != request.expert_id:
+        if not await session_reusable(
+            session,
+            owner_user_id,
+            request.expert_id,
+            allow_expert_session=request.platform_server_id is None,
+        ):
             raise NotFoundError("The session for the uploaded files no longer exists.")
     else:
         session = await _resolve_or_create_session(

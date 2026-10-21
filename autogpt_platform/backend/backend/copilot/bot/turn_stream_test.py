@@ -223,6 +223,22 @@ class TestNoReply:
         adapter.send_stream_draft.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_a_fallback_notice_is_sent_alone_and_no_reply_still_suppressed(self):
+        adapter = _adapter()
+        api = MagicMock()
+
+        async def _stream(*args, on_notice, **kwargs):
+            await on_notice("Fell back.")
+            yield NO_REPLY
+
+        api.stream_chat = _stream
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "ok")], _ctx(), adapter, "42"
+            )
+        adapter.send_message.assert_awaited_once_with("42", "Fell back.")
+
+    @pytest.mark.asyncio
     async def test_a_reply_that_merely_contains_the_word_is_delivered(self):
         """Toran's false-positive concern: whole message only."""
         adapter = _adapter()

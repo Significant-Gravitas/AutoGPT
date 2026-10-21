@@ -175,6 +175,9 @@ class TurnStreamer:
             except Exception:
                 logger.warning("Failed to cache session id for target %s", target_id)
 
+        async def _on_notice(notice: str) -> None:
+            await adapter.send_message(target_id, notice)
+
         flush_at = adapter.chunk_flush_at
         buffer = ""
         sent_any_content = False
@@ -305,6 +308,7 @@ class TurnStreamer:
                     expert_id=options.expert_id,
                     model=options.model,
                     on_session_id=_on_session_id,
+                    on_notice=_on_notice,
                     on_setup_required=_on_setup_required,
                     on_setup_dropped=_on_setup_dropped,
                     on_clarification_needed=_on_clarification_needed,
