@@ -21,15 +21,11 @@ export const prefetchTutorialBlocks = async (): Promise<void> => {
   }
 };
 
-export const getPrefetchedBlock = (blockId: string): BlockInfo | undefined => {
-  return prefetchedBlocks.get(blockId);
-};
-
 export const clearPrefetchedBlocks = (): void => {
   prefetchedBlocks.clear();
 };
 
-export const addPrefetchedBlock = (
+const addPrefetchedBlock = (
   blockId: string,
   position?: { x: number; y: number },
 ): void => {
@@ -41,7 +37,7 @@ export const addPrefetchedBlock = (
   }
 };
 
-export const getNodeByBlockId = (blockId: string) => {
+const getNodeByBlockId = (blockId: string) => {
   const nodes = useNodeStore.getState().nodes;
   return nodes.find((n) => n.data?.block_id === blockId);
 };
@@ -62,7 +58,7 @@ export const addSecondCalculatorBlock = (): void => {
   }
 };
 
-export const getCalculatorNodes = () => {
+const getCalculatorNodes = () => {
   const nodes = useNodeStore.getState().nodes;
   return nodes.filter((n) => n.data?.block_id === BLOCK_IDS.CALCULATOR);
 };
@@ -70,20 +66,4 @@ export const getCalculatorNodes = () => {
 export const getSecondCalculatorNode = () => {
   const calculatorNodes = getCalculatorNodes();
   return calculatorNodes.length >= 2 ? calculatorNodes[1] : null;
-};
-
-export const getFormContainerSelector = (blockId: string): string | null => {
-  const node = getNodeByBlockId(blockId);
-  if (node) {
-    return `[data-id="form-creator-container-${node.id}-node"]`;
-  }
-  return null;
-};
-
-export const getFormContainerElement = (blockId: string): Element | null => {
-  const selector = getFormContainerSelector(blockId);
-  if (selector) {
-    return document.querySelector(selector);
-  }
-  return null;
 };
