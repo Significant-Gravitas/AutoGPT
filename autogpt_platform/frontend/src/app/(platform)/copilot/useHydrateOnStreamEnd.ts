@@ -72,10 +72,7 @@ function preservePromotedUserBubbles(
   prev: UIMessage[],
   hydrated: UIMessage[],
 ): UIMessage[] {
-  const promoted = prev.filter(
-    (m) =>
-      typeof m.id === "string" && m.id.startsWith(PROMOTED_BUBBLE_ID_PREFIX),
-  );
+  const promoted = prev.filter(isPromotedBubble);
   if (promoted.length === 0) return hydrated;
 
   const hydratedUserText = hydrated
@@ -91,6 +88,48 @@ function preservePromotedUserBubbles(
   if (orphans.length === 0) return hydrated;
 
   return [...hydrated, ...orphans];
+}
+
+/**
+ * Keep a send the backend took but has not written yet (a follow-up queued
+ * behind a stopped turn's teardown, SECRT-2843) until a user row with its text
+ * lands after the row it was sent behind; each row answers for one bubble.
+ */
+function preserveUnpersistedUserBubbles(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): UIMessage[] {
+  const claimed = new Set<number>();
+  const orphans: UIMessage[] = [];
+  let sentAfter = -1;
+  for (const message of prev) {
+    const seq = extractDbSequence(message);
+    if (seq !== null) {
+      sentAfter = seq;
+      continue;
+    }
+    if (message.role !== "user" || isPromotedBubble(message)) continue;
+    const text = getMessageText(message);
+    if (!text) continue;
+    const rowIndex = hydrated.findIndex(
+      (row, index) =>
+        !claimed.has(index) &&
+        row.role === "user" &&
+        (extractDbSequence(row) ?? -1) > sentAfter &&
+        getMessageText(row).includes(text),
+    );
+    if (rowIndex === -1) orphans.push(message);
+    else claimed.add(rowIndex);
+  }
+  if (orphans.length === 0) return hydrated;
+  return [...hydrated, ...orphans];
+}
+
+function isPromotedBubble(message: UIMessage): boolean {
+  return (
+    typeof message.id === "string" &&
+    message.id.startsWith(PROMOTED_BUBBLE_ID_PREFIX)
+  );
 }
 
 /**
@@ -270,15 +309,19 @@ export function useHydrateOnStreamEnd({
       // session refetch — either way this effect re-fires and the replace
       // lands once the backend goes idle, so no timeout fallback is needed.
       if (hasActiveStream) return;
-      setMessages((prev) =>
-        preservePromotedUserBubbles(
+      setMessages((prev) => {
+        const replaced = preservePromotedUserBubbles(
           prev,
           preserveStoppedAssistantMessage(
             prev,
             retainOlderHistory(prev, finalized),
           ),
-        ),
-      );
+        );
+        // A clean end means the backend took the send; after an error it may not have.
+        return status === "ready"
+          ? preserveUnpersistedUserBubbles(prev, replaced)
+          : replaced;
+      });
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;
       return;

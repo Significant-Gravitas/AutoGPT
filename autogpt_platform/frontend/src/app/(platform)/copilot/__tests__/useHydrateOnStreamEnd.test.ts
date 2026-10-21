@@ -425,3 +425,39 @@ describe("useHydrateOnStreamEnd — a turn the user stopped", () => {
     ).toEqual(persisted);
   });
 });
+
+describe("useHydrateOnStreamEnd — a send the backend has not written yet", () => {
+  afterEach(() => {
+    _resetInterruptedToastLedgerForTests();
+    cleanup();
+  });
+
+  function row(
+    seq: number,
+    role: "user" | "assistant",
+    text: string,
+  ): UIMessage<unknown, UIDataTypes, UITools> {
+    return {
+      id: `${SESSION_ID}-seq-${seq}`,
+      role,
+      parts: [{ type: "text", text, state: "done" }],
+    };
+  }
+
+  it('keeps a second "yes" that the earlier "yes" row does not account for', () => {
+    const answered = [row(1, "user", "yes"), row(2, "assistant", "Booked.")];
+    const queued: UIMessage<unknown, UIDataTypes, UITools> = {
+      id: "local-send",
+      role: "user",
+      parts: [{ type: "text", text: "yes" }],
+    };
+
+    const result = runForceHydrate({
+      prev: [...answered, queued],
+      staleWindow: [row(1, "user", "yes")],
+      freshWindow: answered,
+    });
+
+    expect(result).toEqual([...answered, queued]);
+  });
+});
