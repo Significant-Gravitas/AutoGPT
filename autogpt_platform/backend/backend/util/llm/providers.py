@@ -361,7 +361,9 @@ async def _dispatch_sync(
             include_openrouter_extras=False,
         )
         if response.reasoning is None:
-            response.reasoning = getattr(response.raw_response, "reasoning_content", None)
+            response.reasoning = getattr(
+                response.raw_response, "reasoning_content", None
+            )
         return response
     if provider == "anthropic":
         return await _call_anthropic_messages(
