@@ -12,7 +12,9 @@ import type { ToolUIPart } from "ai";
 import { domAnimation, LazyMotion, m } from "framer-motion";
 import { useContext, useId } from "react";
 import { useExpertMap } from "../../useExpertMap";
+import { AnsweredQuestions } from "../AnsweredQuestions/AnsweredQuestions";
 import { MorphingTextAnimation } from "../MorphingTextAnimation/MorphingTextAnimation";
+import { AnsweredQuestionsContext } from "../QuestionDock/AnsweredQuestionsContext";
 import { OnboardingChoices } from "./components/OnboardingChoices/OnboardingChoices";
 import { parseExpertOnboarding, type ExpertOnboardingOutput } from "./helpers";
 import { PendingOnboardingContext } from "./PendingOnboardingContext";
@@ -66,6 +68,7 @@ interface FormProps {
 
 function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   const { expertsById } = useExpertMap();
+  const answers = useContext(AnsweredQuestionsContext).get(callId);
   const sectionId = useId();
   const {
     current,
@@ -93,14 +96,24 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   const labelId = `${sectionId}-${currentStep.keyword}`;
 
   if (isDone) {
+    // Skipped questions have no answer to show, so only answered ones stay.
+    const answered = onboarding.steps.flatMap((step) => {
+      const answer = answers?.get(step.keyword);
+      return answer
+        ? [{ key: step.keyword, question: step.question, answer }]
+        : [];
+    });
     return (
-      <div className="flex items-center gap-2 py-2 text-sm text-zinc-500">
-        <Icon
-          icon={CheckmarkCircle02Icon}
-          size={16}
-          className="shrink-0 text-zinc-400"
-        />
-        Setup questions from {name}
+      <div className="flex flex-col gap-1 py-2">
+        <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <Icon
+            icon={CheckmarkCircle02Icon}
+            size={16}
+            className="shrink-0 text-zinc-400"
+          />
+          Setup questions from {name}
+        </div>
+        {answered.length > 0 && <AnsweredQuestions items={answered} />}
       </div>
     );
   }
