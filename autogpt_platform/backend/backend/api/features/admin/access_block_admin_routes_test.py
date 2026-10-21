@@ -91,7 +91,12 @@ def test_create_records_the_admin_who_blocked(
 
     response = client.post(
         "/admin/access-blocks",
-        json={"kind": "IP", "value": "203.0.113.7", "reason": "sign-up farm"},
+        json={
+            "kind": "IP",
+            "value": "203.0.113.7",
+            "reason": "sign-up farm",
+            "expires_at": "2099-01-01T00:00:00Z",
+        },
     )
 
     assert response.status_code == 201
@@ -100,9 +105,28 @@ def test_create_records_the_admin_who_blocked(
         kind=AuthAccessBlockKind.IP,
         value="203.0.113.7",
         reason="sign-up farm",
-        expires_at=None,
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
         created_by_id=admin_user_id,
     )
+
+
+def test_an_expiry_without_a_time_zone_is_a_422(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    create = mocker.patch(f"{_MOCK_MODULE}.create_access_block", new_callable=AsyncMock)
+
+    response = client.post(
+        "/admin/access-blocks",
+        json={
+            "kind": "IP",
+            "value": "203.0.113.7",
+            "reason": "abuse",
+            "expires_at": "2099-01-01T00:00:00",
+        },
+    )
+
+    assert response.status_code == 422
+    create.assert_not_awaited()
 
 
 def test_blocking_a_public_email_provider_is_a_400() -> None:

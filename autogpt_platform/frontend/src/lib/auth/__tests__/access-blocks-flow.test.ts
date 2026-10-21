@@ -35,6 +35,8 @@ vi.mock("pg", () => ({
 }));
 
 const testDB = vi.hoisted(() => ({ current: {} as Record<string, unknown[]> }));
+// Better Auth limits only in production unless told to.
+const rateLimit = vi.hoisted(() => ({ enabled: false }));
 vi.mock("better-auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("better-auth")>();
   const { memoryAdapter } = await import("better-auth/adapters/memory");
@@ -45,6 +47,7 @@ vi.mock("better-auth", async (importOriginal) => {
         ...options,
         database: memoryAdapter(testDB.current),
         plugins: [],
+        rateLimit: { ...options.rateLimit, enabled: rateLimit.enabled },
       }),
   };
 });
@@ -225,10 +228,11 @@ describe("the client IP", () => {
   });
 
   afterEach(() => {
+    rateLimit.enabled = false;
     vi.unstubAllEnvs();
   });
 
-  it("is not read from X-Forwarded-For off Vercel without TRUST_X_FORWARDED_FOR", async () => {
+  it("isn't taken from X-Forwarded-For for blocks or the log off Vercel without TRUST_X_FORWARDED_FOR", async () => {
     const handler = await createAuthHandler();
 
     const signedUp = await signUp(handler, "a@example.com", "203.0.113.7");
@@ -241,7 +245,7 @@ describe("the client IP", () => {
   it.each([
     ["on Vercel", "VERCEL", "1"],
     ["with TRUST_X_FORWARDED_FOR", "TRUST_X_FORWARDED_FOR", "true"],
-  ])("is read from X-Forwarded-For %s", async (_, name, value) => {
+  ])("is taken from X-Forwarded-For for blocks %s", async (_, name, value) => {
     vi.stubEnv(name, value);
     const handler = await createAuthHandler();
 
@@ -251,5 +255,22 @@ describe("the client IP", () => {
       status: 403,
       code: SIGN_UP_BLOCKED_CODE,
     });
+  });
+
+  it("still rate-limits each address's repeated sign-ins without a trusted proxy", async () => {
+    rateLimit.enabled = true;
+    const handler = await createAuthHandler();
+    await signUp(handler, "a@example.com", "192.0.2.1");
+
+    const statuses = [];
+    for (let attempt = 0; attempt < 4; attempt++) {
+      statuses.push(
+        (await signIn(handler, "a@example.com", "198.51.100.9")).status,
+      );
+    }
+    const elsewhere = await signIn(handler, "a@example.com", "198.51.100.10");
+
+    expect(statuses).toEqual([200, 200, 200, 429]);
+    expect(elsewhere.status).toBe(200);
   });
 });

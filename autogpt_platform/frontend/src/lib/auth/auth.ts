@@ -10,7 +10,7 @@ import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
-import { getIPAddressOptions } from "./client-ip";
+import { getTrustedClientIP } from "./client-ip";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
@@ -116,7 +116,7 @@ const ADMIN_CREATE_USER_PATH = "/admin/create-user";
 function getRequestIP(ctx: HookContext) {
   const headers = ctx?.headers ?? ctx?.request?.headers;
   if (!headers || !ctx?.context) return null;
-  return getIp(headers, ctx.context.options);
+  return getTrustedClientIP(getIp(headers, ctx.context.options));
 }
 
 export const auth = betterAuth({
@@ -244,7 +244,10 @@ export const auth = betterAuth({
           ctx: HookContext,
         ) => {
           if (!ctx || session.impersonatedBy) return;
-          await assertSignInAllowed(authDbPool, session.ipAddress || null);
+          await assertSignInAllowed(
+            authDbPool,
+            getTrustedClientIP(session.ipAddress),
+          );
         },
         after: async (session: {
           userId: string;
@@ -256,7 +259,7 @@ export const auth = betterAuth({
           await recordAuthIP(authDbPool, {
             userId: session.userId,
             kind: "SIGN_IN",
-            ipAddress: session.ipAddress,
+            ipAddress: getTrustedClientIP(session.ipAddress),
             userAgent: session.userAgent,
           });
         },
@@ -273,7 +276,6 @@ export const auth = betterAuth({
     // sign-up takes as long whether or not the address already has an
     // account: see background-tasks.ts.
     backgroundTasks: { handler: runAfterResponse },
-    ipAddress: getIPAddressOptions(),
   },
   session: {
     modelName: "UserAuthSession",

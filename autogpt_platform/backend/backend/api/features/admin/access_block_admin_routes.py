@@ -1,12 +1,10 @@
 """Admin endpoints for the IPs and email domains refused at sign-up and sign-in."""
 
-from datetime import datetime
-
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.models import User as AuthUser
 from fastapi import APIRouter, Query, Security
 from prisma.enums import AuthAccessBlockKind
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from backend.data.access_blocks import (
     DEFAULT_PAGE_SIZE,
@@ -28,7 +26,8 @@ class CreateAccessBlockRequest(BaseModel):
     kind: AuthAccessBlockKind
     value: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=1, max_length=MAX_REASON_LENGTH)
-    expires_at: datetime | None = None
+    # A naive time can't be compared with now; the client sends UTC.
+    expires_at: AwareDatetime | None = None
 
 
 @router.get("", summary="List access blocks")
