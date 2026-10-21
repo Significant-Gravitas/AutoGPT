@@ -13,6 +13,7 @@ their declared ``boundaries`` as policy to check against — fenced as data — 
 their name for accountability. Nothing else crosses.
 """
 
+import html
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -134,12 +135,14 @@ def verdict_response(
     provenance mirrors ``fence_voice_preferences``. Its reason and quotes are
     tag-escaped, after truncation, wherever they appear: the whole response
     is the tool result the caller's model reads, the structured fields as
-    much as the message. The verdict card turns the entities back for the
-    user.
+    much as the message. The escaping is reversible (``&`` first), so the
+    verdict card shows exactly what the auditor wrote.
     """
-    reason = escape_prompt_xml_tags(" ".join(verdict.reason.split())[:MAX_REASON_CHARS])
+    reason = html.escape(
+        " ".join(verdict.reason.split())[:MAX_REASON_CHARS], quote=False
+    )
     quotes = [
-        escape_prompt_xml_tags(" ".join(q.split())[:MAX_QUOTE_CHARS])
+        html.escape(" ".join(q.split())[:MAX_QUOTE_CHARS], quote=False)
         for q in verdict.quotes[:MAX_QUOTES]
         if q.strip()
     ]

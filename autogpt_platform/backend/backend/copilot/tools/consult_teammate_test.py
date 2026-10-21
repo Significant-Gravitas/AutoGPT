@@ -361,6 +361,20 @@ class TestExecute:
         for tag in ("</ruling>", "<system>", "<draft>"):
             assert tag not in seen_by_model
 
+    async def test_ruling_escaping_keeps_literal_entities_distinct(self):
+        """``&`` is escaped first, so the card can tell a written ``&lt;``
+        from an escaped ``<``."""
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert()),
+        ), patch(
+            "backend.copilot.tools.consult_teammate._audit_via_provider",
+            AsyncMock(return_value=_verdict("block", "Writes &lt; for <", [])),
+        ):
+            result = await self._run()
+        assert isinstance(result, ConsultVerdictResponse)
+        assert result.reason == "Writes &amp;lt; for &lt;"
+
     async def test_unattended_block_means_do_not_send(self):
         """No one is watching an automation turn, so nobody can own an override."""
         with patch(
