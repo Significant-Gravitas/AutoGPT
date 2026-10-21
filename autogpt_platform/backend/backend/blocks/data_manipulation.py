@@ -205,14 +205,20 @@ class FindInDictionaryBlock(Block):
                     yield "missing", input_data.input
                 else:
                     yield "output", []
-            elif isinstance(obj[0], dict) and key in obj[0]:
-                yield "output", [item[key] for item in obj if key in item]
-            elif is_index and not isinstance(obj[0], dict):
+            elif dicts := [item for item in obj if isinstance(item, dict)]:
+                # Pluck the key from every dict, whatever the first item holds;
+                # non-dict items are skipped.
+                found = [item[key] for item in dicts if key in item]
+                if found:
+                    yield "output", found
+                else:
+                    yield "missing", input_data.input
+            elif is_index:
                 # Builder inputs send `str | int` keys as strings by default,
                 # so treat a numeric string as a list index, with the same
                 # range rule as an int key (negatives are missing). isdigit()
                 # alone also accepts characters like "²" that int() rejects.
-                # Lists of dicts keep plucking by key, whatever obj[0] holds.
+                # Lists that contain dicts pluck by key instead (above).
                 try:
                     index = int(key.strip())
                 except ValueError:
@@ -224,7 +230,11 @@ class FindInDictionaryBlock(Block):
                 else:
                     yield "missing", input_data.input
             else:
-                yield "output", [getattr(val, key) for val in obj if hasattr(val, key)]
+                found = [getattr(val, key) for val in obj if hasattr(val, key)]
+                if found:
+                    yield "output", found
+                else:
+                    yield "missing", input_data.input
         elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
             yield "output", getattr(obj, key)
         else:
