@@ -177,6 +177,56 @@ class NotionClient:
 
         return response.json()
 
+    async def update_page(self, page_id: str, properties: dict) -> dict:
+        """
+        Update a page's properties.
+
+        Args:
+            page_id: The ID of the page to update.
+            properties: Properties to update.
+
+        Returns:
+            The updated page object.
+        """
+        url = f"https://api.notion.com/v1/pages/{page_id}"
+
+        response = await self.requests.patch(
+            url, headers=self.headers, json={"properties": properties}
+        )
+
+        if not response.ok:
+            raise NotionAPIException(
+                f"Failed to update page: {response.status} - {response.text()}",
+                response.status,
+            )
+
+        return response.json()
+
+    async def append_blocks(self, block_id: str, children: List[dict]) -> dict:
+        """
+        Append blocks to a page or block.
+
+        Args:
+            block_id: The ID of the page or block to append to.
+            children: List of block objects to append.
+
+        Returns:
+            Response with the created blocks.
+        """
+        url = f"https://api.notion.com/v1/blocks/{block_id}/children"
+
+        response = await self.requests.patch(
+            url, headers=self.headers, json={"children": children}
+        )
+
+        if not response.ok:
+            raise NotionAPIException(
+                f"Failed to append blocks: {response.status} - {response.text()}",
+                response.status,
+            )
+
+        return response.json()
+
     async def search(
         self,
         query: str = "",

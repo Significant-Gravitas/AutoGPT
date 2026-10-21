@@ -21,14 +21,7 @@ def get_backend_expansion(frontend_key: str) -> str:
     return result
 
 
-# TweetReplySettings
-REPLY_SETTINGS_FRONTEND_TO_BACKEND_MAPPING = {
-    "Mentioned_Users_Only": "mentionedUsers",
-    "Following_Users_Only": "following",
-    "All_Users": "all",
-}
-
-
+# TweetUserFields
 USER_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "Account_Creation_Date": "created_at",
     "User_Bio": "description",
