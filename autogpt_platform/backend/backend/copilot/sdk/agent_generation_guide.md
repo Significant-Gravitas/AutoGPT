@@ -230,7 +230,8 @@ descriptions; read and follow those when `find_capability` surfaces a match.
   results daily"), use `SendEmailToMeBlock` (ID:
   `38997608-a57a-4e11-971c-b83a5332e80b`). It needs no credentials and only
   ever sends to the account's address, so do not ask for one. Use Gmail or
-  SMTP only to email someone else.
+  SMTP only to email someone else. To show an image, put
+  `![alt](workspace://<file_id>)` in its Markdown body.
 - **Node spacing**: Position nodes with at least 800 X-units between them.
 - **Nested properties**: Use `parentField_#_childField` notation in link
   sink_name/source_name to access nested object fields.

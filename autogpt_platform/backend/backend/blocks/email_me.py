@@ -6,8 +6,14 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
-from backend.notifications.owner_email_body import BodyFormat
+from backend.notifications.owner_email_body import (
+    BodyFormat,
+    InlineImage,
+    image_sources,
+)
+from backend.notifications.owner_email_images import fetch_images
 from backend.util.clients import get_notification_manager_client
 
 
@@ -17,13 +23,17 @@ class SendEmailToMeBlock(Block):
             description="Subject of the email", placeholder="Your weekly summary"
         )
         body: str = SchemaField(
-            description="Body of the email, written in the chosen format",
+            description=(
+                "Body of the email, written in the chosen format. Images "
+                "(![alt](workspace://<file_id>) or an https:// URL in Markdown, <img> "
+                "in HTML) are attached to the email."
+            ),
             placeholder="Here is what I found this week...",
         )
         body_format: BodyFormat = SchemaField(
             description=(
                 "How the body is written: Markdown, plain text, or HTML (scripts, "
-                "forms and images are removed)"
+                "forms and styles are removed)"
             ),
             default=BodyFormat.MARKDOWN,
         )
@@ -59,7 +69,17 @@ class SendEmailToMeBlock(Block):
             effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
-    async def run(self, input_data: Input, *, user_id: str, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        user_id: str,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ) -> BlockOutput:
+        images = await fetch_images(
+            image_sources(input_data.body, input_data.body_format), execution_context
+        )
         try:
             await self.send_to_owner(
                 user_id,
@@ -67,6 +87,7 @@ class SendEmailToMeBlock(Block):
                 input_data.body,
                 input_data.link or None,
                 input_data.body_format,
+                images,
             )
         except (ValueError, RuntimeError, TimeoutError) as e:
             yield "error", str(e)
@@ -75,8 +96,13 @@ class SendEmailToMeBlock(Block):
 
     @staticmethod
     async def send_to_owner(
-        user_id: str, subject: str, body: str, link: str | None, body_format: BodyFormat
+        user_id: str,
+        subject: str,
+        body: str,
+        link: str | None,
+        body_format: BodyFormat,
+        images: list[InlineImage],
     ) -> None:
         await get_notification_manager_client().send_owner_email(
-            user_id, subject, body, link, body_format
+            user_id, subject, body, link, body_format, images
         )

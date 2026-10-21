@@ -15,7 +15,12 @@ from requests import RequestException
 
 from backend.data.redis_client import get_redis_async
 from backend.notifications.email import EmailSender
-from backend.notifications.owner_email_body import BodyFormat, render_body
+from backend.notifications.owner_email_body import (
+    MAX_IMAGES,
+    BodyFormat,
+    InlineImage,
+    render_body,
+)
 from backend.notifications.renderer import RenderedEmail, build_urls
 from backend.notifications.template_env import create_body_environment
 from backend.util.clients import get_database_manager_async_client
@@ -30,16 +35,29 @@ _text_env = create_body_environment(autoescape=False)
 _COUNTER_TTL_SECONDS = 60 * 60 * 48
 
 
+class OwnerRenderedEmail(RenderedEmail):
+    attachments: list[dict[str, str]] = Field(default_factory=list)
+
+
 class OwnerEmail(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=100_000)
     link: str | None = None
     body_format: BodyFormat = BodyFormat.MARKDOWN
+    images: list[InlineImage] = Field(default_factory=list, max_length=MAX_IMAGES)
 
-    @field_validator("subject")
+    # Before the length check, so a subject of only whitespace is refused.
+    @field_validator("subject", mode="before")
     @classmethod
-    def _one_line(cls, subject: str) -> str:
-        return " ".join(subject.split())
+    def _one_line(cls, subject: object) -> object:
+        return " ".join(subject.split()) if isinstance(subject, str) else subject
+
+    @field_validator("body")
+    @classmethod
+    def _not_blank(cls, body: str) -> str:
+        if not body.strip():
+            raise ValueError("The body is empty.")
+        return body
 
     @field_validator("link")
     @classmethod
@@ -50,13 +68,21 @@ class OwnerEmail(BaseModel):
 
 
 def parse_owner_email(
-    subject: str, body: str, link: str | None, body_format: BodyFormat
+    subject: str,
+    body: str,
+    link: str | None,
+    body_format: BodyFormat,
+    images: list[InlineImage] | None = None,
 ) -> OwnerEmail:
     """A ValidationError's type is not one the RPC client can rebuild, so it
     crosses as the ValueError the block reports."""
     try:
         return OwnerEmail(
-            subject=subject, body=body, link=link, body_format=body_format
+            subject=subject,
+            body=body,
+            link=link,
+            body_format=body_format,
+            images=images or [],
         )
     except ValidationError as e:
         raise ValueError(
@@ -94,7 +120,7 @@ async def send_owner_email(
     # Only a send that certainly went nowhere gives its slot back: one that
     # timed out may have arrived, and refunding it lets a looping run past the cap.
     try:
-        await email_sender.send_owner_email(address, email)
+        await email_sender.send_owner_email(address, email, email.attachments)
     except ClientError as e:
         await _give_back(counter)
         raise ValueError(f"The email service refused this email: {e}") from e
@@ -109,8 +135,11 @@ async def send_owner_email(
     logger.info(f"Sent an owner email for user {user_id}")
 
 
-def render_owner_email(message: OwnerEmail) -> RenderedEmail:
-    body = render_body(message.body, message.body_format)
+def render_owner_email(message: OwnerEmail) -> OwnerRenderedEmail:
+    content_ids = {
+        image.source: f"image-{n}" for n, image in enumerate(message.images, 1)
+    }
+    body = render_body(message.body, message.body_format, content_ids)
     context = {
         "subject": message.subject,
         "content": body.html,
@@ -119,11 +148,20 @@ def render_owner_email(message: OwnerEmail) -> RenderedEmail:
         "assets": settings.config.email_asset_base_url.rstrip("/"),
         "urls": build_urls(""),
     }
-    return RenderedEmail(
+    return OwnerRenderedEmail(
         subject=message.subject,
         preheader="",
         html=_html_env.get_template("owner.html.j2").render(**context),
         text=_text_env.get_template("owner.txt.j2").render(**context).strip(),
+        attachments=[
+            {
+                "Name": f"{content_ids[image.source]}.{image.content_type[6:]}",
+                "Content": image.data,
+                "ContentType": image.content_type,
+                "ContentID": f"cid:{content_ids[image.source]}",
+            }
+            for image in message.images
+        ],
     )
 
 

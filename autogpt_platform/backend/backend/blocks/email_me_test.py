@@ -5,11 +5,14 @@ sender is real, except the RPC hop to that service, which is called in-process.
 """
 
 import asyncio
+import base64
 import threading
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 import requests
 from postmarker.exceptions import ClientError
@@ -20,8 +23,11 @@ from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.models import BlockOutputResponse, SetupRequirementsResponse
 from backend.copilot.tools.run_block import RunBlockTool
 from backend.data.execution import ExecutionContext
-from backend.notifications import notifications, owner_email
+from backend.data.workspace import WorkspaceFile
+from backend.notifications import notifications, owner_email, owner_email_images
 from backend.notifications.email import EmailSender
+from backend.util import file as file_module
+from backend.util import workspace as workspace_module
 from backend.util.exceptions import BlockExecutionError
 
 REFUSED = ClientError("[406] Recipient is marked inactive", error_code=406)
@@ -268,13 +274,14 @@ async def test_the_body_is_read_in_the_format_the_run_chose(
 HOSTILE = (
     '<p onclick="steal()" style="background:url(https://t.example/a.gif)">Hi</p>'
     "<script>alert(1)</script>"
-    '<img src="https://t.example/pixel.gif" width="1" height="1">'
+    '<img src="https://203.0.113.9/t.example/pixel.gif" width="1" height="1">'
     '<form action="https://evil.example"><input name="password"><button>Go</button></form>'
     '<a href="javascript:alert(2)">bad</a> <a href="https://ok.example">ok</a>'
+    '<a href="data:text/html;base64,PHNjcmlwdD4=">click</a>'
 )
 
 GONE = ("<script", "alert(", "steal()", "t.example", "<form", "<input", "javascript:")
-GONE += ("evil.example", ">Go<")
+GONE += ("evil.example", ">Go<", "data:text/html")
 
 
 @pytest.mark.parametrize("body_format", ["markdown", "html"])
@@ -307,6 +314,27 @@ async def test_every_format_sends_a_plain_text_part(postmark, body_format, body)
     text = _sent(postmark)["TextBody"]
     assert "Three things" in text and "First, the news." in text
     assert "<" not in text
+
+
+async def test_a_link_keeps_its_attributes_and_gets_the_template_style(postmark):
+    body = '<p><a href="https://ok.example" title="A -> B">the report</a></p>'
+    await run({"subject": "s", "body": body, "body_format": "html"})
+
+    assert (
+        '<a href="https://ok.example" title="A -&gt; B" '
+        'style="color:#4D36AD; text-decoration:underline;">the report</a>'
+    ) in _sent(postmark)["HtmlBody"]
+
+
+@pytest.mark.parametrize(
+    "subject, body, refusal",
+    [(" \n ", "b", "subject"), ("s", " \n\n ", "The body is empty")],
+)
+async def test_a_blank_subject_or_body_is_refused(postmark, subject, body, refusal):
+    response = await run({"subject": subject, "body": body})
+
+    assert refusal in _error(response)
+    assert sent_to(postmark) == []
 
 
 async def test_a_link_that_is_not_a_web_address_is_refused(postmark):
@@ -342,6 +370,160 @@ async def test_an_expected_failure_is_a_block_error_not_an_unknown_one(
             node_exec_id="ne",
         ):
             pass
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + bytes(64)
+
+
+@pytest.fixture(autouse=True)
+def network(monkeypatch) -> list[str]:
+    """Every URL that reached the HTTP transport; nothing does in these tests."""
+    reached: list[str] = []
+
+    async def no_network(self, method, url, *args, **kwargs):
+        reached.append(str(url))
+        raise aiohttp.ClientConnectionError("no network in tests")
+
+    monkeypatch.setattr(aiohttp.ClientSession, "_request", no_network)
+    return reached
+
+
+@pytest.fixture
+def workspace(monkeypatch, tmp_path) -> dict[str, tuple[str, bytes]]:
+    """Files by id, as (owning workspace, content). The run's workspace is "ws";
+    the lookups answer the way the database queries do."""
+    files: dict[str, tuple[str, bytes]] = {}
+
+    def record(file_id: str) -> WorkspaceFile:
+        now = datetime.now(tz=UTC)
+        return WorkspaceFile(
+            id=file_id,
+            workspace_id=files[file_id][0],
+            created_at=now,
+            updated_at=now,
+            name=f"{file_id}.png",
+            path=f"/{file_id}.png",
+            storage_path=file_id,
+            mime_type="image/png",
+            size_bytes=len(files[file_id][1]),
+        )
+
+    async def scoped(file_id: str, workspace_id: str):
+        owner = files.get(file_id, (None, b""))[0]
+        return record(file_id) if owner == workspace_id else None
+
+    async def unscoped(file_id: str):
+        return record(file_id) if file_id in files else None
+
+    async def retrieve(storage_path: str) -> bytes:
+        return files[storage_path][1]
+
+    db = SimpleNamespace(get_workspace_file=scoped, get_workspace_file_by_id=unscoped)
+    storage = SimpleNamespace(retrieve=retrieve)
+    monkeypatch.setattr(workspace_module, "workspace_db", lambda: db)
+    monkeypatch.setattr(
+        workspace_module, "get_workspace_storage", AsyncMock(return_value=storage)
+    )
+    monkeypatch.setattr(file_module, "scan_content_safe", AsyncMock())
+    monkeypatch.setattr(file_module, "TEMP_DIR", tmp_path)
+    return files
+
+
+async def test_a_workspace_image_is_attached_and_shown_inline(postmark, workspace):
+    workspace["chart"] = ("ws", PNG)
+
+    await run({"subject": "s", "body": "Results:\n\n![Chart](workspace://chart)"})
+
+    sent = _sent(postmark)
+    assert sent["Attachments"] == [
+        {
+            "Name": "image-1.png",
+            "Content": base64.b64encode(PNG).decode(),
+            "ContentType": "image/png",
+            "ContentID": "cid:image-1",
+        }
+    ]
+    assert '<img src="cid:image-1" alt="Chart"' in sent["HtmlBody"]
+    assert "workspace://" not in sent["HtmlBody"]
+
+
+async def test_the_plain_text_part_shows_an_images_alt_text(postmark, workspace):
+    workspace["chart"] = ("ws", PNG)
+
+    await run(
+        {"subject": "s", "body": "Results:\n\n![Weekly chart](workspace://chart)"}
+    )
+
+    text = _sent(postmark)["TextBody"]
+    assert "Weekly chart" in text
+    assert "cid:" not in text and "workspace://" not in text
+
+
+async def test_an_image_in_another_users_workspace_is_never_read(postmark, workspace):
+    workspace["theirs"] = ("ws-someone-else", PNG)
+
+    await run({"subject": "s", "body": "![Their chart](workspace://theirs)"})
+
+    sent = _sent(postmark)
+    assert not sent["Attachments"]
+    assert "Their chart" in sent["HtmlBody"]
+    assert 'src="cid:' not in sent["HtmlBody"]
+
+
+async def test_an_image_on_an_internal_address_is_never_fetched(postmark, network):
+    await run({"subject": "s", "body": "![Internal](https://127.0.0.1/secret.png)"})
+
+    sent = _sent(postmark)
+    assert not [url for url in network if "127.0.0.1" in url]
+    assert not sent["Attachments"]
+    assert "Internal" in sent["HtmlBody"]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"<svg onload='steal()'></svg>", b"%PDF-1.7 not an image"],
+)
+async def test_a_file_that_is_not_an_image_is_left_out(postmark, workspace, content):
+    workspace["fake"] = ("ws", content)
+
+    await run({"subject": "s", "body": "![Fake](workspace://fake)"})
+
+    sent = _sent(postmark)
+    assert not sent["Attachments"]
+    assert "Fake" in sent["HtmlBody"]
+
+
+async def test_an_oversized_image_is_left_out_and_its_alt_text_shown(
+    monkeypatch, postmark, workspace
+):
+    monkeypatch.setattr(owner_email_images, "MAX_IMAGE_BYTES", len(PNG) - 1)
+    workspace["big"] = ("ws", PNG)
+
+    await run({"subject": "s", "body": "![Big chart](workspace://big)"})
+
+    sent = _sent(postmark)
+    assert not sent["Attachments"]
+    assert "Big chart" in sent["HtmlBody"]
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [("MAX_IMAGES", 1), ("MAX_TOTAL_BYTES", len(PNG) + 1)],
+)
+async def test_images_past_the_count_or_total_size_are_left_out(
+    monkeypatch, postmark, workspace, limit
+):
+    monkeypatch.setattr(owner_email_images, *limit)
+    workspace["one"] = ("ws", PNG)
+    workspace["two"] = ("ws", PNG)
+
+    await run(
+        {"subject": "s", "body": "![One](workspace://one) ![Two](workspace://two)"}
+    )
+
+    sent = _sent(postmark)
+    assert [a["ContentID"] for a in sent["Attachments"]] == ["cid:image-1"]
+    assert "Two" in sent["HtmlBody"]
 
 
 def _sent(postmark) -> dict:

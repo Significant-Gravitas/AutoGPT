@@ -112,7 +112,12 @@ class EmailSender:
             MessageStream=settings.config.postmark_transactional_stream,
         )
 
-    async def send_owner_email(self, user_email: str, email: RenderedEmail) -> None:
+    async def send_owner_email(
+        self,
+        user_email: str,
+        email: RenderedEmail,
+        attachments: list[dict[str, str]],
+    ) -> None:
         """Raises when Postmark is not configured: the run that asked for this
         reports a failure instead of a send that never happened."""
         if not self.postmark:
@@ -125,6 +130,7 @@ class EmailSender:
             html_body=email.html,
             text_body=email.text,
             headers=None,
+            attachments=attachments,
         )
 
     async def _send(
@@ -136,6 +142,7 @@ class EmailSender:
         text_body: str,
         headers: dict[str, str] | None,
         reply_to: str | None = None,
+        attachments: list[dict[str, str]] | None = None,
     ) -> None:
         if not self.postmark:
             logger.warning("Email tried to send without Postmark configured")
@@ -153,6 +160,7 @@ class EmailSender:
             TextBody=text_body,
             MessageStream=settings.config.postmark_transactional_stream,
             Headers=headers,
+            Attachments=attachments,
         )
 
 
