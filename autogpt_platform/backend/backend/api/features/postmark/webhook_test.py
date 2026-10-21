@@ -143,6 +143,15 @@ def test_a_redelivered_webhook_is_the_same_event(posthog: Mock, lookup: AsyncMoc
     assert later["uuid"] != first["uuid"]
 
 
+def test_two_links_clicked_at_once_are_two_events(posthog: Mock, lookup: AsyncMock):
+    _post(_click("https://platform.agpt.co/copilot"))
+    _post(_click("https://platform.agpt.co/library"))
+
+    first, second = (c.kwargs for c in posthog.capture.call_args_list)
+    assert first["uuid"] != second["uuid"]
+    assert "platform.agpt.co" not in first["properties"]["$insert_id"]
+
+
 def test_an_untagged_email_sends_no_email_type(posthog: Mock, lookup: AsyncMock):
     _post({**_delivery(), "Tag": ""})
 
@@ -184,6 +193,15 @@ def test_a_request_without_the_webhook_token_is_refused(
             "https://platform.agpt.co/marketplace/agent/autogpt/blog-writer",
             "https://platform.agpt.co/marketplace/agent/autogpt/blog-writer",
         ),
+        (
+            "https://example.com/members/alice@example.com/profile",
+            "https://example.com/members/:id/profile",
+        ),
+        (
+            "https://example.com/members/alice%40example.com",
+            "https://example.com/members/:id",
+        ),
+        ("https://example.com/Tok", "https://example.com/:id"),
         (
             "HTTPS://user:secret@Platform.AGPT.co:8443/x",
             "https://platform.agpt.co:8443/x",

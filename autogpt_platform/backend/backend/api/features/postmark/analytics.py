@@ -3,9 +3,11 @@
 The webhook handler finds the user the email went to and calls
 :func:`track_email_event`. The recipient address itself never reaches PostHog:
 the user id is the distinct id, and a clicked link keeps only its scheme, host
-and path, with id- and token-like path segments replaced by ``:id``.
+and path, with any path segment that isn't a plain lower-case word replaced
+by ``:id``.
 """
 
+import hashlib
 import logging
 import re
 from datetime import datetime
@@ -32,9 +34,12 @@ EmailWebhook = (
 
 ID_SEGMENT = ":id"
 
-# A path segment this long with a digit or a capital in it is an id, a code or
-# a token (a UUID, a reset token), not a word or a slug.
-_ID_LIKE_RE = re.compile(r"(?=.*[\dA-Z]).{16,}")
+# The path segments a link keeps: lower-case words and slugs. Anything else
+# (an email address, a capitalised or percent-encoded token) becomes ``:id``.
+_PLAIN_SEGMENT_RE = re.compile(r"[a-z0-9._-]*")
+# A plain segment this long with a digit in it is an id or a code (a UUID),
+# and one longer still is a token whatever it holds.
+_ID_LIKE_RE = re.compile(r"(?=.*\d).{16,}")
 _ID_LIKE_MIN_ANY = 32
 
 
@@ -48,9 +53,14 @@ def track_email_event(
 ) -> None:
     """Send *event* for one Postmark webhook, at the time Postmark reports.
 
-    Keyed on the message, the record type and that time, so a webhook Postmark
-    redelivers is merged with the first one rather than counted twice.
+    Keyed on the message, the record type and that time, plus a hash of the
+    link for a click, so a webhook Postmark redelivers is merged with the
+    first one rather than counted twice.
     """
+    dedup_key = f"{webhook.MessageID}:{webhook.RecordType}:{occurred_at}"
+    if isinstance(webhook, PostmarkClickWebhook):
+        link_hash = hashlib.sha256(webhook.OriginalLink.encode()).hexdigest()
+        dedup_key = f"{dedup_key}:{link_hash[:16]}"
     track(
         user_id,
         event,
@@ -61,7 +71,7 @@ def track_email_event(
             "message_id": webhook.MessageID,
             **(properties or {}),
         },
-        dedup_key=f"{webhook.MessageID}:{webhook.RecordType}:{occurred_at}",
+        dedup_key=dedup_key,
         timestamp=parse_postmark_time(occurred_at),
     )
 
@@ -78,7 +88,8 @@ def parse_postmark_time(value: str) -> datetime | None:
 
 def safe_link(url: str) -> str | None:
     """The clicked link without anything that could identify a person or
-    carry a secret: no query string, fragment, credentials or ids.
+    carry a secret: no query string, fragment, credentials, ids or any path
+    segment that isn't a plain lower-case word.
 
     Only web links keep a host and path; any other scheme keeps just its
     name, since a ``mailto:`` link's path is an email address.
@@ -96,11 +107,15 @@ def safe_link(url: str) -> str | None:
         return None
     netloc = f"{host}:{port}" if port else host
     path = "/".join(
-        ID_SEGMENT if _is_id_like(segment) else segment
+        segment if _is_plain(segment) else ID_SEGMENT
         for segment in parts.path.split("/")
     )
     return f"{scheme}://{netloc}{path}"
 
 
-def _is_id_like(segment: str) -> bool:
-    return len(segment) >= _ID_LIKE_MIN_ANY or bool(_ID_LIKE_RE.fullmatch(segment))
+def _is_plain(segment: str) -> bool:
+    return (
+        bool(_PLAIN_SEGMENT_RE.fullmatch(segment))
+        and len(segment) < _ID_LIKE_MIN_ANY
+        and not _ID_LIKE_RE.fullmatch(segment)
+    )
