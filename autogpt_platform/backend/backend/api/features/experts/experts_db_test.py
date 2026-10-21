@@ -773,14 +773,9 @@ async def hub_listing(make_hub_listing):
     return await make_hub_listing()
 
 
-@pytest.fixture
-def skills_hub_on(monkeypatch):
-    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=True))
-
-
 @pytest.mark.asyncio(loop_scope="session")
 async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
-    server: SpinTestServer, hub_listing, make_hub_listing, skills_hub_on
+    server: SpinTestServer, hub_listing, make_hub_listing
 ):
     first = await make_hub_listing()
     bundling = await _seed_template(
@@ -810,7 +805,7 @@ async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_installs_the_hub_skills_the_template_bundles(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on
+    server: SpinTestServer, test_user, hub_listing
 ):
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
@@ -829,7 +824,7 @@ async def test_hire_installs_the_hub_skills_the_template_bundles(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     install = AsyncMock(side_effect=RuntimeError("storage down"))
     _patch_install(monkeypatch, install)
@@ -843,22 +838,6 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
     assert hired.expert.skills == []
     assert hired.expert.setup_status == "failed"
     assert len(hired.expert.setup_failures) == 1
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_hire_installs_nothing_while_the_hub_is_off(
-    server: SpinTestServer, test_user, hub_listing, monkeypatch
-):
-    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=False))
-    install = AsyncMock()
-    _patch_install(monkeypatch, install)
-    template = await _seed_template(
-        name="Maria", preload_listings=[], bundled=[hub_listing.id]
-    )
-
-    await experts_db.hire_expert(test_user.id, template.id, None)
-
-    install.assert_not_awaited()
 
 
 def _patch_install(monkeypatch, install: AsyncMock) -> None:
@@ -905,7 +884,7 @@ async def _template_with_setup(server, hub_listing) -> prisma.models.Expert:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_returns_before_any_skill_is_installed(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     release = asyncio.Event()
     record = _recording_install()
@@ -940,7 +919,7 @@ async def test_hire_returns_before_any_skill_is_installed(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     install = _recording_install()
     _patch_install(monkeypatch, install)
@@ -969,7 +948,7 @@ async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_rehire_retries_a_failed_setup(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     _patch_install(monkeypatch, AsyncMock(side_effect=RuntimeError("storage down")))
     template = await _seed_template(
