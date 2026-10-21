@@ -236,6 +236,7 @@ from ..transcript import (
     next_uncovered_sequence,
     projects_base,
     read_compacted_entries,
+    reconnect_entry,
     strip_for_upload,
     upload_transcript,
     validate_transcript,
@@ -1075,9 +1076,33 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
             j -= 1
         if j >= 0 and _is_empty_assistant_entry(parsed[j][1]):
             drop.add(j)
-    return b"".join(
-        line for idx, (line, _entry) in enumerate(parsed) if idx not in drop
-    )
+    if not drop:
+        return content
+    # The CLI links each entry to the previous one by uuid; whatever pointed
+    # at a dropped entry moves to its nearest kept ancestor, so ``--resume``
+    # still walks back through the earlier turns.
+    dropped_uuids = {
+        entry["uuid"]
+        for idx, (_line, entry) in enumerate(parsed)
+        if idx in drop and entry and entry.get("uuid")
+    }
+    uuid_to_parent = {
+        entry["uuid"]: entry.get("parentUuid", "")
+        for _line, entry in parsed
+        if entry and entry.get("uuid")
+    }
+    kept: list[bytes] = []
+    for idx, (line, entry) in enumerate(parsed):
+        if idx in drop:
+            continue
+        if entry is not None and reconnect_entry(entry, dropped_uuids, uuid_to_parent):
+            ending = line[len(line.rstrip(b"\r\n")) :]
+            line = (
+                json.dumps(entry, separators=(",", ":"), ensure_ascii=False).encode()
+                + ending
+            )
+        kept.append(line)
+    return b"".join(kept)
 
 
 def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:

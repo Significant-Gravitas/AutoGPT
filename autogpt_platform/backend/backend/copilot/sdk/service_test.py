@@ -1493,6 +1493,31 @@ class TestStripSyntheticReprompt:
         )
         assert result == prior_user + final_assistant
 
+    def test_what_pointed_at_a_dropped_line_points_past_it(self):
+        """The CLI links each entry to the one before it; an entry whose
+        parent or leaf was dropped points at the nearest kept ancestor
+        instead, so --resume still reaches the earlier turns and the answer
+        (the chain CLI 2.1.284 writes for a re-prompted turn)."""
+        entries = [
+            {"type": "user", "uuid": "u1", "parentUuid": None, "message": {"role": "user", "content": "hi"}},
+            {"type": "assistant", "uuid": "a2", "parentUuid": "u1", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "hmm"}]}},
+            {"type": "user", "uuid": "u3", "parentUuid": "a2", "message": {"role": "user", "content": [{"type": "text", "text": _THINKING_ONLY_REPROMPT}]}},
+            {"type": "attachment", "uuid": "k4", "parentUuid": "u3", "attachment": {"type": "date"}},
+            {"type": "last-prompt", "leafUuid": "u3"},
+            {"type": "assistant", "uuid": "a5", "parentUuid": "k4", "message": {"role": "assistant", "content": [{"type": "text", "text": "Here you go."}]}},
+        ]  # fmt: skip
+        content = b"".join(json.dumps(entry).encode() + b"\n" for entry in entries)
+
+        result = [
+            json.loads(line)
+            for line in _strip_synthetic_reprompt_from_cli_jsonl(content).splitlines()
+        ]
+
+        assert [entry.get("uuid") for entry in result] == ["u1", "k4", None, "a5"]
+        assert result[1]["parentUuid"] == "u1"
+        assert result[2]["leafUuid"] == "u1"
+        assert result[3]["parentUuid"] == "k4"
+
 
 class TestConsumeSdkUntilDone:
     """Integration coverage for the extracted SDK consume loop.

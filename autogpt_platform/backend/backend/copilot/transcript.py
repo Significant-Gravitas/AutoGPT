@@ -304,7 +304,7 @@ def strip_for_upload(content: str) -> str:
 
     reconnected: set[int] = set()
     for i, (_line, entry) in enumerate(parsed):
-        if isinstance(entry, dict) and _reconnect_entry(
+        if isinstance(entry, dict) and reconnect_entry(
             entry, stripped_uuids, uuid_to_parent
         ):
             reconnected.add(i)
@@ -397,10 +397,15 @@ def _is_dropped_entry(entry: dict) -> bool:
     )
 
 
-def _reconnect_entry(
+def reconnect_entry(
     entry: dict, stripped_uuids: set[str], uuid_to_parent: dict[str, str]
 ) -> bool:
-    """Point *entry*'s references past dropped entries; True if any moved."""
+    """Point *entry*'s references past dropped entries; True if any moved.
+
+    *uuid_to_parent* maps every entry's ``uuid`` to its ``parentUuid``, the
+    dropped entries' included, so a reference can move to the nearest kept
+    ancestor.
+    """
     moved = False
     for field in _UUID_REFERENCE_FIELDS:
         if _reconnect_field(entry, field, stripped_uuids, uuid_to_parent):
