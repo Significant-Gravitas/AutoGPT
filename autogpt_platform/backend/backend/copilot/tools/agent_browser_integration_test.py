@@ -366,12 +366,15 @@ async def test_tool_act_missing_target(_close_tool_session):
 # is told is public, and an internal service reached as 127.0.0.1/localhost,
 # which the proxy must refuse. Requests are driven through _run, so they skip
 # browser_navigate's up-front URL check and only the proxy stands in the way.
+#
+# These run only where agent-browser is installed, never in CI, so they are
+# excluded from coverage.
 # ---------------------------------------------------------------------------
 
 _EGRESS_SESSION = "integration-egress-session"
 
 
-class _SiteHandler(http.server.BaseHTTPRequestHandler):
+class _SiteHandler(http.server.BaseHTTPRequestHandler):  # pragma: no cover
     server: "_Site"
 
     def do_GET(self) -> None:
@@ -402,7 +405,7 @@ class _SiteHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-class _Site(http.server.ThreadingHTTPServer):
+class _Site(http.server.ThreadingHTTPServer):  # pragma: no cover
     hits: list[str]
 
     def entry(self, path: str) -> str:
@@ -414,7 +417,7 @@ class _Site(http.server.ThreadingHTTPServer):
 
 
 @pytest.fixture
-async def site(monkeypatch):
+async def site(monkeypatch):  # pragma: no cover
     real_policy = egress_proxy.public_addresses
 
     async def policy(host: str) -> list[str]:
@@ -433,7 +436,9 @@ async def site(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_browser_reaches_public_pages_but_not_their_internal_requests(site):
+async def test_browser_reaches_public_pages_but_not_their_internal_requests(
+    site,
+):  # pragma: no cover
     rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
     assert rc == 0, stderr
     await _run(_EGRESS_SESSION, "wait", "--load", "networkidle")
@@ -444,7 +449,7 @@ async def test_browser_reaches_public_pages_but_not_their_internal_requests(site
 
 
 @pytest.mark.asyncio
-async def test_browser_does_not_follow_a_redirect_to_loopback(site):
+async def test_browser_does_not_follow_a_redirect_to_loopback(site):  # pragma: no cover
     await _run(_EGRESS_SESSION, "open", site.entry("/redirect"))
 
     assert "/redirect" in site.hits
@@ -452,7 +457,7 @@ async def test_browser_does_not_follow_a_redirect_to_loopback(site):
 
 
 @pytest.mark.asyncio
-async def test_browser_does_not_follow_a_link_to_loopback(site):
+async def test_browser_does_not_follow_a_link_to_loopback(site):  # pragma: no cover
     rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
     assert rc == 0, stderr
     rc, _, stderr = await _run(_EGRESS_SESSION, "click", "#link")
@@ -464,7 +469,7 @@ async def test_browser_does_not_follow_a_link_to_loopback(site):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
-async def test_browser_cannot_open_loopback_directly(site, host):
+async def test_browser_cannot_open_loopback_directly(site, host):  # pragma: no cover
     await _run(
         _EGRESS_SESSION, "open", f"http://{host}:{site.server_port}/internal/direct"
     )
@@ -497,7 +502,9 @@ _GATHER_ICE = """(async () => {
 
 
 @pytest.mark.asyncio
-async def test_browser_ignores_agent_browser_config_files(site, tmp_path, monkeypatch):
+async def test_browser_ignores_agent_browser_config_files(
+    site, tmp_path, monkeypatch
+):  # pragma: no cover
     # agent-browser would otherwise merge in ./agent-browser.json from its
     # working directory; such a file could load an extension that rewrites the
     # proxy. userAgent is a harmless way to see whether it was read.
@@ -512,7 +519,9 @@ async def test_browser_ignores_agent_browser_config_files(site, tmp_path, monkey
 
 
 @pytest.mark.asyncio
-async def test_browser_ignores_agent_browser_environment(site, monkeypatch):
+async def test_browser_ignores_agent_browser_environment(
+    site, monkeypatch
+):  # pragma: no cover
     # With this set, agent-browser would attach to whatever answers there
     # instead of launching Chromium with the proxy. Nothing listens on port 9,
     # so the page only opens if the variable never reached agent-browser.
@@ -526,7 +535,7 @@ async def test_browser_ignores_agent_browser_environment(site, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_browser_webrtc_sends_no_udp_around_the_proxy(site):
+async def test_browser_webrtc_sends_no_udp_around_the_proxy(site):  # pragma: no cover
     rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
     assert rc == 0, stderr
 

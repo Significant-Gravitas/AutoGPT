@@ -173,6 +173,42 @@ async def test_proxy_dials_the_ipv4_address_of_a_dual_stack_name(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_proxy_refuses_a_client_without_a_supported_auth_method():
+    proxy_port = int(egress_proxy_url().rsplit(":", 1)[1])
+    reader, writer = await asyncio.open_connection("127.0.0.1", proxy_port)
+    writer.write(b"\x05\x01\x02")  # offers username/password only
+    reply = await reader.readexactly(2)
+    writer.close()
+
+    assert reply == bytes([5, egress_proxy._NO_ACCEPTABLE_METHODS])
+
+
+@pytest.mark.asyncio
+async def test_proxy_refuses_an_unknown_address_type():
+    code, _, writer = await _socks_connect(
+        egress_proxy_url(), "example.com", 80, address_type=9
+    )
+    writer.close()
+
+    assert code == egress_proxy._ADDRESS_TYPE_NOT_SUPPORTED
+
+
+@pytest.mark.asyncio
+async def test_proxy_reports_an_unreachable_target(monkeypatch):
+    async def vetted(host: str) -> list[str]:
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(egress_proxy, "public_addresses", vetted)
+    with socket.socket() as closed:
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+    code, _, writer = await _socks_connect(egress_proxy_url(), "public.test", port)
+    writer.close()
+
+    assert code == egress_proxy._HOST_UNREACHABLE
+
+
+@pytest.mark.asyncio
 async def test_proxy_refuses_commands_other_than_connect():
     async with _Server() as server:
         code, _, writer = await _socks_connect(

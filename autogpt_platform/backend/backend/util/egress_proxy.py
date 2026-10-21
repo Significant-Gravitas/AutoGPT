@@ -168,7 +168,7 @@ async def _open(
     try:
         addresses = await public_addresses(host)
     except ValueError as e:
-        logger.info("Egress proxy refused %r port %d: %s", host, port, e)
+        logger.info(f"Egress proxy refused {host!r} port {port}: {e}")
         await _reply(writer, _NOT_ALLOWED)
         return None
 
@@ -181,7 +181,7 @@ async def _open(
         a for a in dict.fromkeys(addresses) if ipaddress.ip_address(a).version == 4
     ]
     if not dialable:
-        logger.info("Egress proxy refused %r port %d: no IPv4 address", host, port)
+        logger.info(f"Egress proxy refused {host!r} port {port}: no IPv4 address")
         await _reply(writer, _NOT_ALLOWED)
         return None
     for address in dialable:
