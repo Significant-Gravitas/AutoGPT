@@ -12750,6 +12750,68 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/suggested-tasks": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Suggested Tasks",
+        "description": "The greeting's suggested first tasks, each with its own state.\n\nUnlike ``/intro``, this keeps answering after the first message: the\nlist stays on Home, a sent row marked in progress, until every row is\ndismissed.",
+        "operationId": "get_brain_dump_suggested_tasks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Update Brain Dump Suggested Tasks",
+        "description": "Mark suggested tasks sent, dismissed, or open again (Undo).\n\nTakes several ids so \"Hide all\" and its Undo are one write each.",
+        "operationId": "update_brain_dump_suggested_tasks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SuggestedTasksUpdate" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -35129,6 +35191,75 @@
         "required": ["themes"],
         "title": "SuggestedPromptsResponse",
         "description": "Response model for user-specific suggested prompts grouped by theme."
+      },
+      "SuggestedTask": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "prompt": { "type": "string", "title": "Prompt" },
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "id": { "type": "string", "title": "Id" },
+          "state": {
+            "type": "string",
+            "enum": ["open", "sent", "dismissed"],
+            "title": "State",
+            "default": "open"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["title", "prompt", "id"],
+        "title": "SuggestedTask",
+        "description": "One row of the Home checklist: a suggested prompt and what became of it.\n\nStored inside ``OnboardingBrainDump.suggestedPrompts``; a row written\nbefore states existed reads as ``open``, with its list index as ``id``."
+      },
+      "SuggestedTasksResponse": {
+        "properties": {
+          "tasks": {
+            "items": { "$ref": "#/components/schemas/SuggestedTask" },
+            "type": "array",
+            "title": "Tasks",
+            "default": []
+          },
+          "stored": { "type": "boolean", "title": "Stored", "default": false }
+        },
+        "type": "object",
+        "title": "SuggestedTasksResponse",
+        "description": "The user's suggested first tasks, every state included.\n\n``stored`` is false when the user has no list of their own and these\nare the generic starters: the greeting shows them, the regular Home\npage does not, until a state change stores them."
+      },
+      "SuggestedTasksUpdate": {
+        "properties": {
+          "task_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Task Ids"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["open", "sent", "dismissed"],
+            "title": "State"
+          },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": ["task_ids", "state"],
+        "title": "SuggestedTasksUpdate"
       },
       "SuggestedTheme": {
         "properties": {

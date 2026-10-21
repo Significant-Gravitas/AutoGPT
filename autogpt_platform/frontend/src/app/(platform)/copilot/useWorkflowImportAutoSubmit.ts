@@ -99,7 +99,7 @@ export function useWorkflowImportAutoSubmit({
   setPendingFileParts,
   isSendLocked = false,
 }: {
-  onSend: (message: string) => Promise<void>;
+  onSend: (message: string) => Promise<unknown>;
   setPendingFileParts: (parts: FileUIPart[]) => void;
   isSendLocked?: boolean;
 }) {
