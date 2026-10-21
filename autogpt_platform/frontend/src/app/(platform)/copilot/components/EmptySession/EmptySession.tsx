@@ -24,6 +24,8 @@ import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
 import { useHomeComposer } from "./useHomeComposer";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
   isCreatingSession: boolean;
@@ -33,6 +35,8 @@ interface Props {
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
   ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
@@ -57,6 +61,7 @@ interface Props {
 export function EmptySession({
   isCreatingSession,
   onSend,
+  onStartTask,
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
@@ -83,6 +88,10 @@ export function EmptySession({
     selectRecipient,
   } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const suggestions = useSuggestedTasks({
+    surface: intro.isVisible ? "intro" : "home",
+    onSend: onStartTask ?? onSend,
+  });
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
   const recipientPicker = isExpertsEnabled ? (
     <RecipientChip
@@ -137,9 +146,8 @@ export function EmptySession({
             <OnboardingIntroCard
               name={greetingName}
               greeting={intro.greeting}
-              prompts={intro.prompts}
+              suggestions={suggestions}
               transcript={intro.transcript}
-              onSelectPrompt={onSend}
               disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
@@ -213,6 +221,15 @@ export function EmptySession({
                 {lowHint}
               </div>
             </div>
+          )}
+
+          {/* These prompts are Otto's, so they go while an expert is the
+              recipient. */}
+          {!intro.isVisible && !intro.isAwaitingGreeting && !selectedExpert && (
+            <SuggestedTasksBlock
+              suggestions={suggestions}
+              disabled={isComposerDisabled || !!atReset}
+            />
           )}
         </div>
 

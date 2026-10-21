@@ -71,7 +71,7 @@ describe("useSendMessage with local attachments", () => {
     uploadFileDirectMock.mockReturnValue(upload.promise);
     const { result, sendMessage } = renderSendMessage();
 
-    let sendPromise: Promise<void> | undefined;
+    let sendPromise: Promise<unknown> | undefined;
     act(() => {
       sendPromise = result.current.onSend("tell me about this", [
         makeFile("talk.pdf"),

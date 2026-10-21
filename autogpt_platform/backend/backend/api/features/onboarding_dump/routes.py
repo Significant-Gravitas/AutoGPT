@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
-from backend.api.features.onboarding_dump import db, service, storage
+from backend.api.features.onboarding_dump import db, service, storage, suggested_tasks
 from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
     MAX_PART_BYTES,
@@ -28,6 +28,8 @@ from backend.api.features.onboarding_dump.models import (
     IntroCardResponse,
     RecommendedExpertsResponse,
     RecommendedProvidersResponse,
+    SuggestedTasksResponse,
+    SuggestedTasksUpdate,
     UploadPartResponse,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -235,6 +237,31 @@ async def get_brain_dump_recommended_experts(
     when the expert-team feature is off for this user.
     """
     return await service.get_recommended_experts(user_id)
+
+
+@router.get("/suggested-tasks", operation_id="get_brain_dump_suggested_tasks")
+async def get_brain_dump_suggested_tasks(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SuggestedTasksResponse:
+    """The greeting's suggested first tasks, each with its own state.
+
+    Unlike ``/intro``, this keeps answering after the first message: the
+    list stays on Home, a sent row marked in progress, until every row is
+    dismissed.
+    """
+    return await suggested_tasks.get_suggested_tasks(user_id)
+
+
+@router.post("/suggested-tasks", operation_id="update_brain_dump_suggested_tasks")
+async def update_brain_dump_suggested_tasks(
+    request: SuggestedTasksUpdate,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SuggestedTasksResponse:
+    """Mark suggested tasks sent, dismissed, or open again (Undo).
+
+    Takes several ids so "Hide all" and its Undo are one write each.
+    """
+    return await suggested_tasks.update_suggested_tasks(user_id, request)
 
 
 @router.post("/intro/complete", operation_id="complete_brain_dump_greeting")

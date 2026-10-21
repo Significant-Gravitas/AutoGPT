@@ -197,7 +197,6 @@ export function useOnboardingIntroCard() {
     isWelcomeOpen: !isDone && isWelcomeOpen,
     closeWelcome,
     greeting: intro?.greeting ?? "",
-    prompts: intro?.prompts ?? [],
     transcript: typeof intro?.transcript === "string" ? intro.transcript : "",
     path: intro?.path ?? "B",
   };
