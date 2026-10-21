@@ -22,7 +22,7 @@ from .attachments import (
     upload_attachments,
 )
 from .bot_backend import BotBackend
-from .expert_choice import resolve_turn_options
+from .expert_choice import reply_in_place, resolve_turn_options
 from .options import TurnOptions, parse_turn_options
 from .prompt import build_message_text, build_thread_name
 from .turn_stream import TurnStreamer, send_denial
@@ -35,16 +35,13 @@ logger = logging.getLogger(__name__)
 # instead of failing validation.
 MAX_TURN_FILE_IDS = 20
 
+MODE_ONLY_REPLY = "Put your message after the mode, like `mode=smart fix the build`. The mode applies to that message."
+SWITCH_FAILED_REPLY = "Couldn't switch experts right now. Try again in a moment."
 
-class TargetState(BaseModel):
-    """Per-target streaming state.
 
-    A "target" is wherever the bot replies — a thread ID, a DM channel ID.
-    `pending` holds messages that arrived while a stream was running; they
-    get drained as a single batched follow-up turn when the stream ends.
-    """
+class PendingBatch(BaseModel):
+    """Messages queued while a stream runs, drained as one follow-up turn."""
 
-    processing: bool = False
     # Each entry: (username, user_id, text)
     pending: list[tuple[str, str, str]] = Field(default_factory=list)
     # Workspace file IDs uploaded for messages in `pending`, drained together
@@ -54,11 +51,79 @@ class TargetState(BaseModel):
     # turn so it uses the same session (not a separate Redis read that could
     # diverge). None for text-only batches, which resolve the session normally.
     session_id: str | None = None
+    # Expert / model tier for the batch; a later message's choices override
+    # earlier ones, unset fields carry over.
+    options: TurnOptions = Field(default_factory=TurnOptions)
+
+    def accepts(self, options: TurnOptions, session_id: str | None) -> bool:
+        """Whether a message can join this batch without changing the expert
+        or the session its files were uploaded to."""
+        if not self.pending:
+            return True
+        if (
+            options.expert_id is not None
+            and options.expert_id != self.options.expert_id
+        ):
+            return False
+        return not (session_id and self.session_id and session_id != self.session_id)
+
+    def add(
+        self,
+        message: tuple[str, str, str],
+        file_ids: list[str] | None,
+        session_id: str | None,
+        options: TurnOptions,
+    ) -> None:
+        self.pending.append(message)
+        if file_ids:
+            self.pending_file_ids.extend(file_ids)
+        # First attachment message in a batch pins the session; later ones
+        # resolved the same session (serialised by _session_lock), so keep it.
+        if session_id and self.session_id is None:
+            self.session_id = session_id
+        self.options = self.options.merged(options)
+
+
+class TargetState(PendingBatch):
+    """Per-target streaming state.
+
+    A "target" is wherever the bot replies — a thread ID, a DM channel ID.
+    The inherited fields are the next batch to drain; `later` holds batches
+    split off it because a message picked a different expert or session.
+    """
+
+    processing: bool = False
+    later: list[PendingBatch] = Field(default_factory=list)
     # Turns woken by a card answered here, streamed before the next batch.
     follows: list[ChatTurnHandle] = Field(default_factory=list)
-    # Expert / model tier for the pending batch; a later message's choices
-    # override earlier ones, unset fields carry over.
-    options: TurnOptions = Field(default_factory=TurnOptions)
+
+    def queue(
+        self,
+        message: tuple[str, str, str],
+        file_ids: list[str] | None,
+        session_id: str | None,
+        options: TurnOptions,
+    ) -> None:
+        batch: PendingBatch = self.later[-1] if self.later else self
+        if not batch.accepts(options, session_id):
+            batch = PendingBatch()
+            self.later.append(batch)
+        batch.add(message, file_ids, session_id, options)
+
+    def take(self) -> PendingBatch:
+        """The next batch to drain; the first split-off batch moves up."""
+        batch = PendingBatch(
+            pending=self.pending,
+            pending_file_ids=self.pending_file_ids,
+            session_id=self.session_id,
+            options=self.options,
+        )
+        nxt = self.later.pop(0) if self.later else PendingBatch()
+        self.pending = nxt.pending
+        self.pending_file_ids = nxt.pending_file_ids
+        self.session_id = nxt.session_id
+        self.options = nxt.options
+        return batch
 
 
 class MessageHandler:
@@ -81,7 +146,8 @@ class MessageHandler:
         has_content = bool(
             ctx.text.strip() or ctx.attachments or ctx.skipped_attachments
         )
-        if not has_content:
+        options_only = not has_content and ctx.options != TurnOptions()
+        if not has_content and not options_only:
             if ctx.channel_type == "channel":
                 await adapter.send_reply(
                     ctx.channel_id,
@@ -112,6 +178,10 @@ class MessageHandler:
         if options is None:
             return
         ctx = ctx.with_changes(options=options)
+
+        if options_only:
+            await self._apply_options_only(ctx, adapter)
+            return
 
         if not ctx.text.strip() and not ctx.attachments:
             # The content gate above guarantees skipped_attachments is
@@ -213,6 +283,38 @@ class MessageHandler:
         state = self._targets.setdefault(target_id, TargetState())
         state.follows.append(turn)
         await self._process(ctx, adapter, target_id, state)
+
+    async def _apply_options_only(
+        self, ctx: MessageContext, adapter: PlatformAdapter
+    ) -> None:
+        """A message that only picked an expert moves this conversation to
+        that expert; one that only picked a mode says where the mode goes."""
+        if ctx.options.expert_id is None or ctx.channel_type == "channel":
+            await reply_in_place(ctx, adapter, MODE_ONLY_REPLY)
+            return
+        target_id = ctx.channel_id
+        async with self._session_lock(target_id):
+            try:
+                result = await self._api.ensure_session(
+                    platform=ctx.platform,
+                    platform_user_id=ctx.user_id,
+                    platform_server_id=ctx.server_id,
+                    session_id=await sessions.get_session(ctx.platform, target_id),
+                    expert_id=ctx.options.expert_id,
+                )
+            except Exception:
+                logger.exception("Failed to switch expert for user %s", ctx.user_id)
+                await reply_in_place(ctx, adapter, SWITCH_FAILED_REPLY)
+                return
+            if result.denial is not None:
+                await send_denial(self._api, ctx, adapter, target_id, result.denial)
+                return
+            if not result.session_id:
+                await reply_in_place(ctx, adapter, SWITCH_FAILED_REPLY)
+                return
+            await sessions.set_session(ctx.platform, target_id, result.session_id)
+        name = ctx.options.expert_name or "that expert"
+        await reply_in_place(ctx, adapter, f"Your next messages here go to {name}.")
 
     async def _report_skipped_only(
         self, ctx: MessageContext, adapter: PlatformAdapter
@@ -338,14 +440,12 @@ class MessageHandler:
         session_id: str | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
-        state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
-        if file_ids:
-            state.pending_file_ids.extend(file_ids)
-        # First attachment message in a batch pins the session; later ones
-        # resolved the same session (serialised by _session_lock), so keep it.
-        if session_id and state.session_id is None:
-            state.session_id = session_id
-        state.options = state.options.merged(ctx.options)
+        state.queue(
+            (ctx.username, ctx.user_id, message_text or ctx.text),
+            file_ids,
+            session_id,
+            ctx.options,
+        )
         await self._process(ctx, adapter, target_id, state)
 
     async def _process(
@@ -367,14 +467,11 @@ class MessageHandler:
                     turn = state.follows.pop(0)
                     await self._stream_batch([], ctx, adapter, target_id, turn=turn)
                     continue
-                batch = list(state.pending)
-                batch_file_ids = list(state.pending_file_ids)
-                batch_session_id = state.session_id
-                batch_options = state.options
-                state.pending.clear()
-                state.pending_file_ids.clear()
-                state.session_id = None
-                state.options = TurnOptions()
+                taken = state.take()
+                batch = taken.pending
+                batch_file_ids = taken.pending_file_ids
+                batch_session_id = taken.session_id
+                batch_options = taken.options
                 if len(batch_file_ids) > MAX_TURN_FILE_IDS:
                     logger.warning(
                         "Dropping %d batched file(s) over the per-turn cap of %d",

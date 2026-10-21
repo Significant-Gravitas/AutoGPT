@@ -24,7 +24,7 @@ from backend.copilot.bot.adapters.shared import (
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
-from backend.copilot.bot.options import TurnOptions
+from backend.copilot.bot.options import TurnOptions, parse_turn_options
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
@@ -578,7 +578,9 @@ class DiscordAdapter(SocketAdapter):
             if channel_type == "thread" and bot_mentioned:
                 thread_history = await self._thread_history(message)
 
-            own_text = self._strip_mentions(message)
+            # Options lead the user's own text; read them before the reply
+            # context is put in front of it.
+            options, own_text = parse_turn_options(self._strip_mentions(message))
             # Scan ONLY the user's own typed message for references. Links inside
             # a forwarded or replied-to message are quoted context, not the
             # user's request, so they must not be auto-fetched or rewritten.
@@ -611,6 +613,7 @@ class DiscordAdapter(SocketAdapter):
                 referenced_conversations=referenced,
                 attachments=attachments,
                 skipped_attachments=skipped,
+                options=options,
             )
             await self._on_message_callback(ctx, self)
 

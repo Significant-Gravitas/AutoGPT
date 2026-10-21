@@ -71,7 +71,7 @@ class TestTypedOptions:
         assert len(calls) == 1
         assert calls[0]["batch"] == [("Bently", "user-1", "fix it")]
         assert calls[0]["options"] == TurnOptions(
-            expert_name="bolt", expert_id="e1", model="advanced"
+            expert_name="Bolt", expert_id="e1", model="advanced"
         )
         api.list_user_experts.assert_awaited_once_with("discord", "user-1", None)
 
@@ -204,3 +204,83 @@ class TestBatchedOptions:
         assert [m[2] for m in calls[0]["batch"]] == ["one", "two"]
         assert calls[0]["options"] == TurnOptions(expert_id="e1", model="advanced")
         assert "t" not in handler._targets
+
+    @pytest.mark.asyncio
+    async def test_a_new_expert_mid_reply_starts_its_own_batch(self):
+        handler = MessageHandler(_api())
+        calls = _capture(handler)
+        state = TargetState(processing=True)
+        handler._targets["t"] = state
+        bolt = TurnOptions(expert_id="e1")
+        sage = TurnOptions(expert_id="e3")
+        await handler._enqueue_and_process(
+            _ctx("file").with_changes(options=bolt),
+            _adapter(),
+            "t",
+            file_ids=["f1"],
+            session_id="bolt-session",
+        )
+        await handler._enqueue_and_process(
+            _ctx("two").with_changes(options=sage), _adapter(), "t"
+        )
+        await handler._enqueue_and_process(_ctx("three"), _adapter(), "t")
+
+        state.processing = False
+        await handler._process(_ctx("x"), _adapter(), "t", state)
+
+        assert len(calls) == 2
+        assert [m[2] for m in calls[0]["batch"]] == ["file"]
+        assert calls[0]["file_ids"] == ["f1"]
+        assert calls[0]["session_id"] == "bolt-session"
+        assert calls[0]["options"].expert_id == "e1"
+        assert [m[2] for m in calls[1]["batch"]] == ["two", "three"]
+        assert calls[1]["file_ids"] == []
+        assert calls[1]["session_id"] is None
+        assert calls[1]["options"].expert_id == "e3"
+        assert "t" not in handler._targets
+
+
+class TestOptionsOnly:
+    @pytest.mark.asyncio
+    async def test_expert_alone_moves_the_conversation_to_that_expert(self):
+        api = _api([BOLT])
+        handler = MessageHandler(api)
+        calls = _capture(handler)
+        adapter = _adapter()
+        set_session = AsyncMock()
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "backend.copilot.bot.handler.sessions.get_session",
+                AsyncMock(return_value="otto-session"),
+            )
+            mp.setattr("backend.copilot.bot.handler.sessions.set_session", set_session)
+            await handler.handle(_ctx("expert=bolt"), adapter)
+
+        assert calls == []
+        kwargs = api.ensure_session.await_args.kwargs
+        assert kwargs["expert_id"] == "e1"
+        assert kwargs["session_id"] == "otto-session"
+        set_session.assert_awaited_once_with("discord", "chan-1", "s1")
+        adapter.send_message.assert_awaited_once_with(
+            "chan-1", "Your next messages here go to Bolt."
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_expert_alone_is_answered(self):
+        api = _api([BOLT])
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        await handler.handle(_ctx("expert=Nova"), adapter)
+        api.ensure_session.assert_not_awaited()
+        assert 'No expert called "Nova"' in adapter.send_message.await_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_mode_alone_says_where_the_mode_goes(self):
+        api = _api()
+        handler = MessageHandler(api)
+        calls = _capture(handler)
+        adapter = _adapter()
+        await handler.handle(_ctx("mode=smart"), adapter)
+        assert calls == []
+        api.ensure_session.assert_not_awaited()
+        assert "mode=smart fix the build" in adapter.send_message.await_args.args[1]

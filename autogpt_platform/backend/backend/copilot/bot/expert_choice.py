@@ -45,7 +45,9 @@ async def resolve_turn_options(
     name = options.expert_name or ""
     matches = match_experts(experts, name)
     if len(matches) == 1:
-        return options.model_copy(update={"expert_id": matches[0].id})
+        return options.model_copy(
+            update={"expert_id": matches[0].id, "expert_name": matches[0].name}
+        )
     await reply_in_place(ctx, adapter, no_single_match_reply(name, experts, matches))
     return None
 
