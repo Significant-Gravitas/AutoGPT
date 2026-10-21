@@ -7,6 +7,11 @@ const AUTH_EMAIL_COOLDOWN_SECONDS = 10 * 60;
 // addresses (or +aliases of one mailbox) can't each be mailed.
 export const AUTH_EMAILS_PER_IP = 5;
 
+export interface WindowLimit {
+  max: number;
+  windowSeconds: number;
+}
+
 interface Where {
   field: string;
   value: string | Date;
@@ -55,7 +60,7 @@ export async function claimEmailSlot(
   if (await hasLiveSlot(context, identifier)) return false;
   try {
     await createVerification(context, {
-      id: slotID(identifier),
+      id: slotID(identifier, currentWindow(AUTH_EMAIL_COOLDOWN_SECONDS)),
       identifier,
       value: "sent",
       expiresInSeconds: AUTH_EMAIL_COOLDOWN_SECONDS,
@@ -80,8 +85,7 @@ async function hasLiveSlot(context: AuthEmailContext, identifier: string) {
   return live.length > 0;
 }
 
-function slotID(identifier: string, index?: number) {
-  const window = currentWindow();
+function slotID(identifier: string, window: number, index?: number) {
   const key =
     index === undefined
       ? `${identifier}#${window}`
@@ -89,18 +93,29 @@ function slotID(identifier: string, index?: number) {
   return createHash("sha256").update(key).digest("hex");
 }
 
-function currentWindow() {
-  return Math.floor(Date.now() / (AUTH_EMAIL_COOLDOWN_SECONDS * 1000));
+function currentWindow(windowSeconds: number) {
+  return Math.floor(Date.now() / (windowSeconds * 1000));
 }
 
-// One of AUTH_EMAILS_PER_IP fixed rows per IP and window; each id can only be
-// inserted once, so a burst from one IP can't take more than that many. A
-// failed insert whose row now exists lost the race and tries the next slot.
-export async function claimIPEmailSlot(context: AuthEmailContext, ip: string) {
-  const identifier = `auth-email-ip:${ip}`;
-  const windowEndsAt = (currentWindow() + 1) * AUTH_EMAIL_COOLDOWN_SECONDS;
-  for (let index = 0; index < AUTH_EMAILS_PER_IP; index++) {
-    const id = slotID(identifier, index);
+export function claimIPEmailSlot(context: AuthEmailContext, ip: string) {
+  return claimWindowSlot(context, `auth-email-ip:${ip}`, {
+    max: AUTH_EMAILS_PER_IP,
+    windowSeconds: AUTH_EMAIL_COOLDOWN_SECONDS,
+  });
+}
+
+// One of `max` fixed rows per identifier and window; each id can only be
+// inserted once, so a burst can't take more than that many. A failed insert
+// whose row now exists lost the race and tries the next slot.
+export async function claimWindowSlot(
+  context: AuthEmailContext,
+  identifier: string,
+  { max, windowSeconds }: WindowLimit,
+) {
+  const window = currentWindow(windowSeconds);
+  const windowEndsAt = (window + 1) * windowSeconds;
+  for (let index = 0; index < max; index++) {
+    const id = slotID(identifier, window, index);
     if (await rowExists(context, id)) continue;
     try {
       await createVerification(context, {

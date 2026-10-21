@@ -21,6 +21,7 @@ import {
   assertEmailHasMailServer,
   sharedLookups,
 } from "./email-deliverability";
+import { limitAuthAttempts } from "./attempt-limits";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP, IP_CAPPED_PATHS } from "./ip-email-cap";
@@ -130,6 +131,13 @@ export const auth = betterAuth({
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
+      await limitAuthAttempts({
+        path: ctx.path,
+        body: ctx.body,
+        headers: ctx.headers,
+        context: ctx.context,
+      });
       // Before Better Auth looks the address up, so an address that already
       // has an account is refused the same way, in the same time.
       if (

@@ -805,6 +805,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("emails an unverified address once per cooldown however often it signs in", async () => {
+    pinRateLimitWindow();
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "signs-in@example.com");
     await emailsSent();
@@ -818,6 +819,8 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sentEmails.map((sent) => sent.type)).toEqual(["verify_email"]);
 
     expireCooldowns(db);
+    // Past the per-IP sign-in window too (attempt-limits.ts).
+    vi.setSystemTime(Date.now() + 10_000);
     await signIn(handler, "signs-in@example.com");
     await emailsSent();
     expect(sentEmails.map((sent) => sent.type)).toEqual([
