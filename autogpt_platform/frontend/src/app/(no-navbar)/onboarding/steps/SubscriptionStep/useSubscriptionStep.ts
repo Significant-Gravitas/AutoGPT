@@ -1,12 +1,16 @@
-import { useUpdateSubscriptionTier } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetSubscriptionStatusQueryKey,
+  useUpdateSubscriptionTier,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 import { environment } from "@/services/environment";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
@@ -16,6 +20,7 @@ import {
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import {
   markPaywallCheckoutStarted,
@@ -37,6 +42,7 @@ interface CheckoutResponse {
 }
 
 export function useSubscriptionStep() {
+  const queryClient = useQueryClient();
   const setSelectedBilling = useOnboardingWizardStore(
     (s) => s.setSelectedBilling,
   );
@@ -46,8 +52,6 @@ export function useSubscriptionStep() {
   const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const selectedPlan = useOnboardingWizardStore((s) => s.selectedPlan);
-  const steps = useOnboardingWizardStore((s) => s.steps);
-  const currentStep = useOnboardingWizardStore((s) => s.currentStep);
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
@@ -69,7 +73,13 @@ export function useSubscriptionStep() {
   // phase (which runs before `isUpdatingTier` becomes true) can't be
   // re-entered by a fast double-click queueing duplicate POSTs.
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isProcessing = isUpdatingTier || isSubmitting;
+  const checkoutRedirect = useCheckoutRedirect();
+  const isRequesting = isUpdatingTier || isSubmitting;
+  const isProcessing = isRequesting || checkoutRedirect.isRedirecting;
+  // Every checkout button on the page shares the redirect, so only this
+  // step's own request or redirect may spin its plan button.
+  const loadingPlan =
+    isRequesting || checkoutRedirect.isRedirectingHere ? selectedPlan : null;
 
   const countryIdx = Math.max(
     0,
@@ -112,40 +122,43 @@ export function useSubscriptionStep() {
     const cycle = isYearly ? "yearly" : "monthly";
 
     try {
-      // The paywall is the first step, so there's no profile to submit yet —
-      // role and pain points are collected after payment. On a successful
-      // checkout Stripe returns the user to the step after the paywall to
-      // begin onboarding; on cancel, back to this paywall. Stripe fills
-      // {CHECKOUT_SESSION_ID}; plan and cycle let the return page report the
-      // subscription to Google Ads.
+      const ownerID = useOnboardingWizardStore.getState().userID;
+      await useOnboardingWizardStore.getState().flushProgress?.();
+      if (useOnboardingWizardStore.getState().userID !== ownerID) return;
       const baseUrl = `${window.location.origin}/onboarding`;
       const result = await updateTier({
         data: {
           tier,
-          success_url: `${baseUrl}?step=${(steps.subscription ?? currentStep) + 1}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
-          cancel_url: `${baseUrl}?step=${steps.subscription ?? currentStep}&subscription=cancelled`,
+          success_url: `${baseUrl}?step=preparing&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
+          cancel_url: `${baseUrl}?step=subscription&subscription=cancelled`,
           billing_cycle: cycle,
           surface: "onboarding",
         },
       });
+      if (useOnboardingWizardStore.getState().userID !== ownerID) return;
       const url = (result?.data as CheckoutResponse | undefined)?.url;
       if (url) {
         // A Checkout URL is the only proof that Stripe Checkout actually
         // starts — reporting earlier would count the in-place and failed
         // paths as conversions.
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: getSubscriptionValue(planKey, cycle),
         });
         markPaywallCheckoutStarted();
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;
+        checkoutRedirect.markRedirecting();
         return;
       }
-      // Backend modified the subscription in place (no Checkout URL) —
-      // proceed to the preparing step as if the user had clicked through.
+      await queryClient.invalidateQueries(
+        { queryKey: getGetSubscriptionStatusQueryKey() },
+        { throwOnError: true },
+      );
+      if (useOnboardingWizardStore.getState().userID !== ownerID) return;
       nextStep();
     } catch (error) {
+      setSelectedPlan(null);
       toast({
         title: "Couldn't start checkout",
         description:
@@ -167,6 +180,6 @@ export function useSubscriptionStep() {
     isYearly,
     handlePlanSelect,
     isUpdatingTier: isProcessing,
-    selectedPlan,
+    selectedPlan: loadingPlan,
   };
 }

@@ -83,7 +83,7 @@ function MetadataField({
       <Text variant="small" className="text-zinc-600">
         {label}
       </Text>
-      <Text variant="small" unmask={false} title={title}>
+      <Text variant="small" title={title}>
         {value}
       </Text>
     </div>
@@ -114,7 +114,7 @@ function ReceiptDestination({ transaction }: Props) {
       ? "Run unavailable"
       : transaction.execution_available
         ? "Not in your library"
-        : "Agent and run unavailable";
+        : "Workflow and run unavailable";
     return (
       <Text variant="small" className="text-zinc-600">
         {label}

@@ -338,7 +338,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "are queued in ``CopilotTaskQueue`` (FIFO) up to "
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
             "Must be <= the in-flight cap; default 5 keeps shared-infra "
-            "concurrency predictable while letting users batch-submit."
+            "concurrency predictable while letting users batch-submit. "
+            "Turns another session started (sub-sessions, delegations, "
+            "handoffs) are admitted only below this cap minus one, so one "
+            "slot is always left for the user's own message."
         ),
     )
 
@@ -353,6 +356,38 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     block_error_include_top_blocks: int = Field(
         default=3,
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
+
+    # Auth identity <-> platform User invariant monitoring
+    auth_identity_orphan_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the sweep that heals auth identities with no platform User row. "
+            "Off by default: its first run backfills every such identity, and "
+            "each heal counts as a sign-up in PostHog."
+        ),
+    )
+    auth_identity_orphan_check_interval_secs: int = Field(
+        default=15 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between sweeps for auth identities that have no "
+            "platform User row. Each sweep heals what it finds and alerts."
+        ),
+    )
+    auth_identity_orphan_grace_secs: int = Field(
+        default=5 * 60,
+        ge=0,
+        description=(
+            "Age in seconds an auth identity must reach before it counts as "
+            "orphaned, so a sign-up still in flight is not flagged or healed early."
+        ),
+    )
+    auth_identity_orphan_check_limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum orphaned auth identities healed per sweep.",
     )
 
     # Execution Accuracy Monitoring
@@ -413,6 +448,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     database_api_port: int = Field(
         default=8005,
         description="The port for database server API to run on",
+    )
+
+    swap_credential_service_port: int = Field(
+        default=8012,
+        description="The port for the swap proxy's service "
+        "(backend.copilot.swap_service)",
     )
 
     agent_api_host: str = Field(
@@ -542,6 +583,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
                 "PUBLIC_SITE_MEDIA_BUCKET must not be the legacy "
                 "MEDIA_GCS_BUCKET_NAME bucket, which holds private user data"
             )
+        if (
+            self.media_gcs_bucket_name
+            and self.private_user_data_bucket != self.media_gcs_bucket_name
+        ):
+            raise ValueError(
+                "PRIVATE_USER_DATA_BUCKET must remain the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket until stored bucket-qualified "
+                "paths are migrated; clear MEDIA_GCS_BUCKET_NAME after migration"
+            )
         return self
 
     workspace_storage_dir: str = Field(
@@ -558,6 +608,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    schedule_read_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description=(
+            "How long a page read (library agents, Home) waits for the scheduler "
+            "before rendering without schedule badges. Healthy reads take well "
+            "under a second; the Vercel proxy gives up at 30s."
+        ),
     )
 
     # Prefer the cluster env var so the new image can co-exist with old-image
@@ -642,6 +702,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "Postmark message stream for Alerts, Briefings and account mail. "
             "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    # Off until the privacy policy names email tracking. Auth mail is never
+    # tracked: its links carry sign-in tokens.
+    postmark_track_opens_and_clicks: bool = Field(
+        default=False,
+        description=(
+            "Ask Postmark to track opens (a tracking pixel) and clicks (links "
+            "rewritten through Postmark) in notification emails. Postmark "
+            "reports them to the webhook, which sends email_opened and "
+            "email_clicked to PostHog. Overrides the stream's own setting."
         ),
     )
     email_asset_base_url: str = Field(
@@ -788,6 +859,34 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    dream_pass_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days a finished dream pass's record is kept before the weekly "
+            "retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_demotion_protect_days: int = Field(
+        default=30,
+        ge=0,
+        le=3650,
+        description=(
+            "The dream pass's deterministic recall guard: days after a fact "
+            "was last recalled during which its demotion writes, and the "
+            "ratification sweep's supersession of an unratified proposal, "
+            "leave it alone, unless the demotion is a contradiction or the "
+            "user's own retraction. 0 turns this guard off; it does not change the "
+            "sanitize prompt's own, stricter rule against demoting recalled "
+            "facts for staleness. The default of 30 is a floor, not a tuned "
+            "value: long enough that a few weeks away never makes a relied-on "
+            "memory look unused, to be tuned from the eval driver's "
+            "demotion-damage data (0-3650 days)"
+        ),
+    )
+
     stripe_tier_reconcile_interval_hours: int = Field(
         default=6,
         ge=1,
@@ -866,10 +965,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
+        default=FeatureFlagBackend.POSTHOG,
+        description="Which vendor answers feature flag reads: posthog "
+        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
+        "log every disagreement).",
     )
 
     @field_validator("feature_flag_backend", mode="before")
@@ -887,9 +986,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         except ValueError:
             logger.warning(
                 f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return FeatureFlagBackend.POSTHOG
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
@@ -932,6 +1031,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
+    )
+
+    sentry_release: str = Field(
+        default="",
+        description="Git sha of the deployed build, reported to Sentry as the "
+        "release. Blank reports no release.",
+    )
+
+    sentry_environment: str = Field(
+        default="",
+        description="Environment name Sentry events are tagged with, replacing "
+        "the one computed from app_env and behave_as (a PR preview names itself "
+        "pr-<n>). Blank keeps the computed one.",
     )
 
     autopilot_bot_teams_allow_unverified: bool = Field(
@@ -1088,6 +1200,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     mailerlite_api_token: str = Field(
         default="",
         description="MailerLite API token used to manage tour and changelog audiences",
+    )
+    mailerlite_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Signing secret of the MailerLite webhook that reports unsubscribes. "
+            "Blank refuses every call to that webhook."
+        ),
     )
 
     unsubscribe_secret_key: str = Field(
@@ -1271,6 +1390,26 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    slack_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the Slack app used to sign in to Slack's MCP "
+        "server (mcp.slack.com). Slack does not support dynamic client "
+        "registration, so MCP sign-in to Slack is unavailable until this is set.",
+    )
+    slack_mcp_client_secret: str = Field(
+        default="", description="Client secret of the Slack MCP sign-in app"
+    )
+    hubspot_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the HubSpot MCP auth app used to sign in to "
+        "HubSpot's MCP server (mcp.hubspot.com). HubSpot does not support "
+        "dynamic client registration, so MCP sign-in to HubSpot is unavailable "
+        "until this is set.",
+    )
+    hubspot_mcp_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot MCP auth app"
+    )
 
     todoist_client_id: str = Field(default="", description="Todoist client ID")
     todoist_client_secret: str = Field(default="", description="Todoist client secret")

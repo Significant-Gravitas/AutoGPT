@@ -7,13 +7,14 @@ import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
-from fastapi import Query, Security
+from fastapi import Depends, Query, Security
 from pydantic import BaseModel
 from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_downloaded
@@ -49,8 +50,9 @@ SubmissionSortDir = Literal["asc", "desc"]
 async def get_profile(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
-    """Get the profile details for the authenticated user."""
-    profile = await store_db.get_user_profile(user_id)
+    """Get the profile details for the authenticated user, creating their
+    default profile if account setup hasn't yet."""
+    profile = await store_db.get_or_create_user_profile(user_id)
     if profile is None:
         raise NotFoundError("User does not have a profile yet")
     return profile
@@ -230,7 +232,10 @@ async def get_agent_by_name(
     "/agents/{username}/{agent_name}/review",
     summary="Create agent review",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def post_user_review_for_agent(
     username: str,
@@ -325,7 +330,7 @@ async def get_creators(
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
     page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
     creators = await store_cache._get_cached_store_creators(
@@ -461,7 +466,10 @@ def _parse_status_filter(
     "/submissions",
     summary="Create store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
@@ -500,7 +508,10 @@ async def create_submission(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def edit_submission(
     store_listing_version_id: str,
@@ -566,7 +577,10 @@ def get_store_media(
     "/submissions/media",
     summary="Upload submission media",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def upload_submission_media(
     file: fastapi.UploadFile,
@@ -598,8 +612,10 @@ async def upload_submission_media(
                 for content_type in local_media.CONTENT_TYPE_EXTENSIONS
             },
         },
+        307: {"description": "Short-lived signed download URL"},
         404: {"description": "Media not found"},
         416: {"description": "Requested range is not satisfiable"},
+        503: {"description": "Private media is temporarily unavailable"},
     },
     tags=["store", "private"],
 )
@@ -609,7 +625,7 @@ async def get_private_submission_media(
     filename: str,
     request: fastapi.Request,
     user: autogpt_libs.auth.User = Security(autogpt_libs.auth.requires_user),
-) -> fastapi.responses.StreamingResponse:
+) -> fastapi.Response:
     """
     Serve a user's private media to them, to members of an organization they
     share, and to admins. Anyone else gets a 404, as if it did not exist.
@@ -630,9 +646,32 @@ async def get_private_submission_media(
         "Accept-Ranges": "bytes",
     }
     total_size = _private_media_size(metadata)
+    range_header = request.headers.get("range")
+    if (
+        range_header is None
+        and total_size > submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES
+    ):
+        try:
+            redirect_url = await submission_media.signed_url(
+                owner_user_id, media_type, filename
+            )
+        except Exception as error:
+            logger.error("Failed to sign oversized private media", exc_info=True)
+            raise fastapi.HTTPException(
+                status_code=503,
+                detail="Private media is temporarily unavailable",
+                headers=headers,
+            ) from error
+        if redirect_url:
+            return fastapi.responses.RedirectResponse(
+                redirect_url,
+                status_code=307,
+                headers=headers,
+            )
+
     byte_range: tuple[int, int] | None = None
     status_code = 200
-    if range_header := request.headers.get("range"):
+    if range_header:
         try:
             byte_range = _parse_private_media_range(range_header, total_size)
         except ValueError:
@@ -697,7 +736,10 @@ class ImageURLResponse(BaseModel):
     "/submissions/generate_image",
     summary="Generate submission image",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def generate_image(
     graph_id: str,

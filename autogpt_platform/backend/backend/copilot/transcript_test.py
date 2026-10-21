@@ -21,6 +21,7 @@ from .transcript import (
     _rechain_tail,
     _sanitize_id,
     _transcript_to_messages,
+    cli_session_cost_usd,
     detect_gap,
     extract_context_messages,
     strip_for_upload,
@@ -1867,3 +1868,64 @@ class TestExtractContextMessages:
             "user",  # gap user-6
             "assistant",  # gap assistant-7
         ]
+
+    @pytest.mark.asyncio
+    async def test_a_note_for_the_user_is_not_context_without_a_transcript(self):
+        """A skipped-run card posted between turns stays out of the model's
+        history, whichever way the history is built."""
+        messages = _msgs("user", "assistant", "assistant", "user")
+        messages[2].metadata = {"hidden_from_model": True}
+
+        result = await extract_context_messages(None, messages)
+
+        assert [m.content for m in result] == ["user-0", "assistant-1"]
+
+    @pytest.mark.asyncio
+    async def test_a_note_for_the_user_in_the_gap_is_dropped_after_slicing(self):
+        """The watermark counts the hidden row, so dropping it before the gap
+        is sliced would shift the gap and lose a real message."""
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "assistant", "user", "assistant", "user")
+        messages[2].metadata = {"hidden_from_model": True}
+
+        result = await extract_context_messages(dl, messages)
+
+        assert [m.content for m in result[2:]] == ["user-3", "assistant-4"]
+
+
+# ---------------------------------------------------------------------------
+# cli_session_cost_usd
+# ---------------------------------------------------------------------------
+
+_SID = "5f0c2a4e-1b7d-4c9a-9e3f-2d8b6a1c4e70"
+
+
+@pytest.mark.parametrize(
+    "lines,expected",
+    [
+        pytest.param(
+            [
+                {"type": "cost-state", "sessionId": _SID, "totalCostUSD": 0.028},
+                "{not json cost-state",
+                {"type": "cost-state", "sessionId": _SID, "totalCostUSD": 0.056},
+                {"type": "cost-state", "sessionId": "another", "totalCostUSD": 5.0},
+                {"type": "user", "message": {"content": "what is cost-state?"}},
+            ],
+            0.056,
+            id="last-row-of-this-session",
+        ),
+        pytest.param(
+            [{"type": "user", "message": {"content": "hi"}}],
+            0.0,
+            id="no-cost-state",
+        ),
+    ],
+)
+def test_cli_session_cost_usd_reads_what_the_cli_resumes_from(lines, expected):
+    content = "\n".join(
+        line if isinstance(line, str) else json.dumps(line) for line in lines
+    )
+    assert cli_session_cost_usd(content, _SID) == expected

@@ -5,8 +5,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   formatCredentialName,
-  formatCredentialSource,
-  formatProviderName,
+  groupServiceIdentity,
+  serviceKey,
 } from "@/components/contextual/IntegrationsPanel/helpers";
 import {
   Accordion,
@@ -18,7 +18,7 @@ import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/Integrat
 import { Delete02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   api_key: "API Key",
   oauth2: "OAuth",
   user_password: "Username & password",
@@ -33,11 +33,6 @@ const CONNECTION_LABELS: Record<string, string> = {
   host_scoped: "Host configured",
   device_code: "Connected via device auth",
 };
-
-function formatConnection(integration: ExpertCredentialRef): string {
-  if (integration.provider === "mcp") return formatCredentialSource("mcp");
-  return CONNECTION_LABELS[integration.type] ?? "Configured";
-}
 
 const CONTAINER_VARIANTS: Variants = {
   hidden: {},
@@ -59,22 +54,22 @@ const REDUCED_ITEM_VARIANTS: Variants = {
 interface Group {
   id: string;
   name: string;
+  icon: string;
   integrations: ExpertCredentialRef[];
 }
 
 export function groupExpertIntegrations(
   integrations: ExpertCredentialRef[],
 ): Group[] {
-  const byProvider = new Map<string, ExpertCredentialRef[]>();
+  const byService = new Map<string, ExpertCredentialRef[]>();
   for (const integration of integrations) {
-    const id =
-      integration.provider === "codex" ? "openai" : integration.provider;
-    byProvider.set(id, [...(byProvider.get(id) ?? []), integration]);
+    const id = serviceKey(integration);
+    byService.set(id, [...(byService.get(id) ?? []), integration]);
   }
-  return [...byProvider.entries()]
+  return [...byService.entries()]
     .map(([id, list]) => ({
       id,
-      name: formatProviderName(id),
+      ...groupServiceIdentity(list),
       integrations: list,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -116,7 +111,7 @@ export function ExpertIntegrationGroups({
               <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-zinc-500">
                 <div className="flex items-center gap-2.5">
                   <IntegrationLogo
-                    provider={group.id}
+                    provider={group.icon}
                     alt={`${group.name} logo`}
                     size={20}
                     className="rounded-full bg-white"
@@ -182,7 +177,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
           </Text>
         </div>
         <Text variant="body" as="span" tone="muted">
-          {formatConnection(integration)}
+          {CONNECTION_LABELS[integration.type] ?? "Configured"}
         </Text>
       </div>
       <div className="flex items-center gap-3">

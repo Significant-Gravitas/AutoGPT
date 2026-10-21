@@ -158,6 +158,13 @@ class DumpStore:
 
 
 @pytest.fixture(autouse=True)
+def personalization_admission(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch.object(
+        service, "enforce_personalization_budget", new=AsyncMock()
+    )
+
+
+@pytest.fixture(autouse=True)
 def dumps(mocker: MockerFixture) -> DumpStore:
     store = DumpStore()
     module = "backend.api.features.onboarding_dump.db"
@@ -178,6 +185,7 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "assemble_parts": AsyncMock(return_value=b"opus-audio-bytes"),
         "store_audio": AsyncMock(return_value=AUDIO_PATH),
         "discard_parts": AsyncMock(),
+        "delete_audio": AsyncMock(),
     }
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
@@ -242,7 +250,7 @@ async def finalize_voice(duration_secs: float = 12.0, mime_type: str | None = No
 
 @pytest.mark.asyncio
 async def test_transcription_failure_keeps_the_audio_and_records_the_error(
-    dumps: DumpStore, transcribe: AsyncMock
+    dumps: DumpStore, transcribe: AsyncMock, storage_mocks: dict[str, AsyncMock]
 ):
     await start_voice_take(dumps)
     transcribe.side_effect = RuntimeError("provider blew up")
@@ -254,8 +262,75 @@ async def test_transcription_failure_keeps_the_audio_and_records_the_error(
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "transcription_failed"
-    # The zero-lost-recordings guarantee: the audio is still addressable.
+    # The zero-lost-recordings guarantee: the audio is still addressable,
+    # until the retention sweep's 48 hours are up.
     assert dumps.row.audioPath == AUDIO_PATH
+    storage_mocks["delete_audio"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_transcribed_take_deletes_its_recording_and_keeps_the_transcript(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock]
+):
+    """Only the transcript is kept, so the recording goes the moment the
+    transcript is safely stored."""
+    await start_voice_take(dumps)
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.transcribed
+    storage_mocks["delete_audio"].assert_awaited_once_with(AUDIO_PATH)
+    assert dumps.row is not None
+    assert dumps.row.audioPath is None
+    assert dumps.row.transcript == TRANSCRIPT
+    assert dumps.row.status == BrainDumpStatus.completed
+
+
+@pytest.mark.asyncio
+async def test_a_failed_recording_delete_never_fails_the_take(
+    dumps: DumpStore,
+    storage_mocks: dict[str, AsyncMock],
+    caplog: pytest.LogCaptureFixture,
+):
+    """The retention sweep deletes the file within 48 hours instead."""
+    await start_voice_take(dumps)
+    storage_mocks["delete_audio"].side_effect = RuntimeError(f"boom {AUDIO_PATH}")
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.transcript == TRANSCRIPT
+    # The row stops pointing at it either way, so nothing offers it again.
+    assert dumps.row.audioPath is None
+    [logged] = [
+        r.getMessage() for r in caplog.records if "not deleted" in r.getMessage()
+    ]
+    assert AUDIO_PATH not in logged
+    assert USER_ID not in logged
+
+
+@pytest.mark.asyncio
+async def test_a_retried_take_deletes_the_copy_its_failed_attempt_stored(
+    dumps: DumpStore, transcribe: AsyncMock, storage_mocks: dict[str, AsyncMock]
+):
+    """The retry re-uploads the take from the browser and stores it again,
+    so once it is transcribed the failed attempt's copy has to go too."""
+    await start_voice_take(dumps)
+    transcribe.side_effect = RuntimeError("provider blew up")
+    await finalize_voice()
+    await start_voice_take(dumps)
+    transcribe.side_effect = None
+    retry_path = "brain-dumps/rec-1-retry.webm"
+    storage_mocks["store_audio"].return_value = retry_path
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.transcribed
+    deleted = {c.args[0] for c in storage_mocks["delete_audio"].await_args_list}
+    assert deleted == {AUDIO_PATH, retry_path}
+    assert dumps.row is not None and dumps.row.audioPath is None
 
 
 @pytest.mark.asyncio
@@ -315,7 +390,7 @@ async def test_transcript_lands_in_the_business_understanding(
 
 @pytest.mark.asyncio
 async def test_typed_dump_is_labelled_as_typed_in_the_understanding(
-    extraction: dict[str, AsyncMock]
+    extraction: dict[str, AsyncMock],
 ):
     background = BackgroundTasks()
     await service.finalize_typed_dump(
@@ -454,6 +529,7 @@ async def test_two_concurrent_voice_finalizes_only_process_the_take_once(
     dumps: DumpStore,
     storage_mocks: dict[str, AsyncMock],
     transcribe: AsyncMock,
+    personalization_admission: AsyncMock,
 ):
     """Only the caller that wins the atomic claim does the work.
 
@@ -475,11 +551,15 @@ async def test_two_concurrent_voice_finalizes_only_process_the_take_once(
 
     transcribe.assert_awaited_once()
     storage_mocks["store_audio"].assert_awaited_once()
+    personalization_admission.assert_awaited_once_with(USER_ID)
 
 
 @pytest.mark.asyncio
 async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
-    mocker: MockerFixture, dumps: DumpStore, extraction: dict[str, AsyncMock]
+    mocker: MockerFixture,
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+    personalization_admission: AsyncMock,
 ):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
     release_both_past_the_guard(mocker, dumps)
@@ -500,6 +580,7 @@ async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
     # One winner queues the extraction/greeting pair; the loser queues
     # nothing, so the understanding is written exactly once.
     assert extraction["upsert_business_understanding"].await_count == 1
+    personalization_admission.assert_awaited_once_with(USER_ID)
 
 
 @pytest.mark.asyncio
@@ -584,7 +665,7 @@ async def test_a_voice_finalize_for_a_superseded_take_reports_its_own_take(
 
 @pytest.mark.asyncio
 async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
-    dumps: DumpStore, transcribe: AsyncMock
+    dumps: DumpStore, transcribe: AsyncMock, storage_mocks: dict[str, AsyncMock]
 ):
     """The old take loses the row the moment a second tab claims it.
 
@@ -611,6 +692,9 @@ async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
     assert dumps.row.transcript is None
     assert dumps.row.greeting is None
     assert dumps.row.status == BrainDumpStatus.recording_uploaded
+    # Its transcript was never saved, so its recording is left for the
+    # retention sweep rather than deleted on the strength of a lost write.
+    storage_mocks["delete_audio"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1025,8 +1109,11 @@ async def test_intro_card_falls_back_when_the_greeting_was_never_generated(
 
 
 @pytest.mark.asyncio
-async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
-    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothing(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    storage_mocks: dict[str, AsyncMock],
 ):
     await start_voice_take(dumps)
     quality_gate.return_value = "no_usable_speech"
@@ -1042,9 +1129,12 @@ async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "no_usable_speech"
-    # Rejection is not deletion: audio and transcript both survive.
-    assert dumps.row.audioPath == AUDIO_PATH
+    # The transcript survives the rejection for debugging. The recording
+    # does not: it went once the transcript was stored, and the user
+    # re-records from the browser rather than from it.
     assert dumps.row.transcript == TRANSCRIPT
+    assert dumps.row.audioPath is None
+    storage_mocks["delete_audio"].assert_awaited_once_with(AUDIO_PATH)
     # And nothing personalized was queued from the rejected content.
     assert background.tasks == []
     extraction["extract_business_understanding"].assert_not_awaited()
@@ -1359,8 +1449,8 @@ async def test_a_failed_team_job_still_stores_an_answer(
     """
     templates.side_effect = RuntimeError("database down")
     generate_team.side_effect = (
-        lambda transcript, *, user_role, pain_points, templates: (
-            ExpertRecommendations(source="fallback")
+        lambda transcript, *, user_role, pain_points, templates: ExpertRecommendations(
+            source="fallback"
         )
     )
     await start_voice_take(dumps)

@@ -41,10 +41,6 @@ logger = logging.getLogger(__name__)
 EventHandler = Callable[[CodexStreamEvent], Awaitable[None]]
 ToolHandler = Callable[[CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]]
 
-# A turn that keeps asking for tools without converging is a bug somewhere;
-# stop rather than spending someone's quota in a loop.
-MAX_TOOL_ITERATIONS = 32
-
 
 class CodexHttpSession:
     """One user's Codex turn, run over HTTPS."""
@@ -103,7 +99,10 @@ class CodexHttpSession:
         reasoning_summary = ""
         usage = _ZERO_USAGE
 
-        for _ in range(MAX_TOOL_ITERATIONS):
+        # No round cap here: whoever runs the tools bounds the turn. On the
+        # copilot path that is the Claude CLI, which counts every call against
+        # CHAT_AGENT_MAX_TURNS; the turn and tool timeouts cover the rest.
+        while True:
             turn = await self._stream_turn(request, conversation, tools, event_handler)
 
             response_id = turn.response_id or response_id
@@ -129,16 +128,15 @@ class CodexHttpSession:
                     usage=usage,
                 )
 
-            for call in turn.tool_calls:
-                conversation.append(await self._dispatch_tool(call, tool_handler))
-
-        raise CodexTurnLimitError(
-            f"Codex turn did not converge within {MAX_TOOL_ITERATIONS} tool rounds"
-        )
+            results = [
+                await self._dispatch_tool(call, tool_handler)
+                for call in turn.tool_calls
+            ]
+            conversation.extend(_tool_round_items(turn.tool_calls, results))
 
     async def _dispatch_tool(
         self, call: "_ToolCall", tool_handler: ToolHandler
-    ) -> dict[str, Any]:
+    ) -> CodexDynamicToolResult:
         request = CodexDynamicToolCall(
             thread_id=call.response_id,
             turn_id=call.response_id,
@@ -148,27 +146,24 @@ class CodexHttpSession:
             arguments=call.arguments,
         )
         try:
-            result = await asyncio.wait_for(
+            return await asyncio.wait_for(
                 tool_handler(request), timeout=self._tool_timeout_seconds
             )
-            output = result.content
         except asyncio.TimeoutError:
             # Report the timeout to the model rather than failing the turn: it
             # can usually recover by trying something else.
-            output = f"Tool {call.name!r} timed out."
             logger.warning("Codex tool %s timed out", call.name)
+            return CodexDynamicToolResult(
+                content=f"Tool {call.name!r} timed out.", success=False
+            )
         except Exception:
             # Tool failures are model-visible results, not transport failures:
             # the model can explain, retry, or choose another path. Do not
             # include exception text because tool errors may contain secrets.
-            output = f"Tool {call.name!r} failed."
             logger.exception("Codex tool %s failed", call.name)
-
-        return {
-            "type": "function_call_output",
-            "call_id": call.call_id,
-            "output": output,
-        }
+            return CodexDynamicToolResult(
+                content=f"Tool {call.name!r} failed.", success=False
+            )
 
     async def _stream_turn(
         self,
@@ -209,8 +204,17 @@ class CodexHttpSession:
         # with_raw_response returns LegacyAPIResponse for streaming requests;
         # its synchronous parse() returns the AsyncStream to iterate.
         stream = raw.parse()
-        async for event in stream:
-            await _consume_event(event, outcome, event_handler)
+        async with stream:
+            try:
+                async for event in stream:
+                    await _consume_event(event, outcome, event_handler)
+            finally:
+                # Publish the last snapshot once per response, even on cancellation
+                # or failure, before another model call can lose this call's usage.
+                if event_handler is not None and outcome.usage is not None:
+                    await event_handler(
+                        CodexStreamEvent(type="usage", usage=outcome.usage)
+                    )
         return outcome
 
 
@@ -249,15 +253,22 @@ async def _consume_event(
             )
         return
 
-    if kind in ("response.created", "response.completed", "response.in_progress"):
+    if kind in (
+        "response.created",
+        "response.completed",
+        "response.in_progress",
+        "response.incomplete",
+        "response.failed",
+    ):
         response = getattr(event, "response", None)
-        if response is None:
+        if response is not None:
+            outcome.response_id = getattr(response, "id", "") or outcome.response_id
+            outcome.model = getattr(response, "model", None) or outcome.model
+            if (raw_usage := getattr(response, "usage", None)) is not None:
+                outcome.usage = _usage_from(raw_usage)
+        # Failed responses fall through to raise after their usage is captured.
+        if kind != "response.failed":
             return
-        outcome.response_id = getattr(response, "id", "") or outcome.response_id
-        outcome.model = getattr(response, "model", None) or outcome.model
-        if (raw_usage := getattr(response, "usage", None)) is not None:
-            outcome.usage = _usage_from(raw_usage)
-        return
 
     if kind in ("response.failed", "error"):
         raise CodexTurnFailedError(_failure_message(event))
@@ -265,10 +276,6 @@ async def _consume_event(
 
 class CodexInvocationTimeoutError(RuntimeError):
     """The whole turn exceeded its deadline."""
-
-
-class CodexTurnLimitError(RuntimeError):
-    """The tool loop did not converge."""
 
 
 class CodexTurnFailedError(RuntimeError):
@@ -313,6 +320,30 @@ def _user_message(prompt: str) -> dict[str, Any]:
         "role": "user",
         "content": [{"type": "input_text", "text": prompt}],
     }
+
+
+def _tool_round_items(
+    calls: list[_ToolCall], results: list[CodexDynamicToolResult]
+) -> list[dict[str, Any]]:
+    """A round's tool outputs, then whatever the user said while it ran.
+
+    A follow-up is the user speaking, not the tool, so it goes in as a user
+    message rather than inside an output -- and only once every call in the
+    round has its output, so the model's calls are answered before it hears
+    anything new.
+    """
+    outputs = [
+        {
+            "type": "function_call_output",
+            "call_id": call.call_id,
+            "output": result.content,
+        }
+        for call, result in zip(calls, results, strict=True)
+    ]
+    followups = [
+        _user_message(result.followup) for result in results if result.followup
+    ]
+    return outputs + followups
 
 
 def _tool_payload(spec: CodexDynamicToolSpec) -> dict[str, Any]:

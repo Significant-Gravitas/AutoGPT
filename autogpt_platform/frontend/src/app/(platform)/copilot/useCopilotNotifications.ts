@@ -3,16 +3,12 @@ import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { Key } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import {
-  COPILOT_COMPLETION_NOTIFICATION,
-  ORIGINAL_TITLE,
-  formatNotificationTitle,
-  parseSessionIDs,
-} from "./helpers";
+import { COPILOT_COMPLETION_NOTIFICATION, parseSessionIDs } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
 const NOTIFICATION_SOUND_PATH = "/notification.mp3";
+const SEEN_RECHECK_MS = 2_000;
 
 /**
  * Show a browser notification with click-to-navigate behaviour.
@@ -51,9 +47,17 @@ async function showBrowserNotification(
   }
 }
 
+// The user is here while the tab is visible and the document has focus. That
+// stays true while they work inside an embedded iframe, where a window blur
+// alone would say they had left. The handler and the clear effect share it so
+// they never disagree about the same moment.
+function isUserAway() {
+  return document.visibilityState === "hidden" || !document.hasFocus();
+}
+
 /**
  * Listens for copilot completion notifications via WebSocket.
- * Updates the Zustand store, plays a sound, and updates document.title.
+ * Updates the Zustand store and plays a sound.
  */
 export function useCopilotNotifications(activeSessionID: string | null) {
   const api = useBackendAPI();
@@ -61,19 +65,41 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeSessionRef = useRef(activeSessionID);
   activeSessionRef.current = activeSessionID;
-  const windowFocusedRef = useRef(true);
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
 
-  // Pre-load audio element and sync document title with persisted state
+  // Seeing a finished chat takes it off the list. The handler below skips
+  // chats already on it, so a chat left there never notifies again. Only a
+  // tab the user is in counts: the list is shared across tabs, so a tab that
+  // merely has the chat open must not mark it seen for the others.
+  useEffect(() => {
+    function clearIfSeen() {
+      if (isUserAway()) return;
+      if (!activeSessionID || !completedSessionIDs.has(activeSessionID)) return;
+      useCopilotUIStore.getState().clearCompletedSession(activeSessionID);
+    }
+
+    clearIfSeen();
+    document.addEventListener("visibilitychange", clearIfSeen);
+    window.addEventListener("focus", clearIfSeen);
+    // Coming back by clicking straight into an embedded frame (the desktop
+    // preview) fires no event in this document, so re-check while the open
+    // chat is still on the list. Clearing it ends the interval.
+    const recheck =
+      activeSessionID && completedSessionIDs.has(activeSessionID)
+        ? window.setInterval(clearIfSeen, SEEN_RECHECK_MS)
+        : undefined;
+    return () => {
+      document.removeEventListener("visibilitychange", clearIfSeen);
+      window.removeEventListener("focus", clearIfSeen);
+      window.clearInterval(recheck);
+    };
+  }, [activeSessionID, completedSessionIDs]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const audio = new Audio(NOTIFICATION_SOUND_PATH);
     audio.volume = 0.5;
     audioRef.current = audio;
-
-    const count = useCopilotUIStore.getState().completedSessionIDs.size;
-    if (count > 0) {
-      document.title = formatNotificationTitle(count);
-    }
   }, []);
 
   // Listen for WebSocket notifications
@@ -88,19 +114,16 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       const state = useCopilotUIStore.getState();
 
       const isActiveSession = sessionID === activeSessionRef.current;
-      const isUserAway =
-        document.visibilityState === "hidden" || !windowFocusedRef.current;
+      const userAway = isUserAway();
 
       // Skip if viewing the active session and it's in focus
-      if (isActiveSession && !isUserAway) return;
+      if (isActiveSession && !userAway) return;
 
       // Skip if we already notified for this session (e.g. WS replay)
       if (state.completedSessionIDs.has(sessionID)) return;
 
       // Always update UI state (checkmark + title) regardless of notification setting
       state.addCompletedSession(sessionID);
-      const count = useCopilotUIStore.getState().completedSessionIDs.size;
-      document.title = formatNotificationTitle(count);
 
       // Sound and browser notifications are gated by the user setting
       if (!state.isNotificationsEnabled) return;
@@ -114,7 +137,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       if (
         typeof Notification !== "undefined" &&
         Notification.permission === "granted" &&
-        isUserAway
+        userAway
       ) {
         showBrowserNotification(COPILOT_COMPLETION_NOTIFICATION.title, {
           body: COPILOT_COMPLETION_NOTIFICATION.body,
@@ -130,36 +153,6 @@ export function useCopilotNotifications(activeSessionID: string | null) {
     };
   }, [api]);
 
-  // Track window focus for browser notifications when app is in background
-  useEffect(() => {
-    function handleFocus() {
-      windowFocusedRef.current = true;
-      if (useCopilotUIStore.getState().completedSessionIDs.size === 0) {
-        document.title = ORIGINAL_TITLE;
-      }
-    }
-    function handleBlur() {
-      windowFocusedRef.current = false;
-    }
-    function handleVisibilityChange() {
-      if (
-        document.visibilityState === "visible" &&
-        useCopilotUIStore.getState().completedSessionIDs.size === 0
-      ) {
-        document.title = ORIGINAL_TITLE;
-      }
-    }
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("blur", handleBlur);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("blur", handleBlur);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
   // Sync completedSessionIDs across tabs via localStorage storage events
   useEffect(() => {
     function handleStorage(e: StorageEvent) {
@@ -168,7 +161,6 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // additions (new completions) and removals (cleared sessions) propagate.
       const next = parseSessionIDs(e.newValue);
       useCopilotUIStore.setState({ completedSessionIDs: next });
-      document.title = formatNotificationTitle(next.size);
 
       // Refetch the session list so the sidebar reflects the latest
       // is_processing state (avoids stale spinner after cross-tab clear).
