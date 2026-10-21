@@ -1,7 +1,6 @@
 import { useHireExpert } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { RecommendedExpert } from "@/app/api/__generated__/models/recommendedExpert";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { analytics } from "@/services/analytics";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
@@ -82,9 +81,6 @@ export function useHireAll({ experts, onTeamHired }: Args) {
     try {
       await hireExpert({
         data: { template_id: expert.template_id, surface: "onboarding" },
-      });
-      analytics.sendDatafastEvent("hire_completed", {
-        template_id: expert.template_id,
       });
       markHired(expert.template_id);
     } finally {
