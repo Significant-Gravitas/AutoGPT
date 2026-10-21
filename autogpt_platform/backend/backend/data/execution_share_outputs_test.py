@@ -17,6 +17,7 @@ from prisma.enums import AgentExecutionStatus
 
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data.execution import (
+    GraphExecution,
     get_graph_execution,
     get_graph_execution_by_share_token,
 )
@@ -45,6 +46,7 @@ def _node_exec(
     execution_data: dict | None = None,
     inputs: dict | None = None,
     stats: dict | None = None,
+    outputs: list | None = None,
 ) -> dict:
     return {
         "id": exec_id,
@@ -61,7 +63,7 @@ def _node_exec(
             _io(name, value, i)
             for i, (name, value) in enumerate((inputs or {}).items())
         ],
-        "Output": [],
+        "Output": [_io("output", value, i) for i, value in enumerate(outputs or [])],
         "Node": {
             "id": f"node-{exec_id}",
             "agentBlockId": block_id,
@@ -202,3 +204,61 @@ async def test_unknown_share_token_returns_none(exec_client):
     exec_client.find_first.return_value = None
 
     assert await get_graph_execution_by_share_token("nope") is None
+
+
+# Run outputs come from what the Agent Output block yielded (#15905).
+
+
+async def _yielded(**inputs: Any) -> list:
+    block = AgentOutputBlock()
+    return [
+        value
+        async for pin, value in block.run(AgentOutputBlock.Input(**inputs))
+        if pin == "output"
+    ]
+
+
+async def _run_outputs(**inputs: Any) -> list:
+    execution = _execution()
+    execution.NodeExecutions = [
+        prisma.models.AgentNodeExecution.model_validate(
+            _node_exec(
+                "out",
+                queued_s=1,
+                inputs=inputs,
+                outputs=await _yielded(**inputs),
+            )
+        )
+    ]
+    return GraphExecution.from_db(execution).outputs[inputs["name"]]
+
+
+@pytest.mark.asyncio
+async def test_run_outputs_use_formatted_value():
+    assert await _run_outputs(
+        name="shout", value="hi", format="{{ shout | upper }}"
+    ) == ["HI"]
+
+
+@pytest.mark.asyncio
+async def test_run_outputs_use_html_escaped_value():
+    (value,) = await _run_outputs(
+        name="note", value="<b>x</b>", format="{{ note }}", escape_html=True
+    )
+    assert "&lt;b&gt;x&lt;/b&gt;" in value
+    assert "<b>" not in value
+
+
+@pytest.mark.asyncio
+async def test_run_outputs_show_format_error():
+    (value,) = await _run_outputs(
+        name="probe", value="raw", format="{{ missing.attr }}"
+    )
+    assert value.startswith("Error: ")
+    assert value.endswith(", raw")
+
+
+@pytest.mark.asyncio
+async def test_run_outputs_without_format_are_unchanged():
+    value = {"bed": "4B"}
+    assert await _run_outputs(name="patient", value=value) == [value]

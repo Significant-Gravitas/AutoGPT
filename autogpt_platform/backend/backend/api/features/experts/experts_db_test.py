@@ -5192,6 +5192,7 @@ def _output_node_exec(
     added_minutes: int = 0,
     queued_minutes: int | None = None,
     stats: dict | None = None,
+    output: list | None = None,
 ) -> SimpleNamespace:
     base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
     return SimpleNamespace(
@@ -5211,6 +5212,7 @@ def _output_node_exec(
             if execution_data is None
             else []
         ),
+        Output=[SimpleNamespace(name="output", data=item) for item in output or []],
     )
 
 
@@ -5280,6 +5282,13 @@ def test_outputs_from_node_execs_uses_last_cleared_input_message():
         ]
     )
     assert outputs == {"rows": ["b"]}
+
+
+def test_outputs_from_node_execs_uses_yielded_output_over_input_value():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("report", {"rows": 2}, output=["2 rows"])]
+    )
+    assert outputs == {"report": ["2 rows"]}
 
 
 def test_outputs_from_node_execs_falls_back_when_stats_are_corrupt():
