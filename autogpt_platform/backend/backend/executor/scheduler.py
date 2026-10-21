@@ -2244,6 +2244,16 @@ def cleanup_oauth_tokens():
     run_async(_cleanup())
 
 
+def cleanup_auth_ip_events():
+    """Delete sign-up and sign-in IP records past their retention."""
+
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.delete_expired_ip_events(config.auth_ip_event_retention_days)
+
+    run_async(_cleanup())
+
+
 def cleanup_failed_push_subscriptions():
     """Delete push subscriptions that have exceeded the failure threshold."""
 
@@ -3056,6 +3066,17 @@ class Scheduler(AppService):
                 replace_existing=True,
                 seconds=config.oauth_token_cleanup_interval_hours
                 * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Sign-in IP log retention - daily
+            self.scheduler.add_job(
+                cleanup_auth_ip_events,
+                id="cleanup_auth_ip_events",
+                trigger="interval",
+                hours=24,
+                replace_existing=True,
+                max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

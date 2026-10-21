@@ -63,6 +63,7 @@ describe("getClientIPToken", () => {
   it("signs an address only where the proxy in front vouches for it", async () => {
     vi.stubEnv("VERCEL", "");
     vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "");
 
     expect(await getClientIPToken(forwardedFor("198.51.100.8"))).toBeNull();
     expect(mintServiceTokenMock).not.toHaveBeenCalled();
