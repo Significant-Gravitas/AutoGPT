@@ -13,8 +13,8 @@ from prisma.models import AccountDeletionRequest
 
 from backend.data.db import transaction
 
-# Better Auth's banReason for a closed account. Its sign-in then fails with the
-# bannedUserMessage the frontend configures for the admin plugin.
+# Better Auth's banReason for a closed account. Its sign-in then fails as
+# closed (the frontend's closed-account plugin); any other ban as banned.
 ACCOUNT_DELETED_BAN_REASON = "account_deleted"
 
 
