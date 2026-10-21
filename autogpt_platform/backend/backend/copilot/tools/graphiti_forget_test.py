@@ -469,19 +469,29 @@ class TestBuildConfirmMessage:
         assert message.startswith("1 memory edge(s) had already been erased.")
         assert "0 memory edge(s) retracted from memory" not in message
 
-    def test_derived_only_followup_leads_with_its_sources(self) -> None:
-        hard = _build_confirm_message(0, True, [], 2)
-        assert hard == (
-            "Memory edge(s) already erased were revisited. "
-            "2 derived fact(s) retracted and erased."
+    def test_a_hard_forget_whose_deletion_failed_says_so(self) -> None:
+        """Its cascade ran, then deleting the edge failed: the edge and its
+        text are still there, so the message must not call it erased."""
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-1",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="graph unavailable",
+            )
+        ]
+        message = _build_confirm_message(0, True, failures, 2)
+        assert message.startswith(
+            "The memory edge(s) could not be permanently deleted, but 2 fact(s) "
+            "derived from them were retracted and erased."
         )
+        assert "already" not in message
+        assert "uuid-1" in message
 
-    def test_a_soft_derived_only_followup_never_claims_erasure(self) -> None:
-        """A soft forget retracts what was derived; it erases nothing."""
+    def test_a_soft_derived_only_result_never_claims_erasure(self) -> None:
         soft = _build_confirm_message(0, False, [], 2)
         assert soft == (
-            "Memory edge(s) already retracted were revisited. "
-            "2 derived fact(s) retracted."
+            "The memory edge(s) could not be retracted from memory, but 2 fact(s) "
+            "derived from them were retracted."
         )
         assert "erased" not in soft
 
