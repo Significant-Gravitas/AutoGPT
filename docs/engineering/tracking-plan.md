@@ -110,6 +110,46 @@ something else now use `hire_started.surface`,
   display name are person properties set by `identify` and nowhere else.
   (`expert_hired.name` is the expert's display name, not a person's.)
 
+### Our own team and impersonation
+
+Our team's clicks and an admin acting as a user would otherwise skew every
+chart, funnel and experiment, so both are marked and a project filter leaves
+them out (SECRT-2728):
+
+- **`is_internal`** is a person property: true for an admin (Better Auth role
+  `admin`) or an `@agpt.co` email, false for everyone else. The backend sets
+  it at signup with the other account properties, and again whenever an
+  internal account signs in (`POST /api/auth/user`), so someone made an admin
+  later is flagged from their next sign-in. `poetry run cli
+  posthog-audience-backfill` sets it on earlier accounts. Someone who stops
+  being an admin keeps it until that backfill runs again.
+- **`impersonated`** is an event property, true on every event an admin
+  caused while acting as a user (`X-Act-As-User-Id`). The backend sets it in
+  `posthog_client.capture` for every event a request sends with that header
+  (`api/middleware/analytics.py`) and every event of a chat turn such an admin
+  started; the AutoPilot events above carry it too. The browser stays the
+  admin's while impersonating, so its events land on the admin's person; a
+  PostHog `before_send` hook adds `impersonated` and `impersonated_user_id`
+  to them (`src/services/analytics/posthog-request-context.ts`).
+- **An admin acting as a user never changes the user's person.** The backend
+  drops `$set_person_properties` while impersonated (the onboarding role, the
+  checkout properties). The lifecycle sync still runs, since it mirrors the
+  stored trial and Stripe state rather than the admin's action.
+- **Session.** With analytics consent, and not while impersonating, the
+  browser sends its PostHog session id as `X-PostHog-Session-Id` on API
+  requests (`customMutator` through the proxy, and the chat's direct
+  requests), and the backend adds it
+  as `$session_id` to the events that request sends, so they join the
+  browser's session and its replay. Events sent later by the executor, the
+  scheduler or a webhook have no session.
+
+The project's "Filter out internal and test users" setting (PostHog project
+settings, Product analytics) holds the filter, applied to every insight that
+has "Filter out internal and test users" on:
+
+- person property `is_internal` is not `true`;
+- event property `impersonated` is not `true`.
+
 ## What counts as a task
 
 The `analytics.*` views (`user_task_daily`, `user_lifecycle`,
@@ -516,14 +556,16 @@ The fields GTM segments checkout openers on in MailerLite are on the person
 too (SECRT-2895, `backend/notifications/posthog_audience.py`). They are worked
 out by the same code (`audience_enrichment.checkout_fields`) and named as in
 MailerLite, except the checkout open, which is a moment here and a day there.
-Every account gets the first two at signup. Every checkout opener gets all of
-them from the checkout routes and the completed-checkout webhook. Unlike
+Every account gets `email_type`, `signin_method` and `is_internal` (PostHog
+only) at signup. Every checkout opener gets the MailerLite fields from the
+checkout routes and the completed-checkout webhook. Unlike
 MailerLite, PostHog also gets accounts that opted out of marketing or that a
 signal places in Iran or Russia: it is analytics, not marketing.
 
 | Property | Value |
 | --- | --- |
 | `email_type` | `business`, `personal` (a webmail provider) or `education`. |
+| `is_internal` | `true` for our own team (an admin or an `@agpt.co` email), else `false`; see [Our own team and impersonation](#our-own-team-and-impersonation). Every account, not only openers. |
 | `signin_method` | `google` or `email`; `google` wins for an account that has both. |
 | `checkout_opened_at` | When the account first opened Stripe checkout. |
 | `country` | The country's English name, from the strongest source seen (see `country_source`). |
