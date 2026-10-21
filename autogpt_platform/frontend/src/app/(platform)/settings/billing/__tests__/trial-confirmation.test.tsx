@@ -98,6 +98,36 @@ describe("trial Checkout return", () => {
     expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
   });
 
+  it("shows a declined card hold as a retry with another card, not a failed confirmation", async () => {
+    const declined = trialResponse({
+      eligible: true,
+      active: false,
+      status: "checkout_pending",
+      rejection_reason: "card_declined",
+      ends_at: null,
+    });
+    const confirm = vi.fn(() => declined);
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(declined),
+      getPostTrialsConfirmTrialMockHandler200(confirm),
+    );
+    renderTrialReturn();
+    expect(
+      (await screen.findByRole("alert")).textContent?.includes(
+        "Your card couldn’t be verified",
+      ),
+    ).toBe(true);
+    await waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.queryByText(/Confirming your trial/)).toBeNull(),
+    );
+    expect(screen.queryByText(/Your trial is not active/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /start 7-day trial/i }),
+    ).toBeDefined();
+  });
+
   it("does not treat an inactive 200 response as completed card setup", async () => {
     server.use(
       getPostTrialsConfirmTrialMockHandler200(

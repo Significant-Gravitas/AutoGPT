@@ -15,10 +15,13 @@ from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBala
 
 from backend.data import credit as credit_module
 from backend.data.credit import UserCredit
+from backend.data.subscription_trial_hold import card_holds_funds
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 credit_system = UserCredit()
+
+pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
 # Test user ID for refund tests
 REFUND_TEST_USER_ID = "refund-test-user"
@@ -578,6 +581,46 @@ async def test_concurrent_refunds(server: SpinTestServer):
 
     finally:
         await cleanup_test_user()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_refund_of_a_released_trial_card_hold_is_acknowledged(
+    trial, card_hold, server: SpinTestServer
+):
+    """Releasing the trial's card hold refunds its authorization, which bought
+    no credits, so the refund is acknowledged instead of retried."""
+    created: list[stripe.PaymentIntent] = []
+
+    def create(**params) -> stripe.PaymentIntent:
+        created.append(
+            stripe.PaymentIntent.construct_from(
+                {
+                    "id": "pi_test_trial_hold",
+                    "status": "requires_capture",
+                    "amount": params["amount"],
+                    "metadata": params["metadata"],
+                    "invoice": None,
+                },
+                "sk_test",
+            )
+        )
+        return created[-1]
+
+    card_hold.create.side_effect = create
+    assert await card_holds_funds(trial, "pm_1")
+    (hold,) = created
+    refund = MagicMock(spec=stripe.Refund)
+    refund.id = "re_test_trial_hold"
+    refund.payment_intent = hold.id
+    refund.amount = hold.amount
+    refund.status = "succeeded"
+
+    with patch("stripe.PaymentIntent.retrieve_async", AsyncMock(return_value=hold)):
+        await credit_system.deduct_credits(refund)
+
+    assert (
+        await CreditTransaction.prisma().count(where={"transactionKey": refund.id}) == 0
+    )
 
 
 @pytest.fixture

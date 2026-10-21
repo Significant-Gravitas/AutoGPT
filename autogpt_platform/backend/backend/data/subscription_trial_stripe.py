@@ -13,6 +13,7 @@ from backend.data.subscription_activation_target import record_checkout_consumpt
 from backend.data.subscription_checkout import other_plan_has_access
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_claims import claim_trial_identities
+from backend.data.subscription_trial_hold import card_holds_funds
 from backend.data.subscription_trial_payment import Invoice as Invoice
 from backend.data.subscription_trial_payment import (
     SubscriptionSnapshot as SubscriptionSnapshot,
@@ -73,13 +74,13 @@ async def _reconcile_locked(
     checkout_complete = trial.consumed_at is not None or await _completed_card_checkout(
         trial, snapshot.id, tx
     )
+    # A declined hold reopened the checkout; that rejection was an earlier attempt's.
     rejection_reason = (
         trial.rejection_reason
-        or TrialRejectionReason.from_stripe_comment(
-            snapshot.cancellation_details.comment
-            if snapshot.cancellation_details
-            else None
-        )
+        if trial.rejection_reason != TrialRejectionReason.CARD_DECLINED
+        else None
+    ) or TrialRejectionReason.from_stripe_comment(
+        snapshot.cancellation_details.comment if snapshot.cancellation_details else None
     )
     if (
         checkout_complete
@@ -93,6 +94,12 @@ async def _reconcile_locked(
                 rejection_reason = TrialRejectionReason.CARD_VERIFICATION_FAILED
             elif not await claim_trial_identities(trial, fingerprint, tx):
                 rejection_reason = TrialRejectionReason.INTRO_OFFER_ALREADY_USED
+            elif (
+                method is not None
+                and trial.consumed_at is None
+                and not await card_holds_funds(trial, method.id)
+            ):
+                rejection_reason = TrialRejectionReason.CARD_DECLINED
         if rejection_reason or await _ends_scheduled_cancellation_now(trial, snapshot):
             cancel_params: stripe.Subscription.CancelParams = {
                 "invoice_now": False,
@@ -155,9 +162,15 @@ async def _reconcile_locked(
         if refreshed.convertedAt:
             trial.converted_at = refreshed.convertedAt
             trial.conversion_invoice_id = refreshed.stripeConversionInvoiceId
-    await _save_snapshot(
-        trial, snapshot, tier, now, tx, checkout_complete, rejection_reason
-    )
+    if (
+        rejection_reason == TrialRejectionReason.CARD_DECLINED
+        and trial.consumed_at is None
+    ):
+        await _reopen_checkout(trial, tx)
+    else:
+        await _save_snapshot(
+            trial, snapshot, tier, now, tx, checkout_complete, rejection_reason
+        )
     if previously_converted:
         return dict(raw), None
     if tier == SubscriptionTier.NO_TIER:
@@ -324,6 +337,24 @@ async def _save_snapshot(
             "cancelAtPeriodEnd": snapshot.cancel_at_period_end,
             "notificationRevision": trial.notification_revision
             + int(trial.cancel_at_period_end != snapshot.cancel_at_period_end),
+        },
+    )
+
+
+async def _reopen_checkout(trial: TrialState, tx: Prisma) -> None:
+    """Leave the offer unused after a declined hold. The next checkout is a new
+    attempt, so this attempt's subscription and session no longer match it."""
+    await tx.subscriptiontrial.update(
+        where={"userId": trial.user_id},
+        data={
+            "status": "checkout_pending",
+            "rejectionReason": TrialRejectionReason.CARD_DECLINED,
+            "checkoutAttempt": {"increment": 1},
+            "stripeCheckoutSessionId": None,
+            "stripeSubscriptionId": None,
+            "cardVerifiedAt": None,
+            "startedAt": None,
+            "endsAt": None,
         },
     )
 

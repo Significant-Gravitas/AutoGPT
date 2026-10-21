@@ -19,20 +19,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest_asyncio.fixture
 async def enrollment():
-    target = urlparse(db.DATABASE_URL)
-    local = (target.hostname, target.port, target.path) == (
-        "127.0.0.1",
-        15432,
-        "/trial_test",
-    )
-    ci = (
-        os.environ.get("GITHUB_ACTIONS") == "true"
-        and (target.hostname, target.port) == ("localhost", 5432)
-        and target.path in ("/postgres", "/ci_copilot")
-    )
-    assert (
-        local or ci
-    ), "Trial integration tests require an approved disposable database"
+    require_disposable_database()
     owns_connection = not db.is_connected()
     await db.connect()
     user_id = str(uuid4())
@@ -65,3 +52,20 @@ async def enrollment():
     )
     if owns_connection:
         await db.disconnect()
+
+
+def require_disposable_database() -> None:
+    target = urlparse(db.DATABASE_URL)
+    local = (target.hostname, target.port, target.path) == (
+        "127.0.0.1",
+        15432,
+        "/trial_test",
+    )
+    ci = (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and (target.hostname, target.port) == ("localhost", 5432)
+        and target.path in ("/postgres", "/ci_copilot")
+    )
+    assert (
+        local or ci
+    ), "Trial integration tests require an approved disposable database"

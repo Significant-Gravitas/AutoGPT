@@ -11,6 +11,8 @@ import { useTrialFailure } from "./useTrialFailure";
 import { useTrialOfferViewed } from "./useTrialOfferViewed";
 
 const CHECKOUT_FAILED = "Unable to start trial checkout.";
+const CARD_DECLINED =
+  "Your card couldn’t be verified, so your trial didn’t start and you weren’t charged. Try again with another card.";
 
 export function useTrialCard(returnTo: "onboarding" | "billing") {
   const userID = useAuthStore((state) => state.user?.id);
@@ -58,7 +60,11 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     userID,
     trial: query.data,
     isLoading: Boolean(userID) && query.isLoading,
-    error: failure.error,
+    error:
+      failure.error ??
+      (query.data?.eligible && query.data.rejection_reason === "card_declined"
+        ? CARD_DECLINED
+        : null),
     // A failed refetch keeps the cached trial on screen, with its actions.
     queryError: query.isError && !query.data,
     retry: () => query.refetch(),

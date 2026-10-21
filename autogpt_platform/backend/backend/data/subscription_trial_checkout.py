@@ -35,12 +35,19 @@ from backend.data.subscription_trial_config import (
 from backend.data.subscription_trial_eligibility import (
     verify_trial_eligibility as _verify_eligibility,
 )
+from backend.data.subscription_trial_rejection import TrialRejectionReason
 
 
 async def confirm_trial_checkout(user_id: str) -> None:
     trial = await get_subscription_trial(user_id)
     if trial is None:
         raise TrialUnavailable("There is no trial checkout for this account")
+    if (
+        trial.rejection_reason == TrialRejectionReason.CARD_DECLINED
+        and trial.checkout_session_id is None
+    ):
+        # The webhook already refused this card; the status says so.
+        return
     session = await _find_checkout(trial)
     if session is None or session.status != "complete":
         raise TrialUnavailable("Card setup is not complete yet")

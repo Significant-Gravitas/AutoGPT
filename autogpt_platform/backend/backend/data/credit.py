@@ -55,6 +55,7 @@ from backend.data.subscription_pending_cache import (
     invalidate_pending_subscription_change,
 )
 from backend.data.subscription_trial import get_subscription_trial
+from backend.data.subscription_trial_hold import is_trial_card_hold
 from backend.data.subscription_upgrade_cache import discard_subscription_upgrade_preview
 from backend.data.subscription_upgrade_models import (
     StoredUpgradePreview,
@@ -1088,7 +1089,7 @@ class UserCredit(UserCreditBase):
             return transaction
         # A Checkout top-up stays keyed by its session until fulfilled, so a miss
         # raises (Stripe retries) unless the payment cannot have bought credits.
-        if not request.payment_intent or not await self._paid_invoice_without_credits(
+        if not request.payment_intent or not await self._bought_no_credits(
             str(request.payment_intent)
         ):
             raise RuntimeError(
@@ -1099,21 +1100,25 @@ class UserCredit(UserCreditBase):
         log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
         log(
             f"Ignoring {request.id} (${request.amount / 100:.2f}): payment intent "
-            f"{request.payment_intent} paid a subscription invoice, which grants no credits"
+            f"{request.payment_intent} paid a subscription invoice or a trial card hold,"
+            " which grant no credits"
         )
         return None
 
-    async def _paid_invoice_without_credits(self, payment_intent_id: str) -> bool:
-        # With the grant on, a paid subscription invoice buys credits too.
-        if settings.config.enable_subscription_credit_grant:
-            return False
+    async def _bought_no_credits(self, payment_intent_id: str) -> bool:
         # Pinned: 2025-03-31.basil dropped PaymentIntent.invoice for InvoicePayment.
         payment_intent = await stripe_call(
             stripe.PaymentIntent.retrieve_async,
             payment_intent_id,
             stripe_version="2025-02-24.acacia",
         )
-        return bool(payment_intent.invoice)
+        # Releasing the hold refunds its authorization, which bought nothing.
+        if is_trial_card_hold(payment_intent):
+            return True
+        # With the grant on, a paid subscription invoice buys credits too.
+        return not settings.config.enable_subscription_credit_grant and bool(
+            payment_intent.invoice
+        )
 
     async def _top_up_credits(
         self,

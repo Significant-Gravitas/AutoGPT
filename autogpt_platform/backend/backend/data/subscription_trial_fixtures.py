@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -98,7 +99,19 @@ def session(trial):
 
 
 @pytest.fixture
-def boundaries(subscription, session):
+def card_hold():
+    """Stripe's answers to the trial's card hold: authorized, then released."""
+    create = AsyncMock(return_value=payment_intent("requires_capture"))
+    cancel = AsyncMock(return_value=payment_intent("canceled"))
+    with (
+        patch.object(stripe.PaymentIntent, "create_async", create),
+        patch.object(stripe.PaymentIntent, "cancel_async", cancel),
+    ):
+        yield SimpleNamespace(create=create, cancel=cancel)
+
+
+@pytest.fixture
+def boundaries(subscription, session, card_hold):
     tx = MagicMock(spec=Prisma)
     tx.subscriptiontrial = MagicMock(update=AsyncMock())
     tx.user = MagicMock(update_many=AsyncMock())
@@ -144,3 +157,9 @@ def boundaries(subscription, session):
         ),
     ):
         yield tx
+
+
+def payment_intent(status: str) -> stripe.PaymentIntent:
+    return stripe.PaymentIntent.construct_from(
+        {"id": "pi_hold", "object": "payment_intent", "status": status}, "test-key"
+    )

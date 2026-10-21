@@ -38,6 +38,12 @@ export function useTrialCheckoutReturn() {
           throw new Error("Could not confirm your trial.");
         if (!(await updateTrialStatusCache({ queryClient, userID, response })))
           return;
+        // The trial card shows why and offers the retry.
+        if (response.data.rejection_reason === "card_declined") {
+          dropTrialReturnParam();
+          setResult({ userID, trial: response.data });
+          return;
+        }
         if (
           !response.data.active &&
           !response.data.converted &&

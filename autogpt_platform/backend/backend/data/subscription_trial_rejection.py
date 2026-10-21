@@ -6,6 +6,8 @@ from enum import StrEnum
 class TrialRejectionReason(StrEnum):
     INTRO_OFFER_ALREADY_USED = "intro_offer_already_used"
     CARD_VERIFICATION_FAILED = "card_verification_failed"
+    # The only one that leaves the offer unused, so the user can retry.
+    CARD_DECLINED = "card_declined"
 
     @property
     def stripe_comment(self) -> str:

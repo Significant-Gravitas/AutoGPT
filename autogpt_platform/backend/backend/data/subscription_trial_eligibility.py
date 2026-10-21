@@ -50,12 +50,17 @@ async def _unfinished_subscriptions(
         stripe.checkout.Session.list_async, customer=trial.customer_id, limit=100
     )
     async for session in stripe_list_items(sessions):
-        if session.status != "expired" or not _owned_checkout(
+        if not session.subscription or not _owned_checkout(
             trial, session, previous=True
         ):
             continue
-        if session.subscription:
+        if session.status == "expired":
             allowed[str(session.subscription)] = ("canceled", "incomplete_expired")
+        # Only a declined card hold moves the attempt past a completed checkout.
+        elif session.status == "complete" and (session.metadata or {}).get(
+            "trial_checkout_attempt"
+        ) != str(trial.checkout_attempt):
+            allowed[str(session.subscription)] = ("canceled",)
     return allowed
 
 
