@@ -410,10 +410,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     public_search_requests_per_minute: int = Field(
         default=30,
         ge=1,
-        description="Store search requests one client may make per minute.",
+        description="Store search requests one signed-out client may make per minute.",
+    )
+    public_search_user_requests_per_minute: int = Field(
+        default=120,
+        ge=1,
+        description="Store search requests one signed-in account may make per minute.",
     )
     public_search_embeddings_per_minute: int = Field(
-        default=300,
+        default=1000,
         ge=0,
         description=(
             "New query embeddings store search may request per minute across all "

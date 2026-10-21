@@ -107,7 +107,7 @@ async def unified_search(
 
     Combines semantic (embedding-based) and lexical (text-based) search for best results.
     """
-    await enforce_public_search_rate_limit(client)
+    await enforce_public_search_rate_limit(client, user_id=user_id)
 
     # Perform unified hybrid search
     results, total = await search_engine.unified_hybrid_search(
@@ -177,6 +177,9 @@ async def get_agents(
     ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    user_id: str | None = Security(
+        autogpt_libs.auth.get_optional_user_id, use_cache=False
+    ),
 ) -> store_model.StoreAgentsResponse:
     """
     Get a paginated list of agents from the marketplace,
@@ -191,7 +194,7 @@ async def get_agents(
     - Creator Details - Agents By Creator
     """
     if search_query and search_query.strip():
-        await enforce_public_search_rate_limit(client)
+        await enforce_public_search_rate_limit(client, user_id=user_id)
     agents = await store_cache.get_public_store_agents(
         featured=featured,
         creator=creator,

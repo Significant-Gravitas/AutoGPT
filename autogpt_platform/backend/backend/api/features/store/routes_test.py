@@ -414,6 +414,8 @@ def one_search_a_minute(monkeypatch):
         rate_limit.settings.config, "public_search_requests_per_minute", 1
     )
     monkeypatch.setattr(rate_limit, "datetime", _Frozen)
+    # A cold Redis connection can outlast the deadline, and the limit then fails open.
+    monkeypatch.setattr(rate_limit, "PUBLIC_SEARCH_REDIS_TIMEOUT_SECONDS", 10)
 
 
 @pytest.mark.parametrize(
@@ -431,6 +433,31 @@ def test_a_caller_without_the_frontends_token_is_held_to_the_search_limit(
     assert first.status_code == 200
     assert blocked.status_code == 429
     assert blocked.headers["Retry-After"] == "30"
+
+
+@pytest.mark.parametrize(
+    "path", ["/search?query=sheets", "/agents?search_query=sheets"]
+)
+def test_signed_in_searches_count_per_account_and_signed_out_ones_per_address(
+    mocker: pytest_mock.MockFixture, one_search_a_minute, monkeypatch, path: str
+) -> None:
+    from backend.api.features.search import rate_limit
+
+    _mock_search_backends(mocker)
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_user_requests_per_minute", 2
+    )
+    app.dependency_overrides[get_optional_user_id] = _user_from_test_header
+    office = _a_new_caller()
+    alice, bob = _signed_in(), _signed_in()
+
+    alice_statuses = [office.get(path, headers=alice).status_code for _ in range(3)]
+    bob_statuses = [office.get(path, headers=bob).status_code for _ in range(2)]
+    signed_out_statuses = [office.get(path).status_code for _ in range(2)]
+
+    assert alice_statuses == [200, 200, 429]
+    assert bob_statuses == [200, 200]
+    assert signed_out_statuses == [200, 429]
 
 
 def test_listing_agents_without_a_search_is_not_limited(
@@ -458,6 +485,16 @@ def test_store_search_counts_against_the_public_embedding_budget(
 def _a_new_caller() -> fastapi.testclient.TestClient:
     """A client with a socket address of its own, so no test shares its window."""
     return fastapi.testclient.TestClient(app, client=(f"caller-{uuid.uuid4().hex}", 1))
+
+
+def _signed_in() -> dict[str, str]:
+    return {"X-Test-User": f"user-{uuid.uuid4().hex}"}
+
+
+def _user_from_test_header(
+    x_test_user: str | None = fastapi.Header(default=None),
+) -> str | None:
+    return x_test_user
 
 
 def _claimed_address(ip: str) -> dict[str, str]:

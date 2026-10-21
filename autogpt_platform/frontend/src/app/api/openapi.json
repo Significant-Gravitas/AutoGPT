@@ -16676,6 +16676,7 @@
         "summary": "List store agents",
         "description": "Get a paginated list of agents from the marketplace,\nwith optional filtering and sorting.\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "featured",
