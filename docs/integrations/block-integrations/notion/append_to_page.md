@@ -12,7 +12,7 @@ Add content to the end of an existing Notion page. Supports markdown content.
 <!-- MANUAL: how_it_works -->
 This block adds content to the end of an existing page through the Notion API. The content can be markdown, which is converted to Notion blocks the same way the Create Page block converts it: headings, bulleted and numbered lists, code blocks, quotes, dividers and paragraphs.
 
-Notion takes at most 100 blocks per request, so longer content is sent in several requests, in order. The block outputs the IDs of the new blocks in page order. A line longer than Notion's 2,000-character limit for a run of text is split into several runs within the same block. If a later request fails, the block outputs the IDs of the blocks already added as well as the error. The failed request's blocks may or may not have reached the page, so check it before retrying.
+Notion takes at most 100 blocks per request, so longer content is sent in several requests, in order. The block outputs the IDs of the new blocks in page order. A line longer than Notion's 2,000-character limit for a run of text is split into several runs within the same block. If a later request fails, the block outputs only the error, which says how many blocks were added and gives the ID of the last one, so nothing wired to the block's IDs runs on a partial append. The failed request's blocks may or may not have reached the page, so check it before retrying.
 <!-- END MANUAL -->
 
 ### Inputs

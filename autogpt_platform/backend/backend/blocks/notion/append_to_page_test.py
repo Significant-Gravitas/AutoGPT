@@ -68,7 +68,7 @@ async def test_a_notion_error_is_the_blocks_only_output(notion_api):
     assert "object_not_found" in outputs[0][1]
 
 
-async def test_a_failure_after_the_first_request_still_reports_the_blocks_added(
+async def test_a_failure_after_the_first_request_names_the_blocks_added_in_the_error(
     notion_api,
 ):
     lines = [f"line {n}" for n in range(150)]
@@ -84,10 +84,11 @@ async def test_a_failure_after_the_first_request_still_reports_the_blocks_added(
 
     outputs = [out async for out in block.run(input_data, credentials=TEST_CREDENTIALS)]
 
-    assert [name for name, _ in outputs] == ["block_ids", "error"]
-    assert outputs[0][1] == lines[:100]
-    assert outputs[1][1].startswith("Added 100 of 150 blocks, then a request failed")
-    assert "rate_limited" in outputs[1][1]
+    assert [name for name, _ in outputs] == ["error"]
+    assert outputs[0][1].startswith(
+        "Added 100 of 150 blocks, the last with ID line 99, then a request failed"
+    )
+    assert "rate_limited" in outputs[0][1]
 
 
 @pytest.mark.parametrize(

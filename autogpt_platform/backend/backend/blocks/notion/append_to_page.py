@@ -116,21 +116,20 @@ class NotionAppendToPageBlock(Block):
                 credentials, input_data.page_id, input_data.content
             )
             yield "block_ids", block_ids
-        except PartialAppendError as e:
-            # Earlier chunks stay on the page; report them so a retry can skip them.
-            yield "block_ids", e.block_ids
-            yield "error", str(e)
         except Exception as e:
             yield "error", str(e) if str(e) else "Unknown error"
 
 
 class PartialAppendError(Exception):
+    """Some blocks are on the page; the error names them instead of an output, which
+    would run whatever is wired to `block_ids` on a partial append."""
+
     def __init__(self, block_ids: list[str], total: int, cause: Exception):
         super().__init__(
-            f"Added {len(block_ids)} of {total} blocks, then a request failed; "
-            f"check the page for the rest before retrying: {cause}"
+            f"Added {len(block_ids)} of {total} blocks, the last with ID "
+            f"{block_ids[-1]}, then a request failed; check the page for the rest "
+            f"before retrying: {cause}"
         )
-        self.block_ids = block_ids
 
 
 def _within_text_limit(block: dict) -> dict:
