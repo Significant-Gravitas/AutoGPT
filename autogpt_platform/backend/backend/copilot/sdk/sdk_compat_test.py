@@ -146,6 +146,7 @@ def test_agent_options_accepts_all_our_fields():
         "fallback_model",
         "max_turns",
         "max_budget_usd",
+        "verbatim_prompts",
     ]
     sig = inspect.signature(ClaudeAgentOptions)
     for field in fields_we_use:
@@ -312,6 +313,20 @@ def test_bundled_cli_version_is_known_good_against_openrouter():
         "known-good binary instead. See "
         "https://github.com/anthropics/claude-agent-sdk-python/issues/789 "
         "and https://github.com/Significant-Gravitas/AutoGPT/pull/12294."
+    )
+
+
+def test_bundled_cli_hands_prompts_over_as_written():
+    """The copilot refuses to start a CLI older than its floor, so the bundled
+    one must clear it."""
+    from claude_agent_sdk._cli_version import __cli_version__
+
+    from backend.copilot.sdk.cli_version import MIN_CLI_VERSION
+
+    bundled = tuple(int(part) for part in __cli_version__.split("."))
+    assert bundled >= MIN_CLI_VERSION, (
+        f"The bundled Claude Code CLI {__cli_version__} is older than "
+        f"{'.'.join(map(str, MIN_CLI_VERSION))}, which `verbatim_prompts` needs."
     )
 
 
