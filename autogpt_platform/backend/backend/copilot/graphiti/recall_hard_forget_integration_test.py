@@ -30,7 +30,7 @@ from backend.api.features.admin.memory_admin_routes import (
 from backend.copilot.dream import fetch
 from backend.copilot.dream.hidden_sessions import hidden_session_ids
 from backend.copilot.dream.prompts import build_consolidate_prompt
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.tools import graphiti_forget
 from backend.copilot.tools.models import (
     MemoryForgetCandidatesResponse,
@@ -128,7 +128,7 @@ async def _admin_views(
 
 
 def _chat_store(*session_ids: str) -> SimpleNamespace:
-    message = SimpleNamespace(role="user", content="Whole session text")
+    message = ChatMessage(role="user", content="Whole session text", sequence=0)
     return SimpleNamespace(
         get_user_chat_sessions=AsyncMock(
             return_value=[
@@ -306,8 +306,6 @@ async def test_a_soft_forget_can_still_be_made_permanent_from_chat(
     alice, bob = edges[ALICE[2]], edges[BOB[2]]
     await retract(scope, [alice])
     assert (await edge_row(driver, alice))["fact"] == FORGOTTEN_FACT
-    enabled = AsyncMock(return_value=True)
-    mocker.patch.object(graphiti_forget, "is_enabled_for_user", enabled)
     session = ChatSession.new(scope.owner_user_id, dry_run=False)
     search = graphiti_forget.MemoryForgetSearchTool()
 

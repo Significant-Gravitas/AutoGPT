@@ -8,6 +8,39 @@ install and CI get. Call sites are unaffected by
 the choice; they read through `evaluate_feature_flag()` on the backend and
 `useGetFlag` / `useFlagStatus` on the frontend.
 
+## Retired product rollout flags
+
+The following features are permanent product paths. The backend and browser no
+longer evaluate these keys, and their former `FORCE_FLAG_*` /
+`NEXT_PUBLIC_FORCE_FLAG_*` overrides have no effect:
+
+- `artifacts-page`
+- `hire-experts`
+- `skills-hub`
+- `onboarding-brain-dump`
+- `onboarding-expert-team`
+- `graphiti-memory`
+- `graphiti-communities-enabled`
+- `expert-spend-approval`
+- `ai-agent-execution-summary`
+
+The sidebar and search flags, `autogpt-new-layout` and `chat-search`, were
+retired separately. Authentication, ownership, user preferences, billing
+configuration and provider requirements still apply. Spend approval is bypassed
+when `ENABLE_CREDIT=false`. Dream passes, skill learning, voice mode, payments and
+other independent rollout controls retain their existing gates.
+
+Memory still requires FalkorDB and configured embedding/model endpoints. The
+standard compose and single-container stacks include FalkorDB; custom installs
+must provide it. Memory operations can fail when these services are unavailable;
+removing the rollout flags does not make missing services a supported no-op.
+Community rebuilds and execution summaries can perform model work.
+
+Retired provider definitions can remain during a rolling deployment for older
+releases. Removing code consumers does not delete PostHog or LaunchDarkly
+configuration. Use the [Tuesday audit prompt](feature-flag-audit-prompt.md) to
+identify further retirement candidates.
+
 ## One PostHog project per environment
 
 Dev and Prod each have their own PostHog project, and each project holds its
@@ -16,6 +49,14 @@ to, the one `POSTHOG_API_KEY` names, and evaluates them locally with that
 project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`. Where local
 evaluation can't decide a read, the SDK asks PostHog's `/flags` endpoint
 instead, unless the read is local-only, as a signed-out visitor's own read is.
+
+A flag the code reads but the project doesn't have is served its code default.
+The backend still asks `/flags` about it once, because PostHog answers some
+flags there that it leaves out of the definitions (one in its newer config
+format, for instance). Once `/flags` has had no answer either, the backend
+serves the default without asking again for five minutes, so the read costs no
+network round trip. Creating the flag takes effect at the next definitions
+poll, or within those five minutes for a flag the definitions leave out.
 
 | | Dev | Prod |
 |---|---|---|

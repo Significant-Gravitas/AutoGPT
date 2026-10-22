@@ -56,12 +56,10 @@ export function OfferActions(props: Props) {
 
 function PaidPlanAction({
   plan,
-  billing,
   isUpdatingTier,
   isStartingTrial,
   selectedPlan,
   onSelectPlan,
-  goalSurface,
   inline = false,
   price,
 }: Props & { inline?: boolean; price?: string | null }) {
@@ -78,10 +76,6 @@ function PaidPlanAction({
       loading={isUpdatingTier && selectedPlan === plan.key}
       disabled={isUpdatingTier || isStartingTrial}
       onClick={handleSelect}
-      data-fast-goal="plan_cta_click"
-      data-fast-goal-plan={plan.key.toLowerCase()}
-      data-fast-goal-cycle={billing}
-      data-fast-goal-surface={goalSurface}
     >
       {plan.cta}
       {price && ` · ${price}`}
@@ -113,7 +107,6 @@ function AlternativeTrial({
   offer,
   onBillingChange,
   isStartingTrial,
-  goalSurface,
 }: Props & {
   offer: NonNullable<SubscriptionPlansProps["trialOffer"]>;
 }) {
@@ -129,9 +122,6 @@ function AlternativeTrial({
         className="h-auto min-w-0 p-0 text-xs text-purple-500"
         disabled={isStartingTrial}
         onClick={handleSwitchCycle}
-        data-fast-goal="paywall_billing_toggle"
-        data-fast-goal-cycle={offer.billing_cycle}
-        data-fast-goal-surface={goalSurface}
       >
         Try {plan.name} for {offer.duration_days} days instead
       </Button>

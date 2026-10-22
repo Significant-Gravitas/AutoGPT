@@ -1,9 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound } from "next/navigation";
 import { RecordingStatePanel } from "./components/RecordingStatePanel";
 import { ServerStatusPanel } from "./components/ServerStatusPanel";
@@ -17,24 +15,12 @@ const MAIN_CLASS = "container flex min-h-screen flex-col gap-6 pb-20 pt-16";
 
 export default function BrainDumpDebugPage() {
   const isProduction = isProductionEnvironment();
-  const { enabled, ready } = useFlagStatus(Flag.ONBOARDING_BRAIN_DUMP);
-  const isAvailable = !isProduction && ready && Boolean(enabled);
+
+  const isAvailable = !isProduction;
   const { snapshot, refreshSnapshot, timeline, finalize, introPath, stages } =
     useBrainDumpDebugPage({ enabled: isAvailable });
 
   if (isProduction) notFound();
-
-  if (!ready) {
-    return (
-      <main className={MAIN_CLASS}>
-        {[0, 1, 2].map((index) => (
-          <Skeleton key={index} className="h-48 w-full rounded-2xlarge" />
-        ))}
-      </main>
-    );
-  }
-
-  if (!enabled) notFound();
 
   return (
     <main className={MAIN_CLASS}>
@@ -49,7 +35,7 @@ export default function BrainDumpDebugPage() {
         <Text variant="body" className="max-w-prose text-zinc-600">
           Local recording state, the upload queue, the server pipeline and the
           processing budget for the onboarding brain dump. Not reachable in
-          production and gated on the onboarding-brain-dump flag.
+          production.
         </Text>
       </header>
 

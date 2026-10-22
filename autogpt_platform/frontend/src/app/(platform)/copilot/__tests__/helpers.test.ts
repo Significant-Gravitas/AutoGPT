@@ -32,8 +32,13 @@ vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
 }));
 
+vi.mock("@/services/analytics/posthog-request-context", () => ({
+  getPostHogSessionHeader: vi.fn(() => ({})),
+}));
+
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
@@ -856,6 +861,23 @@ describe("getCopilotAuthHeaders", () => {
     const headers = await getCopilotAuthHeaders();
 
     expect(headers).toEqual({ Authorization: "Bearer test-jwt-token" });
+  });
+
+  it("names the browser's PostHog session so the chat's events join it", async () => {
+    mockGetWebSocketToken.mockResolvedValue({
+      token: "test-jwt-token",
+      error: undefined,
+    });
+    vi.mocked(getPostHogSessionHeader).mockReturnValueOnce({
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
+
+    const headers = await getCopilotAuthHeaders();
+
+    expect(headers).toEqual({
+      Authorization: "Bearer test-jwt-token",
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
   });
 
   it("includes X-Act-As-User-Id header when impersonation is active", async () => {

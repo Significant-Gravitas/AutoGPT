@@ -51,7 +51,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useFlagStatus: () => ({ enabled: true, ready: true }),
     useGetFlag: (flag: string) =>
       flag === actual.Flag.COPILOT_AUTO_MODE ? flags.autoMode : false,
   };
@@ -220,6 +219,9 @@ describe("Expert approval mode", () => {
       await screen.findByRole("heading", {
         name: "Run Maria unsupervised by default?",
       }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/^Maria will not ask before anything in new chats\./),
     ).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>

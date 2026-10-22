@@ -262,6 +262,11 @@ const PREVIEWABLE_IMAGE_MIMES = new Set([
   "image/avif",
 ]);
 
+/** True for image types a browser can draw in an `<img>`. */
+export function isPreviewableImage(mimeType?: string | null): boolean {
+  return PREVIEWABLE_IMAGE_MIMES.has((mimeType ?? "").toLowerCase());
+}
+
 const PREVIEWABLE_VIDEO_MIMES = new Set([
   "video/mp4",
   "video/webm",

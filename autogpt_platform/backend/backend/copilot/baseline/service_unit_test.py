@@ -5,8 +5,11 @@ without requiring API keys, database connections, or network access.
 """
 
 import asyncio
+import contextlib
+import copy
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -44,6 +47,19 @@ from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
 from backend.copilot.graphiti import context as graphiti_context
 from backend.copilot.graphiti import context_refresh
+from backend.copilot.graphiti.context_marker import (
+    INJECTED_MEMORY_BLOCK_RE,
+    INJECTED_MEMORY_MARKER,
+)
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    BUDGET_BLOCK,
+    bucket_storage,
+    folded_query,
+    history_query,
+    legacy_first_message,
+    master_warm,
+    session_file,
+)
 from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
 from backend.copilot.llm_attribution import settings as attribution_settings
 from backend.copilot.model import ChatMessage, ChatSession
@@ -58,6 +74,7 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
+from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
@@ -3190,15 +3207,8 @@ class _StopAfterExpertsGate(Exception):
     ``experts_enabled`` — before any LLM call would be attempted."""
 
 
-async def _run_baseline_until_experts_gate(
-    *, user_id: str | None, hire_experts_enabled: bool
-) -> AsyncMock:
-    """Drive the real generator up to (and one statement past) the
-    hire-experts flag check, with every other I/O dependency stubbed out.
-
-    Returns the ``is_feature_enabled`` mock so callers can assert whether
-    (and how) it was called.
-    """
+async def _run_baseline_until_experts_gate(*, user_id: str | None) -> AsyncMock:
+    """Capture expert authorization before the generator can make a provider call."""
     session = ChatSession.new("owner-1", dry_run=False)
     session.title = "already titled"  # skip the async title-generation task
 
@@ -3232,17 +3242,13 @@ async def _run_baseline_until_experts_gate(
             new=AsyncMock(return_value=("system prompt", None)),
         ),
         patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=hire_experts_enabled),
-        ) as is_feature_enabled_mock,
-        patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
             new=AsyncMock(side_effect=_StopAfterExpertsGate),
         ),
+        patch(
+            "backend.copilot.baseline.service.get_expert_oversight_supplement",
+            return_value="",
+        ) as oversight_mock,
         pytest.raises(_StopAfterExpertsGate),
     ):
         async for _ in stream_chat_completion_baseline(
@@ -3253,7 +3259,7 @@ async def _run_baseline_until_experts_gate(
         ):
             pass
 
-    return is_feature_enabled_mock
+    return oversight_mock
 
 
 class _StopAtAttachments(Exception):
@@ -3303,15 +3309,11 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
             new=AsyncMock(return_value=("system prompt", None)),
         ),
         patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service._fetch_graphiti_context",
             new=AsyncMock(return_value=""),
         ),
         patch(
@@ -3344,26 +3346,12 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
     assert seen == [("user-1", session)]
 
 
-class TestBaselineExpertsFlagGuard:
-    """``experts_enabled = bool(user_id) and await is_feature_enabled(...)``:
-    an anonymous turn (``user_id=None``) must fail closed WITHOUT resolving
-    the flag at all — a bare ``await is_feature_enabled(...)`` would await
-    None as a positional arg and/or silently enable the team surface for
-    turns with no user."""
-
+class TestBaselineExpertsAuthorization:
     @pytest.mark.asyncio
-    async def test_anonymous_turn_never_calls_the_hire_experts_flag(self) -> None:
-        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
-            user_id=None, hire_experts_enabled=True
-        )
-        is_feature_enabled_mock.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_authenticated_turn_resolves_the_hire_experts_flag(self) -> None:
-        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
-            user_id="user-1", hire_experts_enabled=True
-        )
-        is_feature_enabled_mock.assert_awaited_once()
+    @pytest.mark.parametrize("user_id,expected", [(None, False), ("user-1", True)])
+    async def test_expert_tools_require_authentication(self, user_id, expected):
+        oversight = await _run_baseline_until_experts_gate(user_id=user_id)
+        oversight.assert_called_once_with(experts_enabled=expected, expert_id=None)
 
 
 class TestBaselineToolExecutorForwardsDisabledGroups:
@@ -3475,15 +3463,6 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
             "backend.copilot.baseline.service._build_system_prompt",
             new=AsyncMock(return_value=("system prompt", None)),
         ),
-        # The Graphiti gate: on for this turn, so the refresh must be wired.
-        patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=True),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
         patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
             new=AsyncMock(return_value=""),
@@ -3511,6 +3490,417 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
     # prior messages plus the current user turn.
     assert seen["pre_drain_msg_count"] == 3
     assert seen["message"] == "restart the executor and redeploy staging"
+
+
+_BASELINE = "backend.copilot.baseline.service"
+_ALICE = "Alice works on Atlas"
+_NOVA_FORGOTTEN = "the Nova recovery password is violet-913"
+_NOVA_KEPT = "Hector supervises the Nova recovery"
+# The first message of a session the SDK engine began before this change, as
+# production stored it, the backfill not yet run.
+_OLD_FIRST = legacy_first_message(master_warm((_NOVA_FORGOTTEN, _NOVA_KEPT)))
+
+
+def _block(*facts: str) -> str:
+    """Warm context as graphiti renders it."""
+    lines = "".join(f"  - {fact}\n" for fact in facts)
+    return f"<temporal_context>\n<FACTS>\n{lines}</FACTS>\n</temporal_context>"
+
+
+def _baseline_session(*contents: str) -> ChatSession:
+    """A session whose stored messages alternate user and assistant, ending
+    with the current user turn; titled, so no title is generated."""
+    session = ChatSession.new("user-1", dry_run=False)
+    session.title = "already titled"
+    session.messages = [
+        ChatMessage(
+            role="user" if i % 2 == 0 else "assistant", content=content, sequence=i
+        )
+        for i, content in enumerate(contents)
+    ]
+    return session
+
+
+class _BaselineTurn:
+    """What one baseline turn sent the model and wrote back."""
+
+    def __init__(self) -> None:
+        self.sent: list[list[dict[str, Any]]] = []
+        self.db = MagicMock()
+        self.db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        self.upload = AsyncMock()
+
+    def stored(self) -> list[str]:
+        """Every content ``inject_user_context`` wrote to a stored message."""
+        return [
+            call.args[2]
+            for call in self.db.update_message_content_by_sequence.call_args_list
+        ]
+
+    def uploaded(self) -> bytes:
+        assert self.upload.await_args is not None, "the transcript was uploaded"
+        return self.upload.await_args.kwargs["content"]
+
+    def model_input(self) -> str:
+        """Everything the first model call of the turn read."""
+        return "\n".join(str(m.get("content") or "") for m in self.sent[0])
+
+
+async def _run_baseline_turn(
+    session: ChatSession,
+    *,
+    first_block: str | None,
+    refresh,
+    download: TranscriptDownload | None = None,
+    storage: MagicMock | None = None,
+    message: str | None = None,
+    is_user_message: bool = True,
+    extra: list[tuple[str, dict[str, Any]]] | None = None,
+) -> _BaselineTurn:
+    """Drive one baseline turn to completion, the model answering "done".
+    Its prior transcript is ``download``; with ``storage``, the real
+    ``download_transcript`` restores it from that bucket instead. The turn
+    sends the session's last message unless ``message`` is given."""
+    turn = _BaselineTurn()
+
+    async def _llm(messages, tools, *, state):
+        turn.sent.append(copy.deepcopy(messages))
+        return LLMLoopResponse(response_text="done", tool_calls=[], raw_response=None)
+
+    restore = (
+        (
+            "backend.copilot.transcript.get_workspace_storage",
+            dict(new=AsyncMock(return_value=storage)),
+        )
+        if storage is not None
+        else (
+            f"{_BASELINE}.download_transcript",
+            dict(new=AsyncMock(return_value=download)),
+        )
+    )
+    patches: list[tuple[str, dict[str, Any]]] = [
+        (f"{_BASELINE}._baseline_llm_caller", dict(new=_llm)),
+        (
+            f"{_BASELINE}.fetch_warm_context",
+            dict(new=AsyncMock(return_value=first_block)),
+        ),
+        (
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            dict(new=refresh),
+        ),
+        restore,
+        (f"{_BASELINE}.upload_transcript", dict(new=turn.upload)),
+        ("backend.copilot.service.chat_db", dict(return_value=turn.db)),
+        (
+            "backend.copilot.service.build_expert_context",
+            dict(new=AsyncMock(return_value="")),
+        ),
+        (
+            f"{_BASELINE}.build_expert_identity_suffix",
+            dict(new=AsyncMock(return_value="")),
+        ),
+        (f"{_BASELINE}.drain_pending_safe", dict(new=AsyncMock(return_value=[]))),
+        ("backend.copilot.gate.held.answered", dict(new=AsyncMock(return_value=[]))),
+        (
+            f"{_BASELINE}._resolve_baseline_model",
+            dict(
+                new=AsyncMock(
+                    return_value=ResolvedModel(
+                        model="anthropic/claude-sonnet-4-6", source="env"
+                    )
+                )
+            ),
+        ),
+        (
+            f"{_BASELINE}.normalize_model_for_transport",
+            dict(new=MagicMock(side_effect=lambda model, cfg=None: model)),
+        ),
+        (f"{_BASELINE}.get_or_create_sandbox", dict(new=AsyncMock(return_value=None))),
+        (
+            f"{_BASELINE}._build_system_prompt",
+            dict(new=AsyncMock(return_value=("system prompt", None))),
+        ),
+        (
+            f"{_BASELINE}.build_builder_system_prompt_suffix",
+            dict(new=AsyncMock(return_value="")),
+        ),
+        (f"{_BASELINE}.build_budget_ctx", dict(new=AsyncMock(return_value=""))),
+        (
+            f"{_BASELINE}.build_session_context",
+            dict(new=AsyncMock(return_value="session_id: s-1; pending_followups: 0")),
+        ),
+        (f"{_BASELINE}.build_skills_context", dict(new=AsyncMock(return_value=""))),
+        (
+            f"{_BASELINE}.build_skills_update_notice",
+            dict(new=AsyncMock(return_value="")),
+        ),
+        (f"{_BASELINE}.build_turn_budget_block", dict(new=AsyncMock(return_value=""))),
+        (
+            f"{_BASELINE}.upsert_chat_session",
+            dict(new=AsyncMock(side_effect=lambda s, *_a, **_k: s)),
+        ),
+        (
+            f"{_BASELINE}.persist_session_safe",
+            dict(new=AsyncMock(side_effect=lambda s, *_a, **_k: s)),
+        ),
+        (f"{_BASELINE}.persist_and_record_usage", dict(new=AsyncMock())),
+        (f"{_BASELINE}.enqueue_conversation_turn", dict(new=AsyncMock())),
+        *(extra or []),
+    ]
+    with contextlib.ExitStack() as stack:
+        for target, kwargs in patches:
+            stack.enter_context(patch(target, **kwargs))
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message=session.messages[-1].content if message is None else message,
+            is_user_message=is_user_message,
+            user_id="user-1",
+            session=session,
+        ):
+            pass
+    assert turn.sent, "the turn reached the model"
+    return turn
+
+
+async def _refresh_nothing(user_id, message, *, expert_id=None, force=False):
+    return None
+
+
+class TestBaselineFirstTurnWarmContextIsEphemeral:
+    """The baseline engine's first turn, driven through the real generator:
+    its warm-context block reaches the model input only, marked like the SDK
+    engine's, and no later turn reads it again."""
+
+    @pytest.mark.asyncio
+    async def test_the_first_block_reaches_the_model_input_only(self):
+        session = _baseline_session("what is Alice working on")
+
+        turn = await _run_baseline_turn(
+            session, first_block=_block(_ALICE), refresh=_refresh_nothing
+        )
+
+        current = str(turn.sent[0][-1]["content"])
+        assert turn.sent[0][-1]["role"] == "user"
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(current)) == 1
+        assert current.count("<temporal_context") == 1
+        assert INJECTED_MEMORY_MARKER in current
+        assert _ALICE in current
+        assert turn.model_input().count(_ALICE) == 1
+
+        stored = turn.stored()
+        assert stored, "the first turn persisted its prefixed message"
+        for content in [*stored, session.messages[0].content or ""]:
+            assert "what is Alice working on" in content
+            assert _ALICE not in content
+            assert "temporal_context" not in content
+            assert "memory_context" not in content
+
+        uploaded = turn.uploaded()
+        assert b"what is Alice working on" in uploaded
+        assert _ALICE.encode() not in uploaded
+        assert b"temporal_context" not in uploaded
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("resume", [True, False], ids=["transcript", "database"])
+    async def test_a_forget_between_turns_leaves_no_copy_for_turn_two(self, resume):
+        """Turn 1 recalls a fact, the user forgets it, turn 2 runs from the
+        transcript turn 1 uploaded or from the database alone: the forgotten
+        fact is in nothing turn 2 sends the model, nor in what it uploads."""
+        forgotten: list[bool] = []
+
+        async def _refresh(user_id, message, *, expert_id=None, force=False):
+            if forgotten:
+                return _block(_NOVA_KEPT)
+            return _block(_NOVA_FORGOTTEN, _NOVA_KEPT)
+
+        turn_one_session = _baseline_session("retrieve the Nova recovery details")
+        turn_one = await _run_baseline_turn(
+            turn_one_session,
+            first_block=_block(_NOVA_FORGOTTEN, _NOVA_KEPT),
+            refresh=_refresh,
+        )
+        assert _NOVA_FORGOTTEN in turn_one.model_input()
+
+        forgotten.append(True)
+
+        # The stored reply differs from the transcript's ("done"), so the
+        # model input shows which history turn 2 was rebuilt from.
+        turn_two_session = _baseline_session(
+            turn_one_session.messages[0].content or "",
+            "done, as stored",
+            "what do you know about Nova now",
+        )
+        download = (
+            TranscriptDownload(
+                content=turn_one.uploaded(), message_count=2, mode="baseline"
+            )
+            if resume
+            else None
+        )
+        turn_two = await _run_baseline_turn(
+            turn_two_session, first_block=None, refresh=_refresh, download=download
+        )
+
+        read = turn_two.model_input()
+        assert ("done, as stored" in read) is not resume
+        assert "retrieve the Nova recovery details" in read
+        assert "violet-913" not in read
+        assert read.count(_NOVA_KEPT) == 1
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(read)) == 1
+        assert b"violet-913" not in turn_two.uploaded()
+        for content in turn_one.stored():
+            assert "violet-913" not in content
+
+    @pytest.mark.asyncio
+    async def test_the_next_turn_does_not_see_the_first_block(self):
+        """Turn 2 recalls nothing itself: the first turn's fact reaches it
+        neither through the uploaded transcript nor the stored history."""
+        turn_one_session = _baseline_session("what is Alice working on")
+        turn_one = await _run_baseline_turn(
+            turn_one_session, first_block=_block(_ALICE), refresh=_refresh_nothing
+        )
+
+        turn_two = await _run_baseline_turn(
+            _baseline_session(
+                turn_one_session.messages[0].content or "", "done", "thanks"
+            ),
+            first_block=None,
+            refresh=_refresh_nothing,
+            download=TranscriptDownload(
+                content=turn_one.uploaded(), message_count=2, mode="baseline"
+            ),
+        )
+
+        read = turn_two.model_input()
+        assert "what is Alice working on" in read
+        assert _ALICE not in read
+        assert "temporal_context" not in read
+
+    @pytest.mark.asyncio
+    async def test_an_old_sdk_session_continued_here_reads_no_stored_block(self):
+        """A session the SDK engine began before this change, and that the
+        backfill has not reached, continues on this engine. The real
+        ``download_transcript`` restores its CLI session file without the
+        block the file's first entry stored, so the fact the user forgot
+        since is in nothing this turn sends the model, nor in its upload."""
+        storage = bucket_storage(
+            session_file(("user", BUDGET_BLOCK + _OLD_FIRST), ("assistant", "done"))
+        )
+
+        turn = await _run_baseline_turn(
+            _baseline_session(_OLD_FIRST, "done", "what do you know about Nova now"),
+            first_block=None,
+            refresh=_refresh_nothing,
+            storage=storage,
+        )
+
+        read = turn.model_input()
+        assert "what is Alice working on" in read
+        assert "violet-913" not in read
+        assert "memory_context" not in read
+        assert b"violet-913" not in turn.uploaded()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "stored",
+        [folded_query, history_query, None],
+        ids=["pending-folded", "history", "no-file"],
+    )
+    async def test_an_old_session_rebuilt_from_the_database(self, stored):
+        """No file this engine can use: the old one holds the block where it
+        cannot be stripped, or there is none. The turn reads its history from
+        the database, the first message without the block the backfill has
+        not removed yet, and its upload carries that history, not only this
+        turn."""
+        storage = (
+            bucket_storage(
+                session_file(("user", stored(_OLD_FIRST)), ("assistant", "done"))
+            )
+            if stored
+            else None
+        )
+
+        turn = await _run_baseline_turn(
+            _baseline_session(
+                _OLD_FIRST, "done, as stored", "what do you know about Nova now"
+            ),
+            first_block=None,
+            refresh=_refresh_nothing,
+            storage=storage,
+        )
+
+        read = turn.model_input()
+        assert "what is Alice working on" in read and "done, as stored" in read
+        uploaded = turn.uploaded()
+        assert b"what is Alice working on" in uploaded
+        assert b"done, as stored" in uploaded
+        for text in (read.encode(), uploaded):
+            assert b"violet-913" not in text
+
+    @pytest.mark.asyncio
+    async def test_an_old_first_turn_is_titled_without_the_stored_block(self):
+        """A turn that adds no message to an old session holding only its
+        first, which never got a title: the title model reads that stored
+        message without the block."""
+        session = _baseline_session(_OLD_FIRST)
+        session.title = None
+        title = AsyncMock()
+
+        await _run_baseline_turn(
+            session,
+            first_block=None,
+            refresh=_refresh_nothing,
+            message="",
+            extra=[(f"{_BASELINE}._update_title_async", dict(new=title))],
+        )
+
+        assert title.call_args is not None
+        first_message = title.call_args.args[1]
+        assert "what is Alice working on" in first_message
+        assert "violet-913" not in first_message
+        assert "memory_context" not in first_message
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_adds_no_message_reads_the_first_one_without_it(
+        self,
+    ):
+        """A turn that stores no message of its own (not the user's, and
+        empty) in an old session holding only its first message: the model's
+        current turn is that stored message, read without the block."""
+        turn = await _run_baseline_turn(
+            _baseline_session(_OLD_FIRST),
+            first_block=None,
+            refresh=_refresh_nothing,
+            message="",
+            is_user_message=False,
+        )
+
+        read = turn.model_input()
+        assert "what is Alice working on" in read
+        assert "violet-913" not in read
+        assert "memory_context" not in read
+
+    @pytest.mark.asyncio
+    async def test_a_paste_in_an_old_file_is_read_as_it_is(self):
+        """A later message holding a copy of the block, pasted by the user,
+        is theirs: the transcript is used and the paste kept."""
+        storage = bucket_storage(
+            session_file(
+                ("user", "hello"),
+                ("assistant", "hi"),
+                ("user", _OLD_FIRST),
+                ("assistant", "noted"),
+            )
+        )
+
+        turn = await _run_baseline_turn(
+            _baseline_session("hello", "hi", "thanks"),
+            first_block=None,
+            refresh=_refresh_nothing,
+            storage=storage,
+        )
+
+        assert "violet-913" in turn.model_input()
 
 
 class TestStampPostHogTrace:

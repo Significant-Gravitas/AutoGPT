@@ -17,6 +17,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
@@ -120,6 +121,7 @@ from backend.util.workspace_storage import shutdown_workspace_storage
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.cors import build_cors_params
 from .utils.openapi import sort_openapi
@@ -283,6 +285,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+# Marks the PostHog events of an admin acting as a user, and joins a request's
+# events to the browser's PostHog session.
+app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
@@ -529,6 +534,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.access_block_admin_routes.router,
     tags=["admin"],
     prefix="/api",
 )
