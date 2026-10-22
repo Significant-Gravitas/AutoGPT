@@ -40,6 +40,9 @@ importers:
       '@phosphor-icons/react':
         specifier: 2.1.10
         version: 2.1.10(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@posthog/nextjs-config':
+        specifier: 1.11.1
+        version: 1.11.1(next@15.5.24(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(webpack@5.104.1(esbuild@0.25.12))
       '@posthog/react':
         specifier: 1.7.0
         version: 1.7.0(@types/react@19.3.0)(posthog-js@1.334.1)(react@19.3.0)
@@ -2818,8 +2821,25 @@ packages:
       webpack-plugin-serve:
         optional: true
 
+  '@posthog/cli@0.16.2':
+    resolution: {integrity: sha512-h8bpf9ffBUH/Z9IoyGV+wiI+vS8rIPorKT3eKQXuzuwawO0G7Qvy+hDd7HQ9YJjHByYZ77yPPQvrSs4WsqTUCg==}
+    engines: {node: '>=14.14', npm: '>=6'}
+    hasBin: true
+
   '@posthog/core@1.13.0':
     resolution: {integrity: sha512-knjncrk7qRmssFRbGzBl1Tunt21GRpe0Wv+uVelyL0Rh7PdQUsgguulzXFTps8hA6wPwTU4kq85qnbAJ3eH6Wg==}
+
+  '@posthog/core@1.59.0':
+    resolution: {integrity: sha512-KRq26v5fXYnwV5wqTAXzPyQLCrBzzhK78QRl7UyEaPFZ4RPmVo1pBObRDbK350ah+8hTfQPanu5mM8c4CaSn5g==}
+
+  '@posthog/nextjs-config@1.11.1':
+    resolution: {integrity: sha512-Mk9olw1ECIaK371L3NWTzM1fnkxYuCmQfU6VQpOSoBFq51Y7xj1R66zazKJLsi7hcjMAqqTkzMs+DqiFF+Jz+w==}
+    engines: {node: ^20.20.0 || >=22.22.0}
+    peerDependencies:
+      next: '>12.1.0'
+
+  '@posthog/plugin-utils@2.0.1':
+    resolution: {integrity: sha512-ZiQfUcgY65EjF2vkqL4Aau6sx0aqvSWoXaGSGu9Solnmv6e6VRjQbAU0SCKbxpJxcEsCJof9vmvnrFTQIEOUAQ==}
 
   '@posthog/react@1.7.0':
     resolution: {integrity: sha512-pM7GL7z/rKjiIwosbRiQA3buhLI6vUo+wg+T/ZrVZC7O5bVU07TfgNZTcuOj8E9dx7vDbfNrc1kjDN7PKMM8ug==}
@@ -2833,6 +2853,14 @@ packages:
 
   '@posthog/types@1.334.1':
     resolution: {integrity: sha512-ypFnwTO7qbV7icylLbujbamPdQXbJq0a61GUUBnJAeTbBw/qYPIss5IRYICcbCj0uunQrwD7/CGxVb5TOYKWgA==}
+
+  '@posthog/types@1.416.0':
+    resolution: {integrity: sha512-0/9+02s/0uDyrH4G/qUg1yyl6gXUg8Uuxw/PlDad3KLzo9FFS9zS/kAQaEshx/saVGupj1aAy/4EUBxWisBogw==}
+
+  '@posthog/webpack-plugin@1.7.1':
+    resolution: {integrity: sha512-BMXDlpuilZR3XuTWPE3HcLEYkaStAgA3Ox3B88eCSVzFP2YY39+7sCbnjyOkeO5yY6I2TYMowSlQ49QaI8P+fA==}
+    peerDependencies:
+      webpack: ^5
 
   '@prisma/instrumentation@6.19.0':
     resolution: {integrity: sha512-QcuYy25pkXM8BJ37wVFBO7Zh34nyRV1GOb2n3lPkkbRYfl4hWl3PTcImP41P0KrzVXfa/45p6eVCos27x3exIg==}
@@ -8703,6 +8731,11 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  semver@7.8.5:
+    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   serialize-javascript@6.0.2:
     resolution: {integrity: sha512-Saa1xPByTTq2gdeFZYLLo+RFE35NHZkAbqZeWNd3BpzppeVisAqpDjcp8dyf6uIvEqJRd46jemmyA4iFIeVk8g==}
 
@@ -12094,7 +12127,29 @@ snapshots:
       type-fest: 4.41.0
       webpack-hot-middleware: 2.26.1
 
+  '@posthog/cli@0.16.2':
+    dependencies:
+      detect-libc: 2.1.2
+
   '@posthog/core@1.13.0':
+    dependencies:
+      cross-spawn: 7.0.6
+
+  '@posthog/core@1.59.0':
+    dependencies:
+      '@posthog/types': 1.416.0
+
+  '@posthog/nextjs-config@1.11.1(next@15.5.24(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(webpack@5.104.1(esbuild@0.25.12))':
+    dependencies:
+      '@posthog/cli': 0.16.2
+      '@posthog/plugin-utils': 2.0.1
+      '@posthog/webpack-plugin': 1.7.1(webpack@5.104.1(esbuild@0.25.12))
+      next: 15.5.24(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      semver: 7.8.5
+    transitivePeerDependencies:
+      - webpack
+
+  '@posthog/plugin-utils@2.0.1':
     dependencies:
       cross-spawn: 7.0.6
 
@@ -12106,6 +12161,15 @@ snapshots:
       '@types/react': 19.3.0
 
   '@posthog/types@1.334.1': {}
+
+  '@posthog/types@1.416.0': {}
+
+  '@posthog/webpack-plugin@1.7.1(webpack@5.104.1(esbuild@0.25.12))':
+    dependencies:
+      '@posthog/cli': 0.16.2
+      '@posthog/core': 1.59.0
+      '@posthog/plugin-utils': 2.0.1
+      webpack: 5.104.1(esbuild@0.25.12)
 
   '@prisma/instrumentation@6.19.0(@opentelemetry/api@1.9.0)':
     dependencies:
@@ -15263,8 +15327,7 @@ snapshots:
 
   destroy@1.2.0: {}
 
-  detect-libc@2.1.2:
-    optional: true
+  detect-libc@2.1.2: {}
 
   detect-node-es@1.1.0: {}
 
@@ -15621,8 +15684,8 @@ snapshots:
       '@typescript-eslint/parser': 8.52.0(eslint@8.57.1)(typescript@5.9.3)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.1)
       eslint-plugin-react: 7.37.5(eslint@8.57.1)
       eslint-plugin-react-hooks: 5.2.0(eslint@8.57.1)
@@ -15641,7 +15704,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
       debug: 4.4.3
@@ -15652,22 +15715,22 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.52.0(eslint@8.57.1)(typescript@5.9.3)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1)
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
@@ -15678,7 +15741,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.52.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3
@@ -19075,6 +19138,8 @@ snapshots:
   semver@6.3.1: {}
 
   semver@7.7.3: {}
+
+  semver@7.8.5: {}
 
   serialize-javascript@6.0.2:
     dependencies:
