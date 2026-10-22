@@ -1354,6 +1354,8 @@ class GraphModel(Graph, GraphMeta):
                 "organization_id": None,
                 "team_id": None,
                 "nodes": [node.shared_copy() for node in self.nodes],
+                # Sub-graphs serialize without their owner's ids only because
+                # they are typed `BaseGraph`, which has no such fields.
                 "sub_graphs": [
                     sub_graph.model_copy(
                         update={
