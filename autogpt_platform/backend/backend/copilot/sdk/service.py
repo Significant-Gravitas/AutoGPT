@@ -2637,7 +2637,7 @@ async def _do_transient_backoff(
 def _scrub_resumed_memory_for_retry(
     sdk_cwd: str, session_id: str, log_prefix: str
 ) -> None:
-    """Remove the failed send's literal memory before the CLI can resume it."""
+    """Remove the failed send's memory and skill hints before CLI resume."""
     path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
     if not path.startswith(projects_base() + os.sep):
         raise RuntimeError("Cannot safely prepare the session for retry")
@@ -2648,6 +2648,8 @@ def _scrub_resumed_memory_for_retry(
     except OSError as exc:
         raise RuntimeError("Cannot read the session for retry") from exc
     scrubbed = _strip_ephemeral_memory_from_cli_jsonl(content)
+    if b"matched_skills" in scrubbed:
+        scrubbed = strip_for_upload(scrubbed.decode("utf-8")).encode("utf-8")
     if scrubbed != content and not _write_cli_session_to_disk(
         scrubbed, sdk_cwd, session_id, log_prefix
     ):
