@@ -391,10 +391,6 @@ jobs:
         id: database
         background: true
         run: |
-          # PROOF ONLY (reverted before merge): Docker Hub unreachable for this step's first 40 s.
-          echo "0.0.0.0 registry-1.docker.io auth.docker.io index.docker.io production.cloudflare.docker.com" | sudo tee -a /etc/hosts
-          nohup bash -c 'sleep 40; sudo sed -i "/registry-1.docker.io/d" /etc/hosts' >/dev/null 2>&1 &
-          echo "PROOF ONLY: Docker Hub blocked for 40 s from $(date -u +%T)"
           # Every image `up` would pull, pulled now through the retry, so a brief
           # Docker Hub refusal can't fail a later `up`.
           images=$(python -c "import yaml; s = yaml.safe_load(open('../docker-compose.resolved.yml'))['services']; built = {c.get('image') for c in s.values() if 'build' in c}; print(' '.join(sorted({c['image'] for c in s.values() if 'build' not in c} - built)))")
