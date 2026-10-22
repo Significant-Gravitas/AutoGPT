@@ -60,9 +60,9 @@ export function fixedCopy<T extends string>(
 /**
  * Attributes Sentry masks unless the element itself is unmasked. Sentry's
  * default covers only `title`, `placeholder` and `aria-label`; the rest is
- * recorded as written, and these carry user content: amounts in
- * `aria-valuetext`, names in `data-text` and `data-placeholder`, file names in
- * `download`, option labels and values.
+ * recorded as written, and these carry user content: amounts and usage in
+ * `aria-valuetext` and `aria-valuenow`, names in `data-text` and
+ * `data-placeholder`, file names in `download`, option labels and values.
  */
 export const MASKED_ATTRIBUTES = [
   "title",
@@ -71,6 +71,7 @@ export const MASKED_ATTRIBUTES = [
   "aria-description",
   "aria-placeholder",
   "aria-roledescription",
+  "aria-valuenow",
   "aria-valuetext",
   "alt",
   "label",

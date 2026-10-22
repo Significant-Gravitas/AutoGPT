@@ -135,6 +135,7 @@ describe("Sentry replay masking", () => {
     for (const userContent of [
       "Quarterly report",
       "$12.40",
+      "12.4",
       "Maria",
       "Acme Corp",
       "acme-plan",
