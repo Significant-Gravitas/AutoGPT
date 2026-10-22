@@ -158,22 +158,11 @@ class DumpStore:
             self.row.greetingSeen = True
 
 
-# ``require_brain_dump_flag`` runs the real ``is_feature_enabled``, which
-# consults this env override before LaunchDarkly — so the gate is driven
-# here exactly the way it is driven locally, with no mock in the path.
-FLAG_ENV_VAR = "FORCE_FLAG_ONBOARDING_BRAIN_DUMP"
-
-
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
-
-
-@pytest.fixture(autouse=True)
-def flag_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(FLAG_ENV_VAR, "true")
 
 
 @pytest.fixture(autouse=True)
@@ -671,30 +660,9 @@ def test_intro_returns_greeting_and_prompts_before_completion(dumps: DumpStore):
     assert all(p["title"] and p["prompt"] for p in body["prompts"])
 
 
-def test_recommended_experts_are_withheld_while_the_team_flag_is_off(
-    dumps: DumpStore,
-):
-    """The route is gated on the brain-dump flag, the team on its own.
-
-    A user without ``ONBOARDING_EXPERT_TEAM`` gets a final answer with no
-    team rather than a section that never resolves.
-    """
-    upload_part()
-    finalize()
-
-    response = client.get(RECOMMENDED_EXPERTS_URL)
-
-    assert response.status_code == 200
-    assert response.json() == {"ready": True, "team": None}
-
-
 def test_recommended_experts_returns_the_stored_team(
     dumps: DumpStore, mocker: MockerFixture
 ):
-    mocker.patch(
-        "backend.api.features.onboarding_dump.service.is_feature_enabled",
-        new=AsyncMock(return_value=True),
-    )
     upload_part()
     finalize()
     assert dumps.row is not None
@@ -754,39 +722,3 @@ def test_recommended_providers_returns_the_stored_picks(dumps: DumpStore):
             {"provider": "github", "reason": "You mentioned chasing issues."}
         ],
     }
-
-
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda: upload_part(),
-        lambda: finalize(),
-        lambda: client.get(STATUS_URL),
-        lambda: client.get(RECORDING_URL, follow_redirects=False),
-        lambda: client.delete(DISCARD_URL),
-        lambda: client.get(INTRO_URL),
-        lambda: client.post(INTRO_COMPLETE_URL),
-        lambda: client.get(RECOMMENDED_URL),
-        lambda: client.get(RECOMMENDED_EXPERTS_URL),
-    ],
-    ids=[
-        "parts",
-        "finalize",
-        "status",
-        "recording",
-        "discard",
-        "intro",
-        "complete",
-        "recommended-providers",
-        "recommended-experts",
-    ],
-)
-def test_every_endpoint_is_404_when_the_flag_is_off(
-    monkeypatch: pytest.MonkeyPatch, call
-):
-    monkeypatch.setenv(FLAG_ENV_VAR, "false")
-
-    response = call()
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Feature not available"

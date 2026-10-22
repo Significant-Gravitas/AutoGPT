@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -116,3 +119,122 @@ async def test_over_limit_records_a_rate_limit_hit(fake_redis):
     assert (
         _counter("autogpt_rate_limit_hits_total", endpoint="/api/search") == before + 1
     )
+
+
+# The store search limits below run against the real Redis: the window and its
+# expiry are Redis's to keep, so a double would only restate the code.
+
+
+@pytest.fixture
+def frozen_minute(monkeypatch):
+    """Pin every call to 30 s into one minute, so no test straddles a window,
+    with room for a cold Redis connection."""
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
+
+    monkeypatch.setattr(rate_limit, "datetime", _Frozen)
+    monkeypatch.setattr(rate_limit, "PUBLIC_SEARCH_REDIS_TIMEOUT_SECONDS", 10)
+
+
+@pytest.mark.asyncio
+async def test_a_store_search_client_past_its_limit_gets_429_with_retry_after(
+    frozen_minute, monkeypatch
+):
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_requests_per_minute", 2
+    )
+    client = f"client-{uuid.uuid4().hex}"
+    await rate_limit.enforce_public_search_rate_limit(client, user_id=None)
+    await rate_limit.enforce_public_search_rate_limit(client, user_id=None)
+
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        await rate_limit.enforce_public_search_rate_limit(client, user_id=None)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.headers == {"Retry-After": "30"}
+    await rate_limit.enforce_public_search_rate_limit(
+        f"other-{uuid.uuid4().hex}", user_id=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_store_search_embeds_only_its_budget_per_minute(
+    frozen_minute, monkeypatch
+):
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_embeddings_per_minute", 2
+    )
+    monkeypatch.setattr(
+        rate_limit,
+        "PUBLIC_SEARCH_EMBEDDINGS_KEY_PREFIX",
+        f"test:store:search:embeddings:{uuid.uuid4().hex}",
+    )
+
+    slots = [await rate_limit.take_public_search_embedding_slot() for _ in range(3)]
+
+    assert slots == [True, True, False]
+
+
+@pytest.mark.asyncio
+async def test_store_search_reports_its_embedding_budget_once_nearly_spent_and_once_spent(
+    frozen_minute, monkeypatch, caplog
+):
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_embeddings_per_minute", 5
+    )
+    monkeypatch.setattr(
+        rate_limit,
+        "PUBLIC_SEARCH_EMBEDDINGS_KEY_PREFIX",
+        f"test:store:search:embeddings:{uuid.uuid4().hex}",
+    )
+
+    errors_after_each_call = []
+    with caplog.at_level(logging.ERROR, logger=rate_limit.logger.name):
+        for _ in range(8):
+            await rate_limit.take_public_search_embedding_slot()
+            errors_after_each_call.append(len(_errors(caplog)))
+
+    assert errors_after_each_call == [0, 0, 0, 1, 1, 2, 2, 2]
+    assert [vars(r)["json_fields"]["budget_stage"] for r in _errors(caplog)] == [
+        "nearly_spent",
+        "spent",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_embedding_budget_takes_no_slot_and_raises_no_alert(
+    frozen_minute, monkeypatch, caplog
+):
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_embeddings_per_minute", 0
+    )
+    monkeypatch.setattr(
+        rate_limit,
+        "PUBLIC_SEARCH_EMBEDDINGS_KEY_PREFIX",
+        f"test:store:search:embeddings:{uuid.uuid4().hex}",
+    )
+
+    with caplog.at_level(logging.ERROR, logger=rate_limit.logger.name):
+        slots = [await rate_limit.take_public_search_embedding_slot() for _ in range(3)]
+
+    assert slots == [False, False, False]
+    assert _errors(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_without_redis_store_search_is_not_limited_but_embeds_nothing(mocker):
+    mocker.patch.object(
+        rate_limit,
+        "get_redis_async",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+
+    await rate_limit.enforce_public_search_rate_limit("203.0.113.9", user_id=None)
+    assert await rate_limit.take_public_search_embedding_slot() is False
+
+
+def _errors(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.levelno == logging.ERROR]

@@ -6,7 +6,7 @@ import logging
 from collections.abc import AsyncGenerator, Coroutine
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, TypeVar
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from autogpt_libs import auth
 from fastapi import (
@@ -59,10 +59,12 @@ from backend.copilot.model import (
     AutopilotMode,
     ChatSessionInfo,
     ChatSessionMetadata,
+    SessionIdConflictError,
     create_chat_session,
     delete_chat_session,
     get_chat_session_metadata,
     get_or_create_builder_session,
+    get_or_create_client_chat_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
     update_session_autopilot_mode,
@@ -489,6 +491,12 @@ class CreateSessionRequest(BaseModel):
     mode keyed by the authenticated user and expert. It is invalid without
     ``expert_id``.
 
+    ``session_id`` lets the client name the session up front, which makes
+    the create idempotent: a retry after a lost response adopts the session
+    the first attempt committed (409 if the id is someone else's or scoped
+    to another expert). Builder and kickoff sessions pick their own ids, so
+    it is rejected alongside them (422).
+
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
 
@@ -500,6 +508,7 @@ class CreateSessionRequest(BaseModel):
     llm_credential_id: str | None = Field(default=None, max_length=128)
     expert_id: str | None = Field(default=None, max_length=128)
     expert_kickoff: bool = False
+    session_id: UUID | None = None
     # The approval mode the chat starts on. Leave unset to start on the
     # expert's default (or the platform default); send only a deliberate pick.
     autopilot_mode: AutopilotMode | None = None
@@ -874,7 +883,7 @@ async def create_session(
 ) -> CreateSessionResponse:
     """Create (or get-or-create) a chat session.
 
-    Two modes, selected by the request body:
+    Four modes, selected by the request body:
 
     - Default: create a fresh session for the user. ``dry_run=True`` forces
       run_capability and run_agent calls to use dry-run simulation.
@@ -888,11 +897,15 @@ async def create_session(
       with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).
     - Expert kickoff: atomically create or adopt the canonical first session
       for ``(user_id, expert_id)``.
+    - Client-named: when ``session_id`` is set, a plain or expert create
+      adopts the session that id already names, so a retry after a lost
+      response never leaves an empty session behind.
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
         request: Optional request body with ``dry_run``,
-            ``builder_graph_id`` and/or ``expert_id``.
+            ``builder_graph_id``, ``expert_id``, ``expert_kickoff`` and/or
+            ``session_id``.
 
     Returns:
         CreateSessionResponse: Details of the resulting session.
@@ -902,6 +915,15 @@ async def create_session(
     expert_id = request.expert_id if request else None
     expert_kickoff = request.expert_kickoff if request else False
     autopilot_mode = request.autopilot_mode if request else None
+    client_session_id = (
+        str(request.session_id) if request and request.session_id else None
+    )
+
+    if client_session_id and (builder_graph_id or expert_kickoff):
+        raise HTTPException(
+            status_code=422,
+            detail="session_id cannot be combined with builder_graph_id or expert_kickoff",
+        )
 
     if expert_kickoff and expert_id is None:
         raise HTTPException(
@@ -964,16 +986,33 @@ async def create_session(
         )
     else:
         try:
-            session = await create_chat_session(
-                user_id,
-                dry_run=dry_run,
-                organization_id=ctx.org_id,
-                team_id=ctx.team_id,
-                llm_auth_provider=llm_auth_provider,
-                llm_credential_id=llm_credential_id,
-                expert_id=expert_id,
-                autopilot_mode=autopilot_mode,
-            )
+            if client_session_id:
+                session = await get_or_create_client_chat_session(
+                    user_id,
+                    client_session_id,
+                    dry_run=dry_run,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    llm_auth_provider=llm_auth_provider,
+                    llm_credential_id=llm_credential_id,
+                    expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
+                )
+            else:
+                session = await create_chat_session(
+                    user_id,
+                    dry_run=dry_run,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    llm_auth_provider=llm_auth_provider,
+                    llm_credential_id=llm_credential_id,
+                    expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
+                )
+        except SessionIdConflictError as e:
+            raise HTTPException(
+                status_code=409, detail="Session id already in use"
+            ) from e
         except experts_db.ExpertNotFoundError as e:
             raise HTTPException(status_code=404, detail="Expert not found") from e
         except experts_db.ExpertPrivateTenancyNotFoundError as e:

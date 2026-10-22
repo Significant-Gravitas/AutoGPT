@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
@@ -8,6 +10,7 @@ import { DreamUsageSummary } from "./DreamUsageSummary/DreamUsageSummary";
 import { MemoryScopeSelector } from "./MemoryScopeSelector";
 import { MaintenanceControls } from "./MaintenanceControls";
 import { useMemoryScope } from "./useMemoryScope";
+import type { DreamResult } from "./helpers";
 import type { AnyJobStatus } from "./memoryJobStatus";
 
 export function MemoryVisualizer() {
@@ -50,6 +53,8 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
     ratification,
     triggerRatification,
     triggerNightly,
+    dreamResult,
+    dismissDreamResult,
     force,
     setForce,
     includeEpisodes,
@@ -148,7 +153,9 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
         edgeCount={edges.length}
       />
 
-      {readOnly ? null : <DreamResultPanel status={dreamStatusData} />}
+      {readOnly || !dreamResult ? null : (
+        <DreamResultPanel result={dreamResult} onDismiss={dismissDreamResult} />
+      )}
 
       <div className="grid grid-cols-12 gap-4">
         <Sidebar
@@ -484,31 +491,26 @@ interface DetailPanelProps {
 }
 
 interface DreamResultPanelProps {
-  status: AnyJobStatus | undefined;
+  result: DreamResult;
+  onDismiss: () => void;
 }
 
-function DreamResultPanel({ status }: DreamResultPanelProps) {
-  if (!status || status.state !== "complete") return null;
-  const result = status.result as Record<string, unknown> | null | undefined;
-  if (!result) return null;
-  // Only the sync_baseline path puts operations + usage on the result.
-  // For the anthropic_batch path the callback writes a smaller summary
-  // (pass_id + stats), so we just hide the panel — the graph itself
-  // refreshes via cache invalidation when the job completes.
-  const operations = result.operations as
-    | Parameters<typeof DreamOperationsView>[0]["operations"]
-    | undefined;
-  const usage = result.usage as
-    | Parameters<typeof DreamUsageSummary>[0]["usage"]
-    | undefined;
-  if (!operations || !usage) return null;
+function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
   return (
-    <div
-      className="grid grid-cols-1 gap-3 lg:grid-cols-2"
-      data-testid="dream-result-panel"
-    >
-      <DreamOperationsView operations={operations} />
-      <DreamUsageSummary usage={usage} />
+    <div className="space-y-2" data-testid="dream-result-panel">
+      <div className="flex items-center justify-between gap-2">
+        <Text variant="small-medium" as="span" className="text-gray-700">
+          Last dream pass{" "}
+          <span className="font-mono text-gray-500">{result.passID}</span>
+        </Text>
+        <Button variant="ghost" size="small" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <DreamOperationsView operations={result.operations} />
+        <DreamUsageSummary usage={result.usage} />
+      </div>
     </div>
   );
 }
