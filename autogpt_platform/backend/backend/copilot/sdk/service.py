@@ -253,6 +253,7 @@ from .compaction import (
 from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text, cli_user_message
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .governor import TurnGovernor
+from .launch_env import launch_options
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
@@ -4407,7 +4408,7 @@ async def _run_stream_attempt(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
         state.usage.start_cli_session(baseline)
-    sdk_client = ClaudeSDKClient(options=state.options)
+    sdk_client = ClaudeSDKClient(options=launch_options(state.options))
     client = await sdk_client.__aenter__()
     try:
         logger.info(
