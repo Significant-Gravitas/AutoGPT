@@ -382,6 +382,41 @@ def test_get_graph_gives_the_owner_their_graph_as_saved(
     assert graph["sub_graphs"][0]["nodes"][0]["input_default"]["host"] == "db.internal"
 
 
+def test_an_owners_export_keeps_everything_the_export_kept(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An export comes back with its owner blanked, so the route can't tell an
+    owner's export from anyone else's and sends it through `shared_copy`.
+    That has to take nothing away, such as the plain inputs an export keeps
+    on a node whose block is missing."""
+    export = GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Exported",
+        description="",
+        user_id="",
+        created_at=datetime(2025, 9, 4, 13, 37),
+        nodes=[
+            NodeModel(
+                id="gone",
+                block_id="00000000-0000-0000-0000-0000000dead00",
+                graph_id="graph-123",
+                graph_version=1,
+                input_default={"note": "plain"},
+            )
+        ],
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=export,
+    )
+
+    graph = client.get("/graphs/graph-123?for_export=true").json()
+
+    assert graph["nodes"][0]["input_default"] == {"note": "plain"}
+
+
 def test_get_graph_all_versions_exports_only_the_versions_someone_else_owns(
     mocker: pytest_mock.MockFixture, test_user_id: str
 ) -> None:

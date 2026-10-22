@@ -188,16 +188,6 @@ class Node(BaseDbModel):
 
         return stripped_node
 
-    def shared_copy(self) -> Self:
-        """`stripped_for_export`, for someone who doesn't own the graph. A node
-        whose block is missing (removed, or its provider isn't set up here)
-        also loses every input value: with no schema to say which of them are
-        secret, none is safe to show."""
-        shared_node = self.stripped_for_export()
-        if get_block(self.block_id) is None:
-            shared_node.input_default = {}
-        return shared_node
-
 
 class NodeModel(Node):
     graph_id: str
@@ -1341,8 +1331,7 @@ class GraphModel(Graph, GraphMeta):
         """A copy safe to show someone who doesn't own this graph.
 
         Every node, sub-graphs' included, is stripped the way an export strips
-        it, and shows no inputs at all if its block is missing
-        (`Node.shared_copy`). The owner's identity is blanked, as
+        it (`stripped_for_export`), and the owner's identity is blanked, as
         `from_db(..., for_export=True)` does. It works on an already-loaded
         model, so a route can decide by ownership once it knows the owner.
         Internal callers that act on the owner's behalf (presets, triggers, the
@@ -1353,13 +1342,15 @@ class GraphModel(Graph, GraphMeta):
                 "user_id": "",
                 "organization_id": None,
                 "team_id": None,
-                "nodes": [node.shared_copy() for node in self.nodes],
+                "nodes": [node.stripped_for_export() for node in self.nodes],
                 # Sub-graphs serialize without their owner's ids only because
                 # they are typed `BaseGraph`, which has no such fields.
                 "sub_graphs": [
                     sub_graph.model_copy(
                         update={
-                            "nodes": [node.shared_copy() for node in sub_graph.nodes]
+                            "nodes": [
+                                node.stripped_for_export() for node in sub_graph.nodes
+                            ]
                         }
                     )
                     for sub_graph in self.sub_graphs

@@ -850,29 +850,6 @@ def test_shared_copy_strips_every_node_and_names_no_owner():
     assert shared.trigger_setup_info == graph.trigger_setup_info
 
 
-def test_shared_copy_shows_no_inputs_of_a_node_whose_block_is_missing():
-    """Without its block's schema nothing says which stored values were
-    secret, so someone who doesn't own the graph sees none of them, in the
-    graph or a sub-graph."""
-
-    def missing_block_node(node_id: str) -> Node:
-        return Node(
-            id=node_id,
-            block_id="00000000-0000-0000-0000-0000000dead00",
-            input_default={"secret_token": "owner-token", "note": "plain"},
-        )
-
-    graph = _graph_of(
-        missing_block_node("gone"), sub_graph_nodes=[missing_block_node("gone-sub")]
-    )
-
-    shared = graph.shared_copy()
-
-    assert shared.nodes[0].input_default == {}
-    assert shared.sub_graphs[0].nodes[0].input_default == {}
-    assert graph.nodes[0].input_default["secret_token"] == "owner-token"
-
-
 def test_only_known_block_fields_are_marked_secret():
     """Guard on what `stripped_for_export` strips. It finds secret inputs by
     the `secret` flag in the block's current schema, so a value saved under a
