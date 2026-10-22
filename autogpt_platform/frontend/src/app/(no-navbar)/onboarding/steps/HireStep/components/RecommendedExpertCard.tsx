@@ -45,14 +45,15 @@ export function RecommendedExpertCard({
     >
       {isHired ? null : (
         // The wizard's own pick badge (SelectableCard), as a toggle: ticked
-        // cards are what the step's primary action hires.
+        // cards are what the step's primary action hires. z-10: the faded
+        // header's opacity stacks it above the tick, where it took the click.
         <button
           type="button"
           aria-pressed={isIncluded}
           aria-label={`Include ${expert.name}`}
           disabled={disabled}
           onClick={onToggleIncluded}
-          className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
+          className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
         >
           <span
             className={cn(
