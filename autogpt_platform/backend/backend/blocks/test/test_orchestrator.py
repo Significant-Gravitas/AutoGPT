@@ -1303,13 +1303,13 @@ async def _run_nested_tool(
 
 @pytest.mark.asyncio
 async def test_nested_tool_reconciles_against_the_charge_actually_collected():
-    """A nested tool execution must reach reconciliation with a pre-flight
-    baseline equal to what was charged for it.
+    """A nested tool execution is charged before it runs, and reaches
+    reconciliation with a pre-flight baseline equal to what was charged.
 
-    Kills: building the nested NodeExecutionEntry without pre_flight_charge,
-    so charge_reconciled_usage re-derives the catalogue pre-flight and, for a
-    tool call that fails before any usage is tracked, credits that amount to
-    the wallet although it was never debited.
+    Kills: charging the tool only after it runs (the old flow), where a call
+    that fails before any usage is tracked is reconciled against a pre-flight
+    that was never collected. A missing baseline is caught by the zero-baseline
+    and wallet tests below.
     """
 
     async def charge(entry):

@@ -1214,7 +1214,8 @@ class OrchestratorBlock(Block):
                 except Exception:
                     # Non-billing charge failures (DB outage, network, etc.)
                     # are logged, not surfaced as a tool error. The baseline
-                    # stays 0, so reconciliation bills the tracked usage.
+                    # holds only what was collected (0 if the spend never
+                    # landed), so reconciliation never refunds unpaid credit.
                     logger.exception(
                         "Unexpected error charging for tool node %s", sink_node_id
                     )
