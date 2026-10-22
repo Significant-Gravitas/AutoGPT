@@ -624,12 +624,12 @@ async def test_an_unattended_turn_is_told_to_act_not_wait(gate_on, mode):
 
 
 async def test_a_watched_chat_with_the_gate_off_asks_in_chat():
-    """No card can appear, so the model must ask before an outward action."""
+    """No gate card can appear, so the model must ask before an outward action."""
     session = _session("auto")
     with patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=False)):
         mode = await active_mode("u", session)
     supplement = approval_mode_supplement(mode, interactive=True)
-    assert "ask for their OK in chat" in supplement
+    assert "ask for their OK with `ask_question`" in supplement
 
 
 @pytest.mark.parametrize(

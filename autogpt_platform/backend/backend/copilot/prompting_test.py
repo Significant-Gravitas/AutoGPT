@@ -177,6 +177,9 @@ class TestGraphitiMemoryScope:
             "and do not strengthen it or add details."
         ) in prompting.get_graphiti_supplement()
 
+    def test_supplement_never_saves_guesses(self):
+        assert "Never save guesses." in prompting.get_graphiti_supplement()
+
     def test_supplement_describes_assistant_scoped_memory(self):
         result = prompting.get_graphiti_supplement()
 
@@ -463,7 +466,12 @@ class TestApprovalModeSupplement:
     def test_a_watched_chat_with_no_gate_asks_in_chat(self):
         section = prompting.approval_mode_supplement(None, interactive=True)
         assert "## Approvals" in section
-        assert "ask for their OK in chat" in section
+        assert "ask for their OK with `ask_question`" in section
+
+    def test_a_watched_chat_with_no_gate_skips_calls_that_show_a_card(self):
+        section = prompting.approval_mode_supplement(None, interactive=True)
+        assert "No approval card can appear" not in section
+        assert "unless the call shows its own approval card" in section
 
     def test_an_unattended_run_with_no_gate_acts(self):
         section = prompting.approval_mode_supplement(None, interactive=False)
