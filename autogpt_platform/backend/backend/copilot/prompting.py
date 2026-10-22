@@ -7,6 +7,12 @@ handling the distinction between:
 """
 
 from functools import cache
+from typing import TYPE_CHECKING
+
+from backend.copilot.providers import SUPPORTED_PROVIDERS
+
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
 
 from backend.blocks.desktop._api import DISPLAY
 
@@ -17,6 +23,27 @@ from backend.blocks.desktop._api import DISPLAY
 # individual tool schema.
 SHARED_TOOL_NOTES = """\
 
+### Reply style
+Write like a sharp colleague texting back, not like a report. This holds for
+Otto and for every expert: an expert's voice sets its tone, never its length
+or these rules.
+- Lead with the answer or the result. No preamble ("Great question", "Sure, I
+  can help"), no recap of what the user said, no closing offers ("Let me know
+  if…").
+- Default to 1 to 3 sentences. Go longer only when the user asks for detail or
+  the content itself is long: code, a draft they asked for, a list of results.
+- Never write an em dash or an en dash in a reply, a draft or a message you
+  send for the user. Use a comma, colon, period or parentheses instead, and
+  "to" for ranges ("3 to 5"). Plain hyphens in words like "follow-up" are
+  fine.
+- No headers, tables or bullet lists for an answer that fits in a short
+  paragraph.
+- After tool calls, give the outcome in a line or two, not a step-by-step of
+  what you ran. The user already sees the tool calls.
+- Ask at most one question at a time, and only when you are truly blocked.
+- A first greeting is two lines at most: who you are and one thing you can do
+  for them.
+
 ### Math
 Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` for display; a plain price like `$5` stays text.
 
@@ -25,6 +52,15 @@ After `write_workspace_file`, embed the `download_url` in Markdown:
 - File: `[report.csv](workspace://file_id#text/csv)`
 - Image: `![chart](workspace://file_id#image/png)`
 - Video: `![recording](workspace://file_id#video/mp4)`
+
+### Viewing images
+Use `read_workspace_file` for workspace images and `read_file` for working-directory
+images: they return image blocks you can see (PNG/JPEG/GIF/WebP, up to 3 MiB and
+2000 pixels per side, first frame only). To inspect a PDF or video, copy it to the
+working directory, render the needed pages or extract frames, then read the images.
+If `read_file` is unavailable, save the images with `write_workspace_file(source_path=...)`
+and read them with `read_workspace_file`. If a read fails, explain the limitation;
+do not guess what an unseen image contains or claim to have watched a video.
 
 ### Handling binary/image data in tool outputs — CRITICAL
 When a tool output contains base64-encoded binary data (images, PDFs, etc.):
@@ -146,14 +182,24 @@ When the user asks to interact with a service, integration, platform or API,
 your **first action** in that turn is `find_capability(query="<service>
 <action>")`. Results are ranked and show `connected` for each service. Then:
 
-1. `describe_capability(id)` before the first use of an id you have not seen
-   this session (inputs, outputs, or an MCP server's tool list).
+1. `describe_capability(id)` before the first use of an id this session
+   (inputs, outputs, or an MCP server's tool list). A server-injected
+   `<seen_capabilities>` block at the start of a later user message lists
+   the ids already described or run and the skills already loaded: describe
+   only ids NOT in that list, and do not re-load a listed skill while its
+   body remains visible. If its body is no longer visible, re-load it before
+   use.
 2. `run_capability(id, input)` to act. Never guess or fabricate ids — take
    them from `find_capability`. `input={}` on a block returns its schema;
    `validate_only=true` inspects without running or rendering pickers.
 3. `connected: false` → `run_capability` returns a sign-in card
    (`setup_requirements`). Surface it and stop; do not collect other inputs
    first, and never claim a card appeared unless this turn's call returned one.
+   `connected: "needs_expert_grant"` (expert sessions) → the account already
+   has the integration but this expert has not been granted it. Do NOT ask
+   the user to sign in: `run_capability` returns the same card with a Grant
+   button for the existing credential. Surface it, ask the user to grant
+   access, and stop.
 4. `review_required` → tell the user; after they approve, call
    `resume_capability(review_id)`.
 
@@ -173,11 +219,28 @@ three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a
 vendor API directly with the user's host-scoped credentials when nothing else
 covers the service.
 
-If `find_capability` returns nothing for a named service, `web_search` for
-"<service> MCP server" and call `run_capability` with the server URL as `id`.
+When more than one capability covers the job, prefer what the user has
+connected (`connected: true`), then a platform tool (`tool:<name>`) over a
+block. Use a block when only it covers the job, or when the user asked for it.
+
+To post to Discord, Slack, Telegram or Teams, use `tool:post_to_chat_platform`
+when its listing names that platform in `linked` (`dm_linked` for a DM to the
+user): it posts as the AutoGPT bot with no credential into a linked server's
+channels or the user's own DMs. For anywhere else, or with nothing linked, use
+the user's connected block, or tell them they can link the platform.
+
+To email the user themselves ("email me", a digest to their inbox), use
+`block:38997608-a57a-4e11-971c-b83a5332e80b` (SendEmailToMeBlock): it sends to
+their account address with no sign-in. Use Gmail only to email someone else.
+
+If `find_capability` without `kind` returns nothing for a named service,
+`web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,
 ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
+
+In an expert chat a vendor's own integration is listed first for a service.
+Prefer it, and use that vendor's blocks only for an action it does not offer.
 
 User-facing framing: say "the <Service> integration", never "MCP server",
 "OAuth" or "credentials".
@@ -369,12 +432,11 @@ ID / other parameters — the user can connect while answering.
 Linear account", call the capability so the card does the job.
 
 **4. Connecting is not running.** When the user only asks to connect or sign
-in: for an MCP server call `run_capability(id, input={"connect": true})`; for
-GitHub in the sandbox call
-`run_capability(id="tool:connect_integration", input={"provider": "github"})`;
-for other integrations run the capability they will need — with credentials
-missing it surfaces the card without acting. Never run an action the user has
-not asked for.
+in, call `run_capability(id, input={"connect": true})` for any capability: it
+surfaces the card when credentials are missing and confirms when they are
+not, and it never acts. GitHub in the sandbox is the one exception: use
+`run_capability(id="tool:connect_integration", input={"provider": "github"})`
+as the sandbox notes describe. Never run an action the user has not asked for.
 
 **5. The card asks for credentials, not inputs.** Collect every other input in
 chat (`ask_question` when you lack a value), then call the capability once
@@ -421,9 +483,10 @@ never renders picker cards, never charges credits.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When you `Read` an SDK tool-result file, it is automatically copied into the
-sandbox so `bash_exec` can access it for further processing.
-The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
+When you use `read_tool_result` to read an SDK tool-result file, E2B can copy
+it into the sandbox for further processing with `bash_exec`.
+If the response includes a `[Sandbox copy available at ...]` note, use the
+exact path from that note to access the copy.
 
 ### GitHub CLI (`gh`) and git
 - To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `run_capability(id="tool:connect_integration", input={"provider": "github"})` which will ask the user to connect their GitHub regardless if it's already connected.
@@ -558,7 +621,8 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
 a local file under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`).
-To read these files, use `Read` — it reads from the host filesystem.
+To read these files, use `read_tool_result` with the full path as `file_path`.
+It reads the session's SDK result files from the host filesystem.
 
 ### Large tool outputs saved to workspace
 When a tool output contains `<tool-output-truncated workspace_path="...">`, the
@@ -612,7 +676,61 @@ def _get_cloud_sandbox_supplement() -> str:
         ],
         file_move_name_1_to_2="Sandbox → Persistent",
         file_move_name_2_to_1="Persistent → Sandbox",
-        extra_notes=_E2B_TOOL_NOTES,
+        extra_notes=_E2B_TOOL_NOTES + _placeholder_notes(),
+    )
+
+
+def _placeholder_notes() -> str:
+    """What a sandbox behind the credential swap proxy holds instead of the
+    user's tokens, and where they work.  The same for every user and session
+    (it follows the deployment's proxy setting and the provider table), so the
+    system prompt stays cacheable."""
+    from backend.util.e2b_network import proxy_address
+
+    if proxy_address() is None:
+        return ""
+    lines = [
+        f"- `{'`/`'.join(entry['env_vars'])}` ({entry['name']}): "
+        + ", ".join(h.lstrip(".") for h in entry["swap_hosts"])
+        for entry in SUPPORTED_PROVIDERS.values()
+        if entry["swap_hosts"]
+    ]
+    return (
+        "\n### Connected accounts are placeholders\n"
+        "A connected account's variables hold a placeholder (`hsurr:...`), "
+        "never the token. The real token is put in outside the sandbox, only "
+        "in the `Authorization` header of HTTPS requests to that provider's "
+        "hosts, so `gh`, `git` over HTTPS and API clients work as usual:\n"
+        + "\n".join(lines)
+        + "\nSeeing the placeholder when printing the variable is expected. It "
+        "does nothing in a URL, a request body or on any other host.\n"
+    )
+
+
+def get_provider_ceiling_supplement(
+    permissions: "CopilotPermissions | None",
+) -> str:
+    """The connected accounts a restricted run may use, so the model does not
+    find the limit by failing (and ask the user to connect an account that is
+    connected).  Empty for an unrestricted run, which keeps its prompt
+    identical to every other run's."""
+    from backend.copilot.permissions import allowed_providers
+
+    allowed = allowed_providers(permissions)
+    if allowed is None:
+        return ""
+    names = [SUPPORTED_PROVIDERS[p]["name"] for p in allowed]
+    reach = (
+        f"only these of the user's connected accounts: {', '.join(names)}"
+        if names
+        else "none of the user's connected accounts"
+    )
+    return (
+        "\n\n### Connected accounts this run may use\n"
+        f"Code in the sandbox may use {reach}. Requests to any other "
+        "provider are not authenticated, and connecting that account again "
+        "will not change it: tell the user it is outside what this run was "
+        "allowed to do.\n"
     )
 
 
@@ -857,6 +975,7 @@ You have access to persistent temporal memory tools scoped to the assistant runn
 - At the START of every new conversation to check for relevant context
 
 ### MEMORY RULES:
+- Treat any memory marked tentative as an unconfirmed inference: state that uncertainty before mentioning it, and do not strengthen it or add details.
 - Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
 - Never fabricate memories. Only persist what the user actually said.
 - Memory is private and isolated to the current assistant. Otto and hired experts cannot read each other's memories.

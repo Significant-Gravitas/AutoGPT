@@ -1,0 +1,22 @@
+{"id": "1-0", "sse": "id: drift-turn:1-0\ndata: {\"type\": \"data-status\", \"data\": {\"message\": \"Message received\\u2026\"}}\n\n"}
+{"id": "2-0", "sse": "id: drift-turn:2-0\ndata: {\"type\": \"data-status\", \"data\": {\"message\": \"Setting up your environment\\u2026\"}}\n\n"}
+{"id": "3-0", "sse": "id: drift-turn:3-0\ndata: {\"type\": \"start\", \"messageId\": \"00000000-0000-4000-8000-000000000001\"}\n\n"}
+{"id": "4-0", "sse": "id: drift-turn:4-0\ndata: {\"type\":\"start-step\"}\n\n"}
+{"id": "5-0", "sse": "id: drift-turn:5-0\ndata: {\"type\":\"text-start\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "6-0", "sse": "id: drift-turn:6-0\ndata: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"Let me \"}\n\n"}
+{"id": "7-0", "sse": "id: drift-turn:7-0\ndata: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"fetch that \"}\n\n"}
+{"id": "8-0", "sse": "id: drift-turn:8-0\ndata: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"page.\"}\n\n"}
+{"id": "9-0", "sse": "id: drift-turn:9-0\ndata: {\"type\":\"text-end\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "10-0", "sse": "id: drift-turn:10-0\ndata: {\"type\":\"finish-step\"}\n\n"}
+{"id": "11-0", "sse": "id: drift-turn:11-0\ndata: {\"type\":\"tool-input-start\",\"toolCallId\":\"call-fetch\",\"toolName\":\"web_fetch\"}\n\n"}
+{"id": "12-0", "sse": "id: drift-turn:12-0\ndata: {\"type\":\"tool-input-available\",\"toolCallId\":\"call-fetch\",\"toolName\":\"web_fetch\",\"input\":{\"url\":\"example.com\"}}\n\n"}
+{"id": "13-0", "sse": "id: drift-turn:13-0\ndata: {\"type\": \"tool-output-available\", \"toolCallId\": \"call-fetch\", \"output\": \"<h1>Example Domain</h1>\"}\n\n"}
+{"id": "14-0", "sse": "id: drift-turn:14-0\ndata: {\"type\":\"start-step\"}\n\n"}
+{"id": "15-0", "sse": "id: drift-turn:15-0\ndata: {\"type\":\"text-start\",\"id\":\"00000000-0000-4000-8000-000000000003\"}\n\n"}
+{"id": "16-0", "sse": "id: drift-turn:16-0\ndata: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000003\",\"delta\":\"It says \"}\n\n"}
+{"id": "17-0", "sse": "id: drift-turn:17-0\ndata: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000003\",\"delta\":\"Example Domain.\"}\n\n"}
+{"id": "18-0", "sse": "id: drift-turn:18-0\ndata: {\"type\":\"text-end\",\"id\":\"00000000-0000-4000-8000-000000000003\"}\n\n"}
+{"id": "19-0", "sse": "id: drift-turn:19-0\ndata: {\"type\":\"finish-step\"}\n\n"}
+{"id": "20-0", "sse": "id: drift-turn:20-0\ndata: {\"type\": \"data-checkpoint\", \"data\": {\"rows\": 3, \"sequence\": 1, \"digest\": \"6a90701268140af70592a86f2bad0894e0a3a74acbcf38c65e449021d177b974\"}, \"transient\": true}\n\n"}
+{"id": "21-0", "sse": ": usage {\"type\":\"usage\",\"promptTokens\":200,\"completionTokens\":40,\"totalTokens\":240,\"cacheReadTokens\":0,\"cacheCreationTokens\":0}\n\n"}
+{"id": "22-0", "sse": "id: drift-turn:22-0\ndata: {\"type\":\"finish\"}\n\n"}

@@ -6,7 +6,9 @@ import {
   followAnalyticsConsentForIdentity,
   getAnonymousID,
 } from "@/services/analytics/anonymous-id";
+import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-properties";
 import { PageEvent } from "@/services/analytics/posthog-events";
+import { markImpersonatedEvent } from "@/services/analytics/posthog-request-context";
 import { useConsent } from "@/services/consent/useConsent";
 import { environment } from "@/services/environment";
 import { usesPostHog } from "@/services/feature-flags/flag-backend";
@@ -20,6 +22,7 @@ import {
   forgetPostHogStorageWithoutConsent,
   getConsentGatedConfig,
 } from "./posthog-consent";
+import { getPostHogClientHosts } from "./posthog-proxy";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
   const isPostHogEnabled = environment.isPostHogEnabled();
@@ -37,16 +40,19 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       const anonymousID = getAnonymousID();
       forgetPostHogStorageWithoutConsent(postHogCredentials.key);
       posthog.init(postHogCredentials.key, {
-        api_host: postHogCredentials.host,
+        ...getPostHogClientHosts(postHogCredentials),
         defaults: "2025-11-30",
         capture_pageview: false,
         capture_pageleave: true,
         autocapture: true,
+        capture_exceptions: false,
         ...(anonymousID && {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
         ...getConsentGatedConfig(),
+        before_send: markImpersonatedEvent,
       });
+      posthog.register(getPostHogBaseProperties());
       unfollowConsent = followAnalyticsConsent();
     }
     return () => {

@@ -4,10 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import type { SubscriptionPlansProps } from "../helpers";
 import { BillingToggle } from "./BillingToggle";
 
-type Props = Pick<
-  SubscriptionPlansProps,
-  "billing" | "onBillingChange" | "goalSurface"
-> & {
+type Props = Pick<SubscriptionPlansProps, "billing" | "onBillingChange"> & {
   // A surface with its own title (the platform paywall modal) passes its
   // heading here, or `null` to keep the heading it already renders outside the
   // organism. Left undefined, the default onboarding heading renders.

@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.sdk.env import cli_prompt_text, cli_user_message
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -352,6 +353,50 @@ class TestClaudeCodeTmpdir:
 
         assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/sub-workspace"
         assert result["ANTHROPIC_API_KEY"] == ""
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_CODE_DISABLE_BACKGROUND_TASKS — sub-agents run in the foreground
+# ---------------------------------------------------------------------------
+
+
+class TestBackgroundTasksDisabled:
+    """A background sub-agent is killed when the turn closes the CLI, so every
+    mode must keep sub-agents in the foreground (subagent_turn_end_test.py)."""
+
+    @pytest.mark.parametrize(
+        "overrides, kwargs",
+        [
+            pytest.param({"use_openrouter": False}, {}, id="direct"),
+            pytest.param(
+                {
+                    "use_openrouter": True,
+                    "api_key": "sk-or-test-key",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                {},
+                id="openrouter",
+            ),
+            pytest.param({"use_claude_code_subscription": True}, {}, id="subscription"),
+            pytest.param(
+                {"use_openrouter": False},
+                {
+                    "codex_gateway_url": "http://127.0.0.1:43210",
+                    "codex_gateway_token": "loopback-capability",
+                },
+                id="codex-gateway",
+            ),
+        ],
+    )
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_set_in_every_mode(self, _mock_validate, overrides, kwargs):
+        cfg = _make_config(**overrides)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(**kwargs)
+
+        assert result["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -705,3 +750,37 @@ class TestContextWindowPin:
             _make_config(claude_agent_context_window=99_999)
         with pytest.raises(ValidationError):
             _make_config(claude_agent_context_window=1_000_001)
+
+
+class TestCliPromptText:
+    """The text the CLI receives must never parse as one of its commands."""
+
+    @pytest.mark.parametrize(
+        "text", ["/compact", "/model claude-opus-4-1", "/", "/dataviz chart"]
+    )
+    def test_leading_slash_gets_a_leading_space(self, text: str):
+        assert cli_prompt_text(text) == f" {text}"
+
+    @pytest.mark.parametrize(
+        "text", ["hello", "", " /compact", "a/b", "<user_context>x</user_context>"]
+    )
+    def test_other_text_is_unchanged(self, text: str):
+        assert cli_prompt_text(text) == text
+
+
+class TestCliUserMessage:
+    """A user message written straight to the CLI's transport."""
+
+    def test_carries_the_mark_the_sdk_sets_for_verbatim_prompts(self):
+        content = [
+            {"type": "image", "source": {"type": "base64", "data": "x"}},
+            {"type": "text", "text": "hello"},
+        ]
+
+        assert cli_user_message(content, "s1") == {
+            "type": "user",
+            "message": {"role": "user", "content": content},
+            "parent_tool_use_id": None,
+            "session_id": "s1",
+            "client_composed": True,
+        }

@@ -110,6 +110,8 @@ def test_resolver_turns_a_skill_id_into_the_read_skill_call():
     [
         # validate_only describes the call; it must not run the tool.
         ("run_capability", {"id": f"tool:{INNER}", "input": {}, "validate_only": True}),
+        # connect only checks credentials; a tool has none, so nothing runs.
+        ("run_capability", {"id": f"tool:{INNER}", "input": {"connect": True}}),
         ("run_capability", {"id": "skill:", "input": {}}),
         ("run_capability", {"id": "block:1234", "input": {}}),
         ("run_capability", {"id": "https://mcp.example/sse", "input": {}}),
@@ -281,7 +283,7 @@ async def test_sdk_dispatch_failure_counts_against_the_inner_tool(_sdk_context):
     wrapper = _make_truncating_wrapper(_never, "run_capability", required_args=["id"])
 
     with _dispatch_of(tool), patch(
-        "backend.copilot.sdk.tool_adapter.truncate",
+        "backend.copilot.sdk.tool_adapter.truncate_mcp_result",
         side_effect=lambda r, _: {**r, "isError": True},
     ):
         for _ in range(3):

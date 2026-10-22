@@ -3,6 +3,23 @@ import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup } from "@testing-library/react";
+import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
+
+// Auth tests send the client IP in X-Forwarded-For, as a trusted proxy would
+// (lib/auth/client-ip.ts).
+process.env.TRUST_X_FORWARDED_FOR ??= "true";
+
+// Sign-ups look up their domain's MX (lib/auth/disposable-email.ts); no test
+// does that on the network.
+vi.mock("node:dns/promises", async (importActual) => {
+  const actual = await importActual<typeof import("node:dns/promises")>();
+  class Resolver {
+    async resolveMx() {
+      return [];
+    }
+  }
+  return { ...actual, default: { ...actual, Resolver }, Resolver };
+});
 
 // React 18.3 only ships `cache` under the `react-server` export condition.
 // Vitest doesn't set that condition, so any module that imports `cache` from
@@ -18,29 +35,6 @@ vi.mock("react", async (importActual) => {
   };
 });
 
-// NumberFlow renders into a shadow-DOM custom element and schedules animation
-// work outside React. happy-dom can mount it, but the resulting rAF + custom
-// element lifecycle collides with React 18's concurrent renderer during
-// cleanup ("Should not already be working"). Render a plain span with the
-// formatted value — tests query the wrapping aria-label, not NumberFlow's
-// internals.
-vi.mock("@number-flow/react", () => ({
-  default: ({
-    value,
-    format,
-    locales,
-  }: {
-    value: number;
-    format?: Intl.NumberFormatOptions;
-    locales?: Intl.LocalesArgument;
-  }) => {
-    const text = format
-      ? new Intl.NumberFormat(locales ?? "en-US", format).format(value)
-      : String(value);
-    return <span>{text}</span>;
-  },
-}));
-
 beforeAll(() => {
   mockNextjsModules();
   mockAuthRequest(); // If you need user's data - please mock auth actions in your specific test - it sends null user [It's only to avoid cookies() call]
@@ -49,5 +43,8 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  // The checkout redirect is page-wide state that outlives a render; a
+  // redirect left by one test would disable the next test's buttons.
+  resetCheckoutRedirect();
 });
 afterAll(() => server.close());

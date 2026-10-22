@@ -1,19 +1,29 @@
 import { environment } from "@/services/environment";
 import {
   COOKIEBOT_CONSENT_EVENTS,
+  COOKIEBOT_DIALOG_EVENTS,
   COOKIEBOT_SCRIPT_ID,
   getCookiebotAPI,
   parseCookieConsentHeader,
   type CookiebotConsent,
 } from "./cookiebot";
 
-export type ConsentCategory = "analytics" | "monitoring" | "advertising";
+// "monitoring" gates Sentry session replay only. Error monitoring is part of
+// running the service (legitimate interest), so it needs no consent.
+// "preferences" gates nothing in the app; it is only passed on to the Google
+// tag as Consent Mode's functionality and personalization signals.
+export type ConsentCategory =
+  | "analytics"
+  | "monitoring"
+  | "advertising"
+  | "preferences";
 export type ConsentState = Readonly<Record<ConsentCategory, boolean>>;
 
 export const NO_CONSENT: ConsentState = Object.freeze({
   analytics: false,
   monitoring: false,
   advertising: false,
+  preferences: false,
 });
 
 const COOKIEBOT_CATEGORY: Record<
@@ -23,6 +33,7 @@ const COOKIEBOT_CATEGORY: Record<
   analytics: "statistics",
   monitoring: "statistics",
   advertising: "marketing",
+  preferences: "preferences",
 };
 
 /**
@@ -41,6 +52,7 @@ export function toConsentState(
     analytics: cookiebot[COOKIEBOT_CATEGORY.analytics],
     monitoring: cookiebot[COOKIEBOT_CATEGORY.monitoring],
     advertising: cookiebot[COOKIEBOT_CATEGORY.advertising],
+    preferences: cookiebot[COOKIEBOT_CATEGORY.preferences],
   };
 }
 
@@ -64,7 +76,8 @@ export function isSameConsent(a: ConsentState, b: ConsentState): boolean {
   return (
     a.analytics === b.analytics &&
     a.monitoring === b.monitoring &&
-    a.advertising === b.advertising
+    a.advertising === b.advertising &&
+    a.preferences === b.preferences
   );
 }
 
@@ -77,6 +90,27 @@ export function subscribeToConsent(listener: () => void): () => void {
     COOKIEBOT_CONSENT_EVENTS.forEach((event) =>
       window.removeEventListener(event, listener),
     );
+}
+
+/** Calls `listener` when the banner is about to ask the visitor. */
+export function subscribeToConsentPrompt(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  COOKIEBOT_DIALOG_EVENTS.forEach((event) =>
+    window.addEventListener(event, listener),
+  );
+  return () =>
+    COOKIEBOT_DIALOG_EVENTS.forEach((event) =>
+      window.removeEventListener(event, listener),
+    );
+}
+
+/**
+ * Whether the consent manager has loaded without an answer from the visitor,
+ * so the banner is asking (or about to). An answer given after this is a
+ * fresh decision, not one that covers what happened before it.
+ */
+export function isAwaitingConsentAnswer(): boolean {
+  return getCookiebotAPI() !== null && getConsentAnswer() === null;
 }
 
 export function openConsentSettings(): void {

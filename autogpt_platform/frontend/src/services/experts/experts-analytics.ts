@@ -8,6 +8,7 @@ import {
   HireFlowEvent,
   type EventName,
 } from "@/services/analytics/posthog-events";
+import type { HireRequestSurface } from "@/app/api/__generated__/models/hireRequestSurface";
 import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
 
@@ -18,7 +19,10 @@ export type FunnelViewEvent =
 
 interface FunnelEventProperties {
   [ExpertsFunnelEvent.EXPERT_PROFILE_OPENED]: { template_id: string };
-  [ExpertsFunnelEvent.HIRE_STARTED]: { template_id: string };
+  [ExpertsFunnelEvent.HIRE_STARTED]: {
+    template_id: string;
+    surface: NonNullable<HireRequestSurface>;
+  };
   [ExpertsFunnelEvent.EXPERT_THREAD_CREATED]: { expert_id: string };
   [ExpertsFunnelEvent.BRIEFING_OUTCOME_CLICKED]: { status: string };
   [ExpertsFunnelEvent.HOME_ATTENTION_ACTIONED]: {
@@ -26,6 +30,17 @@ interface FunnelEventProperties {
     action: "approve" | "decline";
   };
   [ExpertsFunnelEvent.HOME_TEAM_MEMBER_CLICKED]: { expert_id: string };
+  [ExpertsFunnelEvent.HOME_SUGGESTION_CLICKED]: {
+    position: number;
+    surface: "intro" | "home";
+    remaining: number;
+  };
+  [ExpertsFunnelEvent.HOME_SUGGESTION_DISMISSED]: {
+    position: number | null;
+    surface: "intro" | "home";
+    remaining: number;
+    scope: "one" | "all";
+  };
 }
 
 type FunnelEvent = FunnelViewEvent | keyof FunnelEventProperties;

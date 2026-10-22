@@ -110,6 +110,7 @@ class FrontendEnvironmentTest(unittest.TestCase):
         self.assertEqual(child_environment["PORT"], "3001")
         self.assertEqual(child_environment["HOSTNAME"], "127.0.0.1")
         self.assertEqual(child_environment["NODE_ENV"], "production")
+        self.assertEqual(child_environment["TRUST_X_FORWARDED_FOR"], "true")
 
     def test_rejects_missing_required_setting(self) -> None:
         result = subprocess.run(
@@ -177,7 +178,12 @@ class FrontendEnvironmentTest(unittest.TestCase):
             'platform."UserAuthJwks"',
         ):
             self.assertEqual(policy.count(table), 1)
-        self.assertIn('GRANT SELECT (id, email), UPDATE (email, "updatedAt")', policy)
+        self.assertIn(
+            "GRANT SELECT (id, email),\n"
+            '  INSERT (id, email, name, "updatedAt"),\n'
+            '  UPDATE (email, "updatedAt")',
+            policy,
+        )
         self.assertIn(
             "ALTER ROLE autogpt_frontend IN DATABASE postgres RESET ALL", policy
         )

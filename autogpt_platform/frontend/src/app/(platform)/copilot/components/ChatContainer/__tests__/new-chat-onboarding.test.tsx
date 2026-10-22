@@ -1,3 +1,5 @@
+import { getGetV2GetCopilotUsageMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetSubscriptionStatusMockHandler200 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -8,7 +10,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ChatContainer, type ChatContainerProps } from "../ChatContainer";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -23,7 +25,7 @@ const props: ChatContainerProps = {
   messages: [],
   status: "ready",
   error: undefined,
-  sessionId: null,
+  sessionId: "empty-session",
   isLoadingSession: false,
   isCreatingSession: false,
   onCreateSession: vi.fn(),
@@ -63,6 +65,28 @@ function mockOnboarding(completed = false) {
   return request;
 }
 
+// The chat locks on the AutoPilot budget, and onboarding stays hidden while it
+// does: pin a budget with room left instead of faker's random usage and tier.
+beforeEach(() => {
+  server.use(
+    getGetV2GetCopilotUsageMockHandler200({
+      tier: "PRO",
+      daily: null,
+      weekly: null,
+      reset_cost: 0,
+      state: "ok",
+      limiting_window: null,
+      resets_at: null,
+    }),
+    getGetSubscriptionStatusMockHandler200({
+      tier: "PRO",
+      monthly_cost: 0,
+      tier_costs: {},
+      proration_credit_cents: 0,
+    }),
+  );
+});
+
 describe("new full-page expert chats", () => {
   test("keeps draft answers when onboarding status refetches", async () => {
     mockOnboarding();
@@ -83,30 +107,36 @@ describe("new full-page expert chats", () => {
     ).toBe("true");
   });
 
-  test.each([null, "empty-session"])(
-    "shows pending onboarding in chat %s",
-    async (sessionId) => {
-      mockOnboarding();
-      const onSend = vi.fn();
-      render(
-        <ChatContainer {...props} sessionId={sessionId} onSend={onSend} />,
-      );
-      expect(await screen.findByText("What topic?")).toBeDefined();
-      fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-      await waitFor(() =>
-        expect(onSend).toHaveBeenCalledWith(
-          "Let's skip the setup questions for now.",
-        ),
-      );
-    },
-  );
+  test("shows pending onboarding in an empty chat", async () => {
+    mockOnboarding();
+    const onSend = vi.fn();
+    render(<ChatContainer {...props} onSend={onSend} />);
+    expect(await screen.findByText("What topic?")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Skip questions" }));
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith(
+        "Let's skip the setup questions for now.",
+      ),
+    );
+  });
+
+  test("keeps the home hero when an expert is picked before a chat exists", async () => {
+    const request = mockOnboarding();
+    render(<ChatContainer {...props} sessionId={null} />);
+    expect(await screen.findByRole("textbox")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
+    expect(screen.queryByText("What topic?")).toBeNull();
+  });
 
   test("sends completed answers through the new chat's send handler", async () => {
     mockOnboarding();
     const onSend = vi.fn();
     render(<ChatContainer {...props} onSend={onSend} />);
     fireEvent.click(await screen.findByRole("radio", { name: "AI" }));
-    fireEvent.click(screen.getByRole("button", { name: /Send answers/i }));
+    // The pick moves on to the review after a short beat; Send lives there.
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Send answers/i }),
+    );
     await waitFor(() =>
       expect(onSend).toHaveBeenCalledWith(
         "**Here are my answers:**\n\n> What topic?\n\nAI\n\nPlease proceed.",

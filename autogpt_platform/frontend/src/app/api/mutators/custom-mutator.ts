@@ -5,11 +5,20 @@ import {
 } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 
+import {
+  isAccountBannedResponse,
+  signOutBannedAccount,
+} from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
-import { logClientRequestFailure } from "./request-failure-log";
+import {
+  fetchWithFailureLog,
+  logClientRequestFailure,
+  logServerRequestFailure,
+} from "./request-failure-log";
 
 function getBaseURL(): string {
   if (!environment.isServerSide()) {
@@ -77,6 +86,7 @@ export const customMutator = async <
     }
     Object.assign(headers, getSystemHeaders());
     Object.assign(headers, getDatafastAttribution());
+    Object.assign(headers, getPostHogSessionHeader());
   }
 
   const isFormData = data instanceof FormData;
@@ -109,7 +119,7 @@ export const customMutator = async <
     }
   }
 
-  const response = await fetch(fullUrl, {
+  const response = await fetchWithFailureLog(fullUrl, {
     ...requestOptions,
     method,
     headers,
@@ -149,9 +159,11 @@ export const customMutator = async <
           .join("; ")
       : typeof rawDetail === "string"
         ? rawDetail
-        : rawDetail != null
-          ? JSON.stringify(rawDetail)
-          : undefined;
+        : typeof rawDetail?.message === "string"
+          ? rawDetail.message
+          : rawDetail != null
+            ? JSON.stringify(rawDetail)
+            : undefined;
 
     const errorMessage =
       detail ||
@@ -168,14 +180,12 @@ export const customMutator = async <
     };
 
     if (environment.isServerSide()) {
-      // Server-side module state is shared across every user's request, so
-      // collapsing there would hide one user's failure behind another's.
-      console.error("Request failed on server", {
-        ...failure,
-        responseData: responseData || "No response data",
-      });
+      logServerRequestFailure(failure);
     } else {
       logClientRequestFailure(failure);
+      if (isAccountBannedResponse(response.status, responseData)) {
+        signOutBannedAccount();
+      }
     }
 
     throw new ApiError(errorMessage, response.status, responseData);

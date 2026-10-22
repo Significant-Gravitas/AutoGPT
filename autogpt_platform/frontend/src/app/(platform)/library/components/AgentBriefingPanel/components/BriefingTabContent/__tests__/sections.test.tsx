@@ -74,7 +74,43 @@ describe("ExecutionListSection", () => {
     expect(screen.getAllByText("Crunching data").length).toBe(7);
     expect(screen.getByRole("button", { name: /collapse/i })).toBeDefined();
   });
+
+  it("flags a recently completed run whose step failed instead of calling it a success", async () => {
+    const agents = [
+      makeAgent({ id: "lib-1", graph_id: "g-1", name: "Newsletter" }),
+      makeAgent({ id: "lib-2", graph_id: "g-2", name: "Digest" }),
+    ];
+    server.use(
+      getGetV1ListAllExecutionsMockHandler200([
+        makeCompletedExecution("g-1", "exec-1", 1),
+        makeCompletedExecution("g-2", "exec-2", 0),
+      ]),
+    );
+
+    render(<ExecutionListSection activeTab="completed" agents={agents} />);
+
+    expect(
+      await screen.findByText("Completed with errors: 1 step failed"),
+    ).toBeDefined();
+    expect(screen.getAllByText("Completed successfully").length).toBe(1);
+  });
 });
+
+function makeCompletedExecution(
+  graphID: string,
+  id: string,
+  nodeErrorCount: number,
+): GraphExecutionMeta {
+  return {
+    id,
+    graph_id: graphID,
+    graph_version: 1,
+    status: "COMPLETED",
+    started_at: new Date().toISOString(),
+    ended_at: new Date().toISOString(),
+    stats: { node_error_count: nodeErrorCount },
+  } as unknown as GraphExecutionMeta;
+}
 
 describe("AgentListSection", () => {
   it("lists listening agents with their status label and toggles 'Show all'", async () => {
@@ -102,6 +138,6 @@ describe("AgentListSection", () => {
   it("shows the empty message when no agent matches the tab", () => {
     server.use(getGetV1ListAllExecutionsMockHandler200([]));
     render(<AgentListSection activeTab="idle" agents={[]} />);
-    expect(screen.getByText("No idle agents")).toBeDefined();
+    expect(screen.getByText("No idle workflows")).toBeDefined();
   });
 });

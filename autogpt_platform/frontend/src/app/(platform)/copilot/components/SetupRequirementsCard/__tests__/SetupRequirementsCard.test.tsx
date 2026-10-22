@@ -1,4 +1,5 @@
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -8,6 +9,10 @@ import {
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRequirementsCard } from "../SetupRequirementsCard";
+import {
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "../../ToolChain/chainActions";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import { useConnectedProvidersStore } from "../../../connectedProvidersStore";
@@ -336,7 +341,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(screen.queryByText(/url • string/i)).toBeNull();
   });
 
-  it("labels credentials section as 'Agent credentials' by default", () => {
+  it("labels credentials section as 'Workflow credentials' by default", () => {
     render(
       <SetupRequirementsCard
         inputsMode="preview"
@@ -347,7 +352,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
         })}
       />,
     );
-    expect(screen.getByText("Agent credentials")).toBeDefined();
+    expect(screen.getByText("Workflow credentials")).toBeDefined();
   });
 
   it("does not render advanced toggle even when advanced inputs exist", () => {
@@ -402,7 +407,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
     fireEvent.click(screen.getByText("Proceed"));
     await waitFor(() =>
       expect(mockOnSend).toHaveBeenCalledWith(
-        "Please proceed with running the agent.",
+        "Please proceed with running the workflow.",
       ),
     );
   });
@@ -452,7 +457,7 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
 
     await waitFor(() =>
       expect(mockOnSend).toHaveBeenCalledWith(
-        "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
+        "I've configured the required credentials. Please check if everything is ready and proceed with running the workflow.",
       ),
     );
   });
@@ -752,5 +757,56 @@ describe("SetupRequirementsCard (rejected credential)", () => {
     );
 
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  describe("inside a chain", () => {
+    function renderInChain() {
+      const entries: ChainActionEntry[] = [];
+      render(
+        <ChainActionsContext.Provider
+          value={{
+            register: (entry) => entries.push(entry),
+            unregister: vi.fn(),
+          }}
+        >
+          <SetupRequirementsCard
+            output={makeOutput({
+              missingCredentials: {
+                api_key: { provider: "openai", types: ["api_key"] },
+              },
+              rejection,
+            })}
+          />
+        </ChainActionsContext.Provider>,
+      );
+      const latest = () => entries[entries.length - 1];
+      // Holding the refused credential is the state a sign-in has to clear.
+      act(() =>
+        latest().connectors!.onChange("api_key", {
+          id: "cred-api_key",
+          provider: "openai",
+          type: "api_key",
+        }),
+      );
+      return latest;
+    }
+
+    it("stays unready when the sign-in reported a different credential", () => {
+      const latest = renderInChain();
+
+      act(() => latest().connectors!.onConnected("cred-someone-else"));
+
+      expect(latest().justConnected).toBe(true);
+      expect(latest().ready).toBe(false);
+    });
+
+    it("is ready once the sign-in renewed the refused credential itself", () => {
+      const latest = renderInChain();
+      expect(latest().ready).toBe(false);
+
+      act(() => latest().connectors!.onConnected("cred-api_key"));
+
+      expect(latest().ready).toBe(true);
+    });
   });
 });
