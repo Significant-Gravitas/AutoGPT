@@ -1,6 +1,6 @@
 """Parse a background LLM call's structured answer into its Pydantic model.
 
-``backend/copilot/inference/complete.py`` makes the call, and the dream's
+``complete.py`` makes the call, and the dream's
 batch callbacks read their result rows; this module turns the text either
 gets back into the typed value, recovering from the ways models wrap their
 JSON:
@@ -25,7 +25,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from backend.copilot.inference.context import InferenceError, InferenceUsage
+from .context import InferenceError, InferenceUsage
 
 logger = logging.getLogger(__name__)
 

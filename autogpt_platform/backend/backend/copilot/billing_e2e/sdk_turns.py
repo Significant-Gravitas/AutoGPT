@@ -127,6 +127,7 @@ class SdkTurns:
             "upsert_chat_session": AsyncMock(return_value=session),
             "download_transcript": AsyncMock(side_effect=self._download),
             "upload_transcript": AsyncMock(side_effect=self._upload),
+            "delete_transcript": AsyncMock(side_effect=self._delete),
             "compact_transcript": AsyncMock(return_value=None),
             "get_redis_async": AsyncMock(),
             "propagate_attributes": MagicMock(),
@@ -191,6 +192,9 @@ class SdkTurns:
         self, user_id: str, session_id: str, *_: Any, **__: Any
     ) -> TranscriptDownload | None:
         return self._transcripts.get(session_id)
+
+    async def _delete(self, user_id: str, session_id: str) -> None:
+        self._transcripts.pop(session_id, None)
 
 
 def _lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:

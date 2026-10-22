@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from typing import Any
 from urllib.parse import urlparse
 
 from backend.copilot.config import ChatConfig
@@ -27,6 +28,36 @@ config = ChatConfig()
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
 _MAX_HEADER_VALUE_LEN = 128
 _LOOPBACK_NO_PROXY_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+# CLI flag for ``ClaudeAgentOptions.extra_args``. Every prompt we send is user
+# or graph text, never a CLI slash command.
+DISABLE_SLASH_COMMANDS_FLAG = "disable-slash-commands"
+
+
+def cli_prompt_text(text: str) -> str:
+    """*text* as the CLI must receive it to send it on to the model.
+
+    Even with the flag above, the CLI answers a prompt that starts with "/"
+    itself when it names a built-in command. It only looks at the first
+    character, so a leading space keeps the text whole.
+    """
+    return f" {text}" if text.startswith("/") else text
+
+
+def cli_user_message(content: list[dict[str, Any]], session_id: str) -> dict[str, Any]:
+    """A stream-json user message the CLI hands to the model as written.
+
+    ``ClaudeAgentOptions.verbatim_prompts`` marks every message the SDK writes
+    ``client_composed``; a message written straight to the transport must
+    carry the mark itself.
+    """
+    return {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+        "session_id": session_id,
+        "client_composed": True,
+    }
 
 
 def _loopback_no_proxy_value() -> str:

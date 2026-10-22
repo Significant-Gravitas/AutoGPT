@@ -249,7 +249,8 @@ retried on the next tour visit in that session.
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
 | `expert_recommended` | browser | live | `template_id`, `position`, `team_source` | A recommended expert card is shown. |
 | `expert_recommendation_clicked` | browser | live | `template_id`, `position` | A recommended expert card is clicked. |
-| `hire_step_continued` | browser | live | `hired`, `recommended` | The hire step is left. |
+| `hire_all_clicked` | browser | live | `count` (experts this click hires), `already_hired`, `recommended`, `retry` | The hire step's primary button is clicked to hire every expert still unhired, or with `retry` the ones a batch failed to hire. |
+| `hire_step_continued` | browser | live | `hired`, `recommended`, `via` (`auto` after a full batch, `continue`, `later` for "I'll add members later") | The hire step is left. |
 | `tab_intro_shown` | browser | live | `tab` | A tab intro card is shown. |
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
 | `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
@@ -285,7 +286,7 @@ retried on the next tour visit in that session.
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
-| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked. |
+| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked, or once per expert of the hire step's batch. |
 | `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
 | `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
