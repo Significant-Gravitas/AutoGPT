@@ -1,5 +1,7 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   Sidebar,
   SidebarContent,
@@ -9,11 +11,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { isEditableElement } from "@/lib/platform";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { isEditableElement } from "@/lib/platform";
+import {
+  AddTeamIcon,
+  FlowIcon,
+  Folder01Icon,
+  GridViewIcon,
+  Home10Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -25,16 +35,6 @@ import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/Collapsibl
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import { useNavItemClassName } from "./useNavItemClassName";
-import {
-  FlowIcon,
-  Folder01Icon,
-  GridViewIcon,
-  Home10Icon,
-  Store01Icon,
-  AddTeamIcon,
-} from "@hugeicons/core-free-icons";
-import type { IconSvgElement } from "@hugeicons/react";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 type NavLink = {
   name: string;
@@ -165,18 +165,16 @@ type Props = ComponentProps<typeof Sidebar>;
 export function AppSidebar(props: Props) {
   const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
+  const { isMobile } = useSidebar();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
-  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const mainLinks = isHireExpertsEnabled
-    ? MAIN_LINKS.filter((link) => link.href !== "/library")
-    : MAIN_LINKS;
-  const filesEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
-  const workspaceLinks = (
-    isHireExpertsEnabled
-      ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
-      : WORKSPACE_LINKS
-  ).filter((link) => link.href !== "/artifacts" || filesEnabled);
+
+  const mainLinks = MAIN_LINKS.filter((link) => link.href !== "/library");
+
+  const workspaceLinks = [
+    { name: "Team", href: "/team", icon: AddTeamIcon },
+    ...WORKSPACE_LINKS,
+  ];
 
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
@@ -200,7 +198,9 @@ export function AppSidebar(props: Props) {
 
         <motion.div
           variants={sidebarContainerVariants}
-          initial="hidden"
+          // On mobile the sheet's slide is the entrance; a blurred stagger on
+          // top of it delays the items and costs frames on phones.
+          initial={isMobile ? false : "hidden"}
           animate="show"
           className="flex shrink-0 flex-col gap-2"
         >

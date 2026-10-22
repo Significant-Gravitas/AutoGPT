@@ -64,7 +64,21 @@ describe("PostHogProvider", () => {
       expect.objectContaining({
         api_host: "/relay/pnosthog",
         ui_host: "https://eu.posthog.com",
+        capture_exceptions: false,
       }),
+    );
+  });
+
+  it("marks the events an admin sends while acting as a user", async () => {
+    const { PostHogProvider } = await import("../posthog-provider");
+    const { markImpersonatedEvent } = await import(
+      "@/services/analytics/posthog-request-context"
+    );
+
+    render(<PostHogProvider>app</PostHogProvider>);
+
+    expect(posthog.init.mock.calls[0][1].before_send).toBe(
+      markImpersonatedEvent,
     );
   });
 

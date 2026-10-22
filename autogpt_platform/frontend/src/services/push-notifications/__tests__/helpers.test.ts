@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setupPushSubscription, teardownPushSubscription } from "../helpers";
+import {
+  setupPushSubscription,
+  teardownPushSubscription,
+  teardownPushSubscriptionBeforeLogout,
+} from "../helpers";
 
 const mockIsPushSupported = vi.fn(() => true);
 const mockRegisterServiceWorker = vi.fn();
@@ -11,7 +15,7 @@ vi.mock("../registration", () => ({
   registerServiceWorker: () => mockRegisterServiceWorker(),
   subscribeToPush: (...args: [unknown, unknown]) =>
     mockSubscribeToPush(...args),
-  unsubscribeFromPush: (reg: unknown) => mockUnsubscribeFromPush(reg),
+  unsubscribeFromPush: (sub: unknown) => mockUnsubscribeFromPush(sub),
 }));
 
 const mockFetchVapidPublicKey = vi.fn();
@@ -124,7 +128,7 @@ describe("teardownPushSubscription", () => {
     expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
       mockSubscription.endpoint,
     );
-    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockRegistration);
+    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
   });
 
   it("no-ops when serviceWorker is unavailable", async () => {
@@ -156,5 +160,127 @@ describe("teardownPushSubscription", () => {
     await teardownPushSubscription();
     expect(mockRemoveSubscriptionFromServer).not.toHaveBeenCalled();
     expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("teardownPushSubscriptionBeforeLogout", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("removes the subscription from the server and the browser", async () => {
+    await teardownPushSubscriptionBeforeLogout();
+    expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
+      mockSubscription.endpoint,
+    );
+    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+  });
+
+  it("unsubscribes the browser without waiting for the server", async () => {
+    mockRemoveSubscriptionFromServer.mockReturnValue(new Promise(() => {}));
+
+    void teardownPushSubscriptionBeforeLogout();
+
+    await vi.waitFor(() =>
+      expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription),
+    );
+  });
+
+  it("never unsubscribes the next account's subscription after timing out", async () => {
+    vi.useFakeTimers();
+    let answerServer: (ok: boolean) => void = () => {};
+    mockRemoveSubscriptionFromServer.mockReturnValue(
+      new Promise<boolean>((resolve) => (answerServer = resolve)),
+    );
+
+    await Promise.all([
+      teardownPushSubscriptionBeforeLogout(),
+      vi.advanceTimersByTimeAsync(5_000),
+    ]);
+    const nextAccountSubscription = {
+      endpoint: "https://push.example.com/sub/2",
+    };
+    mockRegistration.pushManager.getSubscription = vi
+      .fn()
+      .mockResolvedValue(nextAccountSubscription);
+    answerServer(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockUnsubscribeFromPush.mock.calls).toEqual([[mockSubscription]]);
+  });
+
+  it("does not hold up logout when the server never answers", async () => {
+    vi.useFakeTimers();
+    mockRemoveSubscriptionFromServer.mockReturnValue(new Promise(() => {}));
+
+    const done = vi.fn();
+    void teardownPushSubscriptionBeforeLogout().then(done);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(done).toHaveBeenCalled();
+  });
+
+  it("does not throw when tearing down fails", async () => {
+    mockRemoveSubscriptionFromServer.mockRejectedValue(new Error("offline"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await expect(
+      teardownPushSubscriptionBeforeLogout(),
+    ).resolves.toBeUndefined();
+
+    consoleError.mockRestore();
+  });
+});
+
+describe("push subscription lock across tabs", () => {
+  afterEach(() => {
+    Object.defineProperty(navigator, "locks", {
+      value: undefined,
+      configurable: true,
+    });
+  });
+
+  // A first-come, first-served lock like the browser's, shared by "tabs"
+  // that are just concurrent calls here.
+  function installSerialLock() {
+    let tail: Promise<unknown> = Promise.resolve();
+    const request = vi.fn(
+      (
+        _name: string,
+        _options: unknown,
+        action: () => Promise<unknown>,
+      ): Promise<unknown> => {
+        const run = tail.then(action);
+        tail = run.catch(() => undefined);
+        return run;
+      },
+    );
+    Object.defineProperty(navigator, "locks", {
+      value: { request },
+      configurable: true,
+    });
+  }
+
+  it("makes another tab's subscribe wait until this tab has unsubscribed", async () => {
+    installSerialLock();
+    let finishUnsubscribe: (ok: boolean) => void = () => {};
+    mockUnsubscribeFromPush.mockReturnValue(
+      new Promise<boolean>((resolve) => (finishUnsubscribe = resolve)),
+    );
+
+    const tearingDown = teardownPushSubscription();
+    const settingUp = setupPushSubscription();
+    await vi.waitFor(() =>
+      expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockSubscribeToPush).not.toHaveBeenCalled();
+
+    finishUnsubscribe(true);
+    await Promise.all([tearingDown, settingUp]);
+
+    expect(mockSubscribeToPush).toHaveBeenCalledOnce();
   });
 });

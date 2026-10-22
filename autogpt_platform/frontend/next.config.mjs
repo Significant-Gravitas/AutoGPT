@@ -1,3 +1,4 @@
+import { withPostHogConfig } from "@posthog/nextjs-config";
 import { withSentryConfig } from "@sentry/nextjs";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
@@ -19,6 +20,10 @@ const nextConfig = {
     NEXT_PUBLIC_VERCEL_TARGET_ENV: process.env.VERCEL_TARGET_ENV ?? "",
     // Sentry initialises in the browser too, so its kill switch must reach it.
     DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
+    // The build's commit, which Sentry's plugin also names its release, so
+    // PostHog events can be split by deploy.
+    NEXT_PUBLIC_REVISION:
+      process.env.SENTRY_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || "",
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
@@ -186,7 +191,7 @@ const skipSentryPlugin =
   !enableSourceMaps ||
   !process.env.SENTRY_AUTH_TOKEN;
 
-export default skipSentryPlugin
+const configWithSentry = skipSentryPlugin
   ? nextConfig
   : withSentryConfig(nextConfig, {
       // For all available options, see:
@@ -232,3 +237,26 @@ export default skipSentryPlugin
       // https://vercel.com/docs/cron-jobs
       automaticVercelMonitors: true,
     });
+
+// Build-only credentials, never NEXT_PUBLIC_ and never in `env` above, so they
+// stay out of the browser bundle. Named apart from the backend's public
+// POSTHOG_API_KEY so the two keys can't be mixed up.
+const postHogUploadConfigured = Boolean(
+  process.env.NODE_ENV === "production" &&
+    enableSourceMaps &&
+    process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY &&
+    process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
+);
+
+export default postHogUploadConfigured
+  ? withPostHogConfig(configWithSentry, {
+      personalApiKey: process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY,
+      projectId: process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+      sourcemaps: {
+        enabled: enableSourceMaps,
+        // Sentry also uploads these maps; neither plugin should delete them first.
+        deleteAfterUpload: false,
+      },
+    })
+  : configWithSentry;

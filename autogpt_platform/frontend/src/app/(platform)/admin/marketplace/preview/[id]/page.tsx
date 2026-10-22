@@ -112,7 +112,6 @@ export default function AdminPreviewPage() {
         <div className="lg:col-span-2">
           <AgentInfo
             user={null}
-            agentId={data.graph_id}
             name={data.agent_name}
             creator={data.creator}
             creatorAvatar={data.creator_avatar}

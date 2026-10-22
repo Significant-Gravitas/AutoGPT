@@ -131,6 +131,13 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # The chat that started this run, whose approval gate answers its review
+    # pauses; None for any run no chat started.
+    approval_chat_id: Optional[str] = None
+    # The workflow's own sensitive_action_safe_mode, before a chat forced the
+    # pause on; None on a context that predates it.
+    graph_sensitive_action_safe_mode: Optional[bool] = None
+
 
 # -------------------------- Models -------------------------- #
 
@@ -1554,6 +1561,11 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # The status a REVIEW/RUNNING row had when a resumed or redelivered run
+    # dispatched it again. Its first dispatch was already charged, so this
+    # one must not be (#15272), and the status says what is still billed:
+    # see `billing.redispatch_reconcile_baseline`. Also exclude=True.
+    redispatched_from: Optional[ExecutionStatus] = Field(default=None, exclude=True)
     # When the node was queued and by what: ``graph_start`` for a node queued
     # before this executor picked the run up (an entry node, or one left
     # queued by an interrupted run), ``node_output`` for one queued by an
@@ -1893,59 +1905,24 @@ async def update_graph_execution_share_status(
 async def get_graph_execution_by_share_token(
     share_token: str,
 ) -> SharedExecutionResponse | None:
-    """Get a shared execution with limited public-safe data."""
+    """Get a shared execution with limited public-safe data.
+
+    Outputs are built exactly as the owner sees them (``GraphExecution.from_db``):
+    moderation-cleared values, no INCOMPLETE node executions, queue-time order,
+    and Output blocks whose value only lives in their ``Input`` rows.
+    """
     execution = await AgentGraphExecution.prisma().find_first(
         where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
-            "NodeExecutions": {
-                "include": {
-                    "Output": True,
-                    "Node": {
-                        "include": {
-                            "AgentBlock": True,
-                        }
-                    },
-                },
-            },
+            **GRAPH_EXECUTION_INCLUDE_WITH_NODES,
         },
     )
 
     if not execution:
         return None
 
-    # Extract outputs from OUTPUT blocks only (consistent with GraphExecution.from_db)
-    outputs: CompletedBlockOutput = defaultdict(list)
-    if execution.NodeExecutions:
-        for node_exec in execution.NodeExecutions:
-            if node_exec.Node and node_exec.Node.agentBlockId:
-                # Get the block definition to check its type
-                block = get_block(node_exec.Node.agentBlockId)
-
-                if block and block.block_type == BlockType.OUTPUT:
-                    # For OUTPUT blocks, the data is stored in executionData or Input
-                    # The executionData contains the structured input with 'name' and 'value' fields
-                    if hasattr(node_exec, "executionData") and node_exec.executionData:
-                        exec_data = type_utils.convert(
-                            node_exec.executionData, BlockInput
-                        )
-                        if "name" in exec_data:
-                            name = exec_data["name"]
-                            value = exec_data.get("value")
-                            outputs[name].append(value)
-                    elif node_exec.Input:
-                        # Build input_data from Input relation
-                        input_data = {}
-                        for data in node_exec.Input:
-                            if data.name and data.data is not None:
-                                input_data[data.name] = type_utils.convert(
-                                    data.data, JsonValue
-                                )
-
-                        if "name" in input_data:
-                            name = input_data["name"]
-                            value = input_data.get("value")
-                            outputs[name].append(value)
+    outputs = GraphExecution.from_db(execution).outputs
 
     return SharedExecutionResponse(
         id=execution.id,

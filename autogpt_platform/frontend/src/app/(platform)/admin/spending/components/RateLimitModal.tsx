@@ -15,7 +15,7 @@ import {
   getV2GetUserRateLimit,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import { RateLimitDisplay } from "../../rate-limits/components/RateLimitDisplay";
+import { RateLimitDisplay } from "./RateLimitDisplay";
 import { GaugeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 

@@ -15,13 +15,18 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
+import { v4 as uuidv4 } from "uuid";
 import { useEffect, useMemo, useRef } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
-import { resolveSessionDryRun } from "./helpers";
-import { isPaywallError } from "./helpers/sendFailureToast";
+import {
+  CREATE_SESSION_RETRY_DELAY_MS,
+  resolveSessionDryRun,
+  retryLostCreateResponse,
+} from "./helpers";
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
@@ -143,6 +148,9 @@ export function useChatSession({
   // `useSendMessage` flushes its pending first message on *any* sessionId
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
+  // The id the last create named, kept while every attempt lost its response
+  // so a resend of the same request adopts what that attempt may have saved.
+  const pendingCreateRef = useRef<{ id: string; request: string } | null>(null);
   const canAdoptExpertSession =
     adoptLatestExpertThread &&
     !!expertId &&
@@ -255,7 +263,12 @@ export function useChatSession({
     }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
-    usePostV2CreateSession();
+    usePostV2CreateSession({
+      mutation: {
+        retry: retryLostCreateResponse,
+        retryDelay: CREATE_SESSION_RETRY_DELAY_MS,
+      },
+    });
 
   async function createSession(options?: { expertKickoff?: boolean }) {
     if (sessionId) return sessionId;
@@ -263,12 +276,15 @@ export function useChatSession({
     // has asked for a new thread, auto-navigating them into an old one is
     // never the right recovery.
     sendStartedRef.current = true;
+    const transports =
+      chatTransports ??
+      (transportQuery.isError ? undefined : await loadChatTransports());
     const resolvedLLMAuth = resolveCopilotLLMAuthSelection(
-      chatTransports,
+      transports,
       copilotLlmAuth,
     );
-    const availableTransports = getAvailableLLMTransports(chatTransports);
-    if (transportQuery.isError && chatTransports === undefined) {
+    const availableTransports = getAvailableLLMTransports(transports);
+    if (transports === undefined) {
       toast({
         variant: "destructive",
         title: "Could not check AI connections",
@@ -276,7 +292,7 @@ export function useChatSession({
       });
       throw new ReportedSendError("Could not load AI connections");
     }
-    if (chatTransports !== undefined && availableTransports.length === 0) {
+    if (availableTransports.length === 0) {
       // NoAIConnectionNotice above the composer says how to fix this and
       // stays put; the toast only marks that this send went nowhere.
       toast({
@@ -288,21 +304,13 @@ export function useChatSession({
       throw new ReportedSendError("No AI connection is set up");
     }
     if (!resolvedLLMAuth) {
-      const connectionsAreLoading = chatTransports === undefined;
       toast({
         variant: "destructive",
-        title: connectionsAreLoading
-          ? "AI connections are still loading"
-          : "Choose an AI connection",
-        description: connectionsAreLoading
-          ? "Wait a moment and try again."
-          : "Select the connection your expert should use before starting a new task.",
+        title: "Choose an AI connection",
+        description:
+          "Select the connection your expert should use before starting a new task.",
       });
-      throw new ReportedSendError(
-        connectionsAreLoading
-          ? "AI connections are still loading"
-          : "AI connection selection required",
-      );
+      throw new ReportedSendError("AI connection selection required");
     }
     if (
       copilotLlmAuth !== null &&
@@ -332,16 +340,23 @@ export function useChatSession({
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
-      if (options?.expertKickoff) sessionData.expert_kickoff = true;
       // Same rule as the route: only a mode the user picked travels, so a new
       // expert thread starts on the expert's own default rather than "auto".
+      // It is part of the request, so a different pick names a new session.
       const pickedMode = getAutopilotModeChoice(null);
       if (pickedMode) sessionData.autopilot_mode = pickedMode;
-      const body =
-        Object.keys(sessionData).length > 0
-          ? { data: sessionData }
-          : { data: null };
-      const response = await createSessionMutation(body);
+      // Naming the session up front lets a retry after a lost response adopt
+      // it. Kickoff is already get-or-create on the server.
+      if (options?.expertKickoff) sessionData.expert_kickoff = true;
+      else {
+        const request = JSON.stringify(sessionData);
+        if (pendingCreateRef.current?.request !== request) {
+          // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
+          pendingCreateRef.current = { id: uuidv4({}), request };
+        }
+        sessionData.session_id = pendingCreateRef.current.id;
+      }
+      const response = await createSessionMutation({ data: sessionData });
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {
@@ -349,6 +364,7 @@ export function useChatSession({
         });
         throw error;
       }
+      pendingCreateRef.current = null;
       useCopilotStreamStore
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
@@ -362,6 +378,7 @@ export function useChatSession({
       });
       return response.data.id;
     } catch (error) {
+      if (!(error instanceof TypeError)) pendingCreateRef.current = null;
       // The caller owns the one toast for this failure (see
       // toastSendFailure); toasting here as well stacked two contradictory
       // messages. A paywall is an account state, not a fault.
@@ -375,6 +392,13 @@ export function useChatSession({
       }
       throw error;
     }
+  }
+
+  // A send typed before the connection list arrives waits for it instead of
+  // being refused; `cancelRefetch: false` joins the request already in flight.
+  async function loadChatTransports() {
+    const { data } = await transportQuery.refetch({ cancelRefetch: false });
+    return data?.status === 200 ? data.data.transports : undefined;
   }
 
   // Raw messages from the initial page — exposed for cross-page

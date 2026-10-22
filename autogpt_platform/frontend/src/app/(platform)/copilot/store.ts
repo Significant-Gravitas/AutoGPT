@@ -1,7 +1,7 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
-import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
+import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
@@ -222,9 +222,6 @@ interface CopilotUIState {
   isSoundEnabled: boolean;
   toggleSound: () => void;
 
-  showNotificationDialog: boolean;
-  setShowNotificationDialog: (show: boolean) => void;
-
   // Artifact panel
   artifactPanel: ArtifactPanelState;
   // `persist: false` skips the localStorage write — used by the public
@@ -382,9 +379,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       storage.set(Key.COPILOT_SOUND_ENABLED, String(next));
       return { isSoundEnabled: next };
     }),
-
-  showNotificationDialog: false,
-  setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
   // Artifact panel
   artifactPanel: {
@@ -769,8 +763,5 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       copilotLlmAuth: null,
       isDryRun: false,
     });
-    if (isClient) {
-      document.title = ORIGINAL_TITLE;
-    }
   },
 }));
