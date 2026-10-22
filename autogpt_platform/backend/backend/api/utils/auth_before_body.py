@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from autogpt_libs.auth.jwt_utils import bearer_jwt_auth, get_jwt_payload
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.dependencies.models import Dependant
 from fastapi.dependencies.utils import get_dependant
 from fastapi.routing import APIRoute, request_response
@@ -53,7 +53,9 @@ async def _check_token(request: Request) -> None:
     or spooling its body, it doesn't replace the route's own."""
     try:
         await get_jwt_payload(await bearer_jwt_auth(request))
-    except HTTPException:
+    except Exception:
+        # Refused, or failed unexpectedly: either way the body is thrown away
+        # before the error goes out.
         try:
             async for _ in request.stream():
                 pass

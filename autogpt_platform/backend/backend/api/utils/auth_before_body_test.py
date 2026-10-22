@@ -97,33 +97,36 @@ async def _post(
         {} if "transfer-encoding" in headers else {"content-length": str(len(body))}
     )
     all_headers = {**framing, **headers}
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(k.encode(), v.encode()) for k, v in all_headers.items()],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+    }
     with ExitStack() as stack:
         for name in ("body", "json", "form"):
             stack.enter_context(patch.object(Request, name, spy(name)))
-        await app(
-            {
-                "type": "http",
-                "asgi": {"version": "3.0"},
-                "http_version": "1.1",
-                "method": "POST",
-                "scheme": "http",
-                "path": path,
-                "raw_path": path.encode(),
-                "query_string": b"",
-                "root_path": "",
-                "headers": [(k.encode(), v.encode()) for k, v in all_headers.items()],
-                "client": ("127.0.0.1", 50000),
-                "server": ("testserver", 80),
-            },
-            receive,
-            send,
-        )
+        try:
+            await app(scope, receive, send)
+        except Exception:
+            # Starlette answers an unhandled error with a 500, then re-raises.
+            if not sent:
+                raise
     start = next(m for m in sent if m["type"] == "http.response.start")
     content = b"".join(m.get("body", b"") for m in sent[1:])
+    is_json = content.startswith(b"{")
     return (
         start["status"],
         {k.decode(): v.decode() for k, v in start["headers"]},
-        json.loads(content),
+        json.loads(content) if is_json else content.decode(),
         received == len(body),
         bool(parsed),
     )
@@ -179,6 +182,22 @@ async def test_a_client_that_leaves_mid_upload_is_still_answered_as_refused():
         {"detail": "Authorization header is missing"},
         False,
     )
+
+
+async def test_an_unexpected_error_in_the_check_still_drains_the_body():
+    """A 500 sent with the body unread could reset the connection as well."""
+    with patch(
+        "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
+        AsyncMock(side_effect=RuntimeError("key type mismatch")),
+    ):
+        status, _, _, drained, parsed = await _post(
+            _app(),
+            "/signed-in",
+            b'{"name": "x"}',
+            {**JSON, "authorization": "Bearer odd"},
+        )
+
+    assert (status, drained, parsed) == (500, True, False)
 
 
 async def test_a_bad_token_gets_the_dependencys_own_401_before_the_body_is_parsed():
