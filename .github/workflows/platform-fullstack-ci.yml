@@ -469,7 +469,9 @@ jobs:
             exit 1
           }
           echo "Waiting for scheduler_server to be ready..."
-          timeout 180 sh -c 'until curl -fsS http://localhost:8003/health_check >/dev/null; do sleep 2; done' || {
+          # Its port is internal (not published to the host), so ask from
+          # inside its own container; the image has Python but no curl.
+          timeout 180 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T scheduler_server python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:8003/health_check\", timeout=5)" >/dev/null 2>&1; do sleep 2; done' || {
             echo "scheduler_server did not become healthy in 180s"
             docker compose -f ../docker-compose.resolved.yml logs --tail=100 scheduler_server
             exit 1
