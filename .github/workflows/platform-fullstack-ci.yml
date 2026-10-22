@@ -559,21 +559,6 @@ jobs:
           docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
             sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
 
-      # Saved once the fresh seed has passed the fixture check, so a later test
-      # failure still leaves the dump for the next run, and a dump missing a
-      # fixture is never published. Pull requests only read it.
-      - name: Set up tests - Push E2E test data to GHCR
-        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-verify.outcome == 'success'
-        continue-on-error: true
-        timeout-minutes: 5
-        working-directory: /tmp
-        run: |
-          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
-          tar -C /tmp -c e2e_test_data.sql | docker import \
-            --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
-            - "$ref"
-          docker push "$ref"
-
       - name: Wait for frontend image build
         wait: [platform-build-frontend]
 
@@ -593,6 +578,7 @@ jobs:
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
 
       - name: Run Playwright E2E suite
+        id: e2e-playwright
         run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} ${{ matrix.suite == 'journeys' && format('--repeat-each={0}', inputs.journeys_repeat_each || 1) || '' }} --retries=0 --trace=retain-on-failure
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
@@ -626,6 +612,7 @@ jobs:
           du -sh /tmp/next-build-cache
 
       - name: Validate Playwright JSON report
+        id: e2e-playwright-report
         if: ${{ always() }}
         # Each leg's floor is pinned in the matrix; raise it when adding tests.
         run: >-
@@ -634,6 +621,21 @@ jobs:
           --min-tests ${{ matrix.min_tests }}
           ${{ matrix.known_failures && '--allow-known-failures' || '' }}
           test-results/results.json
+
+      # The seed logs and skips some failed inserts (graphs, store, fixtures),
+      # so only a dump the whole suite passed on is published. Pull requests
+      # only read it.
+      - name: Push E2E test data to GHCR
+        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-verify.outcome == 'success' && steps.e2e-playwright.outcome == 'success' && steps.e2e-playwright-report.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        working-directory: /tmp
+        run: |
+          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
+          tar -C /tmp -c e2e_test_data.sql | docker import \
+            --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            - "$ref"
+          docker push "$ref"
 
       - name: Validate coverage report
         id: validate-e2e-coverage
