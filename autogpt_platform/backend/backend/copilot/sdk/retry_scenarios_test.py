@@ -2493,6 +2493,53 @@ class TestStreamChatCompletionRetryIntegration:
             assert options.cli_path == "/opt/claude/claude"
 
     @pytest.mark.asyncio
+    async def test_every_attempt_starts_the_cli_without_the_backends_settings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The first attempt and the retry both start the CLI with the
+        backend's own settings blanked, and its configuration kept."""
+        monkeypatch.setenv("DATABASE_URL", "postgresql://app:FAKE@db:5432/app")
+        monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", "7")
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        attempt_options: list = []
+
+        def _client_factory(*args, **kwargs):
+            attempt_options.append(kwargs["options"])
+            if len(attempt_options) == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=_build_transcript(
+                [("user", "[summary]"), ("assistant", "summary reply")]
+            ),
+            client_side_effect=_client_factory,
+        )
+
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for _ in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                pass
+
+        assert len(attempt_options) == 2
+        for options in attempt_options:
+            assert options.env["DATABASE_URL"] == ""
+            assert "CLAUDE_CODE_MAX_RETRIES" not in options.env
+            assert "PATH" not in options.env
+
+    @pytest.mark.asyncio
     async def test_turn_stops_before_the_cli_starts_when_it_is_too_old(self):
         """An older CLI ignores ``verbatim_prompts`` without an error, so the
         turn fails before any CLI process starts."""

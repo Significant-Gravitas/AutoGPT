@@ -403,6 +403,26 @@ async def test_sdk_mode_sends_slash_prompt_as_text() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_mode_starts_the_cli_with_the_users_key_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The run keeps the user's key and the CLI's configuration; the
+    backend's own settings and the host's Claude login are blanked."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://app:FAKE@db:5432/app")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-FAKE-host")
+    monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", "7")
+    cli_check = MagicMock(return_value="/opt/claude/claude")
+    _, seen = await _run_sdk_mode("hello", cli_check)
+
+    options, _prompt = seen
+    assert isinstance(options, ClaudeAgentOptions)
+    assert options.env["ANTHROPIC_API_KEY"] == "mock-anthropic-key"
+    assert options.env["DATABASE_URL"] == ""
+    assert options.env["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+    assert "CLAUDE_CODE_MAX_RETRIES" not in options.env
+
+
+@pytest.mark.asyncio
 async def test_sdk_mode_does_not_start_a_cli_that_is_too_old() -> None:
     """An older CLI ignores ``verbatim_prompts`` without an error, so the
     block reports an error instead of starting it."""

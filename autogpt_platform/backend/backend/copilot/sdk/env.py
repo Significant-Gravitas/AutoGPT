@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from backend.copilot.config import ChatConfig
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
+from backend.copilot.sdk.launch_env import CLAUDE_OAUTH_BLANK
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -128,8 +129,7 @@ def build_sdk_env(
             "ANTHROPIC_BASE_URL": codex_gateway_url.rstrip("/"),
             "ANTHROPIC_AUTH_TOKEN": codex_gateway_token,
             "ANTHROPIC_API_KEY": "",
-            "CLAUDE_CODE_OAUTH_TOKEN": "",
-            "CLAUDE_CODE_REFRESH_TOKEN": "",
+            **CLAUDE_OAUTH_BLANK,
             "NO_PROXY": no_proxy,
             "no_proxy": no_proxy,
         }
@@ -160,10 +160,7 @@ def build_sdk_env(
     elif not config.openrouter_active:
         # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
         # rather than subscription auth if the container has those tokens set.
-        env = {
-            "CLAUDE_CODE_OAUTH_TOKEN": "",
-            "CLAUDE_CODE_REFRESH_TOKEN": "",
-        }
+        env = dict(CLAUDE_OAUTH_BLANK)
 
     # --- Mode 3: OpenRouter proxy ---
     else:
@@ -174,8 +171,8 @@ def build_sdk_env(
             "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
             "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
-            "CLAUDE_CODE_OAUTH_TOKEN": "",  # prevent OAuth override of ANTHROPIC_AUTH_TOKEN
-            "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
+            # No OAuth login to override ANTHROPIC_AUTH_TOKEN or refresh from.
+            **CLAUDE_OAUTH_BLANK,
         }
 
         # Inject broadcast headers: OpenRouter Broadcast skips the

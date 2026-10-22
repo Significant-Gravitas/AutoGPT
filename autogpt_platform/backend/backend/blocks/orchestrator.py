@@ -29,6 +29,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
 from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
 from backend.copilot.sdk.env import config as copilot_config
+from backend.copilot.sdk.launch_env import CLAUDE_OAUTH_BLANK, launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -1745,10 +1746,11 @@ class OrchestratorBlock(Block):
                 "ANTHROPIC_BASE_URL": or_base,
                 "ANTHROPIC_AUTH_TOKEN": api_key,
                 "ANTHROPIC_API_KEY": api_key,
+                **CLAUDE_OAUTH_BLANK,
             }
         else:
             # Direct Anthropic key
-            sdk_env = {"ANTHROPIC_API_KEY": api_key}
+            sdk_env = {"ANTHROPIC_API_KEY": api_key, **CLAUDE_OAUTH_BLANK}
 
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
@@ -1841,7 +1843,7 @@ class OrchestratorBlock(Block):
             options.cli_path = await asyncio.to_thread(
                 require_verbatim_prompts_cli, options.cli_path
             )
-            async with ClaudeSDKClient(options=options) as client:
+            async with ClaudeSDKClient(options=launch_options(options)) as client:
                 await client.query(user_message)
 
                 msg_iter = client.receive_response().__aiter__()

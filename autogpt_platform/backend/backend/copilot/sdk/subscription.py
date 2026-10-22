@@ -11,6 +11,8 @@ import os
 import shutil
 import subprocess
 
+from .launch_env import inherited_env, kept_launch_env
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,6 +98,7 @@ def validate_subscription() -> None:
         capture_output=True,
         text=True,
         timeout=10,
+        env=inherited_env(),
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -114,7 +117,7 @@ def validate_subscription() -> None:
         text=True,
         timeout=10,
         env={
-            **os.environ,
+            **kept_launch_env(),
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
