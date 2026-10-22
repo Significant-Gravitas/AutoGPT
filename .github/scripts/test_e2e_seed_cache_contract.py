@@ -9,6 +9,7 @@ SEED_KEY_STEP = "Set up tests - Compute E2E test data cache key"
 SEED_PULL_STEP = "Set up tests - Pull cached E2E test data from GHCR"
 SEED_RESTORE_STEP = "Set up tests - Load cached E2E test data"
 SEED_CREATE_STEP = "Set up tests - Create E2E test data"
+SEED_VERIFY_STEP = "Set up tests - Verify seeded credentials with fresh encryption key"
 SEED_SAVE_STEP = "Set up tests - Push E2E test data to GHCR"
 
 
@@ -210,15 +211,24 @@ class E2ESeedCacheContractTests(unittest.TestCase):
             re.findall(r"^\s+if: (.+)$", save, re.M),
             [
                 "matrix.seed && env.WRITE_BUILD_CACHE == 'true' && "
-                "steps.e2e-seed-create.outcome == 'success'"
+                "steps.e2e-seed-create.outcome == 'success' && "
+                "steps.e2e-seed-verify.outcome == 'success'"
             ],
         )
         self.assertIn("continue-on-error: true", save)
         self.assertIn('docker push "$ref"', save)
         self.assertIn("id: e2e-seed-create", _step(workflow, SEED_CREATE_STEP))
+        self.assertIn("id: e2e-seed-verify", _step(workflow, SEED_VERIFY_STEP))
+        # The seed swallows some fixture insert failures, so a dump is only
+        # published once the fixture check has passed on it; a broken dump
+        # would otherwise fail every run that restores it.
         self.assertLess(
-            workflow.index(f"- name: {SEED_CREATE_STEP}\n"),
+            workflow.index(f"- name: {SEED_VERIFY_STEP}\n"),
             workflow.index(f"- name: {SEED_SAVE_STEP}\n"),
+        )
+        self.assertLess(
+            workflow.index(f"- name: {SEED_SAVE_STEP}\n"),
+            workflow.index("- name: Run Playwright E2E suite\n"),
         )
 
 

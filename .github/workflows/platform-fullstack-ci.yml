@@ -551,10 +551,19 @@ jobs:
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
-      # Saved as soon as seeding succeeds, so a later test failure still
-      # leaves the dump for the next run. Pull requests only read it.
+      - name: Set up tests - Verify seeded credentials with fresh encryption key
+        id: e2e-seed-verify
+        if: matrix.seed
+        run: |
+          docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
+            sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
+
+      # Saved once the fresh seed has passed the fixture check, so a later test
+      # failure still leaves the dump for the next run, and a dump missing a
+      # fixture is never published. Pull requests only read it.
       - name: Set up tests - Push E2E test data to GHCR
-        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success'
+        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-verify.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 5
         working-directory: /tmp
@@ -564,13 +573,6 @@ jobs:
             --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             - "$ref"
           docker push "$ref"
-
-      - name: Set up tests - Verify seeded credentials with fresh encryption key
-        if: matrix.seed
-        run: |
-          docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
-          docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
-            sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
 
       - name: Wait for frontend image build
         wait: [platform-build-frontend]
