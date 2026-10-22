@@ -248,6 +248,13 @@ jobs:
           sudo systemctl restart docker
           docker info --format 'Registry mirrors: {{.RegistryConfig.Mirrors}}'
 
+      # PROOF ONLY (reverted before merge): with Docker Hub unreachable, every pull must come from the mirror.
+      - name: "PROOF ONLY - Block Docker Hub"
+        run: |
+          echo "0.0.0.0 registry-1.docker.io auth.docker.io index.docker.io production.cloudflare.docker.com" | sudo tee -a /etc/hosts
+          if curl -sS --max-time 10 -o /dev/null https://registry-1.docker.io/v2/; then echo "Docker Hub still reachable" >&2; exit 1; fi
+          echo "Docker Hub is unreachable from this runner"
+
       - name: Set up Platform - Pull BuildKit image
         id: buildkit-image
         working-directory: /tmp
@@ -349,6 +356,7 @@ jobs:
             network=host
           # BuildKit pulls the Dockerfiles' base images itself, not through the daemon
           buildkitd-config-inline: |
+            debug = true
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
 
@@ -623,6 +631,17 @@ jobs:
             autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           if-no-files-found: error
           retention-days: 3
+
+      - name: "PROOF ONLY - Which registry served BuildKit"
+        if: always()
+        run: |
+          builder=$(docker ps --filter name=buildx_buildkit --format '{{.Names}}' | head -1)
+          echo "BuildKit container: $builder"
+          echo "Its /etc/hosts entries for Docker Hub:"; docker exec "$builder" grep docker.io /etc/hosts || echo "  none"
+          logs=$(docker logs "$builder" 2>&1)
+          echo "Requests to mirror.gcr.io: $(grep -c 'url="https://mirror.gcr.io/' <<<"$logs" || true)"
+          echo "Requests to registry-1.docker.io: $(grep -c 'url="https://registry-1.docker.io/' <<<"$logs" || true)"
+          grep -o 'url="https://mirror.gcr.io/v2/[^/]*/[^/]*/manifests/[^"?]*' <<<"$logs" | sort | uniq -c || true
 
       - name: Print Final Docker Compose logs
         if: always()
