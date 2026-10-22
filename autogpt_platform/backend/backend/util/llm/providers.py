@@ -837,14 +837,43 @@ async def _call_ollama(
     if temperature is not None:
         options["temperature"] = temperature
 
+    response = await _send_ollama_chat(
+        host,
+        is_trusted=is_trusted,
+        timeout_seconds=timeout_seconds,
+        model=model,
+        messages=messages,
+        json_format=force_json_output,
+        options=options,
+    )
+    return ProviderResponse(
+        content=response.message.content or "",
+        prompt_tokens=response.prompt_eval_count or 0,
+        completion_tokens=response.eval_count or 0,
+        raw_response=response,
+    )
+
+
+async def _send_ollama_chat(
+    host: str,
+    *,
+    is_trusted: bool,
+    timeout_seconds: float,
+    model: str,
+    messages: list[dict],
+    json_format: bool,
+    options: dict[str, Any],
+) -> ollama.ChatResponse:
+    """Send one chat to the checked *host*, connecting the way its trust
+    allows."""
     client_kwargs: dict[str, Any] = {
         "host": host,
         "timeout": request_timeout(timeout_seconds),
         "event_hooks": {"request": [_scope_ollama_key]},
     }
     if not is_trusted:
-        # The host passed the address check above, but ollama.AsyncClient hands
-        # the name to httpx, which resolves it again to connect and follows
+        # The host passed the address check, but ollama.AsyncClient hands the
+        # name to httpx, which resolves it again to connect and follows
         # redirects on its own: a changed DNS answer or a redirect could still
         # reach an internal address. The egress proxy checks every address it
         # dials, on every hop. Trusted operator hosts connect without it: they
@@ -853,11 +882,11 @@ async def _call_ollama(
 
     client = ollama.AsyncClient(**client_kwargs)
     try:
-        response = await client.chat(
+        return await client.chat(
             model=model,
             messages=messages,
             stream=False,
-            format="json" if force_json_output else None,
+            format="json" if json_format else None,
             options=options,
         )
     except httpx.ProxyError as e:
@@ -868,12 +897,6 @@ async def _call_ollama(
             f"Could not connect to Ollama at {host}: it is unreachable or "
             "not on a public address."
         ) from e
-    return ProviderResponse(
-        content=response.message.content or "",
-        prompt_tokens=response.prompt_eval_count or 0,
-        completion_tokens=response.eval_count or 0,
-        raw_response=response,
-    )
 
 
 def _trusted_ollama_hostnames() -> list[str]:
