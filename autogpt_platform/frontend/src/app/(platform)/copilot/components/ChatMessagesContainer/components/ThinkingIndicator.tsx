@@ -2,8 +2,6 @@ import { useNowSecond } from "@/hooks/useNowSecond";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
 import { DrawnLineLoader } from "../../DrawnLineLoader/DrawnLineLoader";
-import { isDrawnLineLoaderEnabled } from "../../DrawnLineLoader/isDrawnLineLoaderEnabled";
-import { PixelGridLoader } from "../../PixelGridLoader/PixelGridLoader";
 import { SwapText } from "../../ToolChain/SwapText";
 
 /** Only show elapsed time after this many seconds. */
@@ -26,12 +24,6 @@ interface Props {
    * here: they describe plumbing, not anything the user needs to know.
    */
   statusMessage?: string | null;
-  /**
-   * Force a loader style. Left unset, the build-time experiment flag decides
-   * (see `isDrawnLineLoaderEnabled`; off means the pixel grid). Only the
-   * styleguide sets this, to show both side by side.
-   */
-  loader?: "pixel" | "drawn";
 }
 
 export function ThinkingIndicator({
@@ -39,7 +31,6 @@ export function ThinkingIndicator({
   startedAtMs,
   elapsedSeconds = 0,
   statusMessage,
-  loader,
 }: Props) {
   const hasClock = startedAtMs !== null && startedAtMs !== undefined;
   const nowMs = useNowSecond(active && hasClock);
@@ -47,8 +38,6 @@ export function ThinkingIndicator({
     ? getElapsedSeconds(startedAtMs, nowMs)
     : elapsedSeconds;
   const showTime = active && seconds >= SHOW_TIME_AFTER_SECONDS;
-  const showDrawn =
-    (loader ?? (isDrawnLineLoaderEnabled() ? "drawn" : "pixel")) === "drawn";
 
   return (
     <span
@@ -56,12 +45,7 @@ export function ThinkingIndicator({
       aria-live="polite"
       className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600"
     >
-      {showDrawn ? (
-        // 16px keeps the row the same height as the 15px pixel grid.
-        <DrawnLineLoader className="text-zinc-600" size={16} />
-      ) : (
-        <PixelGridLoader className="text-zinc-600" />
-      )}
+      <DrawnLineLoader className="text-zinc-600" size={16} />
       <SwapText
         text={statusMessage ?? "Thinking…"}
         shimmer
