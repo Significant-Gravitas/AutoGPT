@@ -429,7 +429,9 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Set up tests - Install browser 'chromium'
-        run: pnpm playwright install --with-deps chromium
+        # No --with-deps: the runner image already has Chromium's libraries, and the
+        # apt fetch it adds took up to 16 minutes when Ubuntu's mirror was slow.
+        run: pnpm playwright install chromium
 
       - name: Wait for backend image build and database
         wait: [platform-build-backend, database]
