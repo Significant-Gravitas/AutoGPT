@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from pydantic import SecretStr
 
@@ -132,12 +134,15 @@ def test_bannerbear_base_cost_is_three_credits_on_the_platform_key(monkeypatch):
         title="Bannerbear API Key",
     )
     monkeypatch.setattr(bannerbear, "default_credentials", [platform_key])
-    monkeypatch.delitem(BLOCK_COSTS, BannerbearTextOverlayBlock, raising=False)
-    register_provider_costs_for_block(BannerbearTextOverlayBlock)
     block = BannerbearTextOverlayBlock()
 
-    platform, _ = block_usage_cost(block, {"credentials": {"id": platform_key.id}})
-    own_key, _ = block_usage_cost(block, {"credentials": {"id": "user-own-key"}})
+    # patch.dict restores BLOCK_COSTS afterwards, including when the session's
+    # block load registered no Bannerbear entry (no BANNERBEAR_API_KEY set).
+    with patch.dict(BLOCK_COSTS):
+        BLOCK_COSTS.pop(BannerbearTextOverlayBlock, None)
+        register_provider_costs_for_block(BannerbearTextOverlayBlock)
+        platform, _ = block_usage_cost(block, {"credentials": {"id": platform_key.id}})
+        own_key, _ = block_usage_cost(block, {"credentials": {"id": "user-own-key"}})
 
     assert platform == 3
     assert own_key == 0
