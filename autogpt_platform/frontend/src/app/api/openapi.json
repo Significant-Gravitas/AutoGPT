@@ -26251,6 +26251,14 @@
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Code"
+          },
+          "error_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Reason"
+          },
+          "transcript_words": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Transcript Words"
           }
         },
         "type": "object",
