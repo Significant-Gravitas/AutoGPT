@@ -116,7 +116,10 @@ class EmailSender:
         """Send a one-off transactional email (e.g. Better Auth password-reset
         and verification links) with no notification templating or preference
         gating. Raises if the Postmark client is not configured so callers can
-        surface the failure instead of silently dropping an auth email."""
+        surface the failure instead of silently dropping an auth email.
+        Fake preview recipients are intentionally skipped."""
+        if _suppress_preview_email(user_email):
+            return
         if not self.postmark:
             raise RuntimeError("Postmark is not configured; cannot send email")
         self.postmark.emails.send(
@@ -169,6 +172,8 @@ class EmailSender:
         attachments: list[dict[str, str]] | None = None,
         tracked: bool = True,
     ) -> None:
+        if _suppress_preview_email(user_email):
+            return
         if not self.postmark:
             logger.warning("Email tried to send without Postmark configured")
             return
@@ -189,6 +194,14 @@ class EmailSender:
             Tag=tag,
             **_tracking(tracked and settings.config.postmark_track_opens_and_clicks),
         )
+
+
+def _suppress_preview_email(user_email: str) -> bool:
+    """Preview accounts have fake addresses that would damage sender reputation."""
+    if not user_email.strip().lower().endswith("@previews.agpt.co"):
+        return False
+    logger.info("Skipping transactional email to the preview recipient domain")
+    return True
 
 
 def _tracking(enabled: bool) -> dict[str, Any]:
