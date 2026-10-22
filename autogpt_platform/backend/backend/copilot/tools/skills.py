@@ -1929,6 +1929,7 @@ async def invalidate_skills_index_for_path(user_id: str, path: str) -> None:
 
 _OWNER_FOLDER = re.compile(r"^/(?:experts/([^/]+)/)?skills/")
 
+
 async def saved_skill_limit_reached(
     user_id: str, expert_id: str | None, name: str
 ) -> bool:
