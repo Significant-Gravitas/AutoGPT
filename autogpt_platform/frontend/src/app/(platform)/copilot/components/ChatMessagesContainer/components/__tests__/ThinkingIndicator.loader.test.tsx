@@ -51,6 +51,15 @@ describe("ThinkingIndicator loader selection", () => {
     expect(loaders(container).drawn).not.toBeNull();
   });
 
+  it("lets loader='pixel' override an enabled flag (styleguide)", () => {
+    vi.stubEnv("NEXT_PUBLIC_COPILOT_DRAWN_LINE_LOADER", "true");
+    const { container } = render(<ThinkingIndicator active loader="pixel" />);
+    const { pixelGrid, drawn } = loaders(container);
+
+    expect(pixelGrid).not.toBeNull();
+    expect(drawn).toBeNull();
+  });
+
   it("keeps the screen reader output the same either way", () => {
     for (const loader of ["pixel", "drawn"] as const) {
       const { unmount } = render(<ThinkingIndicator active loader={loader} />);
