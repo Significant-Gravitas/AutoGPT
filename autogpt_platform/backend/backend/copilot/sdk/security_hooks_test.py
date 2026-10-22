@@ -1,8 +1,8 @@
 """Tests for SDK security hooks — workspace paths, tool access, and deny messages.
 
 These are pure unit tests with no external dependencies (no SDK, no DB, no server).
-They validate that the security hooks correctly block unauthorized paths,
-tool access, and dangerous input patterns.
+They validate that the security hooks correctly block unauthorized paths
+and tool access.
 """
 
 import logging
@@ -223,21 +223,60 @@ def test_bash_builtin_always_blocked():
     assert _is_denied(result)
 
 
-# -- Dangerous patterns ------------------------------------------------------
+# -- Prose that names a command ----------------------------------------------
 
 
-def test_dangerous_pattern_blocked():
-    result = _validate_tool_access(
-        "SomeTool", {"cmd": "sudo rm -rf /"}, allowed_tools={"SomeTool"}
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.parametrize("use_e2b", [False, True])
+@pytest.mark.parametrize(
+    "tool_name, tool_input",
+    [
+        (
+            "Agent",
+            {
+                "description": "Audit the deploy script",
+                "prompt": "Check whether deploy.sh calls sudo or subprocess.run",
+            },
+        ),
+        (
+            "Task",
+            {
+                "description": "Find risky calls",
+                "prompt": "List every os.system and rm -rf in the repo",
+            },
+        ),
+        (
+            "TodoWrite",
+            {
+                "todos": [
+                    {
+                        "content": "Replace the sudo subprocess call",
+                        "status": "pending",
+                        "activeForm": "Replacing the sudo subprocess call",
+                    }
+                ]
+            },
+        ),
+        (
+            "mcp__copilot__bash_exec",
+            {"command": "sudo pip install requests && python -c 'import subprocess'"},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_command_text_is_allowed_for_permitted_tools(
+    tool_name, tool_input, use_e2b
+):
+    """Command words are not a substitute for tool authorization."""
+    pre = create_security_hooks(
+        "u1", sdk_cwd=SDK_CWD, allowed_tools=get_copilot_tool_names(use_e2b=use_e2b)
+    )["PreToolUse"][0].hooks[0]
+    result = await pre(
+        {"tool_name": tool_name, "tool_input": tool_input},
+        tool_use_id=None,
+        context={},
     )
-    assert _is_denied(result)
-
-
-def test_subprocess_pattern_blocked():
-    result = _validate_tool_access(
-        "SomeTool", {"code": "subprocess.run(...)"}, allowed_tools={"SomeTool"}
-    )
-    assert _is_denied(result)
+    assert not _is_denied(result)
 
 
 # -- User isolation ----------------------------------------------------------

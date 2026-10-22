@@ -873,6 +873,9 @@ class ExpertOnboardingStep(BaseModel):
     # Tappable answers. The card always offers a free-text escape as well, so
     # an empty list simply means "this one is open-ended".
     options: list[str] = Field(default_factory=list)
+    # Several of `options` may be picked. Only ever set alongside options:
+    # there is nothing to multi-select in a free-text question.
+    allow_multiple: bool = False
 
 
 class ExpertOnboardingResponse(ToolResponseBase):
