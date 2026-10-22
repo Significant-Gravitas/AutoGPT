@@ -23,7 +23,7 @@ from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.extract_nodes import ExtractedEntities
 from graphiti_core.prompts.models import Message
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from scripted_model.scripts import parse_script
 
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
@@ -73,7 +73,7 @@ CHAT_TOOLS = [
 
 class StructuredSummary(BaseModel):
     label: str
-    count: int
+    count: int = Field(ge=1)
 
 
 class StructuredExtraction(BaseModel):
@@ -202,7 +202,7 @@ def test_responses_parse_returns_schema_valid_structured_output(scripted_model, 
     content = response.output[0].content[0]
     assert content.parsed == StructuredExtraction(
         entities=[],
-        summary=StructuredSummary(label="", count=0),
+        summary=StructuredSummary(label="", count=1),
         accepted=False,
     )
     assert json.loads(response.output_text) == content.parsed.model_dump()
