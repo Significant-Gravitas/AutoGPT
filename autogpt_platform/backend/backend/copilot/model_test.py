@@ -26,6 +26,7 @@ from backend.util.exceptions import NotFoundError, RedisError
 from .model import (
     ChatMessage,
     ChatSession,
+    ChatSessionSaveFields,
     Usage,
     _save_session_to_db,
     append_and_save_message,
@@ -335,6 +336,40 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
                 loaded.tool_calls is not None
             ), f"Tool calls missing for {orig.role} message"
             assert len(orig.tool_calls) == len(loaded.tool_calls)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_session_fields_reach_the_db_with_and_without_new_rows(
+    setup_test_user, test_user_id
+):
+    """A save with rows writes the session's fields in their transaction, one
+    with none writes them on their own; a reload from the database sees both."""
+
+    async def reload() -> ChatSession:
+        await invalidate_session_cache(s.session_id)
+        loaded = await get_chat_session(s.session_id, s.user_id)
+        assert loaded is not None
+        return loaded
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = [ChatMessage(role="user", content="hi")]
+    s = await upsert_chat_session(s)
+
+    s.messages.append(ChatMessage(role="assistant", content="hello"))
+    s.successful_agent_runs = {"graph-1": 1}
+    s.usage.append(Usage(prompt_tokens=100, completion_tokens=20, total_tokens=120))
+    await upsert_chat_session(s)
+    loaded = await reload()
+    assert [m.content for m in loaded.messages] == ["hi", "hello"]
+    assert loaded.successful_agent_runs == {"graph-1": 1}
+    assert [(u.prompt_tokens, u.completion_tokens) for u in loaded.usage] == [(100, 20)]
+
+    s.successful_agent_schedules = {"graph-2": 1}
+    await upsert_chat_session(s)
+    loaded = await reload()
+    assert len(loaded.messages) == 2
+    assert loaded.successful_agent_schedules == {"graph-2": 1}
+    assert loaded.successful_agent_runs == {"graph-1": 1}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1373,6 +1408,103 @@ async def test_save_session_to_db_persists_rehomed_tenancy_and_credentials(
     assert update["organization_id"] == "current-personal-org"
     assert update["team_id"] is None
     assert update["update_tenancy"] is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_save_with_new_messages_writes_the_session_fields_with_them(
+    mocker: MockerFixture,
+) -> None:
+    """One write per message save: the session's fields ride in the rows'
+    transaction rather than in an update of their own ahead of it."""
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="hi", sequence=0),
+        ChatMessage(role="assistant", content="hello"),
+    )
+    session.credentials = {"github": {"id": "cred-1"}}
+    session.successful_agent_runs = {"graph-1": 2}
+    session.usage = [
+        Usage(prompt_tokens=100, completion_tokens=20, total_tokens=120),
+        Usage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
+    ]
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=1)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=1, skip_existence_check=True
+    )
+
+    mock_db.update_chat_session.assert_not_awaited()
+    sent = mock_db.add_chat_messages_batch.await_args.kwargs["session_fields"]
+    assert sent == ChatSessionSaveFields(
+        credentials={"github": {"id": "cred-1"}},
+        successful_agent_runs={"graph-1": 2},
+        successful_agent_schedules={},
+        total_prompt_tokens=105,
+        total_completion_tokens=21,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_save_with_nothing_new_still_writes_the_session_fields(
+    mocker: MockerFixture,
+) -> None:
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="hi", sequence=0)
+    )
+    session.successful_agent_runs = {"graph-1": 3}
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=1)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=1, skip_existence_check=True
+    )
+
+    mock_db.add_chat_messages_batch.assert_not_awaited()
+    update = mock_db.update_chat_session.await_args.kwargs
+    assert update["successful_agent_runs"] == {"graph-1": 3}
+    assert "update_tenancy" not in update
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_scope_change_writes_the_session_before_its_new_rows(
+    mocker: MockerFixture,
+) -> None:
+    """A tenancy save keeps its own update, first, as before: riding with the
+    rows, a database manager older than ``session_fields`` would drop it."""
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="hi", sequence=0),
+        ChatMessage(role="assistant", content="hello"),
+    )
+    session.organization_id = "personal-org"
+    writes: list[tuple[str, dict]] = []
+
+    async def _update_session(**kwargs) -> None:
+        writes.append(("session", kwargs))
+
+    async def _add_rows(**kwargs) -> int:
+        writes.append(("rows", kwargs))
+        return 1
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock(side_effect=_update_session)
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(side_effect=_add_rows)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session,
+        existing_message_count=1,
+        skip_existence_check=True,
+        persist_tenancy=True,
+    )
+
+    assert [kind for kind, _ in writes] == ["session", "rows"]
+    assert writes[0][1]["update_tenancy"] is True
+    assert writes[0][1]["organization_id"] == "personal-org"
+    assert writes[1][1]["session_fields"] is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

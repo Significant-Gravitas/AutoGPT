@@ -1085,6 +1085,16 @@ async def upsert_chat_session(
         return session
 
 
+class ChatSessionSaveFields(BaseModel):
+    """The session columns every save rewrites from its copy of the session."""
+
+    credentials: dict[str, Any]
+    successful_agent_runs: dict[str, Any]
+    successful_agent_schedules: dict[str, Any]
+    total_prompt_tokens: int
+    total_completion_tokens: int
+
+
 async def _save_session_to_db(
     session: ChatSession,
     existing_message_count: int,
@@ -1118,25 +1128,13 @@ async def _save_session_to_db(
             )
             existing_message_count = 0
 
-    # Calculate total tokens from usage
-    total_prompt = sum(u.prompt_tokens for u in session.usage)
-    total_completion = sum(u.completion_tokens for u in session.usage)
-
-    update_kwargs: dict[str, Any] = {
-        "session_id": session.session_id,
-        "credentials": session.credentials,
-        "successful_agent_runs": session.successful_agent_runs,
-        "successful_agent_schedules": session.successful_agent_schedules,
-        "total_prompt_tokens": total_prompt,
-        "total_completion_tokens": total_completion,
-    }
-    if persist_tenancy:
-        update_kwargs.update(
-            organization_id=session.organization_id,
-            team_id=session.team_id,
-            update_tenancy=True,
-        )
-    await db.update_chat_session(**update_kwargs)
+    fields = ChatSessionSaveFields(
+        credentials=session.credentials,
+        successful_agent_runs=session.successful_agent_runs,
+        successful_agent_schedules=session.successful_agent_schedules,
+        total_prompt_tokens=sum(u.prompt_tokens for u in session.usage),
+        total_completion_tokens=sum(u.completion_tokens for u in session.usage),
+    )
 
     # Identify unsaved messages.  Two cases:
     #
@@ -1154,6 +1152,25 @@ async def _save_session_to_db(
         new_messages = list(session.messages)
     else:
         new_messages = [m for m in session.messages if m.sequence is None]
+
+    # New rows carry the session's fields into their own transaction, so a save
+    # with messages is one write instead of two. A scope change keeps its own
+    # write ahead of them: it must not rely on a database manager that predates
+    # ``session_fields`` (an older one drops fields it doesn't know).
+    rows_carry_fields = bool(new_messages) and not persist_tenancy
+    if not rows_carry_fields:
+        update_kwargs: dict[str, Any] = {
+            "session_id": session.session_id,
+            **fields.model_dump(),
+        }
+        if persist_tenancy:
+            update_kwargs.update(
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                update_tenancy=True,
+            )
+        await db.update_chat_session(**update_kwargs)
+
     if new_messages:
         messages_data = []
         for msg in new_messages:
@@ -1197,6 +1214,7 @@ async def _save_session_to_db(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
+            session_fields=fields if rows_carry_fields else None,
         )
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
