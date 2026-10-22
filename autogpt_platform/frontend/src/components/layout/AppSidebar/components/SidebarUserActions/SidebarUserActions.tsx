@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
@@ -19,7 +20,8 @@ export function SidebarUserActions() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const logoutInProgress = isLogoutInProgress();
-  const dynamicMenuItems = getAccountMenuItems(user?.role, true);
+  const isBillingEnabled = useIsBillingEnabled();
+  const dynamicMenuItems = getAccountMenuItems(user?.role, isBillingEnabled);
 
   const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
     {
@@ -43,7 +45,6 @@ export function SidebarUserActions() {
       avatarSrc={profile?.avatar_url ?? ""}
       menuItemGroups={dynamicMenuItems}
       isLoading={isLoadingProfile}
-      newLayout
       side="top"
       align="start"
     />

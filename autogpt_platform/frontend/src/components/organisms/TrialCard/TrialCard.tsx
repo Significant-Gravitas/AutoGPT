@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
+import { TrialCanceledDialog } from "./TrialCanceledDialog/TrialCanceledDialog";
 import { TrialOffer } from "./TrialOffer";
 import { TrialStatus } from "./TrialStatus";
 import { useTrialCard } from "./useTrialCard";
@@ -29,9 +30,15 @@ export function TrialCardContent({
     error,
     retry,
     isStarting,
+    isBlocked,
     isCanceling,
+    isResuming,
     startTrial,
     cancelTrial,
+    resumeTrial,
+    showCanceledDialog,
+    dismissCanceledDialog,
+    subscribeNow,
   } = controller;
   const isBilling = returnTo === "billing";
   if (isLoading)
@@ -57,6 +64,7 @@ export function TrialCardContent({
         <TrialOffer
           trial={trial}
           isStarting={isStarting}
+          isBlocked={isBlocked}
           onStart={startTrial}
         />
       ) : (
@@ -65,6 +73,8 @@ export function TrialCardContent({
           trial={trial}
           isCanceling={isCanceling}
           onCancel={cancelTrial}
+          isResuming={isResuming}
+          onResume={resumeTrial}
         />
       )}
       {error ? (
@@ -72,22 +82,28 @@ export function TrialCardContent({
           {error}
         </p>
       ) : null}
+      <TrialCanceledDialog
+        trial={trial}
+        isOpen={showCanceledDialog}
+        isResuming={isResuming}
+        onResume={resumeTrial}
+        onSubscribe={subscribeNow}
+        onClose={dismissCanceledDialog}
+      />
     </>
   );
   if (isBilling)
     return (
       <section
         aria-label="AutoGPT trial"
-        className="flex w-full flex-col gap-2"
+        className="flex w-full flex-col gap-2 py-4"
       >
-        <div className="flex items-center gap-2 px-4">
+        <div className="sr-only">
           <Text variant="body-medium" as="span" className="text-textBlack">
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>
-        <div className="rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-          {body}
-        </div>
+        <div className="w-full">{body}</div>
       </section>
     );
   return (

@@ -46,12 +46,7 @@ export function TransactionRow({
           <TransactionActivity transaction={transaction} />
         </td>
         <td className="p-0 sm:px-2 sm:py-4">
-          <Text
-            variant="small"
-            title={posted.full}
-            unmask={false}
-            className="hidden sm:block"
-          >
+          <Text variant="small" title={posted.full} className="hidden sm:block">
             {posted.date}
             <span className="mt-1 block text-zinc-600">{posted.time}</span>
           </Text>
@@ -69,7 +64,6 @@ export function TransactionRow({
             id={`transaction-details-${transaction.id}`}
             variant="ghost"
             size="small"
-            unmask={false}
             className="min-h-11 w-full min-w-0 px-1 text-zinc-600"
             onClick={() => onToggle(transaction.id)}
             aria-label={`${open ? "Close" : "Open"} details for ${activityName(transaction)}, ${posted.date} at ${posted.time}`}
@@ -123,18 +117,17 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
             {name}
           </Link>
         ) : (
-          <Text variant="body-medium" unmask={false} className="break-words">
+          <Text variant="body-medium" className="break-words">
             {name}
           </Text>
         )}
-        <Text variant="small" unmask={false} className="mt-1 text-zinc-600">
+        <Text variant="small" className="mt-1 text-zinc-600">
           {isRunActive(transaction)
             ? statusLabel(transaction.execution_status || "")
             : activityDescription(transaction)}
         </Text>
         <Text
           variant="small"
-          unmask={false}
           title={posted.full}
           className="mt-2 text-zinc-600 sm:hidden"
         >

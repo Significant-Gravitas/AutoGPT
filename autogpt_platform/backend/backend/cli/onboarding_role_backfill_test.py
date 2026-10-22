@@ -1,14 +1,22 @@
 """The role backfill's dry run reports reliable against skipped accounts and
 where each one would go, by count only, and a run that could not write
-everyone fails as a whole after reporting."""
+everyone, in PostHog or MailerLite, fails as a whole after reporting."""
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import click
 import pytest
 from click.testing import CliRunner
 
+from backend.cli import mailerlite_backfill
 from backend.cli import onboarding_role_backfill as cli
+from backend.data import db
+from backend.data import user as user_data
+from backend.notifications import mailerlite_field_backfill as field_backfill
 from backend.notifications import role_backfill
 from backend.notifications.role_backfill import RoleRecord
+from backend.util import settings
 
 
 # The root conftest spins a full test server for every test via an autouse
@@ -16,11 +24,6 @@ from backend.notifications.role_backfill import RoleRecord
 @pytest.fixture(scope="session")
 def server():
     yield None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
 
 
 def test_the_dry_run_report_counts_reliable_and_skipped(capsys):
@@ -43,7 +46,8 @@ def test_the_dry_run_report_counts_reliable_and_skipped(capsys):
     assert "reliable, an exact option in the understanding: 2" in out
     assert "skipped, Other's text or an AutoPilot rewrite: 1" in out
     assert "Roles: Marketing=2, Engineering=1" in out
-    assert "PostHog: 3 persons" in out
+    # PostHog can't be read, so a dry run after a full apply lists them again.
+    assert "PostHog: 3 persons ($set_once; PostHog can't be read" in out
     assert "MailerLite: 1 subscribers to fill in" in out
     assert "already have a role (kept): 1" in out
     assert "placed in Iran or Russia (skipped): 1" in out
@@ -54,7 +58,7 @@ def test_a_complete_run_reports_and_succeeds(capsys):
     cli._finish(5, 0, 2)
     out = capsys.readouterr().out
     assert "5 ok, 0 failed, 2 no longer needed" in out
-    assert "Run the dry run again" in out
+    assert "dry run again to confirm no MailerLite subscriber is left" in out
 
 
 def test_the_command_exits_non_zero_when_anyone_failed(monkeypatch):
@@ -83,3 +87,60 @@ def test_each_record_gets_its_stripe_billing_country():
     ]
     filled = cli._with_billing_countries(records, {"cus_1": "RU", "cus_2": "US"})
     assert [r.billing_country for r in filled] == ["RU", "US", None]
+
+
+@pytest.fixture
+def applied(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """An --apply run with one reliable pick that is not a MailerLite
+    subscriber, so only PostHog is written; returns where it is sent."""
+    # The run reads the opt-out right before each MailerLite write; there are
+    # none here.
+    monkeypatch.setattr(
+        user_data, "is_marketing_opted_out", AsyncMock(return_value=False)
+    )
+    secrets = SimpleNamespace(stripe_api_key="sk_test", posthog_api_key="phc_test")
+    monkeypatch.setattr(settings, "Settings", lambda: SimpleNamespace(secrets=secrets))
+    monkeypatch.setattr(field_backfill, "read_current", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        mailerlite_backfill, "stripe_billing_countries", AsyncMock(return_value={})
+    )
+    monkeypatch.setattr(db, "connect", AsyncMock())
+    monkeypatch.setattr(db, "disconnect", AsyncMock())
+    monkeypatch.setattr(
+        cli,
+        "_records",
+        AsyncMock(
+            return_value=[RoleRecord(user_id="1", email="a@x.io", choice="Marketing")]
+        ),
+    )
+    send = AsyncMock(return_value=0)
+    monkeypatch.setattr(role_backfill, "send_to_posthog", send)
+    return send
+
+
+@pytest.mark.asyncio
+async def test_a_run_posthog_took_in_full_reports_and_succeeds(applied, capsys):
+    await cli._run(apply=True, yes=True)
+    assert "PostHog: 1 sent, 0 failed" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_a_run_posthog_did_not_take_in_full_fails_after_reporting(
+    applied, capsys
+):
+    """So a Job or script never reads a partial run as done."""
+    applied.return_value = 1
+    with pytest.raises(click.ClickException, match="1 PostHog persons"):
+        await cli._run(apply=True, yes=True)
+    assert "PostHog: 0 sent, 1 failed" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_an_applied_run_without_posthog_fails_before_sending(
+    applied, monkeypatch: pytest.MonkeyPatch
+):
+    secrets = SimpleNamespace(stripe_api_key="sk_test", posthog_api_key="")
+    monkeypatch.setattr(settings, "Settings", lambda: SimpleNamespace(secrets=secrets))
+    with pytest.raises(click.ClickException, match="POSTHOG_API_KEY"):
+        await cli._run(apply=True, yes=True)
+    applied.assert_not_awaited()

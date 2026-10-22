@@ -3,35 +3,29 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useHomePage } from "../../useHomePage";
 import { AgentTeam } from "../AgentTeam/AgentTeam";
 import { HomeHeader } from "../HomeHeader/HomeHeader";
 import { NeedsYou } from "../NeedsYou/NeedsYou";
 import { NowNext } from "../NowNext/NowNext";
 import { RecentWork } from "../RecentWork/RecentWork";
-import { useHomePage } from "../../useHomePage";
 
 const SHELL_CLASS = "relative mt-10 px-4 pb-8 pt-6 text-left sm:px-6";
 const CONTENT_CLASS = "relative mx-auto w-full max-w-[1120px]";
 const GRID_CLASS = "grid grid-cols-1 items-start gap-4 xl:grid-cols-12";
 
 export function HomeRecap() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const { dashboard, isLoading, isError, refetch } = useHomePage({
-    enabled: Boolean(enabled) && ready,
-  });
+  const { dashboard, isLoading, isError, refetch } = useHomePage();
 
   useTrackFunnelViewOnce(
     "home_viewed",
-    ready && !isLoading && !isError && Boolean(dashboard) && Boolean(enabled),
+    !isLoading && !isError && Boolean(dashboard),
   );
 
-  if (!ready || isLoading) {
+  if (isLoading) {
     return <HomeSkeleton />;
   }
-  if (!enabled) {
-    return null;
-  }
+
   if (isError || !dashboard) {
     return (
       <section className={SHELL_CLASS}>

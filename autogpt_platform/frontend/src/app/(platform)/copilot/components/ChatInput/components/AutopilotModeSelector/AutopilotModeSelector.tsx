@@ -11,7 +11,11 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
 import type { AutopilotMode } from "../../../../autopilotModeStore";
-import { AUTOPILOT_MODE_OPTIONS, getModeOption } from "./helpers";
+import {
+  AUTOPILOT_MODE_OPTIONS,
+  getModeOption,
+  unsupervisedChatDescription,
+} from "./helpers";
 import { UnsupervisedConfirmDialog } from "./UnsupervisedConfirmDialog";
 import { useAutopilotModeSelector } from "./useAutopilotModeSelector";
 
@@ -28,6 +32,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
     isConfirmOpen,
     confirmUnsupervised,
     cancelUnsupervised,
+    assistantName,
   } = useAutopilotModeSelector({ sessionId, persistedMode });
   const current = getModeOption(mode);
 
@@ -82,6 +87,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
         isOpen={isConfirmOpen}
         onConfirm={confirmUnsupervised}
         onCancel={cancelUnsupervised}
+        description={unsupervisedChatDescription(assistantName)}
       />
     </>
   );

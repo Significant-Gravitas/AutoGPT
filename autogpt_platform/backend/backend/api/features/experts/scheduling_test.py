@@ -128,6 +128,53 @@ async def test_resume_only_mutates_private_expert(mocker) -> None:
 
 
 @pytest.mark.asyncio
+async def test_pausing_an_expert_pauses_its_memory_crons(mocker) -> None:
+    expert_client = mocker.MagicMock()
+    expert_client.update_many = AsyncMock(return_value=1)
+    pause_event_client = mocker.MagicMock()
+    pause_event_client.create = AsyncMock()
+    mocker.patch.object(prisma.models.Expert, "prisma", return_value=expert_client)
+    mocker.patch.object(
+        prisma.models.ExpertPauseEvent, "prisma", return_value=pause_event_client
+    )
+    sync = mocker.patch.object(scheduling, "sync_expert_scope", new=AsyncMock())
+
+    assert await scheduling.pause_expert_schedules("owner", "expert-1", "budget")
+
+    sync.assert_awaited_once_with("owner", "expert-1", active=False)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_pause_leaves_the_memory_crons_alone(mocker) -> None:
+    expert_client = mocker.MagicMock()
+    expert_client.update_many = AsyncMock(return_value=0)
+    mocker.patch.object(prisma.models.Expert, "prisma", return_value=expert_client)
+    sync = mocker.patch.object(scheduling, "sync_expert_scope", new=AsyncMock())
+
+    assert not await scheduling.pause_expert_schedules("owner", "expert-1", "x")
+
+    sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resuming_an_expert_resumes_its_memory_crons(mocker) -> None:
+    expert_client = mocker.MagicMock()
+    expert_client.update_many = AsyncMock(return_value=1)
+    pause_event_client = mocker.MagicMock()
+    pause_event_client.update_many = AsyncMock()
+    mocker.patch.object(prisma.models.Expert, "prisma", return_value=expert_client)
+    mocker.patch.object(
+        prisma.models.ExpertPauseEvent, "prisma", return_value=pause_event_client
+    )
+    mocker.patch.object(scheduling, "reset_weekly_spend", new=AsyncMock())
+    sync = mocker.patch.object(scheduling, "sync_expert_scope", new=AsyncMock())
+
+    assert await scheduling.resume_expert_schedules("owner", "expert-1")
+
+    sync.assert_awaited_once_with("owner", "expert-1", active=True)
+
+
+@pytest.mark.asyncio
 async def test_budget_gate_fails_closed_for_non_private_expert(mocker) -> None:
     expert_client = mocker.MagicMock()
     expert_client.find_first = AsyncMock(return_value=None)

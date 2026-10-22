@@ -1,3 +1,4 @@
+import { withPostHogConfig } from "@posthog/nextjs-config";
 import { withSentryConfig } from "@sentry/nextjs";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
@@ -10,13 +11,26 @@ const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // VERCEL_ENV is server-only. Mirror it into the browser bundle so Sentry can
-  // tag preview deployments as previews rather than as production.
+  // VERCEL_ENV and VERCEL_TARGET_ENV are server-only. Mirror them into the
+  // browser bundle so Sentry and PostHog can tag branch previews as previews
+  // rather than as production, and custom environments (the dev deployment's
+  // `staging`) as themselves.
   env: {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    NEXT_PUBLIC_VERCEL_TARGET_ENV: process.env.VERCEL_TARGET_ENV ?? "",
+    // Sentry initialises in the browser too, so its kill switch must reach it.
+    DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
+    // The build's commit, which Sentry's plugin also names its release, so
+    // PostHog events can be split by deploy.
+    NEXT_PUBLIC_REVISION:
+      process.env.SENTRY_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || "",
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
+  // PostHog's endpoints end in a slash (`/e/`, `/flags/`), so requests on the
+  // PostHog proxy path must reach middleware untouched. Middleware redoes the
+  // trailing-slash redirect for every other path (see src/middleware.ts).
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       {
@@ -177,14 +191,14 @@ const skipSentryPlugin =
   !enableSourceMaps ||
   !process.env.SENTRY_AUTH_TOKEN;
 
-export default skipSentryPlugin
+const configWithSentry = skipSentryPlugin
   ? nextConfig
   : withSentryConfig(nextConfig, {
       // For all available options, see:
       // https://github.com/getsentry/sentry-webpack-plugin#options
 
       org: "significant-gravitas",
-      project: "builder",
+      project: process.env.SENTRY_PROJECT || "builder",
 
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,
@@ -200,11 +214,7 @@ export default skipSentryPlugin
         enabled: true,
       },
 
-      // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-      // This can increase your server load as well as your hosting bill.
-      // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
-      // side errors will fail.
-      tunnelRoute: "/store",
+      // Browser Sentry envelopes use the tunnel in src/lib/sentry-tunnel.ts, relayed by src/middleware.ts.
 
       // No need to hide source maps from generated client bundles
       // since the source is public anyway :)
@@ -227,3 +237,26 @@ export default skipSentryPlugin
       // https://vercel.com/docs/cron-jobs
       automaticVercelMonitors: true,
     });
+
+// Build-only credentials, never NEXT_PUBLIC_ and never in `env` above, so they
+// stay out of the browser bundle. Named apart from the backend's public
+// POSTHOG_API_KEY so the two keys can't be mixed up.
+const postHogUploadConfigured = Boolean(
+  process.env.NODE_ENV === "production" &&
+    enableSourceMaps &&
+    process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY &&
+    process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
+);
+
+export default postHogUploadConfigured
+  ? withPostHogConfig(configWithSentry, {
+      personalApiKey: process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY,
+      projectId: process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+      sourcemaps: {
+        enabled: enableSourceMaps,
+        // Sentry also uploads these maps; neither plugin should delete them first.
+        deleteAfterUpload: false,
+      },
+    })
+  : configWithSentry;

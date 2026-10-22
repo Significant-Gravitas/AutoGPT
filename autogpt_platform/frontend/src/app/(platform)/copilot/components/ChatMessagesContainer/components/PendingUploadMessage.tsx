@@ -9,8 +9,12 @@ import type {
   PendingUploadAttachment,
   PendingUploadSend,
 } from "../../../copilotStreamStore";
-import { classifyArtifact } from "../../ArtifactPanel/helpers";
+import {
+  classifyArtifact,
+  isPreviewableImage,
+} from "../../ArtifactPanel/helpers";
 import { useElapsedTimer } from "../../JobStatsBar/useElapsedTimer";
+import { PendingImageThumbnail } from "./MessageImageThumbnail";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
 interface Props {
@@ -74,6 +78,13 @@ function PendingArtifactCard({ attachment }: CardProps) {
   );
 }
 
+function hasImagePreview(attachment: PendingUploadAttachment) {
+  return (
+    isPreviewableImage(attachment.mediaType) &&
+    Boolean(attachment.file || attachment.url)
+  );
+}
+
 /**
  * Optimistic stand-in for a user message whose local attachments are still
  * uploading. Mirrors the real bubble and attachment cards so the swap to the
@@ -83,6 +94,10 @@ function PendingArtifactCard({ attachment }: CardProps) {
 export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
   const { elapsedSeconds } = useElapsedTimer(true);
   const label = uploadStatusLabel(pendingSend.attachments);
+  const images = pendingSend.attachments.filter(hasImagePreview);
+  const otherAttachments = pendingSend.attachments.filter(
+    (a) => !hasImagePreview(a),
+  );
 
   return (
     <>
@@ -98,7 +113,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
               isCompact
                 ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                 : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-              "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+              "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
             )}
           >
             <div className="whitespace-pre-wrap break-words">
@@ -108,7 +123,18 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         )}
         {pendingSend.attachments.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
-            {pendingSend.attachments.map((attachment, i) => (
+            {images.length > 0 && (
+              <div className="flex flex-wrap justify-end gap-2">
+                {images.map((attachment, i) => (
+                  <PendingImageThumbnail
+                    key={`${attachment.name}-${i}`}
+                    attachment={attachment}
+                    fallback={<PendingArtifactCard attachment={attachment} />}
+                  />
+                ))}
+              </div>
+            )}
+            {otherAttachments.map((attachment, i) => (
               <PendingArtifactCard
                 key={`${attachment.name}-${i}`}
                 attachment={attachment}

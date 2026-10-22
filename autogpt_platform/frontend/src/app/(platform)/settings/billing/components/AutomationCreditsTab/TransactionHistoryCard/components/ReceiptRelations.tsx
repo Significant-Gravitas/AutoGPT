@@ -45,7 +45,7 @@ export function ReceiptRelations({
       )}
       {(related.length > 0 || transaction.related_executions_has_more) && (
         <Text variant="small" className="text-zinc-600">
-          Other agents used by this run
+          Other workflows used by this run
         </Text>
       )}
       {related.map((execution) => (
@@ -83,7 +83,7 @@ function RelatedExecution({
   receiptAsOf: Transaction["receipt_as_of"];
   onSelectRelated: (executionID: string) => void;
 }) {
-  const name = execution.agent_name || "Agent unavailable";
+  const name = execution.agent_name || "Workflow unavailable";
   const loaded = loadedTransactions.find(
     (item) => item.usage_execution_id === execution.execution_id,
   );
@@ -104,7 +104,6 @@ function RelatedExecution({
         <Button
           variant="ghost"
           size="small"
-          unmask={false}
           className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-purple-700"
           onClick={() => onSelectRelated(execution.execution_id)}
         >
@@ -118,9 +117,7 @@ function RelatedExecution({
           {name}
         </Link>
       ) : (
-        <Text variant="small" unmask={false}>
-          {name}
-        </Text>
+        <Text variant="small">{name}</Text>
       )}
       {amount != null && (
         <TransactionAmount amount={amount} className="text-xs" />

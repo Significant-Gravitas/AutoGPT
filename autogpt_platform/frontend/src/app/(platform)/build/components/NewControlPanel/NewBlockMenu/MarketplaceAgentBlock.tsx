@@ -98,7 +98,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             onClick={(e) => e.stopPropagation()}
           >
             <span className="font-sans text-xs leading-5 text-blue-700 underline">
-              Agent page
+              Workflow page
             </span>
             <Icon
               icon={LinkSquare01Icon}

@@ -1,11 +1,11 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useContext, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { postV1CreateCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import type { PostV1CreateCredentialsBody } from "@/app/api/__generated__/models/postV1CreateCredentialsBody";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
@@ -29,7 +29,7 @@ export function useInlineConnectForm({
   const credentialsActions = useContext(CredentialsActionsContext);
   const [isPending, setIsPending] = useState(false);
 
-  async function submit(body: PostV1CreateCredentialsBody) {
+  async function submit(body: Parameters<typeof postV1CreateCredentials>[1]) {
     setIsPending(true);
     try {
       // customMutator throws on non-2xx, so reaching this line means success.
@@ -44,6 +44,10 @@ export function useInlineConnectForm({
       // this; only the success payload carries an id.
       onSuccess("id" in created.data ? created.data : undefined);
     } catch (error) {
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
       toast({
         title: failureTitle,
         description:

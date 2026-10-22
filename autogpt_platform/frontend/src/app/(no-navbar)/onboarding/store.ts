@@ -21,21 +21,18 @@ export interface StepLayout {
 }
 
 export function buildStepLayout({
-  hasIntro = false,
-  hasHire = false,
   hasPaywall = false,
   hasConnect = false,
 }: {
-  hasIntro?: boolean;
-  hasHire?: boolean;
   hasPaywall?: boolean;
   hasConnect?: boolean;
 }): StepLayout {
   const order: (keyof StepLayout)[] = [
-    ...(hasIntro ? (["team", "autopilot"] as const) : []),
+    "team",
+    "autopilot",
     "role",
     "painPoints",
-    ...(hasHire ? (["hire"] as const) : []),
+    "hire",
     ...(hasPaywall ? (["subscription"] as const) : []),
     ...(!hasPaywall && hasConnect ? (["connect"] as const) : []),
     "preparing",
@@ -47,29 +44,9 @@ export function buildStepLayout({
   return layout as StepLayout;
 }
 
-// The three layouts without the intro steps, spelled out for tests and for
-// the store's default.
-export const PAYWALL_LAST_STEPS = {
-  role: 1,
-  painPoints: 2,
-  subscription: 3,
-  preparing: 4,
-} as const;
-
-export const NO_PAYWALL_STEPS = {
-  role: 1,
-  painPoints: 2,
-  preparing: 3,
-} as const;
-
-// Self-host has no paywall; it asks for a model at the end instead — link
-// the ChatGPT plan you already pay for — once the profile is in.
-export const SELF_HOST_STEPS = {
-  role: 1,
-  painPoints: 2,
-  connect: 3,
-  preparing: 4,
-} as const;
+export const PAYWALL_LAST_STEPS = buildStepLayout({ hasPaywall: true });
+export const NO_PAYWALL_STEPS = buildStepLayout({});
+export const SELF_HOST_STEPS = buildStepLayout({ hasConnect: true });
 
 interface OnboardingWizardState {
   currentStep: Step;
@@ -101,7 +78,7 @@ interface OnboardingWizardState {
   setOtherRole(otherRole: string): void;
   togglePainPoint(painPoint: string): void;
   setOtherPainPoint(otherPainPoint: string): void;
-  setSelectedPlan(plan: string): void;
+  setSelectedPlan(plan: string | null): void;
   setSelectedBilling(billing: "monthly" | "yearly"): void;
   applyPricingExperimentBilling(billing: "monthly" | "yearly"): void;
   setSelectedCountryCode(code: string): void;

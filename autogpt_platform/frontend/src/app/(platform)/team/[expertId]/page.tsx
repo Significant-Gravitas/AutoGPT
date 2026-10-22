@@ -13,46 +13,53 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { cn } from "@/lib/utils";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
-  Briefcase01Icon,
+  AiBrain01Icon,
   Calendar03Icon,
   ComputerIcon,
+  DashboardSquare01Icon,
+  Folder01Icon,
   PlugSocketIcon,
   Settings01Icon,
   SparklesIcon,
-  UserIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
-import { notFound, useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
-import { getLastRunLabel } from "../helpers";
-import { ExpertAboutSection } from "./components/ExpertAboutSection";
-import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
+import {
+  getExpertCover,
+  getLastRunLabel,
+  PROFILE_TABS_INDICATOR_CLASS,
+  PROFILE_TABS_LIST_CLASS,
+  PROFILE_TABS_TRIGGER_CLASS,
+} from "../helpers";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
+import { ExpertFilesSection } from "./components/ExpertFilesSection/ExpertFilesSection";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
+import { ExpertModeSection } from "./components/ExpertModeSection/ExpertModeSection";
 import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
+import { ExpertOverview } from "./components/ExpertOverview/ExpertOverview";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
-import { ExpertSummaryCard } from "./components/ExpertSummaryCard";
-import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
+import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
 const MAIN_CLASS =
-  "container min-h-screen max-w-[1180px] space-y-5 pb-16 pt-6 sm:px-8 md:px-12";
+  "container min-h-screen max-w-[1180px] space-y-5 px-4 pb-16 pt-6 sm:px-8 md:px-12";
 
 const TABS = [
-  { value: "basics", label: "Basics", icon: UserIcon },
-  { value: "work", label: "Work", icon: Briefcase01Icon },
+  { value: "basics", label: "Overview", icon: DashboardSquare01Icon },
+  { value: "soul", label: "Soul", icon: AiBrain01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
+  { value: "files", label: "Files", icon: Folder01Icon },
   { value: "computer", label: "Computer", icon: ComputerIcon },
   { value: "integrations", label: "Integrations", icon: PlugSocketIcon },
   { value: "skills", label: "Skills", icon: SparklesIcon },
@@ -62,7 +69,14 @@ const TABS = [
 export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
   const router = useRouter();
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const initialTab = TABS.some((tab) => tab.value === requestedTab)
+    ? (requestedTab as (typeof TABS)[number]["value"])
+    : "basics";
+  const requestedSkill = searchParams.get("skill");
+  const requestedVersion = searchParams.get("version");
+
   const {
     expert,
     isLoading,
@@ -92,10 +106,9 @@ export default function ExpertDetailPage() {
     closeChat,
   } = useExpertDetailPage({
     expertId,
-    enabled: Boolean(enabled) && ready,
   });
 
-  if (!ready || isLoading) {
+  if (isLoading) {
     return (
       <main className={MAIN_CLASS}>
         <Skeleton className="h-20 w-full rounded-xl" />
@@ -103,10 +116,6 @@ export default function ExpertDetailPage() {
         <Skeleton className="h-48 w-full rounded-xl" />
       </main>
     );
-  }
-
-  if (!enabled) {
-    notFound();
   }
 
   if (isError || !expert) {
@@ -150,57 +159,41 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        {/* items-start keeps the tagline level with the Budget label rather
-            than floating between the label and the bar. */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
-          {expert.tagline ? (
-            <Text variant="body" tone="secondary" className="min-w-0 flex-1">
-              {expert.tagline}
-            </Text>
-          ) : null}
-          <ExpertBudgetSection expert={expert} />
-        </div>
+        <ExpertNeedsYouSection expert={expert} />
 
-        <ExpertNeedsYouSection
-          expert={expert}
-          enabled={Boolean(enabled) && ready}
-        />
-
-        <TabsLine variant="compact" defaultValue="basics">
-          <TabsLineList className="overflow-x-auto">
+        <TabsLine data-profile-tabs variant="compact" defaultValue={initialTab}>
+          <TabsLineList
+            flush={false}
+            className={PROFILE_TABS_LIST_CLASS}
+            indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
+          >
             {TABS.map((tab) => (
               <TabsLineTrigger
+                className={PROFILE_TABS_TRIGGER_CLASS}
                 key={tab.value}
                 value={tab.value}
                 icon={tab.icon}
               >
-                {tab.label}
+                <span className="max-sm:sr-only">{tab.label}</span>
               </TabsLineTrigger>
             ))}
           </TabsLineList>
 
           <TabsLineContent value="basics">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)]">
-              <ExpertAboutSection
-                bio={expert.bio}
-                identity={expert.identity}
-                voicePreferences={expert.voice_preferences}
-                boundaries={expert.boundaries}
-              />
-              <ExpertSummaryCard
-                expert={expert}
-                activity={activity}
-                isActivityLoading={isActivityLoading}
-                isActivityError={isActivityError}
-              />
-            </div>
+            <ExpertOverview
+              expert={expert}
+              activity={activity}
+              isActivityLoading={isActivityLoading}
+              isActivityError={isActivityError}
+              onChat={toggleChat}
+            />
           </TabsLineContent>
 
-          <TabsLineContent value="work">
-            <ExpertWorkSection
-              expertId={expert.id}
-              expertName={expert.name}
-              enabled={Boolean(enabled) && ready}
+          <TabsLineContent value="soul">
+            <ExpertSoulSection
+              identity={expert.identity}
+              voicePreferences={expert.voice_preferences}
+              boundaries={expert.boundaries}
             />
           </TabsLineContent>
 
@@ -223,20 +216,20 @@ export default function ExpertDetailPage() {
               expertName={expert.name}
               expertId={expert.id}
               workflows={expert.workflows}
-              accentClassName={
-                getRaisedExpertAccent(expert.role, expert.color).pill
-              }
-              coverColor={expert.color}
+              coverColor={getExpertCover(expert).color}
               onInstallWorkflow={openPicker}
               onAskWorkflow={openChatWithPrompt}
             />
+          </TabsLineContent>
+
+          <TabsLineContent value="files">
+            <ExpertFilesSection expertId={expert.id} expertName={expert.name} />
           </TabsLineContent>
 
           <TabsLineContent value="computer">
             <ExpertComputerSection
               expertId={expert.id}
               expertName={expert.name}
-              enabled={Boolean(enabled) && ready}
             />
           </TabsLineContent>
 
@@ -253,11 +246,16 @@ export default function ExpertDetailPage() {
               accentClassName={
                 getRaisedExpertAccent(expert.role, expert.color).pill
               }
+              initialSkill={requestedSkill}
+              initialVersionId={requestedVersion}
             />
           </TabsLineContent>
 
           <TabsLineContent value="settings">
-            <ExpertSettingsSection expert={expert} onFire={openFire} />
+            <div className="flex flex-col gap-4">
+              <ExpertModeSection expert={expert} />
+              <ExpertSettingsSection expert={expert} onFire={openFire} />
+            </div>
           </TabsLineContent>
         </TabsLine>
 
