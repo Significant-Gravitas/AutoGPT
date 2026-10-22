@@ -39,7 +39,12 @@ def _token_first(route: APIRoute) -> Callable[[Request], Awaitable[Response]]:
 
 async def _check_token(request: Request) -> None:
     """Raise the 401 the route's own dependency would, plus a connection close
-    so the client stops sending a body nobody will read."""
+    so the client stops sending a body nobody will read.
+
+    A valid token is verified again when the route resolves its dependencies,
+    which go on to check bans, organizations and impersonation. That second
+    check is deliberate: this one only keeps a refused request from reading
+    its body, it doesn't replace the route's own."""
     try:
         await get_jwt_payload(await bearer_jwt_auth(request))
     except HTTPException as refused:
@@ -52,7 +57,10 @@ async def _check_token(request: Request) -> None:
 
 def _needs_token(dependant: Dependant, overrides: Mapping[Any, Any]) -> bool:
     """Whether resolving `dependant` reaches `get_jwt_payload`, as FastAPI
-    resolves it: an overridden dependency replaces everything below it."""
+    resolves it: an overridden dependency replaces everything below it.
+
+    `get_jwt_payload` is the anchor: a route that authenticates some other way
+    isn't checked early until that way is added here."""
     for sub in dependant.dependencies:
         if sub.call in overrides:
             continue
@@ -63,7 +71,7 @@ def _needs_token(dependant: Dependant, overrides: Mapping[Any, Any]) -> bool:
 
 def _overrides(route: APIRoute) -> Mapping[Any, Any]:
     provider = route.dependency_overrides_provider
-    return getattr(provider, "dependency_overrides", None) or {}
+    return provider.dependency_overrides if provider is not None else {}
 
 
 def _has_body(request: Request) -> bool:
