@@ -10,9 +10,12 @@ import logging
 import uuid
 
 from backend.copilot.expert_context import escape_prompt_xml_tags
-from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    get_chat_session,
+    get_chat_session_metadata,
+)
 from backend.copilot.pending_messages import PendingMessage, push_pending_message
-from backend.copilot.result_waiters import is_result_awaited
 from backend.copilot.tools.expert_delegation import sent_from_metadata
 from backend.data.db_accessors import experts_db, review_db
 from backend.data.redis_client import get_redis_async
@@ -41,15 +44,16 @@ async def report_to_delegator(
 
 
 async def _report(user_id: str, session_id: str, turn_id: str, *, failed: bool) -> None:
+    # Most turns end in a session nobody delegated, decided without the history.
+    info = await get_chat_session_metadata(session_id, user_id)
+    if info is None:
+        return
+    delegator_id = info.metadata.delegated_by_session_id
+    # A handoff gives the thread to the Expert; nobody is waiting for a report.
+    if delegator_id is None or info.metadata.handed_off_from_expert_id:
+        return
     session = await get_chat_session(session_id, user_id)
     if session is None:
-        return
-    delegator_id = session.metadata.delegated_by_session_id
-    # A handoff gives the thread to the Expert; nobody is waiting for a report.
-    if delegator_id is None or session.metadata.handed_off_from_expert_id:
-        return
-    # A delegator polling this session gets the result from the poll itself.
-    if await is_result_awaited(session_id):
         return
     note_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{turn_id}"))
     if not await _claim(note_id):

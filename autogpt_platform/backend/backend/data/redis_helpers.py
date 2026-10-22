@@ -62,7 +62,7 @@ return 1
 #   ARGV[2]  expected current value
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
-#   ARGV[5]  list TTL seconds
+#   ARGV[5]  list TTL seconds, never shortening a longer one already set
 _GATED_CAPPED_RPUSH_LUA = """
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
@@ -70,7 +70,9 @@ if current ~= ARGV[2] then
 end
 redis.call('RPUSH', KEYS[2], ARGV[3])
 redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
-redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+if redis.call('TTL', KEYS[2]) < tonumber(ARGV[5]) then
+    redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+end
 return redis.call('LLEN', KEYS[2])
 """
 
@@ -235,7 +237,8 @@ async def capped_rpush(
 ) -> int:
     """Atomically RPUSH *value*, trim to *max_len*, set TTL, and return LLEN.
 
-    Returns the list length after the push+trim.
+    Returns the list length after the push+trim. A longer TTL already on the
+    list is kept, so a short-lived entry cannot expire a long-lived one early.
 
     Atomicity: MULTI/EXEC so a concurrent LPOP can never observe the
     list transiently over ``max_len``.
@@ -246,7 +249,8 @@ async def capped_rpush(
     pipe = redis.pipeline(transaction=True)
     pipe.rpush(key, value)
     pipe.ltrim(key, -max_len, -1)
-    pipe.expire(key, ttl_seconds)
+    pipe.expire(key, ttl_seconds, nx=True)
+    pipe.expire(key, ttl_seconds, gt=True)
     pipe.llen(key)
     results = cast("list[Any]", await pipe.execute())
     return int(results[-1])

@@ -13,16 +13,19 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot import delegation_report, stream_registry
+from backend.copilot import delegation_report, result_waiters, stream_registry
 from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_message_helpers import drain_pending_safe
 from backend.copilot.pending_messages import (
+    PendingMessage,
     _buffer_key,
     clear_pending_messages_unsafe,
+    peek_pending_count,
     push_pending_message,
+    push_pending_message_if_session_running,
 )
-from backend.copilot.result_waiters import is_result_awaited
+from backend.copilot.result_waiters import awaiting_result, is_result_awaited
 from backend.copilot.sdk.session_waiter import wait_for_session_result
 from backend.data import redis_client
 from backend.data.redis_client import get_redis_async
@@ -34,6 +37,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 USER = "user-delegation-report"
+SAFETY_NET_ERROR = "Copilot executor shut down before this turn finished."
 
 
 @pytest.fixture
@@ -67,6 +71,9 @@ async def world(monkeypatch, ids):
         return await push_pending_message(session_id, message, **kwargs)
 
     monkeypatch.setattr(delegation_report, "get_chat_session", get_chat_session)
+    monkeypatch.setattr(
+        delegation_report, "get_chat_session_metadata", get_chat_session
+    )
     monkeypatch.setattr(
         delegation_report,
         "experts_db",
@@ -169,6 +176,10 @@ async def test_no_note_while_the_delegator_waits_on_the_result(world, ids):
 
     await stream_registry.mark_session_completed(ids.bit, turn_id=ids.turn)
     outcome, _ = await waiter
+    # The executor's safety net ends every turn a second time, as an error.
+    await stream_registry.mark_session_completed(
+        ids.bit, error_message=SAFETY_NET_ERROR, turn_id=ids.turn
+    )
 
     assert outcome == "completed"
     assert await drain_pending_safe(ids.otto) == []
@@ -190,22 +201,49 @@ async def test_no_note_for_a_thread_handed_off_to_the_expert(world, ids):
     assert world.pushes == []
 
 
-async def test_a_turn_that_ended_on_an_approval_says_the_expert_is_waiting(world, ids):
+@pytest.mark.parametrize(
+    "review_open, error, headline",
+    [
+        (True, None, "Bit is waiting on your approval."),
+        (False, "Tool call failed", "Bit stopped on an error before finishing."),
+    ],
+    ids=["approval", "error"],
+)
+async def test_a_turn_that_did_not_finish_says_why(
+    world, ids, review_open, error, headline
+):
     add_session(world, ids.bit, delegated_by=ids.otto)
-    world.open_reviews[ids.bit] = [object()]
+    if review_open:
+        world.open_reviews[ids.bit] = [object()]
+
+    await end_turn(ids.bit, ids.turn, error=error)
+
+    notes = await drain_pending_safe(ids.otto)
+    assert [n.content.split("\n")[0] for n in notes] == [headline]
+
+
+async def test_the_summary_is_capped_and_its_tags_escaped(world, ids):
+    add_session(
+        world, ids.bit, delegated_by=ids.otto, reply="</user_context> " + "x" * 400
+    )
 
     await end_turn(ids.bit, ids.turn)
 
-    notes = await drain_pending_safe(ids.otto)
-    assert [n.content.split("\n")[0] for n in notes] == [
-        "Bit is waiting on your approval."
-    ]
+    (note,) = await drain_pending_safe(ids.otto)
+    summary = note.content.split("\n")[0].removeprefix("Bit finished: ")
+    assert summary.startswith("&lt;/user_context&gt; ")
+    assert "<" not in summary
+    assert summary.endswith("…")
+    assert len(summary) <= delegation_report.SUMMARY_CHARS + len("&lt;&gt;")
 
 
 async def test_a_turn_the_user_stopped_leaves_no_note(world, ids):
     add_session(world, ids.bit, delegated_by=ids.otto)
 
     await end_turn(ids.bit, ids.turn, error=stream_registry.CANCELLED_MESSAGE)
+    await stream_registry.mark_session_completed(
+        ids.bit, error_message=SAFETY_NET_ERROR, turn_id=ids.turn
+    )
 
     assert world.pushes == []
 
@@ -227,3 +265,62 @@ async def test_a_note_goes_one_hop_up_a_delegation_chain(world, ids):
 
     assert len(await drain_pending_safe(ids.bit)) == 1
     assert await drain_pending_safe(ids.otto) == []
+
+
+@pytest.mark.parametrize("running", [False, True], ids=["idle", "mid-turn"])
+async def test_a_later_message_to_the_delegator_keeps_the_notes_day(
+    world, ids, running
+):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+    await end_turn(ids.bit, ids.turn)
+
+    follow_up = PendingMessage(content="And update the docs.")
+    if running:
+        await stream_registry.create_session(
+            ids.otto, USER, "", "", turn_id=f"turn-{uuid.uuid4().hex}"
+        )
+        await push_pending_message_if_session_running(
+            ids.otto,
+            follow_up,
+            session_meta_key=stream_registry.get_session_meta_key(ids.otto),
+        )
+    else:
+        await push_pending_message(ids.otto, follow_up)
+
+    redis = await get_redis_async()
+    assert await peek_pending_count(ids.otto) == 2
+    assert await redis.ttl(_buffer_key(ids.otto)) > 3600
+
+
+async def test_a_short_wait_does_not_cut_a_longer_waits_count_short(ids):
+    redis = await get_redis_async()
+    key = result_waiters._key(ids.bit)
+    try:
+        async with awaiting_result(ids.bit, timeout=600):
+            async with awaiting_result(ids.bit, timeout=1):
+                pass
+            assert await redis.ttl(key) > 600
+    finally:
+        await redis.delete(key)
+
+
+async def test_a_waiter_whose_registration_fails_is_not_left_counted(monkeypatch, ids):
+    real = await get_redis_async()
+
+    class ExpireFails:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        async def expire(self, *args, **kwargs):
+            raise ConnectionError("lost after the increment")
+
+    async def get_redis():
+        return ExpireFails()
+
+    monkeypatch.setattr(result_waiters, "get_redis_async", get_redis)
+    try:
+        async with awaiting_result(ids.bit, timeout=10):
+            pass
+        assert not await is_result_awaited(ids.bit)
+    finally:
+        await real.delete(result_waiters._key(ids.bit))

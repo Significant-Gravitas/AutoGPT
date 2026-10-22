@@ -23,11 +23,17 @@ _SLACK_SECONDS = 60
 async def awaiting_result(session_id: str, timeout: float) -> AsyncIterator[None]:
     """Count a waiter on *session_id*'s result for the duration of the block."""
     key = _key(session_id)
+    ttl = int(timeout) + _SLACK_SECONDS
     counted = False
     try:
         redis = await get_redis_async()
-        await redis.incr(key)
-        await redis.expire(key, int(timeout) + _SLACK_SECONDS)
+        # One transaction, so the count never lacks an expiry; NX then GT sets
+        # it on a new key and only ever extends a longer waiter's.
+        pipe = redis.pipeline(transaction=True)
+        pipe.incr(key)
+        pipe.expire(key, ttl, nx=True)
+        pipe.expire(key, ttl, gt=True)
+        await pipe.execute()
         counted = True
     except Exception:
         logger.warning(f"Could not mark session {session_id} as awaited", exc_info=True)
