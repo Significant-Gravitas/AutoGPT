@@ -18,6 +18,7 @@ import { useAutopilotModeStore } from "../autopilotModeStore";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
 import {
   renderHost,
+  sessionHandler,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
@@ -337,6 +338,56 @@ describe("AutoPilot mode selector", () => {
 
     settleRoster();
     // The composer unlocks, and takes focus, once the roster is in.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps approvals locked until the chat's session has loaded", async () => {
+    let settleSession: () => void = () => {};
+    const sessionLoaded = new Promise<void>((resolve) => {
+      settleSession = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("auto")]),
+      sessionHandler({
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      }),
+    );
+    const user = userEvent.setup();
+
+    // Held until settled, then passed on to the session above.
+    renderHost({
+      sessionResponse: http.get(
+        "/api/proxy/api/chat/sessions/:sessionId",
+        async () => {
+          await sessionLoaded;
+        },
+      ),
+    });
+
+    expect(await findModeButton(/approval mode/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /approval mode/i }),
+      ).toBeNull(),
+    );
+
+    settleSession();
     await waitFor(() =>
       expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
         "disabled",
