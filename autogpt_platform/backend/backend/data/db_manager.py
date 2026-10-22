@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
@@ -59,6 +60,7 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.blocks import get_blocks
 from backend.copilot import db as chat_db
 from backend.copilot.scheduled_chats.forget import forget_scheduled_chat
 from backend.copilot.scheduled_chats.service import record_scheduled_run
@@ -328,6 +330,15 @@ class DatabaseManager(AppService):
         async with super().lifespan(app):
             logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
             await db.connect()
+
+            # Load the block registry before serving. The first RPC that needs a
+            # block loads it otherwise, on this event loop, and every RPC waits.
+            load_started = time.monotonic()
+            block_count = len(get_blocks())
+            logger.info(
+                f"[{self.service_name}] Loaded {block_count} blocks in "
+                f"{time.monotonic() - load_started:.1f}s"
+            )
 
             logger.info(f"[{self.service_name}] ✅ Ready")
             yield

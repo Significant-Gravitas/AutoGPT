@@ -53,7 +53,7 @@ build_frontend_environment() {
     NEXT_TELEMETRY_DISABLED=1
     PORT=3001
     HOSTNAME=127.0.0.1
-    # nginx overwrites X-Forwarded-For with the peer address, so it is the client IP.
+    # Only nginx reaches 127.0.0.1:3001, and it overwrites X-Forwarded-For.
     TRUST_X_FORWARDED_FOR=true
   )
 
