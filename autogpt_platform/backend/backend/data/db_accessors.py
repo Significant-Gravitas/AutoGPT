@@ -14,6 +14,12 @@ def chat_db():
     return chat_db
 
 
+def chat_db_is_local() -> bool:
+    """Whether ``chat_db()`` is this process's own Prisma client, not the
+    database manager's RPC."""
+    return db.is_connected()
+
+
 def experts_db():
     if db.is_connected():
         from backend.api.features.experts import experts_db as _experts_db
