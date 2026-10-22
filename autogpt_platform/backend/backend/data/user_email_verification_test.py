@@ -95,17 +95,23 @@ async def test_only_a_proven_address_that_has_not_bounced_gets_mail(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_bounce_reaches_a_cached_answer(server: SpinTestServer):
+async def test_a_bounce_is_never_hidden_by_the_cache(server: SpinTestServer):
+    """A lookup in flight when the bounce lands can't cache its way past it:
+    the bounce flag is read on every call."""
     user_id = await _account(identity_verified=True)
     try:
-        # The notification manager asks over RPC, which caches by keyword.
+        # The notification manager asks over RPC, which passes a keyword.
         assert await get_user_email_verification(user_id=user_id) is True
         assert await get_user_email_verification(user_id) is True
 
-        await set_user_email_verification(user_id, False)
+        # Written behind the cache's back, as if after a lookup had started.
+        await User.prisma().update(where={"id": user_id}, data={"emailVerified": False})
 
         assert await get_user_email_verification(user_id=user_id) is False
         assert await get_user_email_verification(user_id) is False
+
+        await set_user_email_verification(user_id, True)
+        assert await get_user_email_verification(user_id=user_id) is True
     finally:
         await _cleanup([user_id])
 

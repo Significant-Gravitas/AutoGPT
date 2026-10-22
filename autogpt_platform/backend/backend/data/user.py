@@ -759,7 +759,6 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
         )
         # Invalidate cache for this user
         get_user_by_id.cache_delete(user_id)
-        forget_user_email_verification(user_id)
     except Exception as e:
         raise DatabaseError(
             f"Failed to set email verification status for user {user_id}: {e}"
@@ -794,7 +793,6 @@ async def disable_all_user_notifications(user_id: str) -> None:
 _GOOGLE_PROVIDER = "google"
 
 
-@cache_user_lookup
 async def get_user_email_verification(user_id: str) -> bool:
     """Whether product and service mail may go to this account's address.
 
@@ -808,8 +806,27 @@ async def get_user_email_verification(user_id: str) -> bool:
         user = await PrismaUser.prisma().find_unique_or_raise(
             where={"id": user_id},
         )
-        if not user.emailVerified:
-            return False
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get email verification status for user {user_id}: {e}"
+        ) from e
+    # Read on every call, never cached: a lookup already in flight when a
+    # bounce lands would otherwise cache the old answer past the bounce.
+    if not user.emailVerified:
+        return False
+    return await _user_proved_email(user_id)
+
+
+def forget_user_email_verification(user_id: str) -> None:
+    """Drop the cached proof behind ``get_user_email_verification``."""
+    _user_proved_email.cache_delete(user_id)
+
+
+@cache_user_lookup
+async def _user_proved_email(user_id: str) -> bool:
+    """A verified auth identity, or a Google sign-in. Only ever called
+    positionally, so ``forget_user_email_verification`` hits its one key."""
+    try:
         identity = await AuthUser.prisma().find_unique(where={"id": user_id})
         if identity is None:
             return False
@@ -823,16 +840,6 @@ async def get_user_email_verification(user_id: str) -> bool:
         raise DatabaseError(
             f"Failed to get email verification status for user {user_id}: {e}"
         ) from e
-
-
-def forget_user_email_verification(user_id: str) -> None:
-    """Drop the cached answer of ``get_user_email_verification``.
-
-    Both key forms go: a local call caches under the positional argument, a
-    database-manager RPC call under the keyword.
-    """
-    get_user_email_verification.cache_delete(user_id)
-    get_user_email_verification.cache_delete(user_id=user_id)
 
 
 def generate_unsubscribe_link(user_id: str) -> str:
