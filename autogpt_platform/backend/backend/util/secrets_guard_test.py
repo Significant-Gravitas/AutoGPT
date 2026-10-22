@@ -127,6 +127,23 @@ def test_published_service_password_warns_and_still_starts(
     assert name in warnings[0] and "make init-env" in warnings[0]
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql://postgres:pa[ss@db:5432/postgres",
+        "postgresql://postgres:[pass]@db:5432/postgres",
+    ],
+)
+def test_a_connection_string_urllib_cannot_split_does_not_stop_startup(
+    monkeypatch, caplog, url
+):
+    monkeypatch.setenv("DATABASE_URL", url)
+
+    check_secrets(_settings(_fresh_key()))
+
+    assert "database password" not in caplog.text
+
+
 def test_generated_service_passwords_do_not_warn(monkeypatch, caplog):
     settings = _settings(_fresh_key())
     settings.config.redis_host = "redis-0"

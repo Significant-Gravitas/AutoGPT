@@ -112,9 +112,7 @@ def _warn_on_published_credentials(settings: Settings) -> None:
     """Warn about each service password that is a published value. The service
     keeps working on it; anyone who can reach that service can log in too."""
     credentials = {
-        f"The database password in {name}": unquote(
-            urlsplit(os.environ.get(name, "")).password or ""
-        )
+        f"The database password in {name}": _url_password(os.environ.get(name, ""))
         for name in ("DATABASE_URL", "DIRECT_URL")
     }
     credentials |= {
@@ -136,3 +134,13 @@ def _warn_on_published_credentials(settings: Settings) -> None:
             "[SECURITY] The Docker Compose Redis cluster has no password, so any "
             f"container on its networks can read and change it. {CREDENTIAL_HINT}"
         )
+
+
+def _url_password(url: str) -> str:
+    """A connection string's password, decoded, or nothing for one urllib can't
+    take apart (a `[` or `]` it reads as part of an IPv6 address): the database
+    client reports that one, and a warning must not stop the process first."""
+    try:
+        return unquote(urlsplit(url).password or "")
+    except ValueError:
+        return ""
