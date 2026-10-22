@@ -135,8 +135,10 @@ def _schema_value(schema: dict[str, Any], root: dict[str, Any], depth: int = 0) 
             raise ResponseError("object schema properties and required must be valid")
         result = {}
         for key in required:
+            if not isinstance(key, str):
+                raise ResponseError(f"required property {key!r} has no schema")
             property_schema = properties.get(key)
-            if not isinstance(key, str) or not isinstance(property_schema, dict):
+            if not isinstance(property_schema, dict):
                 raise ResponseError(f"required property {key!r} has no schema")
             result[key] = _schema_value(property_schema, root, depth + 1)
         return result
@@ -156,6 +158,9 @@ def _schema_value(schema: dict[str, Any], root: dict[str, Any], depth: int = 0) 
             return max(0, math.ceil(minimum))
         return 0
     if schema_type == "number":
+        minimum = schema.get("minimum", 0)
+        if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
+            return max(0.0, float(minimum))
         return 0.0
     if schema_type == "boolean":
         return False

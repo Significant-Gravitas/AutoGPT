@@ -89,6 +89,7 @@ class ConstrainedExtraction(BaseModel):
     labels: list[str] = Field(min_length=1)
     code: str = Field(min_length=2)
     score: int | None
+    ratio: float = Field(ge=0.25)
 
 
 def test_messages_follow_the_script_through_a_tool_round(scripted_model):
@@ -239,6 +240,7 @@ def test_responses_parse_honors_supported_schema_constraints(scripted_model):
         labels=[""],
         code="xx",
         score=0,
+        ratio=0.25,
     )
 
 
@@ -254,6 +256,33 @@ def test_responses_rejects_a_non_object_body(scripted_model):
 
     assert refused.value.code == 400
     assert "body is not a JSON object" in refused.value.read().decode()
+
+
+def test_responses_rejects_a_non_string_required_key(scripted_model):
+    request = urllib.request.Request(
+        f"{scripted_model.url}/api/v1/responses",
+        data=json.dumps(
+            {
+                "model": "gpt-6-luna",
+                "text": {
+                    "format": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {},
+                            "required": [[]],
+                        }
+                    }
+                },
+            }
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(request, timeout=5)
+
+    assert refused.value.code == 400
+    assert "required property [] has no schema" in refused.value.read().decode()
 
 
 def test_graphiti_client_parses_its_real_extraction_schemas(scripted_model):
