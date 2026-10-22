@@ -24,23 +24,39 @@ async def client():
         yield session
 
 
-@pytest.fixture(autouse=True)
-def profile_dependencies(mocker):
-    existing = mocker.patch.object(
-        routes, "get_business_understanding", new=AsyncMock(return_value=None)
+@pytest.fixture
+def understanding_store(mocker):
+    store = MagicMock(
+        get_business_understanding=AsyncMock(return_value=None),
+        upsert_business_understanding=AsyncMock(),
     )
+    mocker.patch.object(routes, "understanding_db", return_value=store)
+    return store
+
+
+@pytest.fixture(autouse=True)
+def profile_dependencies(mocker, understanding_store):
     admission = mocker.patch.object(
         routes, "enforce_personalization_budget", new=AsyncMock()
     )
-    return existing, admission
+    return understanding_store.get_business_understanding, admission
 
 
 @pytest.fixture(autouse=True)
 def role_writes(mocker):
     """The kept pick's copy, and its MailerLite and PostHog writes."""
+    save, queue = AsyncMock(), AsyncMock()
+    mocker.patch.object(
+        routes, "onboarding_role_db", return_value=MagicMock(save_onboarding_role=save)
+    )
+    mocker.patch.object(
+        routes,
+        "onboarding_audience_db",
+        return_value=MagicMock(queue_onboarding_role=queue),
+    )
     return {
-        "save": mocker.patch.object(routes, "save_onboarding_role", new=AsyncMock()),
-        "queue": mocker.patch.object(routes, "queue_onboarding_role", new=AsyncMock()),
+        "save": save,
+        "queue": queue,
         "posthog": mocker.patch.object(routes, "set_onboarding_role", new=MagicMock()),
     }
 
@@ -59,13 +75,9 @@ def setup_app_auth():
     app.dependency_overrides.clear()
 
 
-async def test_onboarding_profile_success(mocker, client):
+async def test_onboarding_profile_success(mocker, understanding_store, client):
     mock_extract = mocker.patch(
         "backend.api.features.onboarding.routes.extract_business_understanding",
-        new_callable=AsyncMock,
-    )
-    mock_upsert = mocker.patch(
-        "backend.api.features.onboarding.routes.upsert_business_understanding",
         new_callable=AsyncMock,
     )
 
@@ -75,7 +87,6 @@ async def test_onboarding_profile_success(mocker, client):
         pain_points=["Finding leads"],
         suggested_prompts={"Learn": ["How do I automate lead gen?"]},
     )
-    mock_upsert.return_value = AsyncMock()
 
     response = await client.post(
         "/onboarding/profile",
@@ -87,7 +98,7 @@ async def test_onboarding_profile_success(mocker, client):
     )
     assert response.status_code == 200
     mock_extract.assert_awaited_once()
-    mock_upsert.assert_awaited_once()
+    understanding_store.upsert_business_understanding.assert_awaited_once()
 
 
 @pytest.mark.parametrize(
@@ -111,7 +122,6 @@ async def test_the_pick_is_kept_and_sent_to_mailerlite_and_posthog(
             )
         ),
     )
-    mocker.patch.object(routes, "upsert_business_understanding", new=AsyncMock())
     response = await client.post(
         "/onboarding/profile",
         json={
@@ -168,7 +178,6 @@ async def test_profile_pain_point_size_is_bounded(
         "extract_business_understanding",
         new=AsyncMock(return_value=BusinessUnderstandingInput.model_construct()),
     )
-    mocker.patch.object(routes, "upsert_business_understanding", new=AsyncMock())
     response = await client.post(
         "/onboarding/profile",
         json={
@@ -232,7 +241,7 @@ async def test_changed_profile_still_checks_budget(
 
 @pytest.mark.parametrize("status", [429, 503])
 async def test_profile_rejection_is_not_swallowed_by_extraction_fallback(
-    mocker, profile_dependencies, status, client
+    mocker, profile_dependencies, understanding_store, status, client
 ):
     _, admission = profile_dependencies
     admission.side_effect = fastapi.HTTPException(
@@ -241,9 +250,7 @@ async def test_profile_rejection_is_not_swallowed_by_extraction_fallback(
     extract = mocker.patch.object(
         routes, "extract_business_understanding", new=AsyncMock()
     )
-    upsert = mocker.patch.object(
-        routes, "upsert_business_understanding", new=AsyncMock()
-    )
+    upsert = understanding_store.upsert_business_understanding
     response = await client.post(
         "/onboarding/profile", json={"user_name": "John", "user_role": "Founder/CEO"}
     )

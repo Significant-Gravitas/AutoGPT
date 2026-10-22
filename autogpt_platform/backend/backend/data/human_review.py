@@ -32,7 +32,7 @@ from backend.copilot.constants import (
     step_card_id,
 )
 from backend.data.execution import get_graph_execution_meta
-from backend.notifications.review_alerts import sync_awaiting_review
+from backend.data.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
 
 if TYPE_CHECKING:

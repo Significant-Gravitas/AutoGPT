@@ -9,7 +9,7 @@ self-message nor the fan-out loop is possible.
 
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -87,12 +87,24 @@ def _fresh_turn_budget():
     reset_consult_budget()
 
 
+@pytest.fixture(autouse=True)
+def _database_manager_boundary():
+    client = MagicMock()
+    with (
+        patch("backend.data.db.is_connected", return_value=False),
+        patch(f"{_FIND}.chat_db", return_value=client),
+        patch(f"{_MSG}.chat_db", return_value=client),
+    ):
+        yield client
+
+
 class TestFindSessionScoping:
     async def test_only_the_callers_own_sessions_are_queried(self) -> None:
         """The scope is the query argument, not a filter over a wider read —
         so another user's session is never fetched, let alone returned."""
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=[])
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=[]),
         ) as lister:
             await FindSessionTool()._execute(OWNER, _session())
         assert lister.await_args.kwargs["user_id"] == OWNER
@@ -101,7 +113,8 @@ class TestFindSessionScoping:
         rows = [_info("mine"), _info("theirs", user_id="user-2")]
         # Even if the query leaked a foreign row, it must not reach the model.
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=rows),
         ):
             result = await FindSessionTool()._execute(OWNER, _session())
         assert isinstance(result, SessionListResponse)
@@ -111,7 +124,8 @@ class TestFindSessionScoping:
     async def test_the_calling_session_is_not_listed(self) -> None:
         rows = [_info(CALLER_SESSION), _info("other")]
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=rows),
         ):
             result = await FindSessionTool()._execute(OWNER, _session())
         assert isinstance(result, SessionListResponse)
@@ -123,7 +137,8 @@ class TestFindSessionScoping:
             _info("b", purpose="quarterly report"),
         ]
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=rows),
         ):
             result = await FindSessionTool()._execute(
                 OWNER, _session(), task="instagram"
@@ -139,7 +154,9 @@ class TestFindSessionScoping:
             [_info("old", purpose="instagram audit")],
         ]
         lister = AsyncMock(side_effect=pages)
-        with patch(f"{_FIND}.list_recent_chat_sessions", new=lister):
+        with patch(
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions", new=lister
+        ):
             result = await FindSessionTool()._execute(
                 OWNER, _session(), task="instagram"
             )
@@ -152,7 +169,9 @@ class TestFindSessionScoping:
         every time a task matches nothing."""
         page = [_info(f"s{i}", purpose="unrelated") for i in range(_SCAN_LIMIT)]
         lister = AsyncMock(return_value=page)
-        with patch(f"{_FIND}.list_recent_chat_sessions", new=lister):
+        with patch(
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions", new=lister
+        ):
             await FindSessionTool()._execute(OWNER, _session(), task="nothing")
         assert lister.await_count == _MAX_SCAN_PAGES
 
@@ -160,7 +179,8 @@ class TestFindSessionScoping:
         """Filtering these in Python would drop matches older than the scan
         window while the summary still read as authoritative."""
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=[])
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=[]),
         ) as lister:
             await FindSessionTool()._execute(
                 OWNER, _session(), expert_id="expert-7", status="running"
@@ -172,7 +192,8 @@ class TestFindSessionScoping:
     async def test_count_reports_what_was_returned_not_what_matched(self) -> None:
         rows = [_info(f"s{i}") for i in range(MAX_RESULTS + 5)]
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=rows),
         ):
             result = await FindSessionTool()._execute(OWNER, _session())
         assert isinstance(result, SessionListResponse)
@@ -187,7 +208,7 @@ class TestMessageSessionDelivery:
             buffer_length=1, max_buffer_length=10, turn_in_flight=True
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(
@@ -210,14 +231,14 @@ class TestMessageSessionDelivery:
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="idle")),
         ):
             with patch(
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ):
                 with patch(
-                    f"{_MSG}.get_chat_session_status",
+                    f"{_MSG}.chat_db.return_value.get_chat_session_status",
                     new=AsyncMock(return_value="idle"),
                 ), patch(
                     f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
@@ -237,7 +258,7 @@ class TestMessageSessionDelivery:
             buffer_length=1, max_buffer_length=10, turn_in_flight=True
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(
@@ -259,14 +280,14 @@ class TestMessageSessionDelivery:
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
         ):
             with patch(
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ):
                 with patch(
-                    f"{_MSG}.get_chat_session_status",
+                    f"{_MSG}.chat_db.return_value.get_chat_session_status",
                     new=AsyncMock(return_value="idle"),
                 ), patch(
                     f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
@@ -294,7 +315,7 @@ class TestEveryDeliveryCarriesTheSender:
             buffer_length=1, max_buffer_length=10, turn_in_flight=True
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(
@@ -312,14 +333,14 @@ class TestEveryDeliveryCarriesTheSender:
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="queued")),
         ):
             with patch(
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ) as deliver:
                 with patch(
-                    f"{_MSG}.get_chat_session_status",
+                    f"{_MSG}.chat_db.return_value.get_chat_session_status",
                     new=AsyncMock(return_value="queued"),
                 ):
                     result = await MessageSessionTool()._execute(
@@ -336,14 +357,14 @@ class TestEveryDeliveryCarriesTheSender:
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
         ):
             with patch(
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ):
                 with patch(
-                    f"{_MSG}.get_chat_session_status",
+                    f"{_MSG}.chat_db.return_value.get_chat_session_status",
                     new=AsyncMock(return_value="idle"),
                 ), patch(
                     f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
@@ -362,7 +383,7 @@ class TestEveryDeliveryCarriesTheSender:
         sender = _session()
         sender.expert_id = "expert-a"
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(
@@ -392,13 +413,14 @@ class TestWakeCarriesTheTargetsOwnExecutionContext:
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=target)
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
+            new=AsyncMock(return_value=target),
         ):
             with patch(
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ):
                 with patch(
-                    f"{_MSG}.get_chat_session_status",
+                    f"{_MSG}.chat_db.return_value.get_chat_session_status",
                     new=AsyncMock(return_value="idle"),
                 ):
                     with patch(
@@ -441,7 +463,8 @@ class TestEmptinessIsHonest:
     async def test_empty_off_a_full_scan_says_recent_only(self) -> None:
         rows = [_info(f"s{i}", purpose="unrelated") for i in range(_SCAN_LIMIT)]
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=rows),
         ):
             result = await FindSessionTool()._execute(
                 OWNER, _session(), task="nothing matches this"
@@ -451,7 +474,8 @@ class TestEmptinessIsHonest:
 
     async def test_empty_off_a_short_scan_does_not_claim_a_window(self) -> None:
         with patch(
-            f"{_FIND}.list_recent_chat_sessions", new=AsyncMock(return_value=[])
+            f"{_FIND}.chat_db.return_value.list_recent_chat_sessions",
+            new=AsyncMock(return_value=[]),
         ):
             result = await FindSessionTool()._execute(OWNER, _session(), task="x")
         assert isinstance(result, SessionListResponse)
@@ -460,7 +484,9 @@ class TestEmptinessIsHonest:
 
 class TestMessageLimitsAndCaps:
     async def test_an_overlong_message_is_refused_before_delivery(self) -> None:
-        with patch(f"{_MSG}.get_chat_session_metadata", new=AsyncMock()) as fetch:
+        with patch(
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata", new=AsyncMock()
+        ) as fetch:
             with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
                 result = await MessageSessionTool()._execute(
                     OWNER,
@@ -478,14 +504,14 @@ class TestMessageLimitsAndCaps:
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
         ):
             with patch(
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ):
                 with patch(
-                    f"{_MSG}.get_chat_session_status",
+                    f"{_MSG}.chat_db.return_value.get_chat_session_status",
                     new=AsyncMock(return_value="idle"),
                 ), patch(
                     f"{_MSG}.try_enqueue_turn",
@@ -510,14 +536,14 @@ class TestQueuedTargetRidesItsOwnTurn:
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="queued")),
         ):
             with patch(
                 f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
             ) as deliver:
                 with patch(
-                    f"{_MSG}.get_chat_session_status",
+                    f"{_MSG}.chat_db.return_value.get_chat_session_status",
                     new=AsyncMock(return_value="queued"),
                 ):
                     with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
@@ -536,7 +562,7 @@ class TestDryRun:
         dry = _session()
         dry.metadata.dry_run = True
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
         ):
             with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
@@ -562,7 +588,7 @@ class TestTaintPropagation:
             buffer_length=1, max_buffer_length=10, turn_in_flight=True
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(
@@ -591,7 +617,8 @@ class TestMessageSessionGuards:
         """Not 'forbidden' — a distinct refusal would confirm the id exists."""
         foreign = _info(TARGET_SESSION, user_id="user-2")
         with patch(
-            f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=foreign)
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
+            new=AsyncMock(return_value=foreign),
         ):
             with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
                 result = await MessageSessionTool()._execute(
@@ -615,7 +642,7 @@ class TestMessageSessionGuards:
         )
         sent = 0
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(
@@ -640,7 +667,7 @@ class TestMessageSessionGuards:
         )
         sent = 0
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(
@@ -667,7 +694,7 @@ class TestMessageSessionGuards:
             buffer_length=1, max_buffer_length=10, turn_in_flight=True
         )
         with patch(
-            f"{_MSG}.get_chat_session_metadata",
+            f"{_MSG}.chat_db.return_value.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
         ):
             with patch(

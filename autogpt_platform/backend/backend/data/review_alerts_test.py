@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.notifications import review_alerts
+from backend.data import review_alerts
 
 
 @pytest.fixture

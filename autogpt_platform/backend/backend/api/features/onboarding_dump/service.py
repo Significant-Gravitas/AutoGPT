@@ -44,6 +44,7 @@ from backend.api.features.onboarding_dump.rate_limit import (
     enforce_personalization_budget,
 )
 from backend.copilot.db import user_has_any_session
+from backend.data.db_accessors import onboarding_dump_db
 from backend.data.onboarding import format_brain_dump_for_extraction
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
@@ -340,7 +341,7 @@ async def _admit_processing(user_id: str, recording_id: str) -> None:
         code = (
             "rate_limited" if exc.status_code == 429 else "personalization_unavailable"
         )
-        await db.mark_failed(user_id, recording_id, code)
+        await onboarding_dump_db().mark_failed(user_id, recording_id, code)
         raise
 
 
