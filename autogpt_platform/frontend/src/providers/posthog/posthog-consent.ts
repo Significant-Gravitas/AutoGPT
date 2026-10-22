@@ -1,4 +1,5 @@
 import { getAnonymousID } from "@/services/analytics/anonymous-id";
+import { environment } from "@/services/environment";
 import {
   hasConsentFor,
   hasDeclinedConsentFor,
@@ -54,6 +55,18 @@ export function dropWithoutConsent(
   event: CaptureResult | null,
 ): CaptureResult | null {
   return hasConsentFor("analytics") ? event : null;
+}
+
+/**
+ * Delete what PostHog stored, the shared `.agpt.co` cookie included. For an
+ * account change without analytics consent: PostHog then runs in memory, so
+ * its reset() leaves the stored identity behind for the next account to
+ * adopt.
+ */
+export function forgetPostHogStorage() {
+  clearPostHogStorage(
+    posthog.config?.token || environment.getPostHogCredentials().key || "",
+  );
 }
 
 /** Call once posthog.init has run; returns the unsubscribe. */

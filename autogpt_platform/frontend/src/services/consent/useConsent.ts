@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import {
   getConsent,
   getConsentManagerStatus,
+  isConsentAnswerPending,
   isSameConsent,
   NO_CONSENT,
   subscribeToConsent,
@@ -40,5 +41,14 @@ export function useConsentManagerStatus() {
     subscribeToConsentManagerStatus,
     getConsentManagerStatus,
     (): ConsentManagerStatus => "loading",
+  );
+}
+
+/** Whether the visitor's answer is still to come; see isConsentAnswerPending. */
+export function useConsentAnswerPending() {
+  return useSyncExternalStore(
+    subscribeToConsentManagerStatus,
+    isConsentAnswerPending,
+    () => true,
   );
 }

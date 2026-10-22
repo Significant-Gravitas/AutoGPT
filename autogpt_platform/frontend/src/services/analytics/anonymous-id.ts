@@ -24,7 +24,12 @@
  * earlier visit, so returning visitors keep theirs; else PostHog's device id,
  * which the marketing site (agpt.co) leaves in the shared `.agpt.co` cookie,
  * so the website visits join this visitor at signup; else this page's id.
+ * The website's id is only taken while nobody is signed in, or for an account
+ * created in this browser: an older account must not take over the website
+ * history of whoever used this browser on agpt.co.
  */
+
+import { readAccountCreatedFlag } from "@/services/analytics/account-created-cookie";
 
 import {
   hasConsentFor,
@@ -60,7 +65,13 @@ let memoryID: string | null = null;
 // Whether memoryID is settled for this page: resolved with consent, or set by
 // a reset. Before consent it only stands in until the visitor answers.
 let settled = false;
+let signedIn = false;
 let pageLanding: FirstLanding | null = null;
+
+/** Whether someone is signed in; kept in step by the auth store. */
+export function setAnalyticsIdentitySignedIn(value: boolean): void {
+  signedIn = value;
+}
 
 export function getAnonymousID(): string | null {
   if (typeof window === "undefined") return null;
@@ -77,7 +88,12 @@ export function getAnonymousID(): string | null {
 
 function resolveConsentedID(): string {
   const stored = readStorage(ANONYMOUS_ID_KEY);
-  const id = stored ?? readPostHogDeviceID() ?? memoryID ?? newID();
+  const id =
+    stored ??
+    readOwnPostHogDeviceID() ??
+    readWebsiteDeviceID() ??
+    memoryID ??
+    newID();
   if (!stored) writeStorage(ANONYMOUS_ID_KEY, id);
   return id;
 }
@@ -162,6 +178,7 @@ export function resetAnonymousID(nextID?: string): void {
 export function resetAnonymousIDForTests(): void {
   memoryID = null;
   settled = false;
+  signedIn = false;
   pageLanding = null;
 }
 
@@ -173,10 +190,32 @@ export function getPostHogDeviceID(): string | null {
 }
 
 function readPostHogDeviceID(): string | null {
+  return readOwnPostHogDeviceID() ?? readSharedPostHogDeviceID();
+}
+
+// localStorage is this app's own (per origin).
+function readOwnPostHogDeviceID(): string | null {
+  const name = getPostHogPersistenceName();
+  return name ? parseDeviceID(readStorage(name)) : null;
+}
+
+// The cookie sits on `.agpt.co`, so the marketing site may have written it.
+function readSharedPostHogDeviceID(): string | null {
+  const name = getPostHogPersistenceName();
+  return name ? parseDeviceID(readCookie(name)) : null;
+}
+
+function readWebsiteDeviceID(): string | null {
+  if (signedIn && !readAccountCreatedFlag()) return null;
+  return readSharedPostHogDeviceID();
+}
+
+function getPostHogPersistenceName(): string | null {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  if (!key) return null;
-  const persistenceKey = `ph_${key}_posthog`;
-  const raw = readStorage(persistenceKey) ?? readCookie(persistenceKey);
+  return key ? `ph_${key}_posthog` : null;
+}
+
+function parseDeviceID(raw: string | null): string | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { $device_id?: unknown };

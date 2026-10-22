@@ -300,6 +300,22 @@ merges the website pageviews into the new user:
 - **Returning app visitors keep their own id.** A browser that already has
   `agpt_anonymous_id` from an earlier visit with consent keeps it, so
   website visits made under another id do not merge into the account.
+- **Only a new visitor or a new account takes the website's id.** The
+  cookie's `$device_id` is adopted only when nobody is signed in as the
+  answer arrives, or the account was created in this browser (the
+  `agpt_account_created` signup flag). An older account signed in on a
+  browser someone else used on agpt.co keeps the in-memory id, so `identify()`
+  doesn't merge that person's website visits into it.
+- **Logout and account switches forget the shared cookie** when analytics is
+  not allowed (declined or still pending): PostHog then runs in memory, so its
+  `reset()` would leave the previous person's id there for the next account.
+- **The backend gets the id PostHog ends up with.** The attribution report
+  (`useReportAttribution`, the `anonymous_id` and `posthog_distinct_id` on
+  `UserAttribution`) waits while the answer is pending, then sends the adopted
+  id on a grant, or the in-memory id (and no PostHog id) on a decline. It
+  goes at once without a Cookiebot domain group or when uc.js could not load.
+  A visitor who never answers is reported on the first later page where they
+  do.
 - LaunchDarkly keeps the in-memory id until the next page load.
 
 ## Onboarding and activation

@@ -8,7 +8,7 @@ import {
 } from "@/tests/integrations/cookiebot";
 import { act, render } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { PostHog } from "posthog-js";
+import { PostHog, type CaptureResult } from "posthog-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Runs the real posthog-js client against a stubbed PostHog host, so these
@@ -51,6 +51,7 @@ interface FlagsRequest {
 let requests: string[] = [];
 let flagsRequests: FlagsRequest[] = [];
 let captured: string[] = [];
+let capturedEvents: CaptureResult[] = [];
 let clients: PostHog[] = [];
 
 interface RenderOptions {
@@ -71,12 +72,21 @@ async function renderPostHog({ user = null }: RenderOptions = {}) {
   vi.doMock("@/lib/auth/hooks/useAuth", () => ({
     useAuth: () => ({ user, isUserLoading: false }),
   }));
-  const [provider, { trackTabIntro }, { resetAnalyticsIdentity }] =
-    await Promise.all([
-      import("@/providers/posthog/posthog-provider"),
-      import("@/services/onboarding/tab-intro-analytics"),
-      import("@/services/analytics/reset-identity"),
-    ]);
+  const [
+    provider,
+    { trackTabIntro },
+    { resetAnalyticsIdentity },
+    { setAnalyticsIdentitySignedIn },
+    { buildAttributionPayload },
+  ] = await Promise.all([
+    import("@/providers/posthog/posthog-provider"),
+    import("@/services/onboarding/tab-intro-analytics"),
+    import("@/services/analytics/reset-identity"),
+    import("@/services/analytics/anonymous-id"),
+    import("@/services/analytics/attribution-payload"),
+  ]);
+  // What the auth store reports once the session is known.
+  setAnalyticsIdentitySignedIn(Boolean(user));
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
   const identify = vi.spyOn(client, "identify");
   const { PostHogProvider, PostHogPageViewTracker, PostHogUserTracker } =
@@ -89,8 +99,10 @@ async function renderPostHog({ user = null }: RenderOptions = {}) {
   );
   client.on("eventCaptured", (event) => {
     captured.push(event.event);
+    capturedEvents.push(event);
   });
   return {
+    buildAttributionPayload,
     posthog: client,
     trackTabIntro,
     startSessionRecording,
@@ -188,6 +200,7 @@ beforeEach(() => {
   requests = [];
   flagsRequests = [];
   captured = [];
+  capturedEvents = [];
   server.use(
     http.options(
       `${POSTHOG_HOST}/*`,
@@ -575,6 +588,64 @@ describe("PostHog hand-over from the marketing site", () => {
 
     expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
+  });
+
+  it("merges the website visits into an account created here", async () => {
+    document.cookie = "agpt_account_created=email; Path=/";
+    installCookiebot();
+    const { posthog, buildAttributionPayload } = await renderPostHog({
+      user: USER,
+    });
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    const identify = capturedEvents.find(
+      (event) => event.event === "$identify",
+    );
+    expect(identify?.properties.$anon_distinct_id).toBe(WEBSITE_ID);
+    expect(posthog.get_distinct_id()).toBe(USER.id);
+    expect(buildAttributionPayload()).toMatchObject({
+      anonymous_id: WEBSITE_ID,
+      signup_method: "email",
+    });
+    document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
+  });
+
+  it("gives the backend the website's id once the visitor accepts", async () => {
+    installCookiebot();
+    const { buildAttributionPayload } = await renderPostHog();
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    expect(buildAttributionPayload()).toMatchObject({
+      anonymous_id: WEBSITE_ID,
+      posthog_distinct_id: WEBSITE_ID,
+    });
+  });
+
+  it("doesn't hand the website visits to an older account signed in here", async () => {
+    installCookiebot();
+    const { posthog } = await renderPostHog({ user: USER });
+    const pageID = posthog.get_distinct_id();
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    const identify = capturedEvents.find(
+      (event) => event.event === "$identify",
+    );
+    expect(identify?.properties.$anon_distinct_id).toBe(pageID);
+    expect(pageID).not.toBe(WEBSITE_ID);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(pageID);
+    expect(sharedCookie()).not.toMatchObject({ $device_id: WEBSITE_ID });
+  });
+
+  it("forgets the website's id on logout while the answer is pending", async () => {
+    installCookiebot();
+    const { resetAnalyticsIdentity } = await renderPostHog({ user: USER });
+
+    resetAnalyticsIdentity();
+
+    expect(sharedCookie()).toBeNull();
   });
 
   it("keeps a returning visitor's own id", async () => {

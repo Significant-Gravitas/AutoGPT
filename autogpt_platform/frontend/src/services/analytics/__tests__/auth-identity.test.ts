@@ -1,6 +1,7 @@
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
 import {
+  answerCookiebot,
   configureCookiebot,
   installCookiebot,
   removeCookiebot,
@@ -124,6 +125,46 @@ describe("analytics identity on account transitions", () => {
 
     expect(getAnonymousID()).not.toBe(previous);
     expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  describe("with the marketing site's PostHog cookie", () => {
+    const websiteCookie = `ph_phc_test_posthog=${encodeURIComponent(
+      JSON.stringify({ $device_id: "website-device" }),
+    )}; Path=/`;
+
+    beforeEach(() => {
+      document.cookie = websiteCookie;
+      configureCookiebot();
+      installCookiebot();
+    });
+
+    afterEach(() => {
+      document.cookie = "ph_phc_test_posthog=; Path=/; Max-Age=0";
+      document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
+    });
+
+    it("adopts the website's id for a visitor who isn't signed in", () => {
+      answerCookiebot({ statistics: true });
+
+      expect(getAnonymousID()).toBe("website-device");
+    });
+
+    it("keeps it from an older account signed in when the answer arrives", () => {
+      useAuthStore.setState({ user: userA });
+
+      answerCookiebot({ statistics: true });
+
+      expect(getAnonymousID()).not.toBe("website-device");
+    });
+
+    it("adopts it for an account created in this browser", () => {
+      document.cookie = "agpt_account_created=email; Path=/";
+      useAuthStore.setState({ user: userA });
+
+      answerCookiebot({ statistics: true });
+
+      expect(getAnonymousID()).toBe("website-device");
+    });
   });
 
   it("preserves the anonymous identity through login and same-user refreshes", () => {

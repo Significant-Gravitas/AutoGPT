@@ -1,6 +1,7 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { setAnalyticsIdentitySignedIn } from "@/services/analytics/anonymous-id";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
 import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
@@ -298,6 +299,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 });
 
 useAuthStore.subscribe((state, previousState) => {
+  setAnalyticsIdentitySignedIn(Boolean(state.user));
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
     clearCopilotCompletedSessions();

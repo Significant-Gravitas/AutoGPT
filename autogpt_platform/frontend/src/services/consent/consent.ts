@@ -123,6 +123,18 @@ export function openConsentSettings(): void {
   getCookiebotAPI()?.renew();
 }
 
+/**
+ * Whether the visitor's answer is still to come: a consent manager is
+ * configured, has no answer yet, and hasn't failed to load (a blocked uc.js
+ * never answers, so that counts as no answer coming).
+ */
+export function isConsentAnswerPending(): boolean {
+  if (!isConsentManagerConfigured() || getConsentAnswer() !== null) {
+    return false;
+  }
+  return getConsentManagerStatus() !== "unavailable";
+}
+
 export type ConsentManagerStatus = "loading" | "ready" | "unavailable";
 
 /**
