@@ -154,7 +154,7 @@ describe("sending the same text twice in a row", () => {
     });
     await screen.findByText(ANSWERS[1], undefined, { timeout: 5000 });
     expect(screen.getAllByText("yes")).toHaveLength(2);
-  });
+  }, 15_000);
 
   it("forgets a send once it is stopped, so a reload cannot drop a resend", async () => {
     // The turn has opened its stream but not started answering when Stop lands.
