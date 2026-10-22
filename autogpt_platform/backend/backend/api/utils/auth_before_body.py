@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.dependencies.models import Dependant
 from fastapi.dependencies.utils import get_dependant
 from fastapi.routing import APIRoute, request_response
+from starlette.requests import ClientDisconnect
 
 
 def check_token_before_body(app: FastAPI) -> None:
@@ -53,8 +54,11 @@ async def _check_token(request: Request) -> None:
     try:
         await get_jwt_payload(await bearer_jwt_auth(request))
     except HTTPException:
-        async for _ in request.stream():
-            pass
+        try:
+            async for _ in request.stream():
+                pass
+        except ClientDisconnect:
+            pass  # Gone mid-upload: still answered as refused, not as a crash.
         raise
 
 
@@ -64,7 +68,9 @@ def _needs_token(dependant: Dependant, overrides: Mapping[Any, Any]) -> bool:
     dependency tree, built the way `solve_dependencies` builds it.
 
     `get_jwt_payload` is the anchor: a route that authenticates some other way
-    isn't checked early until that way is added here."""
+    isn't checked early until that way is added here. The early check runs the
+    real `get_jwt_payload` and bearer scheme, so when something below it is
+    overridden, the route is left to FastAPI."""
     for sub in dependant.dependencies:
         if sub.call in overrides:
             sub = get_dependant(
@@ -74,7 +80,10 @@ def _needs_token(dependant: Dependant, overrides: Mapping[Any, Any]) -> bool:
                 parent_oauth_scopes=sub.oauth_scopes,
                 scope=sub.scope,
             )
-        if sub.call is get_jwt_payload or _needs_token(sub, overrides):
+        if sub.call is get_jwt_payload:
+            if not any(d.call in overrides for d in sub.dependencies):
+                return True
+        elif _needs_token(sub, overrides):
             return True
     return False
 

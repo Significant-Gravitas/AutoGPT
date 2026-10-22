@@ -8,8 +8,9 @@ from autogpt_libs.auth.dependencies import (
     get_user_id,
     requires_user,
 )
-from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth.jwt_utils import bearer_jwt_auth, get_jwt_payload
 from fastapi import FastAPI, Request, Security, UploadFile
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from starlette.types import ASGIApp
 
@@ -57,13 +58,22 @@ def _app() -> FastAPI:
     return app
 
 
-async def _post(app: ASGIApp, path: str, body: bytes, headers: dict[str, str]):
+async def _post(
+    app: ASGIApp,
+    path: str,
+    body: bytes,
+    headers: dict[str, str],
+    disconnect: bool = False,
+):
     """Call the app as uvicorn would. Besides the response, returns how much of
-    the body the app received and whether it parsed it (body, JSON or form)."""
+    the body the app received and whether it parsed it (body, JSON or form).
+    With `disconnect`, the client goes away instead of sending its body."""
     received = 0
 
     async def receive():
         nonlocal received
+        if disconnect:
+            return {"type": "http.disconnect"}
         received += len(body)
         return {"type": "http.request", "body": body, "more_body": False}
 
@@ -158,6 +168,19 @@ async def test_a_chunked_body_without_a_token_is_refused_before_it_is_parsed():
     assert (status, drained, parsed) == (401, True, False)
 
 
+async def test_a_client_that_leaves_mid_upload_is_still_answered_as_refused():
+    """Not a 500: the disconnect while the body is thrown away is expected."""
+    status, _, payload, _, parsed = await _post(
+        _app(), "/upload", b"--x\r\n" + b"A" * 4096, {"content-type": MULTIPART}, True
+    )
+
+    assert (status, payload, parsed) == (
+        401,
+        {"detail": "Authorization header is missing"},
+        False,
+    )
+
+
 async def test_a_bad_token_gets_the_dependencys_own_401_before_the_body_is_parsed():
     with patch(
         "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
@@ -209,6 +232,25 @@ async def test_an_overridden_sign_in_dependency_is_used_as_fastapi_would():
     # Overriding one route's dependency doesn't open another route.
     status, _, _, _, parsed = await _post(app, "/signed-in", b'{"name": "x"}', JSON)
     assert (status, parsed) == (401, False)
+
+
+async def test_an_overridden_bearer_scheme_is_used_as_fastapi_would():
+    """The early check runs the real bearer scheme, so with it overridden the
+    route is left to FastAPI, which reads the credentials from the override."""
+    app = _app()
+    app.dependency_overrides[bearer_jwt_auth] = lambda: HTTPAuthorizationCredentials(
+        scheme="Bearer", credentials="from-the-override"
+    )
+
+    with patch(
+        "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
+        AsyncMock(return_value={"sub": "user-1"}),
+    ):
+        status, _, payload, _, parsed = await _post(
+            app, "/signed-in", b'{"name": "x"}', JSON
+        )
+
+    assert (status, payload, parsed) == (200, {"sub": "user-1", "name": "x"}, True)
 
 
 async def test_an_override_that_itself_needs_a_token_is_checked_early():
