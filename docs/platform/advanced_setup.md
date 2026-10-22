@@ -45,7 +45,7 @@ The `migrate` service, or `make migrate` outside Docker, then applies the migrat
 
 The platform uses Redis for caching, distributed locks, rate limits, and the streams that carry agent output to the browser.
 
-The Docker Compose stack runs its own Redis Cluster: three `redis:7` shards on ports `17000` to `17002`, joined by a one-shot `redis-init` service. `make start-core` starts it along with the other dependencies.
+The Docker Compose stack runs its own Redis Cluster: three `redis:7` shards on ports `17000` to `17002` of `127.0.0.1`, joined by a one-shot `redis-init` service. They require the `REDIS_PASSWORD` that `make init-env` generates in `backend/.env`. `make start-core` starts it along with the other dependencies.
 
 ### Using an external Redis cluster
 
