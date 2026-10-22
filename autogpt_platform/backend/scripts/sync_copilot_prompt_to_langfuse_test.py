@@ -20,7 +20,6 @@ class FakeLangfuse:
         self.versions = {
             v: [text, list(labels)] for v, (text, labels) in versions.items()
         }
-        self.configs: dict[int, dict] = {}
         self.api = MagicMock()
         self.api.prompts.get.side_effect = self._get
         self.api.prompts.list.side_effect = self._list
@@ -29,12 +28,7 @@ class FakeLangfuse:
 
     def _prompt(self, version: int) -> SimpleNamespace:
         text, labels = self.versions[version]
-        return SimpleNamespace(
-            version=version,
-            prompt=text,
-            labels=list(labels),
-            config=self.configs.get(version, {}),
-        )
+        return SimpleNamespace(version=version, prompt=text, labels=list(labels))
 
     def _get(self, name, *, version=None, label=None):
         assert name == "CoPilot%20Prompt"
@@ -56,7 +50,6 @@ class FakeLangfuse:
                 entry[1].remove("latest")
         version = max(self.versions, default=0) + 1
         self.versions[version] = [prompt, [*labels, "latest"]]
-        self.configs[version] = config
         return self._prompt(version)
 
     def _update(self, *, name, version, new_labels):
@@ -240,7 +233,7 @@ def test_promote_of_a_master_only_text_keeps_latest_on_dev_text():
     assert "v2" in restored["commit_message"]
 
 
-def test_promote_retry_restores_latest_after_a_failed_restore():
+def test_publish_puts_latest_back_after_a_failed_restore(capsys):
     client = FakeLangfuse({1: (OLD, ["production"]), 2: (DEV, ["latest"])})
     creates = []
 
@@ -253,12 +246,34 @@ def test_promote_retry_restores_latest_after_a_failed_restore():
     client.create_prompt.side_effect = create_then_fail
     with pytest.raises(ConnectionError):
         sync.promote_production(client, NAME, REPO)
-    sync.promote_production(client, NAME, REPO)
+    assert "--publish-latest on dev" in capsys.readouterr().err
+    sync.publish_latest(client, NAME, DEV)
 
     production = sync.fetch_label(client, NAME, "production")
     latest = sync.fetch_label(client, NAME, "latest")
     assert production is not None and production.text == REPO
     assert latest is not None and latest.text == DEV
+
+
+def test_master_rerun_keeps_latest_once_dev_has_the_hotfix():
+    client = FakeLangfuse({1: (OLD, ["production"]), 2: (DEV, ["latest"])})
+    creates = []
+
+    def create_then_fail(**kwargs):
+        creates.append(kwargs)
+        if len(creates) == 2:
+            raise ConnectionError("Langfuse went away")
+        return client._create(**kwargs)
+
+    client.create_prompt.side_effect = create_then_fail
+    with pytest.raises(ConnectionError):
+        sync.promote_production(client, NAME, REPO)
+    # Dev merges the hotfix back, so latest already holds dev's text.
+    sync.publish_latest(client, NAME, REPO)
+    sync.promote_production(client, NAME, REPO)
+
+    latest = sync.fetch_label(client, NAME, "latest")
+    assert latest is not None and latest.text == REPO
 
 
 def test_promote_is_noop_when_production_matches():
