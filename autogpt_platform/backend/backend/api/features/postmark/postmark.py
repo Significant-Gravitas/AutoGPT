@@ -134,6 +134,37 @@ async def _user_id_for(recipient: str, message_id: str) -> str | None:
     return user.id
 
 
+# The address itself is bad or Postmark has stopped sending to it.
+_HARD_BOUNCES = {
+    PostmarkBounceEnum.HardBounce,
+    PostmarkBounceEnum.BadEmailAddress,
+    PostmarkBounceEnum.ManuallyDeactivated,
+    PostmarkBounceEnum.SpamComplaint,
+}
+# A temporary failure: Postmark retries, and the address may work tomorrow.
+_SOFT_BOUNCES = {
+    PostmarkBounceEnum.Transient,
+    PostmarkBounceEnum.SoftBounce,
+    PostmarkBounceEnum.DnsError,
+}
+
+
+def _address_has_failed(event: PostmarkBounceWebhook) -> bool:
+    """Whether a bounce means the address can no longer be mailed.
+
+    Postmark sends a Bounce webhook for every type it classifies, including
+    ones that are not delivery failures at all: an out-of-office reply
+    (AutoResponder), a challenge, a virus or spam notice, or something it
+    could not classify. For those, trust Postmark's own verdict: the address
+    has failed only if Postmark deactivated it (``Inactive``).
+    """
+    if event.TypeCode in _HARD_BOUNCES:
+        return True
+    if event.TypeCode in _SOFT_BOUNCES:
+        return False
+    return event.Inactive
+
+
 async def bounce_handler(event: PostmarkBounceWebhook):
     user_id = await _user_id_for(event.Email, event.MessageID)
     if not user_id:
@@ -145,14 +176,10 @@ async def bounce_handler(event: PostmarkBounceWebhook):
         occurred_at=event.BouncedAt,
         properties={"bounce_type": event.Type},
     )
-    if event.TypeCode in [
-        PostmarkBounceEnum.Transient,
-        PostmarkBounceEnum.SoftBounce,
-        PostmarkBounceEnum.DnsError,
-    ]:
+    if not _address_has_failed(event):
         logger.info(
-            "Softish bounce %s for user %s, not setting email verification to false",
-            event.TypeCode,
+            "%s bounce for user %s, not setting email verification to false",
+            event.TypeCode.name,
             user_id,
         )
         return
