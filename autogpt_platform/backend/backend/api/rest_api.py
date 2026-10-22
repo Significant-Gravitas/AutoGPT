@@ -544,7 +544,7 @@ app.include_router(
     prefix="/api",
 )
 # Dev-only surface: the test-data seeder is never mounted outside a local
-# app_env, matching how docs_url/metrics are gated above. The runtime
+# app_env, matching how docs_url is gated above. The runtime
 # `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
 if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
     app.include_router(
