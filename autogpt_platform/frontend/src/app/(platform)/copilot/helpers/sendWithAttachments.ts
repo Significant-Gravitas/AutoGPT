@@ -167,7 +167,7 @@ async function uploadFiles(
         return {
           file_id: data.file_id,
           name: data.name || file.name,
-          mime_type: data.mime_type || "application/octet-stream",
+          mime_type: data.mime_type || file.type || "application/octet-stream",
         } as UploadedFile;
       } catch (err) {
         // The send's own failure toast says a plan is needed.
