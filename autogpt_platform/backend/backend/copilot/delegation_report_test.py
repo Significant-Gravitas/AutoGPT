@@ -8,6 +8,7 @@ reviews) are stood in for.
 
 import asyncio
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -15,7 +16,7 @@ import pytest
 
 from backend.copilot import delegation_report, result_waiters, stream_registry
 from backend.copilot.gate import held
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, PendingQuestion
 from backend.copilot.pending_message_helpers import drain_pending_safe
 from backend.copilot.pending_messages import (
     PendingMessage,
@@ -202,24 +203,43 @@ async def test_no_note_for_a_thread_handed_off_to_the_expert(world, ids):
 
 
 @pytest.mark.parametrize(
-    "review_open, error, headline",
+    "review_open, question, error, headline",
     [
-        (True, None, "Bit is waiting on your approval."),
-        (False, "Tool call failed", "Bit stopped on an error before finishing."),
+        (True, None, None, "Bit is waiting on your approval."),
+        (False, "Which repo?", None, "Bit is waiting on your answer: Which repo?"),
+        (False, None, "Tool call failed", "Bit stopped on an error before finishing."),
     ],
-    ids=["approval", "error"],
+    ids=["approval", "question", "error"],
 )
 async def test_a_turn_that_did_not_finish_says_why(
-    world, ids, review_open, error, headline
+    world, ids, review_open, question, error, headline
 ):
     add_session(world, ids.bit, delegated_by=ids.otto)
     if review_open:
         world.open_reviews[ids.bit] = [object()]
+    if question:
+        world.sessions[ids.bit].metadata.pending_question = PendingQuestion(
+            text=question, asked_at=datetime.now(timezone.utc)
+        )
 
     await end_turn(ids.bit, ids.turn, error=error)
 
     notes = await drain_pending_safe(ids.otto)
     assert [n.content.split("\n")[0] for n in notes] == [headline]
+
+
+async def test_a_turn_without_closing_text_does_not_borrow_an_earlier_reply(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto, reply="Earlier turn's result.")
+    world.sessions[ids.bit].messages += [
+        ChatMessage(role="user", content="Now open the draft PR."),
+        ChatMessage(role="assistant", content="", tool_calls=[{"id": "call-1"}]),
+        ChatMessage(role="tool", content="PR opened", tool_call_id="call-1"),
+    ]
+
+    await end_turn(ids.bit, ids.turn)
+
+    (note,) = await drain_pending_safe(ids.otto)
+    assert note.content.split("\n")[0] == "Bit finished."
 
 
 async def test_the_experts_words_reach_the_delegator_escaped_and_capped(

@@ -8,6 +8,7 @@ Nothing is started or woken: the note waits for that turn.
 
 import logging
 import uuid
+from itertools import takewhile
 
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.model import (
@@ -76,12 +77,15 @@ async def _note(user_id: str, session: ChatSession, name: str, *, failed: bool) 
     reviews = await review_db().get_pending_reviews_for_chat_session(
         session.session_id, user_id
     )
+    question = session.metadata.pending_question
     if reviews:
         headline = f"{name} is waiting on your approval."
     elif failed:
         headline = f"{name} stopped on an error before finishing."
+    elif question is not None:
+        headline = f"{name} is waiting on your answer: {_clip(question.text)}"
     else:
-        summary = _summary(session)
+        summary = _clip(_closing_text(session))
         headline = f"{name} finished: {summary}" if summary else f"{name} finished."
     return (
         f"{headline}\n"
@@ -90,16 +94,21 @@ async def _note(user_id: str, session: ChatSession, name: str, *, failed: bool) 
     )
 
 
-def _summary(session: ChatSession) -> str:
-    reply = next(
+def _closing_text(session: ChatSession) -> str:
+    # This turn's only: an earlier turn's reply would be reported as this one's.
+    this_turn = takewhile(lambda m: m.role != "user", reversed(session.messages))
+    return next(
         (
             m.content
-            for m in reversed(session.messages)
+            for m in this_turn
             if m.role == "assistant" and m.content and m.content.strip()
         ),
         "",
     )
-    text = " ".join(reply.split())
+
+
+def _clip(text: str) -> str:
+    text = " ".join(text.split())
     if len(text) > SUMMARY_CHARS:
         text = text[: SUMMARY_CHARS - 1].rstrip() + "…"
     return escape_prompt_xml_tags(text)
