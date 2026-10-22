@@ -2579,6 +2579,32 @@ async def test_the_org_check_runs_over_rpc_where_sub_runs_start(
     assert create_kwargs["team_id"] == "runner-team"
 
 
+@pytest.mark.asyncio
+async def test_a_new_expert_run_isnt_put_through_the_org_check(
+    mocker: MockerFixture,
+):
+    """An expert run keeps its own tenancy rule, so the check that replaces
+    an org its runner isn't in doesn't apply to it."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    membership.assert_not_awaited()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert (create_kwargs["organization_id"], create_kwargs["team_id"]) == (
+        "personal-org",
+        "personal-team",
+    )
+
+
 @pytest.mark.parametrize(
     "caller",
     ["no-context", "context-without-an-org", "org-passed-in", "context-in-another-org"],
