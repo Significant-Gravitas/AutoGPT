@@ -239,6 +239,15 @@ jobs:
           # Hash checkout inputs before fresh secrets and resolved Compose exist.
           key: e2e-test-data-v3-${{ matrix.embeddings && 'emb' || 'noemb' }}-${{ hashFiles('autogpt_platform/backend/**', 'autogpt_platform/autogpt_libs/**', 'autogpt_platform/docker-compose*.yml', 'autogpt_platform/.env.default', '.github/workflows/platform-fullstack-ci.yml') }}
 
+      # Docker Hub now and then refuses an anonymous pull ("unauthorized:
+      # authentication required"). The daemon tries the mirror first, then Hub.
+      - name: Set up Platform - Pull Docker Hub images through mirror.gcr.io
+        run: |
+          config=$(sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}')
+          jq '."registry-mirrors" = ["https://mirror.gcr.io"]' <<<"$config" | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker info --format 'Registry mirrors: {{.RegistryConfig.Mirrors}}'
+
       - name: Set up Platform - Pull BuildKit image
         id: buildkit-image
         working-directory: /tmp
@@ -338,6 +347,10 @@ jobs:
           driver-opts: |
             image=${{ env.BUILDKIT_IMAGE }}
             network=host
+          # BuildKit pulls the Dockerfiles' base images itself, not through the daemon
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
 
       # The frontend Dockerfile keeps Next.js's webpack cache in a BuildKit cache
       # mount. A fresh builder starts empty, so seed the mount from the last run.
