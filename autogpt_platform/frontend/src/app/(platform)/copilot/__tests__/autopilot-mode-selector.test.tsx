@@ -4,6 +4,7 @@ import {
   getPostV2CreateSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
@@ -11,7 +12,7 @@ import {
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutopilotModeStore } from "../autopilotModeStore";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
@@ -22,7 +23,7 @@ import {
   typeAndSend,
 } from "./sse-helpers";
 
-const flags = vi.hoisted(() => ({ autoMode: false, experts: false }));
+const flags = vi.hoisted(() => ({ autoMode: false }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -32,11 +33,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === actual.Flag.COPILOT_AUTO_MODE
-        ? flags.autoMode
-        : flag === actual.Flag.HIRE_EXPERTS
-          ? flags.experts
-          : false,
+      flag === actual.Flag.COPILOT_AUTO_MODE && flags.autoMode,
   };
 });
 
@@ -65,7 +62,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 beforeEach(() => {
   flags.autoMode = true;
-  flags.experts = false;
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+      HttpResponse.json(makeDashboard([])),
+    ),
+  );
 });
 
 afterEach(() => {
@@ -73,7 +74,8 @@ afterEach(() => {
   useAutopilotModeStore.setState({ choices: {} });
 });
 
-describe("AutoPilot mode selector", () => {
+// These flows take 3-4.5 s on CI's slower runners, close to the 5 s default.
+describe("AutoPilot mode selector", { timeout: 15_000 }, () => {
   it("is absent with the flag off, and the request carries no mode", async () => {
     flags.autoMode = false;
     const bodies = captureStreamBodies();
@@ -128,6 +130,11 @@ describe("AutoPilot mode selector", () => {
     expect(
       screen.queryByRole("button", { name: /approval mode: unsupervised/i }),
     ).toBeNull();
+    expect(
+      await screen.findByText(
+        /^Otto will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
     await user.click(
       await screen.findByRole("button", { name: /run unsupervised/i }),
     );
@@ -184,7 +191,6 @@ describe("AutoPilot mode selector", () => {
     expect(bodies[0]).toMatchObject({ autopilot_mode: "ask_first" });
   });
   it("starts a new expert thread on the expert's default without sending it", async () => {
-    flags.experts = true;
     const bodies = captureStreamBodies();
     const createBodies: Record<string, unknown>[] = [];
     server.use(
@@ -224,7 +230,6 @@ describe("AutoPilot mode selector", () => {
   });
 
   it("drops a pick left over from an earlier new chat that was never sent", async () => {
-    flags.experts = true;
     const createBodies: Record<string, unknown>[] = [];
     server.use(
       getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
@@ -266,7 +271,6 @@ describe("AutoPilot mode selector", () => {
   });
 
   it("keeps a thread's stored mode over the expert's default", async () => {
-    flags.experts = true;
     server.use(
       getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
     );
@@ -279,6 +283,26 @@ describe("AutoPilot mode selector", () => {
     });
 
     expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
+  });
+
+  it("names the chat's expert in the Unsupervised confirm", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
   });
 });
 

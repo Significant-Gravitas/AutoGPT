@@ -326,10 +326,10 @@ _bootstrap_ollama_macos() {
 }
 
 init_env() {
-    # The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY and
-    # BETTER_AUTH_SECRET blank and the backend refuses to start without an
-    # ENCRYPTION_KEY, so generate them here exactly as `make init-env` does.
-    # Values that are already set are never overwritten.
+    # The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY,
+    # INTERNAL_API_KEY and BETTER_AUTH_SECRET blank and the backend refuses to
+    # start without an ENCRYPTION_KEY, so generate them here exactly as
+    # `make init-env` does. Values that are already set are never overwritten.
     cd "$REPO_DIR/autogpt_platform" || handle_error "Failed to navigate to autogpt_platform"
     print_color "BLUE" "Generating secrets for this install..."
 

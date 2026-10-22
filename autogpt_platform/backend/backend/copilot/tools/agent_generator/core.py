@@ -698,4 +698,8 @@ async def get_agent_as_json(
     if not graph:
         return None
 
+    if graph.user_id != user_id:
+        # A library copy of someone else's workflow: the file the caller gets
+        # mustn't carry the owner's stored secrets or references.
+        graph = graph.shared_copy()
     return graph_to_json(graph)

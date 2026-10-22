@@ -170,8 +170,8 @@ To run the platform, follow these steps:
 
   This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
   and `frontend`) and fills in the secrets that `.env.default` deliberately
-  leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and
-  `BETTER_AUTH_SECRET` — with values generated for your machine. Those files
+  leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`
+  and `BETTER_AUTH_SECRET` — with values generated for your machine. Those files
   are public, so shipping working values in them would mean every install in
   the world shared one publicly-readable key. It is safe to re-run: it never
   overwrites an existing `.env` or a value you set yourself. You can then edit
@@ -640,7 +640,7 @@ pnpm test
 
 #### Running the backend locally
 
-To run the backend locally, you need to have Python 3.10 or higher installed on your machine.
+To run the backend locally, you need Python 3.11, 3.12 or 3.13 installed on your machine.
 
 Install [Poetry](https://python-poetry.org/docs/#installation) to manage dependencies and virtual environments.
 

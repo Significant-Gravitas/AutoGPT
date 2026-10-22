@@ -14,6 +14,7 @@ import {
   logClientRequestFailure,
   resetClientRequestFailureLog,
 } from "@/app/api/mutators/request-failure-log";
+import { CLIENT_IP_TOKEN_HEADER_NAME } from "@/lib/constants";
 
 import {
   CLIENT_IGNORE_ERRORS,
@@ -201,6 +202,8 @@ describe("Sentry user privacy filters", () => {
     "http.request.header.cf_connecting_ip",
     "http.request.header.true_client_ip",
     "http.request.header.x_client_ip",
+    // The frontend's signed client-IP token carries the visitor's IP too.
+    `http.request.header.${CLIENT_IP_TOKEN_HEADER_NAME.toLowerCase().replace(/-/g, "_")}`,
     "http.request.header.x_vercel_forwarded_for",
     "http.request.header.x_vercel_proxied_for",
     "http.request.header.x_vercel_ip_city",

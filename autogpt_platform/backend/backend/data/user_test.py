@@ -1308,15 +1308,18 @@ class TestGetOrCreateUserStatus:
             )
 
             result = await user_module.get_or_create_user_with_status(
-                {"sub": "user-hooked", "email": "hook@example.com"}
+                {"sub": "user-hooked", "email": "hook@example.com", "role": "admin"}
             )
 
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
         track.assert_called_once_with(user_id="user-hooked", signup_method="email")
-        # The email type and sign-in method MailerLite segments on.
-        person.assert_called_once_with("user-hooked", "hook@example.com", "email")
+        # The email type and sign-in method MailerLite segments on, and the
+        # token's role, which flags our own team.
+        person.assert_called_once_with(
+            "user-hooked", "hook@example.com", "email", "admin"
+        )
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):

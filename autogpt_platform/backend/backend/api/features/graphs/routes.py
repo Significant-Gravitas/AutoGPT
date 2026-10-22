@@ -77,7 +77,10 @@ async def get_graph(
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-    return graph
+    # Teammates and library members can read a graph they don't own; what
+    # they get never carries the owner's stored secrets, trigger subscription
+    # or identity, whatever `for_export` says.
+    return _shared_if_not_owner(graph, user_id)
 
 
 @router.get(
@@ -97,7 +100,16 @@ async def get_graph_all_versions(
     )
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-    return graphs
+    return [_shared_if_not_owner(graph, user_id) for graph in graphs]
+
+
+def _shared_if_not_owner(
+    graph: graph_db.GraphModel, user_id: str
+) -> graph_db.GraphModel:
+    # An export comes back with its owner blanked, so an owner's own export
+    # takes the `shared_copy` branch too. That is harmless only as long as
+    # `shared_copy` removes nothing an export keeps.
+    return graph if graph.user_id == user_id else graph.shared_copy()
 
 
 @router.post(
