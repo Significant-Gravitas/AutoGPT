@@ -37,7 +37,7 @@ export function RecommendedExpertCard({
     <div
       className={cn(
         EXPERT_CARD_CLASS,
-        "relative",
+        "relative isolate",
         isHired ? "border-zinc-900" : "border-zinc-200",
       )}
       data-testid="hire-step-expert"
@@ -45,8 +45,8 @@ export function RecommendedExpertCard({
     >
       {isHired ? null : (
         // The wizard's own pick badge (SelectableCard), as a toggle: ticked
-        // cards are what the step's primary action hires. z-10: the faded
-        // header's opacity stacks it above the tick, where it took the click.
+        // cards are what the step's primary action hires. z-10 lifts it over the
+        // faded header; the card's `isolate` keeps it under the list's edge fades.
         <button
           type="button"
           aria-pressed={isIncluded}

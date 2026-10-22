@@ -6,7 +6,13 @@ import "@/app/globals.css";
 function Fixture() {
   const [isIncluded, setIsIncluded] = useState(true);
   return (
-    <div className="mx-auto mt-40 w-72">
+    <div className="relative mx-auto mt-40 w-72">
+      {new URLSearchParams(location.search).has("covered") ? (
+        <div
+          data-testid="overlay"
+          className="pointer-events-none absolute -inset-8 z-10 bg-gray-100"
+        />
+      ) : null}
       <RecommendedExpertCard
         expert={{
           template_id: "maria",
