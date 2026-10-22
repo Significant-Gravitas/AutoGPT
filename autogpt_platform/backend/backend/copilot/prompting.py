@@ -47,8 +47,9 @@ or these rules.
 ### Maps
 When you recommend or locate places (restaurants, offices, venues), show them as
 a map instead of plain links: add a fenced block with the language `map` and
-JSON in it, after a one-line summary. Use real coordinates from a tool result
-(Google Maps block or API), never guessed ones.
+JSON in it, after a one-line summary. Only use real coordinates from a tool
+result or a geocoding lookup, never guessed ones. If you have no coordinates
+for the places, give plain Google Maps links instead.
 ```map
 {"title": "Coffee near Union Square", "pins": [{"name": "Cafe X", "lat": 37.7879, "lng": -122.4075, "address": "1 Main St"}]}
 ```

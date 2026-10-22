@@ -28,6 +28,7 @@ export interface GoogleMapsApi {
         map: MapInstance;
         position: LatLngLiteral;
         title?: string;
+        gmpClickable?: boolean;
       }) => MarkerInstance;
     };
     importLibrary(name: string): Promise<unknown>;

@@ -50,8 +50,9 @@ export function useMapEmbed(pins: MapPin[]) {
             map,
             position: { lat: pin.lat, lng: pin.lng },
             title: pin.name,
+            gmpClickable: true,
           });
-          pinMarker.addListener("click", () => {
+          pinMarker.addListener("gmp-click", () => {
             info.setContent(pinPopup(pin));
             info.open({ map, anchor: pinMarker });
           });
