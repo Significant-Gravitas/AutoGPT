@@ -1,12 +1,19 @@
 """Tests for chat tools utility functions."""
 
+import asyncio
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
-from backend.data.model import CredentialsFieldInfo, HostScopedCredentials
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    HostScopedCredentials,
+)
+from backend.integrations.providers import ProviderName
 
 
 def _make_regular_field() -> CredentialsFieldInfo:
@@ -193,6 +200,111 @@ async def test_an_ungranted_credential_surfaces_as_missing_not_as_a_match():
 async def test_a_plain_session_keeps_every_account_credential():
     matched, _ = await _resolve_for(None, [])
     assert matched["credentials"].id == "ungranted-cred"
+
+
+def _in_flight_together(count: int):
+    """Stubs that each return only once *count* of them are in flight, so
+    reads made one after another time out."""
+    started: list[str] = []
+    together = asyncio.Event()
+
+    def stub(name: str, value):
+        async def read(*_args, **_kwargs):
+            started.append(name)
+            if len(started) == count:
+                together.set()
+            await asyncio.wait_for(together.wait(), timeout=1)
+            return value
+
+        return read
+
+    return stub, started
+
+
+@contextmanager
+def _account(credentials: list, granted: list[str] | AsyncMock):
+    """The user's account credentials, and what expert ``expert-a`` was granted."""
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = (
+        granted if isinstance(granted, AsyncMock) else AsyncMock(return_value=granted)
+    )
+    with (
+        patch("backend.copilot.tools.utils.IntegrationCredentialsManager") as manager,
+        patch("backend.data.db_accessors.experts_db", return_value=experts),
+    ):
+        manager.return_value.store.get_all_creds = (
+            credentials
+            if isinstance(credentials, AsyncMock)
+            else AsyncMock(return_value=credentials)
+        )
+        yield experts
+
+
+async def test_an_experts_grants_are_read_beside_the_credentials():
+    from backend.copilot.tools.utils import get_user_credentials
+
+    stub, started = _in_flight_together(2)
+    account = [_host_cred("ungranted-cred"), _host_cred("granted-cred")]
+    with _account(
+        AsyncMock(side_effect=stub("credentials", account)),
+        AsyncMock(side_effect=stub("grants", ["granted-cred"])),
+    ):
+        credentials = await get_user_credentials("test-user", "expert-a")
+
+    assert sorted(started) == ["credentials", "grants"]
+    assert [c.id for c in credentials] == ["granted-cred"]
+
+
+async def test_a_plain_session_reads_no_grants():
+    from backend.copilot.tools.utils import get_user_credentials
+
+    with _account([_host_cred("a"), _host_cred("b")], []) as experts:
+        credentials = await get_user_credentials("test-user")
+
+    assert [c.id for c in credentials] == ["a", "b"]
+    experts.expert_allowed_credential_ids.assert_not_called()
+
+
+@pytest.mark.parametrize("granted", [["granted-cred"], []], ids=["granted", "not"])
+async def test_a_workflow_in_an_expert_session_matches_only_a_granted_credential(
+    granted,
+):
+    from backend.copilot.tools.utils import match_user_credentials_to_graph
+
+    graph = MagicMock()
+    graph.id = "test-graph"
+    graph.regular_credentials_inputs = {
+        "github_api_key": (_make_regular_field(), {("node-1", "credentials")}, True),
+    }
+    account = [_key_cred("ungranted-cred"), _key_cred("granted-cred")]
+    with _account(account, granted):
+        matched, missing = await match_user_credentials_to_graph(
+            "test-user", graph, expert_id="expert-a"
+        )
+
+    if granted:
+        assert matched["github_api_key"].id == "granted-cred" and missing == []
+    else:
+        assert matched == {} and len(missing) == 1
+
+
+@pytest.mark.parametrize("granted", [["granted-cred"], []], ids=["granted", "not"])
+async def test_a_required_credential_counts_only_once_the_expert_is_granted_it(
+    granted,
+):
+    from backend.copilot.tools.utils import check_user_has_required_credentials
+
+    required = [
+        CredentialsMetaInput(
+            id="github", provider=ProviderName.GITHUB, type="api_key", title="GitHub"
+        )
+    ]
+    with _account([_key_cred("granted-cred")], granted):
+        missing = await check_user_has_required_credentials(
+            "test-user", required, expert_id="expert-a"
+        )
+
+    assert len(missing) == (0 if granted else 1)
 
 
 def _host_cred(cred_id: str) -> HostScopedCredentials:

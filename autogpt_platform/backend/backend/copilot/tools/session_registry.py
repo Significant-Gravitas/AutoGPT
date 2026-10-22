@@ -132,10 +132,14 @@ async def session_expert_entries(
 ) -> list[CapabilityEntry]:
     """Roster templates this session may hire and the teammates it may hand
     work to; ``[]`` when a read fails, so an experts
-    hiccup never takes capability search down with it."""
+    hiccup never takes capability search down with it.
+
+    The team and the roster are read side by side: neither needs the other."""
     try:
-        team = await experts_db().list_experts(user_id, with_metrics=False)
-        templates = await _hireable_roster(user_id) if may_hire(session) else []
+        team, templates = await asyncio.gather(
+            experts_db().list_experts(user_id, with_metrics=False),
+            _hireable_roster(user_id) if may_hire(session) else _no_roster(),
+        )
     except Exception:
         logger.warning("Could not load experts for capability search", exc_info=True)
         return []
@@ -155,3 +159,7 @@ def may_hire(session: ChatSession) -> bool:
 async def _hireable_roster(user_id: str) -> list[ExpertTemplate]:
     db = experts_db()
     return await db.with_bundled_skills(await db.list_templates(), user_id)
+
+
+async def _no_roster() -> list[ExpertTemplate]:
+    return []
