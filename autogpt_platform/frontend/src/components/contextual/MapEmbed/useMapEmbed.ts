@@ -33,6 +33,7 @@ export function useMapEmbed(pins: MapPin[]) {
     const markers: Array<{ map: unknown }> = [];
     let info: { close(): void } | null = null;
     const timeout = setTimeout(() => {
+      rejected = true;
       if (!cancelled) setStatus("failed");
     }, LOAD_TIMEOUT_MS);
     const unsubscribe = onMapsAuthFailure(() => {

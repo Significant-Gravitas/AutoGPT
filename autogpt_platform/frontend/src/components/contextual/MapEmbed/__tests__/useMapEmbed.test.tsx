@@ -56,6 +56,7 @@ describe("MapEmbed with a Maps key", () => {
     cleanup();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     fitBounds.mockClear();
     addEventListener.mockClear();
     infoOpen.mockClear();
@@ -111,5 +112,27 @@ describe("MapEmbed with a Maps key", () => {
     expect(fitBounds).toHaveBeenCalledTimes(1);
     addEventListener.mock.calls[0][1]();
     expect(infoOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the pin links when the map loads after the timeout", async () => {
+    vi.useFakeTimers();
+    const pending: { script?: HTMLScriptElement } = {};
+    vi.mocked(document.head.appendChild).mockImplementation(((node: Node) => {
+      installFakeMaps();
+      pending.script = node as HTMLScriptElement;
+      return node;
+    }) as typeof document.head.appendChild);
+    const { MapEmbed: FreshMapEmbed } = await import("../MapEmbed");
+    render(<FreshMapEmbed data={DATA} />);
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(screen.getByRole("link", { name: "Cafe X" })).toBeDefined();
+    await act(async () => {
+      pending.script?.onload?.(new Event("load"));
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    expect(markerCtor).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Cafe X" })).toBeDefined();
   });
 });
