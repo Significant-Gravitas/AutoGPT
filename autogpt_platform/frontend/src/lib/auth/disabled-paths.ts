@@ -17,8 +17,8 @@ export const DISABLED_AUTH_PATHS = [
   "/admin/set-user-password",
   "/admin/stop-impersonating",
   "/admin/update-user",
-  // No account linking, no session list, no provider tokens in the browser,
-  // and passwords change through the reset email.
+  // No account linking, no session list or revocation, no provider tokens in
+  // the browser, and passwords change through the reset email.
   "/account-info",
   "/change-password",
   "/delete-user",
@@ -30,6 +30,7 @@ export const DISABLED_AUTH_PATHS = [
   "/refresh-token",
   "/revoke-other-sessions",
   "/revoke-session",
+  "/revoke-sessions",
   "/unlink-account",
   "/update-session",
   "/verify-password",
