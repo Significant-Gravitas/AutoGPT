@@ -24062,7 +24062,7 @@
       "DreamPassListResponse": {
         "properties": {
           "passes": {
-            "items": { "$ref": "#/components/schemas/DreamPassRecord" },
+            "items": { "$ref": "#/components/schemas/PublicDreamPassRecord" },
             "type": "array",
             "title": "Passes"
           }
@@ -24103,174 +24103,9 @@
         ],
         "title": "DreamPassPhase"
       },
-      "DreamPassRecord": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "user_id": { "type": "string", "title": "User Id" },
-          "expert_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Expert Id"
-          },
-          "scope_key": { "type": "string", "title": "Scope Key" },
-          "route": { "$ref": "#/components/schemas/DreamPassRoute" },
-          "trigger": { "$ref": "#/components/schemas/DreamPassTrigger" },
-          "phase": { "$ref": "#/components/schemas/DreamPassPhase" },
-          "status": { "$ref": "#/components/schemas/DreamPassStatus" },
-          "skip_reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Skip Reason"
-          },
-          "cancel_generation": {
-            "type": "integer",
-            "title": "Cancel Generation"
-          },
-          "provider_batch_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Provider Batch Id"
-          },
-          "lease_token": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Lease Token"
-          },
-          "lease_expires_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Lease Expires At"
-          },
-          "cleanup_pending_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Cleanup Pending At"
-          },
-          "cost_context": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Cost Context"
-          },
-          "input_bundle": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/DreamInput" },
-              { "type": "null" }
-            ]
-          },
-          "phase_outputs": { "$ref": "#/components/schemas/DreamPhaseOutputs" },
-          "operations": { "$ref": "#/components/schemas/DreamPassOperations" },
-          "usage": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/DreamPassUsage" },
-              { "type": "null" }
-            ]
-          },
-          "window_start": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Window Start"
-          },
-          "window_end": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Window End"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          },
-          "erased_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Erased At"
-          },
-          "read_uuids": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Read Uuids"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "started_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Started At"
-          },
-          "submitted_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Submitted At"
-          },
-          "applied_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Applied At"
-          },
-          "completed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Completed At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "user_id",
-          "expert_id",
-          "scope_key",
-          "route",
-          "trigger",
-          "phase",
-          "status",
-          "skip_reason",
-          "cancel_generation",
-          "provider_batch_id",
-          "lease_token",
-          "lease_expires_at",
-          "input_bundle",
-          "phase_outputs",
-          "operations",
-          "usage",
-          "window_start",
-          "window_end",
-          "error",
-          "created_at",
-          "started_at",
-          "submitted_at",
-          "applied_at",
-          "completed_at",
-          "updated_at"
-        ],
-        "title": "DreamPassRecord",
-        "description": "One ``DreamPass`` row."
-      },
       "DreamPassRecordResponse": {
         "properties": {
-          "record": { "$ref": "#/components/schemas/DreamPassRecord" },
+          "record": { "$ref": "#/components/schemas/PublicDreamPassRecord" },
           "result": { "$ref": "#/components/schemas/DreamPassResult" }
         },
         "type": "object",
@@ -28241,9 +28076,9 @@
       },
       "IngestionDrainStatus": {
         "type": "string",
-        "enum": ["drained", "skipped", "timed_out"],
+        "enum": ["not_applied", "unknown", "drained", "skipped", "timed_out"],
         "title": "IngestionDrainStatus",
-        "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nThree distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the worker finished every one of the pass's own\n    episodes before the pass returned (sync path): each was written,\n    dropped for resting on a forget (``dropped_forgotten``), or failed\n    with a logged error; or the pass enqueued nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget, counted pending; healthy by design, NOT a failure\n    signal.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The episodes not written yet are counted pending,\n    not written; they stay queued in-process, and are lost if the\n    worker's pod restarts. This is the only value that warrants an\n    operator warning."
+        "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nFive distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the worker finished every one of the pass's own\n    episodes before the pass returned (sync path): each was written,\n    dropped for resting on a forget (``dropped_forgotten``), or failed\n    with a logged error; or the pass enqueued nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget, counted pending; healthy by design, NOT a failure\n    signal.\n  * ``not_applied`` — this pass never began applying, so no drain ran.\n  * ``unknown`` — this pass began applying but recorded no outcome: it\n    may still be applying, or have applied before it ended (a cancel\n    after its last check does not stop an apply), or failed partway. Its\n    writes may have been enqueued, so whether they drained is not known.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The episodes not written yet are counted pending,\n    not written; they stay queued in-process, and are lost if the\n    worker's pod restarts. This is the only value that warrants an\n    operator warning."
       },
       "InputValidationErrorResponse": {
         "properties": {
@@ -32163,6 +31998,166 @@
         "type": "object",
         "required": ["providers"],
         "title": "ProviderTiersResponse"
+      },
+      "PublicDreamPassRecord": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "scope_key": { "type": "string", "title": "Scope Key" },
+          "route": { "$ref": "#/components/schemas/DreamPassRoute" },
+          "trigger": { "$ref": "#/components/schemas/DreamPassTrigger" },
+          "phase": { "$ref": "#/components/schemas/DreamPassPhase" },
+          "status": { "$ref": "#/components/schemas/DreamPassStatus" },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "cancel_generation": {
+            "type": "integer",
+            "title": "Cancel Generation"
+          },
+          "provider_batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider Batch Id"
+          },
+          "lease_expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Lease Expires At"
+          },
+          "cleanup_pending_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Cleanup Pending At"
+          },
+          "cost_context": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Cost Context"
+          },
+          "input_bundle": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamInput" },
+              { "type": "null" }
+            ]
+          },
+          "phase_outputs": { "$ref": "#/components/schemas/DreamPhaseOutputs" },
+          "operations": { "$ref": "#/components/schemas/DreamPassOperations" },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassUsage" },
+              { "type": "null" }
+            ]
+          },
+          "window_start": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Window Start"
+          },
+          "window_end": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Window End"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "erased_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erased At"
+          },
+          "read_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Read Uuids"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "applied_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Applied At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "expert_id",
+          "scope_key",
+          "route",
+          "trigger",
+          "phase",
+          "status",
+          "skip_reason",
+          "cancel_generation",
+          "provider_batch_id",
+          "lease_expires_at",
+          "input_bundle",
+          "phase_outputs",
+          "operations",
+          "usage",
+          "window_start",
+          "window_end",
+          "error",
+          "created_at",
+          "started_at",
+          "submitted_at",
+          "applied_at",
+          "completed_at",
+          "updated_at"
+        ],
+        "title": "PublicDreamPassRecord",
+        "description": "Admin-visible pass record without the live lock credential."
       },
       "PushSubscribeRequest": {
         "properties": {

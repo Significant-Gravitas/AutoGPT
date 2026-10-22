@@ -68,6 +68,7 @@ class RuntimeConfigTest(unittest.TestCase):
                     "ENCRYPTION_KEY",
                     "UNSUBSCRIBE_SECRET_KEY",
                     "GRAPHITI_FALKORDB_PASSWORD",
+                    "INTERNAL_API_KEY",
                     "VAPID_PRIVATE_KEY",
                     "VAPID_PUBLIC_KEY",
                 },
@@ -88,6 +89,7 @@ class RuntimeConfigTest(unittest.TestCase):
             "ENCRYPTION_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             "UNSUBSCRIBE_SECRET_KEY": "u" * 40,
             "GRAPHITI_FALKORDB_PASSWORD": "f" * 40,
+            "INTERNAL_API_KEY": "i" * 40,
             "VAPID_PRIVATE_KEY": vapid_private,
             "VAPID_PUBLIC_KEY": vapid_public,
         }
@@ -219,8 +221,8 @@ class RuntimeConfigTest(unittest.TestCase):
             (
                 "unsupported version",
                 lambda content: content.replace(
-                    "AUTOGPT_RUNTIME_CONFIG_VERSION=1",
                     "AUTOGPT_RUNTIME_CONFIG_VERSION=2",
+                    "AUTOGPT_RUNTIME_CONFIG_VERSION=3",
                 ),
                 "unsupported runtime configuration version",
             ),
@@ -255,6 +257,101 @@ class RuntimeConfigTest(unittest.TestCase):
             path.mkdir()
             with self.assertRaisesRegex(ValueError, "not a regular file"):
                 runtime_config.ensure_runtime_config(path, {})
+
+    def test_version_1_config_gains_an_internal_key_and_keeps_the_rest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            original = _write_version_1_config(path)
+            path.chmod(0o644)
+
+            upgraded = runtime_config.ensure_runtime_config(path, {})
+
+            key = upgraded.pop("INTERNAL_API_KEY")
+            self.assertGreaterEqual(len(key), 32)
+            self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            self.assertEqual(
+                {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "1"}, original
+            )
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            again = runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(again["INTERNAL_API_KEY"], key)
+            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+
+    def test_version_1_config_takes_a_configured_internal_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_version_1_config(path)
+            configured = {"INTERNAL_API_KEY": "k" * 40}
+
+            upgraded = runtime_config.ensure_runtime_config(path, configured)
+
+            self.assertEqual(upgraded["INTERNAL_API_KEY"], "k" * 40)
+            self.assertEqual(
+                runtime_config.ensure_runtime_config(path, configured),
+                upgraded,
+            )
+
+    def test_rejects_version_1_config_that_does_not_match_version_1(self) -> None:
+        cases = [
+            ("extra key", lambda values: {**values, "SURPRISE": "s" * 40}),
+            (
+                "missing key",
+                lambda values: {
+                    name: value
+                    for name, value in values.items()
+                    if name != "REDIS_PASSWORD"
+                },
+            ),
+            (
+                "already has an internal key",
+                lambda values: {**values, "INTERNAL_API_KEY": "i" * 40},
+            ),
+            (
+                "invalid secret",
+                lambda values: {**values, "REDIS_PASSWORD": "short"},
+            ),
+        ]
+        for name, mutate in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "runtime.env"
+                values = mutate(_version_1_values())
+                _write_config_lines(path, values)
+                before = path.read_bytes()
+
+                with self.assertRaises(ValueError):
+                    runtime_config.ensure_runtime_config(path, {})
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_the_version_1_step_produces_version_2_after_later_bumps(self) -> None:
+        with mock.patch.object(runtime_config, "CONFIG_VERSION", "3"):
+            upgraded = runtime_config._upgraded_from_version_1(_version_1_values(), {})
+
+        self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+
+    def test_a_refused_boot_leaves_a_version_1_config_as_it_was(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_version_1_config(path)
+            before = path.read_bytes()
+
+            with self.assertRaisesRegex(ValueError, "persisted on first boot"):
+                runtime_config.ensure_runtime_config(
+                    path, {"POSTGRES_PASSWORD": "x" * 40}
+                )
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_rejects_version_1_upgrade_with_an_unsafe_configured_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_version_1_config(path)
+            before = path.read_bytes()
+
+            with self.assertRaisesRegex(ValueError, "INTERNAL_API_KEY"):
+                runtime_config.ensure_runtime_config(
+                    path, {"INTERNAL_API_KEY": "too-short"}
+                )
+            self.assertEqual(path.read_bytes(), before)
 
 
 class PublicUrlTest(unittest.TestCase):
@@ -472,7 +569,8 @@ class FillEnvSecretsTest(unittest.TestCase):
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative_path).write_text("", encoding="utf-8")
             (root / "backend/.env.default").write_text(
-                "ENCRYPTION_KEY=not-blank\nENCRYPTION_KEY=\nUNSUBSCRIBE_SECRET_KEY=\n",
+                "ENCRYPTION_KEY=not-blank\nENCRYPTION_KEY=\nUNSUBSCRIBE_SECRET_KEY=\n"
+                "INTERNAL_API_KEY=\n",
                 encoding="utf-8",
             )
             (root / "frontend/.env.default").write_text(
@@ -500,6 +598,38 @@ class FillEnvSecretsTest(unittest.TestCase):
                 self.assertEqual(
                     sorted(runtime_config.fill_env_blanks(copy)), sorted(names)
                 )
+
+
+def _version_1_values() -> dict[str, str]:
+    """Every key a version 1 image wrote, before INTERNAL_API_KEY existed."""
+    return {
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "1",
+        "POSTGRES_PASSWORD": "p" * 40,
+        "RABBITMQ_DEFAULT_USER": "autogpt",
+        "RABBITMQ_DEFAULT_PASS": "r" * 40,
+        "REDIS_PASSWORD": "d" * 40,
+        "BETTER_AUTH_SECRET": "b" * 40,
+        "ENCRYPTION_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "UNSUBSCRIBE_SECRET_KEY": "u" * 40,
+        "GRAPHITI_FALKORDB_PASSWORD": "f" * 40,
+        "VAPID_PRIVATE_KEY": base64.urlsafe_b64encode(b"p" * 32).rstrip(b"=").decode(),
+        "VAPID_PUBLIC_KEY": (
+            base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
+        ),
+    }
+
+
+def _write_version_1_config(path: Path) -> dict[str, str]:
+    values = _version_1_values()
+    _write_config_lines(path, values)
+    return values
+
+
+def _write_config_lines(path: Path, values: dict[str, str]) -> None:
+    lines = ["# Generated once by the AutoGPT all-in-one image."]
+    lines += [f"{name}={value}" for name, value in values.items()]
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+    path.chmod(0o600)
 
 
 def _replace_config_value(content: str, name: str, value: str) -> str:

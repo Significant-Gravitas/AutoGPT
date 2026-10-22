@@ -692,6 +692,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "deferred. Auth emails and internal ops mail are unaffected."
         ),
     )
+    owner_email_daily_limit: int = Field(
+        default=20,
+        description=(
+            "Most emails a user's own runs may send to that user's account "
+            "address in a UTC day, through SendEmailToMeBlock."
+        ),
+    )
 
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
@@ -1210,6 +1217,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
     encryption_key: str = Field(default="", description="Encryption key")
+
+    internal_api_key: str = Field(
+        default="",
+        description="Key every internal service sends on its RPC calls and "
+        "requires on the methods it exposes; every backend service of one "
+        "deployment must have the same value. Setup generates it along with "
+        "the other secrets. Blank derives one from ENCRYPTION_KEY, so an "
+        "install set up before it existed keeps working.",
+    )
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
     rabbitmq_default_pass: str = Field(

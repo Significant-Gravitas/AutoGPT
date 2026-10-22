@@ -74,7 +74,8 @@ afterEach(() => {
   useAutopilotModeStore.setState({ choices: {} });
 });
 
-describe("AutoPilot mode selector", () => {
+// These flows take 3-4.5 s on CI's slower runners, close to the 5 s default.
+describe("AutoPilot mode selector", { timeout: 15_000 }, () => {
   it("is absent with the flag off, and the request carries no mode", async () => {
     flags.autoMode = false;
     const bodies = captureStreamBodies();
@@ -129,6 +130,11 @@ describe("AutoPilot mode selector", () => {
     expect(
       screen.queryByRole("button", { name: /approval mode: unsupervised/i }),
     ).toBeNull();
+    expect(
+      await screen.findByText(
+        /^Otto will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
     await user.click(
       await screen.findByRole("button", { name: /run unsupervised/i }),
     );
@@ -277,6 +283,26 @@ describe("AutoPilot mode selector", () => {
     });
 
     expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
+  });
+
+  it("names the chat's expert in the Unsupervised confirm", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
   });
 });
 

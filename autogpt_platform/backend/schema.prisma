@@ -708,6 +708,7 @@ model DreamPass {
 
   @@index([scopeKey, status])
   @@index([userId, createdAt])
+  @@index([createdAt])
   // Deleting an expert cascades here; without it that scans every pass.
   @@index([expertId])
   // The reaper's scans: open passes whose lease lapsed, oldest first, and

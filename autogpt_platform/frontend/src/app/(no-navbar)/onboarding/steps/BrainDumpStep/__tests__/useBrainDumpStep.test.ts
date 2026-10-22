@@ -1011,6 +1011,58 @@ describe("useBrainDumpStep — skip", () => {
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
   });
 
+  // The wizard moves on before the skip is recorded, so the guard is all
+  // that stops a second skip from advancing it again, past Hire.
+  it("advances once when a second skip lands before the first is recorded", async () => {
+    const recording = deferred<ReturnType<typeof completed>>();
+    finalizeBrainDump.mockReturnValue(recording.promise);
+    const { result } = await renderStep();
+
+    await act(async () => {
+      void result.current.handleSkip();
+      void result.current.handleSkip();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      recording.resolve(completed());
+      await Promise.resolve();
+    });
+
+    expect(finalizeBrainDump).toHaveBeenCalledTimes(1);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
+  // Back from Hire remounts the step while the skipped take may still be
+  // unfinalized on disk; offering it there would hand back what was refused.
+  it("does not offer back a skipped take whose cleanup is still running", async () => {
+    recorderState.recordingId = "rec-skipped";
+    const lookup = deferred<null>();
+    getMetaById.mockReturnValueOnce(lookup.promise);
+    const first = await renderStep();
+    await act(async () => {
+      void first.result.current.handleSkip();
+      await Promise.resolve();
+    });
+    first.unmount();
+
+    recorderState.recordingId = null;
+    recorderState.findRecoverable.mockResolvedValue({
+      recordingId: "rec-skipped",
+      mimeType: "audio/webm",
+      durationSecs: 30,
+    });
+    getParts.mockResolvedValue([part(0, "rec-skipped")]);
+    const back = await renderStep();
+
+    expect(back.result.current.screen).toBe("rest");
+    expect(back.result.current.recoverable).toBeNull();
+
+    await act(async () => {
+      lookup.resolve(null);
+      await Promise.resolve();
+    });
+  });
+
   // Being unable to say "no thanks" because the network is down would be
   // absurd — path B is the safe default anyway.
   it("lets the user through even when the skip call fails", async () => {

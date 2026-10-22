@@ -36,6 +36,7 @@ const LIVE_EVENT_NAMES = [
   "expert_thread_created",
   "experts_section_viewed",
   "feature_flag_mismatched",
+  "hire_all_clicked",
   "hire_flow_abandoned",
   "hire_started",
   "hire_step_continued",
