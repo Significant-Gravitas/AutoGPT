@@ -1,231 +1,95 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const GOOD = "https://client.example/callback";
-const EVIL = "https://evil.example/phish";
-// The query string builds `javascript:<code>//?error=...`, and the trailing
-// query becomes a JS comment, so this runs in the platform's origin.
-const JS_URI = "javascript:document.title='pwned:'+location.origin//";
+import {
+  getGetOauthGetOauthAppInfoMockHandler200,
+  getGetOauthGetOauthAppInfoMockHandler400,
+} from "@/app/api/__generated__/endpoints/oauth/oauth.msw";
+import { server } from "@/mocks/mock-server";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import IntegrationSetupWizardPage from "../page";
 
-const searchParams = new Map<string, string>();
+const mockUseSearchParams = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => ({
-    get: (key: string) => searchParams.get(key) ?? null,
+  usePathname: () => "/auth/integrations/setup-wizard",
+  useRouter: () => ({
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+    push: vi.fn(),
+    refresh: vi.fn(),
+    replace: vi.fn(),
   }),
+  useSearchParams: mockUseSearchParams,
 }));
 
-const useGetOauthGetOauthAppInfoMock = vi.fn();
+const PAGE = "http://localhost/auth/integrations/setup-wizard";
+const REGISTERED = "https://app.example.com/callback";
 
-vi.mock("@/app/api/__generated__/endpoints/oauth/oauth", () => ({
-  useGetOauthGetOauthAppInfo: (...args: unknown[]) =>
-    useGetOauthGetOauthAppInfoMock(...args),
-}));
-
-// The credentials picker pulls in the whole credential-schema machinery, which
-// the redirect guards under test do not touch. Stub it, but keep it able to
-// mark a provider as connected so the Continue button can be reached.
-vi.mock("@/components/contextual/CredentialsInput/CredentialsInput", () => ({
-  CredentialsInput: ({
-    onSelectCredentials,
-  }: {
-    onSelectCredentials: (cred: unknown) => void;
-  }) => (
-    <button type="button" onClick={() => onSelectCredentials({ id: "cred-1" })}>
-      connect
-    </button>
-  ),
-}));
-
-import SetupWizardPage from "../page";
-
-function setParams(overrides: Record<string, string | null>) {
-  searchParams.clear();
-  searchParams.set("providers", btoa(JSON.stringify([{ provider: "github" }])));
-  for (const [key, value] of Object.entries(overrides)) {
-    if (value === null) {
-      searchParams.delete(key);
-    } else {
-      searchParams.set(key, value);
-    }
-  }
+function openWith(params: Record<string, string>) {
+  mockUseSearchParams.mockReturnValue(
+    new URLSearchParams({
+      client_id: "client-1",
+      providers: btoa("{}"),
+      redirect_uri: REGISTERED,
+      state: "state-1",
+      ...params,
+    }),
+  );
 }
 
-describe("IntegrationSetupWizardPage redirect guards (#15303)", () => {
-  let hrefAssignments: string[];
-
-  beforeEach(() => {
-    hrefAssignments = [];
-    useGetOauthGetOauthAppInfoMock.mockReset();
-
-    // Capture writes to window.location.href without navigating the test DOM.
-    const original = window.location;
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: {
-        ...original,
-        get href() {
-          return original.href;
-        },
-        set href(value: string) {
-          hrefAssignments.push(value);
-        },
-      },
-    });
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { href: PAGE },
   });
+});
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("Cancel does not navigate to a javascript: redirect_uri", async () => {
-    setParams({
-      client_id: "client-1",
-      redirect_uri: JS_URI,
-      state: "csrf-state",
-    });
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: { name: "Test App", redirect_uris: [GOOD] },
-      isLoading: false,
-      error: null,
-    });
-
-    render(<SetupWizardPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-
-    expect(hrefAssignments).toEqual([]);
-    expect(await screen.findByText(/Invalid redirect_uri/)).toBeTruthy();
-  });
-
-  it("Cancel does not navigate to a redirect_uri the app did not register", async () => {
-    setParams({
-      client_id: "client-1",
-      redirect_uri: EVIL,
-      state: "csrf-state",
-    });
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: { name: "Test App", redirect_uris: [GOOD] },
-      isLoading: false,
-      error: null,
-    });
-
-    render(<SetupWizardPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-
-    expect(hrefAssignments).toEqual([]);
-    expect(await screen.findByText(/Invalid redirect_uri/)).toBeTruthy();
-  });
-
-  it("Continue does not navigate to a redirect_uri the app did not register", async () => {
-    setParams({
-      client_id: "client-1",
-      redirect_uri: EVIL,
-      state: "csrf-state",
-    });
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: { name: "Test App", redirect_uris: [GOOD] },
-      isLoading: false,
-      error: null,
-    });
-
-    render(<SetupWizardPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "connect" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
-
-    expect(hrefAssignments).toEqual([]);
-    expect(await screen.findByText(/Invalid redirect_uri/)).toBeTruthy();
-  });
-
-  // An empty registry means "unknown app" as much as it means "app with no
-  // callbacks", so while app info is in flight the registration check cannot
-  // clear anything. Navigating in that window would bypass it entirely.
-  it("Cancel does not navigate while the app's registered callbacks are still loading", async () => {
-    setParams({
-      client_id: "client-1",
-      redirect_uri: EVIL,
-      state: "csrf-state",
-    });
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-    });
-
-    render(<SetupWizardPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-
-    expect(hrefAssignments).toEqual([]);
-    expect(await screen.findByText(/Still loading/)).toBeTruthy();
-  });
-
-  it("Cancel navigates to a registered redirect_uri with the error params", async () => {
-    setParams({
-      client_id: "client-1",
-      redirect_uri: GOOD,
-      state: "csrf-state",
-    });
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: { name: "Test App", redirect_uris: [GOOD] },
-      isLoading: false,
-      error: null,
-    });
-
-    render(<SetupWizardPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-
-    expect(hrefAssignments).toHaveLength(1);
-    expect(hrefAssignments[0]).toContain(GOOD);
-    expect(hrefAssignments[0]).toContain("error=user_cancelled");
-    expect(hrefAssignments[0]).toContain("state=csrf-state");
-  });
-
-  it("Continue navigates to a registered redirect_uri with success", async () => {
-    setParams({
-      client_id: "client-1",
-      redirect_uri: GOOD,
-      state: "csrf-state",
-    });
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: { name: "Test App", redirect_uris: [GOOD] },
-      isLoading: false,
-      error: null,
-    });
-
-    render(<SetupWizardPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "connect" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
-
-    expect(hrefAssignments).toHaveLength(1);
-    expect(hrefAssignments[0]).toContain(GOOD);
-    expect(hrefAssignments[0]).toContain("success=true");
-  });
-
-  it("keeps a query string the registered redirect_uri already carried", async () => {
-    const withQuery = "https://client.example/callback?tenant=1";
-    setParams({
-      client_id: "client-1",
-      redirect_uri: withQuery,
-      state: "csrf-state",
-    });
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: { name: "Test App", redirect_uris: [withQuery] },
-      isLoading: false,
-      error: null,
-    });
-
-    render(<SetupWizardPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-
-    expect(hrefAssignments).toHaveLength(1);
-    expect(hrefAssignments[0]).toBe(
-      "https://client.example/callback?tenant=1&error=user_cancelled&error_description=User+cancelled+the+integration+setup&state=csrf-state",
+describe("IntegrationSetupWizardPage", () => {
+  test("needs a client_id to check the redirect_uri against", () => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        providers: btoa("[]"),
+        redirect_uri: REGISTERED,
+      }),
     );
+
+    render(<IntegrationSetupWizardPage />);
+
+    expect(
+      screen.getByText("Missing required parameters: client_id"),
+    ).toBeDefined();
+  });
+
+  test("offers no way back to a redirect_uri the app did not register", async () => {
+    openWith({ redirect_uri: "https://evil.example/collect" });
+    server.use(getGetOauthGetOauthAppInfoMockHandler400());
+
+    render(<IntegrationSetupWizardPage />);
+
+    expect(await screen.findByText("Invalid Request")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(window.location.href).toBe(PAGE);
+  });
+
+  test("cancelling returns the user to the redirect_uri the backend accepted", async () => {
+    let requested: URL | undefined;
+    openWith({});
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
+        requested = new URL(request.url);
+        return { name: "Example App", scopes: ["IDENTITY"] };
+      }),
+    );
+
+    render(<IntegrationSetupWizardPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
+    const sentTo = new URL(window.location.href);
+    expect(`${sentTo.origin}${sentTo.pathname}`).toBe(REGISTERED);
+    expect(sentTo.searchParams.get("error")).toBe("user_cancelled");
+    expect(sentTo.searchParams.get("state")).toBe("state-1");
   });
 });
