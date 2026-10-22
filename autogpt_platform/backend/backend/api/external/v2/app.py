@@ -120,6 +120,11 @@ v2_app = FastAPI(
             "description": "Manage your agent library, run agents, organize with folders",
         },
         {
+            "name": "presets",
+            "x-page-title": "Presets",
+            "description": "Saved run inputs for agents, and webhook triggers that run them",
+        },
+        {
             "name": "runs",
             "x-page-title": "Runs",
             "description": "Monitor, stop, delete, and share agent runs; manage human-in-the-loop reviews",
