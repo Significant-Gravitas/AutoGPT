@@ -15,11 +15,13 @@ from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
 from backend.api.rest_api import handle_internal_http_error
 from backend.blocks.basic import StoreValueBlock
+from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
-from backend.data.graph import GraphModel
+from backend.data.graph import GraphModel, NodeModel
 from backend.data.onboarding import OnboardingStep
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import GraphValidationError
@@ -276,6 +278,162 @@ def test_get_graph(
         json.dumps(response_data, indent=2, sort_keys=True),
         "grph_single",
     )
+
+
+def _graph_owned_by(owner_id: str) -> GraphModel:
+    owner = {
+        "user_id": owner_id,
+        "organization_id": "owner-org",
+        "team_id": "owner-team",
+        "created_at": datetime(2025, 9, 4, 13, 37),
+    }
+    sub_graph = GraphModel(
+        id="sub-graph",
+        name="Sub",
+        description="",
+        nodes=[
+            NodeModel(
+                id="query",
+                block_id=SQLQueryBlock().id,
+                graph_id="sub-graph",
+                graph_version=1,
+                input_default={"host": "db.internal", "query": "select 1"},
+            )
+        ],
+        **owner,
+    )
+    return GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Shared",
+        description="",
+        nodes=[
+            NodeModel(
+                id="trigger",
+                block_id=GenericWebhookTriggerBlock().id,
+                graph_id="graph-123",
+                graph_version=1,
+                input_default={"secret_token": "owner-token"},
+                webhook_id="owner-webhook",
+            )
+        ],
+        sub_graphs=[sub_graph],
+        **owner,
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/graphs/graph-123",
+        "/graphs/graph-123?for_export=false",
+        "/graphs/graph-123/versions/1",
+    ],
+)
+def test_get_graph_gives_someone_who_isnt_the_owner_an_export(
+    mocker: pytest_mock.MockFixture, path: str
+) -> None:
+    """A teammate or library member reading a graph they don't own gets what
+    an export gives, whatever they ask for: no stored secrets, no trigger
+    subscription, no owner."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=_graph_owned_by("someone-else"),
+    )
+
+    response = client.get(path)
+
+    assert response.status_code == 200
+    graph = response.json()
+    assert (graph["user_id"], graph["organization_id"], graph["team_id"]) == (
+        "",
+        None,
+        None,
+    )
+    [trigger] = graph["nodes"]
+    assert trigger["webhook_id"] is None
+    assert "secret_token" not in trigger["input_default"]
+    [sub_graph] = graph["sub_graphs"]
+    assert not any(
+        sub_graph.get(key) for key in ("user_id", "organization_id", "team_id")
+    )
+    assert "host" not in sub_graph["nodes"][0]["input_default"]
+
+
+def test_get_graph_gives_the_owner_their_graph_as_saved(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=_graph_owned_by(test_user_id),
+    )
+
+    graph = client.get("/graphs/graph-123").json()
+
+    assert (graph["user_id"], graph["organization_id"], graph["team_id"]) == (
+        test_user_id,
+        "owner-org",
+        "owner-team",
+    )
+    [trigger] = graph["nodes"]
+    assert trigger["webhook_id"] == "owner-webhook"
+    assert trigger["input_default"]["secret_token"] == "owner-token"
+    assert graph["sub_graphs"][0]["nodes"][0]["input_default"]["host"] == "db.internal"
+
+
+def test_an_owners_export_keeps_everything_the_export_kept(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An export comes back with its owner blanked, so the route can't tell an
+    owner's export from anyone else's and sends it through `shared_copy`.
+    That has to take nothing away, such as the plain inputs an export keeps
+    on a node whose block is missing."""
+    export = GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Exported",
+        description="",
+        user_id="",
+        created_at=datetime(2025, 9, 4, 13, 37),
+        nodes=[
+            NodeModel(
+                id="gone",
+                block_id="00000000-0000-0000-0000-0000000dead00",
+                graph_id="graph-123",
+                graph_version=1,
+                input_default={"note": "plain"},
+            )
+        ],
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=export,
+    )
+
+    graph = client.get("/graphs/graph-123?for_export=true").json()
+
+    assert graph["nodes"][0]["input_default"] == {"note": "plain"}
+
+
+def test_get_graph_all_versions_exports_only_the_versions_someone_else_owns(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        return_value=[_graph_owned_by(test_user_id), _graph_owned_by("teammate")],
+    )
+
+    own, teammates = client.get("/graphs/graph-123/versions").json()
+
+    assert own["user_id"] == test_user_id
+    assert own["nodes"][0]["webhook_id"] == "owner-webhook"
+    assert own["nodes"][0]["input_default"]["secret_token"] == "owner-token"
+    assert teammates["user_id"] == ""
+    assert teammates["nodes"][0]["webhook_id"] is None
+    assert "secret_token" not in teammates["nodes"][0]["input_default"]
+    assert "host" not in teammates["sub_graphs"][0]["nodes"][0]["input_default"]
 
 
 def test_get_graph_not_found(
