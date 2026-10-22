@@ -9,12 +9,19 @@ import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 // (lib/auth/client-ip.ts).
 process.env.TRUST_X_FORWARDED_FOR ??= "true";
 
-// Sign-ups look up their domain's MX (lib/auth/disposable-email.ts); no test
-// does that on the network.
+// Sign-ups and auth emails look up their domain's mail server
+// (lib/auth/email-deliverability.ts); no test does that on the network. Every
+// domain answers with no MX but an A record, so it takes mail.
 vi.mock("node:dns/promises", async (importActual) => {
   const actual = await importActual<typeof import("node:dns/promises")>();
   class Resolver {
     async resolveMx() {
+      return [];
+    }
+    async resolve4() {
+      return ["192.0.2.1"];
+    }
+    async resolve6() {
       return [];
     }
   }

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SIGN_IN_BLOCKED_CODE, SIGN_UP_BLOCKED_CODE } from "../access-blocks";
-import { DISPOSABLE_EMAIL_CODE } from "../disposable-email";
+import { Resolver } from "node:dns/promises";
+import {
+  DISPOSABLE_EMAIL_CODE,
+  UNDELIVERABLE_EMAIL_CODE,
+} from "../disposable-email";
 
 // Runs the real Better Auth handler with this app's auth options, as
 // email-verification-flow.test.ts does, to prove the hooks refuse and log
@@ -178,6 +182,37 @@ describe("IP and email domain blocks", () => {
       code: DISPOSABLE_EMAIL_CODE,
     });
     expect(testDB.current.UserAuthIdentity).toHaveLength(0);
+  });
+
+  it("refuses a sign-up on a domain that takes no mail", async () => {
+    const lookup = vi
+      .spyOn(Resolver.prototype, "resolveMx")
+      .mockRejectedValue(
+        Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }),
+      );
+
+    const response = await signUp(handler, "new@no-mail.example", "192.0.2.1");
+    lookup.mockRestore();
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: UNDELIVERABLE_EMAIL_CODE,
+      message: "Please use a real email address you can receive mail at.",
+    });
+    expect(testDB.current.UserAuthIdentity).toHaveLength(0);
+  });
+
+  it("lets a sign-up through when the mail-server lookup errors", async () => {
+    const lookup = vi
+      .spyOn(Resolver.prototype, "resolveMx")
+      .mockRejectedValue(
+        Object.assign(new Error("ESERVFAIL"), { code: "ESERVFAIL" }),
+      );
+
+    const response = await signUp(handler, "new@flaky.example", "192.0.2.1");
+    lookup.mockRestore();
+
+    expect(response.status).toBe(200);
   });
 
   it("answers an admin's domain block before the disposable list", async () => {

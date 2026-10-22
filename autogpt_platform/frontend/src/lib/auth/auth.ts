@@ -11,7 +11,10 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { getTrustedClientIP } from "./client-ip";
-import { assertNotDisposableEmail } from "./disposable-email";
+import {
+  assertEmailHasMailServer,
+  assertNotDisposableEmail,
+} from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
@@ -468,4 +471,5 @@ async function assertEmailSignUpAllowed(
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
   await assertNotDisposableEmail(email);
+  await assertEmailHasMailServer(email);
 }

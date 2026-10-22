@@ -1,4 +1,5 @@
 import { environment } from "@/services/environment";
+import { checkEmailDeliverable } from "./email-deliverability";
 import { mintServiceToken } from "./service-token";
 
 export type AuthEmailType =
@@ -26,6 +27,16 @@ interface SendAuthEmailArgs {
  * server console instead (local backends usually have no Postmark credential).
  */
 export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
+  // A send that would bounce is dropped as if it went, so the flow behaves
+  // the same and the sender's bounce rate stays down. DNS errors still send.
+  const deliverability = await checkEmailDeliverable(to);
+  if (!deliverability.deliverable) {
+    console.warn("[auth-email] Skipped an undeliverable address", {
+      type,
+      reason: deliverability.reason,
+    });
+    return;
+  }
   try {
     const token = await mintServiceToken("auth-email:send");
     const endpoint = `${environment.getAGPTServerBaseUrl()}/api/auth/email/send`;

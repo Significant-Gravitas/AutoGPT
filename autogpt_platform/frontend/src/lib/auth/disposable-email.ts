@@ -1,11 +1,12 @@
 import { APIError } from "better-auth/api";
 import { Resolver } from "node:dns/promises";
 import { getDomainAndParents } from "./access-blocks";
-import list from "./disposable-email-domains.json";
-
-// Vendored from github.com/disposable-email-domains/disposable-email-domains
-// (CC0); refresh with scripts/refresh-disposable-email-domains.mjs.
-const DISPOSABLE_DOMAINS = new Set(list.domains);
+import {
+  type DnsLookups,
+  getEmailDomain,
+  hasMailServer,
+  isDisposableEmailDomain,
+} from "./email-deliverability";
 
 // Temporary-inbox services that rotate domains faster than the list: any
 // domain whose mail lands on one of these hosts is refused too.
@@ -14,6 +15,10 @@ export const DISPOSABLE_MX_HOSTS = new Set(["in.mail.tm"]);
 export const DISPOSABLE_EMAIL_CODE = "DISPOSABLE_EMAIL";
 const DISPOSABLE_EMAIL_MESSAGE =
   "This email address can't be used to sign up. Use a permanent email address.";
+
+export const UNDELIVERABLE_EMAIL_CODE = "UNDELIVERABLE_EMAIL";
+const UNDELIVERABLE_EMAIL_MESSAGE =
+  "Please use a real email address you can receive mail at.";
 
 const MX_TIMEOUT_MS = 1500;
 
@@ -31,7 +36,7 @@ export async function assertNotDisposableEmail(
 ) {
   if (process.env.AUTH_ALLOW_DISPOSABLE_EMAILS === "true") return;
   const domains = getDomainAndParents(email);
-  const listed = domains.some((domain) => DISPOSABLE_DOMAINS.has(domain));
+  const listed = isDisposableEmailDomain(email);
   if (listed || (await hasDisposableMX(domains[0], resolveMX, timeoutMs))) {
     throw new APIError("FORBIDDEN", {
       code: DISPOSABLE_EMAIL_CODE,
@@ -65,4 +70,18 @@ async function hasDisposableMX(
 
 function resolveMXWithTimeout(domain: string) {
   return new Resolver({ timeout: MX_TIMEOUT_MS, tries: 1 }).resolveMx(domain);
+}
+
+// Sign-up only: refuses a domain DNS says takes no mail (see
+// email-deliverability.ts). A DNS error or timeout lets the sign-up through.
+export async function assertEmailHasMailServer(
+  email: string,
+  { dns }: { dns?: DnsLookups } = {},
+) {
+  const domain = getEmailDomain(email);
+  if (domain && (await hasMailServer(domain, { dns }))) return;
+  throw new APIError("BAD_REQUEST", {
+    code: UNDELIVERABLE_EMAIL_CODE,
+    message: UNDELIVERABLE_EMAIL_MESSAGE,
+  });
 }
