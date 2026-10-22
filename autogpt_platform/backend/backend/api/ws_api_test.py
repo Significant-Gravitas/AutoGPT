@@ -386,10 +386,9 @@ async def test_handle_subscribe_rejects_unrelated_method(
 
 
 @pytest.mark.asyncio
-async def test_authenticate_websocket_missing_token_closes_4001(mocker) -> None:
+async def test_authenticate_websocket_missing_token_closes_4001() -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {}
 
@@ -404,7 +403,6 @@ async def test_authenticate_websocket_missing_token_closes_4001(mocker) -> None:
 async def test_authenticate_websocket_invalid_token_closes_4003(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(side_effect=ValueError("bad token")),
@@ -423,7 +421,6 @@ async def test_authenticate_websocket_invalid_token_closes_4003(mocker) -> None:
 async def test_authenticate_websocket_missing_sub_closes_4002(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"not_sub": "x"}),
@@ -442,7 +439,6 @@ async def test_authenticate_websocket_missing_sub_closes_4002(mocker) -> None:
 async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-X"}),
@@ -459,7 +455,6 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
 async def test_authenticate_websocket_refuses_a_banned_account(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-X"}),
@@ -483,7 +478,6 @@ async def test_authenticate_websocket_refuses_when_the_ban_is_unreadable(
     told it is banned."""
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-X"}),
@@ -558,19 +552,6 @@ async def test_an_unreadable_ban_keeps_an_open_socket(
 
     mock_websocket.close.assert_not_called()
     mock_manager.subscribe_graph_exec.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_authenticate_websocket_auth_disabled_returns_default(mocker) -> None:
-    from backend.api.ws_api import authenticate_websocket
-
-    mocker.patch.object(settings.config, "enable_auth", False)
-    ws = AsyncMock(spec=WebSocket)
-    ws.query_params = {}
-
-    user_id = await authenticate_websocket(ws)
-
-    assert user_id == DEFAULT_USER_ID
 
 
 # ---------- get_connection_manager singleton ----------
