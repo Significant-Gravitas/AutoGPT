@@ -105,6 +105,7 @@ from backend.copilot.tools.skills import (
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skill_with_body,
+    invalidate_skills_index_cache,
     skill_name_key,
 )
 from backend.data.db import prisma as db_client
@@ -1641,6 +1642,9 @@ async def update_skills(
     # above run, and an overwrite from the pre-copy read would silently drop it.
     for name in resolved:
         await add_expert_skill_name(user_id, expert_id, name)
+    # A copy above clears the expert's skill index itself, but a marketplace
+    # name lands on the row alone, and only a rebuild heals it into the folder.
+    await invalidate_skills_index_cache(user_id, expert_id)
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)

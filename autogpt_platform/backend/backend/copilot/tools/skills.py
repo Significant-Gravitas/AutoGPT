@@ -180,10 +180,25 @@ def skill_folder(expert_id: str | None) -> str:
     return SKILL_FOLDER if expert_id is None else expert_skills_folder(expert_id)
 
 
-# Redis-cached index TTL.  Skill content changes only on store/delete so a
-# 60s TTL with explicit invalidation gives near-zero index latency on warm
-# turns without unbounded staleness for cross-instance edits.
-SKILLS_INDEX_CACHE_TTL_S = 60
+# Redis-cached index TTL. Every write that changes an owner's folder drops the
+# owner's entry, so the TTL only bounds what no write announces: a marketplace
+# publish reaching the owner's copies. A chat's follow-ups arrive about two
+# minutes apart, so a one-minute entry had expired by most of them and the
+# rebuild ran on the turn's critical path.
+SKILLS_INDEX_CACHE_TTL_S = 15 * 60
+# A rebuild claims its entry with this marker before it reads the folder and
+# writes its result only while the marker is still there. A write that lands
+# meanwhile drops the marker with the entry, so the rebuild cannot put back
+# the older view it read. The marker is not JSON, so every reader, this
+# version's or the one before, takes it for a miss; it expires on its own if
+# the rebuild dies.
+_REBUILDING_MARKER = "rebuilding:"
+_REBUILD_CLAIM_TTL_S = 60
+# KEYS: index. ARGV: claim, index, TTL.
+_WRITE_IF_CLAIMED = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3]) else return 0 end'
+)
 # Versioned: an entry cached before origins were recorded would count every
 # installed skill as the owner's for a TTL after deploy.
 SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v2:{user_id}"
@@ -1828,9 +1843,31 @@ async def _read_skills_cache(
         return None
 
 
+async def _claim_skills_cache(user_id: str, expert_id: str | None = None) -> str | None:
+    """Mark the owner's entry as being rebuilt. Returns the claim to write the
+    result under, or None when Redis can't take it and nothing will be
+    written."""
+    claim = f"{_REBUILDING_MARKER}{uuid.uuid4().hex}"
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            _skills_cache_key(user_id, expert_id), claim, ex=_REBUILD_CLAIM_TTL_S
+        )
+    except Exception:
+        return None
+    return claim
+
+
 async def _write_skills_cache(
-    user_id: str, skills: list[ParsedSkill], expert_id: str | None = None
+    user_id: str,
+    skills: list[ParsedSkill],
+    expert_id: str | None = None,
+    *,
+    claim: str,
 ) -> None:
+    """Store a rebuilt index, unless a write has dropped *claim* since the
+    rebuild took it: the folder has changed under it, and the next turn reads
+    it afresh."""
     try:
         redis = await get_redis_async()
         payload = json.dumps(
@@ -1849,10 +1886,13 @@ async def _write_skills_cache(
                 for s in skills
             ]
         )
-        await redis.set(
+        await redis.eval(
+            _WRITE_IF_CLAIMED,
+            1,
             _skills_cache_key(user_id, expert_id),
+            claim,
             payload,
-            ex=SKILLS_INDEX_CACHE_TTL_S,
+            SKILLS_INDEX_CACHE_TTL_S,
         )
     except Exception:
         # Cache write is best-effort.
@@ -1863,8 +1903,9 @@ async def invalidate_skills_index_cache(
     user_id: str, expert_id: str | None = None
 ) -> None:
     """Drop the cached per-user skill index so the next turn rebuilds it.
-    Called by ``store_skill`` / ``delete_user_skill`` so an edit shows up
-    immediately rather than after the 60s TTL.
+    Called by every write that changes an owner's folder or the skill names
+    an expert's row lists, so the change shows on the next turn rather than
+    after the TTL; a rebuild in flight loses its claim with the entry.
 
     Also drops the expert's heal backoff: the folder just changed, so a name
     that resolved to nothing before may resolve now.
@@ -1880,6 +1921,17 @@ async def invalidate_skills_index_cache(
         # state for up to ``SKILLS_INDEX_CACHE_TTL_S`` seconds.
         pass
 
+
+async def invalidate_skills_index_for_path(user_id: str, path: str) -> None:
+    """Drop the index of the owner whose skill folder *path* lies in, if it
+    lies in one. For writes that reach a skill folder as plain files, such as
+    the workspace routes' rename and delete."""
+    match = _OWNER_FOLDER.match(path)
+    if match is not None:
+        await invalidate_skills_index_cache(user_id, match.group(1))
+
+
+_OWNER_FOLDER = re.compile(r"^/(?:experts/([^/]+)/)?skills/")
 
 async def saved_skill_limit_reached(
     user_id: str, expert_id: str | None, name: str
@@ -1912,7 +1964,7 @@ async def list_user_skills(
 ) -> list[ParsedSkill]:
     """Return the skills owned by *expert_id* (personal Otto when ``None``).
 
-    Two-level fast path: a 60s Redis cache covers warm turns, the
+    Two-level fast path: a Redis cache covers warm turns, the
     ``WorkspaceFile.metadata`` index covers cold turns without any storage
     reads, and a parallelised body parse covers any skills written before
     the metadata-cache change shipped.  Skips files whose contents do not
@@ -1922,6 +1974,8 @@ async def list_user_skills(
     cached = await _read_skills_cache(user_id, expert_id)
     if cached is not None:
         return cached
+    # Before the folder is read, so a write landing from here on drops it.
+    claim = await _claim_skills_cache(user_id, expert_id)
     skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     if (
         heal_missing
@@ -1930,7 +1984,10 @@ async def list_user_skills(
     ):
         skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     skills = await _reconcile_marketplace_copies(user_id, expert_id, skills, scope)
-    await _write_skills_cache(user_id, skills, expert_id)
+    if claim is not None:
+        # A heal or reconcile that wrote dropped the claim itself, so the next
+        # turn reads again and a large bundle keeps catching up turn by turn.
+        await _write_skills_cache(user_id, skills, expert_id, claim=claim)
     return skills
 
 
