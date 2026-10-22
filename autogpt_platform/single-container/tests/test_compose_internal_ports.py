@@ -23,6 +23,7 @@ INTERNAL_PORTS = {
 }
 # Every internal service port, including those with no Compose service today.
 ANY_INTERNAL = {int(port) for port in INTERNAL_PORTS.values()} | {8010, 8011, 8012}
+_TARGET = re.compile(r"\btarget:\s*[\"']?(\d+)")
 
 
 def _compose_files() -> list[Path]:
@@ -70,7 +71,8 @@ def _key_items(block: list[str], key: str) -> list[str] | None:
 def _published_ports(text: str) -> set[int]:
     """The container port of every `ports:` entry in a Compose file, in the
     short syntax (`"8005"`, `"18005:8005"`, `"127.0.0.1:18005:8005/tcp"`,
-    ranges, inline lists) and the long one (`target: 8005`)."""
+    ranges, inline lists) and the long one (`target: 8005`, also written as an
+    inline `{target: 8005}` mapping)."""
     published: set[int] = set()
     ports_indent: int | None = None
     for raw in text.splitlines():
@@ -87,20 +89,28 @@ def _published_ports(text: str) -> set[int]:
         if key:
             inline = key.group(1).strip()
             if inline:
-                for entry in inline.strip("[]").split(","):
-                    published |= _container_ports(entry)
+                published |= _inline_ports(inline)
             else:
                 ports_indent = indent
             continue
         if ports_indent is None:
             continue
-        target = re.match(r"^\s*(?:-\s+)?target:\s*[\"']?(\d+)", line)
+        target = _TARGET.search(line)
         entry = re.match(r"^\s*-\s+(\S+)$", line)
         if target:
             published.add(int(target.group(1)))
         elif entry:
             published |= _container_ports(entry.group(1))
     return published
+
+
+def _inline_ports(inline: str) -> set[int]:
+    """A `ports:` list written on one line: `{target: ...}` mappings and short
+    entries, in any mix."""
+    ports = {int(port) for port in _TARGET.findall(inline)}
+    for entry in re.sub(r"\{[^}]*\}", "", inline).strip("[]").split(","):
+        ports |= _container_ports(entry)
+    return ports
 
 
 def _container_ports(entry: str) -> set[int]:
@@ -147,12 +157,18 @@ class ComposeInternalPortsTest(unittest.TestCase):
             '    - "8005:8005"',  # items level with the key are still its items
             "      - target: 8005\n        published: 18005",
             "      - published: 18005\n        target: 8005",
+            "      - {target: 8005, published: 18005}",
         ):
             with self.subTest(entries=entries):
                 text = f"services:\n  db:\n    ports:\n{entries}\n"
                 self.assertIn(8005, _published_ports(text))
-        inline = 'services:\n  db:\n    ports: ["3000:3000", "8005:8005"]\n'
-        self.assertEqual(_published_ports(inline), {3000, 8005})
+        for inline in (
+            '["3000:3000", "8005:8005"]',
+            '["3000:3000", {target: 8005, published: "18005"}]',
+        ):
+            with self.subTest(inline=inline):
+                text = f"services:\n  db:\n    ports: {inline}\n"
+                self.assertEqual(_published_ports(text), {3000, 8005})
 
     def test_the_scan_sees_only_published_ports(self) -> None:
         text = (

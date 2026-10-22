@@ -112,7 +112,9 @@ def _derived(encryption_key: str) -> str:
     """Pinned: changing the derivation makes every caller still running the
     previous release present a different key."""
     digest = hmac.new(
-        encryption_key.encode(), b"autogpt internal service key v1", hashlib.sha256
+        base64.urlsafe_b64decode(encryption_key.encode()),
+        b"autogpt internal service key v1",
+        hashlib.sha256,
     ).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
@@ -165,6 +167,25 @@ def test_any_key_fernet_accepts_derives_one(encryption_key):
     Fernet(encryption_key.encode())
     key = service_auth.internal_api_key(_settings("", encryption_key=encryption_key))
     assert key == _derived(encryption_key)
+
+
+def test_every_encoding_of_one_key_derives_the_same_internal_key():
+    """Services that decrypt the same credentials must agree on the key, even
+    when one was given the key in another encoding Fernet also reads."""
+    raw = b"\xfb\xff" * 16
+    encodings = [
+        base64.urlsafe_b64encode(raw).decode(),
+        base64.b64encode(raw).decode(),  # standard alphabet: + and /
+        base64.urlsafe_b64encode(raw).decode() + "\n",
+    ]
+    token = Fernet(encodings[0].encode()).encrypt(b"a credential")
+    for encoding in encodings:
+        assert Fernet(encoding.encode()).decrypt(token) == b"a credential"
+    keys = {
+        service_auth.internal_api_key(_settings("", encryption_key=encoding))
+        for encoding in encodings
+    }
+    assert len(keys) == 1
 
 
 @pytest.mark.parametrize(
@@ -248,6 +269,7 @@ async def _through_middleware(
     key: str = KEY,
     authorization: bytes | None = None,
     scope_type: str = "http",
+    method: str = "POST",
     optional: bool = False,
 ) -> tuple[list[dict], bool]:
     """One request straight through the middleware: what it sent back, and
@@ -277,6 +299,8 @@ async def _through_middleware(
     )
     headers = [] if authorization is None else [(b"authorization", authorization)]
     scope = {"type": scope_type, "path": "/add", "headers": headers}
+    if scope_type == "http":
+        scope["method"] = method
     await middleware({**scope, "client": ("10.0.0.9", 1)}, receive, send)
     return sent, reached
 
@@ -296,7 +320,7 @@ async def test_a_websocket_without_the_key_is_closed():
     assert sent == [{"type": "websocket.close", "code": 1008}]
 
 
-@pytest.mark.parametrize("authorization", [b"Bearer ", b"Bearer", b"Basic abc"])
+@pytest.mark.parametrize("authorization", [None, b"Bearer ", b"Bearer", b"Basic abc"])
 @pytest.mark.parametrize("optional", [False, True])
 async def test_without_a_key_not_even_an_empty_token_gets_through(
     authorization, optional
@@ -385,9 +409,19 @@ def test_while_optional_a_call_without_the_key_reaches_only_a_method(use_setting
 
     assert client.post("/not_a_method", json={}).status_code == 401
     assert client.get("/openapi.json").status_code == 401
+    assert client.get("/add").status_code == 401  # a method's path, not a call
     assert _without_key("KeyedService") == before
     assert _call_add(client).status_code == 200
     assert _without_key("KeyedService") == before + 1
+
+
+async def test_while_optional_a_websocket_without_the_key_is_still_closed():
+    before = _without_key("svc")
+    sent, reached = await _through_middleware(scope_type="websocket", optional=True)
+
+    assert not reached
+    assert sent == [{"type": "websocket.close", "code": 1008}]
+    assert _without_key("svc") == before
 
 
 def test_the_gauge_reads_0_once_the_key_is_required(use_settings):

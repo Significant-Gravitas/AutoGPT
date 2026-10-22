@@ -75,15 +75,14 @@ def internal_api_key(settings: Settings | None = None) -> str:
         return secrets.internal_api_key
     if not secrets.encryption_key:
         return ""
-    if not _is_fernet_key(secrets.encryption_key):
+    source = _fernet_key_bytes(secrets.encryption_key)
+    if source is None:
         raise ValueError(
             "ENCRYPTION_KEY is not a Fernet key (32 random bytes, URL-safe "
             "base64), and the internal service key is derived from it. "
             + RETIRED_HINT.format(name="ENCRYPTION_KEY")
         )
-    digest = hmac.new(
-        secrets.encryption_key.encode(), _DERIVATION_LABEL, hashlib.sha256
-    ).digest()
+    digest = hmac.new(source, _DERIVATION_LABEL, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
@@ -146,7 +145,8 @@ class InternalKeyMiddleware:
         self.service_name = service_name
         self.expected = key.encode()
         self.rpc_paths = rpc_paths
-        self.optional = optional
+        # Without a key, nothing may come without one either.
+        self.optional = optional and bool(self.expected)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket") or scope["path"] in OPEN_PATHS:
@@ -160,11 +160,21 @@ class InternalKeyMiddleware:
             and hmac.compare_digest(supplied, self.expected)
         ):
             await self.app(scope, receive, send)
-        elif supplied is None and self.optional and scope["path"] in self.rpc_paths:
+        elif supplied is None and self._may_come_without_key(scope):
             calls_without_key.labels(self.service_name).inc()
             await self.app(scope, receive, send)
         else:
             await self._refuse(scope, send)
+
+    def _may_come_without_key(self, scope: Scope) -> bool:
+        """While the key is optional, a call to one of the service's methods
+        (a POST to one of *rpc_paths*) may come without it, and nothing else."""
+        return (
+            self.optional
+            and scope["type"] == "http"
+            and scope["method"] == "POST"
+            and scope["path"] in self.rpc_paths
+        )
 
     async def _refuse(self, scope: Scope, send: Send) -> None:
         caller = (scope.get("client") or ("unknown",))[0]
@@ -201,9 +211,12 @@ def _bearer_token(scope: Scope) -> bytes | None:
     return None
 
 
-def _is_fernet_key(value: str) -> bool:
-    """Whether ``Fernet``, and so ``JSONCryptor``, accepts *value* as a key."""
+def _fernet_key_bytes(value: str) -> bytes | None:
+    """The 32 bytes ``Fernet``, and so ``JSONCryptor``, reads from *value*, or
+    ``None`` where it refuses it. Deriving from these rather than the text
+    gives every encoding of one key that Fernet accepts the same internal key."""
     try:
-        return len(base64.urlsafe_b64decode(value.encode())) == 32
+        key = base64.urlsafe_b64decode(value.encode())
     except ValueError:  # binascii.Error is a ValueError
-        return False
+        return None
+    return key if len(key) == 32 else None
