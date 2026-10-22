@@ -10,3 +10,14 @@ export function isEditableElement(el: Element | null): boolean {
     (el instanceof HTMLElement && el.isContentEditable)
   );
 }
+
+export const COARSE_POINTER_QUERY = "(pointer: coarse)";
+
+/** True when the primary input is a finger (phones, tablets). */
+export function isTouchDevice(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia &&
+    window.matchMedia(COARSE_POINTER_QUERY).matches
+  );
+}

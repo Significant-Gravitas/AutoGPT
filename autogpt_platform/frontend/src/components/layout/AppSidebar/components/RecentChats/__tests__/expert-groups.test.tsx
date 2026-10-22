@@ -16,17 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecentChats } from "../RecentChats";
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) => flag === "hire-experts",
-  };
-});
-
 const mariaExpert: Expert = {
   id: "expert-maria",
   name: "Maria",

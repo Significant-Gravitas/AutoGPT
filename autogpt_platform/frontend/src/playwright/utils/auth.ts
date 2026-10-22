@@ -9,7 +9,7 @@ import {
 } from "../credentials/accounts";
 import { signupTestUser } from "./signup";
 import { getBrowser } from "./get-browser";
-import { skipOnboardingIfPresent } from "./onboarding";
+import { dismissTabIntrosViaAPI, skipOnboardingIfPresent } from "./onboarding";
 
 export interface TestUser {
   email: string;
@@ -173,11 +173,14 @@ async function authStateHasLiveSession(
       await page.goto("/marketplace");
       await page.waitForLoadState("domcontentloaded");
       await skipOnboardingIfPresent(page, "/marketplace");
-      return await page
+      const isLive = await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10_000 })
         .then(() => true)
         .catch(() => false);
+      // A state stored before its user's intros were marked seen would meet one.
+      if (isLive) await dismissTabIntrosViaAPI(page);
+      return isLive;
     } finally {
       await page.close();
       await context.close();

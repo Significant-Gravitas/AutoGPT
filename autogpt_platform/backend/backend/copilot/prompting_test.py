@@ -6,6 +6,7 @@ import pytest
 
 from backend.blocks.desktop._api import DISPLAY
 from backend.copilot import prompting
+from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
 
 class TestGetSdkSupplementStaticPlaceholder:
@@ -33,6 +34,22 @@ class TestGetSdkSupplementStaticPlaceholder:
     def test_e2b_mode_has_no_session_placeholder(self):
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        sections = [
+            next(line for line in result.splitlines() if "tool-results/" in line)
+        ]
+        if use_e2b:
+            sections.append(
+                result.split("### SDK tool-result files in E2B\n", 1)[1].split(
+                    "\n### ", 1
+                )[0]
+            )
+        for guidance in sections:
+            assert "`read_tool_result`" in guidance
+            assert "`Read`" not in guidance
 
 
 class TestComputerNote:
@@ -79,24 +96,22 @@ class TestComputerNote:
 
 
 class TestCredentialsSurfacingGuardrails:
-    """The system prompt must instruct the model to (a) surface sign-in cards
-    eagerly via tool calls and (b) never claim a card has appeared unless one
-    was just emitted in the same turn. Both behaviours prevent the user from
-    being stranded waiting for a card that was never produced.
+    """The eager-card and never-claim-a-card rules live in the base system
+    prompt (service.py). The supplement keeps the mechanics: stop on the card,
+    connect-only calls, credentials-only cards, rejections and pickers.
     """
 
-    def test_local_prompt_contains_eager_surfacing_rule(self):
-        result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "Surface the sign-in card EAGERLY" in result
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_prompt_stops_on_the_sign_in_card(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert (
+            "returns a sign-in card (`setup_requirements`). Show it and stop." in result
+        )
 
-    def test_e2b_prompt_contains_eager_surfacing_rule(self):
-        result = prompting.get_sdk_supplement(use_e2b=True)
-        assert "Surface the sign-in card EAGERLY" in result
-
-    def test_prompt_contains_anti_hallucination_guardrail(self):
+    def test_pickers_are_called_with_null_not_asked_for(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "NEVER claim a card has appeared" in result
-        assert "call the tool first" in result
+        assert "with the field set to `null`" in result
+        assert "Don't ask for the id or URL" in result
 
     def test_prompt_distinguishes_an_expert_grant_from_a_sign_in(self):
         """An expert session's ``find_capability`` reports an account-owned
@@ -105,17 +120,18 @@ class TestCredentialsSurfacingGuardrails:
         result = prompting.get_sdk_supplement(use_e2b=False)
         step = result[result.index('`connected: "needs_expert_grant"`') :]
         step = " ".join(step[: step.index("4. `review_required`")].split())
-        assert "Do NOT ask the user to sign in" in step
+        assert "Don't ask the user to sign in" in step
         assert "Grant button" in step
-        assert "ask the user to grant access" in step
+        assert "Ask the user to grant access" in step
 
     def test_prompt_contains_rejection_rule(self):
         """This section collects rules from several PRs at once, so a merge
         that takes one side drops a rule silently."""
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "refused a credential the user already has" in result
-        assert "Connecting is not running" in result
-        assert "The card asks for credentials, not inputs" in result
+        assert "To only connect an account" in result
+        assert 'input={"connect": true}' in result
+        assert "The card collects credentials only" in result
 
     def test_prompt_states_the_one_connect_convention(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -129,24 +145,18 @@ class TestCredentialsSurfacingGuardrails:
 
 
 class TestToolDiscoveryPriorityAntiPattern:
-    """The Discovery section must forbid claiming a capability gap without
-    calling ``find_capability`` first — this is the regression the
-    LinkedIn-skip incident on dev (May 2026) exposed.
+    """The supplement must send the model to the registry before it talks
+    about what exists; the honest-gap wording lives in the base prompt.
     """
 
-    def test_supplement_contains_find_capability_mandatory_language(self):
+    def test_supplement_says_search_before_answering_from_memory(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The header must signal that find_capability is mandatory before
-        # any "no integration" reply.
-        assert "find_capability` is MANDATORY" in result
+        assert "Search it; don't rely on what you remember." in result
+        assert "start with `find_capability(" in result
 
-    def test_supplement_lists_the_forbidden_phrases(self):
+    def test_supplement_keeps_the_mcp_fallback_search(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The anti-pattern section must explicitly enumerate the
-        # phrases the model emitted in the regression so the model
-        # can pattern-match on its own draft and reject it.
-        assert "we don't have an X integration" in result
-        assert "there's no block for X" in result
+        assert '"<service> MCP server"' in result
 
     def test_supplement_includes_the_flow_and_no_legacy_names(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -160,6 +170,16 @@ class TestToolDiscoveryPriorityAntiPattern:
 
 
 class TestGraphitiMemoryScope:
+    def test_supplement_keeps_tentative_memories_unconfirmed(self):
+        assert (
+            "Treat any memory marked tentative as an unconfirmed inference: "
+            "state that uncertainty before mentioning it, "
+            "and do not strengthen it or add details."
+        ) in prompting.get_graphiti_supplement()
+
+    def test_supplement_never_saves_guesses(self):
+        assert "Never save guesses." in prompting.get_graphiti_supplement()
+
     def test_supplement_describes_assistant_scoped_memory(self):
         result = prompting.get_graphiti_supplement()
 
@@ -277,7 +297,7 @@ class TestSchedulingGuidance:
     def test_supplement_names_schedule_followup_by_capability_id(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "### Scheduling future work — use `tool:schedule_followup`" in result
-        assert "`tool:schedule_followup` schedules a future copilot turn" in result
+        assert "`tool:schedule_followup` schedules a future Otto turn" in result
 
     def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
         # Routines ride the flag-gated ``expert_resources`` group, so this
@@ -341,3 +361,190 @@ class TestMathGuidance:
     def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
         assert "`$…$` inline, `$$…$$` for display" in result
+
+
+class TestConnectedAccountNotes:
+    """What the model is told about connected accounts: that they are
+    placeholders behind the swap proxy, and which a restricted run may use."""
+
+    @pytest.fixture(autouse=True)
+    def fresh_supplements(self):
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+        yield
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+
+    def test_behind_the_proxy_the_sandbox_notes_say_where_placeholders_work(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value="p:1080"):
+            text = prompting.get_sdk_supplement(use_e2b=True)
+        assert "hsurr:" in text
+        assert "`GH_TOKEN`/`GITHUB_TOKEN` (GitHub): github.com, api.github.com" in text
+
+    def test_without_the_proxy_nothing_is_said(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value=None):
+            assert "hsurr:" not in prompting.get_sdk_supplement(use_e2b=True)
+
+    def test_an_unrestricted_run_gets_no_ceiling_note(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        assert prompting.get_provider_ceiling_supplement(None) == ""
+        assert prompting.get_provider_ceiling_supplement(CopilotPermissions()) == ""
+
+    def test_a_run_allowed_some_accounts_is_told_which(self):
+        """The branch that names them: unreachable while GitHub is the only
+        provider in the table, so pinned here with a stubbed ceiling."""
+        from unittest.mock import patch
+
+        from backend.copilot.permissions import CopilotPermissions
+
+        with patch(
+            "backend.copilot.permissions.allowed_providers", return_value=("github",)
+        ):
+            note = prompting.get_provider_ceiling_supplement(CopilotPermissions())
+        assert "only these of the user's connected accounts: GitHub" in note
+
+    def test_a_restricted_run_is_told_what_it_may_use(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        none = prompting.get_provider_ceiling_supplement(
+            CopilotPermissions(providers=["github"], providers_exclude=True)
+        )
+        assert "none of the user's connected accounts" in none
+
+
+class TestPlainLanguageRules:
+    def test_no_internal_plumbing_and_one_retry(self):
+        result = prompting.SHARED_TOOL_NOTES
+        assert "Never mention internal errors" in result
+        assert "Retry a failing step at most once" in result
+
+    def test_blocking_inputs_are_asked_before_building(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "Use sensible defaults instead of asking" in notes
+        assert "ask it before you start building" in notes
+
+    def test_only_cite_opened_pages(self):
+        assert "Only cite pages you actually opened" in prompting.SHARED_TOOL_NOTES
+
+    def test_memory_prefers_injected_context(self):
+        result = prompting.get_graphiti_supplement()
+        assert "Use memory already injected" in result
+        assert "ALWAYS" not in result
+
+    def test_team_building_checks_the_roster_first(self):
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+        assert "look at `<team_context>` first" in result
+
+
+class TestStorageSupplementSentences:
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_storage_line_is_one_sentence_pair_not_nested_bullets(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "   - " not in result
+        line = next(
+            ln for ln in result.splitlines() if ln.startswith("- **") and "`): " in ln
+        )
+        assert line.endswith(".")
+        assert ". Files " in line
+
+
+class TestApprovalModeSupplement:
+    def test_every_mode_has_its_own_section(self):
+        assert "## Auto mode" in prompting.approval_mode_supplement("auto")
+        assert "## Ask First mode" in prompting.approval_mode_supplement("ask_first")
+        unsupervised = prompting.approval_mode_supplement("unsupervised")
+        assert "## Unsupervised mode" in unsupervised
+        assert "without asking in chat first" in unsupervised
+
+    def test_a_watched_chat_with_no_gate_asks_in_chat(self):
+        section = prompting.approval_mode_supplement(None, interactive=True)
+        assert "## Approvals" in section
+        assert "ask for their OK with `ask_question`" in section
+
+    def test_a_watched_chat_with_no_gate_skips_calls_that_show_a_card(self):
+        section = prompting.approval_mode_supplement(None, interactive=True)
+        assert "No approval card can appear" not in section
+        assert "unless the call shows its own approval card" in section
+
+    def test_an_unattended_run_with_no_gate_acts(self):
+        section = prompting.approval_mode_supplement(None, interactive=False)
+        assert "## Unattended run" in section
+        assert "without waiting for an OK" in section
+        assert "ask for their OK" not in section
+
+    def test_a_gate_mode_ignores_who_is_watching(self):
+        for mode in ("auto", "ask_first", "unsupervised"):
+            assert prompting.approval_mode_supplement(
+                mode, interactive=False
+            ) == prompting.approval_mode_supplement(mode)
+
+
+class TestBasePromptApprovalFallback:
+    def test_card_rule_is_tied_to_a_mode_section(self):
+        assert "When an Auto or Ask First mode section below is present" in (
+            CACHEABLE_SYSTEM_PROMPT
+        )
+        assert "Otherwise the approval section below says whether to ask in chat." in (
+            CACHEABLE_SYSTEM_PROMPT
+        )
+        assert "don't wait in chat for an OK" not in CACHEABLE_SYSTEM_PROMPT
+
+
+class TestCapabilityIdRule:
+    def test_mcp_server_url_is_the_named_exception_to_the_id_rule(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "the one exception is the MCP server URL fallback below" in notes
+        assert "that verified vendor URL is the only id you may use without" in notes
+        assert "Check the hostname belongs to the vendor" in notes
+        assert "Writes to servers outside the catalog pause for review." in notes
+
+
+class TestBuilderBlockRoles:
+    def test_graph_id_is_read_from_builder_context_not_builder_session(self):
+        session_rule = next(
+            ln
+            for ln in CACHEABLE_SYSTEM_PROMPT.splitlines()
+            if "`<builder_session>`" in ln
+        )
+        context_rule = next(
+            ln
+            for ln in CACHEABLE_SYSTEM_PROMPT.splitlines()
+            if ln.startswith("A server-injected `<builder_context>`")
+        )
+        assert "graph id" not in session_rule
+        assert "calls to the graph id in that `<graph>` tag" in context_rule
+
+    def test_greeting_offers_one_thing_like_the_reply_style(self):
+        assert "offer one concrete thing you could do" in CACHEABLE_SYSTEM_PROMPT
+        assert "one thing you can do" in prompting.SHARED_TOOL_NOTES
+
+
+class TestGuardrailsReachEveryBasePrompt:
+    """The deployed base prompt comes from Langfuse, not CACHEABLE_SYSTEM_PROMPT,
+    so rules every turn needs live in the supplements appended to it."""
+
+    @pytest.mark.parametrize(
+        "supplement",
+        [
+            prompting.SHARED_TOOL_NOTES,
+            prompting.get_sdk_supplement(use_e2b=False),
+            prompting.get_sdk_supplement(use_e2b=True),
+        ],
+    )
+    def test_supplement_carries_the_turn_and_card_guardrails(self, supplement):
+        assert "End every turn with visible text" in supplement
+        assert "Only say a card is showing when a tool in this turn returned" in (
+            supplement
+        )
+        assert "Run the capability that needs it straight away" in supplement
+
+    def test_base_prompt_does_not_repeat_them(self):
+        assert "End every turn with visible text" not in CACHEABLE_SYSTEM_PROMPT
+        assert "Only say a card is showing" not in CACHEABLE_SYSTEM_PROMPT

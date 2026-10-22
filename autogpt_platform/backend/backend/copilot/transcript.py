@@ -29,6 +29,9 @@ from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .hidden_rows import visible_to_model
+from .legacy_first_turn_memory import without_stored_first_turn_memory
+from .legacy_session_file import restore_session_file
 from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -43,9 +46,45 @@ _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
 # - queue-operation: internal queue bookkeeping
 # - summary: session summaries
 # - pr-link: PR link metadata
+# - api-request-blob: a copy of an API request as sent, written by newer CLIs,
+#   so it holds whatever the CLI attached to the prompt; ``--resume`` does not
+#   send it again
 STRIPPABLE_TYPES = frozenset(
-    {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
+    {
+        "progress",
+        "file-history-snapshot",
+        "queue-operation",
+        "summary",
+        "pr-link",
+        "api-request-blob",
+    }
 )
+
+# ``attachment`` entries the CLI writes for a file, directory, image, agent or
+# MCP resource named in the prompt text: the first attachment, the
+# re-attachment after a compaction, and its later reports on such a file.
+# Prompts sent with ``verbatim_prompts`` produce none of them, so sessions
+# written before that are stored and restored without them.
+MENTION_ATTACHMENT_TYPES = frozenset(
+    {
+        "file",
+        "already_read_file",
+        "compact_file_reference",
+        "pdf_reference",
+        "directory",
+        "agent_mention",
+        "mcp_resource",
+        "peer_mention",
+        "at_mention_reference",
+        "edited_text_file",
+        "edited_image_file",
+    }
+)
+
+# Fields that point at another entry's ``uuid``.
+_UUID_REFERENCE_FIELDS = ("parentUuid", "logicalParentUuid", "leafUuid")
+# Parts of a compact boundary's ``compactMetadata`` that name entries by uuid.
+_PRESERVED_SECTIONS = ("preservedSegment", "preservedMessages")
 
 
 TranscriptMode = Literal["sdk", "baseline"]
@@ -225,11 +264,18 @@ def strip_stale_thinking_blocks(content: str) -> str:
 
 
 def strip_for_upload(content: str) -> str:
-    """Combined single-parse strip of progress entries and stale thinking blocks.
+    """Combined single-parse strip of progress entries, mention attachments and
+    stale thinking blocks.
 
-    Equivalent to ``strip_stale_thinking_blocks(strip_progress_entries(content))``
-    but parses the JSONL only once, avoiding redundant ``split`` + ``json.loads``
-    passes on every upload.
+    Like ``strip_stale_thinking_blocks(strip_progress_entries(content))``, but
+    it also drops ``MENTION_ATTACHMENT_TYPES`` attachments and parses the JSONL
+    only once. The parent, logical-parent and leaf references to a dropped
+    entry move to its nearest kept ancestor, and a compact boundary's
+    preserved-message references are repaired too, so no kept entry names a
+    dropped one and the conversation tree ``--resume`` walks stays intact.
+
+    Raises ``ValueError`` when a non-blank line is not a JSON object: such a
+    line could be an entry that must be dropped, so nothing is returned.
     """
     lines = content.strip().split("\n")
     if not lines:
@@ -237,9 +283,12 @@ def strip_for_upload(content: str) -> str:
 
     parsed: list[tuple[str, dict | None]] = []
     for line in lines:
-        parsed.append((line, json.loads(line, fallback=None)))
+        entry = json.loads(line, fallback=None)
+        if line.strip() and not isinstance(entry, dict):
+            raise ValueError("A CLI session line is not a JSON object")
+        parsed.append((line, entry))
 
-    # --- Phase 1: progress stripping (reparent children) ---
+    # --- Phase 1: drop entries, reconnect what pointed at them ---
     stripped_uuids: set[str] = set()
     uuid_to_parent: dict[str, str] = {}
 
@@ -250,28 +299,15 @@ def strip_for_upload(content: str) -> str:
         parent = entry.get("parentUuid", "")
         if uid:
             uuid_to_parent[uid] = parent
-        if (
-            entry.get("type", "") in STRIPPABLE_TYPES
-            and uid
-            and not entry.get("isCompactSummary")
-        ):
+        if uid and _is_dropped_entry(entry):
             stripped_uuids.add(uid)
 
-    reparented: set[str] = set()
-    for _line, entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        parent = entry.get("parentUuid", "")
-        original_parent = parent
-        seen_parents: set[str] = set()
-        while parent in stripped_uuids and parent not in seen_parents:
-            seen_parents.add(parent)
-            parent = uuid_to_parent.get(parent, "")
-        if parent != original_parent:
-            entry["parentUuid"] = parent
-            uid = entry.get("uuid", "")
-            if uid:
-                reparented.add(uid)
+    reconnected: set[int] = set()
+    for i, (_line, entry) in enumerate(parsed):
+        if isinstance(entry, dict) and reconnect_entry(
+            entry, stripped_uuids, uuid_to_parent
+        ):
+            reconnected.add(i)
 
     # --- Phase 2: identify last assistant for thinking-block stripping ---
     last_asst_msg_id: str | None = None
@@ -280,9 +316,7 @@ def strip_for_upload(content: str) -> str:
         _line, entry = parsed[i]
         if not isinstance(entry, dict):
             continue
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
+        if _is_dropped_entry(entry):
             continue
         msg = entry.get("message", {})
         if msg.get("role") == "assistant":
@@ -298,18 +332,11 @@ def strip_for_upload(content: str) -> str:
             result_lines.append(line)
             continue
 
-        # Drop progress/metadata entries
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
+        if _is_dropped_entry(entry):
             continue
 
-        needs_reserialize = False
-        uid = entry.get("uuid", "")
-
-        # Reparented entries need re-serialization
-        if uid in reparented:
-            needs_reserialize = True
+        # Entries whose references moved need re-serialization
+        needs_reserialize = i in reconnected
 
         # Strip stale thinking blocks from non-last assistant entries.
         # Also strip *signature-less* thinking blocks from the last entry —
@@ -354,6 +381,110 @@ def strip_for_upload(content: str) -> str:
         )
 
     return "\n".join(result_lines) + "\n"
+
+
+def _is_dropped_entry(entry: dict) -> bool:
+    """Whether ``strip_for_upload`` leaves *entry* out. Of the strippable
+    types, only a summary is kept for being a compact summary."""
+    entry_type = entry.get("type", "")
+    if entry_type in STRIPPABLE_TYPES:
+        return not (entry_type == "summary" and entry.get("isCompactSummary"))
+    attachment = entry.get("attachment")
+    return (
+        entry_type == "attachment"
+        and isinstance(attachment, dict)
+        and attachment.get("type") in MENTION_ATTACHMENT_TYPES
+    )
+
+
+def reconnect_entry(
+    entry: dict, stripped_uuids: set[str], uuid_to_parent: dict[str, str]
+) -> bool:
+    """Point *entry*'s references past dropped entries; True if any moved.
+
+    *uuid_to_parent* maps every entry's ``uuid`` to its ``parentUuid``, the
+    dropped entries' included, so a reference can move to the nearest kept
+    ancestor.
+    """
+    moved = False
+    for field in _UUID_REFERENCE_FIELDS:
+        if _reconnect_field(entry, field, stripped_uuids, uuid_to_parent):
+            moved = True
+    if _reconnect_compact_metadata(entry, stripped_uuids, uuid_to_parent):
+        moved = True
+    return moved
+
+
+def _reconnect_field(
+    holder: dict, field: str, stripped_uuids: set[str], uuid_to_parent: dict[str, str]
+) -> bool:
+    """Move one uuid field to the nearest kept ancestor; True if it moved."""
+    target = holder.get(field)
+    seen: set[str] = set()
+    while isinstance(target, str) and target in stripped_uuids and target not in seen:
+        seen.add(target)
+        target = uuid_to_parent.get(target, "")
+    if target != holder.get(field):
+        holder[field] = target
+        return True
+    return False
+
+
+def _reconnect_compact_metadata(
+    entry: dict, stripped_uuids: set[str], uuid_to_parent: dict[str, str]
+) -> bool:
+    """Repair a compact boundary's ``compactMetadata`` so no reference in it
+    names a dropped entry. The preserved messages are a chain from
+    ``headUuid`` to ``tailUuid``: the uuid lists lose the dropped ids, a
+    dropped head moves to the first kept member, and the tail and anchors move
+    to their nearest kept ancestor. A segment with no kept member is removed."""
+    metadata = entry.get("compactMetadata")
+    if not isinstance(metadata, dict):
+        return False
+    moved = False
+    for section_key in _PRESERVED_SECTIONS:
+        section = metadata.get(section_key)
+        if not isinstance(section, dict):
+            continue
+        for field in ("uuids", "allUuids"):
+            values = section.get(field)
+            if isinstance(values, list):
+                kept = [uid for uid in values if uid not in stripped_uuids]
+                if kept != values:
+                    section[field] = kept
+                    moved = True
+        head = section.get("headUuid")
+        if isinstance(head, str) and head in stripped_uuids:
+            moved = True
+            new_head = _first_kept_member(
+                head, section.get("tailUuid"), stripped_uuids, uuid_to_parent
+            )
+            if new_head is None:
+                del metadata[section_key]
+                continue
+            section["headUuid"] = new_head
+        for field in ("anchorUuid", "tailUuid"):
+            if _reconnect_field(section, field, stripped_uuids, uuid_to_parent):
+                moved = True
+    return moved
+
+
+def _first_kept_member(
+    head: str, tail: object, stripped_uuids: set[str], uuid_to_parent: dict[str, str]
+) -> str | None:
+    """The kept entry nearest *head* on the parent chain from *tail* back to
+    *head*, or None when none is kept or the chain does not reach *head*."""
+    found: str | None = None
+    current = tail
+    seen: set[str] = set()
+    while isinstance(current, str) and current not in seen:
+        seen.add(current)
+        if current not in stripped_uuids:
+            found = current
+        if current == head:
+            return found
+        current = uuid_to_parent.get(current)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -782,8 +913,14 @@ async def download_transcript(
     Pure GCS operation — no disk I/O.  The caller is responsible for writing
     content to disk if --resume is needed.
 
-    Returns a TranscriptDownload with the raw content, message_count watermark,
-    and mode on success, or None if not available (first turn or upload failed).
+    Returns a TranscriptDownload with the content as stored, message_count
+    watermark, and mode on success, or None if not available (first turn or
+    upload failed). Every restore, on either engine, comes through here, and
+    a file an older session uploaded is restored without the first-turn
+    memory block the old code stored in it (``legacy_session_file.py``): the
+    block is taken out of the first user entry, or, when the file holds a
+    copy that cannot be taken out, None is returned as if there were no
+    file, so the turn rebuilds from the database and its upload replaces it.
     """
     storage = await get_workspace_storage()
     path = _build_path_from_parts(
@@ -840,7 +977,21 @@ async def download_transcript(
         message_count,
         mode,
     )
-    return TranscriptDownload(content=content, message_count=message_count, mode=mode)
+    restored = restore_session_file(content)
+    if restored.content is None:
+        logger.warning(
+            "%s Not resuming from the stored CLI session: %s",
+            log_prefix,
+            restored.reason,
+        )
+        return None
+    if restored.stripped:
+        logger.info(
+            "%s Removed the first-turn memory block the session stored", log_prefix
+        )
+    return TranscriptDownload(
+        content=restored.content, message_count=message_count, mode=mode
+    )
 
 
 def next_uncovered_sequence(session_messages: list[ChatMessage]) -> int:
@@ -1054,22 +1205,25 @@ async def extract_context_messages(
       preserving structured ``tool_calls``.
 
     Falls back to full prior messages (``session_messages[:-1]``) when no
-    transcript is available.  Excludes ``role="reasoning"`` rows.  The
-    current user turn at ``session_messages[-1]`` is excluded — callers append
-    it themselves.
+    transcript is available.  Excludes ``role="reasoning"`` rows, and rows
+    posted for the user only (``hidden_rows``).  The current user turn at
+    ``session_messages[-1]`` is excluded — callers append it themselves.
+    Database messages are stripped of legacy first-turn memory blocks.
     """
     # Drop reasoning rows — their content lives in transcript paths,
     # not the public turn list.  Queue lifecycle is tracked on the
     # owning ChatSession, not per message, so no per-row filtering
     # for queued/running rows is needed here.
-    session_messages = [m for m in session_messages if m.role != "reasoning"]
+    session_messages = without_stored_first_turn_memory(
+        [m for m in session_messages if m.role != "reasoning"]
+    )
     prior = session_messages[:-1]
 
     if download is None:
-        return prior
+        return visible_to_model(prior)
     transcript_msgs = _parse_transcript_to_messages(download)
     if transcript_msgs is None:
-        return prior
+        return visible_to_model(prior)
 
     gap = detect_gap(download, session_messages)
     hole: list[ChatMessage] = []
@@ -1077,21 +1231,25 @@ async def extract_context_messages(
         hole = await fill_hole_between_transcript_and_gap(
             session_id, download.message_count, gap
         )
-    return transcript_msgs + hole + gap
+    # After the watermark slicing above, which counts hidden rows too.
+    return transcript_msgs + visible_to_model(hole + gap)
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:
-    """Delete CLI session JSONL and its companion .meta.json from bucket storage."""
-    storage = await get_workspace_storage()
+    """Delete CLI session JSONL, then its companion .meta.json, from bucket storage.
 
-    try:
-        cli_path = _build_path_from_parts(
-            _cli_session_storage_path_parts(user_id, session_id), storage
-        )
-        await storage.delete(cli_path)
-        logger.info("[Transcript] Deleted CLI session for session %s", session_id)
-    except Exception as e:
-        logger.warning("[Transcript] Failed to delete CLI session: %s", e)
+    Raises when the JSONL cannot be deleted, and leaves the meta in place: a
+    JSONL without its meta reads as an old upload that covers the whole chat
+    (``download_transcript``), which a later turn would resume with no gap. A
+    meta left without its JSONL is never restored, so failing to delete it is
+    only logged.
+    """
+    storage = await get_workspace_storage()
+    cli_path = _build_path_from_parts(
+        _cli_session_storage_path_parts(user_id, session_id), storage
+    )
+    await storage.delete(cli_path)
+    logger.info("[Transcript] Deleted CLI session for session %s", session_id)
 
     try:
         cli_meta_path = _build_path_from_parts(

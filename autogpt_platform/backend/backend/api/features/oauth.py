@@ -22,12 +22,22 @@ from typing import Literal, Optional
 from urllib.parse import unquote, urlencode, urlparse
 
 from autogpt_libs.auth import get_user_id
-from fastapi import APIRouter, Body, HTTPException, Security, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Security,
+    UploadFile,
+    status,
+)
 from gcloud.aio import storage as async_storage
 from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
@@ -98,17 +108,30 @@ class OAuthApplicationPublicInfo(BaseModel):
 @router.get(
     "/app/{client_id}",
     responses={
+        400: {"description": "redirect_uri is not registered for the application"},
         404: {"description": "Application not found or disabled"},
     },
 )
 async def get_oauth_app_info(
-    client_id: str, user_id: str = Security(get_user_id)
+    client_id: str,
+    redirect_uri: Optional[str] = Query(
+        default=None,
+        description=(
+            "Where the page will send the user back to. When given, it must be "
+            "one of the application's registered redirect URIs."
+        ),
+    ),
+    user_id: str = Security(get_user_id),
 ) -> OAuthApplicationPublicInfo:
     """
     Get public information about an OAuth application.
 
-    This endpoint is used by the consent screen to display application details
-    to the user before they authorize access.
+    This endpoint is used by the consent screen and the integration setup
+    wizard to display application details to the user before they authorize
+    access. The setup wizard sends the `redirect_uri` it was given and sends
+    the user back there only once this endpoint accepts it, so it never
+    redirects to an address the application did not register (RFC 6749
+    4.1.2.1).
 
     Returns:
     - name: Application name
@@ -120,6 +143,11 @@ async def get_oauth_app_info(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
+        )
+    if redirect_uri is not None and not validate_redirect_uri(app, redirect_uri):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="redirect_uri is not registered for this application",
         )
 
     return OAuthApplicationPublicInfo(
@@ -666,7 +694,9 @@ LOGO_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 LOGO_MAX_FILE_SIZE = 3 * 1024 * 1024  # 3MB
 
 
-@router.post("/apps/{app_id}/logo/upload")
+@router.post(
+    "/apps/{app_id}/logo/upload", dependencies=[Depends(enforce_payment_paywall)]
+)
 async def upload_app_logo(
     app_id: str,
     file: UploadFile,

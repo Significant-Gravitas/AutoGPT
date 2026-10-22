@@ -12,7 +12,6 @@ import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgen
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { analytics } from "@/services/analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -133,11 +132,6 @@ export function AddToLibraryButton({
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
-      });
-
-      analytics.sendDatafastEvent("add_to_library", {
-        name: data.name,
-        id: data.id,
       });
 
       const addedToast = toast({

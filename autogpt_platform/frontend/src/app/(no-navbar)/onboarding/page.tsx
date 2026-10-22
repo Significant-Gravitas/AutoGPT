@@ -1,22 +1,21 @@
 "use client";
-import { ProgressError } from "./components/ProgressError";
-import { ProgressBar } from "./components/ProgressBar";
-import { StepIndicator } from "./components/StepIndicator";
-import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
-import { PainPointsStep } from "./steps/PainPointsStep";
-import { PreparingStep } from "./steps/PreparingStep";
-import { RoleStep } from "./steps/RoleStep";
-import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
-import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
-import { IntroStep } from "./steps/IntroStep/IntroStep";
-import { HireStep } from "./steps/HireStep/HireStep";
-import { useOnboardingWizardStore } from "./store";
-import { useOnboardingPage } from "./useOnboardingPage";
-import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
+import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { ProgressBar } from "./components/ProgressBar";
+import { ProgressError } from "./components/ProgressError";
+import { StepIndicator } from "./components/StepIndicator";
+import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
+import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
+import { HireStep } from "./steps/HireStep/HireStep";
+import { IntroStep } from "./steps/IntroStep/IntroStep";
+import { PreparingStep } from "./steps/PreparingStep";
+import { RoleStep } from "./steps/RoleStep";
+import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
+import { useOnboardingWizardStore } from "./store";
+import { useOnboardingPage } from "./useOnboardingPage";
 
 export default function OnboardingPage() {
   const {
@@ -25,7 +24,6 @@ export default function OnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
-    isBrainDumpEnabled,
     steps,
     preparingStep,
     totalSteps,
@@ -134,8 +132,7 @@ export default function OnboardingPage() {
         {currentStep === steps.team && <IntroStep slide="team" />}
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
-        {currentStep === steps.painPoints &&
-          (isBrainDumpEnabled ? <BrainDumpStep /> : <PainPointsStep />)}
+        {currentStep === steps.painPoints && <BrainDumpStep />}
         {currentStep === steps.hire && <HireStep />}
         {isSelfHostConnectEnabled && currentStep === steps.connect && (
           <ConnectStep />
@@ -144,10 +141,7 @@ export default function OnboardingPage() {
           <SubscriptionStep />
         )}
         {currentStep === preparingStep && (
-          <PreparingStep
-            onComplete={handlePreparingComplete}
-            isBrainDumpEnabled={isBrainDumpEnabled}
-          />
+          <PreparingStep onComplete={handlePreparingComplete} />
         )}
       </div>
 

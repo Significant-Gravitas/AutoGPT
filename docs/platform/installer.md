@@ -15,28 +15,20 @@ Before running the installer:
 - Install and start Docker from the
   [official Docker Engine](https://docs.docker.com/engine/install/) or
   [Docker Desktop](https://docs.docker.com/desktop/) documentation.
-- Select a local `unix://` Docker endpoint on Linux or macOS. Remote and
-  non-Unix contexts are rejected.
+- Select a local Docker endpoint: `unix://` on Linux and macOS, `npipe://` on
+  Windows. Remote and TCP contexts are rejected.
 - Configure the daemon for Linux containers on `amd64` or `arm64`.
 - Allow about 25 GB of free disk; at least 8 GB RAM is recommended.
+- Have Bash, curl, and `sha256sum` or `shasum` available for the bootstrap, or
+  PowerShell and `curl.exe` on Windows. Docker Compose, Git, Node.js, and npm
+  are not required.
 
 Docker Desktop is a separate product with its own license terms. AutoGPT does
 not install it or grant a Docker license.
 
-## Install (After the Release Gates Pass)
+## Install
 
-> [!WARNING]
-> Do not use the hosted command yet. `setup.agpt.co/install.sh` still serves
-> the legacy Compose installer, and the appliance image tags are not public.
-> Maintainers must complete every
-> [release gate](#maintainer-release-gates) before exposing these commands in
-> the README or getting-started guide.
-
-This first appliance-installer release supports Linux and macOS. Windows is
-intentionally withheld until its standard-user filesystem checks and native
-Docker argument handling are validated; use the manual setup guide there.
-
-The command below uses a unique temporary file, executes it only after the HTTPS
+Each command below uses a unique temporary file, executes it only after the HTTPS
 download succeeds, and removes it afterward. Do not stream a network response
 directly into a shell.
 
@@ -52,25 +44,44 @@ directly into a shell.
 )
 ```
 
+### Windows
+
+```powershell
+& {
+  $installer = Join-Path ([IO.Path]::GetTempPath()) "autogpt-install-$([guid]::NewGuid().ToString('N')).ps1"
+  try {
+    curl.exe --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o $installer https://setup.agpt.co/install.ps1
+    if ($LASTEXITCODE -eq 0) {
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
+    }
+  } finally {
+    Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+  }
+}
+```
+
 ### Options
 
-| Goal | Linux/macOS |
-| --- | --- |
-| Current published appliance | _(no flag)_ |
-| Specific published version | `--release=vX.Y.Z` |
-| Appliance release-tag form | `--release=autogpt-platform-beta-vX.Y.Z` |
-| Hardware and Docker checks only | `--preflight-only` |
-| Print image selection only | `--resolve-only` |
-| Skip RAM/disk checks | `--skip-preflight` |
-| Custom private state directory | `--dir=PATH` |
+Add a flag after `bash "$installer"` on Linux and macOS, or after
+`-File $installer` on Windows.
+
+| Goal | Linux/macOS | Windows |
+| --- | --- | --- |
+| Current published appliance | _(no flag)_ | _(no flag)_ |
+| Specific published version | `--release=vX.Y.Z` | `-Release vX.Y.Z` |
+| Appliance release-tag form | `--release=autogpt-platform-beta-vX.Y.Z` | `-Release autogpt-platform-beta-vX.Y.Z` |
+| Hardware and Docker checks only | `--preflight-only` | `-PreflightOnly` |
+| Print image selection only | `--resolve-only` | `-ResolveOnly` |
+| Skip RAM/disk checks | `--skip-preflight` | `-SkipPreflight` |
+| Custom private state directory | `--dir=PATH` | `-Dir PATH` |
 
 `--skip-preflight` does not skip the local-endpoint, Linux-container, or
 architecture checks.
 
 The default state directory is `$XDG_CONFIG_HOME/autogpt`, or
-`$HOME/.config/autogpt` when `XDG_CONFIG_HOME` is unset. A custom directory
-must be user-owned and private; the installer rejects symlink paths and shared
-or unsafe locations.
+`$HOME/.config/autogpt` when `XDG_CONFIG_HOME` is unset, and
+`%LOCALAPPDATA%\AutoGPT` on Windows. A custom directory must be user-owned and
+private; the installer rejects symlink paths and shared or unsafe locations.
 
 ## Artifact and Runtime Contract
 
@@ -148,34 +159,35 @@ behind a TLS reverse proxy and set `AUTOGPT_PUBLIC_URL` to the exact public URL.
 
 ## Upgrades
 
-Before an upgrade, back up `autogpt-platform-data`. Stop and remove only the
+Before an upgrade, back up `autogpt-platform-data` as described in
+[Cold backup](single-container.md#cold-backup). Stop and remove only the
 `autogpt` container, then rerun the installer with the intended release. The
 installer will reuse the named volume only when its ownership labels and the
 private installer identity still match.
 
 ## Maintainer Release Gates
 
-Repository CI cannot prove the public bootstrap handoff. Do not publish or
-announce the installation commands until every external gate below passes:
+`https://setup.agpt.co/install.sh`, `https://setup.agpt.co/install.ps1`, and
+`https://setup.agpt.co/install.bat` redirect to the files of the same name in
+`autogpt_platform/installer/` on `master`, so the hosted installers change
+whenever those files change on `master`. Repository CI cannot prove this public
+bootstrap handoff, so each release must keep every gate below passing:
 
-- Deploy the new repository `install.sh` through the Caddy or object-storage
-  configuration behind `setup.agpt.co`. The endpoint must no longer serve the
-  legacy clone/Compose installer.
-- Publish `significantgravitas/autogpt:vX.Y.Z` and `:latest` only after the
-  multi-architecture workflow smoke-tests and scans both runnable images.
-- Ensure the appliance release's tag commit contains the full installer,
-  publication workflow, and helper, then verify the release-triggered run.
-  Manual development dispatches publish SHA artifacts, not the release channel
-  used by this installer.
-- Verify both public tags expose Linux `amd64` and `arm64` manifests and the
-  expected OCI identity:
+- Only a published, non-prerelease `autogpt-platform-beta-vX.Y.Z` release
+  publishes images. Its run smoke-tests and scans both architectures, then
+  pushes `sha-<commit>` and `vX.Y.Z` and moves `:latest` forward. Pushes to
+  `dev` and manual dispatches build, test, and scan without publishing.
+- The release's tag commit contains the full installer, publication workflow,
+  and helper, and its release-triggered run succeeded.
+- Both public tags expose Linux `amd64` and `arm64` manifests and the expected
+  OCI identity:
 
   ```bash
   docker buildx imagetools inspect significantgravitas/autogpt:vX.Y.Z
   docker buildx imagetools inspect significantgravitas/autogpt:latest
   ```
 
-- Fetch the hosted installer into a new temporary file from an external
+- Fetch each hosted installer into a new temporary file from an external
   machine and compare it with the released repository file. On each supported
   operating system, perform a clean install against the public image, wait for
   health, verify the loopback endpoint, rerun to prove exact-contract
@@ -184,9 +196,9 @@ announce the installation commands until every external gate below passes:
 ## Installing from source (Compose)
 
 The scripts below are the other supported path: they clone the repository and
-start every service with Docker Compose. Use them on Windows, for development,
-or for a fully offline install with a local LLM. The appliance described above
-is the image documented in
+start every service with Docker Compose. Use them for development, or for a
+fully offline install with a local
+LLM. The appliance described above is the image documented in
 [Run AutoGPT in one Docker container](single-container.md); these scripts do
 not use it.
 
@@ -197,11 +209,15 @@ If you prefer, you can manually download and run the installer scripts:
 - **Linux/macOS:** `setup-autogpt.sh`
 - **Windows:** `setup-autogpt.bat`
 
-These scripts are located in the `autogpt_platform/installer/` directory.
+These scripts are located in the `autogpt_platform/installer/` directory. Run
+`./setup-autogpt.sh` or `setup-autogpt.bat` from there. Inside a clone, a
+script uses that checkout; otherwise it clones the repository into a new
+`AutoGPT` folder first.
 
 Both create the three `.env` files if they are missing and generate the
 secrets `.env.default` leaves blank (`ENCRYPTION_KEY`,
-`UNSUBSCRIBE_SECRET_KEY`, `BETTER_AUTH_SECRET`), the same as `make init-env`.
+`UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`), the same
+as `make init-env`.
 Running a script again never changes a value that is already set. If you are
 upgrading an install that ran without its own `ENCRYPTION_KEY`, read
 [Upgrading: secrets are generated per install](getting-started.md#upgrading-secrets-are-generated-per-install)
@@ -222,7 +238,7 @@ full reference.
 cd autogpt_platform/installer
 ./setup-autogpt.sh --with-ollama
 # Optional overrides:
-#   --ollama-model=qwen3:14b-instruct-q4_K_M
+#   --ollama-model=qwen3:14b-q4_K_M
 #   --ollama-host=http://gpu-rig.lab:11434   # use an existing Ollama
 ```
 
@@ -232,15 +248,15 @@ cd autogpt_platform/installer
 cd autogpt_platform\installer
 setup-autogpt.bat /with-ollama
 REM Optional overrides:
-REM   /ollama-model=qwen3:14b-instruct-q4_K_M
+REM   /ollama-model=qwen3:14b-q4_K_M
 REM   /ollama-host=http://gpu-rig.lab:11434
 ```
 
 The installer:
 
 1. Installs Ollama (skipped if already present, or if `--ollama-host` points at an existing one).
-2. Configures `OLLAMA_HOST=0.0.0.0:11434` + `OLLAMA_CONTEXT_LENGTH=32768` so containers can reach it and so AutoPilot's ~8 k system prompt isn't truncated by Ollama's 4 k default.
-3. Pulls the chat model (default `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`).
+2. Configures `OLLAMA_HOST=0.0.0.0:11434` + `OLLAMA_CONTEXT_LENGTH=262144` so containers can reach it and so AutoPilot's ~8 k system prompt isn't truncated by Ollama's 4 k default; 262,144 tokens is the default model's native window.
+3. Pulls the chat model (default `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M`).
 4. Appends a marker-bounded block to `autogpt_platform/backend/.env` with `CHAT_USE_LOCAL=true` plus the `CHAT_BASE_URL` / `CHAT_API_KEY` / `CHAT_*_MODEL` overrides.
 
 Re-running with `--with-ollama` is idempotent — the wiring block is rewritten in place.

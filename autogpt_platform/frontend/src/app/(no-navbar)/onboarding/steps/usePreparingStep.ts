@@ -35,13 +35,7 @@ const RECOMMENDATIONS_MAX_WAIT_MS = 15_000;
 // reads as "almost there", not "stuck at done".
 const WAITING_PROGRESS_CAP = 95;
 
-export function usePreparingStep({
-  onComplete,
-  isBrainDumpEnabled,
-}: {
-  onComplete: () => void;
-  isBrainDumpEnabled: boolean;
-}) {
+export function usePreparingStep({ onComplete }: { onComplete: () => void }) {
   const [started, setStarted] = useState(false);
   const [completedItems, setCompletedItems] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -50,7 +44,7 @@ export function usePreparingStep({
 
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
-  const isDumpPath = isBrainDumpEnabled && peekIntroPath() === "A";
+  const isDumpPath = peekIntroPath() === "A";
   const checklist: readonly string[] = isDumpPath
     ? BRAIN_DUMP_CHECKLIST
     : GENERIC_CHECKLIST;
