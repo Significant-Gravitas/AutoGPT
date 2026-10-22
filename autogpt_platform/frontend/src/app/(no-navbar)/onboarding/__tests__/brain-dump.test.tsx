@@ -540,6 +540,19 @@ describe("onboarding brain dump — typed fallback", () => {
       ).value,
     ).toBe("Invoices every Monday");
     expect(screen.queryByText("Your recording is safe. Try again.")).toBeNull();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "{Backspace}",
+    );
+
+    expect(
+      screen.queryByText(
+        "That's over the 20,000-character limit; trim it and try again.",
+      ),
+    ).toBeNull();
   });
 });
 

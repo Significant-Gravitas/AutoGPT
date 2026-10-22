@@ -285,6 +285,11 @@ export function useBrainDumpStep() {
     setScreen("rest");
   }
 
+  function handleTypedTextChange(text: string) {
+    setTypedText(text);
+    setIsTypedTooLong(false);
+  }
+
   async function handleSubmitTyped() {
     const text = typedText.trim();
     if (!text) return;
@@ -469,7 +474,7 @@ export function useBrainDumpStep() {
     screen,
     insufficientMode,
     typedText,
-    setTypedText,
+    setTypedText: handleTypedTextChange,
     elapsedSeconds: recorder.elapsedSeconds,
     isOffline: recorder.isOffline,
     isSavedLocally: recorder.isSavedLocally,
