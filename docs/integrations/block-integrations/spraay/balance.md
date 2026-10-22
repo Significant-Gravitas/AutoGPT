@@ -1,6 +1,6 @@
 # Spraay Balance
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for reading wallet token balances on Base through the Spraay x402 gateway.
 <!-- END MANUAL -->
 
 ## Spraay Get Balance
@@ -10,7 +10,11 @@ Check native ETH and ERC-20 balances for any wallet on Base. Paid per call via S
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calls the Spraay gateway's `GET /api/v1/balances` endpoint for the wallet you give it. Balances are always read on Base. The gateway charges $0.005 per call through x402: the first request returns HTTP 402 with the payment terms, and the block signs a USDC transfer authorization with the payer wallet key stored in your Spraay credentials, then retries the request with that signature.
+
+With no token address, `balances` lists ETH plus any non-zero balances of popular Base tokens. With a token address, the block also outputs that token's raw `balance`, its `formatted_balance` with decimals applied, and its `token_symbol`. If the gateway doesn't return the requested token, the block outputs an error instead.
+
+The Spraay credential is a wallet private key, not an API key. Use a dedicated wallet that holds only a small USDC balance for gateway fees.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -32,7 +36,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Pre-flight Check**: Confirm a sender holds enough USDC before preparing a Spraay batch payment.
+
+**Low Balance Alerts**: Check a payout wallet on a schedule and send a notification when its balance drops below a threshold.
+
+**Treasury Reporting**: Collect the ETH and token holdings of several wallets into a regular report.
 <!-- END MANUAL -->
 
 ---

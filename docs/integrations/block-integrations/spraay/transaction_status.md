@@ -1,6 +1,6 @@
 # Spraay Transaction Status
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for checking the on-chain status of EVM transactions through the Spraay gateway.
 <!-- END MANUAL -->
 
 ## Spraay Transaction Status
@@ -10,7 +10,9 @@ Check the on-chain status of an EVM transaction and decode it into a plain-Engli
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calls the Spraay gateway's free `GET /api/v1/tx/decode` endpoint, which reads the transaction from a Blockscout explorer. It needs no credentials and makes no x402 payment. It works on Base, Ethereum, Arbitrum, Optimism and Polygon.
+
+The block outputs the `status` reported by the explorer (for example `ok` or `error`), the `block_number` the transaction was included in (0 while it is still pending), the gas used and the fee in wei. It also outputs a plain-English `summary`, a decoded `transaction_type` such as transfer, swap or approval, and the list of token transfers the transaction made. If the gateway's response has no status, the block outputs an error.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -35,7 +37,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Payment Confirmation**: After a Spraay batch payment is broadcast, check its hash until it is included in a block.
+
+**Failure Handling**: Branch a workflow on `status` to retry or alert someone when a transaction fails.
+
+**Payout Log**: Record the summary and token transfers of each completed payment in a spreadsheet or database.
 <!-- END MANUAL -->
 
 ---
