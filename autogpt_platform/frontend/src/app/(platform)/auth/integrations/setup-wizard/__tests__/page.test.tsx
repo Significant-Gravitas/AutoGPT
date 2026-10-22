@@ -23,6 +23,20 @@ vi.mock("next/navigation", () => ({
   useSearchParams: mockUseSearchParams,
 }));
 
+// The real credential picker needs the integrations API; this stand-in
+// connects a provider so Continue can be reached.
+vi.mock("@/components/contextual/CredentialsInput/CredentialsInput", () => ({
+  CredentialsInput: ({
+    onSelectCredentials,
+  }: {
+    onSelectCredentials: (credential: { id: string }) => void;
+  }) => (
+    <button type="button" onClick={() => onSelectCredentials({ id: "cred-1" })}>
+      connect
+    </button>
+  ),
+}));
+
 const PAGE = "http://localhost/auth/integrations/setup-wizard";
 const REGISTERED = "https://app.example.com/callback";
 
@@ -92,4 +106,57 @@ describe("IntegrationSetupWizardPage", () => {
     expect(sentTo.searchParams.get("error")).toBe("user_cancelled");
     expect(sentTo.searchParams.get("state")).toBe("state-1");
   });
+
+  test("continuing returns the user to the accepted redirect_uri, once", async () => {
+    const sentTo = recordNavigations();
+    openWith({ providers: btoa(JSON.stringify([{ provider: "github" }])) });
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200({
+        name: "Example App",
+        scopes: ["IDENTITY"],
+      }),
+    );
+
+    render(<IntegrationSetupWizardPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "connect" }));
+    const continueButton = screen.getByRole("button", { name: "Continue" });
+    fireEvent.click(continueButton);
+    fireEvent.click(continueButton);
+
+    expect(sentTo).toEqual([`${REGISTERED}?success=true&state=state-1`]);
+  });
+
+  test("a second Cancel does not send the user anywhere again", async () => {
+    const sentTo = recordNavigations();
+    openWith({});
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200({
+        name: "Example App",
+        scopes: ["IDENTITY"],
+      }),
+    );
+
+    render(<IntegrationSetupWizardPage />);
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    fireEvent.click(cancel);
+    fireEvent.click(cancel);
+
+    expect(sentTo).toHaveLength(1);
+  });
 });
+
+function recordNavigations() {
+  const sentTo: string[] = [];
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      get href() {
+        return PAGE;
+      },
+      set href(url: string) {
+        sentTo.push(url);
+      },
+    },
+  });
+  return sentTo;
+}
