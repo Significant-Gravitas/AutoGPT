@@ -665,29 +665,53 @@ describe("PostHog hand-over from the marketing site", () => {
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe("app-id");
   });
 
-  it("stops writing but keeps its id when Cookiebot asks again", async () => {
+  it("keeps the cookie and stops writing when Cookiebot asks again", async () => {
     installCookiebot({ statistics: true });
     const { posthog } = await renderPostHog();
     posthog.capture("before_asking");
+    const writes = recordCookieWrites();
 
     act(() => {
       if (window.Cookiebot) window.Cookiebot.hasResponse = false;
       window.dispatchEvent(new Event("CookiebotOnDialogInit"));
       window.dispatchEvent(new Event("CookiebotOnLoad"));
     });
-    const writes = recordCookieWrites();
+    const writesBeforeCapture = writes.length;
     posthog.capture("while_asking");
 
     expect(captured).toContain("before_asking");
     expect(captured).not.toContain("while_asking");
-    expect(writes.filter((value) => value.startsWith("ph_"))).toEqual([]);
-    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
+    expect(sharedCookie()).toMatchObject({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+    expect(
+      writes.filter((value) => value.includes("Expires=Thu, 01 Jan 1970")),
+    ).toEqual([]);
+    expect(writes.length).toBe(writesBeforeCapture);
     Reflect.deleteProperty(document, "cookie");
 
     act(() => answerCookiebot({ statistics: true }));
+    posthog.capture("after_answer");
 
     expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(posthog.config.opt_out_persistence_by_default).toBe(true);
+    expect(captured).toContain("after_answer");
     expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
+  });
+
+  it("deletes the cookie when the visitor declines after Cookiebot asks again", async () => {
+    installCookiebot({ statistics: true });
+    await renderPostHog();
+    act(() => {
+      if (window.Cookiebot) window.Cookiebot.hasResponse = false;
+      window.dispatchEvent(new Event("CookiebotOnLoad"));
+    });
+
+    act(() => answerCookiebot({}));
+
+    expect(sharedCookie()).toBeNull();
+    expect(storedPostHogKeys()).toEqual([]);
   });
 
   it("waits for the session before taking the website's id", async () => {

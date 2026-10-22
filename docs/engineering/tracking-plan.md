@@ -291,9 +291,9 @@ merges the website pageviews into the new user:
   own stored identity) alone and runs PostHog on an in-memory id. Only an
   answer without analytics deletes them, the shared cookie included; the site
   does the same on its side. If Cookiebot asks again after PostHog started
-  with an earlier grant, PostHog moves its state into memory, so nothing is
-  written until the visitor answers; `agpt_anonymous_id` keeps the id, and a
-  grant writes the state back.
+  with an earlier grant, PostHog stops capturing (so it writes nothing until
+  the visitor answers) but keeps its storage, the shared cookie included; a
+  grant resumes it on the same id.
 - **On a grant,** during the page or from an earlier answer, the visitor's
   anonymous id is, in order: the app's own `agpt_anonymous_id`; else the
   device id in the app's own PostHog storage; else the cookie's `$device_id`;

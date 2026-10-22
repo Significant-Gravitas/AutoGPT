@@ -57,10 +57,8 @@ function canPersist() {
 
 /**
  * PostHog `before_send` hook: drops every event (autocapture, page leave and
- * replay included) while analytics is not allowed. This is how PostHog stops
- * while the answer is pending after it started with consent (Cookiebot no
- * longer accepting the stored answer): opting out instead would record an
- * opt-out of PostHog's own, and the grant has to undo it.
+ * replay included) while analytics is not allowed, for anything sent between
+ * the answer changing and syncPostHogConsent catching up.
  */
 export function dropWithoutConsent(
   event: CaptureResult | null,
@@ -101,18 +99,12 @@ export function syncPostHogConsent() {
   if (!hasConsentFor("analytics")) {
     posthog.stopSessionRecording();
     if (!hasDeclinedConsentFor("analytics")) {
-      // Pending after PostHog started with consent: keep its identity in
-      // memory, so nothing is written until the visitor answers (capture()
-      // still updates the session and person info before before_send drops
-      // the event). This deletes the stored copy; a grant writes it back,
-      // and agpt_anonymous_id keeps the id for the next page load.
-      if (posthog.config.persistence !== "memory") {
-        posthog.set_config({ persistence: "memory" });
-      }
+      pauseCapture();
       return;
     }
     // Withdrawal also reloads the page; stop and drop PostHog's storage now,
     // whatever PostHog itself believes its opt-in to be.
+    keepPersistenceWithCapture();
     posthog.clear_opt_in_out_capturing();
     clearPostHogStorage(posthog.config.token);
     return;
@@ -125,12 +117,37 @@ export function syncPostHogConsent() {
   if (!posthog.has_opted_in_capturing()) {
     posthog.opt_in_capturing({ captureEventName: false });
   }
+  keepPersistenceWithCapture();
   if (posthog.config.persistence !== PERSISTENT_STORAGE) {
     posthog.set_config({ persistence: PERSISTENT_STORAGE });
   }
   if (posthog.config.disable_session_recording) {
     posthog.startSessionRecording();
   }
+}
+
+/**
+ * Pending after PostHog started with consent (Cookiebot no longer accepts the
+ * stored answer): stop capturing, which is what stops PostHog writing, since
+ * capture() updates the session and person info before before_send drops the
+ * event. Its storage stays, the shared `.agpt.co` cookie included: with
+ * opt_out_persistence_by_default on, posthog-js would delete it as capture
+ * stops (persistence.set_disabled -> remove), as it would on a switch to
+ * memory persistence (update_config -> clear), so that is turned off first.
+ */
+function pauseCapture() {
+  if (posthog.config.persistence === "memory") return;
+  if (!posthog.has_opted_in_capturing()) return;
+  posthog.set_config({ opt_out_persistence_by_default: false });
+  posthog.clear_opt_in_out_capturing();
+}
+
+// Undoes pauseCapture's setting. Only once PostHog captures again, or when
+// its storage is to go anyway: with it on, an opted-out PostHog deletes its
+// storage.
+function keepPersistenceWithCapture() {
+  if (posthog.config.opt_out_persistence_by_default) return;
+  posthog.set_config({ opt_out_persistence_by_default: true });
 }
 
 /**
