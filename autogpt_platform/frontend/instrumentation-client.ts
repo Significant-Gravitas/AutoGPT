@@ -16,10 +16,12 @@ import {
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
 import { holdReplayBackFor, setupSessionReplay } from "@/lib/session-replay";
+import { createPostHogSentryProcessor } from "@/services/analytics/sentry-posthog";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
 const dsn = environment.getSentryDSN();
+const mirrorSentryEvent = createPostHogSentryProcessor(dsn);
 
 Sentry.init({
   dsn,
@@ -54,7 +56,11 @@ Sentry.init({
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
-    return isNextRSCNavigationFallback(event) ? null : redactEventURLs(event);
+    if (isNextRSCNavigationFallback(event)) return null;
+    // Mirror last: after our filters (an integration would run before
+    // beforeSend) and on the stripped, URL-masked event, so PostHog never
+    // gets an email, IP address or credential Sentry doesn't keep either.
+    return mirrorSentryEvent(redactEventURLs(event));
   },
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent)

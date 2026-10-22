@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.sdk.env import cli_prompt_text, cli_user_message
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -749,3 +750,37 @@ class TestContextWindowPin:
             _make_config(claude_agent_context_window=99_999)
         with pytest.raises(ValidationError):
             _make_config(claude_agent_context_window=1_000_001)
+
+
+class TestCliPromptText:
+    """The text the CLI receives must never parse as one of its commands."""
+
+    @pytest.mark.parametrize(
+        "text", ["/compact", "/model claude-opus-4-1", "/", "/dataviz chart"]
+    )
+    def test_leading_slash_gets_a_leading_space(self, text: str):
+        assert cli_prompt_text(text) == f" {text}"
+
+    @pytest.mark.parametrize(
+        "text", ["hello", "", " /compact", "a/b", "<user_context>x</user_context>"]
+    )
+    def test_other_text_is_unchanged(self, text: str):
+        assert cli_prompt_text(text) == text
+
+
+class TestCliUserMessage:
+    """A user message written straight to the CLI's transport."""
+
+    def test_carries_the_mark_the_sdk_sets_for_verbatim_prompts(self):
+        content = [
+            {"type": "image", "source": {"type": "base64", "data": "x"}},
+            {"type": "text", "text": "hello"},
+        ]
+
+        assert cli_user_message(content, "s1") == {
+            "type": "user",
+            "message": {"role": "user", "content": content},
+            "parent_tool_use_id": None,
+            "session_id": "s1",
+            "client_composed": True,
+        }

@@ -28,6 +28,12 @@ _LOCK = write_lock_key("user_test")
 _STORED = [
     {"uuid": "ep-newest", "redacted": False, "entity_edges": ["kept"]},
     {"uuid": "ep-redacted", "redacted": True, "entity_edges": []},
+    {
+        "uuid": "ep-pending",
+        "redacted": False,
+        "entity_edges": [],
+        "write_pending": True,
+    },
     {"uuid": "ep-cites-a-forgotten-fact", "redacted": False, "entity_edges": ["gone"]},
     {"uuid": "ep-oldest", "redacted": False, "entity_edges": []},
 ]
@@ -41,7 +47,10 @@ async def _policy_filtered_store(query: str, **params: object):
         {"uuid": episode["uuid"]}
         for episode in _STORED
         if is_recallable_episode(
-            episode["entity_edges"], {"gone"}, redacted=episode["redacted"]
+            episode["entity_edges"],
+            {"gone"},
+            redacted=episode["redacted"],
+            write_pending=episode.get("write_pending", False),
         )
     ]
     return rows, [], None

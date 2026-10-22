@@ -12,18 +12,26 @@ Feature-specific wrappers live next to the feature they belong to:
 """
 
 import asyncio
+import hashlib
 import logging
 import time
+from contextvars import ContextVar
 from typing import Any
 
 import prisma
 from prisma.enums import ContentType
+from redis.exceptions import RedisClusterException, RedisError
 from tiktoken import encoding_for_model
 
 from backend.api.features.search.content_handlers import CONTENT_HANDLERS
+from backend.api.features.search.rate_limit import (
+    public_search_embeddings_enabled,
+    take_public_search_embedding_slot,
+)
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
+from backend.data.redis_client import get_redis_async
 from backend.util.clients import get_openai_client
-from backend.util.json import dumps
+from backend.util.json import dumps, loads
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -41,6 +49,17 @@ EMBEDDING_MODEL = _settings.config.store_embedding_model
 EMBEDDING_DIM = 1536
 # OpenAI embedding token limit (8,191 with 1 token buffer for safety)
 EMBEDDING_MAX_TOKENS = 8191
+# Repeated searches and later result pages reuse a query's embedding this long.
+QUERY_EMBEDDING_TTL_SECONDS = 600
+_QUERY_EMBEDDING_REDIS_TIMEOUT_SECONDS = 0.25
+_CACHE_FAILURES = (
+    RedisError,
+    RedisClusterException,
+    ConnectionError,
+    OSError,
+    asyncio.TimeoutError,
+    ValueError,
+)
 
 # Single source of truth for the content types the maintenance jobs
 # (backfill + orphan cleanup) walk. BLOCK is first so foundational content
@@ -154,14 +173,72 @@ async def generate_embedding(text: str) -> list[float]:
     return embedding
 
 
-async def embed_query(query: str) -> list[float]:
-    """
-    Generate embedding for a search query.
+class PublicSearchBudgetSpent(Exception):
+    """Store search has requested all the new query embeddings it may this minute."""
 
-    Same as generate_embedding but with clearer intent.
+
+# A caller that needs to know whether its search was refused an embedding sets a
+# list here; a list, so a refusal made in a task the search spawns still reaches it.
+refused_public_queries: ContextVar[list[str] | None] = ContextVar(
+    "refused_public_queries", default=None
+)
+
+
+async def embed_query(query: str, *, public_search: bool = False) -> list[float]:
+    """
+    Generate embedding for a search query, reusing the embedding of the same
+    query from the last ``QUERY_EMBEDDING_TTL_SECONDS``.
+
+    With ``public_search``, a new embedding needs a slot from store search's
+    per-minute budget; without one this raises ``PublicSearchBudgetSpent``. A
+    budget of 0 raises it for every query, cached or not.
     Raises exceptions on failure - caller should handle.
     """
-    return await generate_embedding(query)
+    query = " ".join(query.split())
+    if public_search and not public_search_embeddings_enabled():
+        raise PublicSearchBudgetSpent()
+    digest = hashlib.sha256(query.encode()).hexdigest()
+    key = f"search:query-embedding:{EMBEDDING_MODEL}:{digest}"
+    if cached := await _cached_query_embedding(key):
+        return cached
+    if public_search and not await take_public_search_embedding_slot():
+        if (refused := refused_public_queries.get()) is not None:
+            refused.append(query)
+        raise PublicSearchBudgetSpent()
+    embedding = await generate_embedding(query)
+    await _cache_query_embedding(key, embedding)
+    return embedding
+
+
+async def _cached_query_embedding(key: str) -> list[float] | None:
+    try:
+        cached = await asyncio.wait_for(
+            _redis_get(key), timeout=_QUERY_EMBEDDING_REDIS_TIMEOUT_SECONDS
+        )
+        return loads(cached) if cached else None
+    except _CACHE_FAILURES as e:
+        logger.debug("Query embedding cache read failed: %s", e)
+        return None
+
+
+async def _cache_query_embedding(key: str, embedding: list[float]) -> None:
+    try:
+        await asyncio.wait_for(
+            _redis_set(key, dumps(embedding)),
+            timeout=_QUERY_EMBEDDING_REDIS_TIMEOUT_SECONDS,
+        )
+    except _CACHE_FAILURES as e:
+        logger.debug("Query embedding cache write failed: %s", e)
+
+
+async def _redis_get(key: str) -> str | bytes | None:
+    redis = await get_redis_async()
+    return await redis.get(key)
+
+
+async def _redis_set(key: str, value: str) -> None:
+    redis = await get_redis_async()
+    await redis.set(key, value, ex=QUERY_EMBEDDING_TTL_SECONDS)
 
 
 def embedding_to_vector_string(embedding: list[float]) -> str:

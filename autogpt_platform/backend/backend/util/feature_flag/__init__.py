@@ -63,7 +63,6 @@ class Flag(str, Enum):
     """
 
     AUTOMOD = "AutoMod"
-    AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
@@ -91,27 +90,10 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
-    GRAPHITI_MEMORY = "graphiti-memory"
 
     # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
-
-    # Gates the onboarding voice "brain dump" end-to-end.  The upload /
-    # finalize / status / download endpoints 404 when off so a stale
-    # frontend can't start writing recordings, and the wizard keeps
-    # rendering the pillbox step.  Fail-closed (default False).
-    ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump"
-
-    # Gates the per-user weekly community rebuild registered by
-    # ``add_community_rebuild_schedule``. Off by default; opt-in canary
-    # so the Leiden + LLM-summarization cost doesn't ramp before
-    # retrieval-relevance benefit is measured.
-    GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
-
-    # Parks expert work for the user's approval once her credit spend in the
-    # window reaches the approval threshold (SECRT-2599). Off by default.
-    EXPERT_SPEND_APPROVAL = "expert-spend-approval"
 
     # --- Dream-system gates (P0) ---
     #
@@ -128,26 +110,6 @@ class Flag(str, Enum):
     # consumer pickup, no ratification loop. Defaults False; opt-in
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
-
-    # Mirror of the frontend `hire-experts` flag (same LaunchDarkly key,
-    # so both sides evaluate one cohort switch). Gates the experts
-    # surface, including the scheduled morning-briefing job end-to-end:
-    # schedule registration, generation, and delivery. Deliberately no
-    # independent briefing kill switch — briefings ship to exactly the
-    # experts cohort.
-    HIRE_EXPERTS = "hire-experts"
-
-    # Child of ``HIRE_EXPERTS``: onboarding ends with a team. The brain
-    # dump also produces expert recommendations, the copilot greeting
-    # grows a team section, and Otto's empty-roster context tells
-    # it that it is the Head of AI. Effective only when both are on;
-    # fail-closed (default False).
-    ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
-
-    # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
-    # browse and install end-to-end: the routes 404 when off, so the dark
-    # launch is not reachable by URL with the shelf hidden. Fail-closed.
-    SKILLS_HUB = "skills-hub"
 
     # Per-feature gate for the cascading-expiry helper
     # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
@@ -1055,7 +1017,7 @@ def create_feature_flag_dependency(
 
     Example:
         router = APIRouter(
-            dependencies=[Depends(create_feature_flag_dependency(Flag.SKILLS_HUB))]
+            dependencies=[Depends(create_feature_flag_dependency(Flag.COPILOT_VOICE_MODE))]
         )
     """
 

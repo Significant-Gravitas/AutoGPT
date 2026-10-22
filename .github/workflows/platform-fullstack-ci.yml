@@ -122,7 +122,7 @@ jobs:
       - name: Set up Frontend - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -355,7 +355,7 @@ jobs:
         working-directory: /tmp/next-build-cache
         run: |
           docker buildx build --progress=plain -f - . <<'EOF'
-          FROM node:24.18-alpine3.23
+          FROM node:24.22.1-alpine3.23
           RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
               --mount=type=bind,target=/seed \
               cp -a /seed/. /app/.next/cache/
@@ -403,7 +403,7 @@ jobs:
       - name: Set up tests - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -553,7 +553,7 @@ jobs:
           rm -rf /tmp/next-build-cache
           # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
           docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
-          FROM node:24.18-alpine3.23 AS export
+          FROM node:24.22.1-alpine3.23 AS export
           ARG RUN_ID
           RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
               mkdir /out && cp -a /app/.next/cache/. /out/

@@ -1,5 +1,16 @@
+import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
-import { IntegrationsMarquee } from "@/components/molecules/IntegrationsMarquee/IntegrationsMarquee";
+
+const INTEGRATIONS = [
+  { id: "github", name: "GitHub" },
+  { id: "google", name: "Google" },
+  { id: "notion", name: "Notion" },
+  { id: "slack", name: "Slack" },
+  { id: "hubspot", name: "HubSpot" },
+  { id: "linear", name: "Linear" },
+  { id: "airtable", name: "Airtable" },
+  { id: "discord", name: "Discord" },
+];
 
 interface Props {
   footerText: string;
@@ -7,17 +18,29 @@ interface Props {
 
 export function MarketingFooter({ footerText }: Props) {
   return (
-    <div className="relative z-10 mt-12 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <Text
         variant="small-medium"
-        className="uppercase tracking-[0.14em] !text-slate-400"
+        className="uppercase tracking-[0.14em] !text-zinc-500"
       >
         {footerText}
       </Text>
-      <IntegrationsMarquee
-        variant="dark"
-        className="h-[140px] w-full max-w-[460px]"
-      />
+      <ul className="flex flex-wrap gap-2">
+        {INTEGRATIONS.map(({ id, name }) => (
+          <li
+            key={id}
+            className="flex size-11 items-center justify-center rounded-xl bg-white smooth-shadow-ring-sm"
+          >
+            <Image
+              src={`/integrations/${id}.png`}
+              alt={name}
+              width={22}
+              height={22}
+              className="size-[22px] rounded-sm object-contain"
+            />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

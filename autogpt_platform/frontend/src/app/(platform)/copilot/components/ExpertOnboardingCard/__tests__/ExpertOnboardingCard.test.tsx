@@ -5,11 +5,14 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ToolUIPart } from "ai";
+import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PendingAnswerContexts } from "../../ChatMessagesContainer/components/PendingAnswerContexts";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
 import { ExpertOnboardingCard } from "../ExpertOnboardingCard";
+import { buildOnboardingAnswersMessage } from "../helpers";
 import { PendingOnboardingContext } from "../PendingOnboardingContext";
 
 const EXPERT_ID = "1a5b1a10-6d10-4d7c-9d0d-2f6f1d9c0f11";
@@ -328,6 +331,57 @@ describe("ExpertOnboardingCard", () => {
     expect(screen.getByText("Linear, GitHub")).toBeDefined();
   });
 
+  it("shows the sent answers on a settled card and the form's on the review, and the review's once sent", async () => {
+    const channelStep = {
+      question: "Which channel should I post to?",
+      keyword: "channel",
+      options: ["LinkedIn", "Bluesky"],
+      allow_multiple: false,
+    };
+    const earlier = {
+      ...onboardingPart({ steps: [channelStep] }),
+      toolCallId: "call-onboarding-earlier",
+    } as ToolUIPart;
+    render(
+      <Chat
+        initial={[
+          chatMessage("assistant", [earlier]),
+          chatMessage("user", [
+            {
+              type: "text",
+              text: buildOnboardingAnswersMessage([channelStep], {
+                channel: "Bluesky",
+              }),
+            },
+          ]),
+          chatMessage("assistant", [multiSelectPart()]),
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Linear/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /GitHub/ }));
+    fireEvent.click(actionButton("Next question"));
+    fireEvent.click(screen.getByRole("radio", { name: /Campaign briefs/ }));
+    await screen.findByText("Check your answers");
+
+    expect(screen.getByText("Bluesky")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Which services.*Linear, GitHub/ }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Which outcome.*Campaign briefs/ }),
+    ).toBeDefined();
+
+    fireEvent.click(actionButton("Send answers"));
+
+    // Settled now, so these come back from the reply the send just added.
+    expect(await screen.findByText("Linear, GitHub")).toBeDefined();
+    expect(screen.queryByText("Check your answers")).toBeNull();
+    expect(screen.getByText("Campaign briefs")).toBeDefined();
+    expect(screen.getByText("Bluesky")).toBeDefined();
+  });
+
   it("shows a pending line while the card is still streaming", () => {
     const part = {
       type: "tool-expert_onboarding",
@@ -591,3 +645,42 @@ describe("ExpertOnboardingCard", () => {
     });
   });
 });
+
+type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
+
+function chatMessage(
+  role: "user" | "assistant",
+  parts: ChatMessage["parts"],
+): ChatMessage {
+  return { id: crypto.randomUUID(), role, parts };
+}
+
+// The thread's real contexts over a message list that a send appends to,
+// as the chat does.
+function Chat({ initial }: { initial: ChatMessage[] }) {
+  const [messages, setMessages] = useState(initial);
+  async function onSend(text: string) {
+    setMessages((previous) => [
+      ...previous,
+      chatMessage("user", [{ type: "text", text }]),
+    ]);
+  }
+  return (
+    <CopilotChatActionsProvider onSend={onSend}>
+      <PendingAnswerContexts messages={messages}>
+        {messages.flatMap((message) =>
+          message.parts.flatMap((part) =>
+            part.type === "tool-expert_onboarding"
+              ? [
+                  <ExpertOnboardingCard
+                    key={(part as ToolUIPart).toolCallId}
+                    part={part as ToolUIPart}
+                  />,
+                ]
+              : [],
+          ),
+        )}
+      </PendingAnswerContexts>
+    </CopilotChatActionsProvider>
+  );
+}
