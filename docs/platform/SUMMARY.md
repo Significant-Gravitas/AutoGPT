@@ -59,6 +59,11 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [A clearer wallet, a kinder trial, and shorter replies from Otto](changelog/october-8-october-14-2026.md)
+  * [A bigger roster, Clay & Rock avatars, folders in your workspace](changelog/september-24-september-30-2026.md)
+  * [Meet your Experts: hire a specialist and put it to work](changelog/september-19-2026.md)
+  * [A cleaner chat that shows its work, clickable answers, emails worth opening](changelog/august-21-september-4-2026.md)
+  * [Paste screenshots into chat, talk through onboarding, self-host in one container](changelog/july-29-august-13-2026.md)
   * [A new sidebar, a smarter composer, and Otto on Telegram](changelog/july-15-july-22-2026.md)
   * [Organize files, share your work, connect Discord](changelog/june-18-july-9-2026.md)
   * [Smarter Automation, Fresher Design, Open for Business](changelog/may-7-june-10-2026.md)

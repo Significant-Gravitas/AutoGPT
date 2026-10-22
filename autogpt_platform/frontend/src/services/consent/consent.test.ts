@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe("category mapping", () => {
-  it("maps analytics and monitoring to statistics, advertising to marketing", () => {
+  it("maps analytics and monitoring to statistics, advertising to marketing, preferences to preferences", () => {
     expect(
       toConsentState({
         necessary: true,
@@ -46,15 +46,25 @@ describe("category mapping", () => {
         statistics: true,
         marketing: false,
       }),
-    ).toEqual({ analytics: true, monitoring: true, advertising: false });
+    ).toEqual({
+      analytics: true,
+      monitoring: true,
+      advertising: false,
+      preferences: true,
+    });
     expect(
       toConsentState({
         necessary: true,
-        preferences: true,
+        preferences: false,
         statistics: false,
         marketing: true,
       }),
-    ).toEqual({ analytics: false, monitoring: false, advertising: true });
+    ).toEqual({
+      analytics: false,
+      monitoring: false,
+      advertising: true,
+      preferences: false,
+    });
   });
 
   it("denies everything without an answer", () => {
@@ -86,6 +96,7 @@ describe("with a Cookiebot domain group", () => {
       analytics: true,
       monitoring: true,
       advertising: false,
+      preferences: false,
     });
   });
 
@@ -98,6 +109,7 @@ describe("with a Cookiebot domain group", () => {
       analytics: false,
       monitoring: false,
       advertising: true,
+      preferences: false,
     });
   });
 
@@ -148,6 +160,7 @@ describe("with a Cookiebot domain group", () => {
       analytics: false,
       monitoring: false,
       advertising: true,
+      preferences: false,
     });
   });
 
@@ -193,6 +206,7 @@ describe("with a Cookiebot domain group", () => {
       analytics: true,
       monitoring: true,
       advertising: false,
+      preferences: false,
     });
     expect(readConsentFromCookieHeader("theme=dark")).toEqual(NO_CONSENT);
     expect(readConsentFromCookieHeader(null)).toEqual(NO_CONSENT);
@@ -222,6 +236,7 @@ describe("with a Cookiebot domain group", () => {
       analytics: true,
       monitoring: true,
       advertising: false,
+      preferences: false,
     });
     expect(readConsentFromCookieHeader(header)).toEqual(getConsent());
   });

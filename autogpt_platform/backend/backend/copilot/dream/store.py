@@ -22,10 +22,10 @@ its first model call. So a stalled DatabaseManager costs
 a pass at most that deadline per write, and the nightly fan-out and the batch
 walker keep moving.
 
-The row is additive to the Redis state: the lock, the batch state and the
-admin job status keep their keys, TTLs, scripts and formats. What changed is
-timing: the pass now waits on these bounded writes before it locks, inside the
-lock, before it chains a batch or applies, and before it cleans up.
+The row coexists with Redis state: the lock, batch state and admin job status
+keep their keys, TTLs, scripts and formats. The pass waits on bounded record
+writes before it locks, while holding the lock, before it chains a batch or
+applies, and before it cleans up.
 
 ``read_dream_pass`` is the read side, for the admin API and the eval driver;
 ``read_cost_context`` reads the usage attribution every charge of a pass's

@@ -1,6 +1,6 @@
 """A chat's first turn recalls its memories while it builds its query: the
-setup waits only for Graphiti's flag, and the recall is awaited where the
-query is sent."""
+setup doesn't wait for the recall, which is awaited where the query is
+sent."""
 
 import asyncio
 from unittest.mock import AsyncMock

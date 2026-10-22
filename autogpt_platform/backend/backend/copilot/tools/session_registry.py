@@ -28,7 +28,6 @@ from backend.copilot.capabilities.sources import (
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.util.cache import cached
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .skills import SKILLS_INDEX_CACHE_TTL_S, is_skills_feature_enabled, list_all_skills
 
@@ -132,11 +131,9 @@ async def session_expert_entries(
     user_id: str, session: ChatSession
 ) -> list[CapabilityEntry]:
     """Roster templates this session may hire and the teammates it may hand
-    work to; ``[]`` when hire-experts is off or a read fails, so an experts
+    work to; ``[]`` when a read fails, so an experts
     hiccup never takes capability search down with it."""
     try:
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
-            return []
         team = await experts_db().list_experts(user_id, with_metrics=False)
         templates = await _hireable_roster(user_id) if may_hire(session) else []
     except Exception:

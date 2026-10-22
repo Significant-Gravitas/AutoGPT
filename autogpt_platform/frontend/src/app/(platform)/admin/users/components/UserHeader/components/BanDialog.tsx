@@ -17,6 +17,7 @@ import {
   getBanEnd,
   getDisplayName,
 } from "../../../helpers";
+import { useIPReport } from "../../../useIPReport";
 import { useUserBan } from "../../../useUserBan";
 
 interface Props {
@@ -33,6 +34,8 @@ export function BanDialog({ user }: Props) {
   const [reason, setReason] = useState("");
   const [duration, setDuration] = useState<BanDuration>("permanent");
   const { banUser, isBanning } = useUserBan(user);
+  const { report } = useIPReport(user.id);
+  const related = report?.related_total ?? 0;
   const banEnd = getBanEnd(duration);
 
   function handleOpenChange(open: boolean) {
@@ -61,6 +64,15 @@ export function BanDialog({ user }: Props) {
             ends, but for up to 5 minutes they can still get a token that works
             for an hour. Their API keys, schedules and triggers keep running.
           </Text>
+          {related > 0 ? (
+            <Text variant="small" className="text-zinc-500">
+              Only this account. To include the{" "}
+              {related === 1
+                ? "1 related account"
+                : `${related.toLocaleString("en-GB")} related accounts`}
+              , use Ban all in Related accounts.
+            </Text>
+          ) : null}
           {user.role === "admin" ? (
             <Alert variant="warning">
               <AlertDescription>This account is an admin.</AlertDescription>

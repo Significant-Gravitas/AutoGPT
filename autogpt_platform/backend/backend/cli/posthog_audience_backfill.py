@@ -9,8 +9,9 @@ if TYPE_CHECKING:
 
 _ACCOUNTS = """
     SELECT u."id" AS user_id, u."email", u."createdAt" AS created_at,
-           u."timezone", u."stripeCustomerId" AS stripe_customer_id
+           u."timezone", u."stripeCustomerId" AS stripe_customer_id, a."role"
     FROM {schema_prefix}"User" u
+    LEFT JOIN {schema_prefix}"UserAuthIdentity" a ON a."id" = u."id"
 """
 
 
@@ -21,7 +22,8 @@ def posthog_audience_backfill_command(apply: bool, yes: bool):
     """Give existing accounts the PostHog person properties that mirror
     MailerLite's segmentation (SECRT-2895).
 
-    Every account gets email_type and signin_method. Every account with a
+    Every account gets email_type, signin_method and is_internal (true for
+    an admin or an @agpt.co email, SECRT-2728). Every account with a
     Stripe Checkout Session also gets checkout_opened_at, country,
     country_code, country_source and exclude_de_at, worked out as
     mailerlite-checkout-backfill works them out: from the Stripe billing
@@ -98,6 +100,7 @@ def _report(plan: "AudiencePlan") -> None:
     click.echo(f"Accounts: {len(plan.updates)}")
     click.echo(f"  email_type: {_counts(plan.email_types)}")
     click.echo(f"  signin_method: {_counts(plan.signin_methods)}")
+    click.echo(f"  is_internal true: {plan.internal}")
     click.echo(f"Checkout openers (a Stripe Checkout Session): {plan.openers}")
     click.echo(f"  country_source: {_counts(plan.country_sources)}")
     click.echo(f"  exclude_de_at yes: {plan.exclude_de_at}")
