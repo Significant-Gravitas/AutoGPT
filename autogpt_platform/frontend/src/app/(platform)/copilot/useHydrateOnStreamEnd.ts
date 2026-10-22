@@ -33,13 +33,8 @@ function retainOlderHistory(
   prev: UIMessage[],
   hydrated: UIMessage[],
 ): UIMessage[] {
-  let oldestHydratedSeq: number | null = null;
-  for (const message of hydrated) {
-    oldestHydratedSeq = extractDbSequence(message);
-    if (oldestHydratedSeq !== null) break;
-  }
-  if (oldestHydratedSeq === null) return hydrated;
-  const windowStart = oldestHydratedSeq;
+  const windowStart = firstSequence(hydrated);
+  if (windowStart === null) return hydrated;
 
   const windowStartIndex = prev.findIndex((message) => {
     const seq = extractDbSequence(message);
@@ -94,12 +89,18 @@ function preservePromotedUserBubbles(
  * Keep a send the backend took but has not written yet (a follow-up queued
  * behind a stopped turn's teardown, SECRT-2843) until a user row with its text
  * lands after the row it was sent behind; each row answers for one bubble.
+ * A bubble whose row may lie before the refetched window is left to it, as before.
  */
 function preserveUnpersistedUserBubbles(
   prev: UIMessage[],
   hydrated: UIMessage[],
+  windowStart: number | null,
 ): UIMessage[] {
-  const claimed = new Set<number>();
+  // With no stored row drawn yet, nothing says which sends the backend took;
+  // a first send refused before it was saved is one of them.
+  if (!prev.some((message) => extractDbSequence(message) !== null))
+    return hydrated;
+  const claimed = claimPromotedRows(prev, hydrated);
   const orphans: UIMessage[] = [];
   let sentAfter = -1;
   for (const message of prev) {
@@ -111,18 +112,52 @@ function preserveUnpersistedUserBubbles(
     if (message.role !== "user" || isPromotedBubble(message)) continue;
     const text = getMessageText(message);
     if (!text) continue;
-    const rowIndex = hydrated.findIndex(
-      (row, index) =>
-        !claimed.has(index) &&
-        row.role === "user" &&
-        (extractDbSequence(row) ?? -1) > sentAfter &&
-        getMessageText(row).includes(text),
-    );
-    if (rowIndex === -1) orphans.push(message);
-    else claimed.add(rowIndex);
+    const rowIndex = findUnclaimedUserRow(hydrated, claimed, text, sentAfter);
+    if (rowIndex !== -1) claimed.add(rowIndex);
+    else if (windowStart === null || sentAfter >= windowStart - 1)
+      orphans.push(message);
   }
   if (orphans.length === 0) return hydrated;
   return [...hydrated, ...orphans];
+}
+
+// A promoted bubble's row is its own, so a later bubble with the same text
+// cannot take it.
+function claimPromotedRows(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): Set<number> {
+  const claimed = new Set<number>();
+  for (const bubble of prev.filter(isPromotedBubble)) {
+    const text = getMessageText(bubble);
+    if (!text) continue;
+    const rowIndex = findUnclaimedUserRow(hydrated, claimed, text, -1);
+    if (rowIndex !== -1) claimed.add(rowIndex);
+  }
+  return claimed;
+}
+
+function findUnclaimedUserRow(
+  hydrated: UIMessage[],
+  claimed: Set<number>,
+  text: string,
+  sentAfter: number,
+): number {
+  return hydrated.findIndex(
+    (row, index) =>
+      !claimed.has(index) &&
+      row.role === "user" &&
+      (extractDbSequence(row) ?? -1) > sentAfter &&
+      getMessageText(row).includes(text),
+  );
+}
+
+function firstSequence(messages: UIMessage[]): number | null {
+  for (const message of messages) {
+    const seq = extractDbSequence(message);
+    if (seq !== null) return seq;
+  }
+  return null;
 }
 
 function isPromotedBubble(message: UIMessage): boolean {
@@ -319,7 +354,11 @@ export function useHydrateOnStreamEnd({
         );
         // A clean end means the backend took the send; after an error it may not have.
         return status === "ready"
-          ? preserveUnpersistedUserBubbles(prev, replaced)
+          ? preserveUnpersistedUserBubbles(
+              prev,
+              replaced,
+              firstSequence(finalized),
+            )
           : replaced;
       });
       needsForceHydrateRef.current = false;

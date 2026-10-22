@@ -460,4 +460,64 @@ describe("useHydrateOnStreamEnd — a send the backend has not written yet", () 
 
     expect(result).toEqual([...answered, queued]);
   });
+
+  function local(
+    id: string,
+    role: "user" | "assistant",
+    text: string,
+  ): UIMessage<unknown, UIDataTypes, UITools> {
+    return { id, role, parts: [{ type: "text", text }] };
+  }
+
+  it.each([
+    {
+      // A long turn pushed the prompt's row out of the latest-rows window.
+      name: "a prompt whose row lies before the refetched window",
+      prev: [
+        row(1, "user", "Plan it"),
+        row(2, "assistant", "Planned."),
+        local("local-prompt", "user", "Build it"),
+        local("live-answer", "assistant", "Built."),
+      ],
+      fresh: range(60, 70),
+      expected: [
+        row(1, "user", "Plan it"),
+        row(2, "assistant", "Planned."),
+        ...range(60, 70),
+      ],
+    },
+    {
+      name: "a first send refused before it was saved, then retried",
+      prev: [
+        local("refused", "user", "yes"),
+        local("retried", "user", "yes"),
+        local("live-answer", "assistant", "Booked."),
+      ],
+      // A session's first row is sequence 0.
+      fresh: [row(0, "user", "yes"), row(1, "assistant", "Booked.")],
+      expected: [row(0, "user", "yes"), row(1, "assistant", "Booked.")],
+    },
+  ])("does not keep $name", ({ prev, fresh, expected }) => {
+    expect(
+      runForceHydrate({ prev, staleWindow: [], freshWindow: fresh }),
+    ).toEqual(expected);
+  });
+
+  it("leaves a promoted bubble's row to it, not to a later bubble with the same text", () => {
+    const promoted = local("promoted-midturn-1", "user", "yes");
+    const queued = local("local-send", "user", "yes");
+    const stored = [
+      row(1, "user", "Book both"),
+      row(2, "user", "yes"),
+      row(3, "assistant", "Booked."),
+    ];
+
+    const result = runForceHydrate({
+      prev: [row(1, "user", "Book both"), promoted, queued],
+      staleWindow: [],
+      freshWindow: stored,
+    });
+
+    expect(result).toEqual([...stored, queued]);
+  });
 });
