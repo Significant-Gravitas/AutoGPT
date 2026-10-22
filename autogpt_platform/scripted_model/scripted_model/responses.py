@@ -160,7 +160,7 @@ def _schema_value(schema: dict[str, Any], root: dict[str, Any], depth: int = 0) 
     if schema_type == "number":
         minimum = schema.get("minimum", 0)
         if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
-            return max(0.0, float(minimum))
+            return max(0, minimum)
         return 0.0
     if schema_type == "boolean":
         return False

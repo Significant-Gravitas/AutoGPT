@@ -25,6 +25,7 @@ from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.extract_nodes import ExtractedEntities
 from graphiti_core.prompts.models import Message
 from pydantic import BaseModel, Field
+from scripted_model.responses import response as structured_response
 from scripted_model.scripts import parse_script
 
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
@@ -283,6 +284,26 @@ def test_responses_rejects_a_non_string_required_key(scripted_model):
 
     assert refused.value.code == 400
     assert "required property [] has no schema" in refused.value.read().decode()
+
+
+def test_responses_preserve_large_numeric_minimums():
+    minimum = 10**400
+    _, output_text = structured_response(
+        {
+            "model": "gpt-6-luna",
+            "text": {
+                "format": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"value": {"type": "number", "minimum": minimum}},
+                        "required": ["value"],
+                    }
+                }
+            },
+        }
+    )
+
+    assert json.loads(output_text) == {"value": minimum}
 
 
 def test_graphiti_client_parses_its_real_extraction_schemas(scripted_model):
