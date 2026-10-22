@@ -27,9 +27,10 @@
 }
 
 /*
- * Timeline of ONE path over the full cycle (shapes x 2.5s). A shape's own slot
- * is the first third (for 3 shapes): draw, hold, then fade out while the next
- * shape starts drawing, which gives the crossfade.
+ * Timeline of ONE path over the full cycle (3 shapes x 2.5s). A shape's own
+ * slot is the first third: draw, hold, then fade out while the next shape
+ * starts drawing, which gives the crossfade. The stops assume exactly 3
+ * shapes; changing the count means retuning them.
  */
 @keyframes drawn-line-cycle {
   0% {

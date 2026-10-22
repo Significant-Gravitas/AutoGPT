@@ -1,8 +1,9 @@
 /**
  * Artwork for DrawnLineLoader. Each entry is ONE continuous stroke (a single
  * path, possibly with a pen lift via `M`) drawn on a 24x24 canvas. The loader
- * draws them one after another, so to change the art just edit this array:
- * add, remove or reorder entries (3 to 4 shapes keeps the cycle at 7.5 to 10s).
+ * draws them one after another, so to change the art just edit or reorder
+ * entries. Keep exactly 3: the keyframes in DrawnLineLoader.module.css give
+ * each shape a third of the cycle.
  *
  * The paths are original, loosely hand-drawn doodles inspired by the feel of
  * Miro-style sketch shapes. They are not traced from any logo or brand mark.

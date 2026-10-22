@@ -34,11 +34,11 @@ describe("DrawnLineLoader", () => {
     expect(svg.getAttribute("stroke-linejoin")).toBe("round");
   });
 
-  it("cycles 3 to 4 shapes, one normalised stroke path each", () => {
+  it("cycles 3 shapes, one normalised stroke path each", () => {
     const { paths } = renderLoader();
 
-    expect(DRAWN_LINE_SHAPES.length).toBeGreaterThanOrEqual(3);
-    expect(DRAWN_LINE_SHAPES.length).toBeLessThanOrEqual(4);
+    // The keyframes give each shape a third of the cycle.
+    expect(DRAWN_LINE_SHAPES).toHaveLength(3);
     expect(paths).toHaveLength(DRAWN_LINE_SHAPES.length);
     paths.forEach((path, index) => {
       expect(path.getAttribute("d")).toBe(DRAWN_LINE_SHAPES[index].d);
