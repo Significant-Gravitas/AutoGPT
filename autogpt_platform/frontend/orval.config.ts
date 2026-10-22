@@ -5,7 +5,7 @@ export default defineConfig({
     input: {
       target: `./src/app/api/openapi.json`,
       override: {
-        transformer: "./src/app/api/transformers/fix-tags.mjs",
+        transformer: "./src/app/api/transformers/fix-spec.mjs",
       },
     },
     output: {
@@ -17,10 +17,14 @@ export default defineConfig({
       httpClient: "fetch",
       indexFiles: false,
       mock: {
-        type: "msw",
-        baseUrl: "/api/proxy",
-        generateEachHttpStatus: true,
-        delay: 0,
+        generators: [
+          {
+            type: "msw",
+            baseUrl: "/api/proxy",
+            generateEachHttpStatus: true,
+            delay: 0,
+          },
+        ],
       },
       override: {
         mutator: {
@@ -28,8 +32,6 @@ export default defineConfig({
           name: "customMutator",
         },
         query: {
-          useQuery: true,
-          useMutation: true,
           usePrefetch: true,
           // Will add more as their use cases arise
         },
@@ -103,7 +105,7 @@ export default defineConfig({
   //   input: {
   //     target: `./src/app/api/openapi.json`,
   //     override: {
-  //       transformer: "./src/app/api/transformers/fix-tags.mjs",
+  //       transformer: "./src/app/api/transformers/fix-spec.mjs",
   //     },
   //   },
   //   output: {
