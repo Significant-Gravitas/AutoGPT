@@ -28,10 +28,7 @@ from backend.data.model import (
     UserIntegrations,
     UserMetadata,
 )
-from backend.data.notifications import (
-    AudienceAction,
-    NotificationPreference,
-)
+from backend.data.notifications import AudienceAction, NotificationPreference
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.profile import ensure_profile
