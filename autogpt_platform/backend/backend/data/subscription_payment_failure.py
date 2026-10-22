@@ -155,6 +155,8 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
             return PaymentFailureOutcome.NEEDS_ACTION
         return PaymentFailureOutcome.IGNORED
     if not failed.is_unpaid:
+        if await _uncollectible_awaits_customer(failed):
+            return PaymentFailureOutcome.NEEDS_ACTION
         logger.info(
             f"Payment failure for invoice {failed.invoice_id} is stale: invoice"
             f" {failed.invoice.get('status')}, subscription {failed.sub_id}"
@@ -198,6 +200,22 @@ async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) 
     )
     await sync_subscription_from_stripe(failed.subscription)
     return True
+
+
+async def _uncollectible_awaits_customer(failed: FailedInvoice) -> bool:
+    """Stripe can mark the invoice uncollectible once its retries run out. It
+    stays payable through its link, so the customer is still told, unless a
+    newer plan replaced this one: paying would reactivate it. The wallet
+    never pays it here; this only decides the notice."""
+    if not (
+        failed.is_latest
+        and not failed.waits_on_pending_update
+        and failed.invoice.get("status") == "uncollectible"
+        and failed.invoice.get("amount_due", 0) > 0
+        and failed.subscription.get("status") in _UNPAID_STATUSES
+    ):
+        return False
+    return not await replaced_by_newer_plan(failed.customer_id, failed.subscription)
 
 
 async def _wallet_may_start_payment(failed: FailedInvoice) -> bool:

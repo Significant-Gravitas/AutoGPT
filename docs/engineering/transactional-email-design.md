@@ -50,7 +50,9 @@ conversion shows its actual conversion date, not the original trial end date.
 Payment-failure notices are queued only when the failed-payment handler reports
 that customer action is required. Wallet-settled, stale, replaced and processing
 invoices do not queue them. A missing retry timestamp is not proof of exhaustion:
-the final notice requires a current `unpaid` subscription. Canceled subscriptions
+the final notice requires a current `unpaid` subscription. The latest invoice
+still requires action when Stripe marked it uncollectible after its last retry,
+unless a newer plan replaced its subscription. Canceled subscriptions
 use the existing plan-ended message. The final notice dates the failed event and
 links to the hosted invoice when available; it never presents the invoice's
 renewal date as a future pause date.
@@ -133,6 +135,8 @@ the defaults here do not prove the effective production values. Before rollout:
   are deployed together. Confirm Stripe's final failed-payment action and its
   own recovery emails before enabling the application emails; validate an actual
   retry, wallet-covered invoice, unpaid subscription and canceled subscription.
+  The final notice is sent only when that action marks the subscription
+  `unpaid`; the invoice may be left past due or marked uncollectible.
 
 To verify the trial-ending reminder, follow the delivery path in order:
 
