@@ -441,6 +441,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for the websocket server to run on",
     )
 
+    websocket_server_metrics_port: int = Field(
+        default=8014,
+        description="The port the websocket server serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public websocket port, so a "
+        "client of the server can't read them.",
+    )
+
     execution_manager_port: int = Field(
         default=8002,
         description="The port for execution manager daemon to run on",
@@ -482,6 +489,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     agent_api_port: int = Field(
         default=8006,
         description="The port for agent server API to run on",
+    )
+
+    agent_api_metrics_port: int = Field(
+        default=8013,
+        description="The port the agent server API serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public API port, so a client of "
+        "the API can't read them.",
     )
 
     notification_service_port: int = Field(

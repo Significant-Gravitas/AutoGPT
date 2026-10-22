@@ -103,7 +103,7 @@ from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.monitoring.instrumentation import instrument_fastapi
+from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.exceptions import (
@@ -298,15 +298,9 @@ add_auth_responses_to_openapi(app)
 # Sort OpenAPI schema to eliminate diff on refactors
 sort_openapi(app)
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="rest-api",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env
-    == backend.util.settings.AppEnvironment.LOCAL,
-)
+# Add Prometheus instrumentation. The metrics are served by AgentServer.run on
+# their own port, never on this public app.
+instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -721,6 +715,9 @@ class AgentServer(backend.util.service.AppProcess):
 
             # Enable asyncio debug mode via environment variable
             os.environ["PYTHONASYNCIODEBUG"] = "1"
+
+        # This process's metrics, the mounted external API's included.
+        start_metrics_server(settings.config.agent_api_metrics_port)
 
         # Configure uvicorn with performance optimizations from Kludex FastAPI tips
         uvicorn.run(
