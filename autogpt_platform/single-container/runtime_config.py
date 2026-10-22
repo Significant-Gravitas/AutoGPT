@@ -69,7 +69,21 @@ TEMPLATE = re.compile(
 # Characters that a password can't carry into a connection string as is, or
 # that Docker Compose would read as a variable reference.
 UNSAFE_IN_URL = re.compile(r"[@/?#%$\[\]\s\"'\\`\x00-\x1f\x7f]")
-LOCAL_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+LOCAL_DATABASE_HOSTS = LOCAL_HOSTS | {"db"}
+# Each service password's host setting in backend/.env, and the host names
+# that mean the service the stack bundles: this machine, or its Compose name.
+# The password of a service that runs anywhere else is that service's, so
+# setup neither generates nor replaces it.
+BUNDLED_SERVICE_HOSTS = {
+    "DB_PASS": ("DB_HOST", LOCAL_DATABASE_HOSTS),
+    "REDIS_PASSWORD": ("REDIS_HOST", LOCAL_HOSTS | {"redis-0", "redis-1", "redis-2"}),
+    "RABBITMQ_DEFAULT_PASS": ("RABBITMQ_HOST", LOCAL_HOSTS | {"rabbitmq"}),
+    "GRAPHITI_FALKORDB_PASSWORD": (
+        "GRAPHITI_FALKORDB_HOST",
+        LOCAL_HOSTS | {"falkordb"},
+    ),
+}
 
 
 def main() -> int:
@@ -164,7 +178,9 @@ def fill_env_blanks(path: Path) -> list[str]:
     own services (`CREDENTIALS`) go further, because each service reads its
     password from these files whenever it starts, so a new one costs only a
     restart: one the file's .env.default declares is added if the file predates
-    it, and one that still holds a published value is replaced. The database
+    it, and one that still holds a published value is replaced. That holds for
+    the services the stack bundles only: a password for a service backend/.env
+    points at another host is that service's, and stays as it is. The database
     password lives in three files and is filled from one value. The file is
     read the way Docker Compose reads it, and only values change in it.
     Returns the names that were given a value.
@@ -234,8 +250,8 @@ def _check_passwords_are_plain(path: Path, settings: list[Setting]) -> None:
         setting = effective.get(name)
         if setting is None or (setting.literal and not CONTROL.search(setting.value)):
             continue
-        if name == "DB_PASS" and not _uses_bundled_database(effective):
-            continue  # The password of a database of the backend's own.
+        if name in BUNDLED_SERVICE_HOSTS and not _uses_bundled_service(name, effective):
+            continue  # The password of a service of the backend's own.
         raise ValueError(
             f"{name} in {path} is not a plain value: Docker Compose takes it "
             "from the environment when the stack starts (a $ reference, or the "
@@ -257,10 +273,11 @@ def _new_value(
     if name in ("DATABASE_URL", "DIRECT_URL"):
         written = text[setting.start : setting.end]
         return _database_url(written, value, path, database_password)
+    if name in BUNDLED_SERVICE_HOSTS and not _uses_bundled_service(
+        name, _file_settings(path)
+    ):
+        return None  # The password of a service of the backend's own.
     if name in DATABASE_PASSWORD_SETTINGS:
-        # DB_PASS of a backend run against a database of its own is not ours.
-        if name == "DB_PASS" and not _uses_bundled_database(_file_settings(path)):
-            return None
         return database_password() if _is_unset(value) else None
     generator = SECRET_GENERATORS.get(name)
     if generator is None:
@@ -323,7 +340,7 @@ def _database_password_copies(root: Path) -> Iterator[str]:
     does a value Compose works out only when the stack starts."""
     backend = _file_settings(root / "backend" / ".env")
     copies = [_file_settings(root / ".env").get("POSTGRES_PASSWORD")]
-    if _uses_bundled_database(backend):
+    if _uses_bundled_service("DB_PASS", backend):
         copies.append(backend.get("DB_PASS"))
     for setting in copies:
         if setting is not None and setting.literal:
@@ -346,11 +363,16 @@ def _check_database_password(password: str) -> None:
         )
 
 
-def _uses_bundled_database(settings: Mapping[str, Setting]) -> bool:
-    """Whether backend/.env's DB_HOST, as Compose reads it, is the bundled
-    database. One Compose works out only when the stack starts is not."""
-    host = settings.get("DB_HOST")
-    return host is None or (host.literal and _is_local_host(host.value))
+def _uses_bundled_service(name: str, settings: Mapping[str, Setting]) -> bool:
+    """Whether backend/.env, as Compose reads it, points the service that
+    password `name` logs in to at the one the stack bundles. A host Compose
+    works out only when the stack starts does not count as that."""
+    host_setting, bundled_hosts = BUNDLED_SERVICE_HOSTS[name]
+    host = settings.get(host_setting)
+    return host is None or (
+        host.literal
+        and (not host.value or host.value.lower().rstrip(".") in bundled_hosts)
+    )
 
 
 def _password_and_host(url: str) -> tuple[str | None, str | None]:

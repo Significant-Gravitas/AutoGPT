@@ -915,6 +915,69 @@ class FillEnvServicePasswordsTest(unittest.TestCase):
         # The bundled database's own password is still generated.
         self.assertGreaterEqual(len(root["POSTGRES_PASSWORD"]), 32)
 
+    def test_services_of_ones_own_keep_their_passwords(self) -> None:
+        (self.root / "backend").mkdir()
+        (self.root / "backend/.env.default").write_text(
+            "REDIS_PASSWORD=\nRABBITMQ_DEFAULT_PASS=\nGRAPHITI_FALKORDB_PASSWORD=\n",
+            encoding="utf-8",
+        )
+        # A Redis that needs no password, a broker still on a value an older
+        # .env.default shipped, and a graph whose password Compose takes from
+        # the environment: each is a service of the operator's, not the stack's.
+        backend = (
+            "REDIS_HOST=redis.internal\n"
+            "RABBITMQ_HOST=mq.example.com\n"
+            f"RABBITMQ_DEFAULT_PASS={self.PUBLISHED}\n"
+            "GRAPHITI_FALKORDB_HOST=graph.example.com\n"
+            "GRAPHITI_FALKORDB_PASSWORD=${GRAPH_PASSWORD}\n"
+        )
+        self._write(backend=backend)
+
+        filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+        self.assertEqual(filled, [])
+        self.assertEqual(
+            (self.root / "backend/.env").read_text(encoding="utf-8"), backend
+        )
+
+    def test_a_service_whose_host_compose_takes_at_start_keeps_its_password(
+        self,
+    ) -> None:
+        # The name alone on a line: Compose takes the host from the environment
+        # it starts in, which may point anywhere.
+        backend = "REDIS_HOST\nREDIS_PASSWORD=\n"
+        self._write(backend=backend)
+
+        filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+        self.assertEqual(filled, [])
+        self.assertEqual(
+            (self.root / "backend/.env").read_text(encoding="utf-8"), backend
+        )
+
+    def test_bundled_services_get_passwords_under_any_name_they_go_by(self) -> None:
+        for name, host_setting, compose_name in (
+            ("DB_PASS", "DB_HOST", "db"),
+            ("REDIS_PASSWORD", "REDIS_HOST", "redis-0"),
+            ("REDIS_PASSWORD", "REDIS_HOST", "redis-2"),
+            ("RABBITMQ_DEFAULT_PASS", "RABBITMQ_HOST", "rabbitmq"),
+            ("GRAPHITI_FALKORDB_PASSWORD", "GRAPHITI_FALKORDB_HOST", "falkordb"),
+        ):
+            for host in (
+                "",
+                "localhost",
+                "127.0.0.1",
+                "::1",
+                "LOCALHOST.",
+                compose_name,
+            ):
+                with self.subTest(name=name, host=host):
+                    self._write(backend=f"{host_setting}={host}\n{name}=\n")
+
+                    filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+                    self.assertEqual(filled, [name])
+
     def test_a_reference_to_another_setting_is_not_taken_for_a_password(
         self,
     ) -> None:

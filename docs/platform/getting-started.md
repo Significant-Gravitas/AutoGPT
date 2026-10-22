@@ -116,8 +116,9 @@ and `setup-autogpt.bat` scripts described in
 same steps for you and can also set up a local Ollama model.
 
 {% hint style="warning" %}
-Docker Compose publishes every backend service port on all network interfaces,
-and signup is open. Run the stack on a machine and network you trust.
+Docker Compose publishes the frontend (port 3000), the REST API (8006) and the
+WebSocket server (8001) on all network interfaces, and signup is open. Run the
+stack on a machine and network you trust.
 PostgreSQL, Redis, RabbitMQ, FalkorDB and ClamAV are published on `127.0.0.1`
 only, and all but ClamAV require a password `make init-env` generates for your
 install.
@@ -491,7 +492,10 @@ the database password the same in the three files that hold it:
 stops with an error on one that Compose would take from the environment when
 the stack starts (`$NAME`, `${NAME}`, or the name alone on a line): write the
 password itself. The database applies `POSTGRES_PASSWORD` every time it
-starts, so its data stays where it is.
+starts, so its data stays where it is. A database, Redis, RabbitMQ or
+FalkorDB that `backend/.env` points at another host (`DB_HOST`, `REDIS_HOST`,
+`RABBITMQ_HOST`, `GRAPHITI_FALKORDB_HOST`) is a service of your own, and
+`make init-env` leaves its password as it is.
 
 If you upgraded without emptying the queues, workflow runs that were waiting
 to start stay **Queued**. An hour later an admin can start them again from

@@ -59,7 +59,7 @@ The cluster also needs:
 
 Point `REDIS_HOST` and `REDIS_PORT` at any node of the cluster, and set `REDIS_PASSWORD` if the cluster has one.
 
-In the Compose stack, `REDIS_HOST`, `REDIS_PORT` and `REDIS_USE_ANNOUNCED_ADDRESS` are set in the `x-backend-env` block of `autogpt_platform/docker-compose.platform.yml`, which takes precedence over `backend/.env`, so change them there. `REDIS_PASSWORD` is read from `backend/.env`. The bundled shards still start, because the backend services wait for `redis-0` to be healthy.
+In the Compose stack, `REDIS_HOST`, `REDIS_PORT` and `REDIS_USE_ANNOUNCED_ADDRESS` are set in the `x-backend-env` block of `autogpt_platform/docker-compose.platform.yml`, which takes precedence over `backend/.env`, so change them there. `REDIS_PASSWORD` is read from `backend/.env`. Set `REDIS_HOST` in `backend/.env` to the cluster too: while it names the bundled cluster (`localhost`, as `.env.default` has it), `make init-env` gives a blank `REDIS_PASSWORD` a generated value, which a cluster without a password refuses. The bundled shards still start, because the backend services wait for `redis-0` to be healthy.
 
 ## AutoGPT Agent Server Advanced set up
 
