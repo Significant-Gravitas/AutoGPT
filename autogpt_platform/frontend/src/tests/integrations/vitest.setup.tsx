@@ -45,8 +45,10 @@ const realSetTimeout = globalThis.setTimeout;
 beforeAll(() => {
   mockNextjsModules();
   mockAuthRequest(); // If you need user's data - please mock auth actions in your specific test - it sends null user [It's only to avoid cookies() call]
+  server.listen({ onUnhandledRequest: "error" });
+  // After listen(): MSW's fetch wrapper answers mocked requests without
+  // calling the fetch it wrapped, so a tracker beneath it sees none.
   trackOpenRequests();
-  return server.listen({ onUnhandledRequest: "error" });
 });
 afterEach(async () => {
   cleanup();
