@@ -10,9 +10,10 @@ import { useCopilotUIStore } from "../../../store";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { LocalFileImage } from "../../LocalFileImage/LocalFileImage";
 
-// A fixed height keeps the row from growing once the image loads.
+// A fixed size, not the image's own width, so the frame doesn't move while
+// the sent image downloads or when it replaces the pending one.
 const FRAME = "overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100";
-const IMAGE = "block h-40 w-auto min-w-24 max-w-60 object-cover";
+const IMAGE = "block size-40 object-cover";
 
 interface Props {
   artifact: ArtifactRef;
