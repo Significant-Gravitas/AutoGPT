@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { loadGoogleMaps } from "./googleMapsLoader";
+import { loadGoogleMaps, onMapsAuthFailure } from "./googleMapsLoader";
 import type { MapPin } from "./helpers";
 
 function pinPopup(pin: MapPin) {
@@ -27,9 +27,14 @@ export function useMapEmbed(pins: MapPin[]) {
     const container = containerRef.current;
     if (!apiKey || !container) return;
     let cancelled = false;
+    let rejected = false;
+    const unsubscribe = onMapsAuthFailure(() => {
+      rejected = true;
+      if (!cancelled) setStatus("failed");
+    });
     loadGoogleMaps(apiKey)
       .then((google) => {
-        if (cancelled) return;
+        if (cancelled || rejected) return;
         const { Map, LatLngBounds, InfoWindow, marker } = google.maps;
         const map = new Map(container, {
           mapId: "DEMO_MAP_ID",
@@ -60,6 +65,7 @@ export function useMapEmbed(pins: MapPin[]) {
       });
     return () => {
       cancelled = true;
+      unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, pinsKey]);
