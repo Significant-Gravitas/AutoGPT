@@ -66,7 +66,7 @@ export function useProviderLimitDialog({
               queryKey: getGetV2ListChatConnectionsQueryKey(),
             }),
             queryClient.invalidateQueries({
-              queryKey: getGetV2GetSessionQueryKey(sessionId ?? undefined),
+              queryKey: getGetV2GetSessionQueryKey(sessionId ?? ""),
             }),
           ]);
           onDismiss();

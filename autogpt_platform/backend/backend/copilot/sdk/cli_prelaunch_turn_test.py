@@ -91,7 +91,8 @@ async def test_the_first_launch_runs_on_the_cli_spawned_ahead_of_the_query():
     [launch] = launches
     [spawned] = _FakeTransport.spawned
     assert launch["transport"] is spawned
-    assert spawned.options is launch["options"]
+    # The same options, each copy with the environment every launch gets.
+    assert spawned.options == launch["options"]
     # The client that took it owns it: the turn's end doesn't stop it twice.
     assert not spawned.closed
     assert not [e for e in events if isinstance(e, StreamError)]

@@ -39,6 +39,7 @@ from backend.util.service import (
     get_service_client,
     resolve_type_hints,
 )
+from backend.util.service_auth import internal_auth_headers
 
 TEST_SERVICE_PORT = 8765
 
@@ -917,7 +918,7 @@ async def wait_until_service_ready(base_url: str, timeout: float = 10):
 
 async def send_slow_request(base_url: str) -> dict:
     """Send a slow request and return the result"""
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, headers=internal_auth_headers()) as client:
         response = await client.post(f"{base_url}/slow_endpoint", json={"duration": 5})
         assert response.status_code == 200
         return response.json()
@@ -943,7 +944,9 @@ async def test_graceful_shutdown(test_service):
 
     # Try to send a new request - should be rejected or connection refused
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx.AsyncClient(
+            timeout=5, headers=internal_auth_headers()
+        ) as client:
             response = await client.post(f"{test_service_url}/fast_endpoint", json={})
             # Should get 503 Service Unavailable during shutdown
             assert response.status_code == 503

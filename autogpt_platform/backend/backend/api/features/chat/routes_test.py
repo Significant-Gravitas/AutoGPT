@@ -21,23 +21,11 @@ from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
-from backend.copilot.constants import (
-    BUDGET_EXHAUSTED_NOTICE,
-    EMPTY_FINISH_NOTICE,
-    NO_COMMENTARY_NOTICE,
-    STREAM_INCOMPLETE_MARKER,
-)
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
-from backend.copilot.response_model import (
-    StreamFinish,
-    StreamReasoningDelta,
-    StreamStatus,
-    StreamTextDelta,
-    StreamToolInputStart,
-)
+from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
@@ -402,96 +390,13 @@ def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(
 ) -> None:
     """The relay's latency lands on the request's own transaction, which the
     ASGI middleware starts for it in production."""
-    _relay_through_the_stream_route(
-        mocker,
-        [
-            StreamStatus(message="Message received…"),
-            StreamTextDelta(id="t", delta="hi"),
-            StreamFinish(),
-        ],
-    )
-
-    [request] = sentry_transactions
-    data = request["contexts"]["trace"]["data"]
-    assert request["contexts"]["trace"]["op"] == "http.server"
-    assert 0 <= data["copilot.stream.first_chunk_ms"] <= data["copilot.stream.ttft_ms"]
-    assert data["copilot.stream.ttft_ms"] <= data["copilot.stream.first_text_ms"]
-    assert data["copilot.stream.chunk_count"] == 3
-
-
-@pytest.mark.parametrize(
-    "before_the_finish, answered",
-    [
-        (
-            [
-                StreamReasoningDelta(id="r", delta="thinking"),
-                StreamTextDelta(id="t", delta="hi"),
-            ],
-            True,
-        ),
-        (
-            [
-                StreamReasoningDelta(id="r", delta="thinking"),
-                StreamToolInputStart(toolCallId="c", toolName="run_block"),
-            ],
-            False,
-        ),
-        # Whitespace on its own shows nothing.
-        ([StreamTextDelta(id="t", delta="\n\n")], False),
-    ],
-)
-def test_stream_chat_records_when_the_answer_text_reached_the_client(
-    mocker: pytest_mock.MockerFixture, sentry_transactions, before_the_finish, answered
-) -> None:
-    """Reasoning and a tool call are the turn's first token, not its answer:
-    only text times the answer."""
-    _relay_through_the_stream_route(
-        mocker,
-        [StreamStatus(message="Message received…"), *before_the_finish, StreamFinish()],
-    )
-
-    [request] = sentry_transactions
-    data = request["contexts"]["trace"]["data"]
-    assert "copilot.stream.ttft_ms" in data
-    assert ("copilot.stream.first_text_ms" in data) is answered
-
-
-@pytest.mark.parametrize(
-    "notice",
-    [
-        STREAM_INCOMPLETE_MARKER,
-        EMPTY_FINISH_NOTICE,
-        BUDGET_EXHAUSTED_NOTICE,
-        NO_COMMENTARY_NOTICE,
-    ],
-)
-def test_stream_chat_does_not_time_a_notice_as_the_answer(
-    mocker: pytest_mock.MockerFixture, sentry_transactions, notice
-) -> None:
-    """A turn that ends without an answer streams a notice the platform wrote
-    in its place: it is neither the turn's first token nor its answer."""
-    _relay_through_the_stream_route(
-        mocker,
-        [
-            StreamStatus(message="Message received…"),
-            StreamTextDelta(id="n", delta=notice),
-            StreamFinish(),
-        ],
-    )
-
-    [request] = sentry_transactions
-    data = request["contexts"]["trace"]["data"]
-    assert "copilot.stream.ttft_ms" not in data
-    assert "copilot.stream.first_text_ms" not in data
-
-
-def _relay_through_the_stream_route(
-    mocker: pytest_mock.MockerFixture, chunks: list
-) -> None:
-    """POST a message and have the stream route relay *chunks* to the client."""
     _mock_stream_internals(mocker)
     relayed: asyncio.Queue = asyncio.Queue()
-    for chunk in chunks:
+    for chunk in (
+        StreamStatus(message="Message received…"),
+        StreamTextDelta(id="t", delta="hi"),
+        StreamFinish(),
+    ):
         relayed.put_nowait((None, chunk))
     mocker.patch.object(
         chat_routes.stream_registry,
@@ -519,6 +424,11 @@ def _relay_through_the_stream_route(
     )
 
     assert response.status_code == 200
+    [request] = sentry_transactions
+    data = request["contexts"]["trace"]["data"]
+    assert request["contexts"]["trace"]["op"] == "http.server"
+    assert 0 <= data["copilot.stream.first_chunk_ms"] <= data["copilot.stream.ttft_ms"]
+    assert data["copilot.stream.chunk_count"] == 3
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):

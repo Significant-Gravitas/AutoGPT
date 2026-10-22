@@ -27,32 +27,6 @@ def add_param(url: str, key: str, value: str) -> str:
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
 
-# Supabase's transaction pooler (port 6543) needs Prisma's pgbouncer mode, which
-# turns Prisma's prepared-statement cache off: there even `SELECT 1` takes about
-# five network round trips. The session pooler (5432) gives each client
-# connection a server connection of its own, so Prisma keeps the cache and a
-# query takes about one. It also holds a server connection for every pooled
-# client connection, so size DB_CONNECTION_LIMIT for it, and leave
-# DB_STATEMENT_CACHE_SIZE unset (0 turns the cache off).
-TRANSACTION_POOLER_PORT = 6543
-SESSION_POOLER_PORT = 5432
-
-
-def session_pooler_url(url: str) -> str:
-    """*url* moved from the transaction pooler to the session pooler."""
-    p = urlparse(url)
-    qs = dict(parse_qsl(p.query))
-    qs.pop("pgbouncer", None)
-    netloc = p.netloc
-    if p.port == TRANSACTION_POOLER_PORT:
-        netloc = f"{netloc.rsplit(':', 1)[0]}:{SESSION_POOLER_PORT}"
-    return urlunparse(p._replace(netloc=netloc, query=urlencode(qs)))
-
-
-DB_POOL_MODE = os.getenv("DB_POOL_MODE", "")
-if DB_POOL_MODE == "session":
-    DATABASE_URL = session_pooler_url(DATABASE_URL)
-
 CONN_LIMIT = os.getenv("DB_CONNECTION_LIMIT")
 if CONN_LIMIT:
     DATABASE_URL = add_param(DATABASE_URL, "connection_limit", CONN_LIMIT)
@@ -95,15 +69,6 @@ async def connect():
 
     if not prisma.is_connected():
         raise ConnectionError("Failed to connect to Prisma.")
-
-    # Said at connect, not at import: logging isn't set up yet when this module
-    # loads, and a mistyped mode would otherwise look like no speed-up at all.
-    if DB_POOL_MODE == "session":
-        logger.info("Connected through Supabase's session pooler (DB_POOL_MODE)")
-    elif DB_POOL_MODE:
-        logger.warning(
-            f"Ignored DB_POOL_MODE={DB_POOL_MODE!r}: the only mode is 'session'"
-        )
 
     # Connection acquired from a pool like Supabase somehow still possibly allows
     # the db client obtains a connection but still reject query connection afterward.
@@ -149,6 +114,20 @@ async def transaction(timeout: timedelta = TRANSACTION_TIMEOUT):
             Defaults to `TRANSACTION_TIMEOUT` (30s).
     """
     async with prisma.tx(timeout=timeout) as tx:
+        yield tx
+
+
+@asynccontextmanager
+async def bounded_transaction(statement_timeout_ms: int):
+    """A transaction each of whose statements the database gives up on
+    after *statement_timeout_ms* (``statement_timeout``, for this transaction
+    only), cancelling it there, where a caller's own deadline only stops
+    waiting for it."""
+    async with transaction() as tx:
+        await tx.query_raw(
+            "SELECT set_config('statement_timeout', $1, true)",
+            str(statement_timeout_ms),
+        )
         yield tx
 
 

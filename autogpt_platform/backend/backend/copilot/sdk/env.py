@@ -11,22 +11,75 @@ from __future__ import annotations
 import json
 import os
 import re
-from urllib.parse import urlparse
+from typing import Any
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
-from backend.copilot.sdk.subscription import validate_subscription
+from backend.copilot.sdk.subscription import host_login_env, validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
 # A singleton would require importing service.py which causes the circular dep
 # this module was created to avoid.
 config = ChatConfig()
 
+# Both launch paths check the CLI binary themselves (``cli_version``), from the
+# allowlisted environment. The SDK's own check takes no environment, so before
+# each launch it would start the CLI with the backend's whole one; an empty
+# value would leave it on.
+os.environ["CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"] = "1"
+
 # RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
 _MAX_HEADER_VALUE_LEN = 128
 _LOOPBACK_NO_PROXY_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+# A direct-Anthropic launch's credential and where it goes, carried over from
+# the backend's environment: what the CLI used to inherit along with the rest.
+_DIRECT_ANTHROPIC_NAMES = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+)
+
+# CLI flag for ``ClaudeAgentOptions.extra_args``. Every prompt we send is user
+# or graph text, never a CLI slash command.
+DISABLE_SLASH_COMMANDS_FLAG = "disable-slash-commands"
+
+
+def without_url_credentials(url: str) -> str:
+    """*url* without a user name and password some deployments embed in it."""
+    parts = urlsplit(url)
+    if "@" not in parts.netloc:
+        return url
+    return urlunsplit(parts._replace(netloc=parts.netloc.rpartition("@")[2]))
+
+
+def cli_prompt_text(text: str) -> str:
+    """*text* as the CLI must receive it to send it on to the model.
+
+    Even with the flag above, the CLI answers a prompt that starts with "/"
+    itself when it names a built-in command. It only looks at the first
+    character, so a leading space keeps the text whole.
+    """
+    return f" {text}" if text.startswith("/") else text
+
+
+def cli_user_message(content: list[dict[str, Any]], session_id: str) -> dict[str, Any]:
+    """A stream-json user message the CLI hands to the model as written.
+
+    ``ClaudeAgentOptions.verbatim_prompts`` marks every message the SDK writes
+    ``client_composed``; a message written straight to the transport must
+    carry the mark itself.
+    """
+    return {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+        "session_id": session_id,
+        "client_composed": True,
+    }
 
 
 def _loopback_no_proxy_value() -> str:
@@ -52,11 +105,17 @@ def build_sdk_env(
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
+    A launch keeps nothing else of the backend's environment but what the OS
+    and the network need, proxy settings as configured, credentials included
+    (``launch_env.py``), so each mode states every credential it uses.
+
     Four modes (checked in order):
     1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
-    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
-       from the parent environment (no overrides needed).
+    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth,
+       or the login the host holds in ``CLAUDE_CODE_OAUTH_TOKEN``.
+    3. **Direct Anthropic** — carries the deployment's ``ANTHROPIC_API_KEY``,
+       and any auth token or base URL set beside it, over from the backend's
+       environment.
     4. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with the headers and body fields OpenRouter
        Broadcast attributes generations by (user, chat session,
@@ -123,13 +182,19 @@ def build_sdk_env(
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
+            **host_login_env(),
         }
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
     elif not config.openrouter_active:
-        # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
+        # Clear OAuth tokens so CLI uses the deployment's ANTHROPIC_API_KEY
         # rather than subscription auth if the container has those tokens set.
         env = {
+            **{
+                name: value
+                for name in _DIRECT_ANTHROPIC_NAMES
+                if (value := os.environ.get(name))
+            },
             "CLAUDE_CODE_OAUTH_TOKEN": "",
             "CLAUDE_CODE_REFRESH_TOKEN": "",
         }
@@ -160,9 +225,7 @@ def build_sdk_env(
             parts.append(f"x-user-id: {_safe(user_id)}")
         if parts:
             env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
-        env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(
-            session_id, user_id, model
-        )
+        env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
 
     # --- Common: workspace isolation + security hardening (all modes) ---
     # Route subagent temp files into the per-session workspace so output
@@ -273,12 +336,10 @@ def _autocompact_pct_for_model(model: str | None) -> int:
     return pct
 
 
-def _broadcast_extra_body(
-    session_id: str | None, user_id: str | None, model: str | None
-) -> str:
+def _broadcast_extra_body(session_id: str | None, user_id: str | None) -> str:
     """``CLAUDE_CODE_EXTRA_BODY``: JSON the CLI merges into every request body
     (main turn, sub-agents, compaction), carrying the fields OpenRouter
-    Broadcast attributes a generation by, and the providers to route it to.
+    Broadcast attributes a generation by.
 
     ``metadata.user_id`` replaces the CLI's own (a JSON blob of its device and
     session ids) so that every user field on the request names the same
@@ -289,19 +350,4 @@ def _broadcast_extra_body(
     )
     if user_id:
         body["metadata"] = {"user_id": body["user"]}
-    claude_only = _is_claude_model(model) and (
-        not config.claude_agent_fallback_model
-        or _is_claude_model(config.claude_agent_fallback_model)
-    )
-    if config.openrouter_provider_order and claude_only:
-        body["provider"] = {
-            "order": list(config.openrouter_provider_order),
-            "allow_fallbacks": False,
-        }
     return json.dumps(body)
-
-
-def _is_claude_model(model: str | None) -> bool:
-    """Whether *model* is an Anthropic slug, routed (``anthropic/…``) or
-    bare (``claude-…``)."""
-    return model is not None and model.lower().startswith(("anthropic/", "claude-"))

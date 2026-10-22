@@ -18,6 +18,7 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tool_image import HeldImage, parse_held_image
 from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
@@ -603,7 +604,7 @@ class BaseTool:
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
-            )
+            ).with_image(result.image)
             # Remembered as the model gets it, previews and caps included, so
             # the traces can redact it even where it no longer parses.
             if result.holds_google_data and isinstance(output.output, str):
@@ -703,12 +704,13 @@ class BaseTool:
             )
         if release is None:
             return None
+        image_result = parse_held_image(release.output) if release.released else None
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,
-            output=release.output,
+            output=image_result.text if image_result else release.output,
             success=release.success,
-        )
+        ).with_image(image_result.image if image_result else None)
 
     async def _screen_read(
         self,
@@ -732,6 +734,12 @@ class BaseTool:
         view = model_view.get()
         if view is not None:
             whole, seen = seen, view(seen, result.success)
+            remember_cut_google_output(whole, seen)
+        if result.image is not None:
+            whole, seen = (
+                seen,
+                HeldImage(text=seen, image=result.image).model_dump_json(),
+            )
             remember_cut_google_output(whole, seen)
         text, images = readable_parts(seen)
         stub = await screen_read(

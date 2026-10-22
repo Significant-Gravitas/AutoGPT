@@ -45,9 +45,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useFlagStatus: () => ({ enabled: true, ready: true }),
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts" || flag === "dream-skill-learning-enabled",
+    useGetFlag: (flag: string) => flag === "dream-skill-learning-enabled",
   };
 });
 

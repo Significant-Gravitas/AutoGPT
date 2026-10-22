@@ -8,7 +8,8 @@ options are final and lets it boot during that work.
 Only the OS process starts early. The attempt that claims it connects a
 ``ClaudeSDKClient`` over it as before, so the SDK's reader and its tool and
 hook handlers are still created after the attempt's per-turn resets and see
-the same context they always did.
+the same context they always did. The process starts from the environment
+every launch gets (``launch_options``), worked out as it spawns.
 """
 
 import asyncio
@@ -19,6 +20,8 @@ from typing import Any
 
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
+
+from backend.copilot.sdk.launch_env import launch_options
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +46,9 @@ class CLIPrelaunch:
     ) -> "CLIPrelaunch | None":
         """Spawn the CLI for ``options``; ``None`` if it can't be spawned
         (the attempt then spawns its own, as it would have anyway)."""
-        transport = SubprocessCLITransport(prompt=_no_prompt(), options=options)
+        transport = SubprocessCLITransport(
+            prompt=_no_prompt(), options=launch_options(options)
+        )
         connected = False
         try:
             await transport.connect()

@@ -22,14 +22,13 @@ const queueFollowUpMessage = vi.hoisted(() => vi.fn());
 const queueMessage = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    CHAT_MODE_OPTION: "chat-mode-option",
-    HIRE_EXPERTS: "hire-experts",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-  },
-  useGetFlag: () => false,
-}));
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => false };
+});
 
 vi.mock("nuqs", () => ({
   parseAsString: {},
@@ -153,13 +152,6 @@ import { useCopilotUIStore } from "../store";
 import { useCopilotPage } from "../useCopilotPage";
 import * as copilotHelpers from "../helpers";
 
-// A send that starts a turn carries the moment it was sent, for the reply
-// timing; a queued follow-up never reaches sendNewMessage.
-const TIMED_SEND = expect.objectContaining({
-  startedAt: expect.any(Number),
-  isNewChat: false,
-});
-
 function noActiveTurn() {
   const error = new Error("Session has no active turn to queue against.");
   error.name = "QueueFollowUpNotActiveError";
@@ -205,7 +197,6 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
         undefined,
         undefined,
         undefined,
-        TIMED_SEND,
       );
     },
   );
@@ -248,7 +239,6 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
         undefined,
         undefined,
         undefined,
-        TIMED_SEND,
       );
       expect(queueMessage).not.toHaveBeenCalled();
       expect(toast).not.toHaveBeenCalled();
@@ -280,7 +270,6 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
       undefined,
       undefined,
-      TIMED_SEND,
     );
     expect(queueMessage).not.toHaveBeenCalled();
   });
@@ -343,7 +332,6 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
       undefined,
       undefined,
-      TIMED_SEND,
     );
     expect(queueMessage).toHaveBeenCalledWith("second");
     // Both held copies are released: one went out, one is now the

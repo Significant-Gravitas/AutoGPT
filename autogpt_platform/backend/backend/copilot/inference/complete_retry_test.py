@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.dream.structured_output import output_tool_name
 from backend.util.llm.tool_use import auto_tool_choice, force_tool_choice
 
 from ._test_data import (
@@ -25,6 +24,7 @@ from ._test_data import (
 )
 from .complete import structured_complete
 from .context import InferenceError
+from .structured_output import output_tool_name
 
 
 class TestForcedToolRetry:

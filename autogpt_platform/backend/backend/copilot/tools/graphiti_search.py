@@ -6,10 +6,10 @@ from typing import Any
 
 from graphiti_core.edges import EntityEdge
 
-from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.recall import recent_episodes, record_hit, search_facts
+from backend.copilot.graphiti.recall import recent_episodes, search_facts
 from backend.copilot.graphiti.recall_recheck import recheck
 from backend.copilot.graphiti.recall_render import episode_scope, render, render_episode
+from backend.copilot.graphiti.recall_stamp import record_recall
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.util.background import spawn_background_task
@@ -86,12 +86,6 @@ class MemorySearchTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
-                session_id=session.session_id,
-            )
-
         if not query:
             return ErrorResponse(
                 message="A search query is required.",
@@ -158,13 +152,15 @@ class MemorySearchTool(BaseTool):
 
 
 def _count_hits(memory_scope: MemoryScope, edges: list[EntityEdge]) -> None:
-    """Count the returned facts as used, so a tentative one can be ratified.
+    """Count the returned facts as used, so a tentative one can be ratified,
+    and stamp the recall on each (``recall_stamp.record_recall``).
 
-    Detached, like warm context's hit hook: the answer never waits on Redis.
+    Detached, like warm context's hit hook: the answer never waits on Redis
+    or on the stamp.
     """
     if not edges:
         return
     spawn_background_task(
-        record_hit(memory_scope, [edge.uuid for edge in edges]),
+        record_recall(memory_scope, [edge.uuid for edge in edges]),
         name=f"memory-search-hits-{memory_scope.owner_user_id[:12]}",
     )

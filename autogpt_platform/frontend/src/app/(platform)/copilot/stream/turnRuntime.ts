@@ -18,10 +18,9 @@ import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
 import { seedTurnLog } from "./turnLog";
-import { diffRows, sha256Hex } from "./turnShadow";
+import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
-  chipKey,
   closeBlocks,
   FROZEN_NOTE,
   gapSegment,
@@ -106,9 +105,6 @@ export interface RuntimeSnapshot {
   notice: RuntimeNotice;
   error: Error | null;
   stopped: boolean;
-  /** Watching for a turn the server starts after the last one (an engine
-   *  switch, an answered approval); the phase shows none running meanwhile. */
-  awaitingContinuation: boolean;
 }
 
 export interface SessionView {
@@ -201,7 +197,6 @@ export class TurnRuntime {
   // A stopped turn keeps running on the server for a moment; never re-attach to it.
   private suppressAttach = false;
   private followPending = false;
-  private continuationProbes = 0;
   // A resync or an expiry is rebuilding the turn; it reconnects when done.
   private recovering = false;
   // A send whose stream ended before naming its turn, while hidden or offline.
@@ -324,7 +319,7 @@ export class TurnRuntime {
     if (entries.length === 0) return;
     this.claimTail(this.nextSequence());
     for (const entry of entries) {
-      const key = chipKey(entry.id);
+      const key = `pending-chip-${entry.id}`;
       if (this.segments.some((s) => s.key === key)) continue;
       this.segments.push(
         userSegment(userMessage(key, { text: entry.text }), "chip"),
@@ -717,7 +712,10 @@ export class TurnRuntime {
   // The banner tells the user we were notified of these.
   private reportIfUnexpected(end: Extract<ConnectionEnd, { kind: "refused" }>) {
     if (!isUnexpectedRefusal(end.status)) return;
-    this.deps.report("refused", { status: end.status, body: end.body });
+    this.deps.report("refused", {
+      status: end.status,
+      body: reportableBody(end.body),
+    });
   }
 
   /** A refusal no retry can change: end the turn where it stands and say why. */
@@ -853,26 +851,16 @@ export class TurnRuntime {
     attempts: number,
     awaitContinuation: boolean,
   ) {
-    if (awaitContinuation) this.countContinuationProbe(1);
-    try {
-      for (let i = 0; i < attempts; i++) {
-        await sleep(FINISH_PROBE_MS);
-        if (this.disposed || this.stopped) return;
-        const view = await this.fetchView();
-        if (!view) continue;
-        this.observe(view);
-        const active = view.active_stream?.turn_id ?? null;
-        if (active && active !== turnId) return;
-        if (!active && !awaitContinuation) return;
-      }
-    } finally {
-      if (awaitContinuation) this.countContinuationProbe(-1);
+    for (let i = 0; i < attempts; i++) {
+      await sleep(FINISH_PROBE_MS);
+      if (this.disposed || this.stopped) return;
+      const view = await this.fetchView();
+      if (!view) continue;
+      this.observe(view);
+      const active = view.active_stream?.turn_id ?? null;
+      if (active && active !== turnId) return;
+      if (!active && !awaitContinuation) return;
     }
-  }
-
-  private countContinuationProbe(change: 1 | -1) {
-    this.continuationProbes += change;
-    if (!this.disposed) this.emitNow();
   }
 
   // A turn queued behind the user's running cap starts when another of their
@@ -1073,7 +1061,7 @@ export class TurnRuntime {
       this.deps.report("finish", {
         turnId: seg.log.turnId,
         cursor: seg.log.cursor,
-        diffs: drift,
+        diffs: formatDiffs(drift),
       });
     }
     this.updateTurn(seg.key, (s) => reconcileTurn(s, persisted));
@@ -1403,7 +1391,6 @@ export class TurnRuntime {
       notice: this.notice,
       error: this.error,
       stopped: this.stopped,
-      awaitingContinuation: this.continuationProbes > 0,
     };
   }
 
@@ -1532,6 +1519,20 @@ export class SendRefusedError extends Error {
     super(message);
     this.name = "SendRefusedError";
   }
+}
+
+// Sentry flattens a 422's error objects to "[Object]"; keep each one's place and
+// reason as a line, and leave out its `input`, which can hold the user's message.
+function reportableBody(body: unknown) {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (!Array.isArray(detail)) return body;
+  return {
+    ...(body as object),
+    detail: detail.map(
+      (item: { loc?: unknown; msg?: unknown } | null) =>
+        `${Array.isArray(item?.loc) ? item.loc.join(".") : ""}: ${String(item?.msg)}`,
+    ),
+  };
 }
 
 // FastAPI's 422 for a message over the request model's max_length; the composer has no cap.

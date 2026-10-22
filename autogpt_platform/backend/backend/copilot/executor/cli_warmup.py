@@ -4,7 +4,8 @@ On a fresh pod the first spawn of the ~250 MB bundled binary is slow (about
 7 s, against 0.6 s on a warm pod) because the binary is still being read from
 the container image. ``claude -v`` alone doesn't read all of it, so the
 warm-up reads it through once, in a background thread started with the
-executor. No turn waits for it.
+executor. No turn waits for it. ``claude -v`` runs with the parent variables
+every launch keeps (``inherited_env``), not the backend's whole environment.
 """
 
 import logging
@@ -14,6 +15,8 @@ import threading
 import time
 from collections.abc import Callable
 from typing import cast
+
+from backend.copilot.sdk.launch_env import inherited_env
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,10 @@ def warm_cli(cli_path: str | None = None) -> None:
         started = time.monotonic()
         size = _read_through(path)
         result = subprocess.run(
-            [path, "-v"], capture_output=True, timeout=_VERSION_TIMEOUT_SECONDS
+            [path, "-v"],
+            capture_output=True,
+            timeout=_VERSION_TIMEOUT_SECONDS,
+            env=inherited_env(),
         )
         done = (
             f"read {size / 1e6:.0f} MB and ran -v (rc={result.returncode}) "

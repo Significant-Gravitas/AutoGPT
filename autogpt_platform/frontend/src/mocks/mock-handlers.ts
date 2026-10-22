@@ -7,6 +7,7 @@ import {
   getCompleteBrainDumpGreetingMockHandler200,
   getGetBrainDumpIntroMockHandler200,
   getGetBrainDumpRecommendedProvidersMockHandler200,
+  getGetBrainDumpSuggestedTasksMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import {
@@ -61,6 +62,8 @@ export const mockHandlers = [
     greeting_done: true,
   }),
   getCompleteBrainDumpGreetingMockHandler200({ greeting_done: true }),
+  // No suggested first tasks unless a test sets some up.
+  getGetBrainDumpSuggestedTasksMockHandler200({ tasks: [], stored: false }),
   // Ready by default so the preparing step's recommendation gate never
   // holds unrelated tests; gate tests override with ready: false.
   getGetBrainDumpRecommendedProvidersMockHandler200({

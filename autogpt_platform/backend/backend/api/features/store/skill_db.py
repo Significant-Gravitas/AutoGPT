@@ -9,12 +9,9 @@ owner (personal library or expert): a re-install overwrites that copy and is
 not counted again.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
-import random
-import time
 
 import prisma.enums
 import prisma.models
@@ -63,14 +60,7 @@ async def get_active_versions(
         return {}
     versions = await _read_active_versions_cache()
     if versions is None:
-        started = time.perf_counter()
         versions = await _load_active_versions()
-        logger.info(
-            "perf-step dbm:active_versions_inline %d n=%d",
-            round((time.perf_counter() - started) * 1000),
-            len(versions),
-        )
-        _perf_compare_later()
         await _write_active_versions_cache(versions)
     return {slug: versions[slug] for slug in slugs if slug in versions}
 
@@ -656,93 +646,3 @@ def _live_version_where(
             {"description": {"contains": needle, "mode": "insensitive"}},
         ]
     return where
-
-
-# Do-not-merge probe (#15739 integration preview): the lean map serves the
-# turn; 20 s later, once the turn's first text is out, the map is built both
-# ways in a random order and the two timings and whether they agree are logged.
-_PERF_COMPARE_DELAY_S = 20
-_perf_compare_tasks: set[asyncio.Task] = set()
-
-
-def _perf_compare_later() -> None:
-    task = asyncio.create_task(_perf_compare_active_versions())
-    _perf_compare_tasks.add(task)
-    task.add_done_callback(_perf_compare_tasks.discard)
-
-
-async def _perf_compare_active_versions() -> None:
-    try:
-        await asyncio.sleep(_PERF_COMPARE_DELAY_S)
-        loaders = {
-            "new": _load_active_versions,
-            "old": _load_active_versions_whole_rows,
-        }
-        order = ["new", "old"]
-        random.shuffle(order)
-        maps: dict[str, dict[str, skill_model.ActiveSkillVersion]] = {}
-        ms: dict[str, int] = {}
-        for name in order:
-            started = time.perf_counter()
-            maps[name] = await loaders[name]()
-            ms[name] = round((time.perf_counter() - started) * 1000)
-        new, old = maps["new"], maps["old"]
-        differ = sorted(
-            slug for slug in set(new) | set(old) if new.get(slug) != old.get(slug)
-        )
-        unhashed = await query_raw_with_schema(
-            'SELECT count(*)::int AS n FROM {schema_prefix}"SkillListing" l '
-            'JOIN {schema_prefix}"SkillListingVersion" v '
-            'ON v."id" = l."activeVersionId" WHERE v."packageSha256" IS NULL'
-        )
-        logger.info(
-            "perf-step dbm:active_versions old=%d new=%d equal=%s n=%d "
-            "unhashed=%s first=%s differ=%s",
-            ms["old"],
-            ms["new"],
-            not differ,
-            len(new),
-            unhashed[0]["n"] if unhashed else None,
-            order[0],
-            differ[:5],
-        )
-    except Exception:
-        logger.exception("perf-step dbm:active_versions compare failed")
-
-
-async def _load_active_versions_whole_rows() -> (
-    dict[str, skill_model.ActiveSkillVersion]
-):
-    listings = await prisma.models.SkillListing.prisma().find_many(
-        where={"activeVersionId": {"not": None}}, include={"ActiveVersion": True}
-    )
-    unhashed = [
-        listing.ActiveVersion.id
-        for listing in listings
-        if listing.ActiveVersion is not None
-        and listing.ActiveVersion.packageSha256 is None
-    ]
-    file_hashes = await _file_hashes(unhashed)
-    versions: dict[str, skill_model.ActiveSkillVersion] = {}
-    for listing in listings:
-        active = listing.ActiveVersion
-        if active is None:
-            continue
-        live = (
-            not listing.isDeleted
-            and listing.hasApprovedVersion
-            and active.isAvailable
-            and not active.isDeleted
-            and active.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
-        )
-        versions[listing.slug] = skill_model.ActiveSkillVersion(
-            listing_id=listing.id,
-            version_id=active.id,
-            package_sha256=active.packageSha256
-            or skill_model.package_sha256_of(
-                skill_model.legacy_skill_markdown(active, listing.slug),
-                file_hashes.get(active.id, []),
-            ),
-            retired=not live,
-        )
-    return versions

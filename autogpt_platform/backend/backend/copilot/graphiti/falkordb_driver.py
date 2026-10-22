@@ -7,13 +7,14 @@ from collections.abc import Awaitable
 from typing import Any, cast
 
 from falkordb.asyncio import FalkorDB
-from graphiti_core.driver.driver import GraphDriver
+from graphiti_core.driver.driver import GraphDriver, GraphDriverSession
 from graphiti_core.driver.falkordb import STOPWORDS
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core.helpers import validate_group_ids
 from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 from .config import graphiti_config
+from .fact_attributes import EdgeMergingSession, merging_save
 from .falkordb_connect import DeferredFalkorDB, build_off_loop, new_falkordb_client
 from .falkordb_origins import distinct_origins
 from .falkordb_projection import without_embeddings
@@ -114,7 +115,7 @@ def _is_pending_queue_overflow(exc: Exception) -> bool:
 
 
 class AutoGPTFalkorDriver(FalkorDriver):
-    """FalkorDriver subclass with four AutoGPT-specific tweaks.
+    """FalkorDriver subclass with seven AutoGPT-specific tweaks.
 
     1. ``build_fulltext_query`` adds the per-user ``group_id`` filter so
        multi-tenant searches don't cross user graphs.
@@ -149,6 +150,18 @@ class AutoGPTFalkorDriver(FalkorDriver):
        ``falkordb_connect.DeferredFalkorDB``, which builds the real client on the connect
        pool when the first command needs it. ``host``, ``port`` and
        ``password`` default to graphiti config.
+    5. graphiti's two saves of a fact, run through ``execute_query`` or
+       ``session()`` (``add_episode``'s bulk save), merge graphiti's map
+       into the stored properties instead of replacing them, so what
+       the platform wrote on a fact survives graphiti saving it again,
+       and save nothing on a forgotten fact but its episode list
+       (``fact_attributes.py``).
+    6. graphiti's reads return every property of a fact or entity but its
+       embedding, which graphiti would drop unread after the read had sent
+       and parsed it (``falkordb_projection.py``).
+    7. A graphiti BFS read that returns distinct rows walks out from each of
+       its origins once, where graphiti hands its second stage the same
+       origin once per fact found (``falkordb_origins.py``).
     """
 
     def __init__(
@@ -245,14 +258,21 @@ class AutoGPTFalkorDriver(FalkorDriver):
 
         Reimplemented rather than delegating to ``super()`` so per-attempt
         logging is under our control; the result-shaping mirrors upstream.
+        graphiti's saves of a fact run as merges (``merging_save``), and its
+        reads leave the embeddings out of what they return
+        (``without_embeddings``), and a BFS read walks each origin once
+        (``distinct_origins``).
         """
-        cypher_query_ = without_embeddings(cypher_query_)
+        cypher_query_ = without_embeddings(merging_save(cypher_query_))
         graph = self._get_graph(self._database)
         # falkordb's async ``Graph.query`` is typed as its sync counterpart in
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
         # cast to the real awaitable/param types rather than suppress. Same
         # runtime call upstream ``FalkorDriver.execute_query`` makes.
-        params = cast(dict[str, object], convert_datetimes_to_strings(distinct_origins(dict(kwargs))))
+        params = cast(
+            dict[str, object],
+            convert_datetimes_to_strings(distinct_origins(cypher_query_, dict(kwargs))),
+        )
         attempts = max(1, graphiti_config.falkordb_query_max_attempts)
         read_only = _is_read_only_cypher(cypher_query_)
 
@@ -327,6 +347,11 @@ class AutoGPTFalkorDriver(FalkorDriver):
                 raise
         raise AssertionError("unreachable: loop returns or raises on every path")
 
+    def session(self, database: str | None = None) -> GraphDriverSession:
+        """graphiti's FalkorDB session, running its saves of a fact as
+        merges (``fact_attributes.EdgeMergingSession``)."""
+        return EdgeMergingSession(self._get_graph(database))
+
     @staticmethod
     async def _dispatch(graph, cypher_query_, params, read_only: bool) -> Any:
         """Issue one attempt on the read-only or writing transport.
@@ -400,7 +425,17 @@ def open_driver(
     (``falkordb_connect.DeferredFalkorDB``), so
     it can be opened anywhere, the event loop included.
     """
-    return AutoGPTFalkorDriver(database=scope.group_id, build_indices=build_indices)
+    return open_graph_driver(scope.group_id, build_indices=build_indices)
+
+
+def open_graph_driver(
+    database: str, *, build_indices: bool = False
+) -> AutoGPTFalkorDriver:
+    """Open a Cypher driver on the graph named ``database``; the caller must
+    close it. For code that knows a graph only by its name (an expert
+    graph's name is a digest no scope can be rebuilt from): a migration, or
+    a sweep over graphs noted in Redis. Opening one creates no graph."""
+    return AutoGPTFalkorDriver(database=database, build_indices=build_indices)
 
 
 async def connect_driver(

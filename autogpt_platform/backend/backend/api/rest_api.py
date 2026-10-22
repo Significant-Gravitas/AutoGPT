@@ -17,6 +17,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
@@ -120,6 +121,7 @@ from backend.util.workspace_storage import shutdown_workspace_storage
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.cors import build_cors_params
 from .utils.openapi import sort_openapi
@@ -133,54 +135,6 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
-
-
-# Do-not-merge probe (#15739 integration preview): previews skip the deploy's
-# `publish-skills-catalog`, so their marketplace is empty and no turn ever reads
-# the slug -> active version map. Publish the catalog's main once, skills only,
-# so the preview has prod's marketplace to measure #15871 on.
-_perf_catalog_tasks: set[asyncio.Task] = set()
-
-
-async def _perf_publish_skills_catalog() -> None:
-    import tempfile
-    from pathlib import Path
-
-    import prisma.models
-
-    from backend.api.features.store.skill_catalog import publish_catalog
-    from backend.api.features.store.skill_catalog_release import (
-        fetch_catalog,
-        load_release,
-    )
-
-    try:
-        existing = await prisma.models.SkillListing.prisma().count()
-        if existing:
-            logger.info(f"perf-step catalog publish skipped: {existing} listings")
-            return
-        with tempfile.TemporaryDirectory(prefix="skills-catalog-") as tmp:
-            source = await asyncio.to_thread(
-                fetch_catalog,
-                Path(tmp),
-                repo="Significant-Gravitas/skills-catalog",
-                ref="main",
-            )
-            loaded = await asyncio.to_thread(load_release, source.root)
-            summary = await publish_catalog(
-                loaded,
-                repository=source.repository,
-                revision=source.revision,
-                seed_experts=False,
-            )
-        count = await prisma.models.SkillListing.prisma().count()
-        logger.info(
-            f"perf-step catalog published {source.revision[:12]}: "
-            f"{len(loaded.packages)} packages, {count} listings; "
-            f"{summary.model_dump_json()[:400]}"
-        )
-    except Exception:
-        logger.exception("perf-step catalog publish failed")
 
 
 @contextlib.asynccontextmanager
@@ -246,8 +200,6 @@ async def lifespan_context(app: fastapi.FastAPI):
     backend.data.llm_registry.load_catalog()
 
     freeze_startup_heap()
-
-    _perf_catalog_tasks.add(asyncio.create_task(_perf_publish_skills_catalog()))
 
     yield
 
@@ -333,6 +285,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+# Marks the PostHog events of an admin acting as a user, and joins a request's
+# events to the browser's PostHog session.
+app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
@@ -579,6 +534,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.access_block_admin_routes.router,
     tags=["admin"],
     prefix="/api",
 )

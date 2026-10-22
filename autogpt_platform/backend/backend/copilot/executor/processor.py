@@ -52,7 +52,6 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-from backend.copilot.service import strip_user_context_tags
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
@@ -96,7 +95,7 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]"
 
 
 SHUTDOWN_ERROR_MESSAGE = (
-    "Copilot executor shut down before this turn finished. Please retry."
+    "The server running this turn shut down before it finished. Please retry."
 )
 # A platform turn whose allowance can't be read doesn't run unmetered.
 RATE_LIMIT_UNAVAILABLE_CODE = "rate_limit_unavailable"
@@ -658,41 +657,19 @@ class CoPilotProcessor:
                 or session.metadata.llm_credential_id != entry.llm_credential_id
             ):
                 raise RuntimeError("codex_session_route_mismatch")
-            # The engines strip server tags before saving the turn's message.
-            turn.describe_chat(
-                session,
-                (
-                    strip_user_context_tags(entry.message)
-                    if entry.is_user_message
-                    else None
-                ),
-            )
 
+            session = await _normalize_private_expert_session_tenancy(session)
             # The allowance, budget and tier checks that set up the turn share
             # one read of the trial and one of the usage state; closed at the
             # model's first output, so tools running after it read afresh.
             trial_reads = cost_context_stack.enter_context(trial_reads_shared())
-            # Every platform-billed turn passes the allowance here, from
-            # whichever path queued it (see backend.copilot.budget_gate). The
-            # gate needs only the user, so it reads beside the expert check;
-            # the check still answers first.
-            refusal = (
-                asyncio.create_task(refusal_for(entry.user_id))
-                if entry.llm_auth_provider == "platform"
-                else None
-            )
-            try:
-                session = await _normalize_private_expert_session_tenancy(session)
-            except BaseException:
-                if refusal is not None:
-                    refusal.cancel()
-                    await asyncio.gather(refusal, return_exceptions=True)
-                raise
-            if refusal is not None:
+            if entry.llm_auth_provider == "platform":
+                # Every platform-billed turn passes the allowance here, from
+                # whichever path queued it (see backend.copilot.budget_gate).
                 # An AutoPilot block turn the allowance can't cover may run on
                 # the credit balance instead (see backend.copilot.credit_billing).
                 try:
-                    pause = await refusal
+                    pause = await refusal_for(entry.user_id)
                     if pause is not None:
                         # Billed to the tenancy the turn runs under (as
                         # streamed below), as the graph's other blocks are.
@@ -1012,8 +989,3 @@ class CoPilotProcessor:
                         # lands.
                         if await close_browser_daemon(entry.session_id):
                             log.info("Browser daemon teardown attempted for this turn")
-
-# Do-not-merge probe (#15739 integration preview).
-from backend.copilot import perf_route_probe  # noqa: E402
-
-perf_route_probe.install_executor()

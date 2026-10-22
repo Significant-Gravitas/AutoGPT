@@ -5,14 +5,13 @@ import { Button } from "@/components/atoms/Button/Button";
 import { GlassPixelBackdrop } from "@/components/atoms/GlassPixelBackdrop/GlassPixelBackdrop";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { isKey } from "@/lib/keyboard";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   ArrowLeft01Icon,
-  BrainIcon,
   ElectricPlugsIcon,
-  GraduationCapIcon,
   SparklesIcon,
   Sun01Icon,
   UserGroupIcon,
@@ -20,9 +19,7 @@ import {
 import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
 import { ConnectToolsPanel } from "./ConnectToolsPanel";
-import { isKey } from "@/lib/keyboard";
 
 interface Props {
   isOpen: boolean;
@@ -39,33 +36,6 @@ interface CapabilityCard {
   cta?: { label: string };
 }
 
-const CARDS: CapabilityCard[] = [
-  {
-    title: "Meet Otto.",
-    body: "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
-    icon: SparklesIcon,
-  },
-  {
-    title: "It works inside your tools.",
-    body: "Slack, Gmail, Notion, GitHub and 40+ more. 500+ blocks under the hood.",
-    icon: ElectricPlugsIcon,
-    cta: { label: "Connect your tools" },
-  },
-  {
-    title: "It learns how you operate.",
-    body: "Teach it Skills, like an employee handbook. It keeps its own files, so it never starts from scratch.",
-    icon: GraduationCapIcon,
-  },
-  {
-    title: "It remembers everything.",
-    body: "Memory beyond any human brain. It even dreams.",
-    icon: BrainIcon,
-  },
-];
-
-// With the team feature on the deck stops being about Otto's own
-// abilities: Otto is the Head of AI, and what the user is about to
-// meet on the greeting page is a team.
 const TEAM_CARDS: CapabilityCard[] = [
   {
     title: "Meet your Head of AI.",
@@ -114,12 +84,9 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
         }),
     },
   });
-  // Child of HIRE_EXPERTS: without hiring there is no team to promise.
-  const isExpertTeamFlagOn = useGetFlag(Flag.ONBOARDING_EXPERT_TEAM);
-  const isHireExpertsFlagOn = useGetFlag(Flag.HIRE_EXPERTS);
-  const isTeamEnabled = Boolean(isExpertTeamFlagOn && isHireExpertsFlagOn);
-  const deck = isTeamEnabled ? "team" : "autopilot";
-  const cards = isTeamEnabled ? TEAM_CARDS : CARDS;
+
+  const deck = "team";
+  const cards = TEAM_CARDS;
   const card = cards[cardIndex];
   const isLastCard = cardIndex === cards.length - 1;
 
@@ -304,11 +271,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                               size="xs"
                               onClick={handleNext}
                             >
-                              {!isLastCard
-                                ? "Next"
-                                : isTeamEnabled
-                                  ? "Meet your team"
-                                  : "Meet Otto"}
+                              {!isLastCard ? "Next" : "Meet your team"}
                             </Button>
                           </div>
                         </div>

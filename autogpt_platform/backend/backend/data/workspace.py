@@ -4,12 +4,9 @@ Database CRUD operations for User Workspace.
 This module provides functions for managing user workspaces and workspace files.
 """
 
-import asyncio
 import logging
 import posixpath
-import random
 import re
-import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
@@ -93,7 +90,7 @@ class WorkspaceFile(pydantic.BaseModel):
         )
 
 
-async def _perf_read_first(user_id: str) -> Workspace:
+async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
@@ -627,57 +624,3 @@ async def get_workspace_total_size(workspace_id: str) -> int:
         where={"workspaceId": workspace_id, "isDeleted": False},
     )
     return sum(f.sizeBytes for f in files)
-
-
-# Do-not-merge probe (#15739 integration preview): the turn gets the read-first
-# path, timed; a few seconds later (at most once per 10 s) the old upsert and
-# the read run once each in a random order, and both timings are logged.
-_perf_compare_tasks: set[asyncio.Task] = set()
-_perf_last_compare = 0.0
-
-
-async def get_or_create_workspace(user_id: str) -> Workspace:
-    global _perf_last_compare
-    started = time.perf_counter()
-    workspace = await _perf_read_first(user_id)
-    logger.info(
-        "perf-step dbm:workspace_inline %d",
-        round((time.perf_counter() - started) * 1000),
-    )
-    if time.monotonic() - _perf_last_compare > 10:
-        _perf_last_compare = time.monotonic()
-        task = asyncio.create_task(_perf_compare_workspace(user_id))
-        _perf_compare_tasks.add(task)
-        task.add_done_callback(_perf_compare_tasks.discard)
-    return workspace
-
-
-async def _perf_upsert(user_id: str) -> Workspace:
-    workspace = await UserWorkspace.prisma().upsert(
-        where={"userId": user_id},
-        data={"create": {"userId": user_id}, "update": {}},
-    )
-    return Workspace.from_db(workspace)
-
-
-async def _perf_compare_workspace(user_id: str) -> None:
-    try:
-        await asyncio.sleep(3)
-        loaders = {"old": _perf_upsert, "new": _perf_read_first}
-        order = ["old", "new"]
-        random.shuffle(order)
-        ids: dict[str, str] = {}
-        ms: dict[str, int] = {}
-        for name in order:
-            started = time.perf_counter()
-            ids[name] = (await loaders[name](user_id)).id
-            ms[name] = round((time.perf_counter() - started) * 1000)
-        logger.info(
-            "perf-step dbm:workspace old=%d new=%d same=%s first=%s",
-            ms["old"],
-            ms["new"],
-            ids["old"] == ids["new"],
-            order[0],
-        )
-    except Exception:
-        logger.exception("perf-step dbm:workspace compare failed")

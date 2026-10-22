@@ -1129,38 +1129,8 @@ describe("the end-of-turn reconcile", () => {
     expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}It says Other.`]);
     expect(report).toHaveBeenCalledWith(
       "finish",
-      expect.objectContaining({ diffs: [{ index: 2, fields: ["content"] }] }),
+      expect.objectContaining({ diffs: ["2: content"] }),
     );
-  });
-});
-
-describe("watching for a turn the server starts", () => {
-  it("says so from the start of the watch until that turn attaches", async () => {
-    runtime.followBackendTurn();
-    expect(snapshot()).toMatchObject({
-      awaitingContinuation: true,
-      phase: "idle",
-    });
-    await advance(1_200);
-    expect(snapshot().awaitingContinuation).toBe(true);
-
-    backend.beginRunning();
-    backend.publish(FIRST_BLOCK_DONE);
-    await advance(1_000);
-    expect(snapshot()).toMatchObject({
-      awaitingContinuation: false,
-      phase: "live",
-    });
-  });
-
-  it("stops saying so when no turn comes", async () => {
-    runtime.followBackendTurn();
-    // Eight looks, 500 ms apart.
-    await advance(5_000);
-    expect(snapshot()).toMatchObject({
-      awaitingContinuation: false,
-      phase: "idle",
-    });
   });
 });
 
