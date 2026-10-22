@@ -303,6 +303,53 @@ describe("AutoPilot mode selector", () => {
       ),
     ).toBeDefined();
   });
+
+  it("keeps approvals locked until an expert chat knows whose it is", async () => {
+    let settleRoster: () => void = () => {};
+    const roster = new Promise<void>((resolve) => {
+      settleRoster = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler(async () => {
+        await roster;
+        return [mariaIdentity("ask_first")];
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+
+    expect(await findModeButton(/approval mode: ask first/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /approval mode/i }),
+      ).toBeNull(),
+    );
+
+    settleRoster();
+    // The composer unlocks, and takes focus, once the roster is in.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
 });
 
 describe("autopilotModeStore", () => {
