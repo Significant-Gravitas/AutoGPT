@@ -1598,11 +1598,14 @@ async def _add_graph_execution(
             # verified context, a parent run, a preset, a trigger or a
             # schedule. As for a request, it's kept only if the user belongs
             # to it; otherwise the run gets the user's own default.
-            member_tenancy = await _resolve_runner_tenancy(
+            member_org_id, member_team_id = await _resolve_runner_tenancy(
                 user_id, organization_id, team_id
             )
-            tenancy_replaced = member_tenancy != (organization_id, team_id)
-            organization_id, team_id = member_tenancy
+            tenancy_replaced = (member_org_id, member_team_id) != (
+                organization_id,
+                team_id,
+            )
+            organization_id, team_id = member_org_id, member_team_id
 
         # Tenant a NEW execution at creation: several callers arrive with a
         # falsy organization_id — legacy schedules (empty organizationId),

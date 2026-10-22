@@ -146,7 +146,7 @@ def _get_execution_credit_balance(
 
 RUN_OUTSIDE_ITS_ORG_ERROR = (
     "This run was stopped because it was queued in an organization or team "
-    "you aren't a member of. Run it again to run it in your own."
+    "you aren't a member of. New runs go to your own."
 )
 
 
@@ -179,10 +179,13 @@ def _stop_outside_its_org(
     log_metadata: LogMetadata,
 ) -> None:
     """Fail a run that failed ``_in_the_runners_org`` before it runs any
-    further, keeping the record of what it has already done. Its running
-    nodes fail with it; the ones still waiting are failed here. Once it has
-    failed, it's recorded in the user's activity and analytics like any other
-    failed run."""
+    further, keeping the record of what it has already done.
+
+    The run's FAILED write fails its running nodes too
+    (``update_graph_execution_stats`` cascades). The ones still waiting are
+    failed here first, so a stop cut short in between leaves the run running,
+    to be picked up and stopped again. Once the run has failed, it's recorded
+    in the user's activity and analytics like any other failed run."""
     log_metadata.warning(
         f"Stopped graph execution #{graph_exec.graph_exec_id}: it was queued "
         "in an org or team its user doesn't belong to."
