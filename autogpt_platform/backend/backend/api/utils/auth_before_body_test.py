@@ -11,6 +11,7 @@ from autogpt_libs.auth.dependencies import (
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import FastAPI, Request, Security, UploadFile
 from pydantic import BaseModel
+from starlette.types import ASGIApp
 
 from backend.api import rest_api
 from backend.api.utils.auth_before_body import check_token_before_body
@@ -56,7 +57,7 @@ def _app() -> FastAPI:
     return app
 
 
-async def _post(app: FastAPI, path: str, body: bytes, headers: dict[str, str]):
+async def _post(app: ASGIApp, path: str, body: bytes, headers: dict[str, str]):
     """Call the app as uvicorn would. Besides the response, returns how much of
     the body the app received and whether it parsed it (body, JSON or form)."""
     received = 0
@@ -242,6 +243,26 @@ async def test_the_platform_api_checks_the_token_before_the_body(
     assert status == 401
     assert payload == {"detail": "Authorization header is missing"}
     assert (drained, parsed) == (True, False)
+
+
+async def test_the_early_401_carries_the_cors_headers_a_browser_needs(
+    mocker, monkeypatch: pytest.MonkeyPatch
+):
+    """A browser can read the 401, and refresh its token, only if the response
+    carries the CORS headers AgentServer wraps around the app."""
+    # run() turns asyncio debug on under a local app_env; restored afterwards.
+    monkeypatch.setenv("PYTHONASYNCIODEBUG", "")
+    serve = mocker.patch("backend.api.rest_api.uvicorn.run")
+    rest_api.AgentServer().run()
+    served = serve.call_args.kwargs["app"]
+    origin = rest_api.settings.config.backend_cors_allow_origins[0]
+
+    status, headers, _, _, parsed = await _post(
+        served, "/api/graphs", b'{"name": "x"}', {**JSON, "origin": origin}
+    )
+
+    assert (status, parsed) == (401, False)
+    assert headers["access-control-allow-origin"] == origin
 
 
 async def test_the_platform_api_still_parses_a_signed_in_users_body():
