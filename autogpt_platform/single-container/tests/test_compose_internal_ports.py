@@ -24,6 +24,9 @@ INTERNAL_PORTS = {
 }
 # Every internal service port, including those with no Compose service today.
 ANY_INTERNAL = {int(port) for port in INTERNAL_PORTS.values()} | {8010, 8011, 8012}
+_PORTS_KEY = re.compile(r"^\s*(?:-\s+)?ports:\s*(.*)$")
+# Any other spelling of the key: quoted, spaced, or inside a flow mapping.
+_ANY_PORTS_KEY = re.compile(r"""(?<![\w-])["']?ports["']?\s*:""")
 _TARGET = re.compile(r"""["']?\btarget["']?\s*:\s*["']?(\d+)""")
 # The other keys of a long-syntax entry, which carry no container port.
 _OTHER_LONG_KEYS = re.compile(
@@ -80,7 +83,8 @@ def _published_ports(text: str) -> set[int]:
     ranges), the long one (`target: 8005`), and either written inline.
 
     Raises ValueError on an entry it cannot read (an alias, a port taken from
-    a variable, an unknown key), so a form it does not know fails the check
+    a variable, an unknown key) and on a `ports` key written as anything but
+    a plain `ports:` line, so a form it does not know fails the check
     instead of slipping past it.
     """
     published: set[int] = set()
@@ -95,7 +99,9 @@ def _published_ports(text: str) -> set[int]:
             indent < ports_indent or (indent == ports_indent and not is_item)
         ):
             ports_indent = None
-        key = re.match(r"^\s*(?:-\s+)?ports:\s*(.*)$", line)
+        key = _PORTS_KEY.match(line)
+        if not key and _ANY_PORTS_KEY.search(line):
+            raise ValueError(f"write this as a plain `ports:` line: {line.strip()!r}")
         if key:
             inline = key.group(1).strip()
             if inline:
@@ -220,6 +226,13 @@ class ComposeInternalPortsTest(unittest.TestCase):
         ):
             with self.subTest(inline=inline), self.assertRaises(ValueError):
                 _published_ports(f"services:\n  db:\n    ports: {inline}\n")
+        for text in (
+            'services:\n  db:\n    "ports": ["18005:8005"]\n',
+            'services:\n  db:\n    ports : ["18005:8005"]\n',
+            'services: {db: {image: busybox, ports: ["18005:8005"]}}\n',
+        ):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                _published_ports(text)
 
     def test_the_scan_sees_only_published_ports(self) -> None:
         text = (
