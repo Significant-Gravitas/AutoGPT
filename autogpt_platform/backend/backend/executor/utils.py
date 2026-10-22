@@ -63,6 +63,7 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
+    NotAuthorizedError,
     NotFoundError,
     UserBannedError,
 )
@@ -1229,6 +1230,20 @@ async def _resolve_expert_execution_tenancy(
     return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
 
 
+async def _resolve_runner_tenancy(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> tuple[str | None, str | None]:
+    """``resolve_member_tenancy`` for a run's org/team, called directly in the
+    API server and through the DB manager in the scheduler and executor."""
+    from backend.api.features.orgs.db import resolve_member_tenancy
+
+    if prisma.is_connected():
+        return await resolve_member_tenancy(user_id, organization_id, team_id)
+    return await get_database_manager_async_client().resolve_member_tenancy(
+        user_id, organization_id, team_id
+    )
+
+
 async def _enforce_expert_credential_scope(
     user_id: str,
     expert_id: str,
@@ -1415,6 +1430,7 @@ async def _add_graph_execution(
         raise UserBannedError("This account is banned, so its workflows can't run.")
 
     is_new_execution = graph_exec_id is None
+    tenancy_replaced = False
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
         raise ValueError(
@@ -1503,6 +1519,29 @@ async def _add_graph_execution(
                     )
                     graph_exec.status = ExecutionStatus.TERMINATED
                     return graph_exec
+        else:
+            # A run can be stored in an org or team that its runner doesn't
+            # belong to (any more): it was stored before runs were checked,
+            # or they've left. Resuming it moves it to theirs, like an expert
+            # run above.
+            stored_tenancy = (
+                organization_id or graph_exec.organization_id,
+                team_id or graph_exec.team_id,
+            )
+            if stored_tenancy[0]:
+                member_tenancy = await _resolve_runner_tenancy(user_id, *stored_tenancy)
+                if member_tenancy != stored_tenancy:
+                    if member_tenancy[0] is None:
+                        # A run's org can be changed but not cleared, so one
+                        # with nowhere to go isn't resumed.
+                        raise NotAuthorizedError(
+                            f"Workflow run #{graph_exec.id} is stored in an "
+                            "organization or team its owner isn't in, and "
+                            "theirs couldn't be found to move it to."
+                        )
+                    organization_id, team_id = member_tenancy
+                    graph_exec.organization_id, graph_exec.team_id = member_tenancy
+                    tenancy_replaced = True
 
         # The row stores the caller's raw masks and the run-time credential
         # inputs separately; rebuild the credential masks the same way the
@@ -1572,6 +1611,17 @@ async def _add_graph_execution(
             is_sub_graph=parent_exec_id is not None,
             dry_run=dry_run,
         )
+
+        if organization_id and not expert_id:
+            # The org/team comes from whatever started the run: a request's
+            # verified context, a parent run, a preset, a trigger or a
+            # schedule. As for a request, it's kept only if the user belongs
+            # to it; otherwise the run gets the user's own default.
+            member_tenancy = await _resolve_runner_tenancy(
+                user_id, organization_id, team_id
+            )
+            tenancy_replaced = member_tenancy != (organization_id, team_id)
+            organization_id, team_id = member_tenancy
 
         # Tenant a NEW execution at creation: several callers arrive with a
         # falsy organization_id — legacy schedules (empty organizationId),
@@ -1704,6 +1754,12 @@ async def _add_graph_execution(
                 "expert_id": expert_id,
             }
         )
+    elif tenancy_replaced:
+        # Billing reads the context, not the row, and a sub-graph is handed
+        # its parent's: the org/team the run was moved to must replace it.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
     elif execution_context.organization_id is None and graph_exec.organization_id:
         # A caller-supplied context (e.g. review-resume, admin-requeue) may
         # be built before org/team are known. Backfill from the persisted
@@ -1759,7 +1815,10 @@ async def _add_graph_execution(
         # must still be recoverable: update_graph_execution_stats raises
         # when update_tenancy=True with no organization_id, which would
         # fail the whole requeue — the exact case the admin fallback serves.
-        persist_tenancy = expert_id is not None and organization_id is not None
+        # A resumed run moved to its runner's org is saved there too.
+        persist_tenancy = (
+            expert_id is not None or tenancy_replaced
+        ) and organization_id is not None
         updated_exec = await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.QUEUED,

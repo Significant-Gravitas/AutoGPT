@@ -2468,6 +2468,226 @@ async def test_autopilot_execution_keeps_explicit_tenancy(mocker: MockerFixture)
     assert create_kwargs["team_id"] == "shared-team"
 
 
+def _runner_is_not_in_the_given_org(mocker: MockerFixture):
+    return mocker.patch(
+        "backend.api.features.orgs.db.resolve_member_tenancy",
+        new=mocker.AsyncMock(return_value=("runner-org", "runner-team")),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_run_given_an_org_the_user_isnt_in_goes_to_their_own(
+    mocker: MockerFixture,
+):
+    """A run can be handed an org the user isn't in, such as one a preset
+    carries from before presets were checked. The run, and the context billing
+    reads, get the user's own."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "runner-org"
+    assert create_kwargs["team_id"] == "runner-team"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_a_sub_run_moved_to_the_runners_org_is_billed_there(
+    mocker: MockerFixture,
+):
+    """A sub-graph run is handed its parent's context, and billing reads the
+    context rather than the run: when the run moves, the context moves too."""
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="runner-org", team_id="runner-team"
+    )
+    _runner_is_not_in_the_given_org(mocker)
+    parent_context = ExecutionContext(
+        user_id="runner",
+        parent_execution_id="parent-execution",
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        execution_context=parent_context,
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "runner-org"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_the_org_check_runs_over_rpc_where_sub_runs_start(
+    mocker: MockerFixture,
+):
+    """Sub-graph and scheduled runs start in processes without direct DB
+    access, so the membership check has to go through the DB manager there."""
+    import backend.executor.utils as executor_utils
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    executor_utils.prisma.is_connected.return_value = False
+    rpc = mocker.MagicMock()
+    rpc.create_graph_execution = mock_edb.create_graph_execution
+    rpc.update_graph_execution_stats = mock_edb.update_graph_execution_stats
+    rpc.update_node_execution_status_batch = mock_edb.update_node_execution_status_batch
+    rpc.get_user_by_id = executor_utils.user_db.get_user_by_id
+    rpc.get_graph_settings = executor_utils.graph_db.get_graph_settings
+    rpc.get_or_create_workspace = executor_utils.workspace_db.get_or_create_workspace
+    rpc.increment_onboarding_runs = (
+        executor_utils.onboarding_db.increment_onboarding_runs
+    )
+    rpc.resolve_member_tenancy = mocker.AsyncMock(
+        return_value=("runner-org", "runner-team")
+    )
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client", return_value=rpc
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    rpc.resolve_member_tenancy.assert_awaited_once_with(
+        "runner", "other-org", "other-team"
+    )
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "runner-org"
+    assert create_kwargs["team_id"] == "runner-team"
+
+
+@pytest.mark.parametrize("caller_supplies_a_context", [False, True])
+@pytest.mark.asyncio
+async def test_resuming_a_run_stored_in_someone_elses_org_moves_it_to_the_runners(
+    mocker: MockerFixture, caller_supplies_a_context: bool
+):
+    """A run stored before runs were checked can be in an org its runner
+    isn't in. Resuming it (after a review, or an admin requeue) moves it to
+    the runner's org, in the context and in the stored run. Review resume
+    hands in a context that has no org yet."""
+    from backend.data.execution import ExecutionContext
+
+    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id=None,
+        organization_id="other-org",
+        team_id="other-team",
+    )
+    membership = _runner_is_not_in_the_given_org(mocker)
+
+    resumed = await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        graph_exec_id="existing-execution",
+        execution_context=(
+            ExecutionContext(user_id="runner") if caller_supplies_a_context else None
+        ),
+    )
+
+    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    context = captured["execution_context"]
+    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+    update = execution_store.update_graph_execution_stats.await_args.kwargs
+    assert update["status"] == ExecutionStatus.QUEUED
+    assert update["update_tenancy"] is True
+    assert (update["organization_id"], update["team_id"]) == (
+        "runner-org",
+        "runner-team",
+    )
+    assert (resumed.organization_id, resumed.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_run_moved_to_an_org_home_doesnt_get_its_old_team_back(
+    mocker: MockerFixture,
+):
+    """Where the run is moved to can have no team; the stored one mustn't
+    come back through the resume fallback, in the context or the row."""
+    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.resolve_member_tenancy",
+        new=mocker.AsyncMock(return_value=("runner-org", None)),
+    )
+
+    await add_graph_execution(
+        graph_id="g", user_id="runner", graph_exec_id="existing-execution"
+    )
+
+    context = captured["execution_context"]
+    assert (context.organization_id, context.team_id) == ("runner-org", None)
+    update = execution_store.update_graph_execution_stats.await_args.kwargs
+    assert (update["organization_id"], update["team_id"]) == ("runner-org", None)
+
+
+@pytest.mark.asyncio
+async def test_a_run_in_someone_elses_org_isnt_resumed_for_a_runner_with_no_org(
+    mocker: MockerFixture,
+):
+    """With no org of the runner's to move it to, the run isn't resumed: it
+    would stay in the other org."""
+    from backend.util.exceptions import NotAuthorizedError
+
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id=None,
+        organization_id="other-org",
+        team_id="other-team",
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.resolve_member_tenancy",
+        new=mocker.AsyncMock(return_value=(None, None)),
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await add_graph_execution(
+            graph_id="g", user_id="runner", graph_exec_id="existing-execution"
+        )
+
+    execution_store.update_graph_execution_stats.assert_not_called()
+    queue.publish_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resuming_a_run_in_the_runners_own_org_keeps_it(mocker: MockerFixture):
+    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+
+    await add_graph_execution(
+        graph_id="g", user_id="runner", graph_exec_id="existing-execution"
+    )
+
+    context = captured["execution_context"]
+    assert (context.organization_id, context.team_id) == ("org-1", "team-1")
+    update = execution_store.update_graph_execution_stats.await_args.kwargs
+    assert update["update_tenancy"] is False
+
+
 @pytest.mark.asyncio
 async def test_expert_execution_rejects_unavailable_expert_before_create(
     mocker: MockerFixture,
