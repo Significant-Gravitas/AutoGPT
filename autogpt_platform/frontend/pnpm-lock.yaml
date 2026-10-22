@@ -275,9 +275,6 @@ importers:
       shiki:
         specifier: ^3.21.0
         version: 3.21.0
-      simplex-noise:
-        specifier: 4.0.3
-        version: 4.0.3
       sonner:
         specifier: 2.0.7
         version: 2.0.7(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -8805,9 +8802,6 @@ packages:
   signal-exit@4.1.0:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
-
-  simplex-noise@4.0.3:
-    resolution: {integrity: sha512-qSE2I4AngLQG7BXqoZj51jokT4WUXe8mOBrvfOXpci8+6Yu44+/dD5zqDpOx3Ux792eamTd2lLcI8jqFntk/lg==}
 
   skin-tone@2.0.0:
     resolution: {integrity: sha512-kUMbT1oBJCpgrnKoSr0o6wPtvRWT9W9UKvGLwfJYO2WuahZRHOpEyL1ckyMGgMWh0UdpmaoFqKKD29WTomNEGA==}
@@ -19030,8 +19024,6 @@ snapshots:
   siginfo@2.0.0: {}
 
   signal-exit@4.1.0: {}
-
-  simplex-noise@4.0.3: {}
 
   skin-tone@2.0.0:
     dependencies:

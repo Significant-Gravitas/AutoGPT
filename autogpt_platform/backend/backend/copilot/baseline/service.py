@@ -1658,7 +1658,12 @@ async def _load_prior_transcript(
         # Corrupt file in GCS; overwriting with a valid one is better.
         return True, None
 
-    stripped = strip_for_upload(raw_str)
+    try:
+        stripped = strip_for_upload(raw_str)
+    except ValueError:
+        logger.warning("[Baseline] CLI session content could not be scrubbed")
+        # Corrupt file in GCS; overwriting with a valid one is better.
+        return True, None
     if not validate_transcript(stripped):
         logger.warning("[Baseline] CLI session content invalid after strip")
         # Corrupt file in GCS; overwriting with a valid one is better.
