@@ -58,11 +58,26 @@ async def test_the_process_goes_to_one_launch_with_the_options_it_was_spawned_fo
 
     assert prelaunch is not None
     [transport] = spawned
-    assert transport.connected and transport.options is options
+    assert transport.connected
     # A retry rebuilds its options, so it gets nothing and spawns its own.
     assert prelaunch.claim(ClaudeAgentOptions()) is None
     assert prelaunch.claim(options) is transport
     assert prelaunch.claim(options) is None
+
+
+@pytest.mark.asyncio
+async def test_the_process_starts_from_the_environment_every_launch_gets(
+    spawned, monkeypatch
+):
+    monkeypatch.setenv("SOME_PLATFORM_SECRET", "sk-FAKE-platform-secret")
+    options = ClaudeAgentOptions(env={"ANTHROPIC_API_KEY": "sk-ant-the-routes-key"})
+
+    await CLIPrelaunch.start(options, "[test]")
+
+    [transport] = spawned
+    assert transport.options.env["ANTHROPIC_API_KEY"] == "sk-ant-the-routes-key"
+    assert transport.options.env["SOME_PLATFORM_SECRET"] == ""
+    assert options.env == {"ANTHROPIC_API_KEY": "sk-ant-the-routes-key"}
 
 
 @pytest.mark.asyncio
