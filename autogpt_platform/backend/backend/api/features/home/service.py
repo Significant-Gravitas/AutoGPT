@@ -10,14 +10,13 @@ from pydantic import BaseModel, ValidationError
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
-from backend.api.features.graph_executions.activity_gate import (
-    hide_activity_summaries_if_disabled,
-)
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.scheduled_chats import service as scheduled_chats
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.data import activity_event as activity_db
 from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
@@ -31,11 +30,9 @@ from backend.data.execution_cost_summary import (
 )
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
-from .briefing import without_summaries
 from .compose import compose_home_dashboard
 from .models import HomeDashboardResponse
 
@@ -59,6 +56,7 @@ class HomeSourceData(BaseModel):
     credits_balance: int | None
     questions: list[ChatSessionInfo]
     work_events: list[activity_db.ActivityEvent]
+    paused_chats: list[PausedScheduledChat]
     timezone_name: str
 
 
@@ -107,6 +105,7 @@ async def build_home_dashboard(
         persisted_briefing=persisted_briefing,
         work_events=data.work_events,
         session_titles=session_titles,
+        paused_chats=data.paused_chats,
     )
 
 
@@ -151,9 +150,7 @@ async def _persisted_briefing(
             record.id,
         )
         return None
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return content
-    return without_summaries(content)
+    return content
 
 
 async def _load_home_source_data(
@@ -189,6 +186,7 @@ async def _load_home_source_data(
     work_events_task = asyncio.create_task(
         _get_work_events(user_id=user_id, since=week_start)
     )
+    paused_chats_task = asyncio.create_task(_get_paused_chats(user_id=user_id))
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
     # Gather rather than awaiting one by one: a failure in the first task would
     # otherwise leave the rest detached with their exceptions never retrieved.
@@ -201,21 +199,21 @@ async def _load_home_source_data(
         credits_task,
         questions_task,
         work_events_task,
+        paused_chats_task,
         user_task,
     ]
     await asyncio.gather(*started)
     user = user_task.result()
     return HomeSourceData(
         experts=experts_task.result(),
-        executions=await hide_activity_summaries_if_disabled(
-            executions_task.result(), user_id
-        ),
+        executions=executions_task.result(),
         reviews=reviews_task.result(),
         cost_summary=cost_summary_task.result(),
         schedules=schedules_task.result(),
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
         work_events=work_events_task.result(),
+        paused_chats=paused_chats_task.result(),
         timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
     )
 
@@ -241,14 +239,22 @@ async def _get_schedules(
         return []
 
 
+async def _get_paused_chats(*, user_id: str) -> list[PausedScheduledChat]:
+    # Fail-soft like schedules: a broken read costs these items, not the page.
+    try:
+        return await scheduled_chats.list_paused_scheduled_chats(user_id)
+    except Exception:
+        logger.warning(
+            "Home could not load paused scheduled chats for user %s",
+            user_id[:_LOG_ID_CHARS],
+        )
+        return []
+
+
 async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
     # Fail-soft like schedules and credits: a chat that was deleted or whose
     # metadata no longer parses must cost the user one row, not the page.
     try:
-        # Question items ship with the expert-team surface; without the flag
-        # the Home page stays exactly what it was.
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
-            return []
         return await chat_db.get_sessions_with_pending_question(user_id)
     except Exception:
         logger.warning(
@@ -262,11 +268,8 @@ async def _get_work_events(
     *, user_id: str, since: datetime
 ) -> list[activity_db.ActivityEvent]:
     # Fail-soft like schedules and credits: a broken audit read costs the
-    # Recent work card, not the page. Ships with the expert-team surface,
-    # so it is gated exactly like pending questions.
+    # Recent work card, not the page.
     try:
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
-            return []
         return await activity_db.list_activity_events(
             user_id,
             since=since,

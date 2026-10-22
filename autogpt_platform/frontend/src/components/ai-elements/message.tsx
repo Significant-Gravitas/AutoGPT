@@ -15,7 +15,7 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
 import { createMathPlugin, type MathPlugin } from "@streamdown/math";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
-import { mermaid } from "@streamdown/mermaid";
+import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
@@ -87,10 +87,18 @@ export const MessageAction = ({
   label,
   variant = "ghost",
   size = "icon-sm",
+  className,
   ...props
 }: MessageActionProps) => {
   const button = (
-    <Button size={size} type="button" variant={variant} {...props}>
+    <Button
+      size={size}
+      type="button"
+      variant={variant}
+      // A finger needs a bigger target than the 32px icon box.
+      className={cn("[@media(pointer:coarse)]:size-10", className)}
+      {...props}
+    >
       {children}
       <span className="sr-only">{label || tooltip}</span>
     </Button>

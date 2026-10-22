@@ -37,7 +37,7 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
 }));
 
-const HIRE_EXPERTS = "hire-experts";
+const GENERIC_TRIGGER_AGENTS = "generic-trigger-agents";
 const VISITOR = "0b6c1f3e-visitor-0001";
 
 vi.mock("posthog-js", () => ({
@@ -59,11 +59,11 @@ afterAll(() => {
 
 describe("server backend", () => {
   it("serves the server's answer, and a flag it left out is not answered yet", async () => {
-    serveFlags({ flags: { [HIRE_EXPERTS]: true }, configured: true });
+    serveFlags({ flags: { [GENERIC_TRIGGER_AGENTS]: true }, configured: true });
     const { result } = renderHook(
       () => ({
-        hire: useFlagStatus(Flag.HIRE_EXPERTS),
-        search: useFlagStatus(Flag.CHAT_SEARCH),
+        hire: useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+        progressBar: useFlagStatus(Flag.TASK_PROGRESS_BAR),
       }),
       { wrapper: withQueryClient() },
     );
@@ -71,7 +71,7 @@ describe("server backend", () => {
     await waitFor(() => expect(result.current.hire.answered).toBe(true));
     expect(result.current.hire.enabled).toBe(true);
     // A gated route must keep waiting rather than 404 on a flag the vendor never answered.
-    expect(result.current.search).toMatchObject({
+    expect(result.current.progressBar).toMatchObject({
       enabled: false,
       answered: false,
     });
@@ -80,7 +80,7 @@ describe("server backend", () => {
   it("answers every flag with its default when the server has no vendor", async () => {
     serveFlags({ flags: {}, configured: false });
 
-    const { result } = renderHook(() => useFlagStatus(Flag.CHAT_SEARCH), {
+    const { result } = renderHook(() => useFlagStatus(Flag.TASK_PROGRESS_BAR), {
       wrapper: withQueryClient(),
     });
 
@@ -98,16 +98,19 @@ describe("server backend", () => {
     });
 
     it("asks again until the vendor answers it, then stops", async () => {
-      const answers = [{}, {}, { [HIRE_EXPERTS]: true }];
+      const answers = [{}, {}, { [GENERIC_TRIGGER_AGENTS]: true }];
       let requests = 0;
       serveFlags(() => ({
         flags: answers[Math.min(requests++, answers.length - 1)],
         configured: true,
       }));
 
-      const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
-        wrapper: withQueryClient(),
-      });
+      const { result } = renderHook(
+        () => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+        {
+          wrapper: withQueryClient(),
+        },
+      );
       await waitFor(() => expect(requests).toBe(1));
       await act(() => vi.advanceTimersByTimeAsync(60_000));
 
@@ -121,12 +124,15 @@ describe("server backend", () => {
       let requests = 0;
       serveFlags(() => {
         requests++;
-        return { flags: { [HIRE_EXPERTS]: null }, configured: true };
+        return { flags: { [GENERIC_TRIGGER_AGENTS]: null }, configured: true };
       });
 
-      const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
-        wrapper: withQueryClient(),
-      });
+      const { result } = renderHook(
+        () => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+        {
+          wrapper: withQueryClient(),
+        },
+      );
       await waitFor(() =>
         expect(result.current).toMatchObject({
           enabled: false,
@@ -145,15 +151,18 @@ describe("server backend", () => {
           requests++ === 0
             ? HttpResponse.json({ detail: "bad gateway" }, { status: 502 })
             : HttpResponse.json({
-                flags: { [HIRE_EXPERTS]: true },
+                flags: { [GENERIC_TRIGGER_AGENTS]: true },
                 configured: true,
               }),
         ),
       );
 
-      const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
-        wrapper: withQueryClient(),
-      });
+      const { result } = renderHook(
+        () => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+        {
+          wrapper: withQueryClient(),
+        },
+      );
       await waitFor(() => expect(requests).toBe(1));
       await act(() => vi.advanceTimersByTimeAsync(60_000));
 
@@ -169,7 +178,7 @@ describe("server backend", () => {
         }),
       );
 
-      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS), {
         wrapper: withQueryClient(),
       });
       await waitFor(() => expect(requests).toBe(1));
@@ -187,7 +196,7 @@ describe("server backend", () => {
         return { flags: {}, configured: true };
       });
 
-      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS), {
         wrapper: withQueryClient(),
       });
       await waitFor(() => expect(requests).toBe(1));
@@ -201,7 +210,7 @@ describe("server backend", () => {
     it.each([
       [
         "a flag only another component reads",
-        { flags: { [HIRE_EXPERTS]: true }, configured: true },
+        { flags: { [GENERIC_TRIGGER_AGENTS]: true }, configured: true },
       ],
       [
         "any flag, with no vendor to wait for",
@@ -214,7 +223,7 @@ describe("server backend", () => {
         return response;
       });
 
-      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS), {
         wrapper: withQueryClient(),
       });
       await waitFor(() => expect(requests).toBe(1));
@@ -229,13 +238,18 @@ describe("server backend", () => {
     server.use(
       getGetFeatureFlagsMockHandler(async () => {
         if (requests++ === 0) {
-          return { flags: { [HIRE_EXPERTS]: true }, configured: true };
+          return {
+            flags: { [GENERIC_TRIGGER_AGENTS]: true },
+            configured: true,
+          };
         }
         await new Promise((resolve) => setTimeout(resolve, 200));
-        return { flags: { [HIRE_EXPERTS]: false }, configured: true };
+        return { flags: { [GENERIC_TRIGGER_AGENTS]: false }, configured: true };
       }),
     );
-    const seen = renderRecording(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const seen = renderRecording(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
     await waitFor(() =>
       expect(seen.at(-1)).toMatchObject({ enabled: true, answered: true }),
     );
@@ -253,14 +267,17 @@ describe("server backend", () => {
     const answers = [true, false];
     let requests = 0;
     serveFlags(() => ({
-      flags: { [HIRE_EXPERTS]: answers[requests++] },
+      flags: { [GENERIC_TRIGGER_AGENTS]: answers[requests++] },
       configured: true,
     }));
     useAuthStore.setState({ isUserLoading: true });
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
-      wrapper: withQueryClient(),
-    });
+    const { result } = renderHook(
+      () => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+      {
+        wrapper: withQueryClient(),
+      },
+    );
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(requests).toBe(0);
 
@@ -292,7 +309,7 @@ describe("a signed-out visitor", () => {
     installCookiebot({ statistics: true });
     const sent = recordVisitorIDs();
 
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS), {
       wrapper: withQueryClient(),
     });
 
@@ -306,7 +323,7 @@ describe("a signed-out visitor", () => {
     installCookiebot(answer);
     const sent = recordVisitorIDs();
 
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS), {
       wrapper: withQueryClient(),
     });
 
@@ -318,7 +335,7 @@ describe("a signed-out visitor", () => {
     signIn("u-1");
     const sent = recordVisitorIDs();
 
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS), {
       wrapper: withQueryClient(),
     });
 
@@ -330,13 +347,18 @@ describe("a signed-out visitor", () => {
     server.use(
       getGetFeatureFlagsMockHandler(async ({ request }) => {
         if (!new URL(request.url).searchParams.get("visitor_id")) {
-          return { flags: { [HIRE_EXPERTS]: false }, configured: true };
+          return {
+            flags: { [GENERIC_TRIGGER_AGENTS]: false },
+            configured: true,
+          };
         }
         await new Promise((resolve) => setTimeout(resolve, 200));
-        return { flags: { [HIRE_EXPERTS]: true }, configured: true };
+        return { flags: { [GENERIC_TRIGGER_AGENTS]: true }, configured: true };
       }),
     );
-    const seen = renderRecording(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const seen = renderRecording(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
     await waitFor(() =>
       expect(seen.at(-1)).toMatchObject({ enabled: false, answered: true }),
     );
@@ -352,7 +374,7 @@ describe("a signed-out visitor", () => {
   it("is read again under their id when they allow analytics", async () => {
     installCookiebot();
     const sent = recordVisitorIDs();
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS), {
       wrapper: withQueryClient(),
     });
     await waitFor(() => expect(sent).toEqual([null]));

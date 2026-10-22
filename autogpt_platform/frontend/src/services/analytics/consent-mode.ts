@@ -12,9 +12,12 @@ import { DATA_LAYER_NAME } from "./gtag";
 const WAIT_FOR_UPDATE_MS = 500;
 
 // Consent Mode v2 defaults, rendered as a beforeInteractive script ahead of
-// Cookiebot and the Google tag. Every signal starts denied for every visitor
-// until Cookiebot has their answer; the updates come from
-// followConsentForGoogleTag below. There is deliberately no `region` split:
+// Cookiebot and the Google tag. Google treats a signal without a default as
+// not denied, so all seven get one. Every signal that needs consent starts
+// denied for every visitor until Cookiebot has their answer; the updates come
+// from followConsentForGoogleTag below. security_storage covers storage the
+// service needs (Cookiebot's "necessary" category), so it is always granted
+// and never updated. There is deliberately no `region` split:
 // the vendored public/gtag.js has the location of the machine that downloaded
 // it baked in and uses that instead of looking the visitor up, so every
 // visitor would match the same region. The shim stays local so it doesn't
@@ -30,6 +33,9 @@ export function buildConsentDefaultsScript(): string {
       ad_user_data: "denied",
       ad_personalization: "denied",
       analytics_storage: "denied",
+      functionality_storage: "denied",
+      personalization_storage: "denied",
+      security_storage: "granted",
       wait_for_update: WAIT_FOR_UPDATE_MS,
     })});`,
     // Carries the ad click ID across pages in the URL while cookies are denied.
@@ -46,19 +52,23 @@ function signal(granted: boolean): Signal {
 
 export function buildConsentUpdate(consent: ConsentState) {
   const ads = signal(consent.advertising);
+  const preferences = signal(consent.preferences);
   return {
     analytics_storage: signal(consent.analytics),
     ad_storage: ads,
     ad_user_data: ads,
     ad_personalization: ads,
+    functionality_storage: preferences,
+    personalization_storage: preferences,
   };
 }
 
 /**
  * Sends the visitor's answer to the Google tag as a Consent Mode update, now
  * and whenever it changes. Cookiebot's own Consent Mode integration sends the
- * same signals; this keeps a denial reaching the tag even if that integration
- * is switched off in the Cookiebot admin. Until there is an answer the denied
+ * same signals from the same categories (preferences maps to functionality and
+ * personalization); this keeps a denial reaching the tag even if that
+ * integration is switched off in the Cookiebot admin. Until there is an answer the denied
  * defaults stand; an answer Cookiebot later withdraws is sent as a denial.
  * Returns the unsubscribe.
  */

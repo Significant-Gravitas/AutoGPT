@@ -28,6 +28,7 @@ describe("onboarding draft outbox", () => {
       onConflict: vi.fn(),
       userID: "one",
       save,
+      load: vi.fn(),
       onError: vi.fn(),
     });
     saver.enqueue(makeProgress({ role: "First" }));
@@ -63,6 +64,7 @@ describe("onboarding draft outbox", () => {
       onConflict: vi.fn(),
       userID: "one",
       save,
+      load: vi.fn(),
       onError,
     });
     saver.enqueue(makeProgress());
@@ -88,6 +90,7 @@ describe("onboarding draft outbox", () => {
       onConflict: vi.fn(),
       userID: "one",
       save,
+      load: vi.fn(),
       onError: vi.fn(),
     });
     saver.enqueue(makeProgress({ role: "Private answer" }));
@@ -113,6 +116,7 @@ it("times out a hung request so checkout flush can recover", async () => {
     onConflict: vi.fn(),
     userID: "one",
     save,
+    load: vi.fn(),
     onError: vi.fn(),
   });
   saver.enqueue(makeProgress());
@@ -126,11 +130,16 @@ it("times out a hung request so checkout flush can recover", async () => {
 
 it("stops automatic retries when another session has updated the server revision", async () => {
   const save = vi.fn().mockRejectedValue({ status: 409 });
+  const load = vi.fn().mockResolvedValue({
+    progress: makeProgress({ role: "Other device" }),
+    revision: 4,
+  });
   const onConflict = vi.fn();
   const saver = createProgressSaver({
     initialRevision: 3,
     userID: "one",
     save,
+    load,
     onError: vi.fn(),
     onConflict,
   });
@@ -138,6 +147,7 @@ it("stops automatic retries when another session has updated the server revision
   await expect(saver.flush()).rejects.toEqual({ status: 409 });
   await vi.advanceTimersByTimeAsync(30_000);
   expect(save).toHaveBeenCalledOnce();
+  expect(load).toHaveBeenCalledOnce();
   expect(onConflict).toHaveBeenCalledOnce();
   expect(readLocalProgress("one")).toMatchObject({
     revision: 3,

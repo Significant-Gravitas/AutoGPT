@@ -4,6 +4,7 @@ import type { StoredAttachmentPart } from "./helpers/workspaceAttachments";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
+import { getMessageSnapshotDigest } from "./helpers/messageSnapshotDigest";
 
 /**
  * Per-session state. Zustand (not React refs) so it can survive events we
@@ -69,6 +70,10 @@ export interface PendingUploadAttachment {
   sizeBytes?: number;
   /** Local files upload before the send; workspace references are already stored. */
   isUploading: boolean;
+  /** The picked file, so an image can show before it uploads. */
+  file?: File;
+  /** Where a stored file already lives. */
+  url?: string;
 }
 
 /**
@@ -106,6 +111,10 @@ interface PersistedCopilotStreamState {
 
 interface CopilotStreamStore {
   sessions: Record<string, SessionCoord>;
+  /** Per-session messages for the subscribers that derive files, runs and
+   *  schedules from them. Only replaced when one of those changes, so a
+   *  streamed text token does not wake them; `getMessageSnapshot` returns
+   *  the newest messages. */
   messageSnapshots: Record<string, UIMessage[]>;
   pendingFirstSend: PendingFirstSend | null;
   pendingFirstSendSessionId: string | null;
@@ -141,6 +150,27 @@ interface CopilotStreamStore {
   resetAll: () => void;
 }
 
+/**
+ * `published` is the session's array in `messageSnapshots` and `digest` what
+ * its subscribers derive from it; `latest` is the newest array written, which
+ * differs from `published` only in what no subscriber reads. Kept outside the
+ * state on purpose: recording a text-only write here notifies no subscriber
+ * and writes nothing to sessionStorage.
+ */
+const snapshotEntries = new Map<
+  string,
+  { published: UIMessage[]; latest: UIMessage[]; digest: string | null }
+>();
+
+/** `null` when the messages cannot be digested, which publishes every write. */
+function digestSnapshot(messages: UIMessage[]): string | null {
+  try {
+    return getMessageSnapshotDigest(messages);
+  } catch {
+    return null;
+  }
+}
+
 export const useCopilotStreamStore = create<CopilotStreamStore>()(
   persist<CopilotStreamStore, [], [], PersistedCopilotStreamState>(
     (set, get) => ({
@@ -166,6 +196,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
         }));
       },
       clearSession(sessionId) {
+        snapshotEntries.delete(sessionId);
         set((state) => {
           const sessions = { ...state.sessions };
           delete sessions[sessionId];
@@ -180,9 +211,31 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
         });
       },
       getMessageSnapshot(sessionId) {
-        return get().messageSnapshots[sessionId] ?? [];
+        const published = get().messageSnapshots[sessionId];
+        const entry = snapshotEntries.get(sessionId);
+        // A snapshot replaced through `setState` outranks the recorded one.
+        if (entry && entry.published === published) return entry.latest;
+        return published ?? [];
       },
       setMessageSnapshot(sessionId, messages) {
+        const published = get().messageSnapshots[sessionId];
+        const entry = snapshotEntries.get(sessionId);
+        const current =
+          published && entry?.published === published ? entry : undefined;
+        if (current && messages === published) {
+          current.latest = messages;
+          return;
+        }
+        const digest = digestSnapshot(messages);
+        if (current && digest !== null && current.digest === digest) {
+          current.latest = messages;
+          return;
+        }
+        snapshotEntries.set(sessionId, {
+          published: messages,
+          latest: messages,
+          digest,
+        });
         set((state) => ({
           messageSnapshots: {
             ...state.messageSnapshots,
@@ -243,6 +296,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       },
 
       resetAll() {
+        snapshotEntries.clear();
         set({
           sessions: {},
           messageSnapshots: {},

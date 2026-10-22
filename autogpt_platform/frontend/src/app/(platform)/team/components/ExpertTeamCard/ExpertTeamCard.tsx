@@ -126,7 +126,6 @@ export function ExpertTeamCard({
               <Text
                 variant="small-medium"
                 tone="secondary"
-                unmask={false}
                 className="tabular-nums"
               >
                 {weeklySpend

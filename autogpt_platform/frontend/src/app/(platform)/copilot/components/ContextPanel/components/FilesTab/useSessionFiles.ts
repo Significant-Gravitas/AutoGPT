@@ -50,10 +50,8 @@ export function useSessionFiles(sessionId: string | null) {
     },
   });
 
-  // The chip and the artifacts button both read this on every render, and
-  // `messageSnapshots` is rewritten with a fresh array per streamed token —
-  // so without memoising, scanning every message part (and compiling a
-  // RegExp per matched workspace URI) would run at token cadence.
+  // The chip and the artifacts button both read this on every render, so the
+  // file list is memoised and keeps its identity until the files change.
   const { uploaded, generated, deliverables, files } = useMemo(() => {
     const files: SessionFile[] = (query.data?.files ?? [])
       .filter((item) => !isHiddenWorkspaceFile(item))

@@ -121,7 +121,7 @@ export function useSendMessage({
         ...outgoing,
         parts: [...pendingFileParts, ...workspaceParts],
       });
-      return;
+      return sessionId;
     }
 
     if (isCreatingSessionRef.current) return;
@@ -145,7 +145,7 @@ export function useSendMessage({
       timing,
     });
     try {
-      await createSession({
+      return await createSession({
         expertKickoff: metadata?.kind === "expert_kickoff",
       });
     } catch (err) {

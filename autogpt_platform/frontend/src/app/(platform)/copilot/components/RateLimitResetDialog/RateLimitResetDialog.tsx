@@ -149,7 +149,6 @@ export function RateLimitResetDialog({
           <>
             <Text
               variant="body"
-              unmask={!payment}
               className="mb-5 !text-sm !leading-6 !text-zinc-500"
             >
               {waitTitle && wait ? budgetResetSentence(wait) : copy.description}

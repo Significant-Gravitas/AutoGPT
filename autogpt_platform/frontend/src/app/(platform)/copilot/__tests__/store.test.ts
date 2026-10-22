@@ -248,7 +248,6 @@ describe("useCopilotUIStore", () => {
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
-      showNotificationDialog: false,
       copilotLlmModel: "standard",
     });
   });
@@ -471,14 +470,6 @@ describe("useCopilotUIStore", () => {
       expect(window.localStorage.getItem("copilot-notifications-enabled")).toBe(
         "true",
       );
-    });
-
-    it("shows and hides notification dialog", () => {
-      useCopilotUIStore.getState().setShowNotificationDialog(true);
-      expect(useCopilotUIStore.getState().showNotificationDialog).toBe(true);
-
-      useCopilotUIStore.getState().setShowNotificationDialog(false);
-      expect(useCopilotUIStore.getState().showNotificationDialog).toBe(false);
     });
   });
 });

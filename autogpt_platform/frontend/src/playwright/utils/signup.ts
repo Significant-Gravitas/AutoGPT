@@ -2,7 +2,8 @@ import { TestUser } from "./auth";
 import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
-import { skipOnboardingIfPresent } from "./onboarding";
+import { NavBar } from "../pages/navbar.page";
+import { dismissTabIntrosViaAPI, skipOnboardingIfPresent } from "./onboarding";
 import { expect } from "@playwright/test";
 
 export function isAuthenticatedAppURL(currentURL: string) {
@@ -87,10 +88,16 @@ export async function signupTestUser(
         .waitFor({ state: "visible", timeout: 10000 });
     }
 
+    // skipOnboardingIfPresent covers /onboarding, where an open wizard must not
+    // race these writes; the reload makes the open page read them.
+    if (!currentUrl.includes("/onboarding")) {
+      await dismissTabIntrosViaAPI(page);
+      await page.reload();
+    }
+
     if (withAgent) {
       // Create a dummy agent for each new user
-      const buildLink = getId("navbar-link-build");
-      await buildLink.click();
+      await new NavBar(page).clickBuildLink();
 
       const blocksBtn = getId("blocks-control-blocks-button");
       await isVisible(blocksBtn);
