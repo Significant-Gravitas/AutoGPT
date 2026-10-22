@@ -272,6 +272,7 @@ async def match_credentials_to_requirements(
     requirements: dict[str, CredentialsFieldInfo],
     expert_id: str | None = None,
     session_id: str | None = None,
+    optional_fields: set[str] | frozenset[str] = frozenset(),
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
@@ -279,6 +280,9 @@ async def match_credentials_to_requirements(
     This is the core matching logic shared by both graph and block credential matching.
     With a ``session_id`` the match is a chat tool's: the credential the user
     picked in that chat is used, and a choice between several is left to them.
+    A field in ``optional_fields`` that no credential fits is left out rather
+    than reported missing, unless the running turn's schedule pinned its
+    account: running without it is the switch the pin exists to prevent.
     """
     matched: dict[str, CredentialsMetaInput] = {}
     missing: list[CredentialsMetaInput] = []
@@ -315,6 +319,12 @@ async def match_credentials_to_requirements(
                         title=f"{field_name} (validation failed: {e})",
                     )
                 )
+        elif (
+            field_name in optional_fields
+            and not _pinned_for(field_info)
+            and not any(_credential_fits(c, field_info) for c in available_creds)
+        ):
+            continue
         else:
             provider = next(iter(field_info.provider), "unknown")
             cred_type = next(iter(field_info.supported_types), "api_key")
@@ -382,6 +392,17 @@ def keep_to_pins(available: list[Credentials]) -> list[Credentials]:
         or c.id == pins[_provider_slug(c)].id
         or is_per_target_credential(c)
     ]
+
+
+def _pinned_for(field_info: CredentialsFieldInfo) -> bool:
+    """Whether the running turn's schedule pinned an account for this field;
+    as in ``keep_to_pins``, a pin never covers a per-target credential."""
+    pins = turn_credential_pins()
+    return field_info.supported_types != {"host_scoped"} and any(
+        str(getattr(p, "value", p)) in pins
+        for p in field_info.provider
+        if p != ProviderName.MCP
+    )
 
 
 def is_per_target_credential(cred: Credentials) -> bool:

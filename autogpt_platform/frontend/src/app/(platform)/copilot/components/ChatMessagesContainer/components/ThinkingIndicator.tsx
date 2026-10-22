@@ -1,4 +1,6 @@
+import { useNowSecond } from "@/hooks/useNowSecond";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
+import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
 import { PixelGridLoader } from "../../PixelGridLoader/PixelGridLoader";
 import { SwapText } from "../../ToolChain/SwapText";
 
@@ -7,7 +9,14 @@ const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   active: boolean;
-  elapsedSeconds: number;
+  /**
+   * Epoch ms the wait started. When set, the indicator runs its own clock
+   * (the shared `useNowSecond` ticker, only while `active`), so the parent
+   * does not re-render every second.
+   */
+  startedAtMs?: number | null;
+  /** Elapsed seconds from a parent that already owns a clock. */
+  elapsedSeconds?: number;
   /**
    * Plain-language label for a wait the UI itself narrates (e.g. "Uploading
    * 2 files…"). Defaults to "Thinking…". The backend's own `data-status`
@@ -19,10 +28,16 @@ interface Props {
 
 export function ThinkingIndicator({
   active,
-  elapsedSeconds,
+  startedAtMs,
+  elapsedSeconds = 0,
   statusMessage,
 }: Props) {
-  const showTime = active && elapsedSeconds >= SHOW_TIME_AFTER_SECONDS;
+  const hasClock = startedAtMs !== null && startedAtMs !== undefined;
+  const nowMs = useNowSecond(active && hasClock);
+  const seconds = hasClock
+    ? getElapsedSeconds(startedAtMs, nowMs)
+    : elapsedSeconds;
+  const showTime = active && seconds >= SHOW_TIME_AFTER_SECONDS;
 
   return (
     <span
@@ -38,7 +53,7 @@ export function ThinkingIndicator({
       />
       {showTime && (
         <span className="font-mono text-xs tabular-nums text-zinc-400">
-          {formatElapsed(elapsedSeconds)}
+          {formatElapsed(seconds)}
         </span>
       )}
     </span>

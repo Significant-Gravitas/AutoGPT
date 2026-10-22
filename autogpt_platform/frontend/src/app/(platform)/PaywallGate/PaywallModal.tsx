@@ -115,7 +115,6 @@ export function PaywallModal() {
                     // The modal renders its own title above, so the organism
                     // contributes only the billing toggle.
                     header={null}
-                    goalSurface="upgrade_modal"
                     plans={plans}
                     country={country}
                     billing={selectedCycle}

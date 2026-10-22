@@ -13,6 +13,8 @@ from pydantic_settings import (
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
+from .models import DEFAULT_LLM_MODEL
+
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -20,8 +22,8 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 # local transport. Pinned as module constants so the field defaults and
 # the validator can't drift — same pattern as
 # ``copilot/config.py::_DEFAULT_TITLE_MODEL`` etc.
-_DEFAULT_LLM_MODEL = "gpt-4.1-mini"
-_DEFAULT_RERANKER_MODEL = "gpt-4.1-nano"
+_DEFAULT_LLM_MODEL = DEFAULT_LLM_MODEL
+_DEFAULT_RERANKER_MODEL = DEFAULT_LLM_MODEL
 _DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 
 # Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
@@ -44,7 +46,7 @@ _LOCAL_EMBEDDER_MODEL = "nomic-embed-text"
 class GraphitiConfig(BaseSettings):
     """Configuration for Graphiti memory integration.
 
-    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
+    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_FALKORDB_HOST``.
     LLM/embedder keys fall back to the Otto-dedicated keys
     (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
     tracked under Otto, then to the platform-wide OpenRouter / OpenAI
@@ -57,6 +59,42 @@ class GraphitiConfig(BaseSettings):
     falkordb_host: str = Field(default="localhost")
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
+    # Transport deadlines on every FalkorDB connection this package opens
+    # (``falkordb_connect.new_falkordb_client``), for every operation on it,
+    # reads and writes alike. They are separate from the chat's asyncio budgets
+    # (``context_timeout``; ``context_refresh_timeout`` and
+    # ``warm_context_refresh_join_grace_ms``), which are shorter and cancel an
+    # interactive read before a deadline would. The deadlines also end what
+    # cancellation cannot reach: a worker thread still building a client
+    # (falkordb's constructor probes the server synchronously) and a
+    # connection to a server that stopped answering.
+    falkordb_socket_connect_timeout: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Seconds to open a TCP connection to FalkorDB before giving up, on "
+            "every connection the memory code opens. Short, so an unreachable "
+            "server fails a client build or a reconnect quickly. Also caps "
+            "the constructor probe's reply timeout."
+        ),
+    )
+    falkordb_socket_timeout: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "Seconds any single FalkorDB reply may take before its command "
+            "fails with a timeout: a deadline per reply, on every operation the "
+            "memory code runs (reads and writes). The constructor probe uses "
+            "the shorter of this and the connect timeout. A write whose reply "
+            "times out may already have been "
+            "committed, so its outcome is unknown to the caller. Separate from "
+            "the chat's asyncio budgets (context_timeout; "
+            "context_refresh_timeout and the join grace), which are shorter and "
+            "end an interactive read first. Long by default so that a slow "
+            "write (ingestion, the dream, a forget) on a large graph normally "
+            "completes; it also ends connections to a server that stopped answering."
+        ),
+    )
 
     # LLM for entity extraction (used by graphiti-core during ingestion).
     # Default is a cloud OpenAI-compat slug. Under ``CHAT_USE_LOCAL=true``
@@ -91,11 +129,11 @@ class GraphitiConfig(BaseSettings):
     # Cross-encoder reranker (P-1.4) — used by warm-context retrieval to
     # rerank top edges from BM25 + cosine + BFS. Graphiti's built-in
     # OpenAIRerankerClient runs concurrent boolean-classifier prompts
-    # against gpt-4.1-nano by default (one prompt per candidate; log-
-    # probabilities decide the score). The audit estimated ~10–15%
-    # precision lift on warm context at the cost of one LLM call per
-    # session start. Defaults match Graphiti's own default so the
-    # reranker can ship with no env config.
+    # (one prompt per candidate; log-probabilities decide the score).
+    # This config defaults the classifier to gpt-6-luna — the same
+    # cloud slug as ``llm_model`` — so the reranker can ship with no
+    # env config, at the cost of up to 2 * context_max_facts classifier
+    # calls per session start.
     reranker_model: str = Field(
         default=_DEFAULT_RERANKER_MODEL,
         description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
@@ -157,6 +195,27 @@ class GraphitiConfig(BaseSettings):
     context_timeout: float = Field(
         default=8.0,
         description="Seconds before warm context fetch is abandoned (needs headroom for FalkorDB cold connections)",
+    )
+    context_refresh_timeout: float = Field(
+        default=3.0,
+        description=(
+            "Seconds a follow-up-turn warm-context refresh (SECRT-2378) may run "
+            "in all before it is abandoned. On the SDK engine it starts before "
+            "the query build; what it may add to time-to-first-token is bounded "
+            "separately by warm_context_refresh_join_grace_ms."
+        ),
+    )
+    warm_context_refresh_join_grace_ms: int = Field(
+        default=500,
+        ge=0,
+        description=(
+            "The most a follow-up warm-context refresh (SECRT-2378) may add to "
+            "time-to-first-token, in milliseconds. Once the turn's query is "
+            "ready it waits at most this long for the refresh; a refresh still "
+            "running then is cancelled and the turn goes on without a block. "
+            "A refresh started at that point (the baseline engine, retries, a "
+            "refresh forced by a compaction) has this as its whole budget."
+        ),
     )
 
     # Client cache
@@ -275,10 +334,10 @@ class GraphitiConfig(BaseSettings):
         still at their cloud defaults and the operator hasn't pinned
         a ``GRAPHITI_*_MODEL`` override:
 
-        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
+        - ``llm_model`` (``gpt-6-luna``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
           (matches dev's chat default — one Ollama pull powers both
           surfaces; vetted for structured output / tool-calling shape).
-        - ``reranker_model`` (``gpt-4.1-nano``) → same Ornith slug.
+        - ``reranker_model`` (``gpt-6-luna``) → same Ornith slug.
           Reranker prompts are simpler than extraction; reusing the
           chat model avoids pulling a second model just for reranking.
         - ``embedder_model`` (``text-embedding-3-small``) →
@@ -289,7 +348,8 @@ class GraphitiConfig(BaseSettings):
 
         Operator overrides (custom slugs like ``qwen3:8b`` or
         ``hf.co/...``) pass through untouched — only the literal cloud
-        defaults trigger rewriting. Lazy-imports ``chat_cfg`` to avoid
+        defaults and the legacy ``gpt-4.1-mini`` default trigger rewriting.
+        Lazy-imports ``chat_cfg`` to avoid
         the ``copilot.sdk.env`` ↔ ``util/clients`` cycle dev's PR
         established.
         """
@@ -307,9 +367,9 @@ class GraphitiConfig(BaseSettings):
         if chat_cfg.transport.name != "local":
             return self
 
-        if self.llm_model == _DEFAULT_LLM_MODEL:
+        if self.llm_model in (_DEFAULT_LLM_MODEL, "gpt-4.1-mini"):
             object.__setattr__(self, "llm_model", _LOCAL_LLM_MODEL)
-        if self.reranker_model == _DEFAULT_RERANKER_MODEL:
+        if self.reranker_model in (_DEFAULT_RERANKER_MODEL, "gpt-4.1-mini"):
             object.__setattr__(self, "reranker_model", _LOCAL_RERANKER_MODEL)
         if self.embedder_model == _DEFAULT_EMBEDDER_MODEL:
             object.__setattr__(self, "embedder_model", _LOCAL_EMBEDDER_MODEL)
@@ -335,42 +395,3 @@ class _LazyConfigProxy:
 
 
 graphiti_config = _LazyConfigProxy()  # type: ignore[assignment]
-
-
-async def is_enabled_for_user(user_id: str | None) -> bool:
-    """Check if Graphiti memory is enabled for a specific user.
-
-    Gated solely by LaunchDarkly flag ``graphiti-memory``
-    (Flag.GRAPHITI_MEMORY).  When LD is not configured, defaults to False.
-    """
-    if not user_id:
-        return False
-
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
-    return await is_feature_enabled(
-        Flag.GRAPHITI_MEMORY,
-        user_id,
-        default=False,
-    )
-
-
-async def is_communities_enabled_for_user(user_id: str | None) -> bool:
-    """Check if per-user community-detection rebuilds are enabled.
-
-    Distinct from ``is_enabled_for_user`` — a user can have Graphiti
-    memory enabled (writes + reads work) without the weekly Leiden
-    rebuild + LLM summarization running on their graph. Gated by
-    ``Flag.GRAPHITI_COMMUNITIES_ENABLED``; defaults False so the cost
-    only lands behind explicit opt-in.
-    """
-    if not user_id:
-        return False
-
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
-    return await is_feature_enabled(
-        Flag.GRAPHITI_COMMUNITIES_ENABLED,
-        user_id,
-        default=False,
-    )

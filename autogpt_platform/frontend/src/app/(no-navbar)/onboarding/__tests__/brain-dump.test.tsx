@@ -125,8 +125,8 @@ vi.mock("../steps/RoleStep", () => ({
 vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
   SubscriptionStep: () => <div data-testid="step-subscription" />,
 }));
-vi.mock("../steps/PreparingStep", () => ({
-  PreparingStep: () => <div data-testid="step-preparing" />,
+vi.mock("../steps/HireStep/HireStep", () => ({
+  HireStep: () => <div data-testid="step-hire" />,
 }));
 
 let currentSearchParams = new URLSearchParams();
@@ -161,7 +161,7 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
         wizardRevision: 0,
         wizardProgress: makeProgress({
           currentStep: "painPoints",
-          completedSteps: ["role"],
+          completedSteps: ["team", "autopilot", "role"],
         }),
       },
     }),
@@ -196,9 +196,6 @@ let mockFlags: Record<string, boolean> = {};
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-    ONBOARDING_EXPERT_TEAM: "onboarding-expert-team",
-    HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: (flag: string) => mockFlags[flag] ?? false,
   useFlagStatus: (flag: string) => ({
@@ -293,7 +290,7 @@ function installBrowserRecordingAPIs() {
   });
 }
 
-// Records every brain-dump call so "flag off makes no brain-dump request"
+// Records every brain-dump call so request payloads
 // can be asserted, and so request bodies can be inspected.
 function recordBrainDumpTraffic() {
   const calls: { endpoint: string; body?: unknown }[] = [];
@@ -350,15 +347,6 @@ function finalizeReturns(response: {
   return bodies;
 }
 
-function stepDots(container: HTMLElement) {
-  return container.querySelectorAll("div.h-1\\.5.rounded-full").length;
-}
-
-function progressWidth(container: HTMLElement) {
-  const bar = container.querySelector<HTMLElement>("div.bg-zinc-900");
-  return bar?.style.width ?? null;
-}
-
 // Lands the wizard on the step the pillboxes / the brain dump share.
 function landOnPainPointsStep() {
   window.sessionStorage.setItem(
@@ -390,9 +378,23 @@ afterEach(() => {
   cleanup();
 });
 
-describe("onboarding brain dump — flag gating", () => {
-  it("renders the brain dump in the pillbox slot when the flag is on", async () => {
-    mockFlags = { "onboarding-brain-dump": true };
+describe("onboarding brain dump", () => {
+  it("explains what to share before choosing Talk or Write", async () => {
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByText(
+        "Tell me what you do and what eats up your week. Two or three minutes is plenty. You can type instead if you prefer.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("renders the brain dump as the personalization step", async () => {
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -403,7 +405,6 @@ describe("onboarding brain dump — flag gating", () => {
   });
 
   it("renders Otto as the visual, waiting at rest", async () => {
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -413,32 +414,11 @@ describe("onboarding brain dump — flag gating", () => {
     expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
   });
 
-  it("leaves the pillboxes untouched and makes no brain-dump request when the flag is off", async () => {
-    const calls = recordBrainDumpTraffic();
-    mockFlags = {};
-    landOnPainPointsStep();
-
-    render(<OnboardingPage />);
-
-    expect(await screen.findByText(PILLBOX_HEADING)).toBeDefined();
-    expect(
-      screen.getByText("Pick the tasks you'd love to hand off to your experts"),
-    ).toBeDefined();
-    expect(screen.queryByText(DUMP_HEADLINE)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();
-    expect(screen.queryByText("Skip for now")).toBeNull();
-
-    // Give any stray effect a chance to fire before declaring silence.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(calls).toEqual([]);
-  });
-
   // Guards the assertion above: proves the recorder above is actually wired
   // to the brain-dump endpoints, so an empty `calls` means silence rather
   // than a handler that never intercepts anything.
-  it("records brain-dump traffic when the flag is on and the user acts", async () => {
+  it("records brain-dump traffic when the user acts", async () => {
     const calls = recordBrainDumpTraffic();
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -456,7 +436,6 @@ describe("onboarding brain dump — typed fallback", () => {
     getUserMedia.mockRejectedValue(
       new DOMException("denied", "NotAllowedError"),
     );
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -478,7 +457,6 @@ describe("onboarding brain dump — typed fallback", () => {
   });
 
   it("opens the typed composer from the rest state via Write", async () => {
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -503,7 +481,6 @@ describe("onboarding brain dump — typed fallback", () => {
 describe("onboarding brain dump — skip", () => {
   it("posts input_mode 'skipped' and advances the wizard", async () => {
     const bodies = finalizeReturns({ status: "completed" });
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -517,7 +494,7 @@ describe("onboarding brain dump — skip", () => {
       input_mode: "skipped",
     });
 
-    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
   });
 });
@@ -540,7 +517,6 @@ describe("onboarding brain dump — finishing a take", () => {
       }),
     );
     const bodies = finalizeReturns({ status: "completed" });
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -557,7 +533,7 @@ describe("onboarding brain dump — finishing a take", () => {
       await screen.findByRole("button", { name: "Send recording" }),
     );
 
-    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(bodies).toHaveLength(1);
     const recordingId = (bodies[0] as { recording_id: string }).recording_id;
     // Marked finalized by id, then cleared: an unfinalized row left behind
@@ -588,7 +564,6 @@ describe("onboarding brain dump — finishing a take", () => {
         return { status: "completed" as const, input_mode: "voice" as const };
       }),
     );
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -616,7 +591,6 @@ describe("onboarding brain dump — finishing a take", () => {
         return { status: null };
       }),
     );
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -707,7 +681,6 @@ describe("onboarding brain dump — recovery", () => {
         uploaded: false,
       },
     ];
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -740,7 +713,6 @@ describe("onboarding brain dump — recovery", () => {
       finalized: false,
     };
     recordingStoreState.parts = [];
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -771,7 +743,6 @@ describe("onboarding brain dump — failure", () => {
       status: "failed",
       error_code: "transcription_error",
     });
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -806,7 +777,7 @@ describe("onboarding brain dump — failure", () => {
       screen.getByRole("button", { name: "Continue without it" }),
     ).toBeDefined();
     // The wizard must not advance on failure.
-    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(screen.queryByTestId("step-hire")).toBeNull();
   });
 });
 
@@ -824,7 +795,6 @@ describe("onboarding brain dump — insufficient content", () => {
         };
       }),
     );
-    mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -852,7 +822,7 @@ describe("onboarding brain dump — insufficient content", () => {
       screen.getByRole("button", { name: "Continue without it" }),
     ).toBeDefined();
     // No accidental advance to the personalized greeting...
-    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(screen.queryByTestId("step-hire")).toBeNull();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
     // ...and the local parts survive until the user picks a next move.
     expect(recordingStoreState.parts).toHaveLength(1);
@@ -875,45 +845,23 @@ describe("onboarding brain dump — insufficient content", () => {
 });
 
 describe("onboarding step map integrity", () => {
-  it("keeps the step constants identical regardless of the brain-dump flag", () => {
+  it("keeps personalization and hiring before the optional payment step", () => {
     expect(PAYWALL_LAST_STEPS).toEqual({
-      role: 1,
-      painPoints: 2,
-      subscription: 3,
-      preparing: 4,
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      hire: 5,
+      subscription: 6,
+      preparing: 7,
     });
     expect(NO_PAYWALL_STEPS).toEqual({
-      role: 1,
-      painPoints: 2,
-      preparing: 3,
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      hire: 5,
+      preparing: 6,
     });
-  });
-
-  it("renders the same screen count and progress with the flag on and off", async () => {
-    mockFlags = {};
-    landOnPainPointsStep();
-    const off = render(<OnboardingPage />);
-    await screen.findByText(PILLBOX_HEADING);
-    const offDots = stepDots(off.container);
-    const offWidth = progressWidth(off.container);
-    const offUrl = routerReplace.mock.calls.map((c) => c[0]);
-
-    cleanup();
-    routerReplace.mockClear();
-    useOnboardingWizardStore.getState().reset();
-
-    mockFlags = { "onboarding-brain-dump": true };
-    landOnPainPointsStep();
-    const on = render(<OnboardingPage />);
-    await screen.findByText(DUMP_HEADLINE);
-    const onDots = stepDots(on.container);
-    const onWidth = progressWidth(on.container);
-    const onUrl = routerReplace.mock.calls.map((c) => c[0]);
-
-    expect(offDots).toBe(2);
-    expect(offWidth).toBe(`${(2 / 3) * 100}%`);
-    expect(onDots).toBe(offDots);
-    expect(onWidth).toBe(offWidth);
-    expect(onUrl).toEqual(offUrl);
   });
 });

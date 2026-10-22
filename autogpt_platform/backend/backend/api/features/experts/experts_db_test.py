@@ -58,6 +58,7 @@ from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
+from backend.util.posthog_events import PostHogEvent
 from backend.util.test import SpinTestServer
 
 EXPECTED_ROSTER_PRELOAD_SLUGS = {
@@ -772,14 +773,9 @@ async def hub_listing(make_hub_listing):
     return await make_hub_listing()
 
 
-@pytest.fixture
-def skills_hub_on(monkeypatch):
-    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=True))
-
-
 @pytest.mark.asyncio(loop_scope="session")
 async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
-    server: SpinTestServer, hub_listing, make_hub_listing, skills_hub_on
+    server: SpinTestServer, hub_listing, make_hub_listing
 ):
     first = await make_hub_listing()
     bundling = await _seed_template(
@@ -809,7 +805,7 @@ async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_installs_the_hub_skills_the_template_bundles(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on
+    server: SpinTestServer, test_user, hub_listing
 ):
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
@@ -828,7 +824,7 @@ async def test_hire_installs_the_hub_skills_the_template_bundles(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     install = AsyncMock(side_effect=RuntimeError("storage down"))
     _patch_install(monkeypatch, install)
@@ -842,22 +838,6 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
     assert hired.expert.skills == []
     assert hired.expert.setup_status == "failed"
     assert len(hired.expert.setup_failures) == 1
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_hire_installs_nothing_while_the_hub_is_off(
-    server: SpinTestServer, test_user, hub_listing, monkeypatch
-):
-    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=False))
-    install = AsyncMock()
-    _patch_install(monkeypatch, install)
-    template = await _seed_template(
-        name="Maria", preload_listings=[], bundled=[hub_listing.id]
-    )
-
-    await experts_db.hire_expert(test_user.id, template.id, None)
-
-    install.assert_not_awaited()
 
 
 def _patch_install(monkeypatch, install: AsyncMock) -> None:
@@ -904,7 +884,7 @@ async def _template_with_setup(server, hub_listing) -> prisma.models.Expert:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_returns_before_any_skill_is_installed(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     release = asyncio.Event()
     record = _recording_install()
@@ -939,7 +919,7 @@ async def test_hire_returns_before_any_skill_is_installed(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     install = _recording_install()
     _patch_install(monkeypatch, install)
@@ -968,7 +948,7 @@ async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_rehire_retries_a_failed_setup(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     _patch_install(monkeypatch, AsyncMock(side_effect=RuntimeError("storage down")))
     template = await _seed_template(
@@ -2039,6 +2019,7 @@ def test_expert_identity_projection_columns_exist_in_schema():
         "role",
         "jobTitle",
         "isArchived",
+        "autopilotMode",
     } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
@@ -5990,6 +5971,23 @@ async def _template(name: str, **fields) -> prisma.models.Expert:
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_get_template_reads_one_live_template_and_nothing_else(
+    server: SpinTestServer, test_user
+):
+    """The gate names a held hire's template inside a 1 s budget, so it reads
+    that one row; a retired template or a hired expert is not a template."""
+    suffix = uuid.uuid4().hex[:8]
+    live = await _template(f"Ada {suffix}")
+    retired = await _template(f"Old {suffix}", isArchived=True)
+    hired = await experts_db.hire_expert(test_user.id, live.id, None)
+
+    found = await experts_db.get_template(live.id)
+    assert found is not None and found.name == live.name and found.is_template
+    assert await experts_db.get_template(retired.id) is None
+    assert await experts_db.get_template(hired.expert.id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_list_templates_filters_by_category(server: SpinTestServer):
     """A category chip narrows the roster, and never widens it: an expert
     filed under another category must not surface under an unrelated chip."""
@@ -7241,3 +7239,98 @@ async def test_a_routine_proposal_nobody_answered_still_refuses(
 
     with pytest.raises(routines.RoutineUnansweredAsksError):
         await experts_db.enable_routine(test_user.id, hired.expert.id, installed[0].id)
+
+
+# ─── Approval mode ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_autopilot_mode_persists_per_expert(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert hired.expert.autopilot_mode is None
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        updated = await experts_db.update_autopilot_mode(
+            test_user.id, hired.expert.id, "ask_first"
+        )
+
+    assert updated.autopilot_mode == "ask_first"
+    emit.assert_not_called()
+    reloaded = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert reloaded is not None
+    assert reloaded.autopilot_mode == "ask_first"
+    assert (
+        await experts_db.get_autopilot_mode(test_user.id, hired.expert.id)
+        == "ask_first"
+    )
+    identities = await experts_db.list_expert_identities(test_user.id)
+    identity = next(item for item in identities if item.id == hired.expert.id)
+    assert identity.autopilot_mode == "ask_first"
+
+    cleared = await experts_db.update_autopilot_mode(
+        test_user.id, hired.expert.id, None
+    )
+    assert cleared.autopilot_mode is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_setting_unsupervised_at_expert_level_is_audited(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.update_autopilot_mode(
+            test_user.id, hired.expert.id, "unsupervised"
+        )
+
+    emit.assert_called_once_with(
+        test_user.id,
+        PostHogEvent.EXPERT_MODE_SET_UNSUPERVISED,
+        {"expert_id": hired.expert.id},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_autopilot_mode_is_owner_only_and_hire_only(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_autopilot_mode(other_user.id, hired.expert.id, "auto")
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_autopilot_mode(test_user.id, template.id, "auto")
+    assert await experts_db.get_autopilot_mode(other_user.id, hired.expert.id) is None
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_autopilot_mode(
+            test_user.id, hired.expert.id, "ask_first"
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hiring_copies_no_autopilot_mode_and_junk_reads_as_default(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"autopilotMode": "unsupervised"}
+    )
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert hired.expert.autopilot_mode is None
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"autopilotMode": "not-a-mode"}
+    )
+    assert await experts_db.get_autopilot_mode(test_user.id, hired.expert.id) is None
+    identities = await experts_db.list_expert_identities(test_user.id)
+    identity = next(item for item in identities if item.id == hired.expert.id)
+    assert identity.autopilot_mode is None

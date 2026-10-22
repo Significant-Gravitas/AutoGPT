@@ -8,6 +8,7 @@ import {
 } from "@/services/analytics/anonymous-id";
 import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-properties";
 import { PageEvent } from "@/services/analytics/posthog-events";
+import { markImpersonatedEvent } from "@/services/analytics/posthog-request-context";
 import { useConsent } from "@/services/consent/useConsent";
 import { environment } from "@/services/environment";
 import { usesPostHog } from "@/services/feature-flags/flag-backend";
@@ -44,10 +45,12 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         capture_pageview: false,
         capture_pageleave: true,
         autocapture: true,
+        capture_exceptions: false,
         ...(anonymousID && {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
         ...getConsentGatedConfig(),
+        before_send: markImpersonatedEvent,
       });
       posthog.register(getPostHogBaseProperties());
       unfollowConsent = followAnalyticsConsent();

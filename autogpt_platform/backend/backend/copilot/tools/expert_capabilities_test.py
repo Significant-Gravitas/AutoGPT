@@ -15,6 +15,7 @@ from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import expert_entries
+from backend.copilot.gate import ALLOW
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.model import ChatSessionMetadata
@@ -88,7 +89,6 @@ def team():
     db.with_bundled_skills = AsyncMock(side_effect=lambda templates, _user: templates)
     _hireable_roster.cache_clear()
     with (
-        patch(f"{_SR}.is_feature_enabled", AsyncMock(return_value=True)),
         patch(f"{_SR}.experts_db", MagicMock(return_value=db)),
         patch(f"{_SR}.is_skills_feature_enabled", AsyncMock(return_value=False)),
         patch(
@@ -201,7 +201,7 @@ async def test_an_expert_ids_validate_only_answer_is_not_held_by_the_judge(team)
     with (
         patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(review_store, "find_review", AsyncMock(return_value=None)),
-        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False))),
+        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, ALLOW))),
         patch("backend.copilot.gate.reads.judge_content", judge),
     ):
         result = await RunCapabilityTool().execute(

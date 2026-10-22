@@ -1,12 +1,4 @@
 {
-  "hire-experts": true,
-  "autogpt-new-layout": true,
-  "onboarding-brain-dump": true,
-  "onboarding-expert-team": true,
-  "artifacts-page": true,
-  "chat-search": true,
-  "skills-hub": true,
-  "graphiti-memory": true,
-  "expert-spend-approval": true,
-  "enable-platform-payment": true
+  "enable-platform-payment": true,
+  "copilot-stream-runtime": true
 }

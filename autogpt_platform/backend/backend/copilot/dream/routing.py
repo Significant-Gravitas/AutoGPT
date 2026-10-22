@@ -10,14 +10,10 @@ existing ``copilot_executor``.
 
 from __future__ import annotations
 
-from typing import Literal
-
 from backend.copilot.config import TransportName
+from backend.copilot.inference.execution_path import ExecutionPath, batch_discount
 
-# The single source of truth for execution paths; ``model_pricing``,
-# ``billing`` and ``schemas`` import it from here.
-ExecutionPath = Literal["sync_baseline", "anthropic_batch"]
-
+__all__ = ["ExecutionPath", "batch_discount", "resolve_dream_execution_path"]
 
 # Transports that cannot honour the batch path even when an Anthropic key
 # is configured separately.

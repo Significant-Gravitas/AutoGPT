@@ -118,7 +118,6 @@ export function SwitchTierDialog({
             <>
               <ConfirmButton
                 label={action}
-                unmask={!preview}
                 disabled={cannotConfirm}
                 isSaving={isSaving}
                 onConfirm={onConfirm}
@@ -147,7 +146,6 @@ export function SwitchTierDialog({
               </Button>
               <ConfirmButton
                 label={action}
-                unmask={!preview}
                 disabled={cannotConfirm}
                 isSaving={isSaving}
                 onConfirm={onConfirm}
@@ -162,13 +160,11 @@ export function SwitchTierDialog({
 
 function ConfirmButton({
   label,
-  unmask,
   disabled,
   isSaving,
   onConfirm,
 }: {
   label: string;
-  unmask: boolean;
   disabled?: boolean;
   isSaving: boolean;
   onConfirm: () => void;
@@ -182,9 +178,6 @@ function ConfirmButton({
       onClick={onConfirm}
       disabled={disabled}
       loading={isSaving}
-      unmask={unmask}
-      data-fast-goal="subscription_change_confirm"
-      data-fast-goal-surface="settings_billing"
     >
       {label}
     </Button>

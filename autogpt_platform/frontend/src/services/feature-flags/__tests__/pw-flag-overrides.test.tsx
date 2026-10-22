@@ -1,6 +1,11 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
+});
+
 vi.mock("launchdarkly-react-client-sdk", () => ({
   useFlags: () => ({}),
 }));
@@ -34,19 +39,20 @@ describe("Playwright runtime flag overrides", () => {
     vi.stubEnv("NEXT_PUBLIC_PW_TEST", "true");
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ "hire-experts": true }),
+      JSON.stringify({ "generic-trigger-agents": true }),
     );
     const { Flag, useGetFlag, useFlagStatus } = await loadFlags();
 
-    expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      true,
-    );
     expect(
-      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS)).result.current,
+      renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS)).result.current,
+    ).toBe(true);
+    expect(
+      renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS)).result
+        .current,
     ).toEqual({ enabled: true, ready: true, answered: true });
-    expect(renderHook(() => useGetFlag(Flag.SKILLS_HUB)).result.current).toBe(
-      false,
-    );
+    expect(
+      renderHook(() => useGetFlag(Flag.CHAT_WORKSPACE_FILES)).result.current,
+    ).toBe(false);
   });
 
   it("keeps route gates waiting until hydration can read the overrides", async () => {
@@ -56,7 +62,7 @@ describe("Playwright runtime flag overrides", () => {
 
     let status: ReturnType<typeof useFlagStatus> | undefined;
     function Probe() {
-      status = useFlagStatus(Flag.HIRE_EXPERTS);
+      status = useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
       return null;
     }
 
@@ -68,44 +74,44 @@ describe("Playwright runtime flag overrides", () => {
     vi.stubEnv("NEXT_PUBLIC_PW_TEST", "false");
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ "hire-experts": true }),
+      JSON.stringify({ "generic-trigger-agents": true }),
     );
     const { Flag, useGetFlag } = await loadFlags();
 
-    expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      false,
-    );
+    expect(
+      renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS)).result.current,
+    ).toBe(false);
   });
 
   it("falls back to the default for a value of the wrong type or bad JSON", async () => {
     vi.stubEnv("NEXT_PUBLIC_PW_TEST", "true");
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ "hire-experts": "yes" }),
+      JSON.stringify({ "generic-trigger-agents": "yes" }),
     );
     const { Flag, useGetFlag } = await loadFlags();
 
-    expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      false,
-    );
+    expect(
+      renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS)).result.current,
+    ).toBe(false);
 
     window.localStorage.setItem(STORAGE_KEY, "{not json");
-    expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      false,
-    );
+    expect(
+      renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS)).result.current,
+    ).toBe(false);
   });
 
   it("wins over a build-time env override", async () => {
     vi.stubEnv("NEXT_PUBLIC_PW_TEST", "true");
-    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS", "true");
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS", "true");
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ "hire-experts": false }),
+      JSON.stringify({ "generic-trigger-agents": false }),
     );
     const { Flag, useGetFlag } = await loadFlags();
 
-    expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      false,
-    );
+    expect(
+      renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS)).result.current,
+    ).toBe(false);
   });
 });

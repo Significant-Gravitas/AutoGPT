@@ -7,6 +7,7 @@ import {
   getCompleteBrainDumpGreetingMockHandler200,
   getGetBrainDumpIntroMockHandler200,
   getGetBrainDumpRecommendedProvidersMockHandler200,
+  getGetBrainDumpSuggestedTasksMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import {
@@ -16,7 +17,11 @@ import {
 import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
-import { getExecutionsMock } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
+import {
+  getExecutionsMock,
+  getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
+} from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -41,6 +46,8 @@ export const mockHandlers = [
   http.get("/api/proxy/api/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
+  // No flag vendor unless a test provides one, so every flag serves its default.
+  getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),
@@ -55,6 +62,8 @@ export const mockHandlers = [
     greeting_done: true,
   }),
   getCompleteBrainDumpGreetingMockHandler200({ greeting_done: true }),
+  // No suggested first tasks unless a test sets some up.
+  getGetBrainDumpSuggestedTasksMockHandler200({ tasks: [], stored: false }),
   // Ready by default so the preparing step's recommendation gate never
   // holds unrelated tests; gate tests override with ready: false.
   getGetBrainDumpRecommendedProvidersMockHandler200({
@@ -69,6 +78,9 @@ export const mockHandlers = [
   ...getCreditsMock(),
   ...getDefaultMock(),
   ...getEmailMock(),
+  // No answers waiting to run unless a test sets them up; random rows would
+  // seed receipts into every chat's approval box.
+  getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
   ...getExecutionsMock(),
   ...getExpertsMock(),
   ...getFilesMock(),

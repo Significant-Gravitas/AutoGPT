@@ -9,11 +9,14 @@ import functools
 import json
 import logging
 import threading
+import time
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from posthog import Posthog
 
+from backend.util.posthog_client import revision_properties
 from backend.util.settings import Settings
 
 from .definition_cache import (
@@ -42,6 +45,18 @@ _definition_cache: RedisFlagDefinitionCache | MemoryFlagDefinitionCache | None =
 _client_lock = threading.Lock()
 _init_attempted = False
 _shut_down = False
+
+# The definitions a client polls leave out some flags PostHog still answers
+# over /flags (one in its newer config format, for instance), so a read of a
+# flag they lack asks /flags. Once /flags has had no answer for one either (a
+# flag nobody created), reads of it stop asking for this long: each ask is a
+# network round trip on the caller's path.
+UNANSWERED_RECHECK_SECONDS = 300
+# Per client: each flag its definitions lack that /flags had no answer for,
+# with when that was learned.
+_unanswered: weakref.WeakKeyDictionary[Posthog, dict[str, float]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def is_configured() -> bool:
@@ -72,6 +87,8 @@ async def evaluate_flag(
     if client is None:
         logger.debug(f"PostHog not configured, using default={default} for {flag_key}")
         return default, False
+    if _known_unanswered(client, flag_key):
+        return default, False
 
     try:
         # The read does network I/O whenever the local-evaluation poller has
@@ -94,6 +111,7 @@ async def evaluate_flag(
 
     if result is None:
         logger.debug(f"PostHog returned no answer for {flag_key}, using {default}")
+        _unanswered.setdefault(client, {})[flag_key] = time.monotonic()
         return default, False
 
     # A conclusive "off" is the answer. Serving a payload here instead would
@@ -222,6 +240,7 @@ def _build_client() -> Posthog | None:
         enable_local_evaluation=bool(secret_key),
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,
+        super_properties=revision_properties(settings),
     )
     _init_attempted = True
     logger.info(
@@ -245,3 +264,13 @@ def _decoded(payload: Any, value: Any) -> Any:
 def _loaded_empty() -> bool:
     last = _definition_cache.definitions if _definition_cache else None
     return last is not None and not last.get("flags")
+
+
+def _known_unanswered(client: Posthog, flag_key: str) -> bool:
+    """Whether /flags recently had no answer for a flag the definitions lack."""
+    learned = _unanswered.get(client, {}).get(flag_key)
+    if learned is None or time.monotonic() - learned > UNANSWERED_RECHECK_SECONDS:
+        return False
+    # One created since is read from its definition from the next poll on.
+    defined = defined_flag_keys()
+    return defined is not None and flag_key not in defined

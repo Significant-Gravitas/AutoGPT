@@ -16,14 +16,13 @@ const expertMapState = vi.hoisted(() => ({
 const sendNewMessage = vi.hoisted(() => vi.fn());
 const queueFollowUpMessage = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    CHAT_MODE_OPTION: "chat-mode-option",
-    HIRE_EXPERTS: "hire-experts",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-  },
-  useGetFlag: (flag: string) => flag === "hire-experts",
-}));
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => false };
+});
 
 vi.mock("nuqs", () => ({
   parseAsString: {},

@@ -407,6 +407,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    public_search_requests_per_minute: int = Field(
+        default=30,
+        ge=1,
+        description="Store search requests one signed-out client may make per minute.",
+    )
+    public_search_user_requests_per_minute: int = Field(
+        default=120,
+        ge=1,
+        description="Store search requests one signed-in account may make per minute.",
+    )
+    public_search_embeddings_per_minute: int = Field(
+        default=1000,
+        ge=0,
+        description=(
+            "New query embeddings store search may request per minute across all "
+            "clients; past it, store search ranks by text match alone."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -674,6 +692,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "deferred. Auth emails and internal ops mail are unaffected."
         ),
     )
+    owner_email_daily_limit: int = Field(
+        default=20,
+        description=(
+            "Most emails a user's own runs may send to that user's account "
+            "address in a UTC day, through SendEmailToMeBlock."
+        ),
+    )
 
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
@@ -702,6 +727,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "Postmark message stream for Alerts, Briefings and account mail. "
             "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    # Off until the privacy policy names email tracking. Auth mail is never
+    # tracked: its links carry sign-in tokens.
+    postmark_track_opens_and_clicks: bool = Field(
+        default=False,
+        description=(
+            "Ask Postmark to track opens (a tracking pixel) and clicks (links "
+            "rewritten through Postmark) in notification emails. Postmark "
+            "reports them to the webhook, which sends email_opened and "
+            "email_clicked to PostHog. Overrides the stream's own setting."
         ),
     )
     email_asset_base_url: str = Field(
@@ -848,6 +884,44 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    auth_ip_event_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days the sign-up and sign-in IP of an account is kept for the admin "
+            "users page before the daily retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_pass_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days a finished dream pass's record is kept before the weekly "
+            "retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_demotion_protect_days: int = Field(
+        default=30,
+        ge=0,
+        le=3650,
+        description=(
+            "The dream pass's deterministic recall guard: days after a fact "
+            "was last recalled during which its demotion writes, and the "
+            "ratification sweep's supersession of an unratified proposal, "
+            "leave it alone, unless the demotion is a contradiction or the "
+            "user's own retraction. 0 turns this guard off; it does not change the "
+            "sanitize prompt's own, stricter rule against demoting recalled "
+            "facts for staleness. The default of 30 is a floor, not a tuned "
+            "value: long enough that a few weeks away never makes a relied-on "
+            "memory look unused, to be tuned from the eval driver's "
+            "demotion-damage data (0-3650 days)"
+        ),
+    )
+
     stripe_tier_reconcile_interval_hours: int = Field(
         default=6,
         ge=1,
@@ -926,10 +1000,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
+        default=FeatureFlagBackend.POSTHOG,
+        description="Which vendor answers feature flag reads: posthog "
+        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
+        "log every disagreement).",
     )
 
     @field_validator("feature_flag_backend", mode="before")
@@ -947,9 +1021,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         except ValueError:
             logger.warning(
                 f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return FeatureFlagBackend.POSTHOG
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,

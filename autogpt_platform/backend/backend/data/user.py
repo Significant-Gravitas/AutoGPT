@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -18,9 +19,11 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhere
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma, query_raw_with_schema, transaction
+from backend.data.db_accessors import user_db
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
+    OAuth2Credentials,
     User,
     UserIntegrations,
     UserMetadata,
@@ -53,6 +56,7 @@ settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
+_INVALID_UNSUBSCRIBE_TOKEN = "Invalid unsubscribe token"
 
 
 class UserCreationResult(BaseModel):
@@ -132,7 +136,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         if was_created:
             signup_method = await _signup_method(user.id, user_data)
             track_signup_completed(user_id=user.id, signup_method=signup_method)
-            set_account_properties(user.id, user.email, signup_method)
+            set_account_properties(
+                user.id, user.email, signup_method, user_data.get("role")
+            )
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
@@ -240,6 +246,25 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
         email=user.email,
         created_at=user.createdAt,
     )
+
+
+@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+async def is_user_banned(user_id: str) -> bool:
+    """Whether an admin ban (Better Auth's ``banned``/``banExpires``) holds now.
+
+    Works in any process; the cache is read before the DatabaseManager is.
+    Lookup errors propagate, and ``@cached`` stores no call that raised.
+    """
+    return await user_db().is_auth_user_banned(user_id)
+
+
+async def is_auth_user_banned(user_id: str) -> bool:
+    """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
+    and a missing auth row are not bans."""
+    user = await AuthUser.prisma().find_unique(where={"id": user_id})
+    if user is None or not user.banned:
+        return False
+    return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
 
 
 class OrphanedAuthIdentity(BaseModel):
@@ -352,7 +377,8 @@ async def get_user_by_email(email: str) -> Optional[User]:
         user = await prisma.user.find_unique(where={"email": email})
         return User.from_db(user) if user else None
     except Exception as e:
-        raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+        # Not the address: this message reaches logs and Sentry.
+        raise DatabaseError(f"Failed to get user by email: {e}") from e
 
 
 async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
@@ -375,25 +401,6 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
         order={"email": "asc"},
     )
     return [(u.id, u.email) for u in users]
-
-
-async def update_user_email(user_id: str, email: str):
-    try:
-        # Get old email first for cache invalidation
-        old_user = await prisma.user.find_unique(where={"id": user_id})
-        old_email = old_user.email if old_user else None
-
-        await prisma.user.update(where={"id": user_id}, data={"email": email})
-
-        # Selectively invalidate only the specific user entries
-        get_user_by_id.cache_delete(user_id)
-        if old_email:
-            get_user_by_email.cache_delete(old_email)
-        get_user_by_email.cache_delete(email)
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to update user email for user {user_id}: {e}"
-        ) from e
 
 
 async def create_default_user() -> Optional[User]:
@@ -460,6 +467,50 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
                 exc_info=True,
             )
     return credentials
+
+
+async def get_near_expiry_oauth_credentials(
+    refresh_before: int,
+) -> list[tuple[str, OAuth2Credentials]]:
+    """Return refreshable user OAuth credentials expired at or before the cutoff.
+
+    This cross-user query is for trusted system callers such as the scheduler,
+    never user-scoped requests. Access-token expiry does not invalidate a refresh grant.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+    )
+    now = int(time.time())
+    cryptor = JSONCryptor()
+    candidates: list[tuple[str, OAuth2Credentials]] = []
+
+    for row in rows:
+        try:
+            credential = CREDENTIALS_ADAPTER.validate_python(
+                cryptor.decrypt(row.encryptedPayload)
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {row.ownerId}; skipping"
+            )
+            continue
+
+        if credential.type != "oauth2":
+            continue
+        if (
+            credential.refresh_strategy == "oauth_handler"
+            and not credential.is_managed
+            and credential.refresh_token is not None
+            and credential.access_token_expires_at is not None
+            and credential.access_token_expires_at <= refresh_before
+            and (
+                credential.refresh_token_expires_at is None
+                or credential.refresh_token_expires_at > now
+            )
+        ):
+            candidates.append((row.ownerId, credential))
+
+    return candidates
 
 
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
@@ -631,6 +682,8 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
     try:
         user = await PrismaUser.prisma().find_unique_or_raise(where={"id": user_id})
         return _preference_from_user(user)
+    except RecordNotFoundError as e:
+        raise NotFoundError(f"User not found with ID: {user_id}") from e
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification preference for user {user_id}: {e}"
@@ -656,12 +709,14 @@ async def update_user_notification_preference(
 
         user = await PrismaUser.prisma().update(where={"id": user_id}, data=update_data)
         if not user:
-            raise ValueError(f"User not found with ID: {user_id}")
+            raise NotFoundError(f"User not found with ID: {user_id}")
 
         # Invalidate cache for this user since notification preferences are
         # part of user data
         get_user_by_id.cache_delete(user_id)
         return _preference_from_user(user)
+    except NotFoundError:
+        raise
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user notification preference for user {user_id}: {e}"
@@ -754,36 +809,49 @@ def generate_unsubscribe_link(user_id: str) -> str:
 
 async def unsubscribe_user_by_token(token: str) -> None:
     """Unsubscribe a user from all notifications using the token"""
+    user_id = _verify_unsubscribe_token(token)
+    # A deleted user's token gets a forged token's answer, which names no user.
+    email = await get_user_email_by_id(user_id)
+    if email is None:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN)
     try:
-        # Decode the token
-        decoded = base64.urlsafe_b64decode(token).decode("utf-8")
-        user_id, received_signature_hex = decoded.split(":", 1)
-
-        # Verify the signature
-        secret_key = settings.secrets.unsubscribe_secret_key
-        expected_signature = hmac.new(
-            secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
-        ).digest()
-
-        if not hmac.compare_digest(expected_signature.hex(), received_signature_hex):
-            raise ValueError("Invalid token signature")
-
-        user = await get_user_by_id(user_id)
         # One-click unsubscribe turns everything off, including store
         # verdicts — this is the trapdoor, and the volume knob in the Briefing
         # footer is what most people should be using instead.
         await update_user_notification_preference(
-            user.id,
+            user_id,
             NotificationPreferenceDTO(
-                email=user.email,
+                email=email,
                 briefing_frequency=BriefingFrequency.OFF,
                 alerts_enabled=False,
                 store_verdicts_enabled=False,
                 daily_limit=0,
             ),
         )
-    except Exception as e:
-        raise DatabaseError(f"Failed to unsubscribe user by token: {e}") from e
+    except NotFoundError as e:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
+
+
+def _verify_unsubscribe_token(token: str) -> str:
+    """Return the token's user id; a token we did not issue is a ValueError
+    whose message leaves the token out, because the token never expires."""
+    try:
+        decoded = base64.urlsafe_b64decode(token).decode("utf-8")
+        user_id, received_signature_hex = decoded.split(":", 1)
+    except ValueError as e:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
+
+    secret_key = settings.secrets.unsubscribe_secret_key
+    expected_signature_hex = hmac.new(
+        secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    # Bytes, because compare_digest raises TypeError on a non-ASCII str.
+    if not hmac.compare_digest(
+        expected_signature_hex.encode("utf-8"),
+        received_signature_hex.encode("utf-8"),
+    ):
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN)
+    return user_id
 
 
 async def cleanup_user_managed_credentials(
@@ -845,16 +913,17 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
 
         # Dream-system schedules are bound to the timezone at job-creation
         # time; without an eager re-register they'd keep firing at the old
-        # local time. Fire-and-forget so this profile update returns
-        # immediately — the helper's lazy drift-detection path (via the
-        # Redis dedup key value) is the durable backstop if this
-        # fails or the user doesn't trigger a memory write within the
-        # 7-day key TTL.
+        # local time. Every memory scope of the user (the account and each
+        # scheduled expert) is re-registered. Fire-and-forget so this
+        # profile update returns immediately. If it fails, the registry's
+        # timezone check on the scope's next registration (a returning
+        # ingest queue, a lifecycle change, the backfill) is the backstop,
+        # not necessarily the next memory write.
         try:
-            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+            from backend.copilot.dream.registry import reregister_user
 
             task = asyncio.create_task(
-                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                reregister_user(user_id),
                 name=f"tz-reregister-{user_id[:12]}",
             )
             _background_tasks.add(task)
