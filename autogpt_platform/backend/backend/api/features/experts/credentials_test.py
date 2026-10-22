@@ -1,7 +1,7 @@
 """Tests for per-expert credential grants and the enforcement they drive."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -353,12 +353,14 @@ async def test_the_grants_are_read_beside_the_ownership_check(
 
         return read
 
-    seeded = SimpleNamespace(id="expert-1", credentialsSeededAt=datetime.now())
+    seeded = SimpleNamespace(
+        id="expert-1", credentialsSeededAt=datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
     mocker.patch(
         f"{_CREDENTIALS}._owned_expert",
         AsyncMock(side_effect=in_flight("expert", seeded)),
     )
-    mocker.patch(
+    grants = mocker.patch(
         f"{_CREDENTIALS}._grants",
         AsyncMock(side_effect=in_flight("grants", [_Grant("cred-a", "github")])),
     )
@@ -367,6 +369,28 @@ async def test_the_grants_are_read_beside_the_ownership_check(
     assert await expert_allowed_credential_ids("user-1", "expert-1") == ["cred-a"]
     assert sorted(started) == ["expert", "grants"]
     seed.assert_not_awaited()
+    assert grants.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_seed_stamped_while_the_grants_were_read_has_them_read_again(
+    mocker: pytest_mock.MockFixture,
+):
+    """Another call seeded the expert during these reads: its grants landed
+    after this grants read started, its stamp before the expert read ended."""
+    just_seeded = SimpleNamespace(
+        id="expert-1", credentialsSeededAt=datetime.now(timezone.utc)
+    )
+    mocker.patch(f"{_CREDENTIALS}._owned_expert", AsyncMock(return_value=just_seeded))
+    grants = mocker.patch(
+        f"{_CREDENTIALS}._grants",
+        AsyncMock(side_effect=[[], [_Grant("cred-seeded", "github")]]),
+    )
+    seed = mocker.patch(f"{_CREDENTIALS}._seed_if_needed", AsyncMock())
+
+    assert await expert_allowed_credential_ids("user-1", "expert-1") == ["cred-seeded"]
+    seed.assert_not_awaited()
+    assert grants.await_count == 2
 
 
 @pytest.mark.asyncio
