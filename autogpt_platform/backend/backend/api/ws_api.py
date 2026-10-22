@@ -17,7 +17,7 @@ from backend.api.model import (
 )
 from backend.api.utils.cors import build_cors_params
 from backend.data import db, redis_client
-from backend.data.user import DEFAULT_USER_ID, is_user_banned
+from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,
@@ -75,9 +75,6 @@ def get_connection_manager():
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if not settings.config.enable_auth:
-        return DEFAULT_USER_ID
-
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=4001, reason="Missing authentication token")

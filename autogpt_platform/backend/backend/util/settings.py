@@ -235,10 +235,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
-    enable_auth: bool = Field(
-        default=True,
-        description="If authentication is enabled or not",
-    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
