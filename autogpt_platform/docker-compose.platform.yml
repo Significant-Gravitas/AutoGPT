@@ -282,8 +282,9 @@ services:
       <<: *backend-env
       CODEX_TEMP_ROOT: /run/autogpt-codex
     tmpfs: *codex-tmpfs
-    ports:
-      - "8002:8002"
+    # Metrics only. Reachable from the other containers, not from the host.
+    expose:
+      - "8002"
     networks:
       - app-network
     logging:
@@ -321,8 +322,9 @@ services:
       CODEX_TEMP_ROOT: /run/autogpt-codex
       PYTHONUNBUFFERED: "1"
     tmpfs: *codex-tmpfs
-    ports:
-      - "8008:8008"
+    # Metrics only. Reachable from the other containers, not from the host.
+    expose:
+      - "8008"
     volumes:
       - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
@@ -387,8 +389,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8005:8005"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8005"
     volumes:
       - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
@@ -425,8 +428,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8003:8003"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8003"
     networks:
       - app-network
     logging:
@@ -459,8 +463,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8007:8007"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8007"
     networks:
       - app-network
     logging:
@@ -493,8 +498,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8009:8009"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8009"
     networks:
       - app-network
     logging:

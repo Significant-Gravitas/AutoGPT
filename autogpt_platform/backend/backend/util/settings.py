@@ -1218,6 +1218,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     encryption_key: str = Field(default="", description="Encryption key")
 
+    internal_api_key: str = Field(
+        default="",
+        description="Key every internal service sends on its RPC calls and "
+        "requires on the methods it exposes; every backend service of one "
+        "deployment must have the same value. Setup generates it along with "
+        "the other secrets. Blank derives one from ENCRYPTION_KEY, so an "
+        "install set up before it existed keeps working.",
+    )
+
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
     rabbitmq_default_pass: str = Field(
         default="", description="RabbitMQ default password"
