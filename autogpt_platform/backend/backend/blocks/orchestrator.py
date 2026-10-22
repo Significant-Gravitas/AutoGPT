@@ -26,6 +26,8 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
+from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
 from backend.copilot.sdk.env import config as copilot_config
 from backend.data.dynamic_fields import (
     extract_base_field_name,
@@ -1786,6 +1788,15 @@ class OrchestratorBlock(Block):
                 cwd=sdk_cwd,
                 env=sdk_env,
                 model=input_data.model.value or None,
+                # No settings files or MCP servers from the CLI's config dir:
+                # every run on this host shares it.
+                setting_sources=[],
+                extra_args={
+                    "strict-mcp-config": None,
+                    DISABLE_SLASH_COMMANDS_FLAG: None,
+                },
+                # The CLI hands every prompt to the model exactly as written.
+                verbatim_prompts=True,
             )
 
             # Strip system messages from prompt — they're already passed via
@@ -1812,7 +1823,7 @@ class OrchestratorBlock(Block):
                 for p in sdk_prompt:
                     if p.get("role") == "user" and p.get("content"):
                         user_parts.append(str(p["content"]))
-                user_message = (
+                user_message = cli_prompt_text(
                     "\n\n".join(user_parts) if user_parts else input_data.prompt
                 )
 
@@ -1827,6 +1838,9 @@ class OrchestratorBlock(Block):
             # span from the trace.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
+            options.cli_path = await asyncio.to_thread(
+                require_verbatim_prompts_cli, options.cli_path
+            )
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(user_message)
 

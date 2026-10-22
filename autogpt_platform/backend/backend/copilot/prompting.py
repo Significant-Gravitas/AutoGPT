@@ -49,6 +49,8 @@ Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` f
 - When a whole argument is one reference, the platform parses it by type (JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, .xlsx; not .xls) and converts values to the block's input types. Other formats arrive as plain text.
 - For block inputs with `"format": "file"`, pass `workspace://<file_id>#<mime>` directly as the value, not wrapped in `@@agptfile:`. Use a `data:<mime>;base64,...` URI only for small files.
 - Never write a long document (over ~2000 words) in one tool call: the call gets cut off and fails. Compose it from `@@agptfile:` references in one `bash_exec` heredoc, or write one section per call (`cat >` first, then `cat >>`).
+- `read_workspace_file` (workspace images) and `read_file` (working-directory images) return images you can see: PNG/JPEG/GIF/WebP, up to 3 MiB and 2000 pixels per side, first frame only. If `read_file` is unavailable, save the image with `write_workspace_file(source_path=...)` and read it with `read_workspace_file`.
+- To inspect a PDF or video, copy it to the working directory, render the pages or extract the frames you need, then read those images. If a read fails, explain the limitation; don't guess what an unseen image contains or claim to have watched a video.
 
 ### Research
 - Use a few targeted web searches. If 3 similar searches miss, work with what you have.

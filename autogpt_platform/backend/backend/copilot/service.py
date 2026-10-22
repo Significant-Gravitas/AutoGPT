@@ -162,15 +162,11 @@ def _get_langfuse():
 # (which writes the tag). Keeping both in sync prevents drift.
 USER_CONTEXT_TAG = "user_context"
 
-# Tag name the SDK engine wrapped the first turn's Graphiti warm context in
-# when it still stored that block in the first user message. Warm context now
-# goes into each turn's model input only, as a marked ``<temporal_context>``
-# block (``graphiti/context_marker.py``), and nothing writes this tag any
-# more. It stays server-only: user-supplied occurrences are stripped before
-# the message reaches the LLM, and the display strip hides it on messages
-# stored before the change. Those are read without it wherever they become
-# model input or a tool's output, and cleaned from storage and restored CLI
-# session files (``copilot/legacy_first_turn_memory.py``).
+# Legacy tag for warm-context blocks stored in the first user message by
+# older SDK sessions. Current turns put marked ``<temporal_context>`` only
+# in model input. This tag remains so old stored blocks can be identified and
+# stripped from model input, tool output, storage and restored CLI session files
+# (``copilot/legacy_first_turn_memory.py``).
 MEMORY_CONTEXT_TAG = "memory_context"
 
 # Tag name for the environment context block prepended on first turn.

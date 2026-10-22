@@ -1,5 +1,14 @@
 export { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 
+/** Text the backend escaped for a model's context (`&`, `<`, `>`), as the
+ *  user reads it. `&amp;` is decoded last, so a literal `&lt;` survives. */
+export function unescapePromptTags(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 export function asObject(value: unknown): Record<string, unknown> | null {
   if (typeof value === "string") {
     try {

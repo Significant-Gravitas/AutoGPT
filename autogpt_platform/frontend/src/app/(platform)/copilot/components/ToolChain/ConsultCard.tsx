@@ -11,7 +11,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD } from "./ResultCards";
-import { asObject, str } from "./resultHelpers";
+import { asObject, str, unescapePromptTags } from "./resultHelpers";
 
 interface Props {
   output: Record<string, unknown>;
@@ -46,7 +46,8 @@ const VERDICTS: Record<string, VerdictStyle> = {
  *  right, and whether an override in the reply below it was honest.
  *
  *  `reason` and `quotes` are model output conditioned on a user-editable Soul,
- *  so they render as plain text — never markdown, never HTML. */
+ *  so they render as plain text — never markdown, never HTML. The backend
+ *  tag-escapes them for the model; the card shows them as written. */
 export function ConsultVerdictCard({ output }: Props) {
   const verdict = str(output, "verdict") ?? "";
   const style = VERDICTS[verdict];
@@ -54,11 +55,12 @@ export function ConsultVerdictCard({ output }: Props) {
   if (!style || !reviewer) return null;
 
   const quotes = Array.isArray(output.quotes)
-    ? output.quotes.filter(
-        (q): q is string => typeof q === "string" && !!q.trim(),
-      )
+    ? output.quotes
+        .filter((q): q is string => typeof q === "string" && !!q.trim())
+        .map(unescapePromptTags)
     : [];
-  const reason = str(output, "reason");
+  const escapedReason = str(output, "reason");
+  const reason = escapedReason ? unescapePromptTags(escapedReason) : null;
 
   return (
     <div className={cn(CARD, "w-full rounded-3xl p-2.5")}>

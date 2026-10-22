@@ -402,4 +402,20 @@ describe("VirtualTranscript", () => {
     renderTranscript(messages);
     expect(mountedIDs()).toHaveLength(60);
   });
+
+  it("leaves no update behind when it unmounts mid-scroll", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      renderTranscript(Array.from({ length: 500 }, (_, i) => message(i)));
+      scrollTo(bottomOffset(500));
+      cleanup();
+      // Vitest deletes `window` when it tears the environment down, and an
+      // update landing after that fails the run.
+      vi.stubGlobal("window", undefined);
+      vi.advanceTimersByTime(1_000);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
 });
