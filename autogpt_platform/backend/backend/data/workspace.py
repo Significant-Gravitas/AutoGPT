@@ -94,10 +94,7 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
-    Reads first, because the workspace nearly always exists: an upsert with
-    nothing to update cost ~0.2 s a call in prod, against ~0.12 s for a
-    read. Two first calls racing to create it are settled by the unique
-    ``userId``: the one that loses reads the winner's row.
+    Uses upsert to atomically handle concurrent creation attempts.
 
     Args:
         user_id: The user's ID
@@ -105,16 +102,19 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     Returns:
         Workspace instance
     """
-    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
-    if workspace is None:
-        try:
-            workspace = await UserWorkspace.prisma().create(data={"userId": user_id})
-        except UniqueViolationError:
-            workspace = await UserWorkspace.prisma().find_unique(
-                where={"userId": user_id}
-            )
-            if workspace is None:
-                raise
+    try:
+        workspace = await UserWorkspace.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": {"userId": user_id},
+                "update": {},  # No-op update; workspace already exists
+            },
+        )
+    except UniqueViolationError:
+        # Defense-in-depth: should not happen with upsert, but handle gracefully
+        workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+        if workspace is None:
+            raise
 
     return Workspace.from_db(workspace)
 

@@ -902,7 +902,14 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
             raise ValueError(f"User not found with ID: {user_id}")
 
         # Invalidate user caches so subsequent reads see the new timezone.
-        await _invalidate_user_caches(user_id, user.email)
+        # get_user_by_id and get_user_by_email are keyed by a single value
+        # and can be deleted surgically; get_or_create_user is keyed by the
+        # JWT-payload dict so we can't delete a single entry — clear it
+        # entirely.
+        get_user_by_id.cache_delete(user_id)
+        if user.email:
+            get_user_by_email.cache_delete(user.email)
+        get_or_create_user.cache_clear()
 
         # Dream-system schedules are bound to the timezone at job-creation
         # time; without an eager re-register they'd keep firing at the old
@@ -1009,7 +1016,7 @@ async def record_signup_consent(
             # Same invalidation as update_user_timezone: the MailerLite gate
             # reads the opt-out through get_user_by_id, so a stale cached user
             # would let a checkout opened right after signup through.
-            await _invalidate_user_caches(user_id, current.email)
+            _invalidate_user_caches(user_id, current.email)
         if opted_out and current.email:
             await _unsubscribe_from_marketing(user_id, current.email)
 
@@ -1119,7 +1126,7 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
         )
         if not written:
             return None
-        await _invalidate_user_caches(row.id, row.email)
+        _invalidate_user_caches(row.id, row.email)
         return row.id
     except Exception as e:
         # The address stays out of the message: it would reach the logs.
@@ -1160,17 +1167,11 @@ async def record_excluded_country(user_id: str, country: str) -> None:
     )
 
 
-async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
-    # get_user_by_id and get_user_by_email are keyed by a single value and can
-    # be deleted surgically; get_or_create_user is keyed by the JWT-payload
-    # dict, so it can only be cleared whole. That clear SCANs every shard with
-    # the shared cache's synchronous Redis client, seconds on prod's keyspace,
-    # so it runs in a thread rather than stalling every request on this
-    # event loop.
+def _invalidate_user_caches(user_id: str, email: str | None) -> None:
     get_user_by_id.cache_delete(user_id)
     if email:
         get_user_by_email.cache_delete(email)
-    await asyncio.to_thread(get_or_create_user.cache_clear)
+    get_or_create_user.cache_clear()
 
 
 class BriefingCandidate(BaseModel):
@@ -1453,7 +1454,10 @@ async def set_user_default_chat_route(
 
         # Same cache invalidation as update_user_timezone — the route is read
         # through the cached full-user lookup on every unrouted session create.
-        await _invalidate_user_caches(user_id, user.email)
+        get_user_by_id.cache_delete(user_id)
+        if user.email:
+            get_user_by_email.cache_delete(user.email)
+        get_or_create_user.cache_clear()
     except NotFoundError:
         raise
     except Exception as e:

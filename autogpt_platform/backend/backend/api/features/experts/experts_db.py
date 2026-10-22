@@ -46,7 +46,6 @@ from backend.api.features.experts.errors import (
 )
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
-    CheckedExpert,
     Expert,
     ExpertActivity,
     ExpertActivityDay,
@@ -941,40 +940,6 @@ async def resolve_private_expert_tenancy(
     those future scopes fail-closed instead of silently moving them into the
     owner's personal organization.
     """
-    await _active_private_expert_row(user_id, expert_id)
-    return await _private_expert_owner_scope(user_id, expert_id)
-
-
-async def check_private_expert(user_id: str, expert_id: str) -> CheckedExpert:
-    """The owner's active PRIVATE expert and the scope its work belongs to.
-
-    Everything an expert's turn needs to know about its expert before the
-    model runs, in one call: that the expert is still the owner's own (the
-    rules of :func:`resolve_private_expert_tenancy`), the personal
-    organization and team it works in, how far its hire setup got, and the
-    columns its identity prompt is built from. The latest run and the weekly
-    spend that :func:`get_expert` adds for the roster are not read.
-
-    The owner's scope doesn't depend on the expert's row, so the two are read
-    side by side; when both fail, the missing expert is the error.
-    """
-    scope = asyncio.create_task(_private_expert_owner_scope(user_id, expert_id))
-    try:
-        row = await _active_private_expert_row(user_id, expert_id)
-    except BaseException:
-        # Let the scope read finish rather than cancel it: on a user's first
-        # touch it creates their personal organization.
-        await asyncio.gather(scope, return_exceptions=True)
-        raise
-    organization_id, team_id = await scope
-    return CheckedExpert(
-        expert=_to_model(row), organization_id=organization_id, team_id=team_id
-    )
-
-
-async def _active_private_expert_row(
-    user_id: str, expert_id: str
-) -> prisma.models.Expert:
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -986,12 +951,7 @@ async def _active_private_expert_row(
     )
     if expert is None:
         raise ExpertNotFoundError(expert_id)
-    return expert
 
-
-async def _private_expert_owner_scope(
-    user_id: str, expert_id: str
-) -> tuple[str, str | None]:
     organization_id, team_id = await get_user_default_team(user_id)
     if organization_id is None:
         raise ExpertPrivateTenancyNotFoundError(expert_id)
