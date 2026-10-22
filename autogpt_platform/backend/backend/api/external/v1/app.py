@@ -42,7 +42,8 @@ v1_app.add_middleware(SecurityHeadersMiddleware)
 v1_app.include_router(v1_router)
 
 # Mounted sub-apps do NOT inherit exception handlers from the parent app.
-add_exception_handlers(v1_app)
+# Third parties call v1, so a 500 says nothing about what failed inside.
+add_exception_handlers(v1_app, server_error_detail=False)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(v1_app)

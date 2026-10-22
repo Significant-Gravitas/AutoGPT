@@ -40,6 +40,10 @@ from backend.api.external.v2.pagination import (
 )
 from backend.api.external.v2.tenancy import TenantContext, require_auth
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
+from backend.api.utils.rate_limit import RateLimiter
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -478,6 +482,11 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
     anonymous = mocker.patch.object(
         global_rate_limit._anonymous_limiter, "check", return_value=None
     )
+    # The pre-verification counters, which this test isn't about.
+    mocker.patch.object(RateLimiter, "exhausted", return_value=False)
+    mocker.patch.object(
+        global_rate_limit._presented_credential_limiter, "check", return_value=None
+    )
 
     await _call_rate_limit_middleware(headers=[(b"authorization", b"Bearer agpt_test")])
 
@@ -493,7 +502,7 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
 _EXTRA_COLLECTION_ENDPOINTS = {"search", "get_folder_tree"}
 
 # Non-2xx responses every operation must document with the error envelope.
-_DOCUMENTED_ERROR_STATUSES = {"400", "401", "403", "404", "422", "429", "500"}
+_DOCUMENTED_ERROR_STATUSES = {"400", "401", "403", "404", "413", "422", "429", "500"}
 
 
 def test_every_collection_endpoint_returns_the_page_envelope():
@@ -599,9 +608,10 @@ def test_every_operation_documents_the_error_envelope():
     )
 
 
-@pytest.mark.parametrize("code", ["402", "409"])
+@pytest.mark.parametrize("code", ["402", "409", "503"])
 def test_run_start_documents_its_payment_and_idempotency_refusals(code: str):
-    """402: no balance or no plan. 409: the `Idempotency-Key`'s run is not recorded yet."""
+    """402: no balance or no plan. 409: the `Idempotency-Key`'s run is not recorded
+    yet. 503: the key cannot be checked, so the run is not started."""
     from backend.api.external.v2.app import v2_app
     from backend.api.external.v2.errors import ErrorResponse
 
@@ -619,6 +629,7 @@ def test_run_start_documents_its_payment_and_idempotency_refusals(code: str):
         (ValueError("bad"), 400, "bad_request"),
         (RuntimeError("boom"), 500, "internal_error"),
         (HTTPException(status_code=409, detail="taken"), 409, "conflict"),
+        (LibraryAgentInAnotherOrganizationError("elsewhere"), 409, "conflict"),
     ],
 )
 def test_error_bodies_all_have_the_envelope(
@@ -854,12 +865,14 @@ def _mock_review_db(
     from backend.data import execution as execution_db
     from backend.data.execution import ExecutionStatus
 
-    # The run carries the tenancy the reviews are checked against.
+    # The caller's own run, carrying the tenancy the reviews are checked against.
     mocker.patch.object(
         execution_db,
         "get_graph_execution",
         new=mock.AsyncMock(
-            return_value=mock.Mock(organization_id=_tenant.organization_id)
+            return_value=mock.Mock(
+                organization_id=_tenant.organization_id, user_id=_tenant.user_id
+            )
         ),
     )
     mocker.patch.object(

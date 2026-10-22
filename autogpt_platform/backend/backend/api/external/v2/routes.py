@@ -29,6 +29,7 @@ ERROR_RESPONSES: dict[int | str, dict] = {
         status.HTTP_401_UNAUTHORIZED: "Missing or invalid credentials",
         status.HTTP_403_FORBIDDEN: "Credentials lack a required scope",
         status.HTTP_404_NOT_FOUND: "No such resource",
+        status.HTTP_413_CONTENT_TOO_LARGE: "Request body too large",
         status.HTTP_422_UNPROCESSABLE_CONTENT: "Request failed validation",
         status.HTTP_429_TOO_MANY_REQUESTS: "Rate limit exceeded",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Unhandled server error",

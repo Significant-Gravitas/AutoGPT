@@ -16,6 +16,7 @@ from starlette import status
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
 from backend.data import graph as graph_db
+from backend.data.tenancy import writable_organization_ids
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
     clear_unowned_auto_credentials,
@@ -180,6 +181,7 @@ async def update_graph(
     latest_version = owned_by_caller(
         max(existing_versions, key=lambda g: g.version), auth, f"Graph #{graph_id}"
     )
+    organization_ids = await _writable_organizations(graph_id, auth)
 
     internal_graph = update_graph.to_internal(
         id=graph_id, version=latest_version.version + 1
@@ -204,16 +206,17 @@ async def update_graph(
 
     if new_graph_version.is_active:
         await library_db.update_agent_version_in_library(
-            auth.user_id, new_graph_version.id, new_graph_version.version
+            auth.user_id,
+            new_graph_version.id,
+            new_graph_version.version,
+            organization_ids=organization_ids,
         )
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=auth.user_id
         )
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=auth.user_id)
-        await library_db.migrate_webhook_presets_to_new_version(
-            user_id=auth.user_id, new_graph=new_graph_version
-        )
+        await _move_webhook_presets(new_graph_version, auth, organization_ids)
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -324,6 +327,7 @@ async def set_active_version(
             f"Graph #{graph_id} v{new_active_version} not found",
         )
     owned_by_caller(new_active_graph, auth, f"Graph #{graph_id}")
+    organization_ids = await _writable_organizations(graph_id, auth)
 
     # Not `get_graph(version=None)`, which returns the newest version, a draft
     # included.
@@ -335,24 +339,26 @@ async def set_active_version(
     new_active_graph = await before_graph_activate(
         new_active_graph, user_id=auth.user_id
     )
+    # Before the flag flips, as in update_graph: this can refuse (409), and
+    # would leave the graph active on a version its library entry isn't on.
+    # before_graph_activate wrote nothing outside the graph object, so a
+    # refusal here leaves nothing to undo.
+    await library_db.update_agent_version_in_library(
+        auth.user_id,
+        new_active_graph.id,
+        new_active_graph.version,
+        organization_ids=organization_ids,
+    )
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
         version=new_active_version,
         user_id=auth.user_id,
     )
 
-    await library_db.update_agent_version_in_library(
-        auth.user_id, new_active_graph.id, new_active_graph.version
-    )
-
     if current_active_graph and current_active_graph.version != new_active_version:
         await on_graph_deactivate(current_active_graph, user_id=auth.user_id)
 
-    # Keeps webhook URLs firing the active version. A preset it skips is only
-    # logged: unlike the internal route's, this response has no field for it.
-    await library_db.migrate_webhook_presets_to_new_version(
-        user_id=auth.user_id, new_graph=new_active_graph
-    )
+    await _move_webhook_presets(new_active_graph, auth, organization_ids)
 
 
 @graphs_router.patch(
@@ -490,6 +496,49 @@ async def get_marketplace_listing_for_graph(
             detail=f"No marketplace listing found for graph #{graph_id}",
         )
     return MarketplaceAgentDetails.from_internal(agent)
+
+
+async def _move_webhook_presets(
+    new_graph: graph_db.GraphModel,
+    auth: TenantContext,
+    organization_ids: frozenset[str | None],
+) -> None:
+    """Keep the user's webhook presets firing the active version, if the
+    credential may start runs.
+
+    A preset's webhook runs the version it is pinned to, with the credentials
+    stored on the preset, so moving it decides what the next delivery runs:
+    a start, which `WRITE_GRAPH` doesn't grant. Without `RUN_AGENT` the presets
+    stay on the version they run now. Only presets in *organization_ids* move.
+    A preset the migration skips is only logged: unlike the internal route's,
+    this response has no field for it.
+    """
+    if APIKeyPermission.RUN_AGENT not in auth.scopes:
+        logger.info(
+            f"Not moving graph #{new_graph.id}'s webhook presets to "
+            f"v{new_graph.version}: the credential lacks RUN_AGENT"
+        )
+        return
+    await library_db.migrate_webhook_presets_to_new_version(
+        user_id=auth.user_id, new_graph=new_graph, organization_ids=organization_ids
+    )
+
+
+async def _writable_organizations(
+    graph_id: str, auth: TenantContext
+) -> frozenset[str | None]:
+    """The organizations a version saved or activated here may change rows in,
+    once every version of the graph is checked to be the caller's, within them.
+
+    The version becomes the graph's active one and moves the library entry and
+    webhook presets that follow it; on a graph that reaches another
+    organization it would change what that organization runs.
+    """
+    organization_ids = await writable_organization_ids(
+        auth.user_id, auth.organization_id
+    )
+    await graph_db.assert_graph_within(graph_id, auth.user_id, organization_ids)
+    return organization_ids
 
 
 async def _get_graph_version(

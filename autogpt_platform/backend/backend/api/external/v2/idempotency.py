@@ -7,8 +7,9 @@ about whether it started. Without a key the only safe retry is no retry.
 The caller sends `Idempotency-Key: <a value they choose>`. The first request to
 claim it runs; a later request with the same key gets back the run the first one
 created. A request that arrives while the first is still in flight is a 409 —
-there is no run to hand back yet. A key reused on a different request is a 422,
-never the run the key was first used for (draft-ietf-httpapi-idempotency-key-header).
+there is no run to hand back yet. A key is bound to the request it first came
+with: reusing it for another agent or other inputs is a 422, never a replay of
+a run the caller didn't ask for.
 """
 
 import hashlib
@@ -33,7 +34,6 @@ IDEMPOTENCY_HEADER = "Idempotency-Key"
 # Long enough to cover any sane retry window, short enough that a key is not a
 # permanent reservation on a name the caller picked.
 _TTL_SECONDS = 24 * 60 * 60
-_IN_FLIGHT = "in-flight"
 
 
 def idempotency_key(
@@ -43,18 +43,20 @@ def idempotency_key(
         max_length=255,
         description=(
             "Retry-safety token. Repeating a request with the same value returns "
-            "the run the first one started instead of starting another; reusing it "
-            "on a different request is a 422. Scoped to the caller and its "
-            "organization; expires after 24 hours."
+            "the run the first one started instead of starting another. Scoped to "
+            "the caller and its organization, and bound to the request it first "
+            "came with: reusing it for another agent or other inputs is a 422. "
+            "Expires after 24 hours."
         ),
     ),
 ) -> Optional[str]:
     return (key or "").strip() or None
 
 
-def request_fingerprint(*parts: Any) -> str:
-    """What a request asked for, so a key reused on a different one is caught."""
-    return hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()
+def request_fingerprint(**request: Any) -> str:
+    """A digest of what a request asks for, to bind its idempotency key to."""
+    canonical = json.dumps(request, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 @asynccontextmanager
@@ -63,8 +65,8 @@ async def idempotent_run(
 ) -> AsyncIterator["RunClaim"]:
     """Claim `key` for this request, or report the run it already produced.
 
-    An unreachable key store degrades to no idempotency rather than to a refusal:
-    the caller loses retry safety, which is where a caller without a key already is.
+    A key the store can't claim is a retryable 503: running anyway would make
+    the retry the caller sent the key for a second run and a second charge.
     """
     claim = RunClaim(
         key=key,
@@ -79,12 +81,15 @@ async def idempotent_run(
     try:
         redis = await get_redis_async()
         claimed = await redis.set(
-            claim.redis_key, claim.stored(_IN_FLIGHT), nx=True, ex=_TTL_SECONDS
+            claim.redis_key, claim.stored_value(), nx=True, ex=_TTL_SECONDS
         )
     except Exception as e:
-        logger.warning(f"Idempotency store unavailable, proceeding without it: {e}")
-        yield claim
-        return
+        logger.warning(f"Idempotency store unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Cannot claim the {IDEMPOTENCY_HEADER} right now; retry shortly.",
+            headers={"Retry-After": "5"},
+        )
 
     if not claimed:
         claim.existing_run_id = await claim.resolve_existing()
@@ -120,7 +125,11 @@ class RunClaim:
     """One request's hold on an idempotency key."""
 
     def __init__(
-        self, key: Optional[str], user_id: str, organization_id: str, fingerprint: str
+        self,
+        key: Optional[str],
+        user_id: str,
+        organization_id: str,
+        fingerprint: str,
     ) -> None:
         self.key = key
         self.user_id = user_id
@@ -136,12 +145,13 @@ class RunClaim:
         # requests from another, so a shared key there must start its own run.
         return f"v2:idem:{self.user_id}:{self.organization_id}:{self.key}"
 
-    def stored(self, state: str) -> str:
-        return f"{self.fingerprint}:{state}"
+    def stored_value(self, run_id: Optional[str] = None) -> str:
+        """What the key holds: the request it was claimed for, and its run."""
+        return json.dumps({"request": self.fingerprint, "run": run_id})
 
     async def resolve_existing(self) -> str:
-        """The run id the first request recorded: 409 while it is still running,
-        422 if that request asked for something else."""
+        """The run the first request recorded; 409 while it is still running,
+        422 if the key was first sent with a different request."""
         try:
             redis = await get_redis_async()
             stored = await redis.get(self.redis_key)
@@ -150,22 +160,23 @@ class RunClaim:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Cannot tell whether this request already ran; retry shortly.",
+                headers={"Retry-After": "5"},
             )
-        if stored is None:
-            raise self._in_flight()
-        # The client decodes responses; the redis stubs still admit bytes.
-        fingerprint, _, state = (
-            stored if isinstance(stored, str) else stored.decode()
-        ).partition(":")
-        if fingerprint != self.fingerprint:
+        claimed = _parse(stored)
+        if claimed is not None and claimed.get("request") != self.fingerprint:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"{IDEMPOTENCY_HEADER} '{self.key}' was already used for a "
-                "different request. Send a new key for a new request.",
+                "different request. Use a new key for a new request.",
             )
-        if state == _IN_FLIGHT:
-            raise self._in_flight()
-        return state
+        run_id = claimed.get("run") if claimed is not None else None
+        if not isinstance(run_id, str) or not run_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A request with {IDEMPOTENCY_HEADER} '{self.key}' is still "
+                "in flight. Retry once it completes.",
+            )
+        return run_id
 
     async def record(self, run_id: str) -> None:
         """Point the key at the run, so a later retry gets this one back."""
@@ -174,7 +185,7 @@ class RunClaim:
             return
         try:
             redis = await get_redis_async()
-            await redis.set(self.redis_key, self.stored(run_id), ex=_TTL_SECONDS)
+            await redis.set(self.redis_key, self.stored_value(run_id), ex=_TTL_SECONDS)
         except Exception as e:
             logger.warning(f"Could not record idempotent run {run_id}: {e}")
 
@@ -189,9 +200,17 @@ class RunClaim:
         except Exception as e:
             logger.warning(f"Could not release idempotency key: {e}")
 
-    def _in_flight(self) -> HTTPException:
-        return HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"A request with {IDEMPOTENCY_HEADER} '{self.key}' is still "
-            "in flight. Retry once it completes.",
-        )
+
+def _parse(stored: Any) -> Optional[dict[str, Any]]:
+    """What a key holds, or None while its first request hasn't written it.
+
+    The client decodes responses; the redis stubs still admit bytes.
+    """
+    if stored is None:
+        return None
+    text = stored if isinstance(stored, str) else stored.decode()
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None

@@ -53,8 +53,28 @@ def test_the_client_is_the_entry_our_first_proxy_appended(
 ) -> None:
     mocker.patch.object(global_rate_limit.settings.config, "trusted_proxy_count", hops)
 
-    headers = {b"x-forwarded-for": forwarded.encode()} if forwarded else {}
-    assert client_ip({"type": "http", "client": (PEER, 0)}, headers) == expected
+    headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+    scope = {"type": "http", "client": (PEER, 0), "headers": headers}
+    assert client_ip(scope) == expected
+
+
+def test_a_forwarded_header_on_several_lines_is_read_as_one_list(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Each of our proxies may add a line of its own instead of extending one;
+    reading only the last line found too few entries and fell back to the
+    peer, every client in one bucket."""
+    mocker.patch.object(global_rate_limit.settings.config, "trusted_proxy_count", 2)
+    scope = {
+        "type": "http",
+        "client": (PEER, 0),
+        "headers": [
+            (b"x-forwarded-for", CLIENT.encode()),
+            (b"x-forwarded-for", b"34.1.1.1"),
+        ],
+    }
+
+    assert client_ip(scope) == CLIENT
 
 
 async def _call_middleware(forwarded: str) -> None:

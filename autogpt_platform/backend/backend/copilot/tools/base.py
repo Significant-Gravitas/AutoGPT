@@ -321,6 +321,21 @@ GATE_APPROVED = "_gate_approved"
 GATE_DECIDED = "_gate_decided"
 
 
+def parameters_without(parameters: dict[str, Any], *names: str) -> dict[str, Any]:
+    """A copy of a tool's parameter schema without the named arguments."""
+    return {
+        **parameters,
+        "properties": {
+            name: spec
+            for name, spec in parameters.get("properties", {}).items()
+            if name not in names
+        },
+        "required": [
+            name for name in parameters.get("required", []) if name not in names
+        ],
+    }
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
@@ -379,6 +394,34 @@ class BaseTool:
         mcp_server_test.py fails otherwise.
         """
         return False, None
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        """The parameters an external caller may pass; a subset of ``parameters``.
+
+        The MCP server advertises this schema and refuses a call that passes
+        anything outside it. Override to keep an argument off the external
+        surface when it reaches something the v2 API has no permission for.
+        """
+        return self.parameters
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        """Permissions an external call needs on top of ``allow_external_use``'s.
+
+        For a tool whose arguments decide what it does: a branch that writes
+        what the tool's own permissions don't cover names that permission
+        here, so choosing an argument can't reach past the caller's scopes.
+        """
+        return []
+
+    @property
+    def spends_platform_money(self) -> bool:
+        """Whether a call bills the platform's own account, such as a paid model.
+
+        The MCP server checks the caller's paywall and usage allowance before
+        running one, as a chat turn does before it spends the same budget.
+        """
+        return False
 
     def activity_event(
         self,
@@ -548,7 +591,15 @@ class BaseTool:
                 and user_id is not None
             )
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
-            if len(raw_output) > threshold and user_id and session.session_id:
+            # An External API client can't follow a preview to the copy it
+            # points at, so it gets the output itself, cut in the middle past
+            # _MAX_TOOL_OUTPUT_SIZE, and nothing is written to its workspace.
+            if (
+                len(raw_output) > threshold
+                and user_id
+                and session.session_id
+                and not session.external_caller
+            ):
                 raw_output = await _persist_and_summarize(
                     raw_output, user_id, session.session_id, tool_call_id, digest
                 )
@@ -566,7 +617,9 @@ class BaseTool:
                 toolName=self.name,
                 output=ErrorResponse(
                     message=f"An error occurred while executing {self.name}",
-                    error=str(e),
+                    # AutoPilot's model reads the detail to recover; an
+                    # External API client gets no internal detail.
+                    error=None if session.external_caller else str(e),
                     session_id=session.session_id,
                 ).model_dump_json(),
                 success=False,

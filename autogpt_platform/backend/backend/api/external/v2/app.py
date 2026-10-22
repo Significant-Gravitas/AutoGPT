@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from backend.api.middleware.security import SecurityHeadersMiddleware
 from backend.api.utils.openapi import sort_openapi
 
+from .body_limit import BodySizeLimitMiddleware
 from .errors import add_v2_exception_handlers
 from .global_rate_limit import GlobalRateLimitMiddleware
 from .mcp_server import mcp_mount
@@ -147,6 +148,9 @@ v2_app = FastAPI(
 )
 
 v2_app.add_middleware(GlobalRateLimitMiddleware)
+# Inside the security headers, so its 413 carries them; outside the rate
+# limiter, so a body declared too long is refused before any credential check.
+v2_app.add_middleware(BodySizeLimitMiddleware)
 v2_app.add_middleware(SecurityHeadersMiddleware)
 v2_app.include_router(v2_router)
 
