@@ -323,6 +323,18 @@ class RuntimeConfigTest(unittest.TestCase):
                     runtime_config.ensure_runtime_config(path, {})
                 self.assertEqual(path.read_bytes(), before)
 
+    def test_a_refused_boot_leaves_a_version_1_config_as_it_was(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_version_1_config(path)
+            before = path.read_bytes()
+
+            with self.assertRaisesRegex(ValueError, "persisted on first boot"):
+                runtime_config.ensure_runtime_config(
+                    path, {"POSTGRES_PASSWORD": "x" * 40}
+                )
+            self.assertEqual(path.read_bytes(), before)
+
     def test_rejects_version_1_upgrade_with_an_unsafe_configured_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "runtime.env"

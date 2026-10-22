@@ -76,17 +76,20 @@ def main() -> int:
 def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
     """Return the existing secrets or atomically create them on first boot.
 
-    A version 1 config, written before INTERNAL_API_KEY existed, gets one and
-    is saved as the current version before anything reads it."""
+    A version 1 config, written before INTERNAL_API_KEY existed, gets one. It
+    is saved as the current version once it passes every check, so a boot that
+    fails them leaves the file as it was."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
     if path.exists():
         values = _read_config(path)
-        if values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1":
+        upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1"
+        if upgrade:
             values = _upgraded_from_version_1(values, environment)
-            _write_config(path, values)
         _validate_values(values)
         _verify_environment_matches(values, environment)
+        if upgrade:
+            _write_config(path, values)
         path.chmod(0o600)
         return values
 
@@ -218,18 +221,16 @@ def _configured_or_generated(
 def _upgraded_from_version_1(
     values: dict[str, str], environment: Mapping[str, str]
 ) -> dict[str, str]:
-    """Version 1 is the current version without INTERNAL_API_KEY."""
+    """Version 1, the previous version, is version 2 without INTERNAL_API_KEY."""
     if "INTERNAL_API_KEY" in values:
         raise ValueError("runtime configuration has missing or unknown keys")
-    upgraded = {
+    return {
         **values,
         "AUTOGPT_RUNTIME_CONFIG_VERSION": CONFIG_VERSION,
         "INTERNAL_API_KEY": _configured_or_generated(
             environment, "INTERNAL_API_KEY", SECRET_GENERATORS["INTERNAL_API_KEY"]
         ),
     }
-    _validate_values(upgraded)
-    return upgraded
 
 
 def _configured_or_generated_vapid(
