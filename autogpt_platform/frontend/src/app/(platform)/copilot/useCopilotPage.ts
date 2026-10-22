@@ -1,8 +1,14 @@
+import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isValidUUID } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import {
+  peekGreetingDone,
+  setGreetingDone,
+  takeIntroAwaitingFollowup,
+} from "@/services/onboarding/brain-dump-handoff";
 import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
 import {
@@ -12,19 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
-import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
-import {
-  forgetHeldFollowUp,
-  rememberHeldFollowUp,
-  takeHeldFollowUps,
-} from "./helpers/heldFollowUps";
-import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
-import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
-import { useCopilotPendingChips } from "./useCopilotPendingChips";
-import { useCopilotUIStore } from "./store";
-import { useChatSession } from "./useChatSession";
 import {
   buildKickoffMessage,
   getKickoffAttemptToken,
@@ -32,23 +26,28 @@ import {
   shouldClearKickoffParam,
   type ExpertKickoffMetadata,
 } from "./expertKickoff";
-import { useExpertKickoff } from "./useExpertKickoff";
+import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import {
+  forgetHeldFollowUp,
+  rememberHeldFollowUp,
+  takeHeldFollowUps,
+} from "./helpers/heldFollowUps";
+import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
+import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
+import { useCopilotUIStore } from "./store";
+import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
+import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
+import { useExpertKickoff } from "./useExpertKickoff";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
-import { useSettleGate } from "./useSettleGate";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
+import { useSettleGate } from "./useSettleGate";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
-import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
-import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
-import {
-  peekGreetingDone,
-  setGreetingDone,
-  takeIntroAwaitingFollowup,
-} from "@/services/onboarding/brain-dump-handoff";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
   const lastUserIndex = messages.findLastIndex(
@@ -83,11 +82,10 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
 
 function useCopilotPageSession() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const [newThreadParam] = useQueryState("new", parseAsString);
-  const expertId = isExpertsEnabled ? expertIdParam : null;
+  const expertId = expertIdParam;
   const [kickoffParam, setKickoffParam] = useQueryState(
     "kickoff",
     parseAsString,
@@ -108,33 +106,17 @@ function useCopilotPageSession() {
     ? expertsById.get(validExpertIdParam)
     : undefined;
   const kickoffExpertId =
-    isExpertsEnabled && hasExpertsSettled && kickoffExpert?.isArchived === false
+    hasExpertsSettled && kickoffExpert?.isArchived === false
       ? kickoffExpert.id
       : null;
   const isKickoffResolving =
-    isExpertsEnabled &&
-    kickoffParam === "1" &&
-    validExpertIdParam !== null &&
-    isLoadingExperts;
+    kickoffParam === "1" && validExpertIdParam !== null && isLoadingExperts;
 
   useEffect(() => {
     if (kickoffParam !== "1") return;
-    if (
-      !shouldClearKickoffParam(
-        isExpertsEnabled,
-        hasExpertsSettled,
-        kickoffExpertId,
-      )
-    )
-      return;
+    if (!shouldClearKickoffParam(hasExpertsSettled, kickoffExpertId)) return;
     void setKickoffParam(null, { history: "replace" });
-  }, [
-    hasExpertsSettled,
-    isExpertsEnabled,
-    kickoffExpertId,
-    kickoffParam,
-    setKickoffParam,
-  ]);
+  }, [hasExpertsSettled, kickoffExpertId, kickoffParam, setKickoffParam]);
 
   const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
@@ -187,7 +169,7 @@ function useCopilotPageSession() {
     [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
   );
   const isResolvingExpertIdentity = Boolean(
-    isExpertsEnabled && activeExpertId && !hasExpertsSettled,
+    activeExpertId && !hasExpertsSettled,
   );
   const isExpertSendLocked =
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
@@ -214,8 +196,6 @@ function useCopilotPageSession() {
     user,
     isUserLoading,
     isLoggedIn,
-    isExpertsEnabled,
-    isBrainDumpEnabled,
     kickoffParam,
     setKickoffParam,
     kickoffExpertId,
@@ -262,8 +242,6 @@ function useCopilotPageChat(
     user,
     isUserLoading,
     isLoggedIn,
-    isExpertsEnabled,
-    isBrainDumpEnabled,
     kickoffParam,
     setKickoffParam,
     kickoffExpertId,
@@ -474,10 +452,7 @@ function useCopilotPageChat(
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
     // fact locally so no future visit even has to ask.
-    // Gated on the flag: the endpoint 404s without it, and because the
-    // local cache is only written on success, an ungated call retried on
-    // every single message the user ever sent.
-    if (isBrainDumpEnabled && !peekGreetingDone(user?.id)) {
+    if (!peekGreetingDone(user?.id)) {
       completeGreeting(undefined, {
         onSuccess: () => setGreetingDone(user?.id),
         // Retiring the greeting is bookkeeping — the worst case is
@@ -549,11 +524,19 @@ function useCopilotPageChat(
       );
       return;
     }
-    await sendNewMessage(message, files, workspaceFiles, metadata);
+    return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
   // One function for the host's lifetime that runs the latest `sendOrQueue`,
   // so the chat actions and the composer keep their props across flushes.
-  const onSend = useStableCallback(sendOrQueue);
+  const onSend = useStableCallback(
+    async (...args: Parameters<typeof sendOrQueue>) => {
+      await sendOrQueue(...args);
+    },
+  );
+  // A suggested task records which chat its message started.
+  const onStartTask = useStableCallback((message: string) =>
+    sendOrQueue(message),
+  );
 
   useWorkflowImportAutoSubmit({
     onSend: sendOrQueue,
@@ -564,7 +547,7 @@ function useCopilotPageChat(
   const { isKickoffStarting } = useExpertKickoff({
     userId: user?.id ?? null,
     expertId: kickoffExpertId,
-    kickoff: isExpertsEnabled && kickoffParam === "1",
+    kickoff: kickoffParam === "1",
     sessionId,
     sessionExpertId,
     hasPersistedExpertHistory:
@@ -612,6 +595,7 @@ function useCopilotPageChat(
     isLoggedIn,
     createSession,
     onSend,
+    onStartTask,
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,

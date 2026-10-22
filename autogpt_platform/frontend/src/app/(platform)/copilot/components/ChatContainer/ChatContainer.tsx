@@ -107,6 +107,8 @@ export interface ChatContainerProps {
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
   ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -167,6 +169,7 @@ export const ChatContainer = ({
   isUserStopping,
   onCreateSession,
   onSend,
+  onStartTask,
   onStop,
   onEnqueue,
   queuedMessages,
@@ -620,6 +623,7 @@ export const ChatContainer = ({
               isCreatingSession={isCreatingSession}
               onCreateSession={onCreateSession}
               onSend={guardedOnSend}
+              onStartTask={isTurnLocked ? undefined : onStartTask}
               modeSelector={modeSelector}
               voiceMode={
                 isVoiceModeEnabled

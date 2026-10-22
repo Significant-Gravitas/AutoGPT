@@ -1,16 +1,14 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { isKey } from "@/lib/keyboard";
+import { isTouchDevice } from "@/lib/platform";
 import React, {
   KeyboardEvent,
   useCallback,
   useEffect,
-  useInsertionEffect,
   useRef,
   useState,
 } from "react";
-import { isKey } from "@/lib/keyboard";
 import { downloadRecording } from "../../voice/downloadRecording";
-import { isTouchDevice } from "@/lib/platform";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -56,11 +54,7 @@ export function useVoiceRecording({
   const [isSupported, setIsSupported] = useState(false);
   // Sending the draft as transcription context ships with the brain-dump
   // experience (Path B records a dump on top of Otto's intro text).
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isBrainDumpEnabledRef = useRef(isBrainDumpEnabled);
-  useInsertionEffect(() => {
-    isBrainDumpEnabledRef.current = isBrainDumpEnabled;
-  }, [isBrainDumpEnabled]);
+
   const valueRef = useRef(value);
 
   useEffect(() => {
@@ -117,7 +111,7 @@ export function useVoiceRecording({
         const formData = new FormData();
         formData.append("audio", audioBlob);
         const draft = valueRef.current.trim();
-        if (isBrainDumpEnabledRef.current && draft) {
+        if (draft) {
           formData.append("context", draft);
         }
 

@@ -665,10 +665,9 @@ export function ChatMessagesContainer({
 
   // Every chat surface renders through here, so the pending-answer state
   // (clarifying questions, a hire's onboarding, held calls) lives here too
-  // instead of in each host. A read-only viewer answers nothing.
-  if (readOnly) return thread;
+  // instead of in each host. Read-only viewers receive saved answers only.
   return (
-    <PendingAnswerContexts messages={allMessages}>
+    <PendingAnswerContexts messages={allMessages} readOnly={readOnly}>
       {thread}
     </PendingAnswerContexts>
   );

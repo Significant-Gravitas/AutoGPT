@@ -6,7 +6,6 @@ from typing import Any
 
 from graphiti_core.edges import EntityEdge
 
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.recall import recent_episodes, search_facts
 from backend.copilot.graphiti.recall_recheck import recheck
 from backend.copilot.graphiti.recall_render import episode_scope, render, render_episode
@@ -84,12 +83,6 @@ class MemorySearchTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required to search memories.",
-                session_id=session.session_id,
-            )
-
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
                 session_id=session.session_id,
             )
 

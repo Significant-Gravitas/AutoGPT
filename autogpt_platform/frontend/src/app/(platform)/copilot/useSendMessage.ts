@@ -116,7 +116,7 @@ export function useSendMessage({
         ...outgoing,
         parts: [...pendingFileParts, ...workspaceParts],
       });
-      return;
+      return sessionId;
     }
 
     if (isCreatingSessionRef.current) return;
@@ -136,16 +136,16 @@ export function useSendMessage({
     useCopilotStreamStore
       .getState()
       .setPendingFirstSend({ text: trimmed, files: files ?? [], metadata });
-    await createFirstSendSession(metadata?.kind === "expert_kickoff").finally(
-      () => {
-        isCreatingSessionRef.current = false;
-      },
-    );
+    return await createFirstSendSession(
+      metadata?.kind === "expert_kickoff",
+    ).finally(() => {
+      isCreatingSessionRef.current = false;
+    });
   }
 
   async function createFirstSendSession(expertKickoff: boolean) {
     try {
-      await createSession({ expertKickoff });
+      return await createSession({ expertKickoff });
     } catch (err) {
       const {
         pendingFirstSendSessionId,

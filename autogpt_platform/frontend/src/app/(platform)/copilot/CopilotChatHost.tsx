@@ -89,6 +89,7 @@ function ChatHostView({
     isUserStopping,
     createSession,
     onSend,
+    onStartTask,
     onEnqueue,
     queuedMessages,
     isLoadingSession,
@@ -160,6 +161,7 @@ function ChatHostView({
           isUserStopping={isUserStopping}
           onCreateSession={createSession}
           onSend={onSend}
+          onStartTask={onStartTask}
           onStop={stop}
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}

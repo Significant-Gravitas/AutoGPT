@@ -485,6 +485,8 @@ class WorkspaceManager:
         files: Sequence[SkillPackageFile],
         removed_paths: Collection[str],
         scanned_checksums: Collection[str] = (),
+        *,
+        config: Config | None = None,
     ) -> WorkspaceFile:
         """Write a skill package as one change: ``root`` is its SKILL.md,
         ``files`` the other files that changed, and ``removed_paths`` the
@@ -501,13 +503,14 @@ class WorkspaceManager:
         removed = [self._resolve_path(path) for path in removed_paths]
         for path in [*(item.path for item in package), *removed]:
             self._authorize_path(path, write=True)
-        await self._require_package_room(package, removed)
+        config = config if config is not None else Config()
+        await self._require_package_room(package, removed, config.max_file_size_mb)
         for item in package:
             if compute_file_checksum(item.content) not in scanned_checksums:
                 await scan_content_safe(
                     item.content, filename=posixpath.basename(item.path)
                 )
-        storage = await get_workspace_storage()
+        storage = await get_workspace_storage(config=config)
         stored: list[WorkspaceSkillFile] = []
         try:
             for item in package:
@@ -567,14 +570,14 @@ class WorkspaceManager:
                 logger.warning("Failed to clean up unpublished skill blob")
 
     async def _require_package_room(
-        self, package: list[SkillPackageFile], removed: list[str]
+        self, package: list[SkillPackageFile], removed: list[str], max_file_size_mb: int
     ) -> None:
-        max_file_size = Config().max_file_size_mb * 1024 * 1024
+        max_file_size = max_file_size_mb * 1024 * 1024
         for item in package:
             if len(item.content) > max_file_size:
                 raise ValueError(
                     f"File too large: {len(item.content)} bytes exceeds "
-                    f"{Config().max_file_size_mb}MB limit"
+                    f"{max_file_size_mb}MB limit"
                 )
         db = workspace_db()
         storage_limit, current_usage = await asyncio.gather(
