@@ -7,8 +7,13 @@ import pytest
 
 from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
+from backend.blocks._base import BlockCost, BlockCostType
+from backend.blocks.llm import AITextGeneratorBlock
+from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
-from backend.data.model import ProviderName, User
+from backend.data.model import NodeExecutionStats, ProviderName, User
+from backend.executor import billing
+from backend.executor import utils as executor_utils
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
@@ -922,10 +927,9 @@ async def test_orchestrator_agent_mode():
         mock_execution_processor.on_node_execution = AsyncMock(
             return_value=mock_node_stats
         )
-        # Mock charge_node_usage (called after successful tool execution).
+        # Mock charge_node_usage (called before the tool executes; pins the baseline).
         # Returns (cost, remaining_balance). Must be AsyncMock because it is
         # an async method and is directly awaited in _execute_single_tool_with_manager.
-        # Use a non-zero cost so the merge_stats branch is exercised.
         mock_execution_processor.charge_node_usage = AsyncMock(return_value=(10, 990))
 
         # Mock the get_execution_outputs_by_node_exec_id method
@@ -974,7 +978,7 @@ async def test_orchestrator_agent_mode():
 
         # Verify charge_node_usage was actually called for the successful
         # tool execution — this guards against regressions where the
-        # post-execution tool charging is accidentally removed.
+        # tool charging is accidentally removed.
         assert mock_execution_processor.charge_node_usage.call_count == 1
 
 
@@ -1219,3 +1223,204 @@ async def test_orchestrator_agent_falls_back_to_graph_name():
     assert result["type"] == "function"
     assert result["function"]["name"] == "original_agent_name"  # Graph name cleaned
     assert result["function"]["_sink_node_id"] == "test-agent-node-id"
+
+
+async def _run_nested_tool(
+    *,
+    events: list[str],
+    seen_baseline: list,
+    charge_side_effect,
+    dry_run: bool = False,
+    tool_error: Exception | None = None,
+    settle=None,
+) -> None:
+    """Run ``_execute_single_tool_with_manager`` against a tool node whose
+    pre-flight is 60 credits, with the charge and the node run replaced by
+    fakes that record what the executor would see: ``events`` collects
+    "charge" / "run" in call order and ``seen_baseline`` the
+    ``pre_flight_charge`` each run was started with. ``settle``, if given, is
+    awaited with the entry after the run, where the executor reconciles.
+    """
+    from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
+
+    block = OrchestratorBlock()
+    mock_db_client = AsyncMock()
+    target_node = MagicMock()
+    target_node.input_default = {"model": "gpt-5.5-pro"}
+    target_node.block_id = "1f292d4a-41a4-4977-9684-7c8d560b9f91"
+    mock_db_client.get_node.return_value = target_node
+    node_exec_result = MagicMock()
+    node_exec_result.node_exec_id = "nested-exec-id"
+    mock_db_client.upsert_execution_input.return_value = (
+        node_exec_result,
+        {"model": "gpt-5.5-pro", "prompt": "x"},
+    )
+    mock_db_client.get_execution_outputs_by_node_exec_id.return_value = {}
+
+    async def charge(entry):
+        events.append("charge")
+        return await charge_side_effect(entry)
+
+    async def run_node(node_exec, **_kwargs):
+        events.append("run")
+        seen_baseline.append(node_exec.pre_flight_charge)
+        if settle:
+            await settle(node_exec)
+        stats = MagicMock()
+        stats.error = tool_error
+        return stats
+
+    processor = MagicMock()
+    processor.nodes_input_masks = None
+    processor.running_node_execution = defaultdict(MagicMock)
+    processor.execution_stats = MagicMock()
+    processor.execution_stats_lock = threading.Lock()
+    processor.charge_node_usage = AsyncMock(side_effect=charge)
+    processor.on_node_execution = AsyncMock(side_effect=run_node)
+
+    tool_info = ToolInfo(
+        tool_call=MagicMock(id="call_1"),
+        tool_name="write_text",
+        tool_def={"function": {"name": "write_text", "_sink_node_id": "sink"}},
+        input_data={"prompt": "x"},
+        field_mapping={},
+    )
+    params = ExecutionParams(
+        user_id="u",
+        graph_id="g",
+        node_id="n",
+        graph_version=1,
+        graph_exec_id="ge",
+        node_exec_id="ne",
+        execution_context=ExecutionContext(dry_run=dry_run),
+    )
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db_client,
+    ):
+        await block._execute_single_tool_with_manager(tool_info, params, processor)
+
+
+@pytest.mark.asyncio
+async def test_nested_tool_reconciles_against_the_charge_actually_collected():
+    """A nested tool execution is charged before it runs, and reaches
+    reconciliation with a pre-flight baseline equal to what was charged.
+
+    Kills: charging the tool only after it runs (the old flow), where a call
+    that fails before any usage is tracked is reconciled against a pre-flight
+    that was never collected. A missing baseline is caught by the zero-baseline
+    and wallet tests below.
+    """
+
+    async def charge(entry):
+        entry.pre_flight_charge = 60
+        return 60, 40
+
+    events: list[str] = []
+    seen_baseline: list = []
+    await _run_nested_tool(
+        events=events,
+        seen_baseline=seen_baseline,
+        charge_side_effect=charge,
+        tool_error=RuntimeError("tool failed before any usage was tracked"),
+    )
+
+    assert events == ["charge", "run"]
+    assert seen_baseline == [60]
+
+
+@pytest.mark.asyncio
+async def test_nested_tool_baseline_is_zero_when_nothing_was_charged():
+    """If the charge does not happen (dry run) or fails for a reason other than
+    the balance, the tool runs with a baseline of 0, so reconciliation can
+    never refund a pre-flight that was not collected."""
+
+    async def broken_charge(_entry):
+        raise RuntimeError("database unavailable")
+
+    async def no_charge(_entry):  # pragma: no cover - must not be called
+        raise AssertionError("dry runs are not charged")
+
+    events: list[str] = []
+    seen_baseline: list = []
+    await _run_nested_tool(
+        events=events, seen_baseline=seen_baseline, charge_side_effect=broken_charge
+    )
+    assert events == ["charge", "run"]
+    assert seen_baseline == [0]
+
+    events, seen_baseline = [], []
+    await _run_nested_tool(
+        events=events,
+        seen_baseline=seen_baseline,
+        charge_side_effect=no_charge,
+        dry_run=True,
+    )
+    assert events == ["run"]
+    assert seen_baseline == [0]
+
+
+@pytest.mark.asyncio
+async def test_nested_tool_is_not_run_when_the_balance_cannot_cover_it():
+    """The pre-flight is charged before the tool runs, so an insufficient
+    balance stops the agent loop instead of letting the tool run unpaid."""
+    from backend.util.exceptions import InsufficientBalanceError
+
+    async def refused(_entry):
+        raise InsufficientBalanceError(
+            user_id="u", message="not enough credits", balance=0, amount=60
+        )
+
+    events: list[str] = []
+    with pytest.raises(InsufficientBalanceError):
+        await _run_nested_tool(
+            events=events, seen_baseline=[], charge_side_effect=refused
+        )
+    assert events == ["charge"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_tool_call_with_no_usage_leaves_the_wallet_unchanged(
+    monkeypatch,
+):
+    """Through the real charge and reconciliation: a tool call that fails
+    before tracking any usage is charged its pre-flight, then refunded exactly
+    that. The old flow charged only after a successful run, so the refund
+    landed with no charge before it and credited the wallet 25."""
+    ledger: list[int] = []
+
+    def spend(*, cost: int, **_kwargs) -> int:
+        ledger.append(cost)
+        return 1000 - sum(ledger)
+
+    sync_db = MagicMock()
+    sync_db.spend_credits.side_effect = spend
+    async_db = MagicMock()
+    async_db.spend_credits = AsyncMock(side_effect=spend)
+    monkeypatch.setattr(billing, "get_db_client", lambda: sync_db)
+    monkeypatch.setattr(billing, "get_database_manager_async_client", lambda: async_db)
+    monkeypatch.setattr(billing, "get_block", lambda _id: AITextGeneratorBlock())
+    monkeypatch.setattr(billing, "handle_low_balance", lambda *_args: None)
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _id: 25)
+    monkeypatch.setitem(
+        BLOCK_COSTS,
+        AITextGeneratorBlock,
+        [BlockCost(cost_amount=150, cost_type=BlockCostType.COST_USD)],
+    )
+
+    async def reconcile(node_exec):
+        await billing.charge_reconciled_usage(
+            node_exec=node_exec,
+            stats=NodeExecutionStats(),
+            pre_flight_charge=node_exec.pre_flight_charge,
+        )
+
+    await _run_nested_tool(
+        events=[],
+        seen_baseline=[],
+        charge_side_effect=billing.charge_node_usage,
+        tool_error=RuntimeError("tool failed before any usage was tracked"),
+        settle=reconcile,
+    )
+
+    assert ledger == [25, -25]
