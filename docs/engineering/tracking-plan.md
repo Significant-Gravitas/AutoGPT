@@ -311,7 +311,8 @@ merges the website pageviews into the new user:
   An older account signed in on a browser someone else used on agpt.co keeps
   the in-memory id, so `identify()` doesn't merge that person's website visits
   into it. Until the auth store knows the session (after its fallback
-  validation), the choice waits: PostHog stays opted out and in memory, events
+  validation; an auth error leaves it unknown for the page), the choice
+  waits: PostHog stays opted out and in memory, events
   are held, and nothing is stored. The id then settles, PostHog moves onto it
   and starts, before `identify()`.
 - **Logout and account switches forget the shared cookie** when analytics is

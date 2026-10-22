@@ -597,7 +597,7 @@ describe("PostHog hand-over from the marketing site", () => {
   });
 
   it("merges the website visits into an account created here", async () => {
-    document.cookie = "agpt_account_created=email; Path=/";
+    document.cookie = "agpt_account_created=email; Path=/; Secure";
     installCookiebot();
     const { posthog, buildAttributionPayload } = await renderPostHog({
       user: USER,
@@ -614,7 +614,7 @@ describe("PostHog hand-over from the marketing site", () => {
       anonymous_id: WEBSITE_ID,
       signup_method: "email",
     });
-    document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
+    document.cookie = "agpt_account_created=; Path=/; Max-Age=0; Secure";
   });
 
   it("gives the backend the website's id once the visitor accepts", async () => {

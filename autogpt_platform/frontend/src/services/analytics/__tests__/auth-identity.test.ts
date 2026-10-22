@@ -141,7 +141,7 @@ describe("analytics identity on account transitions", () => {
 
     afterEach(() => {
       document.cookie = "ph_phc_test_posthog=; Path=/; Max-Age=0";
-      document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
+      document.cookie = "agpt_account_created=; Path=/; Max-Age=0; Secure";
     });
 
     function initializeAuth() {
@@ -174,6 +174,24 @@ describe("analytics identity on account transitions", () => {
       );
     });
 
+    it("leaves the session unknown when the auth requests fail", async () => {
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: true,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: false,
+        shouldUpdateUser: true,
+      });
+      answerCookiebot({ statistics: true });
+
+      await initializeAuth();
+
+      expect(getAnonymousID()).not.toBe("website-device");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
+    });
+
     it("keeps it from an account the fallback validation finds", async () => {
       // fetchUser can miss a session right after login; validation finds it.
       vi.mocked(fetchUser).mockResolvedValue({
@@ -197,9 +215,9 @@ describe("analytics identity on account transitions", () => {
     it("adopts it for an account created here after the signup flag is gone", () => {
       // The ads signup conversion clears the flag, which can be before the
       // consent answer.
-      document.cookie = "agpt_account_created=email; Path=/";
+      document.cookie = "agpt_account_created=email; Path=/; Secure";
       useAuthStore.setState({ user: userA });
-      document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
+      document.cookie = "agpt_account_created=; Path=/; Max-Age=0; Secure";
 
       answerCookiebot({ statistics: true });
 
@@ -215,7 +233,7 @@ describe("analytics identity on account transitions", () => {
     });
 
     it("adopts it for an account created in this browser", () => {
-      document.cookie = "agpt_account_created=email; Path=/";
+      document.cookie = "agpt_account_created=email; Path=/; Secure";
       useAuthStore.setState({ user: userA });
 
       answerCookiebot({ statistics: true });

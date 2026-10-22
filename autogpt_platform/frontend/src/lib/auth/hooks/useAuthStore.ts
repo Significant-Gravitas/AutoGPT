@@ -102,15 +102,18 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
                 hasLoadedUser: true,
                 isUserLoading: false,
               });
+            } else if (!result.hasLoadedUser) {
+              // fetchUser answered without an error that there is no session,
+              // and the fallback found none either. Only then is the visitor
+              // known to be signed out; after an error the session stays
+              // unknown, so an older account can't take the marketing site's
+              // visitor id (anonymous-id.ts).
+              setAnalyticsIdentitySignedIn(false);
             }
           }
         } else {
           set({ isUserLoading: false });
         }
-        // Signed out only once the fallback validation has had its say: a
-        // signed-out result before it would let an older account take the
-        // marketing site's visitor id (anonymous-id.ts).
-        if (!get().user) setAnalyticsIdentitySignedIn(false);
 
         const existingCleanup = get().listenersCleanup;
         if (existingCleanup) {
