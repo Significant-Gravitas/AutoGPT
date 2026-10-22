@@ -221,6 +221,9 @@ jobs:
       packages: write
     env:
       BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-buildcache
+      E2E_SEED_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-seed
+      # Both legs build the same images; only smoke writes them.
+      WRITE_BUILD_CACHE: ${{ matrix.suite == 'smoke' && ((github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache)) }}
       BUILDKIT_IMAGE: docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
     steps:
@@ -230,14 +233,31 @@ jobs:
           ref: ${{ github.sha }}
           submodules: recursive
 
-      - name: Set up tests - Cache E2E test data
-        id: e2e-data-cache
+      # The seed dump is an image in GHCR, not an Actions cache entry: the
+      # repo's Actions cache is full and evicted it within minutes.
+      # The key hashes only what changes the dump's content: the seed script
+      # and the graph it loads, the tables it fills, and the step that dumps
+      # them. Other backend edits keep the key; a dump that no longer loads
+      # falls back to seeding. Bump v4 to force a fresh seed.
+      - name: Set up tests - Compute E2E test data cache key
+        id: e2e-seed-key
         if: matrix.seed
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: /tmp/e2e_test_data.sql
-          # Hash checkout inputs before fresh secrets and resolved Compose exist.
-          key: e2e-test-data-v3-${{ matrix.embeddings && 'emb' || 'noemb' }}-${{ hashFiles('autogpt_platform/backend/**', 'autogpt_platform/autogpt_libs/**', 'autogpt_platform/docker-compose*.yml', 'autogpt_platform/.env.default', '.github/workflows/platform-fullstack-ci.yml') }}
+        working-directory: .
+        env:
+          EMBEDDINGS: ${{ matrix.embeddings && 'emb' || 'noemb' }}
+        run: |
+          inputs_hash=$(
+            {
+              git ls-files -s -- \
+                autogpt_platform/backend/test/e2e_test_data.py \
+                autogpt_platform/backend/agents/calculator-agent.json \
+                autogpt_platform/backend/schema.prisma \
+                autogpt_platform/backend/migrations
+              sed -n '/- name: Set up tests - Create E2E test data$/,/^      - name:/p' \
+                .github/workflows/platform-fullstack-ci.yml
+            } | sha256sum | cut -c1-40
+          )
+          echo "tag=v4-${EMBEDDINGS}-${inputs_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Platform - Pull BuildKit image
         id: buildkit-image
@@ -285,13 +305,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A miss, a pull error or no access (fork PRs) just means seeding below.
+      - name: Set up tests - Pull cached E2E test data from GHCR
+        id: e2e-seed-pull
+        if: matrix.seed
+        continue-on-error: true
+        timeout-minutes: 3
+        working-directory: /tmp
+        run: |
+          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
+          if ! docker pull --quiet "$ref"; then
+            echo "No cached E2E test data at $ref; seeding instead"
+            exit 0
+          fi
+          container=$(docker create "$ref" none)
+          docker cp "$container:/e2e_test_data.sql" /tmp/e2e_test_data.sql
+          docker rm "$container" >/dev/null
+          docker rmi "$ref" >/dev/null
+          echo "hit=true" >> "$GITHUB_OUTPUT"
+
       - name: Set up Platform - Prepare Docker build
         working-directory: autogpt_platform
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
-          # Both legs build the same images; only smoke writes them.
-          WRITE_BUILD_CACHE: ${{ matrix.suite == 'smoke' && ((github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache)) }}
         run: |
           pip install pyyaml
 
@@ -445,18 +482,25 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
 
       - name: Set up tests - Load cached E2E test data
-        if: steps.e2e-data-cache.outputs.cache-hit == 'true'
+        id: e2e-seed-restore
+        if: steps.e2e-seed-pull.outputs.hit == 'true'
         run: |
           echo "✅ Found cached E2E test data, restoring..."
+          # One transaction: a dump that no longer fits the schema leaves
+          # nothing behind, and the seed step below runs instead.
           {
             echo "SET session_replication_role = 'replica';"
             cat /tmp/e2e_test_data.sql
             echo "SET session_replication_role = 'origin';"
-          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -b
+          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -X -v ON_ERROR_STOP=1 --single-transaction -U postgres -d postgres -b || {
+            echo "::warning title=e2e-seed-cache-stale::Cached E2E test data did not load; seeding instead"
+            exit 0
+          }
           # Refresh materialized views after restore
           docker compose -f ../docker-compose.resolved.yml exec -T db \
             psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -b -c "SET search_path TO platform; SELECT refresh_store_materialized_views();"
 
+          echo "restored=true" >> "$GITHUB_OUTPUT"
           echo "✅ E2E test data restored from cache"
 
       - name: Set up Platform - Start (all other services)
@@ -482,7 +526,8 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
 
       - name: Set up tests - Create E2E test data
-        if: matrix.seed && steps.e2e-data-cache.outputs.cache-hit != 'true'
+        id: e2e-seed-create
+        if: matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'
         run: |
           echo "Creating E2E test data..."
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
@@ -505,6 +550,20 @@ jobs:
             postgres > /tmp/e2e_test_data.sql
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
+
+      # Saved as soon as seeding succeeds, so a later test failure still
+      # leaves the dump for the next run. Pull requests only read it.
+      - name: Set up tests - Push E2E test data to GHCR
+        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        working-directory: /tmp
+        run: |
+          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
+          tar -C /tmp -c e2e_test_data.sql | docker import \
+            --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            - "$ref"
+          docker push "$ref"
 
       - name: Set up tests - Verify seeded credentials with fresh encryption key
         if: matrix.seed

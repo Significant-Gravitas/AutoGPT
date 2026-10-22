@@ -1,7 +1,19 @@
-import fnmatch
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+
+SEED_KEY_STEP = "Set up tests - Compute E2E test data cache key"
+SEED_PULL_STEP = "Set up tests - Pull cached E2E test data from GHCR"
+SEED_RESTORE_STEP = "Set up tests - Load cached E2E test data"
+SEED_CREATE_STEP = "Set up tests - Create E2E test data"
+SEED_SAVE_STEP = "Set up tests - Push E2E test data to GHCR"
+
+
+def _step(workflow: str, name: str) -> str:
+    return workflow.split(f"- name: {name}\n", 1)[1].split("\n      - name:", 1)[0]
 
 
 def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
@@ -15,10 +27,7 @@ class E2EMatrixContractTests(unittest.TestCase):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
-        key = next(
-            line for line in workflow.splitlines() if "key: e2e-test-data-" in line
-        )
-        self.assertIn("matrix.embeddings", key)
+        self.assertIn("matrix.embeddings", _step(workflow, SEED_KEY_STEP))
         self.assertEqual(_matrix_leg(workflow, "smoke")["embeddings"], "true")
         self.assertEqual(_matrix_leg(workflow, "journeys")["embeddings"], "false")
 
@@ -96,7 +105,7 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         )[0]
         self.assertIn("--exclude-table='platform.\"PaidUsageActivationPolicy\"'", dump)
 
-    def test_seed_cache_key_uses_pristine_checkout(self):
+    def test_seed_cache_key_is_computed_from_pristine_checkout(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
@@ -104,35 +113,113 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         steps = re.findall(r"^      - name: (.+)$", e2e_job, re.MULTILINE)
         self.assertEqual(
             steps[:2],
-            ["Checkout repository", "Set up tests - Cache E2E test data"],
+            ["Checkout repository", SEED_KEY_STEP],
             "seed cache key must be evaluated before generated env/Compose files exist",
         )
 
-    def test_seed_cache_covers_transitive_inputs(self):
+    def test_seed_dump_is_not_in_the_actions_cache(self):
+        # The repo's Actions cache sits at its cap and evicted the dump within
+        # minutes: 9 hits in 206 smoke jobs (SECRT-2699).
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
-        key = next(
-            line for line in workflow.splitlines() if "key: e2e-test-data-" in line
+        for step in workflow.split("\n      - name: ")[1:]:
+            if "uses: actions/cache" in step:
+                with self.subTest(step=step.splitlines()[0]):
+                    self.assertNotIn("e2e_test_data", step)
+
+    def test_seed_cache_key_covers_only_seed_inputs(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        key_step = _step(workflow, SEED_KEY_STEP)
+        script = key_step.split("run: |\n", 1)[1]
+        hashed = set(
+            re.findall(r"^\s+(autogpt_platform/\S+?)(?: \\)?$", script, re.M)
         )
-        patterns = re.findall(r"'([^']+)'", key)
-        for path in (
-            "autogpt_platform/backend/test/e2e_test_data.py",
-            "autogpt_platform/backend/backend/data/graph.py",
-            "autogpt_platform/backend/backend/blocks/calculator.py",
-            "autogpt_platform/backend/agents/calculator-agent.json",
-            "autogpt_platform/backend/schema.prisma",
-            "autogpt_platform/backend/poetry.lock",
-            "autogpt_platform/autogpt_libs/autogpt_libs/auth/models.py",
-            "autogpt_platform/docker-compose.yml",
-            "autogpt_platform/.env.default",
-            ".github/workflows/platform-fullstack-ci.yml",
-        ):
-            with self.subTest(path=path):
-                self.assertTrue(
-                    any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns),
-                    f"seed cache key does not cover {path}",
+        self.assertEqual(
+            hashed,
+            {
+                "autogpt_platform/backend/test/e2e_test_data.py",
+                "autogpt_platform/backend/agents/calculator-agent.json",
+                "autogpt_platform/backend/schema.prisma",
+                "autogpt_platform/backend/migrations",
+            },
+        )
+        # The dump step's own text, not the whole workflow file.
+        self.assertIn(f"/- name: {SEED_CREATE_STEP}$/", script)
+
+        root = Path(__file__).resolve().parents[2]
+        outputs = []
+        for _ in range(2):
+            with tempfile.NamedTemporaryFile("r", suffix=".out") as out:
+                subprocess.run(
+                    ["bash", "-euo", "pipefail", "-c", script],
+                    cwd=root,
+                    env={**os.environ, "EMBEDDINGS": "emb", "GITHUB_OUTPUT": out.name},
+                    check=True,
                 )
+                outputs.append(out.read())
+        self.assertEqual(outputs[0], outputs[1], "seed cache key is not deterministic")
+        tag = re.fullmatch(r"tag=(\S+)\n", outputs[0])
+        self.assertIsNotNone(tag, outputs[0])
+        assert tag
+        # A valid OCI tag that names the embeddings mode.
+        self.assertRegex(tag[1], r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
+        self.assertIn("-emb-", tag[1])
+
+    def test_seed_dump_restores_from_ghcr_or_falls_back_to_seeding(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("E2E_SEED_IMAGE: ghcr.io/significant-gravitas/", workflow)
+        pull = _step(workflow, SEED_PULL_STEP)
+        restore = _step(workflow, SEED_RESTORE_STEP)
+        create = _step(workflow, SEED_CREATE_STEP)
+        # An unreachable or missing image never fails the job.
+        self.assertIn("continue-on-error: true", pull)
+        self.assertIn("timeout-minutes:", pull)
+        self.assertIn("steps.e2e-seed-pull.outputs.hit == 'true'", restore)
+        # A dump that no longer loads rolls back whole and is seeded fresh.
+        self.assertIn("--single-transaction", restore)
+        self.assertIn("ON_ERROR_STOP=1", restore)
+        self.assertLess(
+            restore.index("--single-transaction"), restore.index("restored=true")
+        )
+        self.assertEqual(
+            re.findall(r"^\s+if: (.+)$", create, re.M),
+            ["matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'"],
+        )
+        self.assertLess(
+            workflow.index(f"- name: {SEED_KEY_STEP}\n"),
+            workflow.index("- name: Set up Platform - Log in to the GHCR build cache\n"),
+        )
+        self.assertLess(
+            workflow.index("- name: Set up Platform - Log in to the GHCR build cache\n"),
+            workflow.index(f"- name: {SEED_PULL_STEP}\n"),
+        )
+
+    def test_seed_dump_is_saved_only_where_build_cache_is_written(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        job_env = workflow.split("\n  e2e_test:\n", 1)[1].split("\n    steps:\n", 1)[0]
+        self.assertIn("WRITE_BUILD_CACHE: ${{", job_env)
+        save = _step(workflow, SEED_SAVE_STEP)
+        self.assertEqual(
+            re.findall(r"^\s+if: (.+)$", save, re.M),
+            [
+                "matrix.seed && env.WRITE_BUILD_CACHE == 'true' && "
+                "steps.e2e-seed-create.outcome == 'success'"
+            ],
+        )
+        self.assertIn("continue-on-error: true", save)
+        self.assertIn('docker push "$ref"', save)
+        self.assertIn("id: e2e-seed-create", _step(workflow, SEED_CREATE_STEP))
+        self.assertLess(
+            workflow.index(f"- name: {SEED_CREATE_STEP}\n"),
+            workflow.index(f"- name: {SEED_SAVE_STEP}\n"),
+        )
 
 
 class E2EImageBuildContractTests(unittest.TestCase):
