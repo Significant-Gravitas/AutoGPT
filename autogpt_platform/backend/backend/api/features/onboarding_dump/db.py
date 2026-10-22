@@ -5,6 +5,7 @@ place, and ``recordingId`` identifies the current one so ``finalize`` can
 be retried safely.
 """
 
+from datetime import datetime
 from typing import Any
 
 from prisma import Json
@@ -177,17 +178,43 @@ async def mark_greeting_seen(user_id: str) -> None:
     await OnboardingBrainDump.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {
-                "userId": user_id,
-                **_TAKE_OWNED_RESET,
-                "recordingId": "greeting-only",
-                "status": BrainDumpStatus.completed,
-                "inputMode": BrainDumpInputMode.skipped,
-                "greetingSeen": True,
-            },
+            "create": {**_greeting_only_row(user_id), "greetingSeen": True},
             "update": {"greetingSeen": True},
         },
     )
+
+
+async def ensure_dump(user_id: str) -> OnboardingBrainDump:
+    """The user's row, creating the same stub as ``mark_greeting_seen`` if absent."""
+    return await OnboardingBrainDump.prisma().upsert(
+        where={"userId": user_id},
+        data={"create": _greeting_only_row(user_id), "update": {}},
+    )
+
+
+def _greeting_only_row(user_id: str) -> dict[str, Any]:
+    return {
+        "userId": user_id,
+        **_TAKE_OWNED_RESET,
+        "recordingId": "greeting-only",
+        "status": BrainDumpStatus.completed,
+        "inputMode": BrainDumpInputMode.skipped,
+    }
+
+
+async def replace_suggested_prompts(
+    user_id: str, read_at: datetime, prompts: list[dict[str, Any]]
+) -> bool:
+    """Write the prompt list, unless the row changed since it was read at ``read_at``.
+
+    Returns ``False`` when another write landed first, so the caller can
+    re-read rather than overwrite a dismiss or a send from another tab.
+    """
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={"userId": user_id, "updatedAt": read_at},
+        data={"suggestedPrompts": Json(prompts)},
+    )
+    return updated == 1
 
 
 # Postgres caps a statement at 32,767 bind parameters, and the first sweep

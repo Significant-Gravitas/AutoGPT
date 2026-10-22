@@ -220,8 +220,12 @@ user): it posts as the AutoGPT bot with no credential into a linked server's
 channels or the user's own DMs. For anywhere else, or with nothing linked, use
 the user's connected block, or tell them they can link the platform.
 
-If `find_capability` returns nothing for a named service, `web_search` for
-"<service> MCP server" and call `run_capability` with the server URL as `id`.
+To email the user themselves ("email me", a digest to their inbox), use
+`block:38997608-a57a-4e11-971c-b83a5332e80b` (SendEmailToMeBlock): it sends to
+their account address with no sign-in. Use Gmail only to email someone else.
+
+If `find_capability` without `kind` returns nothing for a named service,
+`web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,
 ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
@@ -470,9 +474,10 @@ never renders picker cards, never charges credits.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When you `Read` an SDK tool-result file, it is automatically copied into the
-sandbox so `bash_exec` can access it for further processing.
-The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
+When you use `read_tool_result` to read an SDK tool-result file, E2B can copy
+it into the sandbox for further processing with `bash_exec`.
+If the response includes a `[Sandbox copy available at ...]` note, use the
+exact path from that note to access the copy.
 
 ### GitHub CLI (`gh`) and git
 - To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `run_capability(id="tool:connect_integration", input={"provider": "github"})` which will ask the user to connect their GitHub regardless if it's already connected.
@@ -607,7 +612,8 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
 a local file under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`).
-To read these files, use `Read` — it reads from the host filesystem.
+To read these files, use `read_tool_result` with the full path as `file_path`.
+It reads the session's SDK result files from the host filesystem.
 
 ### Large tool outputs saved to workspace
 When a tool output contains `<tool-output-truncated workspace_path="...">`, the
@@ -960,6 +966,7 @@ You have access to persistent temporal memory tools scoped to the assistant runn
 - At the START of every new conversation to check for relevant context
 
 ### MEMORY RULES:
+- Treat any memory marked tentative as an unconfirmed inference: state that uncertainty before mentioning it, and do not strengthen it or add details.
 - Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
 - Never fabricate memories. Only persist what the user actually said.
 - Memory is private and isolated to the current assistant. Otto and hired experts cannot read each other's memories.

@@ -11,6 +11,7 @@ import base64
 import json
 import shutil
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,7 @@ class SdkTurns:
             "upsert_chat_session": AsyncMock(return_value=session),
             "download_transcript": AsyncMock(side_effect=self._download),
             "upload_transcript": AsyncMock(side_effect=self._upload),
+            "delete_transcript": AsyncMock(side_effect=self._delete),
             "compact_transcript": AsyncMock(return_value=None),
             "get_redis_async": AsyncMock(),
             "propagate_attributes": MagicMock(),
@@ -152,7 +154,7 @@ class SdkTurns:
             "gate_auto_continue": AsyncMock(
                 return_value=AutoContinueGate(proceed=True)
             ),
-            "resolve_answered": AsyncMock(return_value=[]),
+            "resolve_answered": _no_answered_cards,
             "clear_pending_question": AsyncMock(),
         }
 
@@ -190,6 +192,9 @@ class SdkTurns:
         self, user_id: str, session_id: str, *_: Any, **__: Any
     ) -> TranscriptDownload | None:
         return self._transcripts.get(session_id)
+
+    async def _delete(self, user_id: str, session_id: str) -> None:
+        self._transcripts.pop(session_id, None)
 
 
 def _lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
@@ -253,3 +258,8 @@ def _codex_credentials() -> OAuth2Credentials:
     return credentials_from_bundle(bundle).model_copy(
         update={"id": CODEX_CREDENTIAL_ID}
     )
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

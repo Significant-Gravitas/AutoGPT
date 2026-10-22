@@ -19,7 +19,6 @@ from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.sdk.provider import OAuthConfig, Provider
 from backend.sdk.registry import AutoRegistry
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -103,26 +102,6 @@ class ProviderBuilder:
         were a per-user credential.
         """
         self._supported_auth_types.add("api_key")
-        return self
-
-    def with_api_key_from_settings(
-        self, settings_attr: str, title: str
-    ) -> "ProviderBuilder":
-        """Use existing API key from settings."""
-        self._supported_auth_types.add("api_key")
-
-        # Try to get the API key from settings
-        settings = Settings()
-        api_key = getattr(settings.secrets, settings_attr, None)
-        if api_key:
-            self._default_credentials.append(
-                APIKeyCredentials(
-                    id=f"{self.name}-default",
-                    provider=self.name,
-                    api_key=api_key,
-                    title=title,
-                )
-            )
         return self
 
     def with_user_password(

@@ -4,6 +4,7 @@ import {
   getPostV2CreateSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
@@ -11,7 +12,7 @@ import {
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutopilotModeStore } from "../autopilotModeStore";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
@@ -22,7 +23,7 @@ import {
   typeAndSend,
 } from "./sse-helpers";
 
-const flags = vi.hoisted(() => ({ autoMode: false, experts: false }));
+const flags = vi.hoisted(() => ({ autoMode: false }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -32,11 +33,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === actual.Flag.COPILOT_AUTO_MODE
-        ? flags.autoMode
-        : flag === actual.Flag.HIRE_EXPERTS
-          ? flags.experts
-          : false,
+      flag === actual.Flag.COPILOT_AUTO_MODE && flags.autoMode,
   };
 });
 
@@ -65,7 +62,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 beforeEach(() => {
   flags.autoMode = true;
-  flags.experts = false;
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+      HttpResponse.json(makeDashboard([])),
+    ),
+  );
 });
 
 afterEach(() => {
@@ -189,7 +190,6 @@ describe("AutoPilot mode selector", () => {
     expect(bodies[0]).toMatchObject({ autopilot_mode: "ask_first" });
   });
   it("starts a new expert thread on the expert's default without sending it", async () => {
-    flags.experts = true;
     const bodies = captureStreamBodies();
     const createBodies: Record<string, unknown>[] = [];
     server.use(
@@ -229,7 +229,6 @@ describe("AutoPilot mode selector", () => {
   });
 
   it("drops a pick left over from an earlier new chat that was never sent", async () => {
-    flags.experts = true;
     const createBodies: Record<string, unknown>[] = [];
     server.use(
       getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
@@ -271,7 +270,6 @@ describe("AutoPilot mode selector", () => {
   });
 
   it("keeps a thread's stored mode over the expert's default", async () => {
-    flags.experts = true;
     server.use(
       getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
     );

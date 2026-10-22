@@ -1308,15 +1308,18 @@ class TestGetOrCreateUserStatus:
             )
 
             result = await user_module.get_or_create_user_with_status(
-                {"sub": "user-hooked", "email": "hook@example.com"}
+                {"sub": "user-hooked", "email": "hook@example.com", "role": "admin"}
             )
 
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
         track.assert_called_once_with(user_id="user-hooked", signup_method="email")
-        # The email type and sign-in method MailerLite segments on.
-        person.assert_called_once_with("user-hooked", "hook@example.com", "email")
+        # The email type and sign-in method MailerLite segments on, and the
+        # token's role, which flags our own team.
+        person.assert_called_once_with(
+            "user-hooked", "hook@example.com", "email", "admin"
+        )
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):
@@ -1994,7 +1997,7 @@ async def test_unsubscribe_error_does_not_repeat_the_token():
     never expires."""
     token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
 
-    with pytest.raises(DatabaseError) as exc:
+    with pytest.raises(ValueError) as exc:
         await user_module.unsubscribe_user_by_token(token)
 
     assert token not in str(exc.value)
