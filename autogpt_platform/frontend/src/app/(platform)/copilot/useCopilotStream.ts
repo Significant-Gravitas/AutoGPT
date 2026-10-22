@@ -309,10 +309,14 @@ export function useCopilotStream({
       };
       const failureForThisTurn = providerFailureRef.current;
       providerFailureRef.current = null;
+      // Resuming keeps the send in flight, and a refused send's text is kept
+      // by `restoreUnsentSend` when the composer is busy.
+      let keepSendMemory = false;
       handleStreamError({
         error,
         providerFailure: failureForThisTurn,
         onRateLimit: (message, limitFailure, origin) => {
+          keepSendMemory = true;
           restoreUnsentSend();
           // A provider's own limit is not answered by upgrading with us, so
           // it opens the continue path instead of the plan dialog.
@@ -341,10 +345,23 @@ export function useCopilotStream({
             setRateLimitMessage(limitFailure?.message || message);
           }
         },
-        onReconnect: () => handleReconnectRef.current(),
-        onPaywall: restoreUnsentSend,
+        onReconnect: () => {
+          keepSendMemory = true;
+          handleReconnectRef.current();
+        },
+        onPaywall: () => {
+          keepSendMemory = true;
+          restoreUnsentSend();
+        },
         isUserStoppingRef,
       });
+      // A turn that failed before answering can leave its echo as the newest
+      // row, which after a reload would make the guard drop the user's resend.
+      if (!keepSendMemory) {
+        useCopilotStreamStore.getState().updateCoord(sessionId, {
+          lastSubmittedMessageText: null,
+        });
+      }
       if (kickoffExpertId) {
         releaseKickoffPending();
         useCopilotStreamStore.getState().updateCoord(sessionId, {
@@ -664,9 +681,19 @@ export function useCopilotStream({
     return `${rawMessages.length}:${last?.parts.length ?? 0}:${textLen}`;
   }, [rawMessages]);
 
+  const stopSdkStream = sdkStopStream(sdkStop, setMessages);
   const stop = useCopilotStop({
     sessionId,
-    stopStream: sdkStopStream(sdkStop, setMessages),
+    stopStream: () => {
+      // A turn stopped before it streams stores no marker, so after a reload
+      // its echo is the newest row; the guard must not treat a resend as a double-click.
+      if (sessionId) {
+        useCopilotStreamStore.getState().updateCoord(sessionId, {
+          lastSubmittedMessageText: null,
+        });
+      }
+      stopSdkStream();
+    },
     isUserStoppingRef,
     setIsUserStopping,
   });
@@ -755,10 +782,10 @@ export function useCopilotStream({
   // Invalidate session + usage caches when the stream completes.
   // Reconnect counter/timer reset on the same transition is owned by
   // `useCopilotReconnect`, which watches `status` internally.
-  // `lastSubmittedMessageText` is intentionally NOT cleared here: it prevents
-  // `getSendSuppressionReason` from allowing a duplicate POST of the same
-  // message immediately after a successful turn. Failed turns are exempt
-  // from duplicate suppression so the error card can retry the same text.
+  // `lastSubmittedMessageText` is intentionally NOT cleared here: a resume
+  // may still re-POST it, and `getSendSuppressionReason` only treats a
+  // resend as a duplicate while its echo is the newest message or the turn
+  // is in flight, so keeping it cannot swallow a later message.
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;

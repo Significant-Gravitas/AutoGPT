@@ -34,6 +34,7 @@ model AuthUser {
 
   sessions AuthSession[]
   accounts AuthAccount[]
+  ipEvents AuthIPEvent[]
 
   @@map("UserAuthIdentity")
 }
@@ -97,6 +98,52 @@ model AuthJwks {
 }
 
 // ============ End auth service (Better Auth) tables ============ //
+
+// Written and enforced by the frontend's Better Auth hooks over raw SQL (hence
+// the database-generated ids); read by the admin users page.
+
+// Where each sign-up and sign-in came from. Sessions can't answer that: a ban
+// deletes them and they expire. Kept `auth_ip_event_retention_days`.
+model AuthIPEvent {
+  id        String          @id @default(dbgenerated("gen_random_uuid()"))
+  userId    String
+  kind      AuthIPEventKind
+  // As Better Auth records a session's IP: an IPv6 address masked to its /64.
+  ipAddress String
+  userAgent String?
+  createdAt DateTime        @default(now())
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ipAddress])
+  @@index([createdAt])
+  @@map("UserAuthIPEvent")
+}
+
+enum AuthIPEventKind {
+  SIGN_UP
+  SIGN_IN
+}
+
+// An IP refused at sign-up and sign-in, or an email domain refused at sign-up.
+model AuthAccessBlock {
+  id          String              @id @default(dbgenerated("gen_random_uuid()"))
+  kind        AuthAccessBlockKind
+  value       String
+  reason      String
+  createdById String?
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime?
+
+  @@unique([kind, value])
+  @@map("UserAuthAccessBlock")
+}
+
+enum AuthAccessBlockKind {
+  IP
+  EMAIL_DOMAIN
+}
 
 // User model to mirror Auth provider users
 model User {
@@ -659,6 +706,7 @@ model DreamPass {
 
   @@index([scopeKey, status])
   @@index([userId, createdAt])
+  @@index([createdAt])
   // Deleting an expert cascades here; without it that scans every pass.
   @@index([expertId])
   // The reaper's scans: open passes whose lease lapsed, oldest first, and

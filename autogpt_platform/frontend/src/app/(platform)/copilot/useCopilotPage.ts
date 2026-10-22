@@ -439,11 +439,19 @@ export function useCopilotPage({
       );
       return;
     }
-    await sendNewMessage(message, files, workspaceFiles, metadata);
+    return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
   // One function for the host's lifetime that runs the latest `sendOrQueue`,
   // so the chat actions and the composer keep their props across flushes.
-  const onSend = useStableCallback(sendOrQueue);
+  const onSend = useStableCallback(
+    async (...args: Parameters<typeof sendOrQueue>) => {
+      await sendOrQueue(...args);
+    },
+  );
+  // A suggested task records which chat its message started.
+  const onStartTask = useStableCallback((message: string) =>
+    sendOrQueue(message),
+  );
 
   useWorkflowImportAutoSubmit({
     // This render's function on purpose: its effect lists `onSend` as a
@@ -504,6 +512,7 @@ export function useCopilotPage({
     isLoggedIn,
     createSession,
     onSend,
+    onStartTask,
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,

@@ -235,10 +235,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
-    enable_auth: bool = Field(
-        default=True,
-        description="If authentication is enabled or not",
-    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
@@ -407,6 +403,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    public_search_requests_per_minute: int = Field(
+        default=30,
+        ge=1,
+        description="Store search requests one signed-out client may make per minute.",
+    )
+    public_search_user_requests_per_minute: int = Field(
+        default=120,
+        ge=1,
+        description="Store search requests one signed-in account may make per minute.",
+    )
+    public_search_embeddings_per_minute: int = Field(
+        default=1000,
+        ge=0,
+        description=(
+            "New query embeddings store search may request per minute across all "
+            "clients; past it, store search ranks by text match alone."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -421,6 +435,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     websocket_server_port: int = Field(
         default=8001,
         description="The port for the websocket server to run on",
+    )
+
+    websocket_server_metrics_port: int = Field(
+        default=8014,
+        description="The port the websocket server serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public websocket port, so a "
+        "client of the server can't read them.",
     )
 
     execution_manager_port: int = Field(
@@ -464,6 +485,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     agent_api_port: int = Field(
         default=8006,
         description="The port for agent server API to run on",
+    )
+
+    agent_api_metrics_port: int = Field(
+        default=8013,
+        description="The port the agent server API serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public API port, so a client of "
+        "the API can't read them.",
     )
 
     notification_service_port: int = Field(
@@ -674,6 +702,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "deferred. Auth emails and internal ops mail are unaffected."
         ),
     )
+    owner_email_daily_limit: int = Field(
+        default=20,
+        description=(
+            "Most emails a user's own runs may send to that user's account "
+            "address in a UTC day, through SendEmailToMeBlock."
+        ),
+    )
 
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
@@ -857,6 +892,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=24,
         description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
+    auth_ip_event_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days the sign-up and sign-in IP of an account is kept for the admin "
+            "users page before the daily retention job deletes it (1-3650 days)"
+        ),
     )
 
     dream_pass_retention_days: int = Field(
@@ -1182,6 +1227,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
     encryption_key: str = Field(default="", description="Encryption key")
+
+    internal_api_key: str = Field(
+        default="",
+        description="Key every internal service sends on its RPC calls and "
+        "requires on the methods it exposes; every backend service of one "
+        "deployment must have the same value. Setup generates it along with "
+        "the other secrets. Blank derives one from ENCRYPTION_KEY, so an "
+        "install set up before it existed keeps working.",
+    )
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
     rabbitmq_default_pass: str = Field(
