@@ -32,6 +32,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
     GraphExecutionEntry,
+    GraphExecutionMeta,
     NodeExecutionEntry,
     NodeExecutionResult,
     NodesInputMasks,
@@ -172,12 +173,15 @@ def _in_the_runners_org(
 def _stop_outside_its_org(
     db_client: "DatabaseManagerClient",
     graph_exec: GraphExecutionEntry,
+    exec_meta: GraphExecutionMeta,
     exec_stats: GraphExecutionStats,
     log_metadata: LogMetadata,
 ) -> None:
     """Fail a run that failed ``_in_the_runners_org`` before it runs any
     further, keeping the record of what it has already done. Its running
-    nodes fail with it; the ones still waiting are failed here."""
+    nodes fail with it; the ones still waiting are failed here. Once it has
+    failed, it's recorded in the user's activity and analytics like any other
+    failed run."""
     log_metadata.warning(
         f"Stopped graph execution #{graph_exec.graph_exec_id}: it was queued "
         "in an org or team its user doesn't belong to."
@@ -192,12 +196,16 @@ def _stop_outside_its_org(
             status=ExecutionStatus.FAILED,
         )
     exec_stats.error = RUN_OUTSIDE_ITS_ORG_ERROR
-    update_graph_execution_state(
+    if not update_graph_execution_state(
         db_client=db_client,
         graph_exec_id=graph_exec.graph_exec_id,
         status=ExecutionStatus.FAILED,
         stats=exec_stats,
-    )
+    ):
+        return
+    exec_meta.status = ExecutionStatus.FAILED
+    activity_events.handle_run_completed(db_client, graph_exec, exec_meta, exec_stats)
+    product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
 
 def _record_execution_failure(
@@ -1149,7 +1157,9 @@ class ExecutionProcessor:
         exec_stats.correctness_score = None
 
         if not _in_the_runners_org(db_client, graph_exec):
-            _stop_outside_its_org(db_client, graph_exec, exec_stats, log_metadata)
+            _stop_outside_its_org(
+                db_client, graph_exec, exec_meta, exec_stats, log_metadata
+            )
             return
 
         timing_info, status = self._on_graph_execution(
