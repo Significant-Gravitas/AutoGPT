@@ -102,6 +102,19 @@ describe("ESLint compiler rules", () => {
     expect(wrong).toEqual([]);
   });
 
+  it("keep every compiler rule on, so none can be dropped quietly", () => {
+    // Inside the compiled folders a rule may also be "warn" for a
+    // grandfathered file; the next test proves each of those reproduces.
+    const wrong = levels.flatMap(({ file, levels }) => {
+      const allowed = isCompiled(file) ? ["error", "warn"] : ["warn"];
+      return levels
+        .filter(({ level }) => !allowed.includes(level))
+        .map(({ rule, level }) => `${file}: ${rule} is ${level}`);
+    });
+
+    expect(wrong).toEqual([]);
+  });
+
   it("still break every rule they are grandfathered for", async () => {
     const grandfathered = levels.flatMap(({ file, levels }) =>
       isCompiled(file)
