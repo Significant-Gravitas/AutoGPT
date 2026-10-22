@@ -21,6 +21,7 @@ afterEach(() => {
 
 describe("ThinkingIndicator loader selection", () => {
   it("renders the pixel grid when the experiment flag is off", () => {
+    vi.stubEnv("NEXT_PUBLIC_COPILOT_DRAWN_LINE_LOADER", "false");
     const { container } = render(<ThinkingIndicator active />);
     const { pixelGrid, drawn } = loaders(container);
 
