@@ -1,5 +1,5 @@
 import { environment } from "@/services/environment";
-import { checkEmailDeliverable } from "./email-deliverability";
+import { acceptsMail } from "./email-deliverability";
 import { mintServiceToken } from "./service-token";
 
 export type AuthEmailType =
@@ -23,17 +23,17 @@ interface SendAuthEmailArgs {
  * configure on either side.
  *
  * In production a failed mint/send throws so an "email sent" UI can't lie
- * about an undeliverable message. Elsewhere the action link is logged to the
- * server console instead (local backends usually have no Postmark credential).
+ * about it; outside production the action link is logged to the server
+ * console instead (local backends usually have no Postmark credential).
+ * An address whose domain DNS says takes no mail is skipped silently, as if
+ * sent, so it can't bounce. Disposable domains still get their email: older
+ * accounts on one need it to reset a password or move to a real address.
  */
 export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
-  // A send that would bounce is dropped as if it went, so the flow behaves
-  // the same and the sender's bounce rate stays down. DNS errors still send.
-  const deliverability = await checkEmailDeliverable(to);
-  if (!deliverability.deliverable) {
-    console.warn("[auth-email] Skipped an undeliverable address", {
+  // DNS errors still send.
+  if (!(await acceptsMail(to))) {
+    console.warn("[auth-email] Skipped an address that takes no mail", {
       type,
-      reason: deliverability.reason,
     });
     return;
   }

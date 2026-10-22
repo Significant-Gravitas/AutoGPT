@@ -20,10 +20,6 @@ const CACHE_MAX_ENTRIES = 1000;
 const NO_DOMAIN_CODES = new Set(["ENOTFOUND"]);
 const NO_RECORDS_CODES = new Set(["ENODATA"]);
 
-export type EmailDeliverability =
-  | { deliverable: true }
-  | { deliverable: false; reason: "disposable" | "no_mail_server" };
-
 export interface DnsLookups {
   resolveMx: (domain: string) => Promise<Array<{ exchange: string }>>;
   resolve4: (domain: string) => Promise<string[]>;
@@ -71,20 +67,21 @@ export async function hasMailServer(
   return value ?? true;
 }
 
-// Disposable is checked everywhere; the mail-server check runs on cloud only,
-// since local and self-hosted setups sign up with test or internal domains
-// (example.com publishes a null MX).
-export async function checkEmailDeliverable(
-  email: string,
-  options: Options = {},
-): Promise<EmailDeliverability> {
-  if (await isDisposableEmail(email, options)) {
-    return { deliverable: false, reason: "disposable" };
-  }
-  if (!(await acceptsMail(email, options))) {
-    return { deliverable: false, reason: "no_mail_server" };
-  }
-  return { deliverable: true };
+// One MX lookup per domain for a whole check: sign-up asks both whether the
+// domain is disposable and whether it takes mail, under one deadline.
+export function sharedLookups(timeoutMs = DNS_TIMEOUT_MS): DnsLookups {
+  const dns = defaultLookups();
+  const mx = new Map<string, Promise<Array<{ exchange: string }>>>();
+  return {
+    ...dns,
+    resolveMx: (domain) => {
+      const cached = mx.get(domain);
+      if (cached) return cached;
+      const answer = withDeadline(dns.resolveMx(domain), timeoutMs);
+      mx.set(domain, answer);
+      return answer;
+    },
+  };
 }
 
 export async function isDisposableEmail(email: string, options: Options = {}) {
@@ -102,6 +99,8 @@ export async function isDisposableEmail(email: string, options: Options = {}) {
   );
 }
 
+// Cloud only: local and self-hosted setups sign up with test or internal
+// domains (example.com publishes a null MX).
 export async function acceptsMail(email: string, options: Options = {}) {
   if (!environment.isCloud()) return true;
   const domain = getEmailDomain(email);
@@ -180,6 +179,17 @@ async function lookUp<T>(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function withDeadline<T>(query: Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () =>
+        reject(Object.assign(new Error("DNS timeout"), { code: "ETIMEOUT" })),
+      timeoutMs,
+    );
+    query.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 
 function defaultLookups(): DnsLookups {

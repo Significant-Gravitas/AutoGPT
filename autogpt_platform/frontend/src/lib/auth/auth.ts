@@ -18,6 +18,7 @@ import {
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import { sharedLookups } from "./email-deliverability";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP } from "./ip-email-cap";
@@ -470,6 +471,7 @@ async function assertEmailSignUpAllowed(
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
-  await assertNotDisposableEmail(email);
-  await assertEmailHasMailServer(email);
+  const dns = sharedLookups();
+  await assertNotDisposableEmail(email, { dns });
+  await assertEmailHasMailServer(email, { dns });
 }

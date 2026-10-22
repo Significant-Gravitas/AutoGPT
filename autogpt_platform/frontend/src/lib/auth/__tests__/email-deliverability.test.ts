@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  checkEmailDeliverable,
+  acceptsMail,
   clearMailServerCache,
   type DnsLookups,
   hasMailServer,
+  isDisposableEmail,
   isDisposableEmailDomain,
 } from "../email-deliverability";
 
@@ -93,13 +94,16 @@ describe("hasMailServer", () => {
     },
   );
 
-  test("fails open when the A lookup errors after no MX", async () => {
-    const dns = lookups({
-      resolveMx: failsWith("ENODATA"),
-      resolve4: failsWith("ESERVFAIL"),
-    });
-    await expect(hasMailServer("half.example", { dns })).resolves.toBe(true);
-  });
+  test.each(["resolve4", "resolve6"] as const)(
+    "fails open when %s errors after no MX",
+    async (lookup) => {
+      const dns = lookups({
+        resolveMx: failsWith("ENODATA"),
+        [lookup]: failsWith("ESERVFAIL"),
+      });
+      await expect(hasMailServer("half.example", { dns })).resolves.toBe(true);
+    },
+  );
 
   test("fails open when DNS is too slow", async () => {
     const dns = lookups({
@@ -125,49 +129,48 @@ describe("hasMailServer", () => {
   });
 });
 
-describe("checkEmailDeliverable", () => {
-  test("flags a disposable domain without a lookup", async () => {
+describe("isDisposableEmail", () => {
+  test("flags a listed domain without a lookup", async () => {
     const dns = lookups();
-    await expect(
-      checkEmailDeliverable("a@mailinator.com", { dns }),
-    ).resolves.toEqual({ deliverable: false, reason: "disposable" });
+    await expect(isDisposableEmail("a@mailinator.com", { dns })).resolves.toBe(
+      true,
+    );
     expect(dns.resolveMx).not.toHaveBeenCalled();
   });
 
-  test("lets a disposable domain through with AUTH_ALLOW_DISPOSABLE_EMAILS", async () => {
+  test("is off with AUTH_ALLOW_DISPOSABLE_EMAILS", async () => {
     vi.stubEnv("AUTH_ALLOW_DISPOSABLE_EMAILS", "true");
     await expect(
-      checkEmailDeliverable("a@mailinator.com", { dns: lookups() }),
-    ).resolves.toEqual({ deliverable: true });
-  });
-
-  test("flags a domain with no mail server", async () => {
-    const dns = lookups({ resolveMx: failsWith("ENOTFOUND") });
-    await expect(
-      checkEmailDeliverable("a@typo.example", { dns }),
-    ).resolves.toEqual({ deliverable: false, reason: "no_mail_server" });
+      isDisposableEmail("a@mailinator.com", { dns: lookups() }),
+    ).resolves.toBe(false);
   });
 
   test("flags a domain whose mail lands on a disposable inbox host", async () => {
     const dns = lookups({
-      resolveMx: async () => [{ exchange: "in.mail.tm." }],
+      resolveMx: vi.fn(async () => [{ exchange: "in.mail.tm." }]),
     });
     await expect(
-      checkEmailDeliverable("a@rotating-inbox.example", { dns }),
-    ).resolves.toEqual({ deliverable: false, reason: "disposable" });
+      isDisposableEmail("a@rotating-inbox.example", { dns }),
+    ).resolves.toBe(true);
   });
+});
 
-  test("skips the mail-server check outside cloud", async () => {
-    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
-    const dns = lookups({ resolveMx: async () => [{ exchange: "" }] });
-    await expect(
-      checkEmailDeliverable("a@example.com", { dns }),
-    ).resolves.toEqual({ deliverable: true });
+describe("acceptsMail", () => {
+  test("refuses a domain with no mail server", async () => {
+    const dns = lookups({ resolveMx: failsWith("ENOTFOUND") });
+    await expect(acceptsMail("a@typo.example", { dns })).resolves.toBe(false);
   });
 
   test("passes a domain with an MX", async () => {
     await expect(
-      checkEmailDeliverable("a@real.example", { dns: lookups() }),
-    ).resolves.toEqual({ deliverable: true });
+      acceptsMail("a@real.example", { dns: lookups() }),
+    ).resolves.toBe(true);
+  });
+
+  test("skips the check outside cloud", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    const dns = lookups({ resolveMx: vi.fn(async () => [{ exchange: "" }]) });
+    await expect(acceptsMail("a@example.com", { dns })).resolves.toBe(true);
+    expect(dns.resolveMx).not.toHaveBeenCalled();
   });
 });

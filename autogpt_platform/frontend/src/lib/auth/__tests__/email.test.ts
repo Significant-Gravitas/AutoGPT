@@ -124,12 +124,12 @@ describe("sendAuthEmail", () => {
     expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(args.to);
   });
 
-  it("skips the send to a disposable domain", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("still sends to a disposable domain", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 
     await sendAuthEmail({ ...args, to: "user@mailinator.com" });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("still sends when the DNS lookup errors", async () => {

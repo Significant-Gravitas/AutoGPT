@@ -193,7 +193,10 @@ describe("IP and email domain blocks", () => {
       );
 
     const response = await signUp(handler, "new@no-mail.example", "192.0.2.1");
+    const mxLookups = lookup.mock.calls.length;
     lookup.mockRestore();
+
+    expect(mxLookups).toBe(1);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
@@ -204,6 +207,7 @@ describe("IP and email domain blocks", () => {
   });
 
   it("lets a sign-up through when the mail-server lookup errors", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     const lookup = vi
       .spyOn(Resolver.prototype, "resolveMx")
       .mockRejectedValue(
