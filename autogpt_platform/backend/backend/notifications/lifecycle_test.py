@@ -188,10 +188,16 @@ async def test_only_the_first_failed_charge_emails():
 
 @pytest.mark.asyncio
 async def test_no_retries_left_is_the_final_notice_not_another_heads_up():
-    calls = await _run(
-        lambda: lifecycle.on_payment_failed(_invoice(next_payment_attempt=None)),
-        _User(),
-    )
+    with patch(
+        "backend.notifications.lifecycle.stripe_call",
+        AsyncMock(return_value={"status": "unpaid"}),
+    ):
+        calls = await _run(
+            lambda: lifecycle.on_payment_failed(
+                _invoice(subscription="sub_1", next_payment_attempt=None)
+            ),
+            _User(),
+        )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.PAYMENT_FINAL_NOTICE
 
