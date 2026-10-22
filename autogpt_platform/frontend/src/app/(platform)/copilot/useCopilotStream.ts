@@ -309,10 +309,14 @@ export function useCopilotStream({
       };
       const failureForThisTurn = providerFailureRef.current;
       providerFailureRef.current = null;
+      // Resuming keeps the send in flight, and a refused send's text is kept
+      // by `restoreUnsentSend` when the composer is busy.
+      let keepSendMemory = false;
       handleStreamError({
         error,
         providerFailure: failureForThisTurn,
         onRateLimit: (message, limitFailure, origin) => {
+          keepSendMemory = true;
           restoreUnsentSend();
           // A provider's own limit is not answered by upgrading with us, so
           // it opens the continue path instead of the plan dialog.
@@ -341,10 +345,23 @@ export function useCopilotStream({
             setRateLimitMessage(limitFailure?.message || message);
           }
         },
-        onReconnect: () => handleReconnectRef.current(),
-        onPaywall: restoreUnsentSend,
+        onReconnect: () => {
+          keepSendMemory = true;
+          handleReconnectRef.current();
+        },
+        onPaywall: () => {
+          keepSendMemory = true;
+          restoreUnsentSend();
+        },
         isUserStoppingRef,
       });
+      // A turn that failed before answering can leave its echo as the newest
+      // row, which after a reload would make the guard drop the user's resend.
+      if (!keepSendMemory) {
+        useCopilotStreamStore.getState().updateCoord(sessionId, {
+          lastSubmittedMessageText: null,
+        });
+      }
       if (kickoffExpertId) {
         releaseKickoffPending();
         useCopilotStreamStore.getState().updateCoord(sessionId, {
@@ -669,7 +686,7 @@ export function useCopilotStream({
     sessionId,
     stopStream: () => {
       // A turn stopped before it streams stores no marker, so after a reload
-      // its echo is the newest row; the guard must not call a resend a double-click.
+      // its echo is the newest row; the guard must not treat a resend as a double-click.
       if (sessionId) {
         useCopilotStreamStore.getState().updateCoord(sessionId, {
           lastSubmittedMessageText: null,

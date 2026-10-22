@@ -181,6 +181,27 @@ describe("sending the same text twice in a row", () => {
     // it would mark the user's resend of "yes" as a double-click and drop it.
     expect(lastSubmittedText()).toBeNull();
   }, 15_000);
+
+  it("forgets a send whose turn failed, so a reload cannot drop a resend", async () => {
+    server.use(
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        async () => {
+          // Long enough to see the send remembered before the failure lands.
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return HttpResponse.json({ detail: "boom" }, { status: 500 });
+        },
+      ),
+    );
+    renderHost();
+
+    await typeAndSend("yes");
+    await waitFor(() => expect(lastSubmittedText()).toBe("yes"));
+
+    await waitFor(() => expect(lastSubmittedText()).toBeNull(), {
+      timeout: 5000,
+    });
+  }, 15_000);
 });
 
 function lastSubmittedText() {
