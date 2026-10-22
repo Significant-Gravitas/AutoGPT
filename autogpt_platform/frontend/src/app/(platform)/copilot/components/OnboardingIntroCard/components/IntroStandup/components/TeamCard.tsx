@@ -62,11 +62,12 @@ export function TeamCard({ team }: Props) {
                 >
                   {member.expert.name}
                 </Text>
+                {/* A phone has room for the name and status only. */}
                 <Text
                   variant="small"
                   tone="muted"
                   as="span"
-                  className="truncate"
+                  className="truncate max-sm:hidden"
                 >
                   {member.area}
                 </Text>
