@@ -285,7 +285,6 @@ describe("AutoPilot mode selector", () => {
   });
 
   it("names the chat's expert in the Unsupervised confirm", async () => {
-    flags.experts = true;
     server.use(
       getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
     );
