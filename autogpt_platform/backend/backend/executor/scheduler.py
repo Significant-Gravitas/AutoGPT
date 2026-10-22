@@ -2860,6 +2860,7 @@ class Scheduler(AppService):
     _schedule_index_ready: bool = False
     _schedule_index_failure_version: int = 0
     _throwaway_dir: tempfile.TemporaryDirectory | None = None
+    _block_load_error: Exception | None = None
 
     def __init__(
         self, register_system_tasks: bool = True, throwaway_jobstores: bool = False
@@ -2889,6 +2890,10 @@ class Scheduler(AppService):
         # Normal operation - check if scheduler is running
         if not self.scheduler.running:
             raise UnhealthyServiceError("Scheduler is not running")
+        if self._block_load_error is not None:
+            raise UnhealthyServiceError(
+                f"Loading the block registry failed: {self._block_load_error}"
+            )
 
         return await super().health_check()
 
@@ -3206,7 +3211,13 @@ class Scheduler(AppService):
                 return
             time.sleep(0.1)
         load_started = time.monotonic()
-        block_count = len(get_blocks())
+        try:
+            block_count = len(get_blocks())
+        except Exception as e:
+            # Unhealthy, so the pod restarts as it did when this ran before serving.
+            self._block_load_error = e
+            logger.exception(f"[{self.service_name}] Loading the block registry failed")
+            return
         logger.info(
             f"[{self.service_name}] Loaded {block_count} blocks in "
             f"{time.monotonic() - load_started:.1f}s"
