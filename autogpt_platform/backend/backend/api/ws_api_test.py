@@ -79,6 +79,27 @@ def test_websocket_server_blocks_localhost_in_production(mocker) -> None:
             WebsocketServer().run()
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+def test_websocket_server_metrics_get_a_listener_of_their_own_only_when_enabled(
+    enabled: bool, mocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENABLE_METRICS", "true" if enabled else "false")
+    serve_websockets = mocker.patch("backend.api.ws_api.uvicorn.run")
+    serve_metrics = mocker.patch("backend.monitoring.instrumentation.start_http_server")
+
+    WebsocketServer().run()
+
+    config = settings.config
+    assert serve_websockets.call_args.kwargs["port"] == config.websocket_server_port
+    if not enabled:
+        serve_metrics.assert_not_called()
+        return
+    serve_metrics.assert_called_once_with(
+        config.websocket_server_metrics_port, addr=config.pyro_host
+    )
+    assert config.websocket_server_metrics_port != config.websocket_server_port
+
+
 @pytest.mark.asyncio
 async def test_websocket_router_subscribe(
     mock_websocket: AsyncMock, mock_manager: AsyncMock, snapshot: Snapshot, mocker
@@ -366,10 +387,9 @@ async def test_handle_subscribe_rejects_unrelated_method(
 
 
 @pytest.mark.asyncio
-async def test_authenticate_websocket_missing_token_closes_4001(mocker) -> None:
+async def test_authenticate_websocket_missing_token_closes_4001() -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {}
 
@@ -384,7 +404,6 @@ async def test_authenticate_websocket_missing_token_closes_4001(mocker) -> None:
 async def test_authenticate_websocket_invalid_token_closes_4003(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(side_effect=ValueError("bad token")),
@@ -403,7 +422,6 @@ async def test_authenticate_websocket_invalid_token_closes_4003(mocker) -> None:
 async def test_authenticate_websocket_missing_sub_closes_4002(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"not_sub": "x"}),
@@ -422,7 +440,6 @@ async def test_authenticate_websocket_missing_sub_closes_4002(mocker) -> None:
 async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-X"}),
@@ -461,7 +478,6 @@ async def test_authenticate_websocket_closed_account_closes_4003(mocker) -> None
 async def test_authenticate_websocket_refuses_a_banned_account(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-X"}),
@@ -485,7 +501,6 @@ async def test_authenticate_websocket_refuses_when_the_ban_is_unreadable(
     told it is banned."""
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-X"}),
@@ -560,19 +575,6 @@ async def test_an_unreadable_ban_keeps_an_open_socket(
 
     mock_websocket.close.assert_not_called()
     mock_manager.subscribe_graph_exec.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_authenticate_websocket_auth_disabled_returns_default(mocker) -> None:
-    from backend.api.ws_api import authenticate_websocket
-
-    mocker.patch.object(settings.config, "enable_auth", False)
-    ws = AsyncMock(spec=WebSocket)
-    ws.query_params = {}
-
-    user_id = await authenticate_websocket(ws)
-
-    assert user_id == DEFAULT_USER_ID
 
 
 # ---------- get_connection_manager singleton ----------

@@ -2107,6 +2107,9 @@ async def stream_chat_post(
                 user_id=user_id,
                 message=message,
                 message_id=message_id,
+                # The id already stops a retransmit; matching on text as well would
+                # drop a resend after a turn stopped before it wrote a reply.
+                dedupe_content=client_message_id is None,
                 message_metadata=message_metadata,
                 message_already_persisted=resume_persisted_kickoff,
                 is_user_message=request.is_user_message,

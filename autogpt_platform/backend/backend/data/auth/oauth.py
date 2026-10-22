@@ -659,11 +659,15 @@ async def refresh_tokens(
     if await is_user_banned(rt.userId):
         raise InvalidGrantError("the account this token belongs to is banned")
 
-    # Revoke old refresh token
-    await PrismaOAuthRefreshToken.prisma().update(
-        where={"token": token_hash},
+    # Revoke the old token atomically: the checks above read a snapshot, so two
+    # concurrent refreshes can both pass them. Only the request whose
+    # conditional write flips revokedAt from NULL may mint new tokens.
+    revoked = await PrismaOAuthRefreshToken.prisma().update_many(
+        where={"token": token_hash, "revokedAt": None},
         data={"revokedAt": now},
     )
+    if revoked != 1:
+        raise InvalidGrantError("refresh token has been revoked")
 
     # Create new access and refresh tokens with same scopes
     scopes = [APIPermission(s) for s in rt.scopes]

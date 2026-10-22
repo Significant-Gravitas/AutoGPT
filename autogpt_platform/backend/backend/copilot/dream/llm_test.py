@@ -16,18 +16,17 @@ import pytest
 from pydantic import BaseModel
 
 from backend.copilot.inference.context import InferenceError, InferenceUsage
-from backend.util.llm.tool_use import auto_tool_choice, force_tool_choice
-
-from .llm import (
+from backend.copilot.inference.parse_output import (
     _extract_first_json_object,
     _strip_json_code_fence,
     parse_structured_output,
 )
-from .structured_output import (
+from backend.copilot.inference.structured_output import (
     output_tool_name,
     structured_request,
     with_output_tool_instruction,
 )
+from backend.util.llm.tool_use import auto_tool_choice, force_tool_choice
 
 
 @pytest.mark.parametrize(

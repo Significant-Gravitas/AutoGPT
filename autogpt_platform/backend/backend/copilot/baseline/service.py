@@ -35,6 +35,7 @@ from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
 )
+from backend.copilot.baseline.image_context import prune_image_context
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     anthropic_thinking_extra_body,
@@ -48,7 +49,11 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
-from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.context import (
+    get_workspace_manager,
+    is_unattended_turn,
+    set_execution_context,
+)
 from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
@@ -91,6 +96,7 @@ from backend.copilot.pending_messages import (
     PendingMessage,
     drain_pending_messages,
     format_pending_as_user_message,
+    pending_message_text,
 )
 from backend.copilot.permissions import allowed_providers, denied_tool_names
 from backend.copilot.prompting import (
@@ -887,10 +893,17 @@ def _prepend_skills_notice_to_current_message(
         return
     for msg in reversed(openai_messages):
         if msg["role"] == "user":
-            existing = msg.get("content", "")
-            if isinstance(existing, str):
-                msg["content"] = notice + existing
+            _add_message_text(msg, notice, prepend=True)
             break
+
+
+def _add_message_text(msg: dict[str, Any], text: str, *, prepend: bool) -> None:
+    content = msg.get("content") or ""
+    if isinstance(content, list):
+        block = {"type": "text", "text": text}
+        msg["content"] = [block, *content] if prepend else [*content, block]
+    else:
+        msg["content"] = text + content if prepend else content + text
 
 
 def _mark_system_message_with_cache_control(
@@ -927,6 +940,7 @@ async def _baseline_llm_caller(
 
     round_text = ""
     try:
+        prune_image_context(messages)
         client = _get_main_client()
         supports_cache = _supports_prompt_cache_markers(state.model)
         if supports_cache:
@@ -1282,6 +1296,8 @@ async def _baseline_tool_executor(
                 tool_call_id=tool_call_id,
                 tool_name=called_name,
                 content=tool_output,
+                is_error=not result.success,
+                image_blocks=[result.image.anthropic()] if result.image else [],
             )
         )
     except Exception as e:
@@ -1342,6 +1358,28 @@ def _mutate_openai_messages(
                     "content": tr.content,
                 }
             )
+        image_content = [
+            block
+            for tr in tool_results
+            if tr.image_blocks
+            for block in (
+                {
+                    "type": "text",
+                    "text": f"Image returned by {tr.tool_name} ({tr.tool_call_id}):",
+                },
+                *[
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{image['source']['media_type']};base64,{image['source']['data']}"
+                        },
+                    }
+                    for image in tr.image_blocks
+                ],
+            )
+        ]
+        if image_content:
+            messages.append({"role": "user", "content": image_content})
     elif response.response_text:
         messages.append({"role": "assistant", "content": response.response_text})
 
@@ -1395,7 +1433,11 @@ def _record_turn_to_transcript(
             # assistant(tool_use) → user(tool_result)
             transcript_builder.append_tool_result(
                 tool_use_id=tr.tool_call_id,
-                content=tr.content,
+                content=(
+                    [{"type": "text", "text": tr.content}, *tr.image_blocks]
+                    if tr.image_blocks
+                    else tr.content
+                ),
             )
     elif response.response_text:
         transcript_builder.append_assistant(
@@ -1658,7 +1700,12 @@ async def _load_prior_transcript(
         # Corrupt file in GCS; overwriting with a valid one is better.
         return True, None
 
-    stripped = strip_for_upload(raw_str)
+    try:
+        stripped = strip_for_upload(raw_str)
+    except ValueError:
+        logger.warning("[Baseline] CLI session content could not be scrubbed")
+        # Corrupt file in GCS; overwriting with a valid one is better.
+        return True, None
     if not validate_transcript(stripped):
         logger.warning("[Baseline] CLI session content invalid after strip")
         # Corrupt file in GCS; overwriting with a valid one is better.
@@ -2056,7 +2103,10 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = bool(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    auto_mode_supplement = approval_mode_supplement(await active_mode(user_id, session))
+    auto_mode_supplement = approval_mode_supplement(
+        await active_mode(user_id, session),
+        interactive=not is_unattended_turn(),
+    )
     experts_enabled = bool(user_id)
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     oversight_supplement = get_expert_oversight_supplement(
@@ -2250,7 +2300,7 @@ async def stream_chat_completion_baseline(
     if budget_status:
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
-                msg["content"] = budget_status + str(msg.get("content") or "")
+                _add_message_text(msg, budget_status, prepend=True)
                 break
 
     warm_ctx = await _refresh_follow_up_warm_context(
@@ -2271,12 +2321,10 @@ async def stream_chat_completion_baseline(
     # mark the SDK engine's blocks carry (``graphiti/context_marker.py``).
     # Reverse scan so we update the current turn's user message, not the
     # oldest one when pending messages were drained.
-    if warm_ctx:
+    if memory_block := append_injected_memory_block("", warm_ctx):
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
-                existing = msg.get("content", "")
-                if isinstance(existing, str):
-                    msg["content"] = append_injected_memory_block(existing, warm_ctx)
+                _add_message_text(msg, memory_block, prepend=False)
                 break
         # Model input only: NOT the stored user message (``inject_user_context``
         # never takes it) nor ``user_message_for_transcript``, so no later
@@ -2297,9 +2345,7 @@ async def stream_chat_completion_baseline(
         if builder_block:
             for msg in reversed(openai_messages):
                 if msg["role"] == "user":
-                    existing = msg.get("content", "")
-                    if isinstance(existing, str):
-                        msg["content"] = builder_block + existing
+                    _add_message_text(msg, builder_block, prepend=True)
                     break
 
     # Skill-drift notice — same query-only contract as the builder block
@@ -2380,28 +2426,32 @@ async def stream_chat_completion_baseline(
     # message in a single reverse scan.
     extra_hint = attachment_hint + context_hint
     if extra_hint or image_blocks:
-        for i in range(len(openai_messages) - 1, -1, -1):
-            if openai_messages[i].get("role") == "user":
-                existing = openai_messages[i].get("content", "")
-                if isinstance(existing, str):
-                    text = existing + "\n" + extra_hint if extra_hint else existing
-                    if image_blocks:
-                        parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
-                        for img in image_blocks:
-                            parts.append(
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": (
-                                            f"data:{img['source']['media_type']};"
-                                            f"base64,{img['source']['data']}"
-                                        )
-                                    },
-                                }
-                            )
-                        openai_messages[i]["content"] = parts
-                    else:
-                        openai_messages[i]["content"] = text
+        for msg in reversed(openai_messages):
+            if msg.get("role") == "user":
+                if extra_hint:
+                    _add_message_text(msg, "\n" + extra_hint, prepend=False)
+                if image_blocks:
+                    content = msg.get("content") or ""
+                    parts = (
+                        content
+                        if isinstance(content, list)
+                        else [{"type": "text", "text": content}]
+                    )
+                    msg["content"] = [
+                        *parts,
+                        *[
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": (
+                                        f"data:{img['source']['media_type']};"
+                                        f"base64,{img['source']['data']}"
+                                    )
+                                },
+                            }
+                            for img in image_blocks
+                        ],
+                    ]
                 break
 
     disabled_tool_groups: list[ToolGroup] = []
@@ -2723,22 +2773,15 @@ async def stream_chat_completion_baseline(
                     # discarded when the new one is persisted in the ``finally``.
                     _session_holder[0] = current_session
 
-                    # ``format_pending_as_user_message`` embeds file attachments
-                    # and context URL/page content into the content string so
-                    # the in-session transcript is a faithful copy of what the
-                    # model actually saw.  We also mirror each push into
-                    # ``openai_messages`` so the model's next LLM round sees it.
-                    #
-                    # Pre-compute the formatted dicts once so both the openai
-                    # messages append and the content_of lookup inside the
-                    # shared helper use the same string — and so ``on_rollback``
-                    # can trim ``openai_messages`` to the recorded anchor.
+                    # Image blocks go only to the model; persisted chat rows
+                    # keep the same formatted text and attachment/context hints.
+                    # Rollback trims the model messages to the recorded anchor.
                     formatted_by_pm = {
                         id(pm): format_pending_as_user_message(pm) for pm in pending
                     }
 
                     def _formatted(pm: PendingMessage) -> str:
-                        return formatted_by_pm[id(pm)]["content"]
+                        return pending_message_text(pm)
 
                     _openai_anchor = len(openai_messages)
                     for pm in pending:

@@ -1287,15 +1287,6 @@ async def webhook_ingress_generic(
         )
 
     user_id = webhook.user_id
-    try:
-        credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
-            else None
-        )
-    except NotFoundError as e:
-        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     # Run provider signature verification (no-op for providers whose protocol
     # has no signing scheme). 403 on failure; not 404 — that would leak
@@ -1317,6 +1308,17 @@ async def webhook_ingress_generic(
     if await is_user_banned(user_id):
         logger.info(f"Dropping webhook #{webhook_id} delivery: owner is banned")
         return
+
+    # Only after the signature: loading can refresh the owner's OAuth token.
+    try:
+        credentials = (
+            await creds_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials

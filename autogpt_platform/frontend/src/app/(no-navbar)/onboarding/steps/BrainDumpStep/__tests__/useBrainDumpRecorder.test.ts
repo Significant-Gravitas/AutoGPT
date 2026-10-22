@@ -48,6 +48,7 @@ vi.mock("@/services/onboarding/brain-dump-analytics", () => ({
   trackBrainDump: vi.fn(),
 }));
 
+import { saveMeta } from "../recordingStore";
 import { useBrainDumpRecorder } from "../useBrainDumpRecorder";
 
 // Stopping is not instant: `onstop` fires after the encoder drains, and
@@ -588,4 +589,45 @@ describe("useBrainDumpRecorder", () => {
 
     expect(track.stop).toHaveBeenCalled();
   });
+
+  // Back, or a skip while "Record again" runs, can leave the step while the
+  // mic is still opening; the unmount cleanup has already run by then.
+  it.each(["the permission prompt", "the take's first record"])(
+    "closes a microphone the step left during %s",
+    async (gate) => {
+      vi.stubGlobal("MediaRecorder", ChunkingMediaRecorder);
+      ChunkingMediaRecorder.latest = null;
+      const track = { stop: vi.fn() };
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      stubGetUserMedia(
+        vi.fn(async () => {
+          if (gate === "the permission prompt") await held;
+          return { getTracks: () => [track] };
+        }),
+      );
+      if (gate === "the take's first record") {
+        vi.mocked(saveMeta).mockImplementationOnce(() => held);
+      }
+      const { result, unmount } = renderHook(() => useBrainDumpRecorder());
+
+      const starting = result.current.start();
+      await act(async () => {
+        for (let tick = 0; tick < 10; tick++) await Promise.resolve();
+      });
+      unmount();
+      let started: boolean | undefined;
+      await act(async () => {
+        release();
+        started = await starting;
+      });
+
+      expect(started).toBe(false);
+      expect(track.stop).toHaveBeenCalled();
+      expect(ChunkingMediaRecorder.latest).toBeNull();
+      expect(savedMeta).toEqual([]);
+    },
+  );
 });

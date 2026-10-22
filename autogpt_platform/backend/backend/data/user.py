@@ -142,6 +142,19 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
             )
             schedule_posthog_lifecycle_sync(user.id)
 
+        # Every sign-in comes through here, including the one a verify or
+        # reset link ends in. Better Auth marks the identity verified in the
+        # frontend, which can't reach this cache, so drop it here.
+        try:
+            forget_user_email_verification(user.id)
+        except Exception:
+            # Mail eligibility only, and the entry expires on its own.
+            logger.warning(
+                "Failed to drop the cached email verification of %s",
+                user.id,
+                exc_info=True,
+            )
+
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
         # Identify by subject only. `user_data` is the decoded JWT (email,
@@ -777,13 +790,53 @@ async def disable_all_user_notifications(user_id: str) -> None:
         ) from e
 
 
+# Better Auth's providerId for a Google sign-in.
+_GOOGLE_PROVIDER = "google"
+
+
 async def get_user_email_verification(user_id: str) -> bool:
-    """Get the email verification status for a user."""
+    """Whether product and service mail may go to this account's address.
+
+    ``User.emailVerified`` alone can't answer that: it defaults to true and
+    only a hard bounce clears it. Proof that the address is the account's own
+    is on its auth identity, which Better Auth marks verified when the emailed
+    link is opened; a Google sign-in counts as proof by itself. An account
+    with no identity (the no-auth default user) has none.
+    """
     try:
         user = await PrismaUser.prisma().find_unique_or_raise(
             where={"id": user_id},
         )
-        return user.emailVerified
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get email verification status for user {user_id}: {e}"
+        ) from e
+    # Read on every call, never cached: a lookup already in flight when a
+    # bounce lands would otherwise cache the old answer past the bounce.
+    if not user.emailVerified:
+        return False
+    return await _user_proved_email(user_id)
+
+
+def forget_user_email_verification(user_id: str) -> None:
+    """Drop the cached proof behind ``get_user_email_verification``."""
+    _user_proved_email.cache_delete(user_id)
+
+
+@cache_user_lookup
+async def _user_proved_email(user_id: str) -> bool:
+    """A verified auth identity, or a Google sign-in. Only ever called
+    positionally, so ``forget_user_email_verification`` hits its one key."""
+    try:
+        identity = await AuthUser.prisma().find_unique(where={"id": user_id})
+        if identity is None:
+            return False
+        if identity.emailVerified:
+            return True
+        google = await AuthAccount.prisma().find_first(
+            where={"userId": user_id, "providerId": _GOOGLE_PROVIDER}
+        )
+        return google is not None
     except Exception as e:
         raise DatabaseError(
             f"Failed to get email verification status for user {user_id}: {e}"

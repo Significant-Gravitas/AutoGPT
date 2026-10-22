@@ -110,7 +110,7 @@ async def run() -> None:
     require_ca(settings.confdir, settings.generate_ca)
     redis = connect_redis(settings)
     await redis.ping()
-    source = BackendCredentialSource(settings.backend_url)
+    source = BackendCredentialSource.from_settings(settings)
     # Raises on a setting that would quietly weaken the quota: no start.
     quota = RequestQuota(
         redis,
