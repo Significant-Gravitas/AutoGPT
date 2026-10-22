@@ -28,6 +28,8 @@ import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
+import { DrawnLineLoader } from "../components/DrawnLineLoader/DrawnLineLoader";
+import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
@@ -245,6 +247,29 @@ export default function StyleguidePage() {
                     </span>
                   </MessageContent>
                 </Message>
+              </SubSection>
+
+              <SubSection label="Thinking indicator: current vs drawn line (experiment)">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div className="flex flex-col gap-3">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                      Current (pixel grid)
+                    </span>
+                    <ThinkingIndicator active loader="pixel" />
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                      Drawn line (behind NEXT_PUBLIC_COPILOT_DRAWN_LINE_LOADER)
+                    </span>
+                    <ThinkingIndicator active loader="drawn" />
+                  </div>
+                  <div className="flex flex-col gap-3 sm:col-span-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                      Drawn line, enlarged (64px) for reviewing the art
+                    </span>
+                    <DrawnLineLoader size={64} className="text-zinc-600" />
+                  </div>
+                </div>
               </SubSection>
 
               <SubSection label="Error state">
