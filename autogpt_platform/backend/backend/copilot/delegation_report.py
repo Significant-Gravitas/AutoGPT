@@ -68,6 +68,7 @@ async def _report(user_id: str, session_id: str, turn_id: str, *, failed: bool) 
                 user_id, session, escape_prompt_xml_tags(name), failed=failed
             ),
             metadata=sent_from_metadata(session, name),
+            report=True,
         ),
         ttl_seconds=NOTE_TTL_SECONDS,
     )

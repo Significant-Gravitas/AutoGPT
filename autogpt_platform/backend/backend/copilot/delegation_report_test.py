@@ -22,6 +22,8 @@ from backend.copilot.pending_messages import (
     PendingMessage,
     _buffer_key,
     clear_pending_messages_unsafe,
+    drain_pending_messages,
+    format_pending_as_followup,
     peek_pending_count,
     push_pending_message,
     push_pending_message_if_session_running,
@@ -226,6 +228,19 @@ async def test_a_turn_that_did_not_finish_says_why(
 
     notes = await drain_pending_safe(ids.otto)
     assert [n.content.split("\n")[0] for n in notes] == [headline]
+
+
+async def test_a_note_drained_mid_turn_is_not_shown_as_the_users_words(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+    await push_pending_message(ids.otto, PendingMessage(content="Also check the docs."))
+    await end_turn(ids.bit, ids.turn)
+
+    block = format_pending_as_followup(await drain_pending_messages(ids.otto))
+
+    users_words, _, rest = block.partition("</user_follow_up>")
+    assert "Also check the docs." in users_words
+    assert "Bit finished" not in users_words
+    assert "Bit finished" in rest and "not the user's words" in rest
 
 
 async def test_a_turn_without_closing_text_does_not_borrow_an_earlier_reply(world, ids):
