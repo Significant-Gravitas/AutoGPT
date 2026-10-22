@@ -179,7 +179,7 @@ configure_environment() {
   # transport) regardless of subscription tier. That is correct for a
   # single-tenant self-hosted install. Any multi-tenant or hosted deployment
   # MUST set BEHAVE_AS=cloud, or every user gets every gated capability.
-  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
+  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}"
 
   # AutoPilot's daily/weekly USD spend caps are tuned for AutoGPT Cloud
   # tiers. Without LaunchDarkly every account resolves to NO_TIER, which
