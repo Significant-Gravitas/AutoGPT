@@ -183,7 +183,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
       renderHost();
       const cancels = countCancels();
-      const tappedWhileDisarmed = tapStopAfterMount(150);
+      const tappedWhileDisarmed = tapStopWithin(150);
 
       await typeAndSend("hello");
       expect(await tappedWhileDisarmed).toBe(true);
@@ -251,25 +251,29 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// The tap's timer is set as Stop mounts, before Stop's 1 s arm timer, so a
-// slow runner delays both but cannot reorder them. Resolves to `disabled`.
-function tapStopAfterMount(ms: number) {
+// Taps Stop at most `ms` after it mounts. The timer starts before Stop can
+// mount, so it is always due before Stop's 1 s arm. Resolves to `disabled`.
+function tapStopWithin(ms: number) {
   return new Promise<boolean>((resolve) => {
-    const observer = new MutationObserver(() => {
+    let isDue = false;
+    const observer = new MutationObserver(tap);
+    function tap() {
       const stop = document.querySelector<HTMLButtonElement>(
         'button[aria-label="Stop"]',
       );
-      if (!stop) return;
+      if (!isDue || !stop) return;
       observer.disconnect();
-      setTimeout(() => {
-        resolve(stop.disabled);
-        stop.click();
-      }, ms);
-    });
+      resolve(stop.disabled);
+      stop.click();
+    }
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributeFilter: ["aria-label"],
     });
+    setTimeout(() => {
+      isDue = true;
+      tap();
+    }, ms);
   });
 }
