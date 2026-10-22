@@ -281,7 +281,8 @@ jobs:
       # long-term memory. Mirrors the local compose mapping
       # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
       # ``GraphitiConfig`` defaults (``localhost:6380``) work unchanged. The
-      # password is derived from the run, like the broker login below.
+      # password is derived from the run, like the broker login below, and
+      # the job's ``GRAPHITI_FALKORDB_PASSWORD`` gives the tests the same one.
       # ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
       # image's documented way to set the bearer; mirrors the entrypoint
       # the compose stack writes. Integration tests in
@@ -653,10 +654,12 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
       SKILLS_CATALOG_TOKEN: ${{ github.token }}
-      # The job's own broker login. Service containers start before any step
-      # can generate a value, so the password is derived from the run instead.
+      # The job's own broker login and FalkorDB password. Service containers
+      # start before any step can generate a value, so both are derived from
+      # the run instead, with the same expression the services above use.
       RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
       RABBITMQ_DEFAULT_PASS: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
+      GRAPHITI_FALKORDB_PASSWORD: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
 
   validate-skip-policy:
     name: Validate backend skip policy

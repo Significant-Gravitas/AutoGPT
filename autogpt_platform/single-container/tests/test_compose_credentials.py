@@ -122,6 +122,21 @@ class ComposeCredentialsTest(unittest.TestCase):
                         match.group(2).startswith("${"), f"{name}: {line.strip()}"
                     )
 
+    def test_backend_ci_tests_log_in_with_the_passwords_its_services_require(
+        self,
+    ) -> None:
+        workflow = (
+            PLATFORM_ROOT.parent / ".github/workflows/platform-backend-ci.yml"
+        ).read_text(encoding="utf-8")
+        job_env = dict(re.findall(r'(?m)^      ([A-Z_]+): "([^"]*)"$', workflow))
+        (falkordb,) = re.findall(r'REDIS_ARGS: "--requirepass ([^"]+)"', workflow)
+
+        self.assertEqual(job_env.get("GRAPHITI_FALKORDB_PASSWORD"), falkordb)
+        self.assertIn(
+            "RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}", workflow
+        )
+        self.assertIn("RABBITMQ_DEFAULT_PASS", job_env)
+
     def test_database_containers_run_the_password_entrypoint(self) -> None:
         for name, script in (
             ("docker-compose.yml", "./db/entrypoint.sh"),

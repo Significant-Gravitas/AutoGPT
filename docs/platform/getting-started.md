@@ -467,11 +467,16 @@ same way. Run them from `autogpt_platform/`, in PowerShell on Windows:
    ```
 
    On Windows, where `make` is usually not installed, run
-   `docker compose build` and then `installer\setup-autogpt.bat` in place of
-   the last two commands. With the queues empty and the stack stopped, the
-   restart it makes loses nothing. Don't run `docker compose down` during the
-   upgrade: it throws away Redis's data, which holds work in progress such as
-   AutoPilot's batch requests, while `up` keeps it.
+   `installer\setup-autogpt.bat` in place of `make init-env`, then
+   `docker compose up -d --build`. The script generates the passwords before
+   anything reads them and starts the stack on the images you have; the
+   second command rebuilds them and restarts what changed. Compose stops
+   before it builds anything if `.env` has no `POSTGRES_PASSWORD`, which an
+   install from before that setting existed lacks, so don't build first. With
+   the queues empty and the stack stopped, neither restart loses anything.
+   Don't run `docker compose down` during the upgrade: it throws away Redis's
+   data, which holds work in progress such as AutoPilot's batch requests,
+   while `up` keeps it.
 
    If `docker compose ps -a` listed a service named `redis` rather than
    `redis-0` to `redis-2`, your version predates the Redis cluster. The
@@ -529,9 +534,11 @@ three things changed:
    `.env.default`s. `make init-env` copies `.env.default` → `.env` for
    `autogpt_platform`, `backend` and `frontend`, but only where no `.env`
    exists yet (it uses `cp -n`): it creates missing `.env` *files* and never
-   overwrites an existing one. It does **not** merge newly-added variables
-   into an `.env` you already have — for an existing install, diff each
-   `.env` against its `.env.default` and copy the new keys across yourself.
+   overwrites an existing one. Apart from the service passwords (see
+   [Upgrading: service passwords are generated per install](#upgrading-service-passwords-are-generated-per-install)),
+   it does **not** merge newly-added variables into an `.env` you already
+   have — for an existing install, diff each `.env` against its
+   `.env.default` and copy the new keys across yourself.
    The `SUPABASE_*` URL/key variables are gone; the frontend now uses
    `BETTER_AUTH_SECRET` and `DATABASE_URL`.
 
