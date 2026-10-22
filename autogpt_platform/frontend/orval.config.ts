@@ -1,4 +1,31 @@
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { defineConfig } from "orval";
+
+const ENDPOINTS_DIR = "./src/app/api/__generated__/endpoints";
+
+// Orval 8 starts every infinite query key with "infinite"; orval 7 did not.
+// The app invalidates and updates infinite lists through the plain query key
+// (getGetV1ListGraphExecutionsQueryKey and friends), so restore the old keys.
+function dropInfiniteQueryKeyPrefix() {
+  const pattern =
+    /(InfiniteQueryKey = \([\s\S]*?\) => \{\s*return \[\s*)["']infinite["'],\s*/g;
+  let fixed = 0;
+  for (const file of readdirSync(ENDPOINTS_DIR, { recursive: true })) {
+    if (typeof file !== "string" || !file.endsWith(".ts")) continue;
+    const path = join(ENDPOINTS_DIR, file);
+    const source = readFileSync(path, "utf8");
+    const result = source.replace(pattern, (_match, keyStart: string) => {
+      fixed += 1;
+      return keyStart;
+    });
+    if (result !== source) writeFileSync(path, result);
+  }
+  if (fixed === 0) {
+    console.error("orval: found no infinite query keys to fix");
+    process.exitCode = 1;
+  }
+}
 
 export default defineConfig({
   autogpt_api_client: {
@@ -97,8 +124,10 @@ export default defineConfig({
       },
     },
     hooks: {
-      afterAllFilesWrite:
+      afterAllFilesWrite: [
+        dropInfiniteQueryKeyPrefix,
         "prettier --ignore-path= --write ./src/app/api/__generated__",
+      ],
     },
   },
   // autogpt_zod_schema: {
