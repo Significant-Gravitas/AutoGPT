@@ -10,13 +10,20 @@ import {
 
 // "monitoring" gates Sentry session replay only. Error monitoring is part of
 // running the service (legitimate interest), so it needs no consent.
-export type ConsentCategory = "analytics" | "monitoring" | "advertising";
+// "preferences" gates nothing in the app; it is only passed on to the Google
+// tag as Consent Mode's functionality and personalization signals.
+export type ConsentCategory =
+  | "analytics"
+  | "monitoring"
+  | "advertising"
+  | "preferences";
 export type ConsentState = Readonly<Record<ConsentCategory, boolean>>;
 
 export const NO_CONSENT: ConsentState = Object.freeze({
   analytics: false,
   monitoring: false,
   advertising: false,
+  preferences: false,
 });
 
 const COOKIEBOT_CATEGORY: Record<
@@ -26,6 +33,7 @@ const COOKIEBOT_CATEGORY: Record<
   analytics: "statistics",
   monitoring: "statistics",
   advertising: "marketing",
+  preferences: "preferences",
 };
 
 /**
@@ -44,6 +52,7 @@ export function toConsentState(
     analytics: cookiebot[COOKIEBOT_CATEGORY.analytics],
     monitoring: cookiebot[COOKIEBOT_CATEGORY.monitoring],
     advertising: cookiebot[COOKIEBOT_CATEGORY.advertising],
+    preferences: cookiebot[COOKIEBOT_CATEGORY.preferences],
   };
 }
 
@@ -67,7 +76,8 @@ export function isSameConsent(a: ConsentState, b: ConsentState): boolean {
   return (
     a.analytics === b.analytics &&
     a.monitoring === b.monitoring &&
-    a.advertising === b.advertising
+    a.advertising === b.advertising &&
+    a.preferences === b.preferences
   );
 }
 
