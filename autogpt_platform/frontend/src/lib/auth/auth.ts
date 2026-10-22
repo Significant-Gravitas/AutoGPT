@@ -12,10 +12,14 @@ import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { getTrustedClientIP } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
-import { assertNotDisposableEmail } from "./disposable-email";
+import {
+  assertEmailHasMailServer,
+  assertNotDisposableEmail,
+} from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import { sharedLookups } from "./email-deliverability";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP } from "./ip-email-cap";
@@ -469,5 +473,7 @@ async function assertEmailSignUpAllowed(
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
-  await assertNotDisposableEmail(email);
+  const dns = sharedLookups();
+  await assertNotDisposableEmail(email, { dns });
+  await assertEmailHasMailServer(email, { dns });
 }
