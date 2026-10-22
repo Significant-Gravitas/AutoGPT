@@ -90,7 +90,9 @@ class CodexHttpSession:
         event_handler: EventHandler | None,
     ) -> CodexInvocationResult:
         started = time.monotonic()
-        conversation: list[dict[str, Any]] = [_user_message(request.prompt)]
+        conversation: list[dict[str, Any]] = [
+            _user_message(request.prompt, request.image_urls)
+        ]
         tools = [_tool_payload(spec) for spec in dynamic_tools]
 
         response_id = ""
@@ -314,11 +316,15 @@ _ZERO_USAGE = CodexTokenUsage(
 )
 
 
-def _user_message(prompt: str) -> dict[str, Any]:
+def _user_message(prompt: str, image_urls: list[str] | None = None) -> dict[str, Any]:
     return {
         "type": "message",
         "role": "user",
-        "content": [{"type": "input_text", "text": prompt}],
+        "content": [{"type": "input_text", "text": prompt}]
+        + [
+            {"type": "input_image", "image_url": url, "detail": "auto"}
+            for url in image_urls or []
+        ],
     }
 
 
@@ -343,7 +349,14 @@ def _tool_round_items(
     followups = [
         _user_message(result.followup) for result in results if result.followup
     ]
-    return outputs + followups
+    images = [
+        _user_message(
+            f"Images returned by {call.name} ({call.call_id}):", result.image_urls
+        )
+        for call, result in zip(calls, results, strict=True)
+        if result.image_urls
+    ]
+    return outputs + images + followups
 
 
 def _tool_payload(spec: CodexDynamicToolSpec) -> dict[str, Any]:
