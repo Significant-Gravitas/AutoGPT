@@ -302,7 +302,9 @@ def _build_confirm_message(
     The facts the dream had derived from the forgotten ones, retracted with
     them (``graphiti/recall_cascade.py``), are counted so the user hears of
     them too, and so are the edges an earlier hard forget had already erased,
-    whose derived facts this forget went on to retract and erase. A soft
+    whose derived facts this forget went on to retract and erase. With both
+    kinds of edge, one count covers what they derived, so the message credits
+    it to all of them. A soft
     forget that retracted anything says it was not a permanent deletion, what
     it did instead, and how to delete permanently (``SOFT_FORGET_NOTE``).
 
@@ -312,17 +314,57 @@ def _build_confirm_message(
     full per-UUID list stays available in the structured ``failures`` field.
     """
     mode = "permanently deleted" if hard else "retracted from memory"
-    summary = f"{deleted_count} memory edge(s) {mode}."
-    if derived_count:
+    # A fact counts as derived once retracted, before its text is erased
+    # (``recall_cascade._retire``), so erasure is claimed only when nothing
+    # failed.
+    erased = (
+        "retracted and erased"
+        if not failures
+        else "retracted; erasing their text may not have finished (see below)"
+    )
+    if deleted_count and resumed_count:
         summary = (
-            f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
-            "derived from them retracted too."
+            f"{deleted_count} memory edge(s) {mode}. {resumed_count} memory "
+            "edge(s) had already been erased."
         )
-    if resumed_count:
-        summary += (
-            f" {resumed_count} memory edge(s) had already been erased; what "
-            "was derived from them was retracted and erased."
+        if derived_count:
+            # A resumed edge's cascade always erases (``recall_forget._forget``);
+            # a soft forget's own only retracts.
+            summary += f" {derived_count} fact(s) derived from these edges were "
+            if hard:
+                summary += f"{erased}."
+            elif not failures:
+                summary += (
+                    "retracted, and those derived from the already-erased "
+                    "edges were erased too."
+                )
+            else:
+                summary += (
+                    "retracted; erasing those derived from the already-erased "
+                    "edges may not have finished (see below)."
+                )
+    elif deleted_count:
+        summary = f"{deleted_count} memory edge(s) {mode}."
+        if derived_count:
+            summary = (
+                f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
+                "derived from them retracted too."
+            )
+    elif resumed_count:
+        summary = f"{resumed_count} memory edge(s) had already been erased."
+        if derived_count:
+            summary += f" {derived_count} derived fact(s) {erased}."
+    elif derived_count:
+        # Facts derived with nothing deleted or resumed: the forget's cascade
+        # ran, then retracting or deleting the edges themselves failed
+        # (``recall_forget._forget``). The failures below say why.
+        derived = erased if hard else "retracted"
+        summary = (
+            f"The memory edge(s) could not be {mode}, but {derived_count} "
+            f"fact(s) derived from them were {derived}."
         )
+    else:
+        summary = f"0 memory edge(s) {mode}."
     if deleted_count and not hard:
         summary += f" {SOFT_FORGET_NOTE}"
     if not failures:
