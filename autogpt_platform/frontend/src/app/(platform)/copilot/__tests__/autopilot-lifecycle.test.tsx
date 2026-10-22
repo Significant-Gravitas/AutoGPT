@@ -183,12 +183,10 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
       renderHost();
       const cancels = countCancels();
-      const user = userEvent.setup();
+      const tappedWhileDisarmed = tapStopAfterMount(150);
 
       await typeAndSend("hello");
-      const stop = await screen.findByRole("button", { name: /^stop$/i });
-      await sleep(150);
-      await user.click(stop);
+      expect(await tappedWhileDisarmed).toBe(true);
       await sleep(200);
       expect(cancels()).toBe(0);
 
@@ -251,4 +249,27 @@ function sendSlot() {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// The tap's timer is set as Stop mounts, before Stop's 1 s arm timer, so a
+// slow runner delays both but cannot reorder them. Resolves to `disabled`.
+function tapStopAfterMount(ms: number) {
+  return new Promise<boolean>((resolve) => {
+    const observer = new MutationObserver(() => {
+      const stop = document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Stop"]',
+      );
+      if (!stop) return;
+      observer.disconnect();
+      setTimeout(() => {
+        resolve(stop.disabled);
+        stop.click();
+      }, ms);
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributeFilter: ["aria-label"],
+    });
+  });
 }
