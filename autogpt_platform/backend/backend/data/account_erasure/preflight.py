@@ -4,6 +4,8 @@ Runs before anything is deleted, so a blocked erasure leaves the account
 exactly as it was.
 """
 
+from datetime import UTC, datetime
+
 from prisma.enums import OrgMemberStatus
 from prisma.models import (
     AccountDeletionRequest,
@@ -100,7 +102,43 @@ async def find_blockers(
                 "with other members. Make another member an owner first.",
             )
         )
+    if apps_in_use := await _oauth_apps_others_use(subject.user_id):
+        blockers.append(
+            Blocker(
+                name="oauth_apps_in_use",
+                count=apps_in_use,
+                resolution="This account registered OAuth apps that other "
+                "accounts have signed in to and still use. Erasing it deletes "
+                "the apps and cuts those accounts off. They are not handed to "
+                'the "deleted user" account: the developer still holds the '
+                "client secret and controls the redirect URIs, and nobody here "
+                "could manage the app. Move each app to another owner (set "
+                "OAuthApplication.ownerId to their user ID) or, if it should "
+                "stop working, disable it (isActive = false). Then run again.",
+            )
+        )
     return blockers
+
+
+async def _oauth_apps_others_use(user_id: str) -> int:
+    """Active OAuth apps the account owns that another account holds a live
+    grant to. A disabled app already works for nobody (its tokens fail
+    validation and cannot be refreshed), so it goes with the account."""
+    live = {
+        "userId": {"not": user_id},
+        "revokedAt": None,
+        "expiresAt": {"gt": datetime.now(UTC)},
+    }
+    return await OAuthApplication.prisma().count(
+        where={
+            "ownerId": user_id,
+            "isActive": True,
+            "OR": [
+                {"RefreshTokens": {"some": live}},
+                {"AccessTokens": {"some": live}},
+            ],
+        }
+    )
 
 
 def invalid_id(user_id: str) -> list[Blocker]:

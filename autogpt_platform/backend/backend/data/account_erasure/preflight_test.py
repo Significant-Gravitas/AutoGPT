@@ -1,6 +1,6 @@
 """What blocks an erasure, and which orgs go with the account: only orgs no
-one else is an active member of. A shared org it alone owns waits for a
-decision, an account that is not closed is refused unless the caller closes
+one else is an active member of. A shared org it alone owns, and an OAuth app
+of its that other accounts still use, wait for a decision, an account that is not closed is refused unless the caller closes
 it first, and a malformed ID is refused outright."""
 
 from types import SimpleNamespace
@@ -85,6 +85,7 @@ def orgs(monkeypatch):
     monkeypatch.setattr(
         preflight, "Organization", _table(AsyncMock(return_value=[personal]))
     )
+    monkeypatch.setattr(preflight, "_oauth_apps_others_use", AsyncMock(return_value=0))
     return members
 
 
@@ -118,6 +119,43 @@ async def test_a_shared_org_without_another_owner_blocks(orgs):
 @pytest.fixture
 def no_orgs(monkeypatch):
     monkeypatch.setattr(preflight, "_orgs", AsyncMock(return_value=([], [])))
+    monkeypatch.setattr(preflight, "_oauth_apps_others_use", AsyncMock(return_value=0))
+
+
+@pytest.mark.asyncio
+async def test_oauth_apps_other_accounts_use_block(no_orgs):
+    """Deleting them would cut those accounts off, and handing them over
+    would leave the developer's secret and redirect URIs with no owner here:
+    the operator moves or disables them first."""
+    preflight._oauth_apps_others_use.return_value = 2
+
+    blockers = await preflight.find_blockers(CLOSED)
+
+    assert [(b.name, b.count) for b in blockers] == [("oauth_apps_in_use", 2)]
+    assert "ownerId" in blockers[0].resolution
+    assert "isActive" in blockers[0].resolution
+
+
+@pytest.mark.asyncio
+async def test_only_active_apps_with_another_accounts_live_grant_count(
+    monkeypatch,
+):
+    apps = MagicMock()
+    apps.prisma.return_value.count = AsyncMock(return_value=1)
+    monkeypatch.setattr(preflight, "OAuthApplication", apps)
+
+    assert await preflight._oauth_apps_others_use(USER_ID) == 1
+
+    where = apps.prisma.return_value.count.await_args.kwargs["where"]
+    assert where["ownerId"] == USER_ID
+    assert where["isActive"] is True
+    grants = [next(iter(clause.items())) for clause in where["OR"]]
+    assert [relation for relation, _ in grants] == ["RefreshTokens", "AccessTokens"]
+    for _, grant in grants:
+        live = grant["some"]
+        assert live["userId"] == {"not": USER_ID}
+        assert live["revokedAt"] is None
+        assert "gt" in live["expiresAt"]
 
 
 @pytest.mark.asyncio

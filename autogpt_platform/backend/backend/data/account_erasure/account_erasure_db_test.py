@@ -22,6 +22,9 @@ a request made by email: the org-home and team agents (which every member, or
 the team, can open, though nobody has added or run them) go to the
 placeholder with their org and team, while an org whose only other member is
 suspended goes with the account.
+
+An account that registered an OAuth app another account still has a live
+grant to is not erased until the operator moves or disables the app.
 """
 
 import uuid
@@ -40,7 +43,7 @@ from backend.data.account_erasure.database import delete_rows
 from backend.data.account_erasure.deleted_user import DELETED_USER_ID, DELETED_USER_NAME
 from backend.data.account_erasure.marketplace import delete_marketplace
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
-from backend.data.account_erasure.preflight import load_subject
+from backend.data.account_erasure.preflight import find_blockers, load_subject
 from backend.data.account_erasure.shared_agents import (
     plan_transfer,
     transfer_shared_agents,
@@ -564,3 +567,64 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
     )
 
     await _erase_rows(colleague)
+
+
+async def _oauth_app(owner_id: str) -> str:
+    app = await prisma.models.OAuthApplication.prisma().create(
+        data={
+            "name": "Deletion test app",
+            "clientId": f"deletion-{uuid.uuid4()}",
+            "clientSecret": "hash",
+            "clientSecretSalt": "salt",
+            "redirectUris": ["https://example.com/callback"],
+            "scopes": [prisma.enums.APIKeyPermission.EXECUTE_GRAPH],
+            "ownerId": owner_id,
+        }
+    )
+    return app.id
+
+
+async def _grant(app_id: str, user_id: str, *, revoked: bool = False) -> None:
+    now = datetime.now(UTC)
+    await prisma.models.OAuthRefreshToken.prisma().create(
+        data={
+            "token": f"deletion-{uuid.uuid4()}",
+            "expiresAt": now + timedelta(days=30),
+            "applicationId": app_id,
+            "userId": user_id,
+            "scopes": [prisma.enums.APIKeyPermission.EXECUTE_GRAPH],
+            "revokedAt": now if revoked else None,
+        }
+    )
+
+
+async def _blocker_names(user_id: str) -> list[str]:
+    return [b.name for b in await find_blockers(await load_subject(user_id))]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_oauth_app_other_accounts_use_waits_for_the_operator(
+    server: SpinTestServer,
+):
+    developer = await _account()
+    user = await _account()
+    used = await _oauth_app(developer)
+    await _grant(used, user)
+    # Only a revoked grant: nobody uses it any more, so it goes.
+    unused = await _oauth_app(developer)
+    await _grant(unused, user, revoked=True)
+    assert await close_account(developer, prisma.enums.AccountDeletionSource.SETTINGS)
+
+    assert await _blocker_names(developer) == ["oauth_apps_in_use"]
+
+    # Disabled, it already works for nobody: the erasure may delete it.
+    await prisma.models.OAuthApplication.prisma().update(
+        where={"id": used}, data={"isActive": False}
+    )
+    assert await _blocker_names(developer) == []
+
+    await _erase_rows(developer)
+    assert not await prisma.models.OAuthApplication.prisma().count(
+        where={"id": {"in": [used, unused]}}
+    )
+    await _erase_rows(user)
