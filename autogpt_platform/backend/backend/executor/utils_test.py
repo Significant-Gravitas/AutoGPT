@@ -2470,7 +2470,7 @@ async def test_autopilot_execution_keeps_explicit_tenancy(mocker: MockerFixture)
 
 def _runner_is_not_in_the_given_org(mocker: MockerFixture):
     return mocker.patch(
-        "backend.api.features.orgs.db.resolve_member_tenancy",
+        "backend.executor.utils.resolve_member_tenancy",
         new=mocker.AsyncMock(return_value=("runner-org", "runner-team")),
     )
 
@@ -2579,17 +2579,30 @@ async def test_the_org_check_runs_over_rpc_where_sub_runs_start(
     assert create_kwargs["team_id"] == "runner-team"
 
 
-@pytest.mark.parametrize("caller_supplies_a_context", [False, True])
+@pytest.mark.parametrize(
+    "caller",
+    ["no-context", "context-without-an-org", "org-passed-in", "context-in-another-org"],
+)
 @pytest.mark.asyncio
 async def test_a_resumed_run_stays_in_the_org_it_started_in(
-    mocker: MockerFixture, caller_supplies_a_context: bool
+    mocker: MockerFixture, caller: str
 ):
     """A run resumed after a review or an admin requeue has already run in
     the org and team it's stored in, so it isn't moved out of them, even when
-    its runner has left them since: the executor stops such a run when it
-    picks it up. Review resume hands in a context that has no org yet."""
+    its runner has left them since, and whatever the caller passes: the
+    executor stops such a run when it picks it up. Review resume hands in a
+    context that has no org yet."""
     from backend.data.execution import ExecutionContext
 
+    context = {
+        "context-without-an-org": ExecutionContext(user_id="runner"),
+        "context-in-another-org": ExecutionContext(
+            user_id="runner", organization_id="runner-org", team_id="runner-team"
+        ),
+    }.get(caller)
+    organization_id, team_id = (
+        ("runner-org", "runner-team") if caller == "org-passed-in" else (None, None)
+    )
     _, execution_store, queue, captured = _mock_add_graph_execution_requeue_path(
         mocker,
         expert_id=None,
@@ -2602,9 +2615,9 @@ async def test_a_resumed_run_stays_in_the_org_it_started_in(
         graph_id="g",
         user_id="runner",
         graph_exec_id="existing-execution",
-        execution_context=(
-            ExecutionContext(user_id="runner") if caller_supplies_a_context else None
-        ),
+        execution_context=context,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     membership.assert_not_called()

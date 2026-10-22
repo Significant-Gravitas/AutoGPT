@@ -11,6 +11,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
@@ -1234,8 +1235,6 @@ async def _resolve_runner_tenancy(
 ) -> tuple[str | None, str | None]:
     """``resolve_member_tenancy`` for a run's org/team, called directly in the
     API server and through the DB manager in the scheduler and executor."""
-    from backend.api.features.orgs.db import resolve_member_tenancy
-
     if prisma.is_connected():
         return await resolve_member_tenancy(user_id, organization_id, team_id)
     return await get_database_manager_async_client().resolve_member_tenancy(
@@ -1518,9 +1517,12 @@ async def _add_graph_execution(
                     )
                     graph_exec.status = ExecutionStatus.TERMINATED
                     return graph_exec
-        # Any other run resumes in the org and team it's stored in. One whose
-        # runner has left them since isn't moved, as it has already run
-        # there: the executor stops it when it picks it up.
+        else:
+            # Any other run resumes in the org and team it's stored in,
+            # whatever the caller passes. One whose runner has left them since
+            # isn't moved, as it has already run there: the executor stops it
+            # when it picks it up.
+            organization_id, team_id = graph_exec.organization_id, graph_exec.team_id
 
         # The row stores the caller's raw masks and the run-time credential
         # inputs separately; rebuild the credential masks the same way the
@@ -1739,10 +1741,17 @@ async def _add_graph_execution(
         execution_context = execution_context.model_copy(
             update={"organization_id": organization_id, "team_id": team_id}
         )
+    elif not is_new_execution:
+        # A resumed run's context gets the org/team the run is stored with,
+        # in place of any the caller's names. Review resume builds one with
+        # neither, before they're known.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
     elif execution_context.organization_id is None and graph_exec.organization_id:
-        # A caller-supplied context (e.g. review-resume, admin-requeue) may
-        # be built before org/team are known. Backfill from the persisted
-        # row so billing and sub-graph runs aren't tenant-blind on resume.
+        # A caller-supplied context (e.g. a sub-graph's, whose parent run is
+        # untenanted) may have no org/team. Backfill from the persisted row
+        # so billing and sub-graph runs aren't tenant-blind.
         execution_context = execution_context.model_copy(
             update={
                 "organization_id": graph_exec.organization_id,

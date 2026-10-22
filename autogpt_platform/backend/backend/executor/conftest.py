@@ -71,11 +71,9 @@ def _runners_belong_to_their_org(mocker):
     it, and checks that against the database. Executor tests use synthetic
     users and orgs, so by default the check passes the given pair through.
     Tests of a run given someone else's org override this patch.
-
-    Patched at the source module for the same reason as the default team.
     """
     mocker.patch(
-        "backend.api.features.orgs.db.resolve_member_tenancy",
+        "backend.executor.utils.resolve_member_tenancy",
         new=mocker.AsyncMock(
             side_effect=lambda user_id, org_id, team_id: (org_id, team_id)
         ),
