@@ -1,10 +1,15 @@
 import { Resolver } from "node:dns/promises";
+import { environment } from "@/services/environment";
 import { getDomainAndParents } from "./access-blocks";
 import list from "./disposable-email-domains.json";
 
 // Vendored from github.com/disposable-email-domains/disposable-email-domains
 // (CC0); refresh with scripts/refresh-disposable-email-domains.mjs.
 const DISPOSABLE_DOMAINS = new Set(list.domains);
+
+// Temporary-inbox services that rotate domains faster than the list: any
+// domain whose mail lands on one of these hosts is disposable too.
+export const DISPOSABLE_MX_HOSTS = new Set(["in.mail.tm"]);
 
 const DNS_TIMEOUT_MS = 2500;
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -66,19 +71,41 @@ export async function hasMailServer(
   return value ?? true;
 }
 
+// Disposable is checked everywhere; the mail-server check runs on cloud only,
+// since local and self-hosted setups sign up with test or internal domains
+// (example.com publishes a null MX).
 export async function checkEmailDeliverable(
   email: string,
   options: Options = {},
 ): Promise<EmailDeliverability> {
-  const allowDisposable = process.env.AUTH_ALLOW_DISPOSABLE_EMAILS === "true";
-  if (!allowDisposable && isDisposableEmailDomain(email)) {
+  if (await isDisposableEmail(email, options)) {
     return { deliverable: false, reason: "disposable" };
   }
-  const domain = getEmailDomain(email);
-  if (!domain || !(await hasMailServer(domain, options))) {
+  if (!(await acceptsMail(email, options))) {
     return { deliverable: false, reason: "no_mail_server" };
   }
   return { deliverable: true };
+}
+
+export async function isDisposableEmail(email: string, options: Options = {}) {
+  if (process.env.AUTH_ALLOW_DISPOSABLE_EMAILS === "true") return false;
+  if (isDisposableEmailDomain(email)) return true;
+  const domain = getEmailDomain(email);
+  if (!domain) return false;
+  const { dns = defaultLookups(), timeoutMs = DNS_TIMEOUT_MS } = options;
+  const mx = await lookUp(() => dns.resolveMx(domain), timeoutMs);
+  return (
+    mx.kind === "records" &&
+    mx.records.some((record) =>
+      DISPOSABLE_MX_HOSTS.has(record.exchange.toLowerCase().replace(/\.$/, "")),
+    )
+  );
+}
+
+export async function acceptsMail(email: string, options: Options = {}) {
+  if (!environment.isCloud()) return true;
+  const domain = getEmailDomain(email);
+  return Boolean(domain) && (await hasMailServer(domain, options));
 }
 
 // null means DNS gave no definitive answer.

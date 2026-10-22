@@ -185,6 +185,7 @@ describe("IP and email domain blocks", () => {
   });
 
   it("refuses a sign-up on a domain that takes no mail", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     const lookup = vi
       .spyOn(Resolver.prototype, "resolveMx")
       .mockRejectedValue(

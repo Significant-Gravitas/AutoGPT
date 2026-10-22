@@ -31,6 +31,7 @@ function lookups(overrides: Partial<DnsLookups> = {}) {
 
 beforeEach(() => {
   clearMailServerCache();
+  vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
 });
 
 afterEach(() => {
@@ -145,6 +146,23 @@ describe("checkEmailDeliverable", () => {
     await expect(
       checkEmailDeliverable("a@typo.example", { dns }),
     ).resolves.toEqual({ deliverable: false, reason: "no_mail_server" });
+  });
+
+  test("flags a domain whose mail lands on a disposable inbox host", async () => {
+    const dns = lookups({
+      resolveMx: async () => [{ exchange: "in.mail.tm." }],
+    });
+    await expect(
+      checkEmailDeliverable("a@rotating-inbox.example", { dns }),
+    ).resolves.toEqual({ deliverable: false, reason: "disposable" });
+  });
+
+  test("skips the mail-server check outside cloud", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    const dns = lookups({ resolveMx: async () => [{ exchange: "" }] });
+    await expect(
+      checkEmailDeliverable("a@example.com", { dns }),
+    ).resolves.toEqual({ deliverable: true });
   });
 
   test("passes a domain with an MX", async () => {
