@@ -7,10 +7,13 @@ normalisation, trailing newlines included).
 Modes:
   --check               read-only: report which of ``latest`` / ``production``
                         differ from the repo text. Exits 0.
-  --publish-latest      create a new text version from the repo text unless one
-                        already holds it. Langfuse puts ``latest`` on it.
+  --publish-latest      create a new text version from the repo text unless
+                        ``latest`` already holds it. Langfuse puts ``latest`` on
+                        it, so a revert gets a fresh copy of the older text.
   --promote-production  put ``production`` on the version holding the repo text,
-                        creating that version first if none does.
+                        creating that version first if none does. Creating moves
+                        ``latest``, so the text ``latest`` had is then put back
+                        on top as a new version.
 
 Every write mode runs the guards first and makes no writes when Langfuse
 already matches, so a rerun is a no-op.
@@ -33,6 +36,7 @@ LATEST = "latest"
 PRODUCTION = "production"
 MIN_PROMPT_LENGTH = 2000
 MAX_VERSIONS_SCANNED = 200
+DEFAULT_HOST = "https://cloud.langfuse.com"
 
 
 class GuardError(Exception):
@@ -101,7 +105,8 @@ def load_credentials() -> tuple[str, str, str]:
     return (
         secrets.langfuse_public_key,
         secrets.langfuse_secret_key,
-        secrets.langfuse_host,
+        # An unset CI secret arrives as "", which beats the settings default.
+        secrets.langfuse_host or DEFAULT_HOST,
     )
 
 
@@ -185,7 +190,9 @@ def run_check(client: Any, name: str, text: str) -> list[str]:
     return stale
 
 
-def create_version(client: Any, name: str, text: str) -> RemoteVersion:
+def create_version(
+    client: Any, name: str, text: str, reason: str = "Synced from"
+) -> RemoteVersion:
     sha, digest = git_sha(), text_sha256(text)
     created = client.create_prompt(
         name=name,
@@ -193,7 +200,7 @@ def create_version(client: Any, name: str, text: str) -> RemoteVersion:
         type="text",
         labels=[],
         config={"git_sha": sha, "text_sha256": digest},
-        commit_message=f"Synced from AutoGPT {sha} (sha256 {digest})",
+        commit_message=f"{reason} AutoGPT {sha} (sha256 {digest})",
     )
     print(f"Created v{created.version}")
     return RemoteVersion(created.version, text, list(created.labels))
@@ -204,15 +211,8 @@ def publish_latest(client: Any, name: str, text: str) -> RemoteVersion:
     if latest is not None and latest.text == text:
         print(f"[{LATEST}] v{latest.version} already matches the repo, no write")
         return latest
-    existing = find_version_with_text(client, name, text)
-    if existing is not None:
-        # The text exists as an older version; latest always follows the newest
-        # version, so the only way to move it is a duplicate, which we refuse.
-        print(
-            f"v{existing.version} already holds the repo text but is not {LATEST}; "
-            "not creating a duplicate"
-        )
-        return existing
+    # Langfuse puts latest only on the newest version, so a revert to text an
+    # older version holds still needs a new copy of it.
     return create_version(client, name, text)
 
 
@@ -223,15 +223,28 @@ def promote_production(client: Any, name: str, text: str) -> RemoteVersion:
             f"[{PRODUCTION}] v{production.version} already matches the repo, no write"
         )
         return production
-    target = find_version_with_text(client, name, text) or create_version(
-        client, name, text
-    )
+    target = find_version_with_text(client, name, text)
+    displaced = None
+    if target is None:
+        displaced = fetch_label(client, name, LATEST)
+        target = create_version(client, name, text)
     # Keep the version's other labels; "latest" is reserved and set by Langfuse.
     labels = [lb for lb in target.labels if lb not in (LATEST, PRODUCTION)]
     client.update_prompt(
         name=name, version=target.version, new_labels=[*labels, PRODUCTION]
     )
     print(f"[{PRODUCTION}] moved to v{target.version}")
+    if displaced is not None:
+        # Creating the version took latest, which dev serves, off dev's text.
+        restored = create_version(
+            client,
+            name,
+            displaced.text,
+            reason=f"Restored v{displaced.version} as {LATEST} after promoting",
+        )
+        print(
+            f"[{LATEST}] restored to v{displaced.version}'s text as v{restored.version}"
+        )
     return target
 
 

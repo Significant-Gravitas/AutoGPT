@@ -9,6 +9,7 @@ from scripts import sync_copilot_prompt_to_langfuse as sync
 NAME = "CoPilot Prompt"
 REPO = "You are Otto. " + "x" * 2500
 OLD = "You are Otto. " + "y" * 2500
+DEV = "You are Otto. " + "z" * 2500
 
 
 class FakeLangfuse:
@@ -101,6 +102,14 @@ def test_main_refuses_without_credentials(monkeypatch):
     make_client.assert_not_called()
 
 
+def test_credentials_fall_back_to_the_default_host_when_it_is_blank(monkeypatch):
+    # CI passes an unset secret as an empty string, which would beat the default.
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+    monkeypatch.setenv("LANGFUSE_HOST", "")
+    assert sync.load_credentials() == ("pk", "sk", "https://cloud.langfuse.com")
+
+
 def test_main_defaults_to_check(monkeypatch):
     client = FakeLangfuse({1: (OLD, ["latest", "production"])})
     monkeypatch.setattr(sync, "load_repo_prompt", lambda: REPO)
@@ -152,10 +161,13 @@ def test_publish_creates_once_then_noops(monkeypatch):
     assert client.versions[2][1] == ["latest"]
 
 
-def test_publish_does_not_duplicate_an_older_identical_version():
+def test_publish_moves_latest_back_after_a_revert():
     client = FakeLangfuse({1: (REPO, ["production"]), 2: (OLD, ["latest"])})
-    assert sync.publish_latest(client, NAME, REPO).version == 1
-    assert not client.wrote()
+    assert sync.publish_latest(client, NAME, REPO).version == 3
+
+    client.create_prompt.assert_called_once()
+    assert client.versions[3] == [REPO, ["latest"]]
+    assert client.versions[1][1] == ["production"]
 
 
 def test_promote_moves_only_the_production_label():
@@ -177,12 +189,24 @@ def test_promote_creates_the_version_when_missing_then_noops():
     sync.promote_production(client, NAME, REPO)
     sync.promote_production(client, NAME, REPO)
 
-    client.create_prompt.assert_called_once()
+    assert client.create_prompt.call_count == 2
     client.update_prompt.assert_called_once_with(
         name=NAME, version=2, new_labels=["production"]
     )
-    assert client.versions[1][1] == []
-    assert client.versions[2][1] == ["latest", "production"]
+    assert client.versions[2] == [REPO, ["production"]]
+    assert client.versions[3] == [OLD, ["latest"]]
+
+
+def test_promote_of_a_master_only_text_keeps_latest_on_dev_text():
+    client = FakeLangfuse({1: (OLD, ["production"]), 2: (DEV, ["latest"])})
+    sync.promote_production(client, NAME, REPO)
+
+    production = sync.fetch_label(client, NAME, "production")
+    latest = sync.fetch_label(client, NAME, "latest")
+    assert production is not None and production.text == REPO
+    assert latest is not None and latest.text == DEV
+    restored = client.create_prompt.call_args.kwargs
+    assert "v2" in restored["commit_message"]
 
 
 def test_promote_is_noop_when_production_matches():
