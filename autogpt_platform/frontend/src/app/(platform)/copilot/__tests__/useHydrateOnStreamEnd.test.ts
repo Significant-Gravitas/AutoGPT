@@ -45,10 +45,13 @@ function runForceHydrate({
   prev,
   staleWindow,
   freshWindow,
+  statuses = ["ready"],
 }: {
   prev: Messages;
   staleWindow: Messages;
   freshWindow: Messages;
+  /** What the chat passes through after streaming, before the refetch lands. */
+  statuses?: Parameters<typeof useHydrateOnStreamEnd>[0]["status"][];
 }): Messages | null {
   let captured: Messages | null = null;
   const setMessages = vi.fn(
@@ -78,16 +81,18 @@ function runForceHydrate({
   );
 
   // Stream ends → arms force-hydrate, snapshots the stale (pre-turn) window.
-  rerender({
-    ...baseProps,
-    status: "ready",
-    hydratedMessages: staleWindow,
-  } satisfies Props);
+  for (const status of statuses) {
+    rerender({
+      ...baseProps,
+      status,
+      hydratedMessages: staleWindow,
+    } satisfies Props);
+  }
 
   // React Query swaps in the fresh post-turn window → force-hydrate applies.
   rerender({
     ...baseProps,
-    status: "ready",
+    status: statuses[statuses.length - 1],
     hydratedMessages: freshWindow,
   } satisfies Props);
 
@@ -497,9 +502,44 @@ describe("useHydrateOnStreamEnd — a send the backend has not written yet", () 
       fresh: [row(0, "user", "yes"), row(1, "assistant", "Booked.")],
       expected: [row(0, "user", "yes"), row(1, "assistant", "Booked.")],
     },
-  ])("does not keep $name", ({ prev, fresh, expected }) => {
+    {
+      name: "a send whose stream failed",
+      prev: [row(0, "user", "Plan it"), local("refused", "user", "Build it")],
+      fresh: [row(0, "user", "Plan it")],
+      expected: [row(0, "user", "Plan it")],
+      statuses: ["error" as const],
+    },
+    {
+      name: "a refused send once its retry has ended cleanly",
+      prev: [
+        row(0, "user", "Plan it"),
+        row(1, "assistant", "Planned."),
+        local("refused", "user", "yes"),
+        local("retried", "user", "yes"),
+        local("live-answer", "assistant", "Booked."),
+      ],
+      fresh: [
+        row(0, "user", "Plan it"),
+        row(1, "assistant", "Planned."),
+        row(2, "user", "yes"),
+        row(3, "assistant", "Booked."),
+      ],
+      expected: [
+        row(0, "user", "Plan it"),
+        row(1, "assistant", "Planned."),
+        row(2, "user", "yes"),
+        row(3, "assistant", "Booked."),
+      ],
+      statuses: [
+        "error" as const,
+        "submitted" as const,
+        "streaming" as const,
+        "ready" as const,
+      ],
+    },
+  ])("does not keep $name", ({ prev, fresh, expected, statuses }) => {
     expect(
-      runForceHydrate({ prev, staleWindow: [], freshWindow: fresh }),
+      runForceHydrate({ prev, staleWindow: [], freshWindow: fresh, statuses }),
     ).toEqual(expected);
   });
 
@@ -514,6 +554,21 @@ describe("useHydrateOnStreamEnd — a send the backend has not written yet", () 
 
     const result = runForceHydrate({
       prev: [row(1, "user", "Book both"), promoted, queued],
+      staleWindow: [],
+      freshWindow: stored,
+    });
+
+    expect(result).toEqual([...stored, queued]);
+  });
+
+  it("gives a promoted bubble its own later row, not an earlier one with the same text", () => {
+    const answered = [row(0, "user", "yes"), row(1, "assistant", "Booked.")];
+    const promoted = local("promoted-midturn-1", "user", "yes");
+    const queued = local("local-send", "user", "yes");
+    const stored = [...answered, row(2, "user", "yes")];
+
+    const result = runForceHydrate({
+      prev: [...answered, promoted, queued],
       staleWindow: [],
       freshWindow: stored,
     });
