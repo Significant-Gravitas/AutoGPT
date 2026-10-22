@@ -3,6 +3,8 @@ classic/frontend/build/** linguist-generated
 **/poetry.lock linguist-generated
 
 docs/_javascript/** linguist-vendored
+# Third-party list, rewritten by scripts/refresh-disposable-email-domains.mjs
+autogpt_platform/frontend/src/lib/auth/disposable-email-domains.json linguist-vendored linguist-generated
 
 # Exclude VCR cassettes from stats
 classic/forge/tests/vcr_cassettes/**/**.y*ml linguist-generated

@@ -9,7 +9,7 @@ from backend.copilot.briefing.generate import compose_briefing as compose_job_br
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
-from .briefing import compose_briefing, without_summaries
+from .briefing import compose_briefing
 from .helpers import AgentRef
 from .models import AUTOPILOT_BRIEFING_AUTHOR, HomeBriefingAuthor
 
@@ -454,34 +454,6 @@ def test_a_row_written_before_the_composer_was_unified_falls_back_to_the_agent()
     assert outcome.expert is None
 
 
-def test_without_summaries_drops_the_ai_written_text() -> None:
-    stripped = without_summaries(_stored(_stored_item("stored-run")))
-
-    item = stripped.run_items[0]
-    assert (item.summary, item.title, item.detail) == (None, "", "")
-    assert item.agent_name == "Inbox triage"
-
-
-def test_without_summaries_keeps_an_error_the_ai_never_wrote() -> None:
-    """The live gate drops only `activity_status`/`correctness_score`, so a
-    failure with no summary keeps showing its real error. The persisted path
-    must not downgrade that same failure to the generic retry line."""
-    failure = _stored_item("broke", status="FAILED").model_copy(
-        update={
-            "summary": None,
-            "title": "Inbox triage needs a retry",
-            "detail": "SMTP connection refused",
-        }
-    )
-
-    item = without_summaries(_stored(failure)).run_items[0]
-
-    assert (item.title, item.detail) == (
-        "Inbox triage needs a retry",
-        "SMTP connection refused",
-    )
-
-
 def test_persisted_briefing_counts_runs_the_job_did_not_list() -> None:
     """`run_items` is capped at 10 by the job. A 12-completion night must
     still report 12 completed, with the unlisted ones falling into routine."""
@@ -642,12 +614,3 @@ def test_the_live_brief_is_authored_by_autopilot_too() -> None:
     )
 
     assert briefing.author.kind == "autopilot"
-
-
-def test_without_summaries_drops_the_narrative() -> None:
-    """The narrative is written from the summaries, so the same gate hides it."""
-    stored = _stored(_stored_item("stored-run")).model_copy(
-        update={"narrative": "I read all 12 of your emails."}
-    )
-
-    assert without_summaries(stored).narrative is None

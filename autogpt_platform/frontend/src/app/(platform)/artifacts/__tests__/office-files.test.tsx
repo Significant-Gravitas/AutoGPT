@@ -17,16 +17,6 @@ import {
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ARTIFACTS_PAGE: "artifacts-page",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
-    HIRE_EXPERTS: "hire-experts",
-  },
-  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
-  useFlagStatus: () => ({ enabled: true, ready: true }),
-}));
-
 vi.mock("next/navigation", async () => {
   const { navigationMock } = await import("./navigation-mock");
   return navigationMock();

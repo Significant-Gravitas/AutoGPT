@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 
+from backend.copilot.sdk.cli_version import _VERSIONS, _cli_the_sdk_finds
 from backend.util import json
 
 
@@ -57,6 +58,16 @@ def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear env-backed CHAT_* settings so ChatConfig uses constructor values."""
     for var in _CONFIG_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cli_version_checks():
+    """No test sees a CLI version or path another test read."""
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
+    yield
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")

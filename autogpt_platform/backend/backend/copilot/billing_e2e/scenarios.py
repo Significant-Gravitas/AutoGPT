@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .invoice import CLI_ESTIMATE_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
 from .ledger import CreditBilling, PlannedDrain
 from .provider import PlannedFault
 
@@ -106,11 +106,13 @@ _OPENROUTER = {
 # is configured.
 _DIRECT = {"use_openrouter": False, "api_key": "sk-ant-billing-e2e"}
 
+# Anthropic reports no cost, so a direct turn is charged the CLI's own
+# estimate rather than the invoice (see ``CLI_ESTIMATE_PRICES``).
 _SDK_ANTHROPIC = Scenario(
     id="sdk-anthropic",
     engine="sdk",
     model=SONNET,
-    charge="invoice",
+    charge="cli_estimate",
     cost_log_provider="anthropic",
     config={**_DIRECT, "claude_agent_model": SONNET},
 )
@@ -306,8 +308,8 @@ def expected_charge_usd(basis: ChargeBasis, call: Call) -> float:
     if basis == "invoice":
         return call.invoice_usd
     if basis == "cli_estimate":
-        list_price = ANTHROPIC_PRICES[call.model.removeprefix("anthropic/")]
-        return list_price.of(call.usage, call.cache_ttl)
+        cli_price = CLI_ESTIMATE_PRICES[call.model.removeprefix("anthropic/")]
+        return cli_price.of(call.usage, call.cache_ttl)
     if basis == "moonshot_estimate":
         return MOONSHOT_FALLBACK.of(call.usage, None)
     return 0.0

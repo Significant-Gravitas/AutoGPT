@@ -81,7 +81,7 @@ export function ExpertChatDrawer({
             variant="ghost"
             size="icon-xs"
             leadingIcon={ArrowExpandIcon}
-            aria-label="Open in Copilot"
+            aria-label="Open in Chat"
           />
         </>
       }

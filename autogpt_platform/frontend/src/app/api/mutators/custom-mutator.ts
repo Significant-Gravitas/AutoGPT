@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 import {
@@ -85,6 +86,7 @@ export const customMutator = async <
     }
     Object.assign(headers, getSystemHeaders());
     Object.assign(headers, getDatafastAttribution());
+    Object.assign(headers, getPostHogSessionHeader());
   }
 
   const isFormData = data instanceof FormData;

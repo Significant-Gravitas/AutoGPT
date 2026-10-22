@@ -148,6 +148,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/onboarding/brain-dump/recommended-providers",
     "GET /api/onboarding/brain-dump/recording",
     "GET /api/onboarding/brain-dump/status",
+    "GET /api/onboarding/brain-dump/suggested-tasks",
+    "POST /api/onboarding/brain-dump/suggested-tasks",
     "GET /api/onboarding/completed",
     "POST /api/onboarding/profile",
     "POST /api/onboarding/reset",
@@ -217,6 +219,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/review/execution/{graph_exec_id}",
     "GET /api/review/pending",
     "GET /api/review/session/{chat_session_id}",
+    "GET /api/review/session/{chat_session_id}/answered",
     "GET /api/schedules",
     "GET /api/schedules/followups",
     "GET /api/schedules/followups/paused",
@@ -389,10 +392,6 @@ def test_the_open_lists_name_only_routes_that_exist():
 def test_an_account_without_a_plan_gets_402_from_a_closed_route(
     call: str, mock_jwt_user, paywalled_user, mocker
 ):
-    mocker.patch(
-        "backend.api.features.store.skill_routes.is_feature_enabled",
-        new=mocker.AsyncMock(return_value=True),
-    )
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     try:
         method, path = call.split(" ", 1)

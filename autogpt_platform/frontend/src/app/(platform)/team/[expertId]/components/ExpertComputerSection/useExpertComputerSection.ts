@@ -11,10 +11,9 @@ import { useState } from "react";
 
 interface Args {
   expertId: string;
-  enabled: boolean;
 }
 
-export function useExpertComputerSection({ expertId, enabled }: Args) {
+export function useExpertComputerSection({ expertId }: Args) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   // Kept with the expert it was opened for: the section can be re-rendered
@@ -28,7 +27,6 @@ export function useExpertComputerSection({ expertId, enabled }: Args) {
   const computerQuery = useGetV2GetExpertComputer(expertId, {
     query: {
       select: (res) => okData(res) ?? null,
-      enabled,
       refetchInterval: 15_000,
     },
   });

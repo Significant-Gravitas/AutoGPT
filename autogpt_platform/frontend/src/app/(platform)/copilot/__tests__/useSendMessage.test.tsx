@@ -71,7 +71,7 @@ describe("useSendMessage with local attachments", () => {
     uploadFileDirectMock.mockReturnValue(upload.promise);
     const { result, sendMessage } = renderSendMessage();
 
-    let sendPromise: Promise<void> | undefined;
+    let sendPromise: Promise<unknown> | undefined;
     act(() => {
       sendPromise = result.current.onSend("tell me about this", [
         makeFile("talk.pdf"),
@@ -87,6 +87,7 @@ describe("useSendMessage with local attachments", () => {
           mediaType: "application/pdf",
           sizeBytes: 2048,
           isUploading: true,
+          file: expect.any(File),
         },
       ],
     });
@@ -142,12 +143,18 @@ describe("useSendMessage with local attachments", () => {
 
     await waitFor(() => expect(result.current.pendingSend).not.toBeNull());
     expect(result.current.pendingSend?.attachments).toEqual([
-      { name: "notes.txt", mediaType: "text/plain", isUploading: false },
+      {
+        name: "notes.txt",
+        mediaType: "text/plain",
+        isUploading: false,
+        url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+      },
       {
         name: "icon.png",
         mediaType: "image/png",
         sizeBytes: 2048,
         isUploading: true,
+        file: expect.any(File),
       },
     ]);
   });
@@ -240,6 +247,7 @@ describe("useSendMessage with local attachments", () => {
           mediaType: "application/pdf",
           sizeBytes: 2048,
           isUploading: true,
+          file: expect.any(File),
         },
       ],
     });

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
 import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";

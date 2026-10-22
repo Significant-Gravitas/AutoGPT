@@ -537,7 +537,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-4 pt-14 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -624,6 +624,7 @@ export function ChatMessagesContainer({
               pollWhileEmpty={reviewTarget?.kind === "chat"}
               refetchKey={countHeldCalls(messages)}
               expertName={expertIdentity?.name ?? null}
+              expert={expertIdentity ?? null}
             />
           )}
           {!readOnly &&
@@ -662,10 +663,9 @@ export function ChatMessagesContainer({
 
   // Every chat surface renders through here, so the pending-answer state
   // (clarifying questions, a hire's onboarding, held calls) lives here too
-  // instead of in each host. A read-only viewer answers nothing.
-  if (readOnly) return thread;
+  // instead of in each host. Read-only viewers receive saved answers only.
   return (
-    <PendingAnswerContexts messages={allMessages}>
+    <PendingAnswerContexts messages={allMessages} readOnly={readOnly}>
       {thread}
     </PendingAnswerContexts>
   );
