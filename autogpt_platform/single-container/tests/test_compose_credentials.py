@@ -128,13 +128,15 @@ class ComposeCredentialsTest(unittest.TestCase):
         workflow = (
             PLATFORM_ROOT.parent / ".github/workflows/platform-backend-ci.yml"
         ).read_text(encoding="utf-8")
-        job_env = dict(re.findall(r'(?m)^      ([A-Z_]+): "([^"]*)"$', workflow))
-        (falkordb,) = re.findall(r'REDIS_ARGS: "--requirepass ([^"]+)"', workflow)
+        # The `test` job alone, up to the next job: what another job sets
+        # reaches neither its services nor its tests.
+        (job,) = re.findall(r"(?ms)^  test:\n(.*?)(?=^  \S|\Z)", workflow)
+        (env,) = re.findall(r"(?m)^    env:\n((?:^      .*\n)+)", job)
+        job_env = dict(re.findall(r'(?m)^      ([A-Z_]+): "([^"]*)"$', env))
+        (falkordb,) = re.findall(r'REDIS_ARGS: "--requirepass ([^"]+)"', job)
 
         self.assertEqual(job_env.get("GRAPHITI_FALKORDB_PASSWORD"), falkordb)
-        self.assertIn(
-            "RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}", workflow
-        )
+        self.assertIn("RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}", job)
         self.assertIn("RABBITMQ_DEFAULT_PASS", job_env)
 
     def test_database_containers_run_the_password_entrypoint(self) -> None:
