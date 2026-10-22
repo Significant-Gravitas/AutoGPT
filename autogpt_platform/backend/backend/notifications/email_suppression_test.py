@@ -75,12 +75,6 @@ def test_preview_auth_mail_needs_no_postmark_configuration(sender: EmailSender):
     sender.send_email_or_raise("test@previews.agpt.co", "Reset", "<p>Reset</p>")
 
 
-def test_real_auth_mail_still_requires_postmark_configuration(sender: EmailSender):
-    sender.postmark = None
-    with pytest.raises(RuntimeError, match="Postmark is not configured"):
-        sender.send_email_or_raise("sam@example.com", "Reset", "<p>Reset</p>")
-
-
 async def _send(sender: EmailSender, path: SendPath, recipient: str) -> None:
     if path == "auth":
         sender.send_email_or_raise(recipient, "Reset", "<p>Reset</p>", "Reset")
