@@ -141,6 +141,19 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
             )
             schedule_posthog_lifecycle_sync(user.id)
 
+        # Every sign-in comes through here, including the one a verify or
+        # reset link ends in. Better Auth marks the identity verified in the
+        # frontend, which can't reach this cache, so drop it here.
+        try:
+            forget_user_email_verification(user.id)
+        except Exception:
+            # Mail eligibility only, and the entry expires on its own.
+            logger.warning(
+                "Failed to drop the cached email verification of %s",
+                user.id,
+                exc_info=True,
+            )
+
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
         # Identify by subject only. `user_data` is the decoded JWT (email,
@@ -746,6 +759,7 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
         )
         # Invalidate cache for this user
         get_user_by_id.cache_delete(user_id)
+        forget_user_email_verification(user_id)
     except Exception as e:
         raise DatabaseError(
             f"Failed to set email verification status for user {user_id}: {e}"
@@ -776,17 +790,49 @@ async def disable_all_user_notifications(user_id: str) -> None:
         ) from e
 
 
+# Better Auth's providerId for a Google sign-in.
+_GOOGLE_PROVIDER = "google"
+
+
+@cache_user_lookup
 async def get_user_email_verification(user_id: str) -> bool:
-    """Get the email verification status for a user."""
+    """Whether product and service mail may go to this account's address.
+
+    ``User.emailVerified`` alone can't answer that: it defaults to true and
+    only a hard bounce clears it. Proof that the address is the account's own
+    is on its auth identity, which Better Auth marks verified when the emailed
+    link is opened; a Google sign-in counts as proof by itself. An account
+    with no identity (the no-auth default user) has none.
+    """
     try:
         user = await PrismaUser.prisma().find_unique_or_raise(
             where={"id": user_id},
         )
-        return user.emailVerified
+        if not user.emailVerified:
+            return False
+        identity = await AuthUser.prisma().find_unique(where={"id": user_id})
+        if identity is None:
+            return False
+        if identity.emailVerified:
+            return True
+        google = await AuthAccount.prisma().find_first(
+            where={"userId": user_id, "providerId": _GOOGLE_PROVIDER}
+        )
+        return google is not None
     except Exception as e:
         raise DatabaseError(
             f"Failed to get email verification status for user {user_id}: {e}"
         ) from e
+
+
+def forget_user_email_verification(user_id: str) -> None:
+    """Drop the cached answer of ``get_user_email_verification``.
+
+    Both key forms go: a local call caches under the positional argument, a
+    database-manager RPC call under the keyword.
+    """
+    get_user_email_verification.cache_delete(user_id)
+    get_user_email_verification.cache_delete(user_id=user_id)
 
 
 def generate_unsubscribe_link(user_id: str) -> str:
