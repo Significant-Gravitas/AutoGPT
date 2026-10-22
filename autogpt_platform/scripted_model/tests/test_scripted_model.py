@@ -25,6 +25,7 @@ from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.extract_nodes import ExtractedEntities
 from graphiti_core.prompts.models import Message
 from pydantic import BaseModel, Field
+from scripted_model.responses import ResponseError
 from scripted_model.responses import response as structured_response
 from scripted_model.scripts import parse_script
 
@@ -94,8 +95,8 @@ class ConstrainedExtraction(BaseModel):
 
 
 class MaximumConstrainedExtraction(BaseModel):
-    integer: int = Field(le=-1)
-    number: float = Field(le=-0.25)
+    integer: int = Field(le=-1, multiple_of=2)
+    number: float = Field(le=-0.25, multiple_of=0.5)
 
 
 def test_messages_follow_the_script_through_a_tool_round(scripted_model):
@@ -250,7 +251,7 @@ def test_responses_parse_honors_supported_schema_constraints(scripted_model):
     )
 
 
-def test_responses_parse_honors_numeric_maximums(scripted_model):
+def test_responses_parse_honors_numeric_constraints(scripted_model):
     response = _openai(scripted_model).responses.parse(
         model="gpt-6-luna",
         input="Extract upper-bounded values.",
@@ -258,9 +259,34 @@ def test_responses_parse_honors_numeric_maximums(scripted_model):
     )
 
     assert response.output_parsed == MaximumConstrainedExtraction(
-        integer=-1,
-        number=-0.25,
+        integer=-2,
+        number=-0.5,
     )
+
+
+def test_responses_rejects_unsatisfiable_numeric_constraints():
+    with pytest.raises(ResponseError, match="no value satisfying its constraints"):
+        structured_response(
+            {
+                "model": "gpt-6-luna",
+                "text": {
+                    "format": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "value": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1,
+                                    "multipleOf": 2,
+                                }
+                            },
+                            "required": ["value"],
+                        }
+                    }
+                },
+            }
+        )
 
 
 def test_responses_rejects_a_non_object_body(scripted_model):

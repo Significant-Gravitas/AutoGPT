@@ -4,6 +4,7 @@ import json
 import math
 import time
 import uuid
+from fractions import Fraction
 from typing import Any
 
 
@@ -153,28 +154,73 @@ def _schema_value(schema: dict[str, Any], root: dict[str, Any], depth: int = 0) 
         minimum = schema.get("minLength", 0)
         return "x" * minimum if isinstance(minimum, int) and minimum > 0 else ""
     if schema_type == "integer":
-        minimum = schema.get("minimum")
-        maximum = schema.get("maximum")
-        value = 0
-        if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
-            value = max(value, math.ceil(minimum))
-        if isinstance(maximum, (int, float)) and not isinstance(maximum, bool):
-            value = min(value, math.floor(maximum))
-        return value
+        return _bounded_number(schema, integer=True)
     if schema_type == "number":
-        minimum = schema.get("minimum")
-        maximum = schema.get("maximum")
-        value: int | float = 0.0
-        if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
-            value = max(value, minimum)
-        if isinstance(maximum, (int, float)) and not isinstance(maximum, bool):
-            value = min(value, maximum)
-        return value
+        return _bounded_number(schema, integer=False)
     if schema_type == "boolean":
         return False
     if schema_type == "null" or schema_type is None:
         return None
     raise ResponseError(f"unsupported JSON schema type {schema_type!r}")
+
+
+def _bounded_number(schema: dict[str, Any], *, integer: bool) -> int | float:
+    minimum = _numeric_constraint(schema, "minimum")
+    maximum = _numeric_constraint(schema, "maximum")
+    multiple = _numeric_constraint(schema, "multipleOf")
+
+    if integer:
+        minimum = Fraction(_ceil_fraction(minimum)) if minimum is not None else None
+        maximum = Fraction(_floor_fraction(maximum)) if maximum is not None else None
+        if multiple is not None:
+            multiple = Fraction(multiple.numerator)
+
+    if minimum is not None and maximum is not None and minimum > maximum:
+        raise ResponseError("numeric schema has no value within its bounds")
+    if multiple is not None and multiple <= 0:
+        raise ResponseError("numeric schema multipleOf must be positive")
+
+    value = Fraction(0)
+    if minimum is not None and minimum > 0:
+        value = minimum
+    elif maximum is not None and maximum < 0:
+        value = maximum
+
+    if multiple is not None:
+        quotient = value / multiple
+        if value > 0:
+            quotient = Fraction(_ceil_fraction(quotient))
+        elif value < 0:
+            quotient = Fraction(_floor_fraction(quotient))
+        value = quotient * multiple
+
+    if (minimum is not None and value < minimum) or (
+        maximum is not None and value > maximum
+    ):
+        raise ResponseError("numeric schema has no value satisfying its constraints")
+    if integer or value.denominator == 1:
+        return value.numerator
+    try:
+        return float(value)
+    except OverflowError as error:
+        raise ResponseError("numeric schema value is too large") from error
+
+
+def _numeric_constraint(schema: dict[str, Any], key: str) -> Fraction | None:
+    value = schema.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ResponseError(f"numeric schema {key} must be finite")
+    return Fraction(str(value))
+
+
+def _ceil_fraction(value: Fraction) -> int:
+    return -((-value.numerator) // value.denominator)
+
+
+def _floor_fraction(value: Fraction) -> int:
+    return value.numerator // value.denominator
 
 
 def _resolve_reference(reference: str, root: dict[str, Any]) -> dict[str, Any]:
