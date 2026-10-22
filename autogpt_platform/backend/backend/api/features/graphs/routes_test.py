@@ -398,6 +398,7 @@ def test_get_graph_all_versions_exports_only_the_versions_someone_else_owns(
     assert teammates["user_id"] == ""
     assert teammates["nodes"][0]["webhook_id"] is None
     assert "secret_token" not in teammates["nodes"][0]["input_default"]
+    assert "host" not in teammates["sub_graphs"][0]["nodes"][0]["input_default"]
 
 
 def test_get_graph_not_found(
