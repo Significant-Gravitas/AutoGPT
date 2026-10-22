@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
@@ -59,12 +60,15 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.blocks import get_blocks
 from backend.copilot import db as chat_db
+from backend.copilot.scheduled_chats.forget import forget_scheduled_chat
 from backend.copilot.scheduled_chats.service import record_scheduled_run
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import dream_pass as dream_pass_db
 from backend.data import memory_schedule as memory_schedule_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
@@ -89,6 +93,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth_ip_events import delete_expired_ip_events
 from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
@@ -326,6 +331,15 @@ class DatabaseManager(AppService):
             logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
             await db.connect()
 
+            # Load the block registry before serving. The first RPC that needs a
+            # block loads it otherwise, on this event loop, and every RPC waits.
+            load_started = time.monotonic()
+            block_count = len(get_blocks())
+            logger.info(
+                f"[{self.service_name}] Loaded {block_count} blocks in "
+                f"{time.monotonic() - load_started:.1f}s"
+            )
+
             logger.info(f"[{self.service_name}] ✅ Ready")
             yield
 
@@ -484,6 +498,9 @@ class DatabaseManager(AppService):
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
+
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = _(delete_expired_ip_events)
 
     # ============ Store ============ #
     get_store_agents = _(get_store_agents)
@@ -725,6 +742,7 @@ class DatabaseManager(AppService):
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
+    get_template = _(experts_db.get_template)
     with_bundled_skills = _(experts_db.with_bundled_skills)
     hire_expert = _(experts_db.hire_expert)
     expert_setup_status = _(experts_db.expert_setup_status)
@@ -762,6 +780,8 @@ class DatabaseManager(AppService):
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    add_dream_narrative = _(chat_db.add_dream_narrative)
+    blank_dream_narratives = _(chat_db.blank_dream_narratives)
     update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
@@ -778,14 +798,31 @@ class DatabaseManager(AppService):
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
+    # ============ Dream Passes ============ #
+    # The scheduler (sync passes, the reaper, retention) and the batch
+    # executor (batch callbacks) keep no Prisma connection; the dream store
+    # reaches each pass's record through these via db_accessors.dream_db().
+    create_dream_pass = _(dream_pass_db.create_dream_pass)
+    update_dream_pass = _(dream_pass_db.update_dream_pass)
+    get_dream_pass = _(dream_pass_db.get_dream_pass)
+    get_dream_pass_for_user = _(dream_pass_db.get_dream_pass_for_user)
+    list_open_dream_passes = _(dream_pass_db.list_open_dream_passes)
+    list_dream_passes = _(dream_pass_db.list_dream_passes)
+    list_expired_dream_passes = _(dream_pass_db.list_expired_dream_passes)
+    list_dream_pass_cleanups = _(dream_pass_db.list_dream_pass_cleanups)
+    delete_old_dream_passes = _(dream_pass_db.delete_old_dream_passes)
+    erase_dream_passes = _(dream_pass_db.erase_dream_passes)
+
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
     # post a briefing via db_accessors / the DatabaseManager RPC.
     append_plain_session_message = _(chat_db.append_plain_session_message)
     # And to tell a scheduled chat why its run was skipped, in that chat.
     append_session_message = _(chat_db.append_session_message)
-    # The copilot executor counts each scheduled run toward a failure streak.
+    # The copilot executor counts each scheduled run toward a failure streak,
+    # and drops a follow-up's streak when Otto deletes its schedule.
     record_scheduled_run = _(record_scheduled_run)
+    forget_scheduled_chat = _(forget_scheduled_chat)
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefings = _(get_latest_briefings)
@@ -1000,6 +1037,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     append_plain_session_message = d.append_plain_session_message
     append_session_message = d.append_session_message
     record_scheduled_run = d.record_scheduled_run
+    forget_scheduled_chat = d.forget_scheduled_chat
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
     get_latest_briefings = d.get_latest_briefings
@@ -1043,6 +1081,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
+
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = d.delete_expired_ip_events
 
     # ============ Store ============ #
     get_store_agents = d.get_store_agents
@@ -1241,6 +1282,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     revoke_expert_credential = d.revoke_expert_credential
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
+    get_template = d.get_template
     with_bundled_skills = d.with_bundled_skills
     hire_expert = d.hire_expert
     expert_setup_status = d.expert_setup_status
@@ -1267,6 +1309,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
+    add_dream_narrative = d.add_dream_narrative
+    blank_dream_narratives = d.blank_dream_narratives
     update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
@@ -1281,3 +1325,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message
+
+    # ============ Dream Passes ============ #
+    create_dream_pass = d.create_dream_pass
+    update_dream_pass = d.update_dream_pass
+    get_dream_pass = d.get_dream_pass
+    get_dream_pass_for_user = d.get_dream_pass_for_user
+    list_open_dream_passes = d.list_open_dream_passes
+    list_dream_passes = d.list_dream_passes
+    list_expired_dream_passes = d.list_expired_dream_passes
+    list_dream_pass_cleanups = d.list_dream_pass_cleanups
+    delete_old_dream_passes = d.delete_old_dream_passes
+    erase_dream_passes = d.erase_dream_passes

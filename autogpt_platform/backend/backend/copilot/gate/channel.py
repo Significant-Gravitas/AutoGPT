@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME
 from backend.data.db_accessors import review_db
+from backend.util.clients import get_scheduler_client
 
 from . import chat_rules, held
 from .review import payload_headline
@@ -38,6 +39,7 @@ _RECEIPTS: dict[Choice, str] = {
     "reject": "Rejected",
 }
 _PASSAGE_CHARS = 500
+_CONTINUE_AFTER_SECONDS = 3
 
 
 class CardOption(BaseModel):
@@ -114,8 +116,21 @@ async def answer(
             )
         except Exception:
             logger.warning(f"Rule from {review_id} not saved", exc_info=True)
-    await held.wake(user_id, session_id, answered.values())
+    if not await held.wake(user_id, session_id, answered.values(), until_last=True):
+        await _wake_soon(user_id, session_id)
     return "answered"
+
+
+async def _wake_soon(user_id: str, session_id: str) -> None:
+    """A channel has no Continue: its answers run a few seconds after the last
+    one, or at once on the chat's last card."""
+    try:
+        await get_scheduler_client().schedule_held_wake(
+            user_id, session_id, _CONTINUE_AFTER_SECONDS
+        )
+    except Exception:
+        logger.warning(f"Could not delay the wake of {session_id}", exc_info=True)
+        await held.wake(user_id, session_id)
 
 
 def _offered(payload: dict[str, Any]) -> list[tuple[Choice, str, str]]:

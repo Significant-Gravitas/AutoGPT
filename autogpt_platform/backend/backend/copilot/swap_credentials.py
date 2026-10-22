@@ -12,8 +12,11 @@ Lookup, OAuth refresh and cache invalidation are ``get_provider_token``'s, the
 same path that fills ``GH_TOKEN`` today: there is no second store.
 
 A credential's name is its provider slug, and its hosts come from
-``SUPPORTED_PROVIDERS``: that table is the binding registry until per-user
-bindings exist (SECRT-2616, SECRT-2618).
+``SUPPORTED_PROVIDERS``: ``swap_hosts``, where the value may be sent, and
+``content_hosts``, where what was stored with it is served back.  The proxy
+opens both and scrubs responses from both; a credential it gets for either
+names only the ``swap_hosts`` as the hosts it may be sent to, so the proxy's
+own host check refuses to swap it into a request to a content host.
 """
 
 from typing import Optional
@@ -25,7 +28,7 @@ from backend.copilot.integration_creds import (
     get_provider_token,
     granted_to_box,
 )
-from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.copilot.providers import SUPPORTED_PROVIDERS, ProviderEntry
 from backend.util.e2b_network import credential_record
 from backend.util.exceptions import NotFoundError
 
@@ -54,13 +57,20 @@ def _host_is_bound(host: str, allowed_hosts: list[str]) -> bool:
     )
 
 
+def _bound_hosts(entry: ProviderEntry) -> list[str]:
+    """Every host the proxy opens for a provider: where its value may go and
+    where it may come back from.  A provider whose token is never swapped in
+    still has its content hosts scrubbed."""
+    return [*entry["swap_hosts"], *entry["content_hosts"]]
+
+
 async def get_swap_bindings() -> dict[str, list[str]]:
     """Credential name to bound hosts, with no values: what lets the proxy
     leave every other host's traffic alone without asking."""
     return {
-        slug: list(entry["swap_hosts"])
+        slug: hosts
         for slug, entry in SUPPORTED_PROVIDERS.items()
-        if entry["swap_hosts"]
+        if (hosts := _bound_hosts(entry))
     }
 
 
@@ -102,6 +112,11 @@ async def resolve_swap_credential(
     best match for the requested scopes); another of the user's accounts, or
     an id typed by hand, resolves to nothing.
 
+    A provider outside the box's ceiling (``providers`` in its record, the
+    run's ``CopilotPermissions``) comes back with no host it may be sent to:
+    the proxy still scrubs the user's values out of what that provider's
+    hosts send back, and swaps nothing.
+
     ``None`` for an unknown name, an unbound host, or nothing granted that
     still yields a token (disconnected since): in each case the placeholder
     goes out as it is.  :class:`NoLiveBox` if *box* is not a live box of
@@ -116,9 +131,11 @@ async def resolve_swap_credential(
     take down the box's others.
     """
     entry = SUPPORTED_PROVIDERS.get(name)
-    if entry is None or not _host_is_bound(host, entry["swap_hosts"]):
+    if entry is None or not _host_is_bound(host, _bound_hosts(entry)):
         return None
     record = await _box_record(box, user_id)
+    ceiling = record.get("providers")
+    permitted = ceiling is None or name in ceiling
     sandbox_id = record.get("sandbox_id")
     granted = await granted_to_box(sandbox_id, name) if sandbox_id else set()
     values: dict[str, str] = {}
@@ -141,5 +158,7 @@ async def resolve_swap_credential(
             raise failure
         return None
     return SwapCredential(
-        name=name, values=values, allowed_hosts=list(entry["swap_hosts"])
+        name=name,
+        values=values,
+        allowed_hosts=list(entry["swap_hosts"]) if permitted else [],
     )

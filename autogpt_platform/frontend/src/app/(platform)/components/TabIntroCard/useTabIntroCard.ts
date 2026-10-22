@@ -2,7 +2,6 @@
 
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { trackTabIntro } from "@/services/onboarding/tab-intro-analytics";
 import { useEffect, useState } from "react";
 import { isPreExpertsUser } from "../WorkflowsMovedNotice/helpers";
@@ -24,17 +23,9 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const { state, completeStep } = useOnboarding();
-  // Same gate as the rest of the new onboarding: the tab intros are part of
-  // that rollout, so they ship and roll back with it rather than on a flag
-  // of their own.
-  const { enabled, ready } = useFlagStatus(Flag.ONBOARDING_BRAIN_DUMP);
-  const experts = useFlagStatus(Flag.HIRE_EXPERTS);
-  const layout = useFlagStatus(Flag.AUTOGPT_NEW_LAYOUT);
   const isMigrationCohort =
     tab === "agents" && isPreExpertsUser(user?.created_at);
-  const hasMigrationNotice =
-    isMigrationCohort &&
-    (!experts.ready || !layout.ready || (experts.enabled && layout.enabled));
+  const hasMigrationNotice = isMigrationCohort;
   const step = TAB_INTRO_STEPS[tab];
 
   // Who closed the card in this mounted session, rather than a boolean: a
@@ -48,12 +39,10 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
   //
   // The cache read is derived here rather than latched into state so it can
   // never lag a render behind the user id, and it sits last so the disabled
-  // case never touches localStorage at all.
+  // visit never touches localStorage at all.
   const isOpen =
     canShow &&
     !hasMigrationNotice &&
-    ready &&
-    Boolean(enabled) &&
     userId !== null &&
     dismissedFor !== userId &&
     state !== null &&

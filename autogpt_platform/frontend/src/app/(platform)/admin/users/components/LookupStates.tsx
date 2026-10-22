@@ -66,6 +66,8 @@ export function LookupSkeleton() {
         <div className="flex flex-col gap-6">
           <Skeleton className="h-[220px] w-full rounded-[18px]" />
           <Skeleton className="h-[160px] w-full rounded-[18px]" />
+          <Skeleton className="h-[200px] w-full rounded-[18px]" />
+          <Skeleton className="h-[180px] w-full rounded-[18px]" />
         </div>
         <div className="flex flex-col gap-6">
           <Skeleton className="h-[260px] w-full rounded-[18px]" />
