@@ -21,7 +21,7 @@ from pydantic import SecretStr
 
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.copilot.config import ChatConfig
-from backend.copilot.executor.processor import CoPilotProcessor
+from backend.copilot.executor import cli_warmup
 from backend.data.model import APIKeyCredentials
 
 from . import cli_version, subscription
@@ -240,12 +240,15 @@ def test_loading_the_launch_code_turns_the_sdks_own_version_check_off(
     assert lines[-1:] == ["'1'"], result.stderr[-2000:]
 
 
-def test_the_worker_warm_up_starts_the_cli_from_the_allowlist(
-    parent: None, monkeypatch: pytest.MonkeyPatch
+def test_the_executor_warm_up_starts_the_cli_from_the_allowlist(
+    parent: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     envs = _record_runs(monkeypatch, "2.1.284")
+    # The warm-up reads the binary through before it runs it.
+    cli = tmp_path / _CLI
+    cli.write_bytes(b"cli")
 
-    CoPilotProcessor.__new__(CoPilotProcessor)._prewarm_cli(cli_path=_CLI)
+    cli_warmup.warm_cli(str(cli))
 
     [env] = envs
     assert all(inherited(name) for name in env)
