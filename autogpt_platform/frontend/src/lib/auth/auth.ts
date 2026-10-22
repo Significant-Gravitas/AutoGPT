@@ -11,6 +11,7 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { getTrustedClientIP } from "./client-ip";
+import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import {
   assertEmailHasMailServer,
   assertNotDisposableEmail,
@@ -129,6 +130,7 @@ export const auth = betterAuth({
   secret: authSecret,
   database: authDbPool,
   telemetry: { enabled: false },
+  disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       // Before Better Auth looks the address up, so an address that already
