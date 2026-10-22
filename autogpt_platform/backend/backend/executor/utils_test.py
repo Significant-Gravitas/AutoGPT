@@ -2581,16 +2581,16 @@ async def test_the_org_check_runs_over_rpc_where_sub_runs_start(
 
 @pytest.mark.parametrize("caller_supplies_a_context", [False, True])
 @pytest.mark.asyncio
-async def test_resuming_a_run_stored_in_someone_elses_org_moves_it_to_the_runners(
+async def test_a_resumed_run_stays_in_the_org_it_started_in(
     mocker: MockerFixture, caller_supplies_a_context: bool
 ):
-    """A run stored before runs were checked can be in an org its runner
-    isn't in. Resuming it (after a review, or an admin requeue) moves it to
-    the runner's org, in the context and in the stored run. Review resume
-    hands in a context that has no org yet."""
+    """A run resumed after a review or an admin requeue has already run in
+    the org and team it's stored in, so it isn't moved out of them, even when
+    its runner has left them since: the executor stops such a run when it
+    picks it up. Review resume hands in a context that has no org yet."""
     from backend.data.execution import ExecutionContext
 
-    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+    _, execution_store, queue, captured = _mock_add_graph_execution_requeue_path(
         mocker,
         expert_id=None,
         organization_id="other-org",
@@ -2598,7 +2598,7 @@ async def test_resuming_a_run_stored_in_someone_elses_org_moves_it_to_the_runner
     )
     membership = _runner_is_not_in_the_given_org(mocker)
 
-    resumed = await add_graph_execution(
+    await add_graph_execution(
         graph_id="g",
         user_id="runner",
         graph_exec_id="existing-execution",
@@ -2607,85 +2607,13 @@ async def test_resuming_a_run_stored_in_someone_elses_org_moves_it_to_the_runner
         ),
     )
 
-    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    membership.assert_not_called()
     context = captured["execution_context"]
-    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+    assert (context.organization_id, context.team_id) == ("other-org", "other-team")
     update = execution_store.update_graph_execution_stats.await_args.kwargs
     assert update["status"] == ExecutionStatus.QUEUED
-    assert update["update_tenancy"] is True
-    assert (update["organization_id"], update["team_id"]) == (
-        "runner-org",
-        "runner-team",
-    )
-    assert (resumed.organization_id, resumed.team_id) == ("runner-org", "runner-team")
-
-
-@pytest.mark.asyncio
-async def test_a_resumed_run_moved_to_an_org_home_doesnt_get_its_old_team_back(
-    mocker: MockerFixture,
-):
-    """Where the run is moved to can have no team; the stored one mustn't
-    come back through the resume fallback, in the context or the row."""
-    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
-        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
-    )
-    mocker.patch(
-        "backend.api.features.orgs.db.resolve_member_tenancy",
-        new=mocker.AsyncMock(return_value=("runner-org", None)),
-    )
-
-    await add_graph_execution(
-        graph_id="g", user_id="runner", graph_exec_id="existing-execution"
-    )
-
-    context = captured["execution_context"]
-    assert (context.organization_id, context.team_id) == ("runner-org", None)
-    update = execution_store.update_graph_execution_stats.await_args.kwargs
-    assert (update["organization_id"], update["team_id"]) == ("runner-org", None)
-
-
-@pytest.mark.asyncio
-async def test_a_run_in_someone_elses_org_isnt_resumed_for_a_runner_with_no_org(
-    mocker: MockerFixture,
-):
-    """With no org of the runner's to move it to, the run isn't resumed: it
-    would stay in the other org."""
-    from backend.util.exceptions import NotAuthorizedError
-
-    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
-        mocker,
-        expert_id=None,
-        organization_id="other-org",
-        team_id="other-team",
-    )
-    mocker.patch(
-        "backend.api.features.orgs.db.resolve_member_tenancy",
-        new=mocker.AsyncMock(return_value=(None, None)),
-    )
-
-    with pytest.raises(NotAuthorizedError):
-        await add_graph_execution(
-            graph_id="g", user_id="runner", graph_exec_id="existing-execution"
-        )
-
-    execution_store.update_graph_execution_stats.assert_not_called()
-    queue.publish_message.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_resuming_a_run_in_the_runners_own_org_keeps_it(mocker: MockerFixture):
-    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
-        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
-    )
-
-    await add_graph_execution(
-        graph_id="g", user_id="runner", graph_exec_id="existing-execution"
-    )
-
-    context = captured["execution_context"]
-    assert (context.organization_id, context.team_id) == ("org-1", "team-1")
-    update = execution_store.update_graph_execution_stats.await_args.kwargs
     assert update["update_tenancy"] is False
+    queue.publish_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

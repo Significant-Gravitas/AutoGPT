@@ -156,10 +156,11 @@ def _in_the_runners_org(
 ) -> bool:
     """Whether the run is queued in an org (and team) its user belongs to.
 
-    ``add_graph_execution`` makes sure of that before it queues a run, so this
-    only fails for a run queued before it did, or whose user has left the org
-    or team since. Such a run is stopped rather than moved, since it may
-    already have started there. Expert runs keep their own tenancy.
+    ``add_graph_execution`` makes sure of that when it creates a run, so this
+    only fails for a run queued before it did, or one whose user has left the
+    org or team since it was created, resumed runs included. Such a run is
+    stopped rather than moved, since it may already have started there.
+    Expert runs keep their own tenancy.
     """
     context = graph_exec.execution_context
     if context.expert_id or not context.organization_id:

@@ -63,7 +63,6 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
-    NotAuthorizedError,
     NotFoundError,
     UserBannedError,
 )
@@ -1519,29 +1518,9 @@ async def _add_graph_execution(
                     )
                     graph_exec.status = ExecutionStatus.TERMINATED
                     return graph_exec
-        else:
-            # A run can be stored in an org or team that its runner doesn't
-            # belong to (any more): it was stored before runs were checked,
-            # or they've left. Resuming it moves it to theirs, like an expert
-            # run above.
-            stored_tenancy = (
-                organization_id or graph_exec.organization_id,
-                team_id or graph_exec.team_id,
-            )
-            if stored_tenancy[0]:
-                member_tenancy = await _resolve_runner_tenancy(user_id, *stored_tenancy)
-                if member_tenancy != stored_tenancy:
-                    if member_tenancy[0] is None:
-                        # A run's org can be changed but not cleared, so one
-                        # with nowhere to go isn't resumed.
-                        raise NotAuthorizedError(
-                            f"Workflow run #{graph_exec.id} is stored in an "
-                            "organization or team its owner isn't in, and "
-                            "theirs couldn't be found to move it to."
-                        )
-                    organization_id, team_id = member_tenancy
-                    graph_exec.organization_id, graph_exec.team_id = member_tenancy
-                    tenancy_replaced = True
+        # Any other run resumes in the org and team it's stored in. One whose
+        # runner has left them since isn't moved, as it has already run
+        # there: the executor stops it when it picks it up.
 
         # The row stores the caller's raw masks and the run-time credential
         # inputs separately; rebuild the credential masks the same way the
@@ -1815,10 +1794,7 @@ async def _add_graph_execution(
         # must still be recoverable: update_graph_execution_stats raises
         # when update_tenancy=True with no organization_id, which would
         # fail the whole requeue — the exact case the admin fallback serves.
-        # A resumed run moved to its runner's org is saved there too.
-        persist_tenancy = (
-            expert_id is not None or tenancy_replaced
-        ) and organization_id is not None
+        persist_tenancy = expert_id is not None and organization_id is not None
         updated_exec = await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.QUEUED,
