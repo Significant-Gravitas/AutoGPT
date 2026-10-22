@@ -27,6 +27,7 @@ import {
   createComponentsMerger,
   type StreamdownComponents,
 } from "./streamdown-components";
+import { MASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -36,6 +37,8 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
       "group flex w-full max-w-[95%] flex-col gap-2",
+      // What the user wrote and what Otto answered.
+      MASKED_IN_REPLAY,
       from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
       className,
     )}

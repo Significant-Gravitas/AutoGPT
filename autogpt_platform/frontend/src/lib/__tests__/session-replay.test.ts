@@ -73,6 +73,7 @@ describe("setupSessionReplay", () => {
       maskAllText: true,
       maskAllInputs: true,
       blockAllMedia: true,
+      mask: ["input, textarea, select, option, [contenteditable]"],
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
       beforeAddRecordingEvent: redactRecordingEventURLs,
     });

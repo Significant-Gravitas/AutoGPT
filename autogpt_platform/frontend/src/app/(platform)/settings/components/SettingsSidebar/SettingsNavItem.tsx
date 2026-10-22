@@ -34,6 +34,7 @@ function NavItemContent({
       <Text
         variant="body"
         as="span"
+        unmask
         className={cn(
           "flex-1",
           isActive

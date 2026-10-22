@@ -3,6 +3,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
 import { cn } from "@/lib/utils";
 import NextLink, { type LinkProps } from "next/link";
 import React from "react";
@@ -36,7 +37,7 @@ export function Button(props: ButtonProps) {
   const isDisabled = disabled;
 
   const applyUnmask = (...classes: Array<string | false | null | undefined>) =>
-    cn(...classes, unmask && "sentry-unmask");
+    cn(...classes, unmask && UNMASKED_IN_REPLAY);
 
   // Extract aria-label for tooltip on icon variant
   const ariaLabel =

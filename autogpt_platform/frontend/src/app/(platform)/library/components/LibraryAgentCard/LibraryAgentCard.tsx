@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { MASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 interface Props {
   agent: LibraryAgent;
@@ -97,7 +98,7 @@ export function LibraryAgentCard({
             <Text
               variant="h5"
               data-testid="library-agent-card-name"
-              className="line-clamp-3 hyphens-auto break-words no-underline hover:no-underline"
+              className={`line-clamp-3 hyphens-auto break-words no-underline hover:no-underline ${MASKED_IN_REPLAY}`}
             >
               {name}
             </Text>

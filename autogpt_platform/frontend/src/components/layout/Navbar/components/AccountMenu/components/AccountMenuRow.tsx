@@ -4,9 +4,11 @@ import Link, { useLinkStatus } from "next/link";
 import * as React from "react";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 interface Props {
   icon: React.ReactNode;
+  /** Fixed copy: shown in session replays. */
   label: string;
   href?: string;
   onClick?: () => void;
@@ -39,7 +41,9 @@ function RowBody({
     <>
       <span className={barClasses} aria-hidden="true" />
       <span className="relative z-10 flex shrink-0 items-center">{icon}</span>
-      <span className="relative z-10 flex-1 truncate">{label}</span>
+      <span className={cn("relative z-10 flex-1 truncate", UNMASKED_IN_REPLAY)}>
+        {label}
+      </span>
       {pending ? (
         <LoadingSpinner
           size="small"

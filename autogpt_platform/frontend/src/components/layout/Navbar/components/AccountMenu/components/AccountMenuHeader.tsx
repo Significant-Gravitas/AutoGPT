@@ -11,6 +11,7 @@ import { AccountMenuOrgList } from "./AccountMenuOrgList";
 import { InitialAvatar } from "./InitialAvatar";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { MASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 interface Props {
   userName?: string;
@@ -45,7 +46,9 @@ export function AccountMenuHeader({
             username={userHandle}
             className="h-8 w-8"
           />
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div
+            className={`flex min-w-0 flex-1 flex-col gap-0.5 ${MASKED_IN_REPLAY}`}
+          >
             {isLoading || !userName || !userEmail ? (
               <>
                 <Skeleton className="h-3.5 w-24" />

@@ -11,6 +11,7 @@ import { formatNotificationCount } from "../../AgentActivityDropdown/helpers";
 import { useAgentActivityDropdown } from "../../AgentActivityDropdown/useAgentActivityDropdown";
 import { ArrowRight01Icon, Pulse01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 const rowClasses =
   "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-neutral-700 outline-none transition-colors duration-200 ease-out hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none data-[state=open]:bg-neutral-100";
@@ -41,7 +42,9 @@ export function AccountMenuActivityRow() {
           <span className="relative z-10 flex shrink-0 items-center">
             <Icon icon={Pulse01Icon} className="h-[18px] w-[18px] shrink-0" />
           </span>
-          <span className="relative z-10 truncate">Activity</span>
+          <span className={`relative z-10 truncate ${UNMASKED_IN_REPLAY}`}>
+            Activity
+          </span>
           {totalCount > 0 && (
             <span
               data-testid="account-menu-activity-total"

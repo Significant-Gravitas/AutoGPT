@@ -35,6 +35,8 @@ import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/Collapsibl
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import { useNavItemClassName } from "./useNavItemClassName";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
 
 type NavLink = {
   name: string;
@@ -106,7 +108,7 @@ function HomeItem() {
       >
         <Link href="/home">
           <HomeIcon />
-          <span className="truncate">Home</span>
+          <span className={cn("truncate", UNMASKED_IN_REPLAY)}>Home</span>
           <ShortcutHint letter="O" />
         </Link>
       </SidebarMenuButton>
@@ -135,7 +137,9 @@ function NavItem({ link }: NavItemProps) {
             icon={link.icon}
             className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
           />
-          <span className="truncate">{link.name}</span>
+          <span className={cn("truncate", UNMASKED_IN_REPLAY)}>
+            {link.name}
+          </span>
           <NavLinkLoader />
         </Link>
       </SidebarMenuButton>

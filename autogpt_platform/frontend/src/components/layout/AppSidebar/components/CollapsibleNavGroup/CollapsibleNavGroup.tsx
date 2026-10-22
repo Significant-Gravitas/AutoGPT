@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/sidebar";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 interface Props {
+  /** Fixed copy: shown in session replays. */
   label: string;
   children: ReactNode;
   open?: boolean;
@@ -40,7 +42,7 @@ export function CollapsibleNavGroup({
           className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden max-md:h-11 max-md:text-sm"
         >
           <CollapsibleTrigger>
-            {label}
+            <span className={UNMASKED_IN_REPLAY}>{label}</span>
             <Icon
               icon={ArrowDown01Icon}
               className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none max-md:size-5"

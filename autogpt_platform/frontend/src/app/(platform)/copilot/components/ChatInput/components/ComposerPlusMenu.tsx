@@ -22,6 +22,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 interface Props {
   onFilesSelected: (files: File[]) => void;
@@ -95,6 +96,7 @@ export function ComposerPlusMenu({
             variant="icon"
             size="icon"
             aria-label="Add files and more"
+            unmask
             data-testid="composer-plus-button"
             disabled={disabled}
             className={cn(
@@ -108,6 +110,7 @@ export function ComposerPlusMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[14rem]">
           <DropdownMenuItem
+            className={UNMASKED_IN_REPLAY}
             disabled={isAtCap}
             onSelect={() => {
               onClearGuidedPrompt?.();
@@ -120,6 +123,7 @@ export function ComposerPlusMenu({
           </DropdownMenuItem>
           {showCameraOption && (
             <DropdownMenuItem
+              className={UNMASKED_IN_REPLAY}
               disabled={isAtCap}
               onSelect={() => {
                 onClearGuidedPrompt?.();
@@ -133,6 +137,7 @@ export function ComposerPlusMenu({
           )}
           {showWorkspaceOption && (
             <DropdownMenuItem
+              className={UNMASKED_IN_REPLAY}
               disabled={isAtCap}
               onSelect={() => {
                 onClearGuidedPrompt?.();
@@ -145,6 +150,7 @@ export function ComposerPlusMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
+            className={UNMASKED_IN_REPLAY}
             onSelect={() => {
               onClearGuidedPrompt?.();
               openModal("connect");
@@ -153,11 +159,17 @@ export function ComposerPlusMenu({
             <Icon icon={PlugSocketIcon} className="mr-2 h-4 w-4" />
             Connect service
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => openModal("skills")}>
+          <DropdownMenuItem
+            className={UNMASKED_IN_REPLAY}
+            onSelect={() => openModal("skills")}
+          >
             <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
             Skills
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => openModal("scheduled")}>
+          <DropdownMenuItem
+            className={UNMASKED_IN_REPLAY}
+            onSelect={() => openModal("scheduled")}
+          >
             <Icon icon={Calendar03Icon} className="mr-2 h-4 w-4" />
             Scheduled
           </DropdownMenuItem>

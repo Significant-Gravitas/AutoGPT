@@ -7,6 +7,8 @@ import {
 } from "@/components/ui/sidebar";
 import { BubbleChatIcon } from "@hugeicons/core-free-icons";
 import { useNavItemClassName } from "../../useNavItemClassName";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
 
 interface Props {
   onClick: () => void;
@@ -28,7 +30,7 @@ export function ChatsRailItem({ onClick }: Props) {
               icon={BubbleChatIcon}
               className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
             />
-            <span className="truncate">Chats</span>
+            <span className={cn("truncate", UNMASKED_IN_REPLAY)}>Chats</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

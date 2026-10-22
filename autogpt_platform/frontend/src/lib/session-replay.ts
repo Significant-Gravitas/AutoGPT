@@ -3,6 +3,7 @@ import {
   redactEventURLs,
   redactRecordingEventURLs,
 } from "@/lib/sentry-url-redaction";
+import { REPLAY_PRIVACY_OPTIONS } from "@/lib/replay-privacy";
 import { hasConsentFor, subscribeToConsent } from "@/services/consent/consent";
 import * as Sentry from "@sentry/nextjs";
 
@@ -78,14 +79,9 @@ function createReplayIntegrations() {
 }
 
 function createReplayIntegration() {
-  // Everything on screen is masked unless an element opts in with
-  // `sentry-unmask`, which only copy that is the same for every user should.
   // No canvas recording: its pixels are sent as drawn, with no masking.
   return Sentry.replayIntegration({
-    maskAllText: true,
-    maskAllInputs: true,
-    blockAllMedia: true,
-    unmask: [".sentry-unmask, [data-sentry-unmask]"],
+    ...REPLAY_PRIVACY_OPTIONS,
     beforeAddRecordingEvent: redactRecordingEventURLs,
   });
 }

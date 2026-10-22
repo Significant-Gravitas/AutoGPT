@@ -5,6 +5,7 @@ import { useTallyFeedback } from "@/components/molecules/TallyPoup/useTallyFeedb
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { HelpCircleIcon } from "@hugeicons/core-free-icons";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 const rowClasses =
   "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-neutral-700 outline-none transition-colors duration-200 ease-out hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
@@ -38,7 +39,9 @@ export function AccountMenuFeedbackRow() {
           aria-hidden="true"
         />
       </span>
-      <span className="relative z-10 flex-1 truncate">Give feedback</span>
+      <span className={`relative z-10 flex-1 truncate ${UNMASKED_IN_REPLAY}`}>
+        Give feedback
+      </span>
     </button>
   );
 }

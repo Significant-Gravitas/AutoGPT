@@ -1,4 +1,5 @@
 import React from "react";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
 import { cn } from "@/lib/utils";
 import {
   As,
@@ -18,7 +19,8 @@ type CustomProps = {
   className?: string;
   /**
    * Shows the text in session replays, which mask all text by default.
-   * Only for static copy that is the same for every user.
+   * Only when every child is fixed copy that is the same for every user:
+   * it also shows any unmarked text nested inside.
    */
   unmask?: boolean;
 };
@@ -42,7 +44,7 @@ export function Text({
   const combinedClassName = cn(
     variantClasses,
     tone && tones[tone],
-    unmask && "sentry-unmask",
+    unmask && UNMASKED_IN_REPLAY,
     className,
   );
 

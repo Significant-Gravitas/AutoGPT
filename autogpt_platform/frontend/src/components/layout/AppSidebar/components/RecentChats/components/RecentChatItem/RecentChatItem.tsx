@@ -29,6 +29,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { isKey } from "@/lib/keyboard";
+import { MASKED_IN_REPLAY, UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
 
 interface Session {
   id: string;
@@ -154,7 +156,7 @@ export const RecentChatItem = memo(function RecentChatItem({
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
-          <span className="truncate">{title}</span>
+          <span className={cn("truncate", MASKED_IN_REPLAY)}>{title}</span>
           <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>
@@ -175,6 +177,7 @@ export const RecentChatItem = memo(function RecentChatItem({
         <DropdownMenuContent align="end">
           {chatPinningEnabled && (
             <DropdownMenuItem
+              className={UNMASKED_IN_REPLAY}
               onClick={() => onPin(session.id, !!session.is_pinned)}
             >
               {session.is_pinned ? (
@@ -185,11 +188,15 @@ export const RecentChatItem = memo(function RecentChatItem({
               {session.is_pinned ? "Unpin chat" : "Pin chat"}
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={() => onRename(session.id, session.title)}>
+          <DropdownMenuItem
+            className={UNMASKED_IN_REPLAY}
+            onClick={() => onRename(session.id, session.title)}
+          >
             <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem
+            className={UNMASKED_IN_REPLAY}
             onClick={() => onExport(session.id, session.title)}
             onSelect={(e) => {
               if (isExporting) e.preventDefault();
@@ -206,12 +213,18 @@ export const RecentChatItem = memo(function RecentChatItem({
             )}
             {isExporting ? "Exporting…" : "Export chat"}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onShare(session.id)}>
+          <DropdownMenuItem
+            className={UNMASKED_IN_REPLAY}
+            onClick={() => onShare(session.id)}
+          >
             <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
             Share chat
           </DropdownMenuItem>
           {isLearningEnabled && (
-            <DropdownMenuItem onClick={() => onExcludeFromLearning(session.id)}>
+            <DropdownMenuItem
+              className={UNMASKED_IN_REPLAY}
+              onClick={() => onExcludeFromLearning(session.id)}
+            >
               <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
               Exclude from learning
             </DropdownMenuItem>
@@ -219,7 +232,10 @@ export const RecentChatItem = memo(function RecentChatItem({
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            className="text-red-600 focus:bg-red-50 focus:text-red-600"
+            className={cn(
+              "text-red-600 focus:bg-red-50 focus:text-red-600",
+              UNMASKED_IN_REPLAY,
+            )}
           >
             <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat

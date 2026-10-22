@@ -13,6 +13,8 @@ import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { getNewChatHref } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
+import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
 
 export function RecentChats() {
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
@@ -55,7 +57,11 @@ export function RecentChats() {
 
   if (!sessions.length) {
     return (
-      <p className="px-2 py-2 text-sm text-neutral-500">No conversations yet</p>
+      <p
+        className={cn("px-2 py-2 text-sm text-neutral-500", UNMASKED_IN_REPLAY)}
+      >
+        No conversations yet
+      </p>
     );
   }
 
@@ -100,7 +106,7 @@ export function RecentChats() {
           <div>
             <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
               <Icon icon={PinIcon} className="size-3.5" />
-              <span className="truncate">Pinned</span>
+              <span className={cn("truncate", UNMASKED_IN_REPLAY)}>Pinned</span>
             </div>
             <SidebarMenu>{pinnedSessions.map(renderItem)}</SidebarMenu>
           </div>
@@ -134,7 +140,10 @@ export function RecentChats() {
           type="button"
           onClick={() => loadMore()}
           disabled={isLoadingMore}
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base"
+          className={cn(
+            "mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base",
+            UNMASKED_IN_REPLAY,
+          )}
         >
           {isLoadingMore && (
             <LoadingSpinner size="small" className="size-4 text-zinc-500" />

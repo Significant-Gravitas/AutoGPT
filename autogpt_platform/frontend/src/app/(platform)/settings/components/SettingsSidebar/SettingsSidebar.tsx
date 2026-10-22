@@ -35,7 +35,7 @@ export function SettingsSidebar() {
         className="mb-[16px] flex w-fit items-center gap-2 rounded-[8px] px-4 py-1 text-[#505057] transition-colors hover:text-[#1F1F20]"
       >
         <Icon icon={ArrowLeft02Icon} size={16} />
-        <Text variant="body" as="span" className="font-medium">
+        <Text variant="body" as="span" unmask className="font-medium">
           Back
         </Text>
       </Link>

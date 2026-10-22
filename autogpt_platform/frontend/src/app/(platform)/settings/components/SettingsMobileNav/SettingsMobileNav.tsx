@@ -32,6 +32,7 @@ export function SettingsMobileNav() {
               <Text
                 variant="body"
                 as="span"
+                unmask
                 className="font-medium text-[#1F1F20]"
               >
                 {current.label}
@@ -72,6 +73,7 @@ export function SettingsMobileNav() {
                 <Text
                   variant="body"
                   as="span"
+                  unmask
                   className={cn(
                     "flex-1",
                     isActive
