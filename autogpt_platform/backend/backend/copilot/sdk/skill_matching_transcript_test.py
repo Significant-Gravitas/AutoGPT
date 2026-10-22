@@ -14,12 +14,14 @@ available_skills = skill_matching_test.available_skills
 @pytest.mark.asyncio
 @pytest.mark.parametrize("boundary", ["upload", "restore", "retry"])
 @pytest.mark.parametrize("content_blocks", [False, True])
+@pytest.mark.parametrize("literal_opener", [False, True])
 async def test_matched_skills_do_not_replay_from_cli_history(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     available_skills: AsyncMock,
     boundary: str,
     content_blocks: bool,
+    literal_opener: bool,
 ) -> None:
     task = " \nFind a partner contact\n "
     notice = await skill_matching.build_matched_skills_notice(
@@ -27,6 +29,8 @@ async def test_matched_skills_do_not_replay_from_cli_history(
     )
     assert "<matched_skills>" in notice
     query = "<available_skills>Keep this index</available_skills>\n\n" + task
+    if literal_opener:
+        query = "An unmatched literal <matched_skills> before the task:\n" + query
     rows = _session_rows(query, notice, content_blocks)
     raw = "\n".join(json.dumps(row) for row in rows).encode() + b"\n"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "config"))

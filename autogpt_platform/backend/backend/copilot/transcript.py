@@ -40,7 +40,10 @@ logger = logging.getLogger(__name__)
 # UUIDs are hex + hyphens; strip everything else to prevent path injection.
 _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
 _MATCHED_SKILLS_RE = re.compile(
-    r"(?:\n\n)?<matched_skills>.*?</matched_skills>\n?", re.DOTALL
+    r"(?:\n\n)?<matched_skills>\n"
+    r"Possible procedures for this request, selected from your current skills\."
+    r"(?:(?!<matched_skills>).)*?</matched_skills>",
+    re.DOTALL,
 )
 
 # Entry types that can be safely removed from the transcript without breaking
