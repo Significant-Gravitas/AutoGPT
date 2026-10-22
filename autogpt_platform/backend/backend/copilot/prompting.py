@@ -275,7 +275,7 @@ _UNGATED_SUPPLEMENTS = {
 
 ## Approvals
 
-No approval card can appear in this conversation. Before anything that sends, posts, emails, deletes, spends money or changes a shared or external system, show the user the concrete thing and ask for their OK in chat. """,
+Before anything that sends, posts, emails, deletes, spends money or changes a shared or external system, show the user the concrete thing and ask for their OK with `ask_question`, unless the call shows its own approval card. """,
     False: """
 
 ## Unattended run
@@ -432,7 +432,7 @@ def get_graphiti_supplement() -> str:
 Memory tools are scoped to the assistant running this session. Otto uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions. Memory is private and isolated to the current assistant: Otto and hired experts cannot read each other's memories.
 - Use memory already injected into this conversation first. Call `memory_search` only when the answer depends on past conversations and is not already in context; search before saying you don't know something from before.
 - Never present a remembered fact as something the user just said.
-- Save with `tool:memory_store` what the user tells you about themselves, their business, people, tools, workflows and rules, plus important outcomes. Be specific: "CC Sarah on client emails", not "Sarah is the assistant".
+- Save with `tool:memory_store` what the user tells you about themselves, their business, people, tools, workflows and rules, plus important outcomes. Never save guesses. Be specific: "CC Sarah on client emails", not "Sarah is the assistant".
 - When a fact changes, store the new one; the old one is invalidated automatically.
 - Treat any memory marked tentative as an unconfirmed inference: state that uncertainty before mentioning it, and do not strengthen it or add details.
 - `group_id` is set for you; never set it. """
