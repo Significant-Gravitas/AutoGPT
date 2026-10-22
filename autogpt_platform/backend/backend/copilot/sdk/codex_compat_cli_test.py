@@ -16,6 +16,7 @@ from claude_agent_sdk import (
 from backend.copilot.pending_messages import PendingMessage, format_pending_as_followup
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.env import build_sdk_env
+from backend.copilot.sdk.launch_env import launch_options
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
     CodexDynamicToolResult,
@@ -138,7 +139,7 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
             ),
         )
         received = []
-        async with ClaudeSDKClient(options=options) as client:
+        async with ClaudeSDKClient(options=launch_options(options)) as client:
             await client.query("Call echo with ping, then report completion.")
             try:
                 async with asyncio.timeout(45):
@@ -226,7 +227,7 @@ async def test_bundled_claude_cli_delivers_a_post_tool_use_followup_to_codex(
                 codex_gateway_token=gateway.auth_token,
             ),
         )
-        async with ClaudeSDKClient(options=options) as client:
+        async with ClaudeSDKClient(options=launch_options(options)) as client:
             await client.query("Call echo with ping, then report completion.")
             try:
                 async with asyncio.timeout(45):

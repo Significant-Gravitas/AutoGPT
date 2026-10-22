@@ -1,19 +1,19 @@
 """How ingestion keeps graphiti from writing over a forget, and which
 earlier episodes it shows graphiti's extraction (``previous_episode_uuids``).
 
-Two things could write over a forget. An ingestion that read a fact before
-a forget landed saves its older copy after it (graphiti saves what it read:
-``SET r = edge``); the graph's write lock rules that out while Redis answers
-and the holder keeps its lease, since a forget and an ingestion then never
-overlap (``scope_lock.py``; ``graphiti/AGENTS.md`` has the windows with no
-bound). And a later ingestion resolves each new statement against the edges
-between the same entities, forgotten ones included: if its model calls the
-statement a duplicate of a forgotten edge, graphiti appends the episode to
-that edge and, because no edge type is named ``[forgotten]``, clears every
-attribute on it, the forget's marker and audit copies among them
-(``edge_operations.resolve_extracted_edge``, then its bulk save's
-``SET r = edge``); if it calls it a contradiction, it stamps the forgotten
-edge's ``invalid_at``.
+Two things could work against a forget. An ingestion that read a fact
+before a forget landed saves its older copy after it, since graphiti saves
+what it read (on a soft-forgotten fact the driver saves only the episode
+list, ``fact_attributes.py``, but graphiti still saves its entities whole,
+and a hard-forgotten fact again); the graph's write lock rules that out
+while Redis answers and the holder keeps its lease, since a forget and an
+ingestion then never overlap (``scope_lock.py``; ``graphiti/AGENTS.md`` has
+the windows with no bound).
+And a later ingestion resolves each new statement against the edges between
+the same entities, forgotten ones included: if its model calls the statement
+a duplicate of a forgotten edge, graphiti appends the episode to that edge,
+where the statement is hidden under the forget; if it calls it a
+contradiction, it stamps the forgotten edge's ``invalid_at``.
 
 So every graphiti client is built with ``ForgetAwareLLMClient``
 (``client._build_graphiti``): whatever graphiti's model answers, an edge
@@ -45,7 +45,9 @@ Its attribute answers keep only what their edge or entity type declares
 (``types.extracted_attributes``), inside ``add_episode`` and so under the
 graph's write lock: graphiti-core 0.30.2 saves every key its model answers,
 so an invented ``forgotten_at`` would hide a live fact. A forget's marker and
-audit copies are never extracted.
+audit copies are never extracted. And for a stored fact's attribute prompt it
+answers no attributes without asking the model (``fact_attributes.py``), so a
+statement merged into a stored fact never changes the fact's attributes.
 """
 
 import ast
@@ -64,8 +66,9 @@ from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 from graphiti_core.tracer import Tracer
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from .fact_attributes import stored_fact
 from .recall import FORGOTTEN_FACT, recallable_episodes
-from .types import extracted_attributes
+from .types import EDGE_TYPES, extracted_attributes
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +113,9 @@ _CANDIDATE_LIST = TypeAdapter(list[_Candidate])
 
 class ForgetAwareLLMClient(LLMClient):
     """``inner``, except that a forgotten edge is never a duplicate or a
-    contradiction in graphiti's edge dedup answers, and an attribute answer
-    keeps only what its type declares."""
+    contradiction in graphiti's edge dedup answers, an attribute answer keeps
+    only what its type declares, and a stored fact gets no attribute answer
+    at all."""
 
     def __init__(self, inner: LLMClient) -> None:
         super().__init__(inner.config)
@@ -133,6 +137,8 @@ class ForgetAwareLLMClient(LLMClient):
         *,
         attribute_extraction: bool = False,
     ) -> dict[str, Any]:
+        if attribute_extraction and _of_a_stored_fact(messages, response_model):
+            return {}
         forgotten = (
             _forgotten_or_none(messages) if response_model is EdgeDuplicate else set()
         )
@@ -160,6 +166,14 @@ class ForgetAwareLLMClient(LLMClient):
         return await self.inner._generate_response(
             messages, response_model, max_tokens, model_size
         )
+
+
+def _of_a_stored_fact(
+    messages: list[Message], response_model: type[BaseModel] | None
+) -> bool:
+    """Whether an attribute prompt is graphiti's for a stored fact, whose
+    attributes no extraction changes (``fact_attributes.py``)."""
+    return response_model in EDGE_TYPES.values() and stored_fact(messages)
 
 
 async def previous_episode_uuids(

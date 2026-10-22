@@ -5,15 +5,22 @@ Three side-effects, in order:
      episodes via ``enqueue_episode``.
   2. Proposals (novel findings) → ``status='tentative'`` envelopes.
      Ratification (P-0.4) will flip these to active or supersede them.
-  3. Demotions / entity invalidations → ``mark_edges_superseded`` /
-     ``invalidate_entity_direct_neighbors`` against the FalkorDB driver.
+  3. Demotions / entity invalidations, written by ``demotions.py`` with the
+     recall guard in each statement.
+
+Every write and proposal must cite what the pass read, and no fact of
+another scope; one that does not is dropped first and counted
+(``citations.py``).
 
 A ``ChatSession`` shell (``metadata.kind='dream'`` +
 ``metadata.dream_pass_id``) is created up front so the MemoryEnvelope
 provenance can reference its id; the assistant message holding
 ``summary_for_user`` is appended LAST, after the ops above, so a partway
-failure leaves an empty dream rather than a narrative with no memory.
-A pass with no operations at all creates neither — see the empty-pass
+failure leaves an empty dream rather than a narrative with no memory. It is
+written as the forgotten placeholder when a write or proposal was dropped
+for resting on a forget, or a hard forget has marked the pass
+(``forget_copies.py``): the summary may restate what was forgotten anywhere.
+A pass with no operations left at all creates neither — see the empty-pass
 guard at the top of ``apply_operations``.
 """
 
@@ -22,10 +29,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid as uuidlib
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import datetime, timezone
+from functools import partial
+from typing import TYPE_CHECKING, Literal
 
-from backend.copilot.graphiti.falkordb_driver import open_driver
+from pydantic import BaseModel, Field
+
 from backend.copilot.graphiti.ingest import (
     IngestionCompletion,
     enqueue_episode,
@@ -37,30 +47,26 @@ from backend.copilot.graphiti.memory_model import (
     MemoryStatus,
     SourceKind,
 )
+from backend.copilot.graphiti.recall import FORGOTTEN_FACT
 from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.copilot.tools.graphiti_forget import (
-    invalidate_entity_direct_neighbors,
-    mark_edges_superseded,
-)
 from backend.copilot.transports import resolve_default_chat_route
-from backend.util.feature_flag import Flag, is_feature_enabled
 
-from .batch_submit import read_input_bundle
+from .citations import source_description, validated_citations
+from .demotions import apply_demotions
 from .fetch import DREAM_EPISODE_NAME_PREFIX
-from .locks import DreamLockHandle, DreamLockLostError
+from .locks import LOCK_CHECK_TIMEOUT_SECONDS, DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
-    DemotionSummary,
-    DreamDemotion,
     DreamOperations,
     DreamOperationsSnapshot,
-    EntityInvalidation,
-    EntityInvalidationSummary,
     IngestionDrainStatus,
     ProposedFinding,
     WriteSummary,
 )
+
+if TYPE_CHECKING:
+    from .lease import ApplyLease
 
 logger = logging.getLogger(__name__)
 
@@ -68,21 +74,21 @@ logger = logging.getLogger(__name__)
 # apply_operations returns. Dev numbers put a single add_episode at 7-131s,
 # so a full pass (up to 30 writes + 20 proposals) can take far longer than
 # any defensible in-lock wait. The caller holds the dream lock until apply
-# returns (locks.DEFAULT_LOCK_TTL_SECONDS=1800, shared with the three LLM
-# phases budgeted at ~1320s), so 300s keeps the whole pass inside the lock
-# TTL envelope. Past the cap the enqueued episodes keep processing
-# fire-and-forget in this process: apply warns and reports ``timed_out``
-# rather than failing the pass.
+# returns, and renews it right before the drain to a budget that covers this
+# cap (``LOCK_DRAIN_RENEWAL_SECONDS``). Past the cap the enqueued episodes
+# keep processing fire-and-forget in this process: apply warns and reports
+# ``timed_out`` rather than failing the pass.
 INGESTION_DRAIN_TIMEOUT_SECONDS = 300
 
-# Fresh dream-lock TTL granted right before the ingestion drain on the sync
-# path (see ``apply_operations``' ``lock_handle``). The drain is the longest
-# non-LLM tail of the pass, and the plain lock TTL — shared with the three
-# LLM phases — can be nearly exhausted by the time apply runs. Renewing the
-# lock to this dedicated budget guarantees it cannot expire mid-write and
-# admit a concurrent pass onto the same user's graph. Sized to cover the
-# drain cap plus the demotions / entity invalidations / summary write that
-# follow it inside apply.
+# The dream-lock TTL set right before the ingestion drain on the sync path
+# (see ``apply_operations``' ``lock_handle``), sized to cover the drain cap
+# plus the demotions / entity invalidations / summary write that follow it
+# inside apply. The pass has renewed its lock before each phase and again
+# before its first write (``lease.py``); this renewal proves it still holds
+# the lock before the longest and most destructive tail, and can shorten
+# what the earlier ones granted. Like every renewal it is a timer, not a
+# storage fence: a tail that outruns this TTL writes on after the lock
+# lapsed, and a newer pass may have taken the scope by then.
 LOCK_DRAIN_RENEWAL_SECONDS = INGESTION_DRAIN_TIMEOUT_SECONDS + 180
 
 # Drain bound for the Anthropic batch path. apply runs there inside
@@ -160,23 +166,55 @@ def _edge_metadata(envelope: MemoryEnvelope) -> dict:
     }
 
 
-def _citations(
-    statement: str,
-    fact_uuids: list[str],
-    episode_uuids: list[str],
-    read: Citations | None,
-) -> Citations:
-    """What a dream write rests on, which the ingestion worker checks against
-    forgets right before writing it (``graphiti/recall_citations.py``): what
-    it cites or, citing nothing, everything its pass read (``read``) and its
-    own statement, since an uncited claim may come from any of it."""
-    if fact_uuids or episode_uuids:
-        return Citations(fact_uuids=list(fact_uuids), episode_uuids=list(episode_uuids))
-    everything = read or Citations()
-    return Citations(
-        fact_uuids=everything.fact_uuids,
-        episode_uuids=everything.episode_uuids,
-        statement=statement,
+class _Cited(BaseModel):
+    """A pass's writes and proposals, each with the citations that name
+    something the pass read (``citations.validated_citations``), by its index
+    in the pass; ``uncited`` counts those dropped for citing nothing it read
+    or a fact of another scope, ``cross_scope`` their citations of a fact of
+    another scope."""
+
+    writes: list[tuple[int, ConsolidatedFact, Citations]] = Field(default_factory=list)
+    proposals: list[tuple[int, ProposedFinding, Citations]] = Field(
+        default_factory=list
+    )
+    uncited: int = 0
+    cross_scope: int = 0
+
+
+def _cite(
+    ops: DreamOperations,
+    known_facts: Collection[str],
+    known_episodes: Collection[str],
+    fact_scopes: Mapping[str, str],
+) -> _Cited:
+    """``ops``' writes and proposals checked against what the pass read."""
+    check = partial(
+        validated_citations,
+        known_facts=known_facts,
+        known_episodes=known_episodes,
+        fact_scopes=fact_scopes,
+    )
+    items: list[ConsolidatedFact | ProposedFinding] = [*ops.writes, *ops.proposals]
+    checked = [
+        check(item.source_fact_uuids, item.source_episode_uuids, scope=item.scope)
+        for item in items
+    ]
+    found = checked[: len(ops.writes)], checked[len(ops.writes) :]
+    writes = [
+        (i, fact, kept.citations)
+        for i, (fact, kept) in enumerate(zip(ops.writes, found[0]))
+        if kept.citations is not None
+    ]
+    proposals = [
+        (i, finding, kept.citations)
+        for i, (finding, kept) in enumerate(zip(ops.proposals, found[1]))
+        if kept.citations is not None
+    ]
+    return _Cited(
+        writes=writes,
+        proposals=proposals,
+        uncited=len(items) - len(writes) - len(proposals),
+        cross_scope=sum(kept.cross_scope for kept in checked),
     )
 
 
@@ -188,8 +226,10 @@ async def _write_consolidated_fact(
     session_id: str,
     completion: IngestionCompletion,
     *,
-    read: Citations | None = None,
+    citations: Citations,
 ) -> bool:
+    """Queue one consolidated fact with what it cites: the worker checks the
+    citations against forgets, then records them (``citations.py``)."""
     envelope = MemoryEnvelope(
         content=fact.content,
         source_kind=SourceKind.assistant_derived,
@@ -204,14 +244,11 @@ async def _write_consolidated_fact(
         session_id=session_id,
         name=_episode_name(pass_id, "consolidate", counter),
         episode_body=envelope.model_dump_json(),
-        source_description=(
-            f"dream-pass consolidation; src_episodes="
-            f"{','.join(fact.source_episode_uuids[:5])}"
-        ),
+        source_description=source_description("consolidation"),
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
-        citations=_citations(fact.content, [], fact.source_episode_uuids, read),
+        citations=citations,
     )
 
 
@@ -223,8 +260,9 @@ async def _write_proposed_finding(
     session_id: str,
     completion: IngestionCompletion,
     *,
-    read: Citations | None = None,
+    citations: Citations,
 ) -> bool:
+    """Queue one proposal with what it cites, like a consolidated fact."""
     envelope = MemoryEnvelope(
         content=finding.content,
         source_kind=SourceKind.assistant_derived,
@@ -234,184 +272,73 @@ async def _write_proposed_finding(
         scope=finding.scope,
         provenance=_provenance(pass_id, "recombine"),
     )
-    description_parts: list[str] = ["dream-pass proposal"]
-    if finding.rationale:
-        description_parts.append(f"rationale={finding.rationale[:240]}")
-    if finding.source_fact_uuids:
-        description_parts.append(f"src_facts={','.join(finding.source_fact_uuids[:5])}")
     return await enqueue_episode(
         scope,
         session_id=session_id,
         name=_episode_name(pass_id, "recombine", counter),
         episode_body=envelope.model_dump_json(),
-        source_description="; ".join(description_parts),
+        source_description=source_description("proposal", rationale=finding.rationale),
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
-        citations=_citations(
-            finding.content,
-            finding.source_fact_uuids,
-            finding.source_episode_uuids,
-            read,
-        ),
+        citations=citations,
     )
 
 
-async def _filter_demotions_to_known_facts(
+def _summary(
+    item: ConsolidatedFact | ProposedFinding,
+    citations: Citations,
+    status: Literal["active", "tentative"],
+) -> WriteSummary:
+    """The snapshot line for a queued write: what it said and what it cites."""
+    return WriteSummary(
+        content=item.content,
+        scope=item.scope,
+        confidence=item.confidence,
+        status=status,
+        source_episode_uuids=list(citations.episode_uuids),
+        source_fact_uuids=list(citations.fact_uuids),
+    )
+
+
+async def _queue_cited(
+    scope: MemoryScope,
     pass_id: str,
-    demotions: list[DreamDemotion],
-    known_fact_uuids: set[str] | None,
-) -> list[DreamDemotion]:
-    """Code-level pre-flight for LLM-proposed demotion targets.
-
-    The sanitize prompt tells the model only ``known_fact_uuids`` are
-    valid demotion targets, but prompt text isn't enforcement — a
-    hallucinated or injected uuid would otherwise reach Cypher and
-    could demote edges the dream pass never fetched. Both the sync
-    orchestrator and the batch callback converge on
-    ``apply_operations``, so this is the one chokepoint that covers
-    both paths.
-
-    The sync path passes ``known_fact_uuids`` from its in-memory
-    ``DreamInput``; the batch path calls ``apply_operations`` without
-    it, so we fall back to the input bundle persisted at submit time.
-    If neither source exists (bundle expired/corrupted, or the Redis
-    read itself fails) we keep the demotions rather than zeroing the
-    pass — the same fail-open posture as the clamp's
-    unknown-fact-count fallback — and log that validation was skipped.
-    The Redis error MUST NOT propagate: by the time apply runs on the
-    batch path the at-most-once apply gate is already claimed, so an
-    exception here would permanently lose the dream (a retry hits the
-    "duplicate" branch and skips apply entirely).
-
-    Entity invalidations are NOT filtered here: the input bundle
-    carries no entity-uuid allowlist (``FactRow.source``/``target``
-    are entity *names*), so there is nothing to validate against.
-    """
-    if not demotions:
-        return demotions
-    if known_fact_uuids is None:
-        try:
-            bundle = await read_input_bundle(pass_id)
-        except Exception as exc:
-            logger.warning(
-                "Dream pass %s: input bundle read failed (%s) — failing open "
-                "and skipping known-fact validation for %d demotion(s)",
-                pass_id,
-                exc,
-                len(demotions),
-            )
-            return demotions
-        if bundle is None:
-            logger.warning(
-                "Dream pass %s: no input bundle available — skipping "
-                "known-fact validation for %d demotion(s)",
-                pass_id,
-                len(demotions),
-            )
-            return demotions
-        known_fact_uuids = bundle.known_fact_uuids
-    kept = [d for d in demotions if d.edge_uuid in known_fact_uuids]
-    dropped = len(demotions) - len(kept)
-    if dropped:
-        logger.warning(
-            "Dream pass %s: dropped %d demotion(s) targeting edge uuids "
-            "outside the pass's known_fact_uuids (prompt-only constraint "
-            "violated by the model)",
+    cited: _Cited,
+    session_id: str,
+    writes_done: IngestionCompletion,
+    proposals_done: IngestionCompletion,
+) -> tuple[list[WriteSummary], list[WriteSummary]]:
+    """Queue the cited writes, then the cited proposals, registering each
+    queued write on ``writes_done`` and each proposal on ``proposals_done``;
+    the snapshot lines of those queued."""
+    writes: list[WriteSummary] = []
+    for i, fact, citations in cited.writes:
+        if await _write_consolidated_fact(
+            scope,
             pass_id,
-            dropped,
-        )
-    return kept
-
-
-async def _apply_demotions(
-    scope: MemoryScope,
-    demotions: list[DreamDemotion],
-) -> tuple[int, int, list[DemotionSummary]]:
-    """Run mark_edges_superseded once per (reason, new_status) bucket.
-
-    Returns ``(succeeded_count, failed_count, summaries)`` where each
-    summary records the original DreamDemotion plus whether the
-    underlying Cypher actually touched a row (``applied`` flag).
-    """
-    if not demotions:
-        return 0, 0, []
-
-    # Group by (new_status, reason) so we minimize round-trips.
-    buckets: dict[tuple[str, str], list[str]] = {}
-    for d in demotions:
-        buckets.setdefault((d.new_status, d.reason), []).append(d.edge_uuid)
-
-    driver = open_driver(scope)
-    succeeded = 0
-    failed = 0
-    succeeded_uuids: set[str] = set()
-    try:
-        for (new_status, reason), uuids in buckets.items():
-            ok, bad = await mark_edges_superseded(
-                driver,
-                uuids,
-                reason=reason,
-                new_status=new_status,  # type: ignore[arg-type]
-                user_id=scope.owner_user_id,
-                # Defense-in-depth: the driver is already opened against
-                # the per-user database, but the group_id predicate keeps
-                # a future wrong-driver caller from touching another
-                # user's edges.
-                group_id=scope.group_id,
-            )
-            succeeded += len(ok)
-            failed += len(bad)
-            succeeded_uuids.update(ok)
-    finally:
-        await driver.close()
-
-    summaries = [
-        DemotionSummary(
-            edge_uuid=d.edge_uuid,
-            reason=d.reason,
-            new_status=d.new_status,
-            applied=d.edge_uuid in succeeded_uuids,
-        )
-        for d in demotions
-    ]
-    return succeeded, failed, summaries
-
-
-async def _apply_entity_invalidations(
-    scope: MemoryScope,
-    invalidations: list[EntityInvalidation],
-) -> tuple[int, list[EntityInvalidationSummary]]:
-    """Single-hop demotion of every :RELATES_TO around each invalidated entity.
-
-    Returns ``(total_edges_touched, summaries)`` — summaries enumerate
-    the per-entity edge uuids so callers can render or audit which
-    edges fell off when an entity was invalidated.
-    """
-    if not invalidations:
-        return 0, []
-    driver = open_driver(scope)
-    total = 0
-    summaries: list[EntityInvalidationSummary] = []
-    try:
-        for inv in invalidations:
-            uuids = await invalidate_entity_direct_neighbors(
-                driver,
-                group_id=scope.group_id,
-                entity_uuid=inv.entity_uuid,
-                reason=inv.reason,
-            )
-            total += len(uuids)
-            summaries.append(
-                EntityInvalidationSummary(
-                    entity_uuid=inv.entity_uuid,
-                    reason=inv.reason,
-                    edges_touched=list(uuids),
-                )
-            )
-    finally:
-        await driver.close()
-    return total, summaries
+            i,
+            fact,
+            session_id=session_id,
+            completion=writes_done,
+            citations=citations,
+        ):
+            writes_done.register()
+            writes.append(_summary(fact, citations, "active"))
+    proposals: list[WriteSummary] = []
+    for i, finding, citations in cited.proposals:
+        if await _write_proposed_finding(
+            scope,
+            pass_id,
+            i,
+            finding,
+            session_id=session_id,
+            completion=proposals_done,
+            citations=citations,
+        ):
+            proposals_done.register()
+            proposals.append(_summary(finding, citations, "tentative"))
+    return writes, proposals
 
 
 async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
@@ -486,22 +413,21 @@ async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
 
 
 async def _write_dream_summary_message(
-    session_id: str, pass_id: str, summary_for_user: str
+    session_id: str, pass_id: str, summary_for_user: str, *, dropped: bool = False
 ) -> None:
     """Append the assistant narrative to an already-created dream session.
 
     Called at the END of ``apply_operations`` so the user-visible summary
-    only appears once the memory ops above have been attempted.
+    only appears once the memory ops above have been attempted. ``dropped``
+    (a write or proposal of the pass was dropped for resting on a forget)
+    writes the placeholder instead, as the database does for a pass a hard
+    forget has marked (``db.add_dream_narrative``).
     """
     from backend.data.db_accessors import chat_db
 
     body = summary_for_user.strip() or "Dream pass completed with no narrative output."
-    await chat_db().add_chat_message(
-        session_id=session_id,
-        role="assistant",
-        sequence=0,
-        content=body,
-        metadata={"dream_pass_id": pass_id},
+    await chat_db().add_dream_narrative(
+        session_id, pass_id, FORGOTTEN_FACT if dropped else body, FORGOTTEN_FACT
     )
 
 
@@ -517,10 +443,11 @@ async def _drain_ingestion(
     ``enqueue_episode`` returning True only proves the episode reached the
     in-process asyncio queue; the real write (LLM extraction + embedding in
     ``_ingestion_worker``) happens later. The caller of ``apply_operations``
-    holds the dream lock until apply returns, so draining here keeps the
-    writes inside the lock envelope — without it, a scheduler pod restart
-    silently discards queued writes while the pass stays recorded
-    successful.
+    holds the dream lock until apply returns, so draining here lands the
+    writes before the pass gives its lock back (while the lock the drain
+    renewal proved lasts: ``LOCK_DRAIN_RENEWAL_SECONDS``) — without it, a
+    scheduler pod restart silently discards queued writes while the pass
+    stays recorded successful.
 
     Scoped to *trackers* — only the episodes THIS pass enqueued. The
     per-user queue is shared with live-chat ingestion, so a whole-queue
@@ -575,8 +502,10 @@ async def apply_operations(
     *,
     known_fact_uuids: set[str] | None = None,
     known_episode_uuids: set[str] | None = None,
+    fact_scopes: Mapping[str, str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
+    lease: ApplyLease | None = None,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
@@ -598,28 +527,38 @@ async def apply_operations(
     ``dropped_forgotten``.
 
     An empty pass — no writes, proposals, demotions, or entity
-    invalidations — returns zero counts and an empty snapshot WITHOUT
-    creating the dream session or writing any message; the
-    ``session_id`` key is absent so ``apply_stats.get("session_id")``
-    reads as ``None`` for both the orchestrator and the batch callback.
-    A pass WITH operations but an empty ``summary_for_user`` still
-    creates the session and writes the fallback narrative (the ops were
-    attempted; only the narrative is missing).
+    invalidations, once the writes citing nothing the pass read are
+    dropped — returns zero counts (``uncited_writes_dropped`` aside) and an
+    empty snapshot WITHOUT creating the dream session or writing any
+    message; the ``session_id`` key is absent so
+    ``apply_stats.get("session_id")`` reads as ``None`` for both the
+    orchestrator and the batch callback. A pass WITH operations but an
+    empty ``summary_for_user`` still creates the session and writes the
+    fallback narrative (the ops were attempted; only the narrative is
+    missing).
 
     ``known_fact_uuids`` is the set of edge uuids the dream pass
     actually fetched (``DreamInput.known_fact_uuids``); demotions
     targeting anything outside it are dropped before any Cypher runs
-    (see ``_filter_demotions_to_known_facts``). ``None`` means "look
-    up the persisted input bundle by pass_id" — the batch path's
-    callbacks rely on that fallback.
+    (``demotions.py``). ``None`` means "look up the persisted input
+    bundle by pass_id" for the demotions.
 
-    Each write and proposal is queued with what it cites; one that cites
-    nothing is taken to rest on everything the pass read, its
-    ``known_fact_uuids`` and ``known_episode_uuids``. The ingestion worker
+    Each write and proposal keeps the citations that name a fact in
+    ``known_fact_uuids`` or an episode in ``known_episode_uuids``
+    (``citations.py``). One left citing nothing, or citing a fact whose
+    scope (``fact_scopes``, from ``citations.fact_scopes``) is not its own,
+    is dropped whole before it is queued and counted in
+    ``uncited_writes_dropped``, and each of its citations of a fact of
+    another scope in ``cross_scope_citations_dropped``; episode citations
+    are not scoped. Both routes pass their input bundle's sets and fact
+    scopes; ``None`` reads as nothing read, so every write is dropped, and a
+    fact with no scope given is ``citations.UNSCOPED``. The ingestion worker
     drops, unwritten, any whose citations a forget reached after the pass
-    read the graph (``graphiti/recall_citations.py``). ``dropped_forgotten``
-    counts those dropped before apply returned: all of them on a drained
-    pass, possibly fewer when the drain was skipped or timed out.
+    read the graph (``graphiti/recall_citations.py``), and records the
+    citations of every write it makes (``graphiti/recall_derivation.py``).
+    ``dropped_forgotten`` counts those dropped before apply returned: all of
+    them on a drained pass, possibly fewer when the drain was skipped or
+    timed out.
 
     ``ingestion_drain_timeout`` bounds the in-line wait for the worker to
     finish the enqueued episodes (see ``_drain_ingestion``). The sync path keeps the
@@ -627,11 +566,29 @@ async def apply_operations(
     ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS`` (0) so it never stalls the
     shared, serial ``BatchExecutor.walk_once`` loop.
 
-    ``lock_handle`` is the sync path's held dream lock. It is renewed to a
-    fresh ``LOCK_DRAIN_RENEWAL_SECONDS`` budget right before the drain so
-    the lock cannot expire while the writes are still being processed (which would
-    admit a concurrent pass onto the same graph). ``None`` on the batch
-    path — it already disowned the lock to its callback with a 24h TTL.
+    ``lock_handle`` is the sync path's held dream lock. It is renewed to
+    ``LOCK_DRAIN_RENEWAL_SECONDS`` right before the drain, failing closed,
+    so a pass that lost its lock stops before the drain and the destructive
+    writes after it. The renewal does not keep the lock through those
+    writes: a drain and tail that outrun the TTL go on writing after it
+    lapsed (``lease.py``). ``None`` on the batch path — it already disowned
+    the lock to its callback with a 24h TTL.
+
+    ``lease`` is the pass's lease, on either path: renewed once more right
+    after the session shell is created and before the first graph write,
+    failing closed (``DreamLockLostError``), so a lock that lapsed while the
+    session was created, and maybe went to a newer pass, stops the writes.
+    It narrows the window, it does not fence each write: a lease can still
+    lapse between this renewal and the writes after it (``lease.py``).
+
+    The demotions and entity invalidations (``demotions.py``) each carry the
+    recall guard in their own statement: a live fact the user recalled within
+    the protection window is left alone unless the write overrides it, and
+    ``protected_demotions`` counts the distinct facts it kept live, as one
+    read after every acknowledged write finds them. A write that raised (it
+    may have committed or still be queued) is counted in
+    ``indeterminate_demotion_writes``, not as a failure, and leaves
+    ``demotion_accounting_complete`` False, as does a failed read.
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -645,7 +602,22 @@ async def apply_operations(
     the engine is still booting).
     """
     user_id = scope.owner_user_id
-    if not (ops.writes or ops.proposals or ops.demotions or ops.entity_invalidations):
+    cited = _cite(
+        ops,
+        known_fact_uuids or set(),
+        known_episode_uuids or set(),
+        fact_scopes or {},
+    )
+    if cited.uncited:
+        logger.warning(
+            f"Dream pass {pass_id} for user {user_id[:12]}: dropped "
+            f"{cited.uncited} write(s) and proposal(s) citing nothing the pass "
+            f"read or a fact of another scope ({cited.cross_scope} citation(s) "
+            "of another scope)"
+        )
+    if not (
+        cited.writes or cited.proposals or ops.demotions or ops.entity_invalidations
+    ):
         # Empty pass — nothing landed in memory, so don't manufacture a
         # user-visible artifact for it. Creating the session shell +
         # placeholder narrative here is what produced one untitled empty
@@ -666,6 +638,12 @@ async def apply_operations(
             "dropped_forgotten": 0,
             "pending_writes": 0,
             "failed_writes": 0,
+            "provenance_pending": 0,
+            "uncited_writes_dropped": cited.uncited,
+            "cross_scope_citations_dropped": cited.cross_scope,
+            "protected_demotions": 0,
+            "indeterminate_demotion_writes": 0,
+            "demotion_accounting_complete": True,
             # Vacuously drained — the pass enqueued nothing.
             "ingestion_drain_status": IngestionDrainStatus.drained,
             "snapshot": DreamOperationsSnapshot(),
@@ -676,6 +654,11 @@ async def apply_operations(
     # is written AFTER the ops (see below), so a partway failure leaves an
     # empty dream rather than a 'completed' narrative with no memory.
     session_id = await _create_dream_session(scope, pass_id)
+    # Creating the session can take long enough for the lock to lapse: a pass
+    # that cannot prove it still holds it writes nothing (the shell stays, as
+    # after any partway failure).
+    if lease is not None and not await lease.renew():
+        raise DreamLockLostError(user_id)
 
     # Track only the episodes THIS pass enqueues, its writes on one tracker
     # and its proposals on another: the drain below waits on the dream's own
@@ -684,73 +667,28 @@ async def apply_operations(
     # saved of each. Registered once per successful enqueue; the worker
     # records what became of each episode as it finishes it.
     writes_done, proposals_done = IngestionCompletion(), IngestionCompletion()
-    read = Citations(
-        fact_uuids=sorted(known_fact_uuids or ()),
-        episode_uuids=sorted(known_episode_uuids or ()),
+    write_summaries, proposal_summaries = await _queue_cited(
+        scope, pass_id, cited, session_id, writes_done, proposals_done
     )
 
-    write_summaries: list[WriteSummary] = []
-    for i, fact in enumerate(ops.writes):
-        if await _write_consolidated_fact(
-            scope,
-            pass_id,
-            i,
-            fact,
-            session_id=session_id,
-            completion=writes_done,
-            read=read,
-        ):
-            writes_done.register()
-            write_summaries.append(
-                WriteSummary(
-                    content=fact.content,
-                    scope=fact.scope,
-                    confidence=fact.confidence,
-                    status="active",
-                    source_episode_uuids=list(fact.source_episode_uuids),
-                )
-            )
-
-    proposal_summaries: list[WriteSummary] = []
-    for i, prop in enumerate(ops.proposals):
-        if await _write_proposed_finding(
-            scope,
-            pass_id,
-            i,
-            prop,
-            session_id=session_id,
-            completion=proposals_done,
-            read=read,
-        ):
-            proposals_done.register()
-            proposal_summaries.append(
-                WriteSummary(
-                    content=prop.content,
-                    scope=prop.scope,
-                    confidence=prop.confidence,
-                    status="tentative",
-                    source_episode_uuids=list(prop.source_episode_uuids),
-                    source_fact_uuids=list(prop.source_fact_uuids),
-                )
-            )
-
     # Renew the dream lock right before the longest non-LLM tail (the
-    # ingestion drain plus the demotions / summary write that follow) so the
-    # lock cannot expire mid-write and let a second pass touch the same
-    # graph. Gated on there being any mutating work left — enqueued episodes
-    # to drain OR demotions / entity invalidations to apply, the most
-    # destructive ops in the pass, which a writes-free pass would otherwise
-    # run under a near-exhausted TTL. The batch path passes no handle (it
-    # disowned the lock to its callback). A failed renewal means the lock
-    # already expired — a newer pass may own the graph — so abort before the
-    # drain and the destructive writes below. The episodes already enqueued
-    # above keep processing fire-and-forget (they cannot be recalled), but
-    # the pass is reported errored instead of pretending exclusive ownership.
+    # ingestion drain plus the demotions / summary write that follow), to a
+    # budget sized for that tail. The renewal proves ownership at the instant
+    # it runs; it is a timer, not a fence, so a tail that outruns the TTL
+    # writes on after the lock lapsed (``lease.py``). Gated on there being
+    # any mutating work left — enqueued episodes to drain OR demotions /
+    # entity invalidations to apply, the most destructive ops in the pass.
+    # The batch path passes no handle (it disowned the lock to its callback).
+    # A failed renewal means the lock already expired — a newer pass may own
+    # the graph — so abort before the drain and the destructive writes below.
+    # The episodes already enqueued above keep processing fire-and-forget
+    # (they cannot be recalled), but the pass is reported errored instead of
+    # pretending exclusive ownership.
     queued = writes_done.registered + proposals_done.registered
     if lock_handle is not None and (
         queued or ops.demotions or ops.entity_invalidations
     ):
-        if not await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS):
+        if not await _renewed_for_the_tail(lock_handle, pass_id):
             raise DreamLockLostError(user_id)
 
     # Drain the in-process ingestion queue before anything downstream
@@ -760,56 +698,50 @@ async def apply_operations(
         pass_id, (writes_done, proposals_done), ingestion_drain_timeout
     )
 
-    demotions = await _filter_demotions_to_known_facts(
-        pass_id, ops.demotions, known_fact_uuids
-    )
-    demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
-        scope, demotions
-    )
-    # Entity invalidation single-hop demotes every edge around the
-    # entity — the most destructive op in the pass — so it stays behind
-    # its own LD flag for staged rollout, independent of the dream pass
-    # being enabled. Truthiness check short-circuits the flag eval when
-    # the model proposed nothing to invalidate.
-    if ops.entity_invalidations and await is_feature_enabled(
-        Flag.DREAM_PASS_INVALIDATE_ENTITY, user_id
-    ):
-        entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
-            scope, ops.entity_invalidations
-        )
-    else:
-        entity_edges_demoted, entity_summaries = 0, []
+    destroyed = await apply_demotions(scope, pass_id, ops, known_fact_uuids)
 
     # Narrative summary last — only surface the user-facing dream story
-    # once the memory ops above have been attempted.
-    await _write_dream_summary_message(session_id, pass_id, ops.summary_for_user)
-
+    # once the memory ops above have been attempted, and none of it once a
+    # write it may restate was dropped for resting on a forget. A drop the
+    # drain did not wait for (the batch path's, a timed-out drain's) is not
+    # known here: a hard forget's mark covers that pass instead.
     trackers = (writes_done, proposals_done)
     dropped = sum(tracker.dropped_forgotten for tracker in trackers)
+    await _write_dream_summary_message(
+        session_id, pass_id, ops.summary_for_user, dropped=dropped > 0
+    )
     pending = sum(tracker.pending for tracker in trackers)
     failed = sum(tracker.failed for tracker in trackers)
+    provenance_pending = sum(tracker.provenance_pending for tracker in trackers)
     logger.info(
         "Dream pass %s applied for user %s: "
-        "writes=%d proposals=%d dropped_forgotten=%d pending=%d failed=%d "
-        "demoted=%d (failed=%d) entity_edges=%d ingestion_drain_status=%s",
+        "writes=%d proposals=%d uncited=%d dropped_forgotten=%d pending=%d "
+        "failed_writes=%d provenance_pending=%d demoted=%d (failed=%d) "
+        "protected=%d entity_edges=%d indeterminate=%d accounting_complete=%s "
+        "ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
         writes_done.written,
         proposals_done.written,
+        cited.uncited,
         dropped,
         pending,
         failed,
-        demoted_ok,
-        demoted_fail,
-        entity_edges_demoted,
+        provenance_pending,
+        destroyed.demoted,
+        destroyed.failed,
+        destroyed.protected,
+        destroyed.entity_edges,
+        destroyed.indeterminate,
+        destroyed.accounting_complete,
         ingestion_drain_status.value,
     )
 
     snapshot = DreamOperationsSnapshot(
         writes=write_summaries,
         proposals=proposal_summaries,
-        demotions=demotion_summaries,
-        entity_invalidations=entity_summaries,
+        demotions=destroyed.demotions,
+        entity_invalidations=destroyed.entity_invalidations,
     )
 
     return {
@@ -817,16 +749,51 @@ async def apply_operations(
         # The writes and proposals graphiti saved by the time apply returned.
         "consolidated_count": writes_done.written,
         "proposal_count": proposals_done.written,
-        "demotion_count": demoted_ok,
-        "demotion_failed_count": demoted_fail,
-        "entity_invalidation_count": entity_edges_demoted,
+        "demotion_count": destroyed.demoted,
+        "demotion_failed_count": destroyed.failed,
+        "entity_invalidation_count": destroyed.entity_edges,
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
         "dropped_forgotten": dropped,
-        # Writes and proposals not written yet (queued, waiting for the
-        # graph's lock, or being written), and those whose write failed.
+        # Writes and proposals not written yet: queued, waiting for the
+        # graph's lock, or being written.
         "pending_writes": pending,
+        # Writes and proposals the worker did not make: their citation marker
+        # could not be written (it fails closed) or the graph write raised.
         "failed_writes": failed,
+        # Writes made whose derivation record failed after the write: their
+        # marker stays until reconciled (``graphiti/recall_reconcile.py``).
+        "provenance_pending": provenance_pending,
+        # Writes and proposals dropped before they were queued: they cited
+        # nothing the pass read, or a fact of another scope.
+        "uncited_writes_dropped": cited.uncited,
+        # Their citations of a fact of another scope.
+        "cross_scope_citations_dropped": cited.cross_scope,
+        # Distinct facts an acknowledged write spared and the accounting read
+        # found live; provisional when the accounting is incomplete.
+        "protected_demotions": destroyed.protected,
+        # Destructive writes that raised: each may have committed or still land.
+        "indeterminate_demotion_writes": destroyed.indeterminate,
+        # False when the final read failed or any write's outcome is unknown.
+        "demotion_accounting_complete": destroyed.accounting_complete,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }
+
+
+async def _renewed_for_the_tail(lock_handle: DreamLockHandle, pass_id: str) -> bool:
+    """Renew the lock for the drain and the writes after it. A renewal Redis
+    does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS`` fails closed, as
+    the lease renewals that admit apply do: ownership unknown is not
+    ownership."""
+    try:
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            return await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS)
+    except TimeoutError:
+        logger.warning(
+            "Dream pass %s: the lock renewal before the drain did not answer "
+            "within %ss; stopping before the destructive tail",
+            pass_id,
+            LOCK_CHECK_TIMEOUT_SECONDS,
+        )
+        return False

@@ -2,22 +2,22 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
+import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import {
   BookOpen01Icon,
   BulbIcon,
   PlusSignIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { SectionEmptyState } from "../../components/SectionEmptyState";
+import { ToolbarSearch } from "../../components/ToolbarSearch";
 import { AddSkillDialog } from "./AddSkillDialog";
 import { ExpertSkillListItem } from "./ExpertSkillListItem";
-import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import { useExpertLearning } from "./useExpertLearning";
 import { useExpertSkills } from "./useExpertSkills";
-import { ToolbarSearch } from "../../components/ToolbarSearch";
 
 interface Props {
   expert: Expert;
@@ -48,7 +48,6 @@ export function ExpertSkillsSection({
     setMarketQuery,
     marketplaceSkills,
     isMarketplaceLoading,
-    hasMarketplace,
     addSkill,
     addMarketplaceSkill,
     removeSkill,
@@ -172,7 +171,6 @@ export function ExpertSkillsSection({
         onMarketQueryChange={setMarketQuery}
         marketplaceSkills={marketplaceSkills}
         isMarketplaceLoading={isMarketplaceLoading}
-        hasMarketplace={hasMarketplace}
         isSaving={isSaving}
         onAdd={addSkill}
         onAddMarketplace={addMarketplaceSkill}

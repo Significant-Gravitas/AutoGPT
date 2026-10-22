@@ -4,15 +4,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
-const DEFAULT_DESCRIPTION =
-  "AutoPilot will not ask before anything in this chat. Edits, commands and actions outside the platform, like sending a message or an email, run without your approval.";
-
 interface Props {
   isOpen: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   title?: string;
-  description?: string;
+  description: string;
 }
 
 export function UnsupervisedConfirmDialog({
@@ -20,7 +17,7 @@ export function UnsupervisedConfirmDialog({
   onConfirm,
   onCancel,
   title = "Run this chat unsupervised?",
-  description = DEFAULT_DESCRIPTION,
+  description,
 }: Props) {
   return (
     <Dialog

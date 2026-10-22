@@ -65,6 +65,10 @@ export interface PendingUploadAttachment {
   sizeBytes?: number;
   /** Local files upload before the send; workspace references are already stored. */
   isUploading: boolean;
+  /** The picked file, so an image can show before it uploads. */
+  file?: File;
+  /** Where a stored file already lives. */
+  url?: string;
 }
 
 /**

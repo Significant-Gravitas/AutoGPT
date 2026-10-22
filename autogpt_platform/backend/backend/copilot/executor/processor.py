@@ -46,6 +46,7 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.sdk.launch_env import inherited_env
 from backend.copilot.service import strip_user_context_tags
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
@@ -85,7 +86,7 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]"
 
 
 SHUTDOWN_ERROR_MESSAGE = (
-    "Copilot executor shut down before this turn finished. Please retry."
+    "The server running this turn shut down before it finished. Please retry."
 )
 # A platform turn whose allowance can't be read doesn't run unmetered.
 RATE_LIMIT_UNAVAILABLE_CODE = "rate_limit_unavailable"
@@ -422,6 +423,7 @@ class CoPilotProcessor:
                     [cli_path, "-v"],
                     capture_output=True,
                     timeout=10,
+                    env=inherited_env(),
                 )
                 if result.returncode == 0:
                     logger.info(f"CLI pre-warm done: {cli_path}")

@@ -11,7 +11,10 @@ import {
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
+import { isPreviewableImage } from "../../ArtifactPanel/helpers";
+import type { ArtifactRef } from "../../../store";
 import { filePartToArtifactRef } from "../helpers";
+import { MessageImageThumbnail } from "./MessageImageThumbnail";
 import {
   Download04Icon,
   File02Icon,
@@ -65,8 +68,21 @@ export function MessageAttachments({
 }: Props) {
   if (files.length === 0 && folders.length === 0) return null;
 
+  const { images, otherFiles } = splitUserImages(files, isUser, filePattern);
+
   return (
     <div className="mt-2 flex flex-col gap-2">
+      {images.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {images.map((image, i) => (
+            <MessageImageThumbnail
+              key={`image-${image.id}-${i}`}
+              artifact={image}
+              readOnly={readOnly}
+            />
+          ))}
+        </div>
+      )}
       {folders.map((folder) => (
         <FolderAttachmentCard
           key={folder.id}
@@ -74,7 +90,7 @@ export function MessageAttachments({
           readOnly={readOnly}
         />
       ))}
-      {files.map((file, i) => {
+      {otherFiles.map((file, i) => {
         const artifactRef = filePartToArtifactRef(
           file,
           isUser ? "user-upload" : "agent",
@@ -184,6 +200,25 @@ export function MessageAttachments({
       })}
     </div>
   );
+}
+
+/** Images the user sent show as pictures; everything else keeps its card. */
+function splitUserImages(
+  files: FileUIPart[],
+  isUser: boolean | undefined,
+  filePattern: RegExp | undefined,
+) {
+  const images: ArtifactRef[] = [];
+  const otherFiles: FileUIPart[] = [];
+  for (const file of files) {
+    const ref =
+      isUser && isPreviewableImage(file.mediaType)
+        ? filePartToArtifactRef(file, "user-upload", filePattern)
+        : null;
+    if (ref) images.push(ref);
+    else otherFiles.push(file);
+  }
+  return { images, otherFiles };
 }
 
 function FolderAttachmentCard({

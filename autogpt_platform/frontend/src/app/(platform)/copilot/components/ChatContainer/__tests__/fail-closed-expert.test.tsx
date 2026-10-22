@@ -16,8 +16,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    // Only HIRE_EXPERTS is on: useExpertMap runs, artifacts/task-bar stay off.
-    useGetFlag: (flag: string) => flag === "hire-experts",
+    useGetFlag: () => false,
   };
 });
 

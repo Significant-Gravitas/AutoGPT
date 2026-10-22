@@ -35,10 +35,10 @@ afterEach(() => {
 });
 
 describe("PreparingStep checklist copy", () => {
-  it("shows the brain-dump checklist on the dump path (intro path A, flag on)", async () => {
+  it("shows the brain-dump checklist on the dump path (intro path A)", async () => {
     setIntroPath("A");
 
-    render(<PreparingStep onComplete={vi.fn()} isBrainDumpEnabled />);
+    render(<PreparingStep onComplete={vi.fn()} />);
 
     for (const item of DUMP_CHECKLIST) {
       expect(await screen.findByText(item)).toBeDefined();
@@ -47,10 +47,10 @@ describe("PreparingStep checklist copy", () => {
     expect(screen.queryByText("Connecting automation engines")).toBeNull();
   });
 
-  it("shows the generic checklist on the skip path (intro path B, flag on)", async () => {
+  it("shows the generic checklist on the skip path (intro path B)", async () => {
     setIntroPath("B");
 
-    render(<PreparingStep onComplete={vi.fn()} isBrainDumpEnabled />);
+    render(<PreparingStep onComplete={vi.fn()} />);
 
     for (const item of GENERIC_CHECKLIST) {
       expect(await screen.findByText(item)).toBeDefined();
@@ -59,19 +59,8 @@ describe("PreparingStep checklist copy", () => {
     expect(screen.queryByText("Briefing Otto on your work")).toBeNull();
   });
 
-  it("shows the generic checklist when the brain-dump flag is off, even with a stale path A", async () => {
-    setIntroPath("A");
-
-    render(<PreparingStep onComplete={vi.fn()} isBrainDumpEnabled={false} />);
-
-    for (const item of GENERIC_CHECKLIST) {
-      expect(await screen.findByText(item)).toBeDefined();
-    }
-    expect(screen.queryByText("Reading your brain dump")).toBeNull();
-  });
-
   it("shows the generic checklist when no intro path was recorded", async () => {
-    render(<PreparingStep onComplete={vi.fn()} isBrainDumpEnabled />);
+    render(<PreparingStep onComplete={vi.fn()} />);
 
     for (const item of GENERIC_CHECKLIST) {
       expect(await screen.findByText(item)).toBeDefined();

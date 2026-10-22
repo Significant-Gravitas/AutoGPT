@@ -11,7 +11,6 @@ import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
-import { analytics } from "@/services/analytics";
 import { trackExperts } from "@/services/experts/experts-analytics";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
@@ -74,10 +73,6 @@ export function useHireFlow(expert: Expert | null) {
         data: { template_id: expert.id, surface: "expert_page" },
       });
       const result = response.data as HireResult;
-      analytics.sendDatafastEvent("hire_completed", {
-        template_id: expert.id,
-        expert_id: result.expert.id,
-      });
       await invalidateExpertRosterQueries(queryClient);
       pendingCelebrationRef.current = result;
       setHireResult(result);
