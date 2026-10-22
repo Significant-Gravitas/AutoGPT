@@ -93,7 +93,7 @@ function ExpertModeOptions({ expert }: Props) {
         onConfirm={confirmUnsupervised}
         onCancel={cancelUnsupervised}
         title={`Run ${expert.name} unsupervised by default?`}
-        description={`AutoPilot will not ask before anything in new chats with ${expert.name}. Edits, commands and actions outside the platform, like sending a message or an email, run without your approval unless you switch a chat back from the composer.`}
+        description={`${expert.name} will not ask before anything in new chats. Edits, commands and actions outside the platform, like sending a message or an email, run without your approval unless you switch a chat back from the composer.`}
       />
     </section>
   );

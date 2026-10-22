@@ -5427,6 +5427,22 @@ files = [
 ]
 
 [[package]]
+name = "publicsuffixlist"
+version = "1.1.0.20261010"
+description = "publicsuffixlist implement"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "publicsuffixlist-1.1.0.20261010-py3-none-any.whl", hash = "sha256:c92763e6b3982c850e9047eb95aa864753ec533f761b18bae4d04226d5e12f1d"},
+    {file = "publicsuffixlist-1.1.0.20261010.tar.gz", hash = "sha256:1ebd4c9edade8a6c9bd01995a6f9e67220948dca5879b1fd48a565cb429d9aeb"},
+]
+
+[package.extras]
+readme = ["pandoc"]
+update = ["requests"]
+
+[[package]]
 name = "py-vapid"
 version = "1.9.4"
 description = "Simple VAPID header generation library"
@@ -8841,4 +8857,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "df30618dd7912b2fd98185440a01578876a8b4c9453a95ea03b0560f0856043c"
+content-hash = "133d9f66e45f601a459943efdd82f9cd556e509165d22f78a31853de812b2eaa"

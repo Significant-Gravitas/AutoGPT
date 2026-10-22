@@ -1139,7 +1139,9 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # ListAgents/SendMessage: reach other CLI sessions in the same pod.
 # NotebookEdit: writes files outside the MCP Write/Edit tools.
 # Skill: Claude Code's own skills; copilot skills go through read_skill.
-# Workflow: spawns multi-agent runs with no copilot budget or UI.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.  With
+#   slash commands disabled its description also grows from ~5K to ~20K
+#   chars on every request.
 # EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
 # TaskStop: unused here, and permissions cannot name it, so filtered sessions
 #   would drop it anyway.
@@ -1182,23 +1184,6 @@ BLOCKED_TOOLS = {
 # Allowed Glob/Grep calls must also stay within the session's local paths.
 # Native Read/Write/Edit stay blocked; MCP handlers provide file access.
 WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep"}
-
-# Dangerous patterns in tool inputs
-DANGEROUS_PATTERNS = [
-    r"sudo",
-    r"rm\s+-rf",
-    r"dd\s+if=",
-    r"/etc/passwd",
-    r"/etc/shadow",
-    r"chmod\s+777",
-    r"curl\s+.*\|.*sh",
-    r"wget\s+.*\|.*sh",
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"__import__",
-    r"os\.system",
-    r"subprocess",
-]
 
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
