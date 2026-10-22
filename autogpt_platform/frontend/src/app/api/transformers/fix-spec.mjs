@@ -27,6 +27,11 @@ function inlineSharedResponses(inputSchema) {
         Object.entries(response.content ?? {}).map(([mediaType, media]) => {
           if (!media.schema || media.schema.$ref) return [mediaType, media];
           const schemaName = `${name}Response`;
+          if (schemas[schemaName]) {
+            throw new Error(
+              `fix-spec: schema ${schemaName} already exists; give shared response ${name} a $ref schema instead`,
+            );
+          }
           schemas[schemaName] = media.schema;
           return [
             mediaType,
