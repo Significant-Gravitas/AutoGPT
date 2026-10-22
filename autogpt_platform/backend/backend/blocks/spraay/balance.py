@@ -10,6 +10,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -72,6 +73,7 @@ class SpraayGetBalanceBlock(Block):
                 "Paid per call via Spraay x402."
             ),
             categories={BlockCategory.BASIC},
+            effect=BlockEffect.READ,
             input_schema=SpraayGetBalanceBlock.Input,
             output_schema=SpraayGetBalanceBlock.Output,
             test_credentials=TEST_CREDENTIALS,

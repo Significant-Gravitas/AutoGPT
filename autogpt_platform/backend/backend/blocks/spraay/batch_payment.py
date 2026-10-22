@@ -13,6 +13,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -117,6 +118,7 @@ class SpraayBatchPaymentBlock(Block):
                 "required token approval. Paid per call via Spraay x402."
             ),
             categories={BlockCategory.BASIC},
+            effect=BlockEffect.EXTERNAL,
             input_schema=SpraayBatchPaymentBlock.Input,
             output_schema=SpraayBatchPaymentBlock.Output,
             test_credentials=TEST_CREDENTIALS,

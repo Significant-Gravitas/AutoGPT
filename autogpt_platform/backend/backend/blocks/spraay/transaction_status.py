@@ -11,6 +11,7 @@ from typing import Any
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -78,6 +79,7 @@ class SpraayTransactionStatusBlock(Block):
                 "Spraay gateway endpoint."
             ),
             categories={BlockCategory.BASIC},
+            effect=BlockEffect.READ,
             input_schema=SpraayTransactionStatusBlock.Input,
             output_schema=SpraayTransactionStatusBlock.Output,
             test_input={
