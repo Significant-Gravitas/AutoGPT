@@ -220,6 +220,10 @@ user): it posts as the AutoGPT bot with no credential into a linked server's
 channels or the user's own DMs. For anywhere else, or with nothing linked, use
 the user's connected block, or tell them they can link the platform.
 
+To email the user themselves ("email me", a digest to their inbox), use
+`block:38997608-a57a-4e11-971c-b83a5332e80b` (SendEmailToMeBlock): it sends to
+their account address with no sign-in. Use Gmail only to email someone else.
+
 If `find_capability` without `kind` returns nothing for a named service,
 `web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,
@@ -470,9 +474,10 @@ never renders picker cards, never charges credits.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When you `Read` an SDK tool-result file, it is automatically copied into the
-sandbox so `bash_exec` can access it for further processing.
-The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
+When you use `read_tool_result` to read an SDK tool-result file, E2B can copy
+it into the sandbox for further processing with `bash_exec`.
+If the response includes a `[Sandbox copy available at ...]` note, use the
+exact path from that note to access the copy.
 
 ### GitHub CLI (`gh`) and git
 - To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `run_capability(id="tool:connect_integration", input={"provider": "github"})` which will ask the user to connect their GitHub regardless if it's already connected.

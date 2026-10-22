@@ -23,6 +23,7 @@ from sentry_sdk.utils import event_from_exception, json_dumps
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
+from backend.api.utils.client_ip import CLIENT_IP_TOKEN_HEADER
 from backend.util import feature_flag, metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
@@ -690,6 +691,8 @@ def _event_with_ip_headers() -> dict:
                 "Cf-Ipcity": "Warsaw",
                 "Cf-Iplatitude": "52.2",
                 "X-Vercel-Ip-City": "Warsaw",
+                # The frontend's signed client-IP token carries the visitor's IP too.
+                CLIENT_IP_TOKEN_HEADER: "203.0.113.7",
                 "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
             },
         },

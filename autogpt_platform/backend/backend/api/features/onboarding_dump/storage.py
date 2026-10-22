@@ -218,8 +218,3 @@ async def audio_download_url(user_id: str, audio_path: str) -> str:
     return await handler.generate_signed_url(
         audio_path, expiration_hours=1, user_id=user_id
     )
-
-
-async def retrieve_audio(user_id: str, audio_path: str) -> bytes:
-    handler = await get_cloud_storage_handler()
-    return await handler.retrieve_file(audio_path, user_id=user_id)

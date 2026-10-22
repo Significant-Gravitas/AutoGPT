@@ -437,34 +437,6 @@ def process_context_field(
     return None
 
 
-def format_date_fields(
-    input_data: Any, date_field_mapping: Dict[str, str]
-) -> Dict[str, str]:
-    """Format datetime fields for API payload."""
-    formatted_dates = {}
-    for input_field, api_field in date_field_mapping.items():
-        value = getattr(input_data, input_field, None)
-        if value:
-            formatted_dates[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    return formatted_dates
-
-
-def add_optional_fields(
-    input_data: Any,
-    field_mapping: Dict[str, str],
-    payload: Dict[str, Any],
-    process_enums: bool = False,
-) -> None:
-    """Add optional fields to payload if they have values."""
-    for input_field, api_field in field_mapping.items():
-        value = getattr(input_data, input_field, None)
-        if value:  # Only add non-empty values
-            if process_enums and hasattr(value, "value"):
-                payload[api_field] = value.value
-            else:
-                payload[api_field] = value
-
-
 def extract_exa_cost_usd(response: Any) -> Optional[float]:
     """Return ``cost_dollars.total`` (USD) from an Exa SDK response, or None.
 
