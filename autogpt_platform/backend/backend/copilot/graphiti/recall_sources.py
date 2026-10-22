@@ -152,7 +152,17 @@ async def ancestry(driver: GraphDriver, cited: list[dict[str, Any]]) -> Ancestry
             found.add(cited_uuid, reach)
     for uuid, reach in (await reached_episodes(driver, list(episodes))).items():
         found.add(episodes[uuid], reach)
-    found.unfinished = any(walkable(states[u]) for u in parents if u in states)
+    seen.update(parents)
+    beyond = [states[u] for u in parents if u in states and walkable(states[u])]
+    origin.update({row["uuid"]: parents[row["uuid"]] for row in beyond})
+    # A walkable fact read there leaves the walk unfinished only when it
+    # names a fact not read yet; its episodes are terminal, so read them.
+    if _named(beyond, origin, "facts", seen):
+        found.unfinished = True
+        return found
+    terminal = _named(beyond, origin, "episodes", set())
+    for uuid, reach in (await reached_episodes(driver, list(terminal))).items():
+        found.add(terminal[uuid], reach)
     return found
 
 

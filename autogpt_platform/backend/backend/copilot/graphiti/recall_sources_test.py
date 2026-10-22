@@ -196,6 +196,34 @@ class TestTheBound:
         assert not walk.unfinished
 
     @pytest.mark.asyncio
+    async def test_a_walkable_source_past_the_limit_naming_read_facts_is_finished(
+        self,
+    ) -> None:
+        """The trailing read finds ``d11`` walkable, but every fact it names
+        was read: nothing is left, so the walk converged."""
+        depth = CASCADE_MAX_ROUNDS + 1
+        chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(depth)}
+        chain[f"d{depth}"] = fact(facts=("d1",))
+        driver = sources(chain)
+
+        walk = await _walk(driver, ["d0"])
+
+        assert (walk.reached, walk.unfinished) == ({}, False)
+
+    @pytest.mark.asyncio
+    async def test_a_hidden_episode_past_the_limit_is_found(self) -> None:
+        """Its episodes are terminal, so a converged walk reads them too."""
+        depth = CASCADE_MAX_ROUNDS + 1
+        chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(depth)}
+        chain[f"d{depth}"] = fact(facts=("d1",), episodes=("hidden",))
+        driver = sources(chain, {"hidden": episode(hidden=True)})
+
+        walk = await _walk(driver, ["d0"])
+
+        assert walk.reached == {"d0": Reach(root="hidden", hard=False)}
+        assert not walk.unfinished
+
+    @pytest.mark.asyncio
     async def test_a_chain_deeper_than_the_cascades_rounds_is_unfinished(
         self,
     ) -> None:
