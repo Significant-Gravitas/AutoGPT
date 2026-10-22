@@ -124,7 +124,7 @@ async def _handle(webhook: PostmarkWebhook) -> None:
             )
 
 
-async def _user_id_for(recipient: str, message_id: str) -> str | None:
+async def _user_id_for(recipient: str, message_id: str | None) -> str | None:
     """The user an email went to, or None for an address with no account,
     such as the internal Ops inbox."""
     user = await get_user_by_email(recipient)

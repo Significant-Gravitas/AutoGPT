@@ -141,20 +141,27 @@ def test_a_spam_complaint_is_sent_and_turns_the_users_mail_off(
     silence.assert_awaited_once_with(USER_ID, zero_daily_limit=True)
 
 
+@pytest.mark.parametrize("origin", ["Recipient", "Customer", "Admin"])
 def test_a_suppression_turns_the_users_mail_off(
-    posthog: Mock, lookup: AsyncMock, unverify: AsyncMock, silence: AsyncMock
+    origin: str,
+    posthog: Mock,
+    lookup: AsyncMock,
+    unverify: AsyncMock,
+    silence: AsyncMock,
 ):
-    _post(_subscription_change(suppress=True))
+    """Including one made by hand, which Postmark sends with no message."""
+    _post(_subscription_change(suppress=True, origin=origin))
 
     lookup.assert_awaited_once_with(RECIPIENT)
     unverify.assert_awaited_once_with(USER_ID, False)
     silence.assert_awaited_once_with(USER_ID, zero_daily_limit=True)
+    posthog.capture.assert_not_called()
 
 
 def test_a_reactivation_changes_nothing(
     posthog: Mock, lookup: AsyncMock, unverify: AsyncMock, silence: AsyncMock
 ):
-    _post(_subscription_change(suppress=False))
+    _post(_subscription_change(suppress=False, origin="Customer"))
 
     lookup.assert_not_awaited()
     unverify.assert_not_awaited()
@@ -482,17 +489,21 @@ def _spam_complaint() -> dict:
     }
 
 
-def _subscription_change(*, suppress: bool) -> dict:
+def _subscription_change(*, suppress: bool, origin: str = "Recipient") -> dict:
+    """Shaped as Postmark documents it: a suppression made by hand (Customer
+    or Admin) and a reactivation carry no MessageID, and a reactivation no
+    Tag or SuppressionReason."""
+    from_a_message = suppress and origin == "Recipient"
     return {
         "RecordType": "SubscriptionChange",
-        "MessageID": MESSAGE_ID,
+        "MessageID": MESSAGE_ID if from_a_message else None,
         "ServerID": 23,
         "MessageStream": "outbound",
         "ChangedAt": "2020-02-01T10:53:34.416071Z",
         "Recipient": RECIPIENT,
-        "Origin": "Recipient",
+        "Origin": origin,
         "SuppressSending": suppress,
-        "SuppressionReason": "ManualSuppression" if suppress else "",
-        "Tag": "briefing",
+        "SuppressionReason": "ManualSuppression" if suppress else None,
+        "Tag": "briefing" if suppress else None,
         "Metadata": {},
     }
