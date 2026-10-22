@@ -10,7 +10,8 @@ import {
   assistantTextChunks,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { screen, waitFor } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,6 +74,7 @@ beforeEach(() => {
 afterEach(() => {
   resetCopilotChatRegistry();
   useAutopilotModeStore.setState({ choices: {} });
+  focusManager.setFocused(undefined);
 });
 
 describe("AutoPilot mode selector", () => {
@@ -400,6 +402,47 @@ describe("AutoPilot mode selector", () => {
         /^Maria will not ask before anything in this chat\./,
       ),
     ).toBeDefined();
+  });
+
+  it("keeps approvals open while a known expert's roster refetches", async () => {
+    let rosterReads = 0;
+    let settleRefetch: () => void = () => {};
+    const refetched = new Promise<void>((resolve) => {
+      settleRefetch = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler(async () => {
+        rosterReads += 1;
+        if (rosterReads > 1) await refetched;
+        return [mariaIdentity("ask_first")];
+      }),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+
+    // Coming back to the tab refetches stale queries, the roster included.
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(rosterReads).toBe(2));
+
+    expect(await findModeButton(/approval mode: ask first/i)).toHaveProperty(
+      "disabled",
+      false,
+    );
+    settleRefetch();
   });
 });
 
