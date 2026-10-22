@@ -13,6 +13,7 @@ import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Literal
 
 import anthropic
 import openai
@@ -80,6 +81,14 @@ class StructuredExtraction(BaseModel):
     entities: list[str]
     summary: StructuredSummary
     accepted: bool
+
+
+class ConstrainedExtraction(BaseModel):
+    kind: Literal["fixed"]
+    status: Literal["ready", "waiting"]
+    labels: list[str] = Field(min_length=1)
+    code: str = Field(min_length=2)
+    score: int | None
 
 
 def test_messages_follow_the_script_through_a_tool_round(scripted_model):
@@ -215,6 +224,36 @@ def test_responses_parse_returns_schema_valid_structured_output(scripted_model, 
     assert entry["completed"]
     assert scripted_model.journal(nonce="memory-side-call") == []
     assert "openai-responses side call (gpt-6-luna)" in caplog.messages
+
+
+def test_responses_parse_honors_supported_schema_constraints(scripted_model):
+    response = _openai(scripted_model).responses.parse(
+        model="gpt-6-luna",
+        input="Extract constrained values.",
+        text_format=ConstrainedExtraction,
+    )
+
+    assert response.output_parsed == ConstrainedExtraction(
+        kind="fixed",
+        status="ready",
+        labels=[""],
+        code="xx",
+        score=0,
+    )
+
+
+def test_responses_rejects_a_non_object_body(scripted_model):
+    request = urllib.request.Request(
+        f"{scripted_model.url}/api/v1/responses",
+        data=b"[]",
+        headers={"Content-Type": "application/json"},
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(request, timeout=5)
+
+    assert refused.value.code == 400
+    assert "body is not a JSON object" in refused.value.read().decode()
 
 
 def test_graphiti_client_parses_its_real_extraction_schemas(scripted_model):
