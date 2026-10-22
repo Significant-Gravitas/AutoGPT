@@ -239,29 +239,6 @@ jobs:
           # Hash checkout inputs before fresh secrets and resolved Compose exist.
           key: e2e-test-data-v3-${{ matrix.embeddings && 'emb' || 'noemb' }}-${{ hashFiles('autogpt_platform/backend/**', 'autogpt_platform/autogpt_libs/**', 'autogpt_platform/docker-compose*.yml', 'autogpt_platform/.env.default', '.github/workflows/platform-fullstack-ci.yml') }}
 
-      # Docker Hub now and then refuses an anonymous pull ("unauthorized:
-      # authentication required"). The daemon tries the mirror first, then Hub.
-      - name: Set up Platform - Pull Docker Hub images through mirror.gcr.io
-        run: |
-          config=$(sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}')
-          jq '."registry-mirrors" = ["https://mirror.gcr.io"] | .debug = true' <<<"$config" | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-          docker info --format 'Registry mirrors: {{.RegistryConfig.Mirrors}}'
-
-      # PROOF ONLY (reverted before merge): with Docker Hub unreachable, every pull must come from the mirror.
-      - name: "PROOF ONLY - Block Docker Hub"
-        run: |
-          docker version --format 'Docker server {{.Server.Version}}'
-          docker info --format 'Driver {{.Driver}} {{json .DriverStatus}}'
-          echo "0.0.0.0 registry-1.docker.io auth.docker.io index.docker.io production.cloudflare.docker.com" | sudo tee -a /etc/hosts
-          if curl -sS --max-time 10 -o /dev/null https://registry-1.docker.io/v2/; then echo "Docker Hub still reachable" >&2; exit 1; fi
-          echo "Docker Hub is unreachable from this runner"
-          since=$(date '+%Y-%m-%d %H:%M:%S')
-          for ref in redis:7 moby/buildkit:v0.32.0 "$BUILDKIT_IMAGE"; do
-            echo "::group::docker pull $ref"; docker pull -q "$ref" && echo "PULLED $ref" || echo "FAILED $ref"; echo "::endgroup::"
-          done
-          sudo journalctl -u docker --since "$since" --no-pager | grep -iE 'mirror|endpoint|pull|error|fallback' | cut -c1-400 | head -80
-
       - name: Set up Platform - Pull BuildKit image
         id: buildkit-image
         working-directory: /tmp
@@ -361,11 +338,6 @@ jobs:
           driver-opts: |
             image=${{ env.BUILDKIT_IMAGE }}
             network=host
-          # BuildKit pulls the Dockerfiles' base images itself, not through the daemon
-          buildkitd-config-inline: |
-            debug = true
-            [registry."docker.io"]
-              mirrors = ["mirror.gcr.io"]
 
       # The frontend Dockerfile keeps Next.js's webpack cache in a BuildKit cache
       # mount. A fresh builder starts empty, so seed the mount from the last run.
@@ -415,10 +387,16 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
 
-      - name: Set up Platform - Start database
+      - name: Set up Platform - Pull service images and start database
         id: database
         background: true
         run: |
+          # Every image `up` would pull, pulled now through the retry, so a brief
+          # Docker Hub refusal can't fail a later `up`.
+          images=$(python -c "import yaml; s = yaml.safe_load(open('../docker-compose.resolved.yml'))['services']; built = {c.get('image') for c in s.values() if 'build' in c}; print(' '.join(sorted({c['image'] for c in s.values() if 'build' not in c} - built)))")
+          for image in $images; do
+            bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$image"
+          done
           docker compose -f ../docker-compose.resolved.yml up -d db --no-build
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
@@ -638,17 +616,6 @@ jobs:
             autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           if-no-files-found: error
           retention-days: 3
-
-      - name: "PROOF ONLY - Which registry served BuildKit"
-        if: always()
-        run: |
-          builder=$(docker ps --filter name=buildx_buildkit --format '{{.Names}}' | head -1)
-          echo "BuildKit container: $builder"
-          echo "Its /etc/hosts entries for Docker Hub:"; docker exec "$builder" grep docker.io /etc/hosts || echo "  none"
-          logs=$(docker logs "$builder" 2>&1)
-          echo "Requests to mirror.gcr.io: $(grep -c 'url="https://mirror.gcr.io/' <<<"$logs" || true)"
-          echo "Requests to registry-1.docker.io: $(grep -c 'url="https://registry-1.docker.io/' <<<"$logs" || true)"
-          grep -o 'url="https://mirror.gcr.io/v2/[^/]*/[^/]*/manifests/[^"?]*' <<<"$logs" | sort | uniq -c || true
 
       - name: Print Final Docker Compose logs
         if: always()
