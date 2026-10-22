@@ -252,7 +252,10 @@ export function useMemoryVisualizer(expertID?: string) {
       setFinishedDreamStatus(finishedStatus);
       setActiveDreamJobId(undefined);
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetDreamPassStatusQueryKey(USER_ID, activeDreamJobId),
+        queryKey: getGetV2GetDreamPassStatusQueryKey(
+          USER_ID,
+          activeDreamJobId ?? "",
+        ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
     },
@@ -269,7 +272,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetNightlyBatchStatusQueryKey(
           USER_ID,
-          activeNightlyJobId,
+          activeNightlyJobId ?? "",
         ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
@@ -287,7 +290,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetCommunityRebuildStatusQueryKey(
           USER_ID,
-          activeRebuildJobId,
+          activeRebuildJobId ?? "",
         ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
