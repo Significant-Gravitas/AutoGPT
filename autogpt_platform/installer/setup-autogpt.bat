@@ -229,12 +229,12 @@ REM Subroutines
 REM ============================================================================
 
 :init_env
-REM The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY and
-REM BETTER_AUTH_SECRET blank and the backend refuses to start without an
-REM ENCRYPTION_KEY, so generate them here exactly as `make init-env` does.
-REM Values that are already set are never overwritten. The generator is
-REM stdlib-only Python; it runs in a container because Docker is the one
-REM prerequisite every Windows install already has.
+REM The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY,
+REM INTERNAL_API_KEY and BETTER_AUTH_SECRET blank and the backend refuses to
+REM start without an ENCRYPTION_KEY, so generate them here exactly as
+REM `make init-env` does. Values that are already set are never overwritten.
+REM The generator is stdlib-only Python; it runs in a container because Docker
+REM is the one prerequisite every Windows install already has.
 cd /d "%REPO_DIR%\autogpt_platform"
 if errorlevel 1 (
     echo Failed to navigate to autogpt_platform directory.

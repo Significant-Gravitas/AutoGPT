@@ -9,7 +9,9 @@ from starlette.routing import Route
 from backend.copilot.swap_credentials import NoLiveBox, SwapCredential
 from backend.copilot.swap_service import SwapCredentialService
 from backend.data.db_manager import DatabaseManager
+from backend.util import service_auth
 from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
+from backend.util.settings import Settings
 
 _SWAP_METHODS = {"get_swap_bindings", "resolve_swap_credential"}
 
@@ -17,8 +19,16 @@ _SWAP_METHODS = {"get_swap_bindings", "resolve_swap_credential"}
 @pytest.fixture(scope="module")
 def client():
     # Not entered as a context manager: the lifespan (database, Redis) is not
-    # what is under test, the routes are.
-    return TestClient(SwapCredentialService().build_fastapi_app())
+    # what is under test, the routes are. Calls carry the internal key, as the
+    # swap proxy's do.
+    settings = Settings()
+    settings.secrets.internal_api_key = "swap-service-test-key-0123456789abcdef"
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(service_auth, "Settings", lambda: settings)
+        yield TestClient(
+            SwapCredentialService().build_fastapi_app(),
+            headers=service_auth.internal_auth_headers(),
+        )
 
 
 def _database_manager_methods() -> list[str]:
