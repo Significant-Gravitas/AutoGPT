@@ -141,6 +141,10 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
         await settle_wallet_payment(
             failed.user_id, failed.invoice_id, may_pay=failed.is_unpaid and not replaced
         )
+        # Settling may have just refunded it.
+        payment = (
+            await find_wallet_payment(failed.user_id, failed.invoice_id) or payment
+        )
     if replaced:
         await _end_replaced_subscription(failed)
         return PaymentFailureOutcome.IGNORED
@@ -151,7 +155,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
         return PaymentFailureOutcome.IGNORED
     if payment is not None:
         # A refunded debit never pays the invoice again, so the customer must.
-        if payment.state == WalletPaymentState.REFUNDED and failed.is_unpaid:
+        if payment.state == WalletPaymentState.REFUNDED and (
+            failed.is_unpaid or await _uncollectible_awaits_customer(failed)
+        ):
             return PaymentFailureOutcome.NEEDS_ACTION
         return PaymentFailureOutcome.IGNORED
     if not failed.is_unpaid:

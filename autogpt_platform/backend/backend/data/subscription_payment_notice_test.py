@@ -65,6 +65,24 @@ async def test_invoice_stripe_marked_uncollectible_still_requires_a_notice(sub_s
 
 
 @pytest.mark.asyncio
+async def test_wallet_debit_refunded_from_an_uncollectible_invoice_requires_a_notice():
+    """The wallet does not pay an uncollectible invoice; it refunds an unfinished
+    debit, and the customer is told in that same delivery."""
+    with World(balance=5000) as world:
+        invoice = _renewal_failed(world)
+        world.stripe.fail_next["pay"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await handle_subscription_payment_failure(invoice)
+        world.stripe.invoices["in_1"]["status"] = "uncollectible"
+        world.stripe.subscriptions["sub_1"]["status"] = "unpaid"
+        outcome = await handle_subscription_payment_failure(invoice)
+
+    assert outcome == "needs_action"
+    assert world.ledger.balance == 5000
+    assert world.stripe.paid_out_of_band == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sub_status,amount_due,latest",
     [("canceled", 2000, "in_1"), ("unpaid", 0, "in_1"), ("unpaid", 2000, "in_2")],
