@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { MASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 interface Props {
   session: { id: string; title: string | null | undefined } | null;
@@ -33,7 +34,7 @@ export function DeleteChatDialog({
       <Dialog.Content>
         <Text variant="body">
           Are you sure you want to delete{" "}
-          <Text variant="body-medium" as="span">
+          <Text variant="body-medium" as="span" className={MASKED_IN_REPLAY}>
             &quot;{session?.title || "Untitled chat"}&quot;
           </Text>
           ? This action cannot be undone.

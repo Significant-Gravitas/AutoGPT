@@ -140,15 +140,14 @@ export function RecentChats() {
           type="button"
           onClick={() => loadMore()}
           disabled={isLoadingMore}
-          className={cn(
-            "mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base",
-            UNMASKED_IN_REPLAY,
-          )}
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base"
         >
           {isLoadingMore && (
             <LoadingSpinner size="small" className="size-4 text-zinc-500" />
           )}
-          {isLoadingMore ? "Loading…" : "Load more"}
+          <span className={UNMASKED_IN_REPLAY}>
+            {isLoadingMore ? "Loading…" : "Load more"}
+          </span>
         </button>
       )}
 

@@ -4,12 +4,16 @@ import Link, { useLinkStatus } from "next/link";
 import * as React from "react";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
+import {
+  fixedCopy,
+  type FixedCopy,
+  UNMASKED_IN_REPLAY,
+} from "@/lib/replay-privacy";
 
 interface Props {
   icon: React.ReactNode;
-  /** Fixed copy: shown in session replays. */
-  label: string;
+  /** Shown in session replays. */
+  label: FixedCopy;
   href?: string;
   onClick?: () => void;
   destructive?: boolean;
@@ -28,7 +32,7 @@ function RowBody({
   pending = false,
 }: {
   icon: React.ReactNode;
-  label: string;
+  label: FixedCopy;
   destructive: boolean;
   external?: boolean;
   pending?: boolean;
@@ -42,7 +46,7 @@ function RowBody({
       <span className={barClasses} aria-hidden="true" />
       <span className="relative z-10 flex shrink-0 items-center">{icon}</span>
       <span className={cn("relative z-10 flex-1 truncate", UNMASKED_IN_REPLAY)}>
-        {label}
+        {fixedCopy(label)}
       </span>
       {pending ? (
         <LoadingSpinner
@@ -69,7 +73,7 @@ function LinkRowBody({
   external = false,
 }: {
   icon: React.ReactNode;
-  label: string;
+  label: FixedCopy;
   destructive: boolean;
   external?: boolean;
 }) {

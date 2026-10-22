@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { AccountMenuRow } from "./AccountMenuRow";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { fixedCopy } from "@/lib/replay-privacy";
 
 export function AccountLogoutOption() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export function AccountLogoutOption() {
     <AccountMenuRow
       as="button"
       destructive
-      label="Log out"
+      label={fixedCopy("Log out")}
       icon={<Icon icon={Logout03Icon} className="h-[18px] w-[18px] shrink-0" />}
       onClick={handleLogout}
     />

@@ -9,35 +9,48 @@ import {
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import { fixedCopy, type FixedCopy } from "@/lib/replay-privacy";
 
 export interface SettingsNavItem {
-  label: string;
+  label: FixedCopy;
   href: string;
   Icon: IconSvgElement;
 }
 
 export const settingsNavItems: SettingsNavItem[] = [
-  { label: "Profile", href: "/settings/profile", Icon: UserIcon },
+  { label: fixedCopy("Profile"), href: "/settings/profile", Icon: UserIcon },
   {
-    label: "Account",
+    label: fixedCopy("Account"),
     href: "/settings/account",
     Icon: SlidersHorizontalIcon,
   },
   {
-    label: "Memory",
+    label: fixedCopy("Memory"),
     href: "/settings/memory",
     Icon: BrainIcon,
   },
-  { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
   {
-    label: "Integrations",
+    label: fixedCopy("Billing"),
+    href: "/settings/billing",
+    Icon: CreditCardIcon,
+  },
+  {
+    label: fixedCopy("Integrations"),
     href: "/settings/integrations",
     Icon: PlugSocketIcon,
   },
-  { label: "Bots", href: "/settings/bots", Icon: MessageMultiple01Icon },
-  { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: Key01Icon },
   {
-    label: "Creator Dashboard",
+    label: fixedCopy("Bots"),
+    href: "/settings/bots",
+    Icon: MessageMultiple01Icon,
+  },
+  {
+    label: fixedCopy("AutoGPT API Keys"),
+    href: "/settings/api-keys",
+    Icon: Key01Icon,
+  },
+  {
+    label: fixedCopy("Creator Dashboard"),
     href: "/settings/creator-dashboard",
     Icon: ChartIncreaseIcon,
   },

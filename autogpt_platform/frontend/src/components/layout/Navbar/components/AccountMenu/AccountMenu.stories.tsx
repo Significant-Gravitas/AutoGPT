@@ -1,6 +1,7 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AccountMenu } from "./AccountMenu";
+import { fixedCopy } from "@/lib/replay-privacy";
 
 const meta: Meta<typeof AccountMenu> = {
   title: "Layout/Navbar/AccountMenu",
@@ -18,27 +19,27 @@ const userGroups = [
     items: [
       {
         icon: IconType.Edit,
-        text: "Profile",
+        text: fixedCopy("Profile"),
         href: "/settings/profile",
       },
       {
         icon: IconType.Settings,
-        text: "Settings",
+        text: fixedCopy("Settings"),
         href: "/settings/account",
       },
       {
         icon: IconType.Billing,
-        text: "Billing",
+        text: fixedCopy("Billing"),
         href: "/settings/billing",
       },
       {
         icon: IconType.LayoutDashboard,
-        text: "Creator Dashboard",
+        text: fixedCopy("Creator Dashboard"),
         href: "/settings/creator-dashboard",
       },
       {
         icon: IconType.Help,
-        text: "Help & Docs",
+        text: fixedCopy("Help & Docs"),
         href: "https://agpt.co/docs",
         external: true,
       },
@@ -48,7 +49,7 @@ const userGroups = [
     items: [
       {
         icon: IconType.LogOut,
-        text: "Log out",
+        text: fixedCopy("Log out"),
       },
     ],
   },
@@ -60,7 +61,7 @@ const adminGroups = [
     items: [
       {
         icon: IconType.Sliders,
-        text: "Admin",
+        text: fixedCopy("Admin"),
         href: "/admin/marketplace",
       },
     ],

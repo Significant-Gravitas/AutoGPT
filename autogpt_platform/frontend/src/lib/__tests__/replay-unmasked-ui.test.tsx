@@ -12,10 +12,13 @@ import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/A
 import { AccountMenuHeader } from "@/components/layout/Navbar/components/AccountMenu/components/AccountMenuHeader";
 import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
+import { ComposerPlusMenu } from "@/app/(platform)/copilot/components/ChatInput/components/ComposerPlusMenu";
 import { server } from "@/mocks/mock-server";
-import { recordReplayText } from "@/tests/integrations/sentry-replay";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  UnmaskedContainer,
+  recordReplayText,
+} from "@/tests/integrations/sentry-replay";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,7 +76,7 @@ vi.mock("@/components/molecules/Popover/Popover", () => {
 });
 
 function inUnmaskedContainer(children: ReactNode) {
-  return <div className={UNMASKED_IN_REPLAY}>{children}</div>;
+  return <UnmaskedContainer>{children}</UnmaskedContainer>;
 }
 
 beforeEach(() => {
@@ -123,6 +126,53 @@ describe("what Sentry replays show of the app", () => {
     }
     expect(recorded).not.toContain(CHAT_TITLE);
     expect(recorded).not.toContain(USER_EMAIL);
+  });
+
+  it("shows a chat row's actions but not the chat's title", async () => {
+    render(
+      <SidebarProvider>
+        <AppSidebar />
+      </SidebarProvider>,
+    );
+    await screen.findByText(CHAT_TITLE);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Chat actions" }),
+      {
+        button: 0,
+      },
+    );
+    await screen.findByRole("menuitem", { name: "Rename" });
+
+    const recorded = await recordReplayText();
+    for (const label of [
+      "Rename",
+      "Export chat",
+      "Share chat",
+      "Delete chat",
+    ]) {
+      expect(recorded).toContain(label);
+    }
+    expect(recorded).not.toContain(CHAT_TITLE);
+  });
+
+  it("shows the composer's + button and menu", async () => {
+    render(<ComposerPlusMenu onFilesSelected={vi.fn()} />);
+    expect(await recordReplayText()).toContain("Add files and more");
+
+    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
+      button: 0,
+    });
+    await screen.findByRole("menuitem", { name: "Attach file" });
+
+    const recorded = await recordReplayText();
+    for (const label of [
+      "Attach file",
+      "Connect service",
+      "Skills",
+      "Scheduled",
+    ]) {
+      expect(recorded).toContain(label);
+    }
   });
 
   it("shows account menu items but not who is signed in", async () => {

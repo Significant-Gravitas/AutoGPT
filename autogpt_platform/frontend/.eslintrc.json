@@ -50,6 +50,31 @@
       {
         "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] > SwitchCase > :matches(Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], Identifier[name=/(^KEY_|_KEY$)/])",
         "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      // Session replays: an element unmasked with UNMASKED_IN_REPLAY or the
+      // `unmask` prop of Text and Button shows everything inside it, so it may
+      // only hold fixed copy: string literals, a choice between two literals,
+      // fixedCopy(...) (whose type only accepts literals) and icons. Covered by
+      // scripts/eslint-replay-unmask-rules.test.ts.
+      {
+        "selector": "JSXElement:has(> JSXOpeningElement:matches(:has(> JSXAttribute[name.name='unmask']), :has(JSXAttribute[name.name='className'] Identifier[name='UNMASKED_IN_REPLAY']))) > JSXExpressionContainer:not([expression.type='Literal'], [expression.type='JSXEmptyExpression'], [expression.type='ConditionalExpression'][expression.consequent.type='Literal'][expression.alternate.type='Literal'], [expression.type='CallExpression'][expression.callee.name='fixedCopy'])",
+        "message": "An element unmasked in session replays shows its text and text attributes as written. It may only hold string literals, fixedCopy(...) and <Icon />, with no spread props. See UNMASKED_IN_REPLAY in @/lib/replay-privacy."
+      },
+      {
+        "selector": "JSXElement:has(> JSXOpeningElement:matches(:has(> JSXAttribute[name.name='unmask']), :has(JSXAttribute[name.name='className'] Identifier[name='UNMASKED_IN_REPLAY']))) > :matches(JSXFragment, JSXSpreadChild, JSXElement:not([openingElement.name.name='Icon'][openingElement.selfClosing=true]))",
+        "message": "An element unmasked in session replays shows its text and text attributes as written. It may only hold string literals, fixedCopy(...) and <Icon />, with no spread props. See UNMASKED_IN_REPLAY in @/lib/replay-privacy."
+      },
+      {
+        "selector": "JSXOpeningElement:matches(:has(> JSXAttribute[name.name='unmask']), :has(JSXAttribute[name.name='className'] Identifier[name='UNMASKED_IN_REPLAY'])) > JSXAttribute[name.name=/^(title|placeholder|alt|label|value|download|aria-(label|description|placeholder|roledescription|valuetext)|data-(text|placeholder|title|value|skill-name))$/] > JSXExpressionContainer:not([expression.type='Literal'], [expression.type='JSXEmptyExpression'], [expression.type='ConditionalExpression'][expression.consequent.type='Literal'][expression.alternate.type='Literal'], [expression.type='CallExpression'][expression.callee.name='fixedCopy'])",
+        "message": "An element unmasked in session replays shows its text and text attributes as written. It may only hold string literals, fixedCopy(...) and <Icon />, with no spread props. See UNMASKED_IN_REPLAY in @/lib/replay-privacy."
+      },
+      {
+        "selector": "JSXOpeningElement:matches(:has(> JSXAttribute[name.name='unmask']), :has(JSXAttribute[name.name='className'] Identifier[name='UNMASKED_IN_REPLAY'])) > JSXSpreadAttribute",
+        "message": "An element unmasked in session replays shows its text and text attributes as written. It may only hold string literals, fixedCopy(...) and <Icon />, with no spread props. See UNMASKED_IN_REPLAY in @/lib/replay-privacy."
+      },
+      {
+        "selector": "JSXAttribute[name.name='className'] :matches(Literal[value=/sentry-unmask/], TemplateElement[value.raw=/sentry-unmask/]), JSXAttribute[name.name='data-sentry-unmask']",
+        "message": "Use UNMASKED_IN_REPLAY from @/lib/replay-privacy, which ESLint checks, rather than a raw sentry-unmask marker."
       }
     ]
   }

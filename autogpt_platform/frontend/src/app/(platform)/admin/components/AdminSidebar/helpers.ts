@@ -14,9 +14,10 @@ import {
 
 import { isTestDataSurfaceEnabled } from "../../test-data/helpers";
 import type { IconSvgElement } from "@hugeicons/react";
+import { fixedCopy, type FixedCopy } from "@/lib/replay-privacy";
 
 export interface AdminNavItem {
-  label: string;
+  label: FixedCopy;
   href: string;
   Icon: IconSvgElement;
 }
@@ -25,44 +26,62 @@ export interface AdminNavItem {
 // environment check instead of the value at module load.
 export function getAdminNavItems(): AdminNavItem[] {
   return [
-    { label: "Users", href: "/admin/users", Icon: UserIcon },
+    { label: fixedCopy("Users"), href: "/admin/users", Icon: UserIcon },
     {
-      label: "Marketplace Management",
+      label: fixedCopy("Marketplace Management"),
       href: "/admin/marketplace",
       Icon: UserMultipleIcon,
     },
-    { label: "User Spending", href: "/admin/spending", Icon: DollarSignIcon },
     {
-      label: "System Diagnostics",
+      label: fixedCopy("User Spending"),
+      href: "/admin/spending",
+      Icon: DollarSignIcon,
+    },
+    {
+      label: fixedCopy("System Diagnostics"),
       href: "/admin/diagnostics",
       Icon: Pulse01Icon,
     },
     {
-      label: "Platform Costs",
+      label: fixedCopy("Platform Costs"),
       href: "/admin/platform-costs",
       Icon: ReceiptTextIcon,
     },
     {
-      label: "Execution Analytics",
+      label: fixedCopy("Execution Analytics"),
       href: "/admin/execution-analytics",
       Icon: File02Icon,
     },
-    { label: "Bot Analytics", href: "/admin/bots", Icon: Robot01Icon },
     {
-      label: "Block Cost Estimates",
+      label: fixedCopy("Bot Analytics"),
+      href: "/admin/bots",
+      Icon: Robot01Icon,
+    },
+    {
+      label: fixedCopy("Block Cost Estimates"),
       href: "/admin/block-cost-estimates",
       Icon: Calculator01Icon,
     },
-    { label: "Memory Inspector", href: "/admin/memory", Icon: BrainIcon },
     {
-      label: "Admin settings",
+      label: fixedCopy("Memory Inspector"),
+      href: "/admin/memory",
+      Icon: BrainIcon,
+    },
+    {
+      label: fixedCopy("Admin settings"),
       href: "/admin/settings",
       Icon: SlidersHorizontalIcon,
     },
     // Test data seeding only exists on local stacks; hide the entry point
     // everywhere else so cloud admins don't hit a guaranteed 403/404.
     ...(isTestDataSurfaceEnabled()
-      ? [{ label: "Test Data", href: "/admin/test-data", Icon: Database01Icon }]
+      ? [
+          {
+            label: fixedCopy("Test Data"),
+            href: "/admin/test-data",
+            Icon: Database01Icon,
+          },
+        ]
       : []),
   ];
 }

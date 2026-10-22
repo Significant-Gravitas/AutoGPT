@@ -7,6 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import type { SettingsNavItem as SettingsNavItemType } from "./helpers";
+import { fixedCopy, type FixedCopy } from "@/lib/replay-privacy";
 
 type Props = {
   item: SettingsNavItemType;
@@ -18,7 +19,7 @@ function NavItemContent({
   Icon,
   isActive,
 }: {
-  label: string;
+  label: FixedCopy;
   Icon: SettingsNavItemType["Icon"];
   isActive: boolean;
 }) {
@@ -42,7 +43,7 @@ function NavItemContent({
             : "font-normal text-[#505057]",
         )}
       >
-        {label}
+        {fixedCopy(label)}
       </Text>
       {pending ? <LoadingSpinner size="small" /> : null}
     </>

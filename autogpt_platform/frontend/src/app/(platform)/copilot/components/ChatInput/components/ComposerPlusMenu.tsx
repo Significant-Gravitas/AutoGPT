@@ -110,7 +110,6 @@ export function ComposerPlusMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[14rem]">
           <DropdownMenuItem
-            className={UNMASKED_IN_REPLAY}
             disabled={isAtCap}
             onSelect={() => {
               onClearGuidedPrompt?.();
@@ -118,12 +117,11 @@ export function ComposerPlusMenu({
             }}
           >
             <Icon icon={Attachment01Icon} className="mr-2 h-4 w-4" />
-            Attach file
+            <span className={UNMASKED_IN_REPLAY}>Attach file</span>
             {isAtCap && <CapLabel />}
           </DropdownMenuItem>
           {showCameraOption && (
             <DropdownMenuItem
-              className={UNMASKED_IN_REPLAY}
               disabled={isAtCap}
               onSelect={() => {
                 onClearGuidedPrompt?.();
@@ -131,13 +129,12 @@ export function ComposerPlusMenu({
               }}
             >
               <Icon icon={Camera01Icon} className="mr-2 h-4 w-4" />
-              Take photo
+              <span className={UNMASKED_IN_REPLAY}>Take photo</span>
               {isAtCap && <CapLabel />}
             </DropdownMenuItem>
           )}
           {showWorkspaceOption && (
             <DropdownMenuItem
-              className={UNMASKED_IN_REPLAY}
               disabled={isAtCap}
               onSelect={() => {
                 onClearGuidedPrompt?.();
@@ -145,33 +142,28 @@ export function ComposerPlusMenu({
               }}
             >
               <Icon icon={FolderOpenIcon} className="mr-2 h-4 w-4" />
-              Use File from Workspace
+              <span className={UNMASKED_IN_REPLAY}>
+                Use File from Workspace
+              </span>
               {isAtCap && <CapLabel />}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            className={UNMASKED_IN_REPLAY}
             onSelect={() => {
               onClearGuidedPrompt?.();
               openModal("connect");
             }}
           >
             <Icon icon={PlugSocketIcon} className="mr-2 h-4 w-4" />
-            Connect service
+            <span className={UNMASKED_IN_REPLAY}>Connect service</span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className={UNMASKED_IN_REPLAY}
-            onSelect={() => openModal("skills")}
-          >
+          <DropdownMenuItem onSelect={() => openModal("skills")}>
             <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
-            Skills
+            <span className={UNMASKED_IN_REPLAY}>Skills</span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className={UNMASKED_IN_REPLAY}
-            onSelect={() => openModal("scheduled")}
-          >
+          <DropdownMenuItem onSelect={() => openModal("scheduled")}>
             <Icon icon={Calendar03Icon} className="mr-2 h-4 w-4" />
-            Scheduled
+            <span className={UNMASKED_IN_REPLAY}>Scheduled</span>
           </DropdownMenuItem>
           {extraItems.length > 0 && <DropdownMenuSeparator />}
           {extraItems.map((item) => (

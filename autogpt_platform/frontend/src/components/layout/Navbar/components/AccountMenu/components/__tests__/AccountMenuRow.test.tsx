@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { describe, expect, test, vi } from "vitest";
 import { AccountMenuRow } from "../AccountMenuRow";
+import { fixedCopy } from "@/lib/replay-privacy";
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -19,7 +20,7 @@ describe("AccountMenuRow", () => {
         as="link"
         href="/settings"
         icon={<span data-testid="icon" />}
-        label="Settings"
+        label={fixedCopy("Settings")}
       />,
     );
 
@@ -37,7 +38,7 @@ describe("AccountMenuRow", () => {
         href="https://example.com"
         external
         icon={<span />}
-        label="Docs"
+        label={fixedCopy("Docs")}
       />,
     );
 
@@ -53,7 +54,7 @@ describe("AccountMenuRow", () => {
         as="button"
         onClick={onClick}
         icon={<span />}
-        label="Publish"
+        label={fixedCopy("Publish")}
       />,
     );
 
@@ -70,7 +71,7 @@ describe("AccountMenuRow", () => {
         as="link"
         onClick={onClick}
         icon={<span />}
-        label="No href"
+        label={fixedCopy("No href")}
       />,
     );
 
@@ -86,7 +87,7 @@ describe("AccountMenuRow", () => {
         as="button"
         destructive
         icon={<span />}
-        label="Log out"
+        label={fixedCopy("Log out")}
       />,
     );
 
@@ -109,7 +110,12 @@ describe("AccountMenuRow", () => {
     const { AccountMenuRow: PendingRow } = await import("../AccountMenuRow");
 
     render(
-      <PendingRow as="link" href="/foo" icon={<span />} label="Loading link" />,
+      <PendingRow
+        as="link"
+        href="/foo"
+        icon={<span />}
+        label={fixedCopy("Loading link")}
+      />,
     );
 
     const link = screen.getByText("Loading link").closest("a");

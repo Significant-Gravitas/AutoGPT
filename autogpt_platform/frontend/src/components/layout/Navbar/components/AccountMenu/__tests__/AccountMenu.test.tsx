@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
 import { InitialAvatar } from "../components/InitialAvatar";
 import { MenuItemGroup } from "../../../helpers";
+import { fixedCopy } from "@/lib/replay-privacy";
 
 function getFallbackSVG(root: HTMLElement) {
   const svg = root.querySelector("svg");
@@ -46,17 +47,17 @@ const baseGroups: MenuItemGroup[] = [
     items: [
       {
         icon: IconType.Edit,
-        text: "Profile",
+        text: fixedCopy("Profile"),
         href: "/settings/profile",
       },
       {
         icon: IconType.Settings,
-        text: "Settings",
+        text: fixedCopy("Settings"),
         href: "/settings/account",
       },
       {
         icon: IconType.Help,
-        text: "Help & Docs",
+        text: fixedCopy("Help & Docs"),
         href: "https://agpt.co/docs",
         external: true,
       },
@@ -66,7 +67,7 @@ const baseGroups: MenuItemGroup[] = [
     items: [
       {
         icon: IconType.UploadCloud,
-        text: "Publish an agent",
+        text: fixedCopy("Publish an agent"),
         onClick: vi.fn(),
       },
     ],
@@ -75,7 +76,7 @@ const baseGroups: MenuItemGroup[] = [
     items: [
       {
         icon: IconType.LogOut,
-        text: "Log out",
+        text: fixedCopy("Log out"),
       },
     ],
   },

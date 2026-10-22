@@ -1,10 +1,17 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { MASKED_IN_REPLAY, UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
-import { recordReplayText } from "@/tests/integrations/sentry-replay";
+import {
+  MASKED_IN_REPLAY,
+  UNMASKED_IN_REPLAY,
+  fixedCopy,
+} from "@/lib/replay-privacy";
+import {
+  UnmaskedContainer,
+  recordReplayText,
+} from "@/tests/integrations/sentry-replay";
 import { render } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 afterEach(cleanup);
 
@@ -43,9 +50,9 @@ describe("Sentry replay masking", () => {
   // unmasked wrapper would show everything inside it.
   it("shows unmarked text inside an unmasked element", async () => {
     render(
-      <div className={UNMASKED_IN_REPLAY}>
+      <UnmaskedContainer>
         <span>Shown by its ancestor</span>
-      </div>,
+      </UnmaskedContainer>,
     );
 
     expect(await recordReplayText()).toContain("Shown by its ancestor");
@@ -53,7 +60,7 @@ describe("Sentry replay masking", () => {
 
   it("keeps masked content masked inside an unmasked element, at any depth", async () => {
     render(
-      <div className={UNMASKED_IN_REPLAY}>
+      <UnmaskedContainer>
         <span>Recent chats</span>
         <div className={MASKED_IN_REPLAY}>
           <p>
@@ -61,7 +68,7 @@ describe("Sentry replay masking", () => {
           </p>
           <span className={UNMASKED_IN_REPLAY}>Rename</span>
         </div>
-      </div>,
+      </UnmaskedContainer>,
     );
 
     const recorded = await recordReplayText();
@@ -74,7 +81,7 @@ describe("Sentry replay masking", () => {
 
   it("masks what is typed into a field even inside an unmasked element", async () => {
     render(
-      <div className={UNMASKED_IN_REPLAY}>
+      <UnmaskedContainer>
         <input defaultValue="alice@example.com" aria-label="Email" />
         <textarea defaultValue="My secret notes" />
         <select defaultValue="acme">
@@ -88,16 +95,64 @@ describe("Sentry replay masking", () => {
           defaultValue="hunter2"
           placeholder="Search workflows"
         />
-      </div>,
+      </UnmaskedContainer>,
     );
 
     const recorded = await recordReplayText();
     expect(recorded).not.toContain("alice@example.com");
     expect(recorded).not.toContain("My secret notes");
+    expect(recorded).not.toContain("acme");
     expect(recorded).not.toContain("Acme Corp");
     expect(recorded).not.toContain("Draft to Bob");
     expect(recorded).not.toContain("hunter2");
     // An unmasked field shows its fixed placeholder, never its value.
     expect(recorded).toContain("Search workflows");
+  });
+
+  it("masks the attributes that carry user content", async () => {
+    render(
+      <div className={MASKED_IN_REPLAY}>
+        <span data-text="Review Quarterly report">Review</span>
+        <span aria-description="Spend for Maria">Spend</span>
+        <div
+          role="meter"
+          aria-valuenow={12.4}
+          aria-valuetext="$12.40 of $50.00 spent"
+          aria-roledescription="Maria's meter"
+        />
+        <select aria-label="Plan">
+          <option label="Acme Corp plan" value="acme-plan" />
+        </select>
+        <button value="Alice Example">Pick</button>
+        <a href="/files/1" download="alice-tax-return.pdf">
+          Download
+        </a>
+        <div data-placeholder="Ask Maria anything" />
+      </div>,
+    );
+
+    const recorded = await recordReplayText();
+    for (const userContent of [
+      "Quarterly report",
+      "$12.40",
+      "Maria",
+      "Acme Corp",
+      "acme-plan",
+      "Alice Example",
+      "alice-tax-return",
+    ]) {
+      expect(recorded).not.toContain(userContent);
+    }
+  });
+
+  it("shows fixed copy that went through fixedCopy", async () => {
+    const label = fixedCopy("Workspace");
+    render(
+      <Text variant="body" unmask>
+        {fixedCopy(label)}
+      </Text>,
+    );
+
+    expect(await recordReplayText()).toContain("Workspace");
   });
 });

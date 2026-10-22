@@ -35,7 +35,7 @@ export function AccountMenuHeader({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100"
+          className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100 ${MASKED_IN_REPLAY}`}
           aria-controls={popupId}
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"
@@ -46,9 +46,7 @@ export function AccountMenuHeader({
             username={userHandle}
             className="h-8 w-8"
           />
-          <div
-            className={`flex min-w-0 flex-1 flex-col gap-0.5 ${MASKED_IN_REPLAY}`}
-          >
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             {isLoading || !userName || !userEmail ? (
               <>
                 <Skeleton className="h-3.5 w-24" />
@@ -82,7 +80,7 @@ export function AccountMenuHeader({
         side="right"
         align="start"
         sideOffset={12}
-        className="w-64 rounded-2xl border border-neutral-200 p-0 shadow-lg"
+        className={`w-64 rounded-2xl border border-neutral-200 p-0 shadow-lg ${MASKED_IN_REPLAY}`}
         data-testid="account-menu-org-popover"
       >
         <AccountMenuOrgList />

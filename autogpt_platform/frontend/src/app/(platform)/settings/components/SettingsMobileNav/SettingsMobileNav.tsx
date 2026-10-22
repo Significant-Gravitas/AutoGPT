@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useSettingsSidebar } from "../SettingsSidebar/useSettingsSidebar";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
+import { fixedCopy } from "@/lib/replay-privacy";
 
 export function SettingsMobileNav() {
   const { items } = useSettingsSidebar();
@@ -35,7 +36,7 @@ export function SettingsMobileNav() {
                 unmask
                 className="font-medium text-[#1F1F20]"
               >
-                {current.label}
+                {fixedCopy(current.label)}
               </Text>
             </span>
             <UIIcon
@@ -81,7 +82,7 @@ export function SettingsMobileNav() {
                       : "font-normal text-[#505057]",
                   )}
                 >
-                  {label}
+                  {fixedCopy(label)}
                 </Text>
               </Link>
             ))}

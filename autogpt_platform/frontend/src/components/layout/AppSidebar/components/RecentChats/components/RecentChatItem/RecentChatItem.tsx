@@ -144,7 +144,7 @@ export const RecentChatItem = memo(function RecentChatItem({
       <SidebarMenuButton
         asChild
         isActive={isActive}
-        tooltip={title}
+        tooltip={{ children: title, className: MASKED_IN_REPLAY }}
         className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100 max-md:h-11 max-md:!pr-11 max-md:text-[15px]"
       >
         <Link href={`/home?sessionId=${session.id}`}>
@@ -177,7 +177,6 @@ export const RecentChatItem = memo(function RecentChatItem({
         <DropdownMenuContent align="end">
           {chatPinningEnabled && (
             <DropdownMenuItem
-              className={UNMASKED_IN_REPLAY}
               onClick={() => onPin(session.id, !!session.is_pinned)}
             >
               {session.is_pinned ? (
@@ -185,18 +184,16 @@ export const RecentChatItem = memo(function RecentChatItem({
               ) : (
                 <Icon icon={PinIcon} className="mr-2 h-4 w-4" />
               )}
-              {session.is_pinned ? "Unpin chat" : "Pin chat"}
+              <span className={UNMASKED_IN_REPLAY}>
+                {session.is_pinned ? "Unpin chat" : "Pin chat"}
+              </span>
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem
-            className={UNMASKED_IN_REPLAY}
-            onClick={() => onRename(session.id, session.title)}
-          >
+          <DropdownMenuItem onClick={() => onRename(session.id, session.title)}>
             <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
-            Rename
+            <span className={UNMASKED_IN_REPLAY}>Rename</span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            className={UNMASKED_IN_REPLAY}
             onClick={() => onExport(session.id, session.title)}
             onSelect={(e) => {
               if (isExporting) e.preventDefault();
@@ -211,34 +208,27 @@ export const RecentChatItem = memo(function RecentChatItem({
             ) : (
               <Icon icon={Download04Icon} className="mr-2 h-4 w-4" />
             )}
-            {isExporting ? "Exporting…" : "Export chat"}
+            <span className={UNMASKED_IN_REPLAY}>
+              {isExporting ? "Exporting…" : "Export chat"}
+            </span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className={UNMASKED_IN_REPLAY}
-            onClick={() => onShare(session.id)}
-          >
+          <DropdownMenuItem onClick={() => onShare(session.id)}>
             <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
-            Share chat
+            <span className={UNMASKED_IN_REPLAY}>Share chat</span>
           </DropdownMenuItem>
           {isLearningEnabled && (
-            <DropdownMenuItem
-              className={UNMASKED_IN_REPLAY}
-              onClick={() => onExcludeFromLearning(session.id)}
-            >
+            <DropdownMenuItem onClick={() => onExcludeFromLearning(session.id)}>
               <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
-              Exclude from learning
+              <span className={UNMASKED_IN_REPLAY}>Exclude from learning</span>
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            className={cn(
-              "text-red-600 focus:bg-red-50 focus:text-red-600",
-              UNMASKED_IN_REPLAY,
-            )}
+            className="text-red-600 focus:bg-red-50 focus:text-red-600"
           >
             <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
-            Delete chat
+            <span className={UNMASKED_IN_REPLAY}>Delete chat</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

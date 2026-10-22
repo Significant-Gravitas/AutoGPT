@@ -6,6 +6,7 @@ import { useJumpToRecentChats } from "../../useJumpToRecentChats";
 import { ChatsRailItem } from "../ChatsRailItem/ChatsRailItem";
 import { CollapsibleNavGroup } from "../CollapsibleNavGroup/CollapsibleNavGroup";
 import { RecentChats } from "../RecentChats/RecentChats";
+import { fixedCopy } from "@/lib/replay-privacy";
 
 interface Props {
   itemVariants: Variants;
@@ -31,7 +32,7 @@ export function ChatsNavSection({ itemVariants }: Props) {
         className="group-data-[collapsible=icon]:hidden"
       >
         <CollapsibleNavGroup
-          label="Recent chats"
+          label={fixedCopy("Recent chats")}
           open={isRecentChatsOpen}
           onOpenChange={setIsRecentChatsOpen}
         >

@@ -23,6 +23,7 @@ import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";
 import { ReactNode, useState } from "react";
 import { EXPERT_CHAT_PAGE_SIZE } from "@/services/experts/expert-chat-pagination";
+import { MASKED_IN_REPLAY } from "@/lib/replay-privacy";
 
 // The chevron, the slot the header reserves next to it, and the new-chat link
 // that floats over that slot are all one size. On touch widths the slot and
@@ -67,10 +68,11 @@ export function ExpertChatGroup({
   const runningSessions = sessions.filter((session) => session.is_processing);
 
   return (
+    // Expert names and the chats' titles.
     <Collapsible
       open={isOpen}
       onOpenChange={setIsOpen}
-      className="group/expert-group"
+      className={`group/expert-group ${MASKED_IN_REPLAY}`}
     >
       {/* The trigger is itself a button, so the new-chat link sits beside it
           and floats over a slot the trigger reserves before the chevron —

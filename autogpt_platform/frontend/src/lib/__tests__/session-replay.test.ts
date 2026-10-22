@@ -6,6 +6,7 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
+import { MASKED_ATTRIBUTES } from "../replay-privacy";
 import { redactRecordingEventURLs } from "../sentry-url-redaction";
 import { setupSessionReplay } from "../session-replay";
 
@@ -73,7 +74,8 @@ describe("setupSessionReplay", () => {
       maskAllText: true,
       maskAllInputs: true,
       blockAllMedia: true,
-      mask: ["input, textarea, select, option, [contenteditable]"],
+      maskAttributes: MASKED_ATTRIBUTES,
+      mask: ["input, textarea, select, [contenteditable]"],
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
       beforeAddRecordingEvent: redactRecordingEventURLs,
     });

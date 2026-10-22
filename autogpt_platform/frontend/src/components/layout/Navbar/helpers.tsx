@@ -1,10 +1,11 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
+import { fixedCopy, type FixedCopy } from "@/lib/replay-privacy";
 
 export type MenuItemGroup = {
   groupName?: string;
   items: {
     icon: IconType;
-    text: string;
+    text: FixedCopy;
     href?: string;
     external?: boolean;
     onClick?: () => void;
@@ -18,13 +19,13 @@ export function getAccountMenuItems(
   const footerItems: MenuItemGroup["items"] = [
     {
       icon: IconType.WhatsNew,
-      text: "What's new",
+      text: fixedCopy("What's new"),
       href: "https://agpt.co/docs/platform/changelog/changelog/",
       external: true,
     },
     {
       icon: IconType.Help,
-      text: "Help & Docs",
+      text: fixedCopy("Help & Docs"),
       href: "https://agpt.co/docs",
       external: true,
     },
@@ -33,14 +34,14 @@ export function getAccountMenuItems(
   if (userRole === "admin") {
     footerItems.push({
       icon: IconType.Sliders,
-      text: "Admin",
+      text: fixedCopy("Admin"),
       href: "/admin/marketplace",
     });
   }
 
   footerItems.push({
     icon: IconType.LogOut,
-    text: "Log out",
+    text: fixedCopy("Log out"),
   });
 
   return [
@@ -48,19 +49,19 @@ export function getAccountMenuItems(
       items: [
         {
           icon: IconType.Edit,
-          text: "Profile",
+          text: fixedCopy("Profile"),
           href: "/settings/profile",
         },
         {
           icon: IconType.Settings,
-          text: "Settings",
+          text: fixedCopy("Settings"),
           href: "/settings/account",
         },
         ...(isBillingEnabled
           ? [
               {
                 icon: IconType.Billing,
-                text: "Billing",
+                text: fixedCopy("Billing"),
                 href: "/settings/billing",
               },
             ]

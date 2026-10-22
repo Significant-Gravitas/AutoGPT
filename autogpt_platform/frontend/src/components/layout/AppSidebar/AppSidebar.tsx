@@ -35,23 +35,27 @@ import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/Collapsibl
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import { useNavItemClassName } from "./useNavItemClassName";
-import { UNMASKED_IN_REPLAY } from "@/lib/replay-privacy";
+import {
+  fixedCopy,
+  type FixedCopy,
+  UNMASKED_IN_REPLAY,
+} from "@/lib/replay-privacy";
 import { cn } from "@/lib/utils";
 
 type NavLink = {
-  name: string;
+  name: FixedCopy;
   href: string;
   icon: IconSvgElement;
 };
 
 const MAIN_LINKS: NavLink[] = [
-  { name: "Workflows", href: "/library", icon: GridViewIcon },
-  { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
-  { name: "Build", href: "/build", icon: FlowIcon },
+  { name: fixedCopy("Workflows"), href: "/library", icon: GridViewIcon },
+  { name: fixedCopy("Marketplace"), href: "/marketplace", icon: Store01Icon },
+  { name: fixedCopy("Build"), href: "/build", icon: FlowIcon },
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
-  { name: "Files", href: "/artifacts", icon: Folder01Icon },
+  { name: fixedCopy("Files"), href: "/artifacts", icon: Folder01Icon },
 ];
 
 function isLinkActive(pathname: string | null, href: string) {
@@ -138,7 +142,7 @@ function NavItem({ link }: NavItemProps) {
             className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
           />
           <span className={cn("truncate", UNMASKED_IN_REPLAY)}>
-            {link.name}
+            {fixedCopy(link.name)}
           </span>
           <NavLinkLoader />
         </Link>
@@ -176,7 +180,7 @@ export function AppSidebar(props: Props) {
   const mainLinks = MAIN_LINKS.filter((link) => link.href !== "/library");
 
   const workspaceLinks = [
-    { name: "Team", href: "/team", icon: AddTeamIcon },
+    { name: fixedCopy("Team"), href: "/team", icon: AddTeamIcon },
     ...WORKSPACE_LINKS,
   ];
 
@@ -218,7 +222,7 @@ export function AppSidebar(props: Props) {
 
           {workspaceLinks.length > 0 ? (
             <motion.div variants={itemVariants}>
-              <CollapsibleNavGroup label="Workspace">
+              <CollapsibleNavGroup label={fixedCopy("Workspace")}>
                 <NavMenu links={workspaceLinks} />
               </CollapsibleNavGroup>
             </motion.div>
