@@ -197,7 +197,7 @@ describe("Otto's first turn on Home — the team", () => {
     expect(rows).toHaveLength(3);
     expect(rows[0].textContent).toContain("Content Marketer");
     expect(rows[0].textContent).toContain(
-      "Day one: Drafts Monday's newsletter from last week's posts",
+      "Drafts Monday's newsletter from last week's posts",
     );
     expect(within(rows[0]).getByRole("status").textContent).toBe("Ready");
     expect(within(rows[1]).getByRole("status").textContent).toBe("Setting up");
@@ -223,7 +223,7 @@ describe("Otto's first turn on Home — the team", () => {
     renderHome();
 
     const team = await findTeam();
-    expect(within(team).getByText("Day one: Lead list")).toBeDefined();
+    expect(within(team).getByText("Lead list")).toBeDefined();
   });
 
   it("follows a hire's setup until it is ready", async () => {

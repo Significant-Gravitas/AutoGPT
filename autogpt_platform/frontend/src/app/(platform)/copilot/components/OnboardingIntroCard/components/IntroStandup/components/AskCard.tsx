@@ -27,7 +27,7 @@ export function AskCard({
     const several = ask.names.length > 1;
     return (
       <AskFrame
-        body={`${joinNames(ask.names)} ${several ? "need" : "needs"} ${ask.service} for their scheduled work. Connect it once and ${several ? "they" : ask.names[0]} can start.`}
+        body={`${joinNames(ask.names)} ${several ? "need" : "needs"} ${ask.service} for their scheduled work. ${several ? "Connect it once and they" : `Connect it and ${ask.names[0]}`} can start.`}
       >
         <Button size="small" onClick={onConnect} disabled={disabled}>
           Connect {ask.service}
