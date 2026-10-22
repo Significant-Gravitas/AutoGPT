@@ -35,6 +35,50 @@ const SPELLINGS = [
   (path: string) => `${path}?x=1`,
 ];
 
+// Every endpoint the platform serves on purpose. A Better Auth upgrade or a
+// new plugin that mounts another one fails the test below, so each new
+// endpoint is a decision: add it here if something calls it, otherwise to
+// DISABLED_AUTH_PATHS.
+const SERVED_AUTH_PATHS = [
+  "/admin/ban-user",
+  "/admin/create-user",
+  "/admin/get-user",
+  "/admin/list-users",
+  "/admin/unban-user",
+  "/callback/:id",
+  "/change-email",
+  "/error",
+  "/get-session",
+  "/jwks",
+  "/ok",
+  "/request-password-reset",
+  "/reset-password",
+  "/reset-password/:token",
+  "/revoke-sessions",
+  "/send-verification-email",
+  "/sign-in/email",
+  "/sign-in/social",
+  "/sign-out",
+  "/sign-up/email",
+  "/supabase-bridge",
+  "/token",
+  "/update-user",
+  "/verify-email",
+];
+
+function mountedEndpoints() {
+  return Object.values(auth.api).flatMap((endpoint) => {
+    const { path, options } = endpoint as unknown as {
+      path?: string;
+      options: { method: string | string[] };
+    };
+    // Server-only endpoints have no path: they can't be requested at all.
+    if (!path) return [];
+    const methods = [options.method].flat();
+    return [{ path, methods: methods.includes("*") ? ["GET"] : methods }];
+  });
+}
+
 async function statusOf(path: string, method: string) {
   const response = await auth.handler(
     new Request(`http://localhost:3000/api/auth${path}`, {
@@ -43,20 +87,23 @@ async function statusOf(path: string, method: string) {
         "content-type": "application/json",
         origin: "http://localhost:3000",
       },
-      body: method === "POST" ? "{}" : undefined,
+      body: method === "GET" ? undefined : "{}",
     }),
   );
   return response.status;
 }
 
-describe("Better Auth endpoints nothing calls", () => {
-  it("are each a real endpoint, so none of them is a typo", () => {
-    const mounted = new Set(
-      Object.values(auth.api).map((endpoint) => endpoint.path),
+describe("Better Auth endpoints", () => {
+  it("are each either served on purpose or disabled", () => {
+    const mounted = [...new Set(mountedEndpoints().map(({ path }) => path))];
+    const served = mounted.filter(
+      (path) => !DISABLED_AUTH_PATHS.includes(path),
     );
-    expect(DISABLED_AUTH_PATHS.filter((path) => !mounted.has(path))).toEqual(
-      [],
-    );
+    expect(served.sort()).toEqual([...SERVED_AUTH_PATHS].sort());
+    // And every disabled path is a real endpoint, so none of them is a typo.
+    expect(
+      DISABLED_AUTH_PATHS.filter((path) => !mounted.includes(path)),
+    ).toEqual([]);
   });
 
   it.each(DISABLED_AUTH_PATHS)("%s is not served", async (path) => {
@@ -67,15 +114,12 @@ describe("Better Auth endpoints nothing calls", () => {
     }
   });
 
-  it.each([
-    ["/get-session", "GET"],
-    ["/sign-in/email", "POST"],
-    ["/admin/list-users", "GET"],
-    ["/admin/get-user", "GET"],
-    ["/admin/ban-user", "POST"],
-    ["/admin/unban-user", "POST"],
-    ["/admin/create-user", "POST"],
-  ])("%s, which the platform uses, is still served", async (path, method) => {
-    expect(await statusOf(path, method)).not.toBe(404);
+  it.each(SERVED_AUTH_PATHS)("%s is still served", async (path) => {
+    const endpoint = mountedEndpoints().find((e) => e.path === path);
+    expect(endpoint, path).toBeDefined();
+    for (const method of endpoint?.methods ?? []) {
+      const status = await statusOf(path.replace(/:\w+/g, "x"), method);
+      expect(status, `${method} ${path}`).not.toBe(404);
+    }
   });
 });

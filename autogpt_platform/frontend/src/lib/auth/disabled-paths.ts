@@ -5,8 +5,8 @@
 export const DISABLED_AUTH_PATHS = [
   // The admin tools use get-user, list-users, ban-user and unban-user, and the
   // load tests' accounts come from create-user. Impersonation is our own
-  // header, roles are set in the database, and accounts are deleted through
-  // the account-deletion flow.
+  // header and roles are set in the database. Deleting an account needs the
+  // platform's own clean-up, which deleting only the sign-in record skips.
   "/admin/has-permission",
   "/admin/impersonate-user",
   "/admin/list-user-sessions",
