@@ -323,6 +323,12 @@ class RuntimeConfigTest(unittest.TestCase):
                     runtime_config.ensure_runtime_config(path, {})
                 self.assertEqual(path.read_bytes(), before)
 
+    def test_the_version_1_step_produces_version_2_after_later_bumps(self) -> None:
+        with mock.patch.object(runtime_config, "CONFIG_VERSION", "3"):
+            upgraded = runtime_config._upgraded_from_version_1(_version_1_values(), {})
+
+        self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+
     def test_a_refused_boot_leaves_a_version_1_config_as_it_was(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "runtime.env"

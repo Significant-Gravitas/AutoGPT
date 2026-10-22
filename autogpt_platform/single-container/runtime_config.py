@@ -221,12 +221,15 @@ def _configured_or_generated(
 def _upgraded_from_version_1(
     values: dict[str, str], environment: Mapping[str, str]
 ) -> dict[str, str]:
-    """Version 1, the previous version, is version 2 without INTERNAL_API_KEY."""
+    """A version 1 config is a version 2 config without INTERNAL_API_KEY.
+
+    This step produces version 2, whatever the current version is: a later
+    version's own step takes it from there."""
     if "INTERNAL_API_KEY" in values:
         raise ValueError("runtime configuration has missing or unknown keys")
     return {
         **values,
-        "AUTOGPT_RUNTIME_CONFIG_VERSION": CONFIG_VERSION,
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "2",
         "INTERNAL_API_KEY": _configured_or_generated(
             environment, "INTERNAL_API_KEY", SECRET_GENERATORS["INTERNAL_API_KEY"]
         ),
