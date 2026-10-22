@@ -17,6 +17,7 @@ from backend.copilot.constants import (
     STREAM_INCOMPLETE_MARKER,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry
+from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
     StreamReasoningDelta,
     StreamTextDelta,
@@ -182,3 +183,31 @@ def test_a_turn_that_never_reached_its_engine_sends_nothing(capture: MagicMock):
         turn.set_outcome("copilot_session_not_found", CANCELLED)
 
     capture.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "oldest_sequence, first",
+    [
+        # The whole chat, loaded from its first message.
+        (0, "true"),
+        # A long chat loaded without its oldest messages: the one user
+        # message in the window isn't the chat's first.
+        (1000, "false"),
+    ],
+)
+def test_a_chat_loaded_without_its_oldest_messages_is_not_a_first_turn(
+    oldest_sequence, first
+):
+    span = MagicMock()
+    turn = turn_tracing.TurnTrace(span)
+    messages = [
+        ChatMessage(
+            role="assistant", content="still working", sequence=oldest_sequence
+        ),
+        ChatMessage(role="user", content="next", sequence=oldest_sequence + 1),
+    ]
+    session = SimpleNamespace(messages=messages, expert_id=None)
+
+    turn.describe_chat(session, "next")
+
+    span.set_tag.assert_any_call("copilot.turn.first", first)

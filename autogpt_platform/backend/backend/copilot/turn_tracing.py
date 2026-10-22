@@ -109,7 +109,9 @@ class TurnTrace:
         sub-session doesn't, and the engine saves it when the turn starts.
         Either way it counts once. A turn with no user message of its own (a
         kickoff, a scheduled follow-up the scheduler stores as the model's, a
-        continuation) is the first only in a chat nobody has written to yet."""
+        continuation) is the first only in a chat nobody has written to yet.
+        A chat loaded without its oldest messages (a long one, past the load
+        limit) has had turns before the ones it holds."""
         try:
             users = sum(1 for row in session.messages if row.role == "user")
             if message is None:
@@ -118,6 +120,8 @@ class TurnTrace:
                 if message and not _is_latest_user_message(session.messages, message):
                     users += 1
                 first = users <= 1
+            if session.messages and (session.messages[0].sequence or 0) > 0:
+                first = False
             self.span.set_tag("copilot.turn.first", "true" if first else "false")
             self.span.set_tag(
                 "copilot.expert", "true" if session.expert_id else "false"
