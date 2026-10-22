@@ -51,6 +51,24 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=Non
     )
 
 
+@pytest.fixture(autouse=True)
+def _user_belongs_to_the_graphs_org():
+    """A trigger takes its graph's org/team when the user belongs to it.
+    Tests of someone else's graph patch this to give the user's own."""
+    with patch(
+        f"{_PATH}.resolve_member_tenancy",
+        new=AsyncMock(side_effect=lambda user_id, org_id, team_id: (org_id, team_id)),
+    ) as membership:
+        yield membership
+
+
+def _not_a_member():
+    return patch(
+        f"{_PATH}.resolve_member_tenancy",
+        new=AsyncMock(return_value=("own-org", "own-team")),
+    )
+
+
 async def _setup(*, expert_id: str | None = None):
     return await setup_triggered_preset(
         user_id=_USER,
@@ -268,6 +286,27 @@ async def test_webhook_setup_rejected_raises():
     create_mock.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_a_trigger_on_someone_elses_workflow_stays_in_the_users_org():
+    """The workflow can be in an org the user isn't in. A trigger they set up
+    on it, and the runs it fires, stay in their own."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=MagicMock(id="preset-1")
+    )
+    with (
+        _not_a_member() as membership,
+        p_graph,
+        p_creds,
+        p_create,
+        p_expert,
+        p_webhook as webhook_mock,
+    ):
+        await _setup()
+    membership.assert_awaited_once_with(_USER, "shared-org", "shared-team")
+    kwargs = webhook_mock.await_args.kwargs
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("own-org", "own-team")
+
+
 # ---- update_triggered_preset ----
 
 
@@ -342,6 +381,19 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
     m["setup"].assert_awaited_once()
     m["set_webhook"].assert_awaited_once()
     m["prune"].assert_awaited_once_with(_USER, "wh-old")
+
+
+@pytest.mark.asyncio
+async def test_reconfiguring_a_trigger_on_someone_elses_workflow_registers_it_in_the_users_org():
+    with _not_a_member(), _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
+    kwargs = m["setup"].await_args.kwargs
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("own-org", "own-team")
 
 
 @pytest.mark.asyncio
