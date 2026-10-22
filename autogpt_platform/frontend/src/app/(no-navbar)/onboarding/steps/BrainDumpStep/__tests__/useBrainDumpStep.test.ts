@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RecordingPart } from "../recordingStore";
@@ -506,7 +507,9 @@ describe("useBrainDumpStep — finishing a take", () => {
 
     expect(result.current.screen).toBe("failed");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "voice",
       error_code: "transcription_error",
+      duration_secs: 0,
       finalize_latency_ms: expect.any(Number),
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
@@ -523,7 +526,29 @@ describe("useBrainDumpStep — finishing a take", () => {
 
     expect(result.current.screen).toBe("failed");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "voice",
       error_code: 500,
+      duration_secs: 0,
+      finalize_latency_ms: expect.any(Number),
+    });
+  });
+
+  it("reports the server's status when finalize answers with an HTTP error", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockRejectedValue(
+      new ApiError("Service unavailable", 503, {}),
+    );
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("failed");
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "voice",
+      error_code: 503,
+      duration_secs: 0,
       finalize_latency_ms: expect.any(Number),
     });
   });
@@ -539,6 +564,13 @@ describe("useBrainDumpStep — finishing a take", () => {
 
     expect(result.current.screen).toBe("failed");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+    // A request that never answered is still a failed dump, not silence.
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "voice",
+      error_code: "request_error",
+      duration_secs: 0,
+      finalize_latency_ms: expect.any(Number),
+    });
   });
 });
 
@@ -549,6 +581,7 @@ describe("useBrainDumpStep — insufficient content", () => {
 
   it("shows the recovery screen instead of the failure one", async () => {
     recorderState.recordingId = "rec-1";
+    recorderState.stop.mockResolvedValue(23.4);
     finalizeBrainDump.mockResolvedValueOnce(insufficient("no_usable_speech"));
     const { result } = await renderStep();
 
@@ -557,8 +590,12 @@ describe("useBrainDumpStep — insufficient content", () => {
     });
 
     expect(result.current.screen).toBe("insufficient");
+    // How long the rejected take was is what tells "said too little"
+    // apart from a gate turning away real answers.
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "voice",
       error_code: "no_usable_speech",
+      duration_secs: 23,
       finalize_latency_ms: expect.any(Number),
     });
     // No accidental advance, and nothing personalized to advance to.
@@ -632,6 +669,11 @@ describe("useBrainDumpStep — insufficient content", () => {
 
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_skipped", {
+      screen: "insufficient",
+      chars: 0,
+      words: 0,
+    });
   });
 
   it("returns a typed dump to recovery with the text preserved", async () => {
@@ -651,6 +693,15 @@ describe("useBrainDumpStep — insufficient content", () => {
     expect(result.current.screen).toBe("insufficient");
     expect(result.current.typedText).toBe("hello hello testing");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "typed",
+      error_code: "insufficient_content",
+      chars: 19,
+      words: 3,
+      finalize_latency_ms: expect.any(Number),
+    });
+    // How much was written, never what.
+    expect(JSON.stringify(trackBrainDump.mock.calls)).not.toContain("testing");
   });
 });
 
@@ -846,6 +897,8 @@ describe("useBrainDumpStep — typing", () => {
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
       input_mode: "typed",
       chars: "invoices every friday".length,
+      words: 3,
+      finalize_latency_ms: expect.any(Number),
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
@@ -881,6 +934,32 @@ describe("useBrainDumpStep — typing", () => {
 
     expect(result.current.screen).toBe("failed");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+    expect(events()).toContain("transcription_failed");
+  });
+
+  // The API client throws on an HTTP error rather than resolving it, so
+  // the server's status has to be read off the error, not the response.
+  it("reports the server's status when it turns a typed dump away", async () => {
+    finalizeBrainDump.mockRejectedValue(
+      new ApiError("Too many requests", 429, {}),
+    );
+    const { result } = await renderStep();
+
+    act(() => {
+      result.current.setTypedText("notes");
+    });
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(result.current.screen).toBe("failed");
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "typed",
+      error_code: 429,
+      chars: 5,
+      words: 1,
+      finalize_latency_ms: expect.any(Number),
+    });
   });
 
   it("fails rather than throwing when the typed submit rejects", async () => {
@@ -895,6 +974,13 @@ describe("useBrainDumpStep — typing", () => {
     });
 
     expect(result.current.screen).toBe("failed");
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "typed",
+      error_code: "request_error",
+      chars: 5,
+      words: 1,
+      finalize_latency_ms: expect.any(Number),
+    });
   });
 });
 
@@ -912,6 +998,32 @@ describe("useBrainDumpStep — skip", () => {
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_skipped", {
+      screen: "rest",
+      chars: 0,
+      words: 0,
+    });
+  });
+
+  it("says how much was typed before skipping, never what", async () => {
+    const { result } = await renderStep();
+    act(() => {
+      result.current.showTyping();
+    });
+    act(() => {
+      result.current.setTypedText("  Weekly invoices for three clients  ");
+    });
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_skipped", {
+      screen: "typing",
+      chars: 33,
+      words: 5,
+    });
+    expect(JSON.stringify(trackBrainDump.mock.calls)).not.toContain("invoices");
   });
 
   // Recording for minutes and then skipping used to leave the blobs and

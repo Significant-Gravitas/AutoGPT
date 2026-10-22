@@ -13,6 +13,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import posthog from "posthog-js";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
@@ -496,6 +497,100 @@ describe("onboarding brain dump — skip", () => {
 
     expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+  });
+});
+
+describe("onboarding brain dump — typed answer analytics", () => {
+  const COMPOSER_PLACEHOLDER =
+    "What repeats every week? What would you hand off first?";
+
+  beforeEach(() => {
+    vi.mocked(posthog.capture).mockClear();
+  });
+
+  async function openComposerAndType(text: string) {
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await userEvent.type(
+      await screen.findByPlaceholderText(COMPOSER_PLACEHOLDER),
+      text,
+    );
+  }
+
+  function capturedText() {
+    return JSON.stringify(vi.mocked(posthog.capture).mock.calls);
+  }
+
+  it("reports a typed answer the quality check turned away", async () => {
+    finalizeReturns({ status: "failed", error_code: "insufficient_content" });
+
+    await openComposerAndType("hello hello testing");
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(await screen.findByText("Tell us a bit more.")).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "typed",
+      error_code: "insufficient_content",
+      chars: 19,
+      words: 3,
+      finalize_latency_ms: expect.any(Number),
+    });
+    expect(capturedText()).not.toContain("testing");
+  });
+
+  it("counts the words of an accepted typed answer", async () => {
+    finalizeReturns({ status: "completed" });
+
+    await openComposerAndType("Reconcile supplier invoices every Friday");
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("brain_dump_completed", {
+      input_mode: "typed",
+      chars: 40,
+      words: 5,
+      finalize_latency_ms: expect.any(Number),
+    });
+  });
+
+  // Through the real API client, which throws on an HTTP error instead of
+  // resolving it: the event must keep the status the server answered with.
+  it("keeps the server's status when it refuses a typed answer", async () => {
+    server.use(
+      http.post("/api/proxy/api/onboarding/brain-dump/finalize", () =>
+        HttpResponse.json({ detail: "Too many requests" }, { status: 429 }),
+      ),
+    );
+
+    await openComposerAndType("Payroll for twelve people");
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "typed",
+      error_code: 429,
+      chars: 25,
+      words: 4,
+      finalize_latency_ms: expect.any(Number),
+    });
+  });
+
+  it("says where a skip came from and how much was typed, never what", async () => {
+    finalizeReturns({ status: "completed" });
+
+    await openComposerAndType("Payroll for twelve people");
+    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("brain_dump_skipped", {
+      screen: "typing",
+      chars: 25,
+      words: 4,
+    });
+    expect(capturedText()).not.toContain("Payroll");
   });
 });
 

@@ -229,9 +229,9 @@ retried on the next tour visit in that session.
 | `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | — | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
+| `brain_dump_completed` | browser | live | `input_mode`, `finalize_latency_ms`, and `duration_secs` (voice) or `chars` and `words` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. `words` is counted the way the backend's quality gate counts (whitespace-separated tokens holding a letter or digit), so it reads against the gate's 40-word line. Older typed events carry `chars` only. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
-| `brain_dump_skipped` | browser | live | — | The step is skipped. |
+| `brain_dump_skipped` | browser | live | `screen` (`rest`, `typing`, `recovery`, `failed`, `insufficient`), `chars`, `words` | The step is skipped. `screen` is where the skip happened; `chars` and `words` measure what was in the typing box at that moment (0 when empty), never the text itself. Older events carry no properties. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
 | `brain_dump_recovery_used` | browser | live | — | The saved recording is used. |
 | `brain_dump_retry` | browser | live | `attempt` | A failed finalize is retried. |
@@ -239,7 +239,7 @@ retried on the next tour visit in that session.
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
 | `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
 | `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
-| `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
+| `transcription_failed` | browser | live | `input_mode`, `error_code`, `finalize_latency_ms`, and `duration_secs` (voice) or `chars` and `words` (typed) | A finalize fails or the quality gate rejects the dump, spoken or typed; the name predates typed dumps. `error_code` is the gate's `no_usable_speech` or `insufficient_content`, the pipeline's own code, the HTTP status of an error response (`429`, `503`, ...), or `request_error` when the request never answered. Older events are all voice and carry no `input_mode`: filter with `coalesce(properties.input_mode, 'voice')`. |
 | `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
 | `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
 | `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
