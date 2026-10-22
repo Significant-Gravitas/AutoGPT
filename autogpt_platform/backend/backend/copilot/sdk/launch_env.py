@@ -66,7 +66,9 @@ INHERITED_NAMES = frozenset(
 )
 _INHERITED_PREFIXES = ("LC_",)
 # The CLI's own configuration, which a launch keeps as well. A process that
-# only asks the CLI its version does not.
+# only asks the CLI its version does not. Other CLI settings, such as
+# ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE``, reach a launch only through its own
+# ``env`` (``sdk/env.py``).
 CLI_CONFIG_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_")
 # Set or dropped by the SDK itself when it spawns the CLI: left alone so its
 # own values stand.

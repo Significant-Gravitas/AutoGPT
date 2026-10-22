@@ -94,6 +94,14 @@ async def _spawned_env(
     return seen
 
 
+def _assert_runtime_only(env: dict[str, str]) -> None:
+    """*env* holds the runtime the parent was given and nothing else of it."""
+    assert all(inherited(name) for name in env)
+    assert not set(_PARENT_SECRETS.values()) & set(env.values())
+    for name, value in _RUNTIME.items():
+        assert env[name] == value
+
+
 def _config(**overrides) -> ChatConfig:
     """A route's config, with every field the route reads set explicitly."""
     settings = {
@@ -236,8 +244,7 @@ def test_the_worker_warm_up_starts_the_cli_from_the_runtime_only(
     warmer._prewarm_cli(cli_path="claude-under-test")
 
     [env] = runs
-    assert all(inherited(name) for name in env)
-    assert not set(_PARENT_SECRETS.values()) & set(env.values())
+    _assert_runtime_only(env)
 
 
 def test_the_version_check_starts_the_cli_from_the_runtime_only(
@@ -254,8 +261,7 @@ def test_the_version_check_starts_the_cli_from_the_runtime_only(
     assert cli_version._probe_version("claude-under-test") == (2, 1, 284)
 
     [env] = runs
-    assert all(inherited(name) for name in env)
-    assert not set(_PARENT_SECRETS.values()) & set(env.values())
+    _assert_runtime_only(env)
 
 
 def test_the_subscription_check_keeps_only_the_host_login(
@@ -275,8 +281,8 @@ def test_the_subscription_check_keeps_only_the_host_login(
     subscription.validate_subscription.__wrapped__()
 
     version_env, auth_env = runs
-    secrets = set(_PARENT_SECRETS.values())
-    assert not secrets & set(version_env.values())
-    assert all(inherited(name) for name in version_env)
-    assert set(auth_env.values()) & secrets == {_HOST_LOGIN}
+    _assert_runtime_only(version_env)
+    assert set(auth_env.values()) & set(_PARENT_SECRETS.values()) == {_HOST_LOGIN}
     assert auth_env["ANTHROPIC_API_KEY"] == ""
+    for name, value in _RUNTIME.items():
+        assert auth_env[name] == value
