@@ -148,6 +148,46 @@ class Node(BaseDbModel):
             return _UnknownBlockBase(self.block_id)
         return block
 
+    def stripped_for_export(self) -> Self:
+        """
+        Returns a copy of the node with non-transferable input values removed:
+        - fields the block schema declares as a `CredentialsMetaInput`
+          (point at the original owner's credentials store; importers must
+          wire up their own)
+        - fields the block schema marks with `secret: true` via
+          `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
+          which name the owner's file and embed their `_credentials_id`. These
+          are nulled rather than removed: an explicit None tells the executor the
+          file was cleared, so importers and forks pick their own.
+        - a sub-agent node's `user_id`, which `reassign_ids` stamps with the
+          owner's id on save and stamps again with the importer's. It is
+          blanked rather than removed: the field is required, and the agent
+          generator validates an edited copy before its save stamps the id.
+        """
+        stripped_node = self.model_copy(deep=True)
+
+        if self.block_id == AgentExecutorBlock().id:
+            stripped_node.input_default["user_id"] = ""
+
+        if stripped_node.input_default:
+            for field_name in self.block.input_schema.get_credentials_fields():
+                stripped_node.input_default.pop(field_name, None)
+
+            schema_props = self.block.input_schema.jsonschema().get("properties", {})
+            for field_name, field_schema in schema_props.items():
+                if (
+                    isinstance(field_schema, dict)
+                    and field_schema.get("secret", False) is True
+                ):
+                    stripped_node.input_default.pop(field_name, None)
+
+            for field_name in _auto_credentials_field_names(self):
+                if field_name in stripped_node.input_default:
+                    stripped_node.input_default[field_name] = None
+
+        return stripped_node
+
 
 class NodeModel(Node):
     graph_id: str
@@ -176,40 +216,11 @@ class NodeModel(Node):
     def is_triggered_by_event_type(self, event_type: str) -> bool:
         return self.block.is_triggered_by_event_type(self.input_default, event_type)
 
-    def stripped_for_export(self) -> "NodeModel":
-        """
-        Returns a copy of the node model with non-transferable references removed:
-        - fields the block schema declares as a `CredentialsMetaInput`
-          (point at the original owner's credentials store; importers must
-          wire up their own)
-        - fields the block schema marks with `secret: true` via
-          `SchemaField(secret=True)` (block-author-declared sensitive values)
-        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
-          which name the owner's file and embed their `_credentials_id`. These
-          are nulled rather than removed: an explicit None tells the executor the
-          file was cleared, so importers and forks pick their own.
-        - `webhook_id` (points at the original owner's webhook subscription)
-        """
-        stripped_node = self.model_copy(deep=True)
-
-        if stripped_node.input_default:
-            for field_name in self.block.input_schema.get_credentials_fields():
-                stripped_node.input_default.pop(field_name, None)
-
-            schema_props = self.block.input_schema.jsonschema().get("properties", {})
-            for field_name, field_schema in schema_props.items():
-                if (
-                    isinstance(field_schema, dict)
-                    and field_schema.get("secret", False) is True
-                ):
-                    stripped_node.input_default.pop(field_name, None)
-
-            for field_name in _auto_credentials_field_names(self):
-                if field_name in stripped_node.input_default:
-                    stripped_node.input_default[field_name] = None
-
+    def stripped_for_export(self) -> Self:
+        """`Node.stripped_for_export`, and also drops `webhook_id` (points at
+        the original owner's webhook subscription)."""
+        stripped_node = super().stripped_for_export()
         stripped_node.webhook_id = None
-
         return stripped_node
 
 
@@ -1315,6 +1326,37 @@ class GraphModel(Graph, GraphMeta):
         so all computed fields (e.g. `credentials_input_schema`) still work.
         """
         return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
+
+    def shared_copy(self) -> Self:
+        """A copy safe to show someone who doesn't own this graph.
+
+        Every node, sub-graphs' included, is stripped the way an export strips
+        it (`stripped_for_export`), and the owner's identity is blanked, as
+        `from_db(..., for_export=True)` does. It works on an already-loaded
+        model, so a route can decide by ownership once it knows the owner.
+        Internal callers that act on the owner's behalf (presets, triggers, the
+        executor) keep reading the full graph.
+        """
+        return self.model_copy(
+            update={
+                "user_id": "",
+                "organization_id": None,
+                "team_id": None,
+                "nodes": [node.stripped_for_export() for node in self.nodes],
+                # Sub-graphs serialize without their owner's ids only because
+                # they are typed `BaseGraph`, which has no such fields.
+                "sub_graphs": [
+                    sub_graph.model_copy(
+                        update={
+                            "nodes": [
+                                node.stripped_for_export() for node in sub_graph.nodes
+                            ]
+                        }
+                    )
+                    for sub_graph in self.sub_graphs
+                ],
+            }
+        )
 
 
 def _describe_node_errors(

@@ -1,6 +1,8 @@
 "use client";
 
 import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/ArtifactsList/helpers";
+import { isPreviewableImage } from "../../ArtifactPanel/helpers";
+import { ChipThumbnail } from "./ChipThumbnail";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   type Attachment,
@@ -63,13 +65,21 @@ export function FileChips({
               {attachments.map((attachment, index) => {
                 const name = attachmentName(attachment);
                 const isFolder = attachment.kind === "folder";
-                const chipIcon = isFolder
-                  ? Folder01Icon
-                  : getFileTypeIcon(
-                      attachment.kind === "local"
-                        ? attachment.file.type
-                        : attachment.mimeType,
-                    );
+                const mimeType =
+                  attachment.kind === "local"
+                    ? attachment.file.type
+                    : attachment.kind === "workspace"
+                      ? attachment.mimeType
+                      : "";
+                const chipIcon = (
+                  <Icon
+                    icon={isFolder ? Folder01Icon : getFileTypeIcon(mimeType)}
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 text-zinc-900",
+                      stacked && "text-zinc-400",
+                    )}
+                  />
+                );
                 const count = isFolder
                   ? folderSummary(
                       attachment.fileCount,
@@ -114,13 +124,15 @@ export function FileChips({
                         "gap-1.5 border border-zinc-200 bg-white py-[3px] pl-2 pr-1.5 text-xs text-zinc-900 shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
                     )}
                   >
-                    <Icon
-                      icon={chipIcon}
-                      className={cn(
-                        "h-3.5 w-3.5 shrink-0 text-zinc-900",
-                        stacked && "text-zinc-400",
-                      )}
-                    />
+                    {isPreviewableImage(mimeType) ? (
+                      <ChipThumbnail
+                        attachment={attachment}
+                        stacked={stacked}
+                        fallback={chipIcon}
+                      />
+                    ) : (
+                      chipIcon
+                    )}
                     <span className="max-w-[160px] truncate">{name}</span>
                     {count ? (
                       <span className="shrink-0 text-zinc-500">· {count}</span>
