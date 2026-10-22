@@ -10,7 +10,7 @@ interface MapInstance {
 }
 
 interface MarkerInstance {
-  addListener(event: string, handler: () => void): void;
+  addEventListener(event: string, handler: () => void): void;
   map: MapInstance | null;
 }
 

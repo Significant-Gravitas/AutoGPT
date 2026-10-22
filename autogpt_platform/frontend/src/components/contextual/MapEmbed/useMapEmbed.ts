@@ -60,7 +60,7 @@ export function useMapEmbed(pins: MapPin[]) {
             title: pin.name,
             gmpClickable: true,
           });
-          pinMarker.addListener("gmp-click", () => {
+          pinMarker.addEventListener("gmp-click", () => {
             infoWindow.setContent(pinPopup(pin));
             infoWindow.open({ map, anchor: pinMarker });
           });
