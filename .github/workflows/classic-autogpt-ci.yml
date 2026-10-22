@@ -5,6 +5,7 @@ on:
     branches: [ master, dev, ci-test* ]
     paths:
       - '.github/workflows/classic-autogpt-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/original_autogpt/**'
       - 'classic/direct_benchmark/**'
       - 'classic/forge/**'
@@ -14,6 +15,7 @@ on:
     branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-autogpt-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/original_autogpt/**'
       - 'classic/direct_benchmark/**'
       - 'classic/forge/**'
@@ -37,17 +39,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Start MinIO service
-        working-directory: '.'
-        run: |
-          docker pull minio/minio:edge-cicd
-          docker run -d -p 9000:9000 minio/minio:edge-cicd
-
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           submodules: true
+
+      - name: Start MinIO service
+        uses: ./.github/actions/start-minio
 
       - name: Configure git user Auto-GPT-Bot
         run: |

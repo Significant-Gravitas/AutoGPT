@@ -5,12 +5,14 @@ on:
     branches: [master, dev]
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
 
@@ -89,21 +91,16 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    services:
-      minio:
-        image: minio/minio:edge-cicd
-        options: >
-          --name=minio
-          --health-interval=10s --health-timeout=5s --health-retries=3
-          --health-cmd="curl -f http://localhost:9000/minio/health/live"
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: true
+
+      - name: Start MinIO service
+        uses: ./.github/actions/start-minio
 
       - if: github.event_name == 'push'
         name: Log in to Docker hub
@@ -137,7 +134,7 @@ jobs:
           CI: true
           PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          S3_ENDPOINT_URL: http://minio:9000
+          S3_ENDPOINT_URL: http://127.0.0.1:9000
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
         run: |
