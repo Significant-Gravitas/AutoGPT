@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -19,6 +20,7 @@ class FakeLangfuse:
         self.versions = {
             v: [text, list(labels)] for v, (text, labels) in versions.items()
         }
+        self.configs: dict[int, dict] = {}
         self.api = MagicMock()
         self.api.prompts.get.side_effect = self._get
         self.api.prompts.list.side_effect = self._list
@@ -27,7 +29,12 @@ class FakeLangfuse:
 
     def _prompt(self, version: int) -> SimpleNamespace:
         text, labels = self.versions[version]
-        return SimpleNamespace(version=version, prompt=text, labels=list(labels))
+        return SimpleNamespace(
+            version=version,
+            prompt=text,
+            labels=list(labels),
+            config=self.configs.get(version, {}),
+        )
 
     def _get(self, name, *, version=None, label=None):
         assert name == "CoPilot%20Prompt"
@@ -49,6 +56,7 @@ class FakeLangfuse:
                 entry[1].remove("latest")
         version = max(self.versions, default=0) + 1
         self.versions[version] = [prompt, [*labels, "latest"]]
+        self.configs[version] = config
         return self._prompt(version)
 
     def _update(self, *, name, version, new_labels):
@@ -104,10 +112,33 @@ def test_main_refuses_without_credentials(monkeypatch):
 
 def test_credentials_fall_back_to_the_default_host_when_it_is_blank(monkeypatch):
     # CI passes an unset secret as an empty string, which would beat the default.
-    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
-    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
-    monkeypatch.setenv("LANGFUSE_HOST", "")
+    # Settings is patched, not the env: it reads the env once, on first import.
+    secrets = SimpleNamespace(
+        langfuse_public_key="pk", langfuse_secret_key="sk", langfuse_host=""
+    )
+    monkeypatch.setattr(
+        "backend.util.settings.Settings", lambda: SimpleNamespace(secrets=secrets)
+    )
     assert sync.load_credentials() == ("pk", "sk", "https://cloud.langfuse.com")
+
+
+def test_main_drops_a_blank_host_before_importing_the_service(monkeypatch):
+    # Importing backend.copilot.service builds the process's Langfuse client,
+    # which the SDK reuses for every later client with the same key, and the SDK
+    # takes LANGFUSE_HOST="" over its default host.
+    monkeypatch.setenv("LANGFUSE_HOST", "")
+    hosts_at_import = []
+
+    def load_repo_prompt():
+        hosts_at_import.append(os.environ.get("LANGFUSE_HOST"))
+        return REPO
+
+    monkeypatch.setattr(sync, "load_repo_prompt", load_repo_prompt)
+    monkeypatch.setattr(sync, "load_credentials", lambda: ("pk", "sk", "host"))
+    monkeypatch.setattr(sync, "make_client", lambda *_: FakeLangfuse({}))
+    monkeypatch.setattr(sync, "load_prompt_name", lambda: NAME)
+    assert sync.main(["--check"]) == 0
+    assert hosts_at_import == [None]
 
 
 def test_main_defaults_to_check(monkeypatch):
@@ -207,6 +238,27 @@ def test_promote_of_a_master_only_text_keeps_latest_on_dev_text():
     assert latest is not None and latest.text == DEV
     restored = client.create_prompt.call_args.kwargs
     assert "v2" in restored["commit_message"]
+
+
+def test_promote_retry_restores_latest_after_a_failed_restore():
+    client = FakeLangfuse({1: (OLD, ["production"]), 2: (DEV, ["latest"])})
+    creates = []
+
+    def create_then_fail(**kwargs):
+        creates.append(kwargs)
+        if len(creates) == 2:
+            raise ConnectionError("Langfuse went away")
+        return client._create(**kwargs)
+
+    client.create_prompt.side_effect = create_then_fail
+    with pytest.raises(ConnectionError):
+        sync.promote_production(client, NAME, REPO)
+    sync.promote_production(client, NAME, REPO)
+
+    production = sync.fetch_label(client, NAME, "production")
+    latest = sync.fetch_label(client, NAME, "latest")
+    assert production is not None and production.text == REPO
+    assert latest is not None and latest.text == DEV
 
 
 def test_promote_is_noop_when_production_matches():

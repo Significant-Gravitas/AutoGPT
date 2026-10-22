@@ -13,7 +13,9 @@ Modes:
   --promote-production  put ``production`` on the version holding the repo text,
                         creating that version first if none does. Creating moves
                         ``latest``, so the text ``latest`` had is then put back
-                        on top as a new version.
+                        on top as a new version; a run that finds ``latest``
+                        still on a version it created (a failed restore) puts
+                        it back then.
 
 Every write mode runs the guards first and makes no writes when Langfuse
 already matches, so a rerun is a no-op.
@@ -29,7 +31,7 @@ import os
 import subprocess
 import sys
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 LATEST = "latest"
@@ -37,6 +39,8 @@ PRODUCTION = "production"
 MIN_PROMPT_LENGTH = 2000
 MAX_VERSIONS_SCANNED = 200
 DEFAULT_HOST = "https://cloud.langfuse.com"
+# Config key on a version promotion created, naming the version latest was on.
+RESTORE_KEY = "restore_latest_to"
 
 
 class GuardError(Exception):
@@ -48,6 +52,7 @@ class RemoteVersion:
     version: int
     text: str
     labels: list[str]
+    config: dict[str, Any] = field(default_factory=dict)
 
 
 def load_repo_prompt() -> str:
@@ -124,7 +129,8 @@ def make_client(public_key: str, secret_key: str, host: str) -> Any:
 def _to_remote(prompt: Any) -> RemoteVersion:
     if not isinstance(prompt.prompt, str):
         raise GuardError(f"Langfuse version {prompt.version} is not a text prompt")
-    return RemoteVersion(prompt.version, prompt.prompt, list(prompt.labels))
+    config = prompt.config if isinstance(prompt.config, dict) else {}
+    return RemoteVersion(prompt.version, prompt.prompt, list(prompt.labels), config)
 
 
 def _encoded(name: str) -> str:
@@ -191,19 +197,24 @@ def run_check(client: Any, name: str, text: str) -> list[str]:
 
 
 def create_version(
-    client: Any, name: str, text: str, reason: str = "Synced from"
+    client: Any,
+    name: str,
+    text: str,
+    reason: str = "Synced from",
+    extra_config: dict[str, Any] | None = None,
 ) -> RemoteVersion:
     sha, digest = git_sha(), text_sha256(text)
+    config = {"git_sha": sha, "text_sha256": digest, **(extra_config or {})}
     created = client.create_prompt(
         name=name,
         prompt=text,
         type="text",
         labels=[],
-        config={"git_sha": sha, "text_sha256": digest},
+        config=config,
         commit_message=f"{reason} AutoGPT {sha} (sha256 {digest})",
     )
     print(f"Created v{created.version}")
-    return RemoteVersion(created.version, text, list(created.labels))
+    return RemoteVersion(created.version, text, list(created.labels), config)
 
 
 def publish_latest(client: Any, name: str, text: str) -> RemoteVersion:
@@ -216,35 +227,49 @@ def publish_latest(client: Any, name: str, text: str) -> RemoteVersion:
     return create_version(client, name, text)
 
 
+def restore_displaced_latest(client: Any, name: str) -> None:
+    """Put latest back on dev's text if a promotion's new version still holds it."""
+    latest = fetch_label(client, name, LATEST)
+    displaced = latest.config.get(RESTORE_KEY) if latest is not None else None
+    if not isinstance(displaced, int):
+        return
+    old = _to_remote(client.api.prompts.get(_encoded(name), version=displaced))
+    restored = create_version(
+        client,
+        name,
+        old.text,
+        reason=f"Restored v{displaced} as {LATEST} after promoting",
+    )
+    print(f"[{LATEST}] restored to v{displaced}'s text as v{restored.version}")
+
+
 def promote_production(client: Any, name: str, text: str) -> RemoteVersion:
     production = fetch_label(client, name, PRODUCTION)
     if production is not None and production.text == text:
         print(
             f"[{PRODUCTION}] v{production.version} already matches the repo, no write"
         )
+        restore_displaced_latest(client, name)
         return production
     target = find_version_with_text(client, name, text)
-    displaced = None
     if target is None:
+        # Creating the version takes latest, which dev serves, off dev's text.
+        # The version records where latest was, so even a rerun after a failed
+        # restore below can put it back.
         displaced = fetch_label(client, name, LATEST)
-        target = create_version(client, name, text)
+        target = create_version(
+            client,
+            name,
+            text,
+            extra_config={RESTORE_KEY: displaced.version} if displaced else None,
+        )
     # Keep the version's other labels; "latest" is reserved and set by Langfuse.
     labels = [lb for lb in target.labels if lb not in (LATEST, PRODUCTION)]
     client.update_prompt(
         name=name, version=target.version, new_labels=[*labels, PRODUCTION]
     )
     print(f"[{PRODUCTION}] moved to v{target.version}")
-    if displaced is not None:
-        # Creating the version took latest, which dev serves, off dev's text.
-        restored = create_version(
-            client,
-            name,
-            displaced.text,
-            reason=f"Restored v{displaced.version} as {LATEST} after promoting",
-        )
-        print(
-            f"[{LATEST}] restored to v{displaced.version}'s text as v{restored.version}"
-        )
+    restore_displaced_latest(client, name)
     return target
 
 
@@ -265,6 +290,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     selected = args.mode or "check"
+
+    # An unset CI secret arrives as LANGFUSE_HOST="", which the SDK takes over
+    # its default. Importing backend.copilot.service builds the Langfuse client
+    # whose connection every later client with the same key reuses, so drop it
+    # before that import.
+    if os.environ.get("LANGFUSE_HOST") == "":
+        del os.environ["LANGFUSE_HOST"]
 
     try:
         text = load_repo_prompt()
