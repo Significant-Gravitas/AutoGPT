@@ -9,6 +9,7 @@ hit hook runs after the search gather that raised).
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,11 +18,23 @@ from graphiti_core.llm_client import LLMConfig
 
 from backend.copilot.graphiti import client as client_mod
 from backend.copilot.graphiti.config import GraphitiConfig
-from backend.copilot.graphiti.reranker import CompatOpenAIRerankerClient
+from backend.copilot.graphiti.models import is_luna_model
+from backend.copilot.graphiti.reranker import (
+    MAX_PARALLEL_SCORES,
+    CompatOpenAIRerankerClient,
+)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("model", ["gpt-6-luna", "openai/gpt-6-luna"])
+@pytest.mark.parametrize(
+    "model",
+    [
+        "gpt-6-luna",
+        "openai/gpt-6-luna",
+        "gpt-6-luna:nitro",
+        "openai/gpt-6-luna:nitro",
+    ],
+)
 async def test_luna_reranker_disables_reasoning_without_legacy_token_bias(model):
     client, captured = _client_with([_logprob_response("True", -0.1)])
     reranker = CompatOpenAIRerankerClient(
@@ -129,6 +142,38 @@ async def test_rank_handles_empty_logprobs_without_desync():
     assert dict(ranked)["no_response"] == 0.0
 
 
+@pytest.mark.parametrize(
+    "candidates, peak",
+    [(40, 40), (MAX_PARALLEL_SCORES + 36, MAX_PARALLEL_SCORES)],
+)
+@pytest.mark.asyncio
+async def test_rank_scores_every_candidate_at_once_up_to_the_cap(candidates, peak):
+    """Forty candidates are scored in one wave, not two of twenty: a second
+    wave adds a classifier round trip to the chat's first turn. Past the cap,
+    the rest wait for a free slot."""
+    in_flight = 0
+    most_in_flight = 0
+
+    async def fake_create(**_kwargs):
+        nonlocal in_flight, most_in_flight
+        in_flight += 1
+        most_in_flight = max(most_in_flight, in_flight)
+        await asyncio.sleep(0.01)
+        in_flight -= 1
+        return _logprob_response("True", -0.1)
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=fake_create)
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
+    )
+
+    ranked = await reranker.rank("query", [f"passage {n}" for n in range(candidates)])
+
+    assert len(ranked) == candidates
+    assert most_in_flight == peak
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model", ["gpt-6-luna", "gpt-4.1-mini"])
 @pytest.mark.parametrize("token", ["Yes", "No", "\n", '"', "True.", "True enough"])
@@ -221,10 +266,32 @@ async def test_rank_uses_configured_model_or_default(model, expected_model):
     assert captured[0]["model"] == expected_model
 
 
+@pytest.mark.parametrize(
+    "model, luna",
+    [
+        ("gpt-6-luna", True),
+        ("openai/gpt-6-luna:nitro", True),
+        ("gpt-6-luna-custom", False),
+        ("gpt-4.1-nano:nitro", False),
+        ("hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M", False),
+    ],
+)
+def test_an_openrouter_variant_of_luna_is_luna(model, luna):
+    assert is_luna_model(model) is luna
+
+
 @pytest.mark.asyncio
-async def test_build_graphiti_uses_compat_reranker(mocker):
+@pytest.mark.parametrize(
+    "base_url, expected_model",
+    [
+        ("https://openrouter.ai/api/v1", "gpt-6-luna:nitro"),
+        ("https://api.openai.com/v1", "gpt-6-luna"),
+    ],
+)
+async def test_build_graphiti_uses_compat_reranker(mocker, base_url, expected_model):
     """client.py must construct the patched reranker, not the stock
-    one — otherwise the 400s come back on the next refactor."""
+    one — otherwise the 400s come back on the next refactor — and send
+    the model as ``resolve_reranker_model`` names it for the endpoint."""
     captured: dict = {}
 
     class _FakeGraphiti:
@@ -235,9 +302,7 @@ async def test_build_graphiti_uses_compat_reranker(mocker):
     mocker.patch.object(
         client_mod,
         "graphiti_config",
-        GraphitiConfig.model_construct(
-            llm_api_key="k", llm_base_url="https://openrouter.ai/api/v1"
-        ),
+        GraphitiConfig.model_construct(llm_api_key="k", llm_base_url=base_url),
     )
 
     client_mod._build_graphiti(
@@ -254,4 +319,5 @@ async def test_build_graphiti_uses_compat_reranker(mocker):
 
     await reranker.rank("query", ["passage"])
 
-    assert requests[0]["model"] == "gpt-6-luna"
+    assert requests[0]["model"] == expected_model
+    assert requests[0]["reasoning_effort"] == "none"
