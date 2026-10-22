@@ -78,7 +78,7 @@ The account's rows go last, because every earlier step finds its data through th
 2. **Confirmation**: if closing could not send the account-deleted email (`confirmationSentAt` is null), sends it now, while the address still exists, and records it. A send that fails stops the erasure, so the next run tries again.
 3. **Org subscriptions**: expires the open Checkouts and cancels the subscriptions of the organizations that go with the account, when their Stripe customer is not the account's own (closing cancelled that one).
 4. **Shared agents**: hands the agents other accounts use to the "deleted user" account (below), with their marketplace listings.
-5. **Marketplace**: its reviews, and its other listings (which closing took down) with their versions and search embeddings.
+5. **Marketplace**: its reviews, its other listings (which closing took down) with their versions and search embeddings, and every skill listing it published, with its versions and files. A skill listing is never handed over: an install copies the skill into the installer's own skills folder, so people who installed it keep their copy. Left to the account row's delete, the listing would stay with no owner, which marks a skill the platform wrote.
 6. **Files**: everything under its prefixes in every bucket (private, public and legacy): `workspaces/{workspace id}/` (workspace files), `workspaces/cli-sessions/{user id}/` (AutoPilot transcripts), `uploads/users/{user id}/` (uploads, onboarding voice recordings), `users/{user id}/` (marketplace media and avatars, including their public copies) and `oauth-apps/{app id}/` for OAuth apps it owns. A self-hosted stack's folders on disk likewise. Media a listing that stays still shows is kept (below).
 7. **Memory**: AutoPilot's memory graphs in FalkorDB, Otto's and one per expert it owns. Skipped on a stack with no FalkorDB host configured (above).
 8. **PostHog**: the person, with its events and recordings (PostHog deletes events in a weekly batch).
@@ -121,7 +121,6 @@ The agent's content stays as the creator last saved it, node inputs included. Cr
 - **Refunds**: see "A request sent by email", step 2. An open business decision.
 - **The org ledger** (`OrgCreditTransaction`) of an organization no one else is an active member of is still deleted with the org. Personal orgs bill the account's own ledger, so this only matters for a team org with one member left; whether the six-year rule applies to it as well is not decided.
 - **OAuth grants at the providers** (Google, GitHub, ...): closing revokes them through the credential-deletion route's revocation, but some providers (Notion, Todoist, Airtable, ...) have no revoke endpoint, so their grant lasts until the person removes it or it expires. The erasure deletes the stored tokens.
-- **Skill listings** the account published in the marketplace are deleted with its profile, not handed over.
 - **E2B volumes** named `autogpt-user-{user id}` and `autogpt-expert-{expert id}` (desktop blocks). Sandboxes stop on their own timeout; volumes do not. Delete them in the E2B dashboard.
 - **Mem0** memories stored with the user ID by the Mem0 blocks: delete with Mem0's `delete_all(user_id=...)`.
 - **Linear** customer created for feature requests (`externalId` = user ID, named with the email).

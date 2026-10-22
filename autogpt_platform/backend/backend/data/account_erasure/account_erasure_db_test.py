@@ -2,16 +2,17 @@
 
 An account with a published agent (and the sub-agent it runs) that another
 account has in its library and has run, a private agent in a folder, a draft
-listing, reviews both ways, a credit ledger and a personal org is closed the
-way Settings closes it (`close_account`, SECRT-2877), and its deletion
+listing, a published skill with a file, reviews both ways, a credit ledger and
+a personal org is closed the way Settings closes it (`close_account`, SECRT-2877), and its deletion
 request is then processed:
 - it is pending once past the grace, and the confirmation the close did not
   send goes out first, to its address;
 - its published agent, sub-agent and listing go to the "deleted user"
   account, the listing still taken down, and the other account can still
   open and run the agent;
-- everything else of the account goes, including its auth identity, and the
-  orphan-healing job finds nothing to bring it back from;
+- everything else of the account goes, including its auth identity and its
+  skill listing with the listing's version and file (not left ownerless), and
+  the orphan-healing job finds nothing to bring it back from;
 - the ledger stays, stripped of the block inputs and personal Stripe details;
 - the request stays, marked done, and is no longer pending;
 - a rerun is a no-op.
@@ -27,6 +28,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
+import prisma
 import prisma.enums
 import prisma.models
 import pytest
@@ -130,6 +132,41 @@ async def _listing(
         }
     )
     return version.id
+
+
+async def _skill_listing(owner_id: str) -> tuple[str, str, str]:
+    """A published skill listing with one file: its, its version's and its
+    file's IDs."""
+    listing = await prisma.models.SkillListing.prisma().create(
+        data={
+            "slug": f"deletion-skill-{owner_id}",
+            "owningUserId": owner_id,
+            "hasApprovedVersion": True,
+        }
+    )
+    version = await prisma.models.SkillListingVersion.prisma().create(
+        data={
+            "skillListingId": listing.id,
+            "name": "Deletion test skill",
+            "description": "Test",
+            "body": "Test",
+            "categories": [],
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        }
+    )
+    await prisma.models.SkillListing.prisma().update(
+        where={"id": listing.id}, data={"activeVersionId": version.id}
+    )
+    file = await prisma.models.SkillListingFile.prisma().create(
+        data={
+            "skillListingVersionId": version.id,
+            "relativePath": "scripts/run.py",
+            "sizeBytes": 5,
+            "sha256": "x",
+            "content": prisma.Base64.encode(b"print"),
+        }
+    )
+    return listing.id, version.id, file.id
 
 
 async def _list_under_personal_org(user_id: str, version_id: str) -> None:
@@ -310,6 +347,7 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
     await _list_under_personal_org(user_id, own_version)
     draft = await _graph(user_id, "Draft agent")
     await _listing(user_id, draft, status=prisma.enums.SubmissionStatus.DRAFT)
+    skill, skill_version, skill_file = await _skill_listing(user_id)
     other_version = await _listing(other_id, await _graph(other_id, "Theirs"))
     await _review(other_version, user_id)
     await _review(own_version, other_id)
@@ -340,6 +378,14 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         email, prisma.enums.AccountDeletionSource.SETTINGS
     )
     assert set((await _left_of(user_id)).values()) == {0}
+    # Gone, not left behind with no owner (which reads as a platform skill).
+    assert not await prisma.models.SkillListing.prisma().count(where={"id": skill})
+    assert not await prisma.models.SkillListingVersion.prisma().count(
+        where={"id": skill_version}
+    )
+    assert not await prisma.models.SkillListingFile.prisma().count(
+        where={"id": skill_file}
+    )
     done = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
         where={"userId": user_id}
     )
