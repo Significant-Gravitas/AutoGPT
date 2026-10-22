@@ -12,24 +12,175 @@ Tests cover:
 5. Complete OAuth flow end-to-end
 """
 
+import asyncio
+import base64
 import hashlib
 import secrets
 import uuid
-from urllib.parse import parse_qs, urlparse
+from typing import AsyncGenerator
 
 import httpx
 import pytest
 import pytest_asyncio
+from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
 from prisma.models import AuthUser as PrismaAuthUser
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
+from prisma.models import User as PrismaUser
+from pytest_mock import MockerFixture
 
+from backend.api.rest_api import app
+from backend.data.auth.oauth import (
+    InvalidGrantError,
+    create_refresh_token,
+    refresh_tokens,
+)
 from backend.data.user import is_user_banned
 
-from .conftest import authorize_and_exchange_code, generate_pkce, keysmith
+keysmith = APIKeySmith()
+
+
+# ============================================================================
+# Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def test_user_id() -> str:
+    """Test user ID for OAuth tests."""
+    return str(uuid.uuid4())
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def test_user(server, test_user_id: str):
+    """Create a test user in the database."""
+    await PrismaUser.prisma().create(
+        data={
+            "id": test_user_id,
+            "email": f"oauth-test-{test_user_id}@example.com",
+            "name": "OAuth Test User",
+        }
+    )
+
+    yield test_user_id
+
+    # Cleanup - delete in correct order due to foreign key constraints.
+    # Wrap in try/except because the event loop or Prisma engine may already
+    # be closed during session teardown on Python 3.12+.
+    try:
+        await asyncio.gather(
+            PrismaOAuthAccessToken.prisma().delete_many(where={"userId": test_user_id}),
+            PrismaOAuthRefreshToken.prisma().delete_many(
+                where={"userId": test_user_id}
+            ),
+            PrismaOAuthAuthorizationCode.prisma().delete_many(
+                where={"userId": test_user_id}
+            ),
+        )
+        await asyncio.gather(
+            PrismaOAuthApplication.prisma().delete_many(
+                where={"ownerId": test_user_id}
+            ),
+            PrismaUser.prisma().delete(where={"id": test_user_id}),
+        )
+    except RuntimeError:
+        pass
+
+
+@pytest_asyncio.fixture
+async def test_oauth_app(test_user: str):
+    """Create a test OAuth application in the database."""
+    app_id = str(uuid.uuid4())
+    client_id = f"test_client_{secrets.token_urlsafe(8)}"
+    # Secret must start with "agpt_" prefix for keysmith verification to work
+    client_secret_plaintext = f"agpt_secret_{secrets.token_urlsafe(16)}"
+    client_secret_hash, client_secret_salt = keysmith.hash_key(client_secret_plaintext)
+
+    await PrismaOAuthApplication.prisma().create(
+        data={
+            "id": app_id,
+            "name": "Test OAuth App",
+            "description": "Test application for integration tests",
+            "clientId": client_id,
+            "clientSecret": client_secret_hash,
+            "clientSecretSalt": client_secret_salt,
+            "redirectUris": [
+                "https://example.com/callback",
+                "http://localhost:3000/callback",
+            ],
+            "grantTypes": ["authorization_code", "refresh_token"],
+            "scopes": [APIKeyPermission.EXECUTE_GRAPH, APIKeyPermission.READ_GRAPH],
+            "ownerId": test_user,
+            "isActive": True,
+        }
+    )
+
+    yield {
+        "id": app_id,
+        "client_id": client_id,
+        "client_secret": client_secret_plaintext,
+        "redirect_uri": "https://example.com/callback",
+    }
+
+    # Cleanup is handled by test_user fixture (cascade delete)
+
+
+def generate_pkce() -> tuple[str, str]:
+    """Generate PKCE code verifier and challenge."""
+    verifier = secrets.token_urlsafe(32)
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+        .decode("ascii")
+        .rstrip("=")
+    )
+    return verifier, challenge
+
+
+@pytest.fixture
+def pkce_credentials() -> tuple[str, str]:
+    """Generate PKCE code verifier and challenge as a fixture."""
+    return generate_pkce()
+
+
+@pytest_asyncio.fixture
+async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, None]:
+    """
+    Create an async HTTP client that talks directly to the FastAPI app.
+
+    Uses ASGI transport so we don't need an actual HTTP server running.
+    Also overrides get_user_id dependency to return our test user.
+
+    Depends on `server` to ensure the DB is connected and `test_user` to ensure
+    the user exists in the database before running tests.
+    """
+    from autogpt_libs.auth import get_user_id
+
+    # Override get_user_id dependency to return our test user
+    def override_get_user_id():
+        return test_user
+
+    # Store original override if any
+    original_override = app.dependency_overrides.get(get_user_id)
+
+    # Set our override
+    app.dependency_overrides[get_user_id] = override_get_user_id
+
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+        ) as http_client:
+            yield http_client
+    finally:
+        # Restore original override
+        if original_override is not None:
+            app.dependency_overrides[get_user_id] = original_override
+        else:
+            app.dependency_overrides.pop(get_user_id, None)
+
 
 # ============================================================================
 # Authorization Endpoint Integration Tests
@@ -64,6 +215,7 @@ async def test_authorize_creates_code_in_database(
     redirect_url = response.json()["redirect_url"]
 
     # Parse the redirect URL to get the authorization code
+    from urllib.parse import parse_qs, urlparse
 
     parsed = urlparse(redirect_url)
     query_params = parse_qs(parsed.query)
@@ -114,6 +266,8 @@ async def test_authorize_with_pkce_stores_challenge(
 
     assert response.status_code == 200
 
+    from urllib.parse import parse_qs, urlparse
+
     auth_code = parse_qs(urlparse(response.json()["redirect_url"]).query)["code"][0]
 
     # Verify PKCE challenge is stored
@@ -150,6 +304,7 @@ async def test_authorize_invalid_client_returns_error(
     )
 
     assert response.status_code == 200
+    from urllib.parse import parse_qs, urlparse
 
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_client"
@@ -211,6 +366,7 @@ async def test_authorize_inactive_app(
     )
 
     assert response.status_code == 200
+    from urllib.parse import parse_qs, urlparse
 
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_client"
@@ -268,6 +424,7 @@ async def test_authorize_invalid_scope(
     )
 
     assert response.status_code == 200
+    from urllib.parse import parse_qs, urlparse
 
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_scope"
@@ -299,6 +456,7 @@ async def test_authorize_unauthorized_scope(
     )
 
     assert response.status_code == 200
+    from urllib.parse import parse_qs, urlparse
 
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_scope"
@@ -328,6 +486,7 @@ async def test_authorize_unsupported_response_type(
     )
 
     assert response.status_code == 200
+    from urllib.parse import parse_qs, urlparse
 
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "unsupported_response_type"
@@ -345,6 +504,7 @@ async def test_token_exchange_creates_tokens_in_database(
     test_oauth_app: dict,
 ):
     """Test that token exchange creates access and refresh tokens in database."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -426,6 +586,7 @@ async def test_authorization_code_cannot_be_reused(
     test_oauth_app: dict,
 ):
     """Test that authorization code can only be used once."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -485,6 +646,7 @@ async def test_token_exchange_with_invalid_client_secret(
     test_oauth_app: dict,
 ):
     """Test that token exchange fails with invalid client secret."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -593,6 +755,7 @@ async def test_token_authorization_code_redirect_uri_mismatch(
     test_oauth_app: dict,
 ):
     """Test token exchange with mismatched redirect_uri."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -642,6 +805,7 @@ async def test_token_authorization_code_pkce_failure(
     pkce_credentials: tuple[str, str],
 ):
     """Test token exchange with PKCE verification failure (wrong verifier)."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = pkce_credentials
 
@@ -693,9 +857,41 @@ async def test_refresh_token_creates_new_tokens(
     test_oauth_app: dict,
 ):
     """Test that refresh token grant creates new access and refresh tokens."""
-    initial_tokens = await authorize_and_exchange_code(
-        client, test_oauth_app, "refresh_test"
+    from urllib.parse import parse_qs, urlparse
+
+    verifier, challenge = generate_pkce()
+
+    # Get initial tokens
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "refresh_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
     )
+
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+
+    initial_response = await client.post(
+        "/api/oauth/token",
+        json={
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "client_id": test_oauth_app["client_id"],
+            "client_secret": test_oauth_app["client_secret"],
+            "code_verifier": verifier,
+        },
+    )
+    initial_tokens = initial_response.json()
 
     # Use refresh token to get new tokens
     refresh_response = await client.post(
@@ -743,6 +939,8 @@ async def test_a_banned_owners_tokens_neither_refresh_nor_introspect_active(
 ):
     """The external API refuses them anyway; the app hears it here too, and
     the refresh token survives for when the ban is lifted."""
+    from urllib.parse import parse_qs, urlparse
+
     verifier, challenge = generate_pkce()
     auth_response = await client.post(
         "/api/oauth/authorize",
@@ -987,6 +1185,79 @@ async def test_token_refresh_wrong_application(
     assert "does not belong" in response.json()["detail"].lower()
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_refresh_token_concurrent_refresh_succeeds_once(
+    mocker: MockerFixture,
+    test_user: str,
+    test_oauth_app: dict,
+):
+    """Two refreshes of one token that both pass the checks before either
+    revokes it must not both mint a token pair (#15288)."""
+    refresh_token = await create_refresh_token(
+        test_oauth_app["id"], test_user, [APIKeyPermission.EXECUTE_GRAPH]
+    )
+    _hold_refreshes_after_their_checks(mocker, parties=2)
+
+    results = await asyncio.gather(
+        *(
+            refresh_tokens(refresh_token.token.get_secret_value(), test_oauth_app["id"])
+            for _ in range(2)
+        ),
+        return_exceptions=True,
+    )
+
+    minted = [r for r in results if isinstance(r, tuple)]
+    refused = [r for r in results if isinstance(r, InvalidGrantError)]
+    assert (len(minted), len(refused)) == (1, 1), results
+    assert "revoked" in str(refused[0])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_token_endpoint_concurrent_refresh_issues_one_token_pair(
+    client: httpx.AsyncClient,
+    mocker: MockerFixture,
+    test_user: str,
+    test_oauth_app: dict,
+):
+    """Concurrent refresh grants with one token: one gets new tokens, the rest
+    get invalid_grant, and the database holds a single live pair."""
+    refresh_token = await create_refresh_token(
+        test_oauth_app["id"], test_user, [APIKeyPermission.EXECUTE_GRAPH]
+    )
+    _hold_refreshes_after_their_checks(mocker, parties=3)
+    grant = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token.token.get_secret_value(),
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": test_oauth_app["client_secret"],
+    }
+
+    responses = await asyncio.gather(
+        *(client.post("/api/oauth/token", json=grant) for _ in range(3))
+    )
+
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [200, 400, 400], [r.text for r in responses]
+    refusals = [r.json()["detail"] for r in responses if r.status_code == 400]
+    assert all("revoked" in detail for detail in refusals), refusals
+    live = {"applicationId": test_oauth_app["id"], "revokedAt": None}
+    assert await PrismaOAuthRefreshToken.prisma().count(where=live) == 1
+    assert await PrismaOAuthAccessToken.prisma().count(where=live) == 1
+
+
+def _hold_refreshes_after_their_checks(mocker: MockerFixture, parties: int) -> None:
+    """Hold each refresh at its ban check, the last check before it revokes the
+    old token, until `parties` refreshes have reached it. All of them then
+    claim the token at once, which is the race in #15288."""
+    checks_passed = asyncio.Barrier(parties)
+
+    async def not_banned(user_id: str) -> bool:
+        await asyncio.wait_for(checks_passed.wait(), timeout=10)
+        return False
+
+    mocker.patch("backend.data.auth.oauth.is_user_banned", new=not_banned)
+
+
 # ============================================================================
 # Token Introspection Integration Tests
 # ============================================================================
@@ -999,6 +1270,7 @@ async def test_introspect_valid_access_token(
     test_oauth_app: dict,
 ):
     """Test introspection returns correct info for valid access token."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -1082,6 +1354,7 @@ async def test_introspect_active_refresh_token(
     test_oauth_app: dict,
 ):
     """Test introspection returns correct info for valid refresh token."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -1236,6 +1509,7 @@ async def test_revoke_access_token_updates_database(
     test_oauth_app: dict,
 ):
     """Test that revoking access token updates database."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -1328,6 +1602,7 @@ async def test_revoke_refresh_token_updates_database(
     test_oauth_app: dict,
 ):
     """Test that revoking refresh token updates database."""
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -1423,6 +1698,7 @@ async def test_revoke_token_from_different_app_fails_silently(
     Per RFC 7009, the endpoint still returns 200 OK (to prevent token scanning),
     but the token should remain valid in the database.
     """
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = generate_pkce()
 
@@ -1547,6 +1823,7 @@ async def test_complete_oauth_flow_end_to_end(
     This is a comprehensive integration test that verifies the entire
     OAuth flow works correctly with real API calls and database operations.
     """
+    from urllib.parse import parse_qs, urlparse
 
     verifier, challenge = pkce_credentials
 
