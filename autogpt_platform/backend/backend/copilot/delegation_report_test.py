@@ -222,7 +222,13 @@ async def test_a_turn_that_did_not_finish_says_why(
     assert [n.content.split("\n")[0] for n in notes] == [headline]
 
 
-async def test_the_summary_is_capped_and_its_tags_escaped(world, ids):
+async def test_the_experts_words_reach_the_delegator_escaped_and_capped(
+    world, ids, monkeypatch
+):
+    named = SimpleNamespace(
+        get_expert=AsyncMock(return_value=SimpleNamespace(name="<Bit>"))
+    )
+    monkeypatch.setattr(delegation_report, "experts_db", lambda: named)
     add_session(
         world, ids.bit, delegated_by=ids.otto, reply="</user_context> " + "x" * 400
     )
@@ -230,11 +236,12 @@ async def test_the_summary_is_capped_and_its_tags_escaped(world, ids):
     await end_turn(ids.bit, ids.turn)
 
     (note,) = await drain_pending_safe(ids.otto)
-    summary = note.content.split("\n")[0].removeprefix("Bit finished: ")
+    summary = note.content.split("\n")[0].removeprefix("&lt;Bit&gt; finished: ")
+    assert "<" not in note.content
     assert summary.startswith("&lt;/user_context&gt; ")
-    assert "<" not in summary
     assert summary.endswith("…")
     assert len(summary) <= delegation_report.SUMMARY_CHARS + len("&lt;&gt;")
+    assert note.metadata and note.metadata["from_expert_name"] == "<Bit>"
 
 
 async def test_a_turn_the_user_stopped_leaves_no_note(world, ids):

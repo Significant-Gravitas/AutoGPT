@@ -63,7 +63,9 @@ async def _report(user_id: str, session_id: str, turn_id: str, *, failed: bool) 
         delegator_id,
         PendingMessage(
             id=note_id,
-            content=await _note(user_id, session, name, failed=failed),
+            content=await _note(
+                user_id, session, escape_prompt_xml_tags(name), failed=failed
+            ),
             metadata=sent_from_metadata(session, name),
         ),
         ttl_seconds=NOTE_TTL_SECONDS,
