@@ -2,8 +2,11 @@
 // a commit SHA, a UUID or a file hash, and a warning on those would teach
 // people to ignore it.
 const SECRET_PATTERNS: RegExp[] = [
-  // OpenAI (sk-, sk-proj-, ...) and Anthropic (sk-ant-...). The run of 20
-  // letters and digits keeps hyphenated words like "sk-learn" out.
+  // OpenAI project, service-account and admin keys, and Anthropic keys: the
+  // prefix alone is distinctive, so any 20 key characters after it count.
+  /\bsk-(?:proj|svcacct|admin|ant-[a-z]+\d+)-[A-Za-z0-9_-]{20,}/,
+  // Other sk- keys. The run of 20 letters and digits keeps hyphenated words
+  // like "sk-learn-and-pandas-..." out.
   /\bsk-[A-Za-z0-9_-]*[A-Za-z0-9]{20}/,
   // GitHub classic and app tokens, including the stateless app installation
   // tokens (ghs_<app id>_<JWT>), then fine-grained tokens.

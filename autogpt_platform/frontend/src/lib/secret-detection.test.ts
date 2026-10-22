@@ -13,6 +13,14 @@ describe("containsLikelySecret", () => {
   it.each([
     ["OpenAI legacy key", sample("sk-", ALNUM_40 + "Xy12Ab34")],
     ["OpenAI project key", sample("sk-proj-", "Ab_" + ALNUM_40 + "-Cd")],
+    [
+      "OpenAI project key with frequent separators",
+      sample("sk-proj-", "aB3d_E5gH-7jK9_mN1p-Q3sT_5vW7-yZ9b"),
+    ],
+    [
+      "Anthropic key with frequent separators",
+      sample("sk-ant-api03-", "aB3d_E5gH-7jK9_mN1p-Q3sT_5vW7-yZ9b"),
+    ],
     ["Anthropic key", sample("sk-ant-api03-", ALNUM_40 + "_x-" + ALNUM_40)],
     ["GitHub classic token", sample("ghp_", ALNUM_40.slice(0, 36))],
     ["GitHub OAuth token", sample("gho_", ALNUM_40.slice(0, 36))],
