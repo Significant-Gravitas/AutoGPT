@@ -395,7 +395,6 @@ merges the website pageviews into the new user:
 | `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
 | `expert_thread_created` | browser | live | `expert_id` | A new expert chat is created. |
-| `hired_expert_chat_opened` | browser | live | `expert_id`, `surface` (`intro`), `setup_status` (`installing`, `ready`, `failed`) | A hired expert's Chat button is clicked in the team list on the greeting, the first screen after onboarding. The chat it opens sends `expert_thread_created` if it is new. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
 | `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |

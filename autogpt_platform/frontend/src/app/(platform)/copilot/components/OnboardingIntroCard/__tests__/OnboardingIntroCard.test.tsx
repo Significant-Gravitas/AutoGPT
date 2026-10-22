@@ -1,4 +1,8 @@
-import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getListExpertSetupItemsMockHandler,
+  getListExpertsMockHandler,
+  getListExpertTemplatesMockHandler,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import { server } from "@/mocks/mock-server";
 import {
@@ -70,8 +74,12 @@ function writeTextMock(impl: () => Promise<void>) {
 
 beforeEach(() => {
   toastSpy.mockReset();
-  // The team list has its own suite (intro-team.test.tsx).
-  server.use(getListExpertsMockHandler([]));
+  // The team and its ask have their own suite (intro-standup.test.tsx).
+  server.use(
+    getListExpertsMockHandler([]),
+    getListExpertTemplatesMockHandler([]),
+    getListExpertSetupItemsMockHandler([]),
+  );
 });
 
 afterEach(() => {
@@ -82,6 +90,8 @@ describe("OnboardingIntroCard — content", () => {
   it("greets the user by name and renders the greeting, prompts and footer", () => {
     const { container } = render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -100,6 +110,8 @@ describe("OnboardingIntroCard — content", () => {
   it("renders a row for a prompt whose icon slug the frontend does not know", () => {
     render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions([PROMPTS[1]])}
@@ -114,6 +126,8 @@ describe("OnboardingIntroCard — content", () => {
   it("omits the list and stops pointing at it once nothing is left", () => {
     render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions([])}
@@ -131,6 +145,8 @@ describe("OnboardingIntroCard — picking a prompt", () => {
     const onSelectPrompt = vi.fn();
     render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS, onSelectPrompt)}
@@ -148,6 +164,8 @@ describe("OnboardingIntroCard — picking a prompt", () => {
     const onSelectPrompt = vi.fn();
     render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS, onSelectPrompt)}
@@ -168,6 +186,8 @@ describe("OnboardingIntroCard — transcript copy", () => {
   it("offers no copy affordance when there is no transcript", () => {
     render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -181,6 +201,8 @@ describe("OnboardingIntroCard — transcript copy", () => {
     const writeText = writeTextMock(() => Promise.resolve());
     const { container } = render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -205,6 +227,8 @@ describe("OnboardingIntroCard — transcript copy", () => {
     );
     const { container } = render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -231,6 +255,8 @@ describe("OnboardingIntroCard — transcript copy", () => {
     writeTextMock(() => Promise.resolve());
     const { container } = render(
       <OnboardingIntroCard
+        path="A"
+        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}

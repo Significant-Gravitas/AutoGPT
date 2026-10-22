@@ -270,6 +270,7 @@ export const ChatInput = memo(function ChatInput({
     downloadFailedRecording,
     dismissTranscriptionError,
     elapsedTime,
+    startRecording,
     toggleRecording,
     handleKeyDown: voiceHandleKeyDown,
     showMicButton,
@@ -285,6 +286,8 @@ export const ChatInput = memo(function ChatInput({
 
   const { isGlowing: isMicGlowing, dismissGlow } = useOnboardingMicGlow({
     isTranscribing,
+    canRecord: showMicButton && !isRecording && !isTranscribing,
+    startRecording,
   });
 
   function handleChange(nextValue: string, input: MentionInput) {

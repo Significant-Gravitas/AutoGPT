@@ -135,6 +135,8 @@ export function EmptySession({
               suggestions={suggestions}
               transcript={intro.transcript}
               disabled={isComposerDisabled || !!atReset}
+              path={intro.path}
+              onAnswer={(message) => void (onStartTask ?? onSend)(message)}
             />
           ) : intro.isAwaitingGreeting ? (
             // Behind the welcome modal's blur and for as long as the

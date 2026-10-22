@@ -39,9 +39,6 @@ export const ExpertsFunnelEvent = {
   EXPERT_PROFILE_OPENED: "expert_profile_opened",
   HIRE_STARTED: "hire_started",
   EXPERT_THREAD_CREATED: "expert_thread_created",
-  // A hired expert's chat was opened from the team list on the greeting
-  // (`surface: intro`), the first screen after onboarding.
-  HIRED_EXPERT_CHAT_OPENED: "hired_expert_chat_opened",
   BRIEFING_OUTCOME_CLICKED: "briefing_outcome_clicked",
   HOME_ATTENTION_ACTIONED: "home_attention_actioned",
   HOME_TEAM_MEMBER_CLICKED: "home_team_member_clicked",

@@ -20,7 +20,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
-import { IntroTeam } from "./components/IntroTeam/IntroTeam";
+import { IntroStandup } from "./components/IntroStandup/IntroStandup";
 
 interface Props {
   name: string;
@@ -28,6 +28,9 @@ interface Props {
   suggestions: ReturnType<typeof useSuggestedTasks>;
   transcript?: string;
   disabled?: boolean;
+  path: string;
+  /** Sends the ask's answer to Otto as an ordinary message. */
+  onAnswer: (message: string) => void;
 }
 
 // The orb travels into this card's heading from the loader, so the
@@ -58,6 +61,8 @@ export function OnboardingIntroCard({
   suggestions,
   transcript = "",
   disabled = false,
+  path,
+  onAnswer,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
@@ -156,7 +161,7 @@ export function OnboardingIntroCard({
       </motion.div>
 
       <motion.div {...reveal(promptsStart)}>
-        <IntroTeam />
+        <IntroStandup path={path} disabled={disabled} onAnswer={onAnswer} />
       </motion.div>
 
       {suggestions.tasks.length > 0 && (
