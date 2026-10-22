@@ -5,7 +5,7 @@ describe("parseMapSource", () => {
   it("parses pins and a title", () => {
     const data = parseMapSource(
       JSON.stringify({
-        title: "Cafes",
+        title: "  Cafes ",
         pins: [{ name: "A", lat: 1.5, lng: 2.5, address: "1 Main" }],
       }),
     );

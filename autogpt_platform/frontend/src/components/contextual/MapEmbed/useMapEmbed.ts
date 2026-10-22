@@ -32,14 +32,20 @@ export function useMapEmbed(pins: MapPin[]) {
     let rejected = false;
     const markers: Array<{ map: unknown }> = [];
     let info: { close(): void } | null = null;
-    const timeout = setTimeout(() => {
+    const teardown = () => {
+      info?.close();
+      markers.forEach((pinMarker) => {
+        pinMarker.map = null;
+      });
+      container.replaceChildren();
+    };
+    const fail = () => {
       rejected = true;
+      teardown();
       if (!cancelled) setStatus("failed");
-    }, LOAD_TIMEOUT_MS);
-    const unsubscribe = onMapsAuthFailure(() => {
-      rejected = true;
-      if (!cancelled) setStatus("failed");
-    });
+    };
+    const timeout = setTimeout(fail, LOAD_TIMEOUT_MS);
+    const unsubscribe = onMapsAuthFailure(fail);
     loadGoogleMaps(apiKey)
       .then((google) => {
         if (cancelled || rejected) return;
@@ -79,11 +85,7 @@ export function useMapEmbed(pins: MapPin[]) {
       cancelled = true;
       clearTimeout(timeout);
       unsubscribe();
-      info?.close();
-      markers.forEach((pinMarker) => {
-        pinMarker.map = null;
-      });
-      container.replaceChildren();
+      teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, pinsKey]);

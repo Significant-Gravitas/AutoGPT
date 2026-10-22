@@ -17,9 +17,14 @@ describe("MessageResponse map blocks", () => {
   afterEach(cleanup);
 
   it("renders a map block as a map instead of code", async () => {
-    render(<MessageResponse>{MAP_REPLY}</MessageResponse>);
+    const { container } = render(
+      <MessageResponse>{MAP_REPLY}</MessageResponse>,
+    );
     await waitFor(() => expect(screen.getByTestId("map-embed")).toBeDefined());
     expect(screen.getByText("Cafes")).toBeDefined();
+    expect(
+      container.querySelector("[data-streamdown='code-block']"),
+    ).toBeNull();
   });
 
   it("keeps other code blocks as code", async () => {

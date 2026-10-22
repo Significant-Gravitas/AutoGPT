@@ -19,10 +19,14 @@ class FakeInfoWindow {
   setContent() {}
   open = infoOpen;
 }
+const markers: FakeMarker[] = [];
+
 class FakeMarker {
   map: unknown = null;
-  constructor(options: unknown) {
+  constructor(options: { map: unknown }) {
     markerCtor(options);
+    this.map = options.map;
+    markers.push(this);
   }
   addEventListener = addEventListener;
 }
@@ -61,6 +65,7 @@ describe("MapEmbed with a Maps key", () => {
     addEventListener.mockClear();
     infoOpen.mockClear();
     markerCtor.mockClear();
+    markers.length = 0;
   });
 
   it("falls back to pin links when Google rejects the key", async () => {
@@ -81,9 +86,7 @@ describe("MapEmbed with a Maps key", () => {
   it("keeps the map container when loading succeeds", async () => {
     const { MapEmbed: FreshMapEmbed } = await import("../MapEmbed");
     render(<FreshMapEmbed data={DATA} />);
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(markerCtor).toHaveBeenCalledTimes(1));
     expect(screen.getByLabelText("Map")).toBeDefined();
     expect(screen.queryByRole("link", { name: "Cafe X" })).toBeNull();
   });
@@ -112,6 +115,18 @@ describe("MapEmbed with a Maps key", () => {
     expect(fitBounds).toHaveBeenCalledTimes(1);
     addEventListener.mock.calls[0][1]();
     expect(infoOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes the markers when Google rejects the key after the map is built", async () => {
+    const { MapEmbed: FreshMapEmbed } = await import("../MapEmbed");
+    render(<FreshMapEmbed data={DATA} />);
+    await waitFor(() => expect(markers).toHaveLength(1));
+    expect(markers[0].map).not.toBeNull();
+    await act(async () => {
+      (window as unknown as { gm_authFailure: () => void }).gm_authFailure();
+    });
+    expect(markers[0].map).toBeNull();
+    expect(screen.getByRole("link", { name: "Cafe X" })).toBeDefined();
   });
 
   it("keeps the pin links when the map loads after the timeout", async () => {

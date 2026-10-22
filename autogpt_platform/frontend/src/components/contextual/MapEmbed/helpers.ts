@@ -45,7 +45,7 @@ export function parseMapSource(source: string): MapData | null {
     .slice(0, MAX_PINS);
   if (valid.length === 0) return null;
   return {
-    title: typeof title === "string" && title.trim() ? title : undefined,
+    title: typeof title === "string" && title.trim() ? title.trim() : undefined,
     pins: valid,
   };
 }
