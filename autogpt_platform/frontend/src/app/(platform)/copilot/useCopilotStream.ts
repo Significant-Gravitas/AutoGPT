@@ -664,9 +664,19 @@ export function useCopilotStream({
     return `${rawMessages.length}:${last?.parts.length ?? 0}:${textLen}`;
   }, [rawMessages]);
 
+  const stopSdkStream = sdkStopStream(sdkStop, setMessages);
   const stop = useCopilotStop({
     sessionId,
-    stopStream: sdkStopStream(sdkStop, setMessages),
+    stopStream: () => {
+      // A turn stopped before it streams stores no marker, so after a reload
+      // its echo is the newest row; the guard must not call a resend a double-click.
+      if (sessionId) {
+        useCopilotStreamStore.getState().updateCoord(sessionId, {
+          lastSubmittedMessageText: null,
+        });
+      }
+      stopSdkStream();
+    },
     isUserStoppingRef,
     setIsUserStopping,
   });

@@ -2,12 +2,15 @@ import type { SessionDetailResponseMessagesItem } from "@/app/api/__generated__/
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
+  createStreamHold,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useCopilotStreamStore } from "../copilotStreamStore";
 import {
+  clickStop,
   renderHost,
   resetChatRuntimes,
   TEST_BACKEND_BASE_URL,
@@ -152,4 +155,35 @@ describe("sending the same text twice in a row", () => {
     await screen.findByText(ANSWERS[1], undefined, { timeout: 5000 });
     expect(screen.getAllByText("yes")).toHaveLength(2);
   });
+
+  it("forgets a send once it is stopped, so a reload cannot drop a resend", async () => {
+    // The turn has opened its stream but not started answering when Stop lands.
+    const { hold } = createStreamHold(1);
+    server.use(
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        ({ request }) =>
+          streamSseResponse(assistantTextChunks(ANSWERS[0]), {
+            hold,
+            abortSignal: request.signal,
+          }),
+      ),
+    );
+    renderHost();
+
+    await typeAndSend("yes");
+    await waitFor(() => expect(lastSubmittedText()).toBe("yes"));
+    await clickStop();
+    await waitForTurnToSettle();
+
+    // A turn cancelled before it streams leaves the stored chat ending on the
+    // user's row, and this memory survives a reload in sessionStorage; kept,
+    // it would mark the user's resend of "yes" as a double-click and drop it.
+    expect(lastSubmittedText()).toBeNull();
+  }, 15_000);
 });
+
+function lastSubmittedText() {
+  return useCopilotStreamStore.getState().getCoord(TEST_SESSION_ID)
+    .lastSubmittedMessageText;
+}
