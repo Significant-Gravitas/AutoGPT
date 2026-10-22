@@ -4,6 +4,7 @@ import {
   getGetBrainDumpStatusMockHandler200,
   getUploadBrainDumpPartMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import openapi from "@/app/api/openapi.json";
 import { server } from "@/mocks/mock-server";
 import {
   cleanup,
@@ -476,6 +477,70 @@ describe("onboarding brain dump — typed fallback", () => {
     ).toBeDefined();
     expect(getUserMedia).not.toHaveBeenCalled();
   });
+
+  it("caps a long paste at the backend's limit and says how much is left", async () => {
+    const backendLimit = finalizeTextMaxLength();
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    const box = await screen.findByPlaceholderText<HTMLTextAreaElement>(
+      "What repeats every week? What would you hand off first?",
+    );
+
+    await userEvent.click(box);
+    await userEvent.paste("a".repeat(backendLimit + 50));
+
+    expect(box.value).toHaveLength(backendLimit);
+    expect(screen.getByText("0 characters left")).toBeDefined();
+  });
+
+  it("returns to the text with the limit spelled out when finalize refuses it as too long", async () => {
+    server.use(
+      http.post(
+        "http://localhost:3000/api/proxy/api/onboarding/brain-dump/finalize",
+        () =>
+          HttpResponse.json(
+            {
+              detail: [
+                {
+                  type: "string_too_long",
+                  loc: ["body", "text"],
+                  msg: "String should have at most 20000 characters",
+                  ctx: { max_length: 20000 },
+                },
+              ],
+            },
+            { status: 422 },
+          ),
+      ),
+    );
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await userEvent.type(
+      await screen.findByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "Invoices every Monday",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(
+      await screen.findByText(
+        "That's over the 20,000-character limit; trim it and try again.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByPlaceholderText<HTMLTextAreaElement>(
+        "What repeats every week? What would you hand off first?",
+      ).value,
+    ).toBe("Invoices every Monday");
+    expect(screen.queryByText("Your recording is safe. Try again.")).toBeNull();
+  });
 });
 
 describe("onboarding brain dump — skip", () => {
@@ -865,3 +930,12 @@ describe("onboarding step map integrity", () => {
     });
   });
 });
+
+function finalizeTextMaxLength() {
+  const limit =
+    openapi.components.schemas.FinalizeRequest.properties.text.anyOf.find(
+      (branch) => branch.type === "string",
+    )?.maxLength;
+  expect(limit).toBeTypeOf("number");
+  return limit!;
+}

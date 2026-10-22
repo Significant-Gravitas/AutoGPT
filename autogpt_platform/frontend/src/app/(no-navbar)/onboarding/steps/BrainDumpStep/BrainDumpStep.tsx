@@ -117,6 +117,7 @@ export function BrainDumpStep() {
                 <TypedFallback
                   value={dump.typedText}
                   onChange={dump.setTypedText}
+                  isTooLong={dump.isTypedTooLong}
                   onSubmit={dump.handleSubmitTyped}
                 />
               ) : isRecording ? (
