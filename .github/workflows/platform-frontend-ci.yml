@@ -57,7 +57,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        # No --with-deps: the runner image already has Chromium's libraries, and the
+        # apt fetch it adds can outlast the job's timeout when Ubuntu's mirror is slow.
+        run: pnpm exec playwright install chromium
       - name: Test tooltip browser interactions
         run: pnpm test:tooltip
       - name: Upload browser failure artifacts
