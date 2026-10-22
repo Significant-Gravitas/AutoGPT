@@ -75,12 +75,14 @@ async def clear_insufficient_funds_notifications(user_id: str) -> int:
 
 
 def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bool:
-    """Whether any BLOCK_COSTS entry matches this input — even if pre-flight is 0.
+    """Whether any non-free BLOCK_COSTS entry matches this input — even if
+    pre-flight is 0.
 
     Used to guard dynamic-cost blocks (SECOND/ITEMS/COST_USD) whose
     pre-flight cost is 0 but whose post-flight reconciliation will debit
     a real amount. A user with non-positive balance must not be allowed
-    to start such a block.
+    to start such a block. Free entries (e.g. Ollama models, Jev's BYOK
+    price) never debit, so they don't count.
     """
     from backend.data.block_cost_config import BLOCK_COSTS
 
@@ -89,7 +91,10 @@ def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bo
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
-    return any(_is_cost_filter_match(bc.cost_filter, input_data) for bc in block_costs)
+    return any(
+        not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
+        for bc in block_costs
+    )
 
 
 def resolve_block_cost(

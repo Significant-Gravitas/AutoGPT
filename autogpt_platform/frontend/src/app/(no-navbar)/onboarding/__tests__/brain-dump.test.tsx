@@ -347,6 +347,32 @@ function finalizeReturns(response: {
   return bodies;
 }
 
+// A voice take is judged too thin, and the skip's record goes unanswered
+// until `release()`, so any step change that waits on it never happens.
+function holdSkipRecord() {
+  const skipBodies: unknown[] = [];
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    getFinalizeBrainDumpMockHandler200(async (info) => {
+      const body = (await info.request.json()) as { input_mode: string };
+      if (body.input_mode !== "skipped") {
+        return {
+          status: "failed" as const,
+          error_code: "insufficient_content",
+          input_mode: "voice" as const,
+        };
+      }
+      skipBodies.push(body);
+      await held;
+      return { status: "completed" as const, input_mode: "skipped" as const };
+    }),
+  );
+  return { skipBodies, release };
+}
+
 // Lands the wizard on the step the pillboxes / the brain dump share.
 function landOnPainPointsStep() {
   window.sessionStorage.setItem(
@@ -496,6 +522,30 @@ describe("onboarding brain dump — skip", () => {
 
     expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+  });
+
+  // SECRT-2982: while the first skip waited on its record the button stayed
+  // up, the second click recorded a second skip, and both advanced past Hire.
+  it("moves to Hire on the click, once, however often it is clicked", async () => {
+    const skip = holdSkipRecord();
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+
+    await userEvent.dblClick(
+      screen.getByRole("button", { name: "Skip for now" }),
+    );
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
+    skip.release();
+    // Room for a second skip's advance to land, had one been sent.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(skip.skipBodies).toHaveLength(1);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(
+      NO_PAYWALL_STEPS.hire,
+    );
   });
 });
 
@@ -826,6 +876,24 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
     // ...and the local parts survive until the user picks a next move.
     expect(recordingStoreState.parts).toHaveLength(1);
+  });
+
+  it("moves on from 'Continue without it' before the skip is recorded", async () => {
+    const skip = holdSkipRecord();
+
+    await recordAndSend();
+    await screen.findByText("We didn't catch enough of that.");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continue without it" }),
+    );
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+    await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
+    // Already gone while the record is unanswered, so Back to the step
+    // cannot offer the abandoned take again.
+    expect(recordingStoreState.parts).toHaveLength(0);
+    skip.release();
   });
 
   it("opens the typed composer from the recovery screen", async () => {

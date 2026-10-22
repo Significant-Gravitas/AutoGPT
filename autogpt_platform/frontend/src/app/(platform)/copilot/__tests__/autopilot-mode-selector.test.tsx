@@ -74,7 +74,8 @@ afterEach(() => {
   useAutopilotModeStore.setState({ choices: {} });
 });
 
-describe("AutoPilot mode selector", () => {
+// These flows take 3-4.5 s on CI's slower runners, close to the 5 s default.
+describe("AutoPilot mode selector", { timeout: 15_000 }, () => {
   it("is absent with the flag off, and the request carries no mode", async () => {
     flags.autoMode = false;
     const bodies = captureStreamBodies();
