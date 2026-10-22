@@ -13,6 +13,22 @@ SEED_VERIFY_STEP = "Set up tests - Verify seeded credentials with fresh encrypti
 SEED_SAVE_STEP = "Push E2E test data to GHCR"
 PLAYWRIGHT_STEP = "Run Playwright E2E suite"
 PLAYWRIGHT_REPORT_STEP = "Validate Playwright JSON report"
+# Backend modules whose functions the seed calls to write rows into the dump.
+# The dump's encrypted payloads are re-encrypted on every run, so the
+# encryption module is not one of them.
+SEED_WRITERS = (
+    "api/features/library/db",
+    "api/features/library/model",
+    "api/features/orgs/db",
+    "api/features/search/embeddings",
+    "api/features/store/db",
+    "data/auth/api_key",
+    "data/credit",
+    "data/graph",
+    "data/org_migration",
+    "data/user",
+    "util/json",
+)
 
 
 def _step(workflow: str, name: str) -> str:
@@ -90,13 +106,15 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         )
         self.assertEqual(_matrix_leg(workflow, "smoke")["seed"], "true")
         self.assertNotIn("continue-on-error", verification)
+        # The trailing newline matters: the key step's sed names the create
+        # step too, earlier in the file.
         self.assertLess(
-            workflow.index("- name: Set up tests - Create E2E test data"),
-            workflow.index(f"- name: {name}"),
+            workflow.index(f"- name: {SEED_CREATE_STEP}\n"),
+            workflow.index(f"- name: {name}\n"),
         )
         self.assertLess(
-            workflow.index(f"- name: {name}"),
-            workflow.index("- name: Run Playwright E2E suite"),
+            workflow.index(f"- name: {name}\n"),
+            workflow.index(f"- name: {PLAYWRIGHT_STEP}\n"),
         )
 
     def test_seed_dump_excludes_migration_owned_activation_policy(self):
@@ -137,9 +155,7 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         key_step = _step(workflow, SEED_KEY_STEP)
         script = key_step.split("run: |\n", 1)[1]
-        hashed = set(
-            re.findall(r"^\s+(autogpt_platform/\S+?)(?: \\)?$", script, re.M)
-        )
+        hashed = set(re.findall(r"^\s+(autogpt_platform/\S+?)(?: \\)?$", script, re.M))
         self.assertEqual(
             hashed,
             {
@@ -147,12 +163,22 @@ class E2ESeedCacheContractTests(unittest.TestCase):
                 "autogpt_platform/backend/agents/calculator-agent.json",
                 "autogpt_platform/backend/schema.prisma",
                 "autogpt_platform/backend/migrations",
+                # Backend helpers the seed calls that write the dumped rows.
+                *(
+                    f"autogpt_platform/backend/backend/{module}.py"
+                    for module in SEED_WRITERS
+                ),
             },
         )
         # The dump step's own text, not the whole workflow file.
         self.assertIn(f"/- name: {SEED_CREATE_STEP}$/", script)
 
         root = Path(__file__).resolve().parents[2]
+        # git ls-files skips a path that is gone, so a rename would quietly
+        # drop it from the key.
+        for path in hashed:
+            with self.subTest(path=path):
+                self.assertTrue((root / path).exists())
         outputs = []
         for _ in range(2):
             with tempfile.NamedTemporaryFile("r", suffix=".out") as out:
@@ -195,10 +221,14 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         )
         self.assertLess(
             workflow.index(f"- name: {SEED_KEY_STEP}\n"),
-            workflow.index("- name: Set up Platform - Log in to the GHCR build cache\n"),
+            workflow.index(
+                "- name: Set up Platform - Log in to the GHCR build cache\n"
+            ),
         )
         self.assertLess(
-            workflow.index("- name: Set up Platform - Log in to the GHCR build cache\n"),
+            workflow.index(
+                "- name: Set up Platform - Log in to the GHCR build cache\n"
+            ),
             workflow.index(f"- name: {SEED_PULL_STEP}\n"),
         )
 
@@ -234,6 +264,26 @@ class E2ESeedCacheContractTests(unittest.TestCase):
             workflow.index(f"- name: {PLAYWRIGHT_REPORT_STEP}\n"),
             workflow.index(f"- name: {SEED_SAVE_STEP}\n"),
         )
+
+    def test_seed_dump_is_pushed_and_pulled_under_one_name(self):
+        # A one-sided rename would make every pull a miss while CI stays green.
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        dumped = re.findall(r"postgres > /tmp/(\S+)$", workflow, re.M)
+        pushed = re.findall(r"tar -C /tmp -c (\S+) \|", _step(workflow, SEED_SAVE_STEP))
+        pulled = re.findall(
+            r'docker cp "\$container:/(\S+)" /tmp/(\S+)$',
+            _step(workflow, SEED_PULL_STEP),
+            re.M,
+        )
+        restored = re.findall(
+            r"cat /tmp/(\S+)$", _step(workflow, SEED_RESTORE_STEP), re.M
+        )
+        self.assertEqual(dumped, ["e2e_test_data.sql"])
+        self.assertEqual(pushed, dumped)
+        self.assertEqual(pulled, [(dumped[0], dumped[0])])
+        self.assertEqual(restored, dumped)
 
 
 class E2EImageBuildContractTests(unittest.TestCase):

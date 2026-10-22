@@ -233,12 +233,14 @@ jobs:
           ref: ${{ github.sha }}
           submodules: recursive
 
-      # The seed dump is an image in GHCR, not an Actions cache entry: the
-      # repo's Actions cache is full and evicted it within minutes.
+      # The seed dump is an image in GHCR, not an Actions cache entry.
       # The key hashes only what changes the dump's content: the seed script
-      # and the graph it loads, the tables it fills, and the step that dumps
-      # them. Other backend edits keep the key; a dump that no longer loads
-      # falls back to seeding. Bump v4 to force a fresh seed.
+      # and the graph it loads, the tables it fills, the backend modules the
+      # seed calls to write rows, and the step that dumps them. Other backend
+      # edits keep the key; a dump that no longer loads falls back to seeding.
+      # A dump that still loads is reused even when code outside these paths
+      # changes what the seed writes: if E2E sees old seeded data after such a
+      # change, bump v4 to force a fresh seed.
       - name: Set up tests - Compute E2E test data cache key
         id: e2e-seed-key
         if: matrix.seed
@@ -252,7 +254,18 @@ jobs:
                 autogpt_platform/backend/test/e2e_test_data.py \
                 autogpt_platform/backend/agents/calculator-agent.json \
                 autogpt_platform/backend/schema.prisma \
-                autogpt_platform/backend/migrations
+                autogpt_platform/backend/migrations \
+                autogpt_platform/backend/backend/api/features/library/db.py \
+                autogpt_platform/backend/backend/api/features/library/model.py \
+                autogpt_platform/backend/backend/api/features/orgs/db.py \
+                autogpt_platform/backend/backend/api/features/search/embeddings.py \
+                autogpt_platform/backend/backend/api/features/store/db.py \
+                autogpt_platform/backend/backend/data/auth/api_key.py \
+                autogpt_platform/backend/backend/data/credit.py \
+                autogpt_platform/backend/backend/data/graph.py \
+                autogpt_platform/backend/backend/data/org_migration.py \
+                autogpt_platform/backend/backend/data/user.py \
+                autogpt_platform/backend/backend/util/json.py
               sed -n '/- name: Set up tests - Create E2E test data$/,/^      - name:/p' \
                 .github/workflows/platform-fullstack-ci.yml
             } | sha256sum | cut -c1-40
