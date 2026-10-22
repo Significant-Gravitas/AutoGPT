@@ -276,6 +276,45 @@ def test_master_rerun_keeps_latest_once_dev_has_the_hotfix():
     assert latest is not None and latest.text == REPO
 
 
+def test_failed_production_move_still_puts_latest_back():
+    client = FakeLangfuse({1: (OLD, ["production"]), 2: (DEV, ["latest"])})
+    client.update_prompt.side_effect = [
+        TimeoutError("Langfuse timed out"),
+        client._update,
+    ]
+    with pytest.raises(TimeoutError):
+        sync.promote_production(client, NAME, REPO)
+
+    latest = sync.fetch_label(client, NAME, "latest")
+    assert latest is not None and latest.text == DEV
+    # The rerun finds the version the failed run created and only moves the label.
+    client.update_prompt.side_effect = client._update
+    sync.promote_production(client, NAME, REPO)
+    production = sync.fetch_label(client, NAME, "production")
+    latest = sync.fetch_label(client, NAME, "latest")
+    assert production is not None and production.text == REPO
+    assert latest is not None and latest.text == DEV
+
+
+def test_failed_production_move_and_restore_raises_the_move_error(capsys):
+    client = FakeLangfuse({1: (OLD, ["production"]), 2: (DEV, ["latest"])})
+    client.update_prompt.side_effect = TimeoutError("Langfuse timed out")
+    creates = []
+
+    def create_then_fail(**kwargs):
+        creates.append(kwargs)
+        if len(creates) == 2:
+            raise ConnectionError("Langfuse went away")
+        return client._create(**kwargs)
+
+    client.create_prompt.side_effect = create_then_fail
+    with pytest.raises(TimeoutError):
+        sync.promote_production(client, NAME, REPO)
+    err = capsys.readouterr().err
+    assert "--publish-latest on dev" in err
+    assert "production is done" not in err
+
+
 def test_promote_is_noop_when_production_matches():
     client = FakeLangfuse({1: (REPO, ["production"]), 2: (OLD, ["latest"])})
     sync.promote_production(client, NAME, REPO)

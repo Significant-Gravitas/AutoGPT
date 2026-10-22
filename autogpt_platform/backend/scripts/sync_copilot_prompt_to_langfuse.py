@@ -24,6 +24,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import difflib
 import hashlib
 import os
@@ -231,31 +232,44 @@ def promote_production(client: Any, name: str, text: str) -> RemoteVersion:
         target = create_version(client, name, text)
     # Keep the version's other labels; "latest" is reserved and set by Langfuse.
     labels = [lb for lb in target.labels if lb not in (LATEST, PRODUCTION)]
-    client.update_prompt(
-        name=name, version=target.version, new_labels=[*labels, PRODUCTION]
-    )
+    try:
+        client.update_prompt(
+            name=name, version=target.version, new_labels=[*labels, PRODUCTION]
+        )
+    except Exception:
+        # Creating the version already took latest off dev's text, and a rerun
+        # finds that version and skips the restore, so restore it here.
+        if displaced is not None:
+            with contextlib.suppress(Exception):
+                restore_latest(client, name, displaced, production_moved=False)
+        raise
     print(f"[{PRODUCTION}] moved to v{target.version}")
     if displaced is not None:
-        # Creating the version took latest, which dev serves, off dev's text.
-        try:
-            restored = create_version(
-                client,
-                name,
-                displaced.text,
-                reason=f"Restored v{displaced.version} as {LATEST} after promoting",
-            )
-        except Exception:
-            print(
-                f"[{LATEST}] could not restore v{displaced.version}'s text; "
-                f"{PRODUCTION} is done. Run --publish-latest on dev to put "
-                f"{LATEST} back.",
-                file=sys.stderr,
-            )
-            raise
-        print(
-            f"[{LATEST}] restored to v{displaced.version}'s text as v{restored.version}"
-        )
+        restore_latest(client, name, displaced, production_moved=True)
     return target
+
+
+def restore_latest(
+    client: Any, name: str, displaced: RemoteVersion, production_moved: bool
+) -> None:
+    # Creating the version took latest, which dev serves, off dev's text.
+    try:
+        restored = create_version(
+            client,
+            name,
+            displaced.text,
+            reason=f"Restored v{displaced.version} as {LATEST} after promoting",
+        )
+    except Exception:
+        state = "is done" if production_moved else "was not moved"
+        print(
+            f"[{LATEST}] could not restore v{displaced.version}'s text; "
+            f"{PRODUCTION} {state}. Run --publish-latest on dev to put "
+            f"{LATEST} back.",
+            file=sys.stderr,
+        )
+        raise
+    print(f"[{LATEST}] restored to v{displaced.version}'s text as v{restored.version}")
 
 
 def main(argv: list[str] | None = None) -> int:
