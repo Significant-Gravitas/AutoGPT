@@ -15,7 +15,6 @@ import uvicorn
 from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from prometheus_client import REGISTRY
 
 from backend.util import process, service_auth
 from backend.util.process import AppProcess
@@ -81,11 +80,10 @@ class _SupportsClientCache(Protocol):
     _sync_clients: dict[str, httpx.Client]
 
 
-def _settings(key: str = KEY, *, encryption_key: str = "", optional: bool = False):
+def _settings(key: str = KEY, *, encryption_key: str = ""):
     settings = Settings()
     settings.secrets.internal_api_key = key
     settings.secrets.encryption_key = encryption_key
-    settings.config.internal_api_key_optional = optional
     return settings
 
 
@@ -269,8 +267,6 @@ async def _through_middleware(
     key: str = KEY,
     authorization: bytes | None = None,
     scope_type: str = "http",
-    method: str = "POST",
-    optional: bool = False,
 ) -> tuple[list[dict], bool]:
     """One request straight through the middleware: what it sent back, and
     whether the service behind it was reached. Reading the body fails."""
@@ -290,17 +286,9 @@ async def _through_middleware(
     async def send(message):
         sent.append(message)
 
-    middleware = service_auth.InternalKeyMiddleware(
-        app,
-        service_name="svc",
-        key=key,
-        rpc_paths=frozenset({"/add"}),
-        optional=optional,
-    )
+    middleware = service_auth.InternalKeyMiddleware(app, service_name="svc", key=key)
     headers = [] if authorization is None else [(b"authorization", authorization)]
     scope = {"type": scope_type, "path": "/add", "headers": headers}
-    if scope_type == "http":
-        scope["method"] = method
     await middleware({**scope, "client": ("10.0.0.9", 1)}, receive, send)
     return sent, reached
 
@@ -321,13 +309,8 @@ async def test_a_websocket_without_the_key_is_closed():
 
 
 @pytest.mark.parametrize("authorization", [None, b"Bearer ", b"Bearer", b"Basic abc"])
-@pytest.mark.parametrize("optional", [False, True])
-async def test_without_a_key_not_even_an_empty_token_gets_through(
-    authorization, optional
-):
-    sent, reached = await _through_middleware(
-        key="", authorization=authorization, optional=optional
-    )
+async def test_without_a_key_not_even_an_empty_token_gets_through(authorization):
+    sent, reached = await _through_middleware(key="", authorization=authorization)
 
     assert not reached
     assert sent[0]["status"] == 401
@@ -374,70 +357,11 @@ def test_the_api_docs_need_the_key(use_settings):
         assert client.get(path, headers={"Authorization": f"Bearer {KEY}"}).is_success
 
 
-def _without_key(service: str) -> float:
-    sample = REGISTRY.get_sample_value(
-        "autogpt_internal_rpc_calls_without_key_total", {"service": service}
-    )
-    return sample or 0.0
-
-
-def _optional_gauge(service: str) -> float | None:
-    return REGISTRY.get_sample_value(
-        "autogpt_internal_rpc_key_optional", {"service": service}
-    )
-
-
-def test_while_optional_only_a_missing_key_is_accepted(use_settings, caplog):
-    client = TestClient(_app(use_settings, _settings(optional=True)))
-    before = _without_key("KeyedService")
-
-    assert _optional_gauge("KeyedService") == 1
-    assert _call_add(client).status_code == 200
-    assert _without_key("KeyedService") == before + 1
-    assert _call_add(client, Authorization="Bearer wrong-key").status_code == 401
-    assert _call_add(client, Authorization=f"Basic {KEY}").status_code == 401
-    assert _call_add(client, Authorization=f"Bearer {KEY}").status_code == 200
-    assert _without_key("KeyedService") == before + 1
-    assert "INTERNAL_API_KEY_OPTIONAL is on" in caplog.text
-
-
-def test_while_optional_a_call_without_the_key_reaches_only_a_method(use_settings):
-    """Nothing but a method is opened, and nothing else adds to the count:
-    a stray request must not look like an instance still without the key."""
-    client = TestClient(_app(use_settings, _settings(optional=True)))
-    before = _without_key("KeyedService")
-
-    assert client.post("/not_a_method", json={}).status_code == 401
-    assert client.get("/openapi.json").status_code == 401
-    assert client.get("/add").status_code == 401  # a method's path, not a call
-    assert _without_key("KeyedService") == before
-    assert _call_add(client).status_code == 200
-    assert _without_key("KeyedService") == before + 1
-
-
-async def test_while_optional_a_websocket_without_the_key_is_still_closed():
-    before = _without_key("svc")
-    sent, reached = await _through_middleware(scope_type="websocket", optional=True)
-
-    assert not reached
-    assert sent == [{"type": "websocket.close", "code": 1008}]
-    assert _without_key("svc") == before
-
-
-def test_the_gauge_reads_0_once_the_key_is_required(use_settings):
-    _app(use_settings, _settings(optional=True))
-    _app(use_settings, _settings())
-
-    assert _optional_gauge("KeyedService") == 0
-
-
-@pytest.mark.parametrize("optional", [False, True])
-def test_without_any_key_a_service_refuses_every_call(use_settings, caplog, optional):
-    client = TestClient(_app(use_settings, _settings("", optional=optional)))
+def test_without_any_key_a_service_refuses_every_call(use_settings, caplog):
+    client = TestClient(_app(use_settings, _settings("")))
 
     assert _call_add(client).status_code == 401
     assert client.get("/health_check").status_code == 200
-    assert _optional_gauge("KeyedService") == 0
     assert "No internal service key" in caplog.text
 
 

@@ -204,15 +204,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The default hostname of the Pyro server.",
     )
-    internal_api_key_optional: bool = Field(
-        default=False,
-        description="Temporary, for rolling the internal service key out to a "
-        "deployment whose older instances cannot send it yet: accept calls to a "
-        "service's methods that carry no key (a wrong key is still refused). "
-        "Turn it off once none of those instances is still running. To roll "
-        "back to a release that does not send the key, turn it back on and wait "
-        "until every service that serves internal calls has restarted with it.",
-    )
     pyro_client_comm_timeout: float = Field(
         default=15,
         description="The default timeout in seconds, for Pyro client connections.",
@@ -1196,9 +1187,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Key every internal service sends on its RPC calls and "
         "requires on the methods it exposes; every backend service of one "
-        "deployment must have the same value. Blank derives one from "
-        "ENCRYPTION_KEY. Set it to keep the key fixed when ENCRYPTION_KEY "
-        "rotates, or to give it to the swap proxy.",
+        "deployment must have the same value. Setup generates it along with "
+        "the other secrets. Blank derives one from ENCRYPTION_KEY, so an "
+        "install set up before it existed keeps working.",
     )
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
