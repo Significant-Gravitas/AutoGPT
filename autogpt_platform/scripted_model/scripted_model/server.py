@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
-from . import chat_completions, messages
+from . import chat_completions, embeddings, messages, responses
 from .journal import Journal, Request
 from .planner import Conversation, Plan, Reply, plan
 from .scripts import ScriptError
@@ -95,8 +95,62 @@ class Handler(BaseHTTPRequestHandler):
             self._answer(ANTHROPIC)
         elif path.endswith("/chat/completions"):
             self._answer(OPENAI)
+        elif path.endswith("/embeddings"):
+            self._embedding_response()
+        elif path.endswith("/responses"):
+            self._structured_response()
         else:
             self._unexpected()
+
+    def _embedding_response(self) -> None:
+        body = self._read_json()
+        if not isinstance(body, dict):
+            logger.error(
+                "unreadable openai-embeddings request: body is not a JSON object"
+            )
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, embeddings.error("body is not a JSON object")
+            )
+            return
+        try:
+            payload = embeddings.response(body)
+        except embeddings.EmbeddingError as error:
+            logger.error("unreadable openai-embeddings request: %s", error)
+            self._send_json(HTTPStatus.BAD_REQUEST, embeddings.error(str(error)))
+            return
+
+        model = str(body["model"])
+        entry = self.model_server.journal.record_side_call(
+            Request("openai-embeddings", self.path), model, ""
+        )
+        logger.info("openai-embeddings side call (%s)", model)
+        self._send_json(HTTPStatus.OK, payload)
+        self.model_server.journal.finish(entry, completed=True)
+
+    def _structured_response(self) -> None:
+        body = self._read_json()
+        if not isinstance(body, dict):
+            logger.error(
+                "unreadable openai-responses request: body is not a JSON object"
+            )
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, responses.error("body is not a JSON object")
+            )
+            return
+        try:
+            payload, output_text = responses.response(body)
+        except responses.ResponseError as error:
+            logger.error("unreadable openai-responses request: %s", error)
+            self._send_json(HTTPStatus.BAD_REQUEST, responses.error(str(error)))
+            return
+
+        model = str(body["model"])
+        entry = self.model_server.journal.record_side_call(
+            Request("openai-responses", self.path), model, output_text
+        )
+        logger.info("openai-responses side call (%s)", model)
+        self._send_json(HTTPStatus.OK, payload)
+        self.model_server.journal.finish(entry, completed=True)
 
     def _answer(self, dialect: Dialect) -> None:
         body = self._read_json()
