@@ -132,6 +132,31 @@ describe("useReportAttribution", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
   });
 
+  it("gives a late uc.js time to arrive after the page has loaded", async () => {
+    const bodies = captureReports();
+    removeCookiebot();
+    configureCookiebot();
+    vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([
+      {
+        loadEventStart: 990,
+        loadEventEnd: 1000,
+      } as unknown as PerformanceEntry,
+    ]);
+    const now = vi.spyOn(performance, "now").mockReturnValue(2000);
+
+    renderHook(() => useReportAttribution(), { wrapper });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(bodies).toHaveLength(0);
+
+    now.mockReturnValue(1000 + 10_001);
+    act(() => {
+      window.dispatchEvent(new Event("load"));
+    });
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+  });
+
   it("reports at once without a consent banner", async () => {
     const bodies = captureReports();
     removeCookiebot();

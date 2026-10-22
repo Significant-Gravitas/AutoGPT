@@ -1,4 +1,7 @@
-import { getAnonymousID } from "@/services/analytics/anonymous-id";
+import {
+  getAnonymousID,
+  subscribeToAnonymousIDSettled,
+} from "@/services/analytics/anonymous-id";
 import { environment } from "@/services/environment";
 import {
   hasConsentFor,
@@ -48,8 +51,8 @@ export function forgetPostHogStorageWithoutConsent(token: string) {
  * PostHog `before_send` hook: drops every event (autocapture, page leave and
  * replay included) while analytics is not allowed. This is how PostHog stops
  * while the answer is pending after it started with consent (Cookiebot no
- * longer accepting the stored answer): every posthog-js way to opt out or
- * stop also deletes its stored state, the shared `.agpt.co` cookie included.
+ * longer accepting the stored answer): opting out instead would record an
+ * opt-out of PostHog's own, and the grant has to undo it.
  */
 export function dropWithoutConsent(
   event: CaptureResult | null,
@@ -72,7 +75,14 @@ export function forgetPostHogStorage() {
 /** Call once posthog.init has run; returns the unsubscribe. */
 export function followAnalyticsConsent() {
   syncPostHogConsent();
-  return subscribeToConsent(syncPostHogConsent);
+  const unfollowConsent = subscribeToConsent(syncPostHogConsent);
+  // The anonymous id can settle later than the grant, once the session is
+  // known (anonymous-id.ts).
+  const unfollowSettled = subscribeToAnonymousIDSettled(syncPostHogConsent);
+  return () => {
+    unfollowConsent();
+    unfollowSettled();
+  };
 }
 
 /**
@@ -82,8 +92,17 @@ export function followAnalyticsConsent() {
 export function syncPostHogConsent() {
   if (!hasConsentFor("analytics")) {
     posthog.stopSessionRecording();
-    // Pending: leave PostHog as it is; dropWithoutConsent drops its events.
-    if (!hasDeclinedConsentFor("analytics")) return;
+    if (!hasDeclinedConsentFor("analytics")) {
+      // Pending after PostHog started with consent: keep its identity in
+      // memory, so nothing is written until the visitor answers (capture()
+      // still updates the session and person info before before_send drops
+      // the event). This deletes the stored copy; a grant writes it back,
+      // and agpt_anonymous_id keeps the id for the next page load.
+      if (posthog.config.persistence !== "memory") {
+        posthog.set_config({ persistence: "memory" });
+      }
+      return;
+    }
     // Withdrawal also reloads the page; stop and drop PostHog's storage now,
     // whatever PostHog itself believes its opt-in to be.
     posthog.clear_opt_in_out_capturing();

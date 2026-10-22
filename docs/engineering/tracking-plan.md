@@ -290,22 +290,29 @@ merges the website pageviews into the new user:
 - **While the app's answer is pending,** the app leaves the cookie (and its
   own stored identity) alone and runs PostHog on an in-memory id. Only an
   answer without analytics deletes them, the shared cookie included; the site
-  does the same on its side.
+  does the same on its side. If Cookiebot asks again after PostHog started
+  with an earlier grant, PostHog moves its state into memory, so nothing is
+  written until the visitor answers; `agpt_anonymous_id` keeps the id, and a
+  grant writes the state back.
 - **On a grant,** during the page or from an earlier answer, the visitor's
   anonymous id is, in order: the app's own `agpt_anonymous_id`; else the
-  cookie's `$device_id`; else the page's in-memory id
-  (`src/services/analytics/anonymous-id.ts`). If PostHog started on the
-  in-memory id, it moves onto the adopted one before its storage turns
-  persistent, without a reload (`src/providers/posthog/posthog-consent.ts`).
+  device id in the app's own PostHog storage; else the cookie's `$device_id`;
+  else the page's in-memory id (`src/services/analytics/anonymous-id.ts`).
+  Both device ids are read before PostHog rewrites them. If PostHog started
+  on the in-memory id, it moves onto the adopted one without a reload
+  (`src/providers/posthog/posthog-consent.ts`).
 - **Returning app visitors keep their own id.** A browser that already has
   `agpt_anonymous_id` from an earlier visit with consent keeps it, so
   website visits made under another id do not merge into the account.
 - **Only a new visitor or a new account takes the website's id.** The
-  cookie's `$device_id` is adopted only when nobody is signed in as the
-  answer arrives, or the account was created in this browser (the
-  `agpt_account_created` signup flag). An older account signed in on a
-  browser someone else used on agpt.co keeps the in-memory id, so `identify()`
-  doesn't merge that person's website visits into it.
+  cookie's `$device_id` is adopted only when nobody is signed in, or the
+  account was created in this browser (the `agpt_account_created` signup flag,
+  as seen while signed in on that page: the ads signup conversion clears it).
+  An older account signed in on a browser someone else used on agpt.co keeps
+  the in-memory id, so `identify()` doesn't merge that person's website visits
+  into it. Until the auth store knows the session, the choice waits: PostHog
+  stays on the in-memory id, nothing is stored, and the id settles (moving
+  PostHog if needed) once the session is known, before `identify()`.
 - **Logout and account switches forget the shared cookie** when analytics is
   not allowed (declined or still pending): PostHog then runs in memory, so its
   `reset()` would leave the previous person's id there for the next account.
@@ -313,10 +320,9 @@ merges the website pageviews into the new user:
   (`useReportAttribution`, the `anonymous_id` and `posthog_distinct_id` on
   `UserAttribution`) waits while the answer is pending, then sends the adopted
   id on a grant, or the in-memory id (and no PostHog id) on a decline. It
-  goes at once without a Cookiebot domain group or when uc.js could not load.
-  A visitor who never answers is reported on the first later page where they
-  do.
-- LaunchDarkly keeps the in-memory id until the next page load.
+  goes at once without a Cookiebot domain group, and when uc.js still hasn't
+  arrived 10 seconds after the page loaded (blocked). A visitor who never
+  answers is reported on the first later page where they do.
 
 ## Onboarding and activation
 

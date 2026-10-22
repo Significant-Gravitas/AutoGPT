@@ -123,16 +123,59 @@ export function openConsentSettings(): void {
   getCookiebotAPI()?.renew();
 }
 
+// uc.js is injected after hydration, so it can arrive after the page has
+// finished loading. Only once it is this late is it taken as blocked.
+export const COOKIEBOT_LOAD_GRACE_MS = 10_000;
+
 /**
  * Whether the visitor's answer is still to come: a consent manager is
- * configured, has no answer yet, and hasn't failed to load (a blocked uc.js
- * never answers, so that counts as no answer coming).
+ * configured and has no answer yet, and it is asking, or uc.js may still
+ * arrive. A uc.js that hasn't arrived COOKIEBOT_LOAD_GRACE_MS after the page
+ * loaded counts as blocked: it never answers.
  */
 export function isConsentAnswerPending(): boolean {
+  if (typeof window === "undefined") return true;
   if (!isConsentManagerConfigured() || getConsentAnswer() !== null) {
     return false;
   }
-  return getConsentManagerStatus() !== "unavailable";
+  if (getCookiebotAPI()) return true;
+  return msSincePageLoaded() < COOKIEBOT_LOAD_GRACE_MS;
+}
+
+/** Like subscribeToConsentManagerStatus, plus the end of the grace. */
+export function subscribeToConsentAnswerPending(
+  listener: () => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleGraceEnd() {
+    clearTimeout(timer);
+    if (document.readyState !== "complete") return;
+    const remaining = COOKIEBOT_LOAD_GRACE_MS - msSincePageLoaded();
+    if (remaining >= 0) timer = setTimeout(listener, remaining + 1);
+  }
+  function onChange() {
+    scheduleGraceEnd();
+    listener();
+  }
+  scheduleGraceEnd();
+  const unsubscribe = subscribeToConsentManagerStatus(onChange);
+  return () => {
+    clearTimeout(timer);
+    unsubscribe();
+  };
+}
+
+// 0 until the page has loaded; unbounded where the browser has no
+// navigation timing to tell when that was.
+function msSincePageLoaded(): number {
+  if (document.readyState !== "complete") return 0;
+  const [navigation] = performance.getEntriesByType("navigation") as
+    | PerformanceNavigationTiming[]
+    | [];
+  if (!navigation) return Number.POSITIVE_INFINITY;
+  const loadedAt = navigation.loadEventEnd || navigation.loadEventStart;
+  return loadedAt ? performance.now() - loadedAt : 0;
 }
 
 export type ConsentManagerStatus = "loading" | "ready" | "unavailable";

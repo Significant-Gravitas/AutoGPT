@@ -8,6 +8,7 @@ import {
   isSameConsent,
   NO_CONSENT,
   subscribeToConsent,
+  subscribeToConsentAnswerPending,
   subscribeToConsentManagerStatus,
   type ConsentManagerStatus,
   type ConsentState,
@@ -47,7 +48,7 @@ export function useConsentManagerStatus() {
 /** Whether the visitor's answer is still to come; see isConsentAnswerPending. */
 export function useConsentAnswerPending() {
   return useSyncExternalStore(
-    subscribeToConsentManagerStatus,
+    subscribeToConsentAnswerPending,
     isConsentAnswerPending,
     () => true,
   );

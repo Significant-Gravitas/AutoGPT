@@ -26,11 +26,12 @@
  * so the website visits join this visitor at signup; else this page's id.
  * The website's id is only taken while nobody is signed in, or for an account
  * created in this browser: an older account must not take over the website
- * history of whoever used this browser on agpt.co.
+ * history of whoever used this browser on agpt.co. Until the session is known
+ * that choice waits: the id stays this page's, unsaved, and settles (telling
+ * subscribeToAnonymousIDSettled) once the auth store reports who is signed in.
  */
 
 import { readAccountCreatedFlag } from "@/services/analytics/account-created-cookie";
-
 import {
   hasConsentFor,
   hasDeclinedConsentFor,
@@ -61,41 +62,77 @@ export interface FirstLanding {
   at: string;
 }
 
+type Session = "unknown" | "signed-in" | "signed-out";
+
 let memoryID: string | null = null;
 // Whether memoryID is settled for this page: resolved with consent, or set by
-// a reset. Before consent it only stands in until the visitor answers.
+// a reset. Before that it only stands in.
 let settled = false;
-let signedIn = false;
+let session: Session = "unknown";
+// Seen while signed in on this page. The flag itself goes as soon as the ads
+// signup conversion is out, which can be before the consent answer.
+let accountCreatedHere = false;
+// PostHog's device ids as this browser held them before this page wrote any
+// (its own localStorage, and the shared cookie the website may have written),
+// read once with consent: PostHog rewrites both as soon as its storage turns
+// persistent.
+let ownDeviceID: string | null | undefined;
+let websiteID: string | null | undefined;
 let pageLanding: FirstLanding | null = null;
+const settledListeners = new Set<() => void>();
 
-/** Whether someone is signed in; kept in step by the auth store. */
-export function setAnalyticsIdentitySignedIn(value: boolean): void {
-  signedIn = value;
+/** Who is signed in, once the session is known; kept by the auth store. */
+export function setAnalyticsIdentitySignedIn(signedIn: boolean): void {
+  session = signedIn ? "signed-in" : "signed-out";
+  if (signedIn && readAccountCreatedFlag()) accountCreatedHere = true;
+  if (settled || typeof window === "undefined") return;
+  if (!hasConsentFor("analytics")) return;
+  syncStoredIdentity();
+  if (settled) settledListeners.forEach((listener) => listener());
+}
+
+/** Calls `listener` when a consented id settles after the session is known. */
+export function subscribeToAnonymousIDSettled(
+  listener: () => void,
+): () => void {
+  settledListeners.add(listener);
+  return () => settledListeners.delete(listener);
 }
 
 export function getAnonymousID(): string | null {
   if (typeof window === "undefined") return null;
-  if (!hasConsentFor("analytics")) {
-    memoryID ??= newID();
-    return memoryID;
+  if (hasConsentFor("analytics") && !settled) {
+    const id = resolveConsentedID();
+    if (id) {
+      memoryID = id;
+      settled = true;
+    }
   }
-  if (!settled) {
-    memoryID = resolveConsentedID();
-    settled = true;
-  }
+  memoryID ??= newID();
   return memoryID;
 }
 
-function resolveConsentedID(): string {
+// Null while the choice waits for the session.
+function resolveConsentedID(): string | null {
   const stored = readStorage(ANONYMOUS_ID_KEY);
-  const id =
-    stored ??
-    readOwnPostHogDeviceID() ??
-    readWebsiteDeviceID() ??
-    memoryID ??
-    newID();
-  if (!stored) writeStorage(ANONYMOUS_ID_KEY, id);
-  return id;
+  if (stored) return stored;
+  if (ownDeviceID === undefined) ownDeviceID = readOwnPostHogDeviceID();
+  const id = ownDeviceID ?? chooseWebsiteID();
+  if (id === undefined) return null;
+  const chosen = id ?? memoryID ?? newID();
+  writeStorage(ANONYMOUS_ID_KEY, chosen);
+  return chosen;
+}
+
+// The website's id, null when there is none or it may not be taken, and
+// undefined while that depends on a session not known yet.
+function chooseWebsiteID(): string | null | undefined {
+  if (websiteID === undefined) websiteID = readSharedPostHogDeviceID();
+  if (!websiteID) return null;
+  if (session === "unknown") return undefined;
+  if (session === "signed-out") return websiteID;
+  if (accountCreatedHere || readAccountCreatedFlag()) return websiteID;
+  return null;
 }
 
 /**
@@ -138,7 +175,7 @@ function syncStoredIdentity(): void {
     return;
   }
   const id = getAnonymousID();
-  if (id && readStorage(ANONYMOUS_ID_KEY) !== id) {
+  if (settled && id && readStorage(ANONYMOUS_ID_KEY) !== id) {
     writeStorage(ANONYMOUS_ID_KEY, id);
   }
   persistFirstLanding();
@@ -170,6 +207,8 @@ export function resetAnonymousID(nextID?: string): void {
   }
   memoryID = nextID || newID();
   settled = true;
+  ownDeviceID = null;
+  websiteID = null;
   pageLanding = null;
   forgetStoredIdentity();
   if (hasConsentFor("analytics")) writeStorage(ANONYMOUS_ID_KEY, memoryID);
@@ -178,7 +217,11 @@ export function resetAnonymousID(nextID?: string): void {
 export function resetAnonymousIDForTests(): void {
   memoryID = null;
   settled = false;
-  signedIn = false;
+  session = "unknown";
+  accountCreatedHere = false;
+  ownDeviceID = undefined;
+  websiteID = undefined;
+  settledListeners.clear();
   pageLanding = null;
 }
 
@@ -203,11 +246,6 @@ function readOwnPostHogDeviceID(): string | null {
 function readSharedPostHogDeviceID(): string | null {
   const name = getPostHogPersistenceName();
   return name ? parseDeviceID(readCookie(name)) : null;
-}
-
-function readWebsiteDeviceID(): string | null {
-  if (signedIn && !readAccountCreatedFlag()) return null;
-  return readSharedPostHogDeviceID();
 }
 
 function getPostHogPersistenceName(): string | null {

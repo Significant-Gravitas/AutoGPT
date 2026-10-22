@@ -13,6 +13,7 @@ import {
   readFirstLanding,
   resetAnonymousID,
   resetAnonymousIDForTests,
+  setAnalyticsIdentitySignedIn,
 } from "../anonymous-id";
 
 function setAnalyticsConsent(analytics: boolean): void {
@@ -313,6 +314,7 @@ describe("following analytics consent", () => {
     document.cookie = `ph_phc_test_posthog=${encodeURIComponent(
       JSON.stringify({ $device_id: "website-device" }),
     )}; Path=/`;
+    setAnalyticsIdentitySignedIn(false);
     const pageID = getAnonymousID();
     const unfollow = followAnalyticsConsentForIdentity();
 

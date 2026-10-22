@@ -56,11 +56,16 @@ let clients: PostHog[] = [];
 
 interface RenderOptions {
   user?: User | null;
+  // Whether the auth store has reported the session yet.
+  sessionKnown?: boolean;
 }
 
 // Each call is a fresh page load: a new client (init() is a no-op on one that
 // already ran) and fresh modules, so in-memory ids start over too.
-async function renderPostHog({ user = null }: RenderOptions = {}) {
+async function renderPostHog({
+  user = null,
+  sessionKnown = true,
+}: RenderOptions = {}) {
   vi.resetModules();
   const client = new PostHog();
   clients.push(client);
@@ -86,7 +91,7 @@ async function renderPostHog({ user = null }: RenderOptions = {}) {
     import("@/services/analytics/attribution-payload"),
   ]);
   // What the auth store reports once the session is known.
-  setAnalyticsIdentitySignedIn(Boolean(user));
+  if (sessionKnown) setAnalyticsIdentitySignedIn(Boolean(user));
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
   const identify = vi.spyOn(client, "identify");
   const { PostHogProvider, PostHogPageViewTracker, PostHogUserTracker } =
@@ -103,6 +108,7 @@ async function renderPostHog({ user = null }: RenderOptions = {}) {
   });
   return {
     buildAttributionPayload,
+    setAnalyticsIdentitySignedIn,
     posthog: client,
     trackTabIntro,
     startSessionRecording,
@@ -659,26 +665,48 @@ describe("PostHog hand-over from the marketing site", () => {
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe("app-id");
   });
 
-  it("drops events but keeps its storage when Cookiebot asks again", async () => {
+  it("stops writing but keeps its id when Cookiebot asks again", async () => {
     installCookiebot({ statistics: true });
     const { posthog } = await renderPostHog();
     posthog.capture("before_asking");
-    const writes = recordCookieWrites();
 
     act(() => {
       if (window.Cookiebot) window.Cookiebot.hasResponse = false;
       window.dispatchEvent(new Event("CookiebotOnDialogInit"));
       window.dispatchEvent(new Event("CookiebotOnLoad"));
     });
+    const writes = recordCookieWrites();
     posthog.capture("while_asking");
 
     expect(captured).toContain("before_asking");
     expect(captured).not.toContain("while_asking");
-    expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
-    expect(
-      writes.filter((value) => value.includes("Expires=Thu, 01 Jan 1970")),
-    ).toEqual([]);
+    expect(writes.filter((value) => value.startsWith("ph_"))).toEqual([]);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
     Reflect.deleteProperty(document, "cookie");
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
+  });
+
+  it("waits for the session before taking the website's id", async () => {
+    installCookiebot();
+    const { posthog, setAnalyticsIdentitySignedIn } = await renderPostHog({
+      sessionKnown: false,
+    });
+    const pageID = posthog.get_distinct_id();
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    expect(posthog.get_distinct_id()).toBe(pageID);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
+
+    setAnalyticsIdentitySignedIn(false);
+
+    expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
+    expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
   });
 });
 

@@ -299,7 +299,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 });
 
 useAuthStore.subscribe((state, previousState) => {
-  setAnalyticsIdentitySignedIn(Boolean(state.user));
+  if (state.user || !state.isUserLoading) {
+    setAnalyticsIdentitySignedIn(Boolean(state.user));
+  }
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
     clearCopilotCompletedSessions();

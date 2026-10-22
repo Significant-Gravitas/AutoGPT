@@ -38,7 +38,7 @@ const userA = { id: "user-A", email: "a@example.com" } as User;
 const userB = { id: "user-B", email: "b@example.com" } as User;
 
 beforeEach(() => {
-  useAuthStore.setState({ user: null });
+  useAuthStore.setState({ user: null, isUserLoading: true });
   window.localStorage.clear();
   resetAnonymousIDForTests();
   vi.resetAllMocks();
@@ -143,7 +143,26 @@ describe("analytics identity on account transitions", () => {
       document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
     });
 
-    it("adopts the website's id for a visitor who isn't signed in", () => {
+    it("adopts the website's id once the session shows nobody signed in", () => {
+      answerCookiebot({ statistics: true });
+      expect(getAnonymousID()).not.toBe("website-device");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
+
+      useAuthStore.setState({ isUserLoading: false });
+
+      expect(getAnonymousID()).toBe("website-device");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+        "website-device",
+      );
+    });
+
+    it("adopts it for an account created here after the signup flag is gone", () => {
+      // The ads signup conversion clears the flag, which can be before the
+      // consent answer.
+      document.cookie = "agpt_account_created=email; Path=/";
+      useAuthStore.setState({ user: userA });
+      document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
+
       answerCookiebot({ statistics: true });
 
       expect(getAnonymousID()).toBe("website-device");
