@@ -16,6 +16,7 @@ import textwrap
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.agent_mail._config import agent_mail
 from backend.blocks.agent_mail.inbox import AgentMailListInboxesBlock
 from backend.blocks.baas.bots import BaasBotJoinMeetingBlock
@@ -138,6 +139,27 @@ def test_provider_without_a_platform_key_bills_nothing(monkeypatch):
     cost, _ = block_usage_cost(block, _credentials("user-own-key", "agent_mail"))
 
     assert cost == 0
+
+
+def test_a_zero_amount_tokens_price_still_needs_the_platform_key(monkeypatch):
+    """TOKENS prices from the token rate table, not cost_amount, so a zero
+    amount doesn't make it free. Only a free cost stays unfiltered."""
+    monkeypatch.setattr(agent_mail, "default_credentials", [AGENT_MAIL_PLATFORM_KEY])
+    monkeypatch.setattr(
+        agent_mail,
+        "base_costs",
+        [
+            BlockCost(cost_amount=0),
+            BlockCost(cost_amount=0, cost_type=BlockCostType.TOKENS),
+        ],
+    )
+
+    _block_loaded_like_the_executor(AgentMailListInboxesBlock)
+
+    assert [c.cost_filter for c in BLOCK_COSTS[AgentMailListInboxesBlock]] == [
+        {},
+        {"credentials": {"id": AGENT_MAIL_PLATFORM_KEY.id}},
+    ]
 
 
 def test_existing_block_costs_entries_are_left_alone():

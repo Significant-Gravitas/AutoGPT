@@ -30,7 +30,7 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
     Like the rest of BLOCK_COSTS, a priced base cost only applies when the run
     uses a platform-provided credential: each one is registered with a
     ``cost_filter`` on that credential's id, so runs with the user's own key
-    stay free. Zero-amount base costs charge nothing and stay unfiltered.
+    stay free. Free base costs (``BlockCost.is_free``) stay unfiltered.
 
     Args:
         block_class: The block class to register costs for
@@ -96,11 +96,11 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
 
 def _platform_priced_costs(provider: Provider, field_name: str) -> List[BlockCost]:
     """The provider's base costs, each gated on one of its platform credentials
-    in ``field_name``. Zero-amount costs charge nothing, so they stay unfiltered."""
+    in ``field_name``. Free costs charge nothing, so they stay unfiltered."""
     platform_ids = _platform_credential_ids(provider.name, provider.default_credentials)
     costs: List[BlockCost] = []
     for base_cost in provider.base_costs:
-        if not base_cost.cost_amount:
+        if base_cost.is_free:
             costs.append(base_cost)
             continue
         costs.extend(
