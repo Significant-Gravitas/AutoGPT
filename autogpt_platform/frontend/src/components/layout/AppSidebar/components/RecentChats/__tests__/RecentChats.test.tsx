@@ -1,4 +1,5 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -59,6 +60,7 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-06-30T12:00:00"));
   useCopilotUIStore.setState({ sessionToDelete: null });
+  server.use(getListExpertIdentitiesMockHandler([]));
 });
 
 afterEach(() => {
@@ -76,7 +78,7 @@ describe("RecentChats — empty + loading", () => {
 });
 
 describe("RecentChats — grouped list", () => {
-  it("renders sessions grouped under date labels", async () => {
+  it("keeps chats from different dates together under Otto", async () => {
     const sessions = [
       makeSession({ id: "a", title: "Today chat", updated_at: TODAY }),
       makeSession({
@@ -91,9 +93,13 @@ describe("RecentChats — grouped list", () => {
     renderRecentChats();
 
     expect(await screen.findByText("Today chat")).toBeDefined();
-    expect(screen.getByText("Yesterday chat")).toBeDefined();
-    expect(screen.getByText("Today")).toBeDefined();
-    expect(screen.getByText("Yesterday")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Otto chats" })).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load all Otto chats" }),
+    );
+    expect(await screen.findByText("Yesterday chat")).toBeDefined();
+    expect(screen.queryByText("Today")).toBeNull();
+    expect(screen.queryByText("Yesterday")).toBeNull();
   });
 });
 
@@ -108,7 +114,7 @@ describe("RecentChats — pinned split", () => {
     makeSession({ id: "loose", title: "Loose chat", updated_at: TODAY }),
   ];
 
-  it("lifts pinned sessions out of the date groups", async () => {
+  it("lifts pinned sessions out of the expert groups", async () => {
     mockEnabledFlags.add("chat-pinning");
     server.use(
       getGetV2ListSessionsMockHandler200({
@@ -124,16 +130,15 @@ describe("RecentChats — pinned split", () => {
     if (!pinnedGroup) throw new Error("pinned group not found");
     expect(within(pinnedGroup).getByText("Pinned chat")).toBeDefined();
 
-    // The only "Yesterday" session is pinned, so that date group disappears.
-    expect(screen.queryByText("Yesterday")).toBeNull();
-
-    const todayGroup = screen.getByText("Today").closest("div")?.parentElement;
-    if (!todayGroup) throw new Error("today group not found");
-    expect(within(todayGroup).getByText("Loose chat")).toBeDefined();
-    expect(within(todayGroup).queryByText("Pinned chat")).toBeNull();
+    const ottoGroup = screen
+      .getByRole("button", { name: "Otto chats" })
+      .closest("div")?.parentElement;
+    if (!ottoGroup) throw new Error("Otto group not found");
+    expect(within(ottoGroup).getByText("Loose chat")).toBeDefined();
+    expect(within(ottoGroup).queryByText("Pinned chat")).toBeNull();
   });
 
-  it("keeps pinned sessions in their date group when the flag is off", async () => {
+  it("keeps pinned sessions in their expert group when the pinning flag is off", async () => {
     server.use(
       getGetV2ListSessionsMockHandler200({
         sessions: pinnedAndDated,
@@ -144,11 +149,11 @@ describe("RecentChats — pinned split", () => {
 
     await screen.findByText("Pinned chat");
     expect(screen.queryByText("Pinned")).toBeNull();
-    const yesterdayGroup = screen
-      .getByText("Yesterday")
+    const ottoGroup = screen
+      .getByRole("button", { name: "Otto chats" })
       .closest("div")?.parentElement;
-    if (!yesterdayGroup) throw new Error("yesterday group not found");
-    expect(within(yesterdayGroup).getByText("Pinned chat")).toBeDefined();
+    if (!ottoGroup) throw new Error("Otto group not found");
+    expect(within(ottoGroup).getByText("Pinned chat")).toBeDefined();
   });
 });
 
@@ -183,6 +188,9 @@ describe("RecentChats — load more", () => {
     const loadMore = await screen.findByRole("button", { name: /load more/i });
     fireEvent.click(loadMore);
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Load all Otto chats" }),
+    );
     expect(await screen.findByText("Page 1")).toBeDefined();
     expect(seenOffsets).toContain("1");
   });

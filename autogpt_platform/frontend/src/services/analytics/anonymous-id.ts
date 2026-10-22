@@ -17,12 +17,26 @@
  * It only outlives the page with analytics consent. Without it the id is
  * minted fresh for each page load and kept in memory, nothing an earlier
  * visit stored is read, and the first landing stays in memory too. Granting
- * persists both without a reload; withdrawing deletes them. With consent an
- * existing PostHog device id is adopted rather than replaced, so returning
- * visitors keep their history.
+ * persists both without a reload; declining deletes them. While the answer is
+ * still pending, what is stored is left alone.
+ *
+ * With consent the id is, in order: the one this browser stored on an
+ * earlier visit, so returning visitors keep theirs; else PostHog's device id,
+ * which the marketing site (agpt.co) leaves in the shared `.agpt.co` cookie,
+ * so the website visits join this visitor at signup; else this page's id.
+ * The website's id is only taken while nobody is signed in, or for an account
+ * created in this browser: an older account must not take over the website
+ * history of whoever used this browser on agpt.co. Until the session is known
+ * that choice waits: the id stays this page's, unsaved, and settles (telling
+ * subscribeToAnonymousIDSettled) once the auth store reports who is signed in.
  */
 
-import { hasConsentFor, subscribeToConsent } from "@/services/consent/consent";
+import { readAccountCreatedFlag } from "@/services/analytics/account-created-cookie";
+import {
+  hasConsentFor,
+  hasDeclinedConsentFor,
+  subscribeToConsent,
+} from "@/services/consent/consent";
 
 const ANONYMOUS_ID_KEY = "agpt_anonymous_id";
 const FIRST_LANDING_KEY = "agpt_first_landing";
@@ -48,22 +62,86 @@ export interface FirstLanding {
   at: string;
 }
 
+type Session = "unknown" | "signed-in" | "signed-out";
+
 let memoryID: string | null = null;
+// Whether memoryID is settled for this page: resolved with consent, or set by
+// a reset. Before that it only stands in.
+let settled = false;
+let session: Session = "unknown";
+// Seen while signed in on this page. The flag itself goes as soon as the ads
+// signup conversion is out, which can be before the consent answer.
+let accountCreatedHere = false;
+// PostHog's device ids as this browser held them before this page wrote any
+// (its own localStorage, and the shared cookie the website may have written),
+// read once with consent: PostHog rewrites both as soon as its storage turns
+// persistent.
+let ownDeviceID: string | null | undefined;
+let websiteID: string | null | undefined;
 let pageLanding: FirstLanding | null = null;
+const settledListeners = new Set<() => void>();
+
+/** Who is signed in, once the session is known; kept by the auth store. */
+export function setAnalyticsIdentitySignedIn(signedIn: boolean): void {
+  session = signedIn ? "signed-in" : "signed-out";
+  if (signedIn && readAccountCreatedFlag()) accountCreatedHere = true;
+  if (settled || typeof window === "undefined") return;
+  if (!hasConsentFor("analytics")) return;
+  syncStoredIdentity();
+  if (settled) settledListeners.forEach((listener) => listener());
+}
+
+/**
+ * Whether the consented id is decided. False while it waits for the session
+ * (see above); PostHog stays opted out and in memory until then.
+ */
+export function isAnonymousIDSettled(): boolean {
+  getAnonymousID();
+  return settled;
+}
+
+/** Calls `listener` when a consented id settles after the session is known. */
+export function subscribeToAnonymousIDSettled(
+  listener: () => void,
+): () => void {
+  settledListeners.add(listener);
+  return () => settledListeners.delete(listener);
+}
 
 export function getAnonymousID(): string | null {
   if (typeof window === "undefined") return null;
-  if (memoryID) return memoryID;
-
-  if (!hasConsentFor("analytics")) {
-    memoryID = newID();
-    return memoryID;
+  if (hasConsentFor("analytics") && !settled) {
+    const id = resolveConsentedID();
+    if (id) {
+      memoryID = id;
+      settled = true;
+    }
   }
+  memoryID ??= newID();
+  return memoryID;
+}
+
+// Null while the choice waits for the session.
+function resolveConsentedID(): string | null {
   const stored = readStorage(ANONYMOUS_ID_KEY);
-  const id = stored ?? readPostHogDeviceID() ?? newID();
-  if (!stored) writeStorage(ANONYMOUS_ID_KEY, id);
-  memoryID = id;
-  return id;
+  if (stored) return stored;
+  if (ownDeviceID === undefined) ownDeviceID = readOwnPostHogDeviceID();
+  const id = ownDeviceID ?? chooseWebsiteID();
+  if (id === undefined) return null;
+  const chosen = id ?? memoryID ?? newID();
+  writeStorage(ANONYMOUS_ID_KEY, chosen);
+  return chosen;
+}
+
+// The website's id, null when there is none or it may not be taken, and
+// undefined while that depends on a session not known yet.
+function chooseWebsiteID(): string | null | undefined {
+  if (websiteID === undefined) websiteID = readSharedPostHogDeviceID();
+  if (!websiteID) return null;
+  if (session === "unknown") return undefined;
+  if (session === "signed-out") return websiteID;
+  if (accountCreatedHere || readAccountCreatedFlag()) return websiteID;
+  return null;
 }
 
 /**
@@ -90,9 +168,9 @@ export function readFirstLanding(): FirstLanding | null {
 }
 
 /**
- * Keep the stored identity in step with analytics consent: persist this page's
- * id and landing on a grant, delete them otherwise (also clearing whatever a
- * visit with consent left behind). Returns the unsubscribe.
+ * Keep the stored identity in step with analytics consent: persist the id and
+ * landing on a grant, delete them on an answer without it (also clearing
+ * whatever a visit with consent left behind). Returns the unsubscribe.
  */
 export function followAnalyticsConsentForIdentity(): () => void {
   if (typeof window === "undefined") return () => {};
@@ -102,11 +180,11 @@ export function followAnalyticsConsentForIdentity(): () => void {
 
 function syncStoredIdentity(): void {
   if (!hasConsentFor("analytics")) {
-    forgetStoredIdentity();
+    if (hasDeclinedConsentFor("analytics")) forgetStoredIdentity();
     return;
   }
   const id = getAnonymousID();
-  if (id && readStorage(ANONYMOUS_ID_KEY) !== id) {
+  if (settled && id && readStorage(ANONYMOUS_ID_KEY) !== id) {
     writeStorage(ANONYMOUS_ID_KEY, id);
   }
   persistFirstLanding();
@@ -137,6 +215,9 @@ export function resetAnonymousID(nextID?: string): void {
     return;
   }
   memoryID = nextID || newID();
+  settled = true;
+  ownDeviceID = null;
+  websiteID = null;
   pageLanding = null;
   forgetStoredIdentity();
   if (hasConsentFor("analytics")) writeStorage(ANONYMOUS_ID_KEY, memoryID);
@@ -144,6 +225,12 @@ export function resetAnonymousID(nextID?: string): void {
 
 export function resetAnonymousIDForTests(): void {
   memoryID = null;
+  settled = false;
+  session = "unknown";
+  accountCreatedHere = false;
+  ownDeviceID = undefined;
+  websiteID = undefined;
+  settledListeners.clear();
   pageLanding = null;
 }
 
@@ -155,10 +242,27 @@ export function getPostHogDeviceID(): string | null {
 }
 
 function readPostHogDeviceID(): string | null {
+  return readOwnPostHogDeviceID() ?? readSharedPostHogDeviceID();
+}
+
+// localStorage is this app's own (per origin).
+function readOwnPostHogDeviceID(): string | null {
+  const name = getPostHogPersistenceName();
+  return name ? parseDeviceID(readStorage(name)) : null;
+}
+
+// The cookie sits on `.agpt.co`, so the marketing site may have written it.
+function readSharedPostHogDeviceID(): string | null {
+  const name = getPostHogPersistenceName();
+  return name ? parseDeviceID(readCookie(name)) : null;
+}
+
+function getPostHogPersistenceName(): string | null {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  if (!key) return null;
-  const persistenceKey = `ph_${key}_posthog`;
-  const raw = readStorage(persistenceKey) ?? readCookie(persistenceKey);
+  return key ? `ph_${key}_posthog` : null;
+}
+
+function parseDeviceID(raw: string | null): string | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { $device_id?: unknown };

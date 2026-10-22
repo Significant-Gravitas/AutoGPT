@@ -1805,7 +1805,3 @@ class AgentFixer:
     def get_fixes_applied(self) -> list[str]:
         """Get a list of all fixes that were applied."""
         return self.fixes_applied.copy()
-
-    def clear_fixes_log(self) -> None:
-        """Clear the list of applied fixes."""
-        self.fixes_applied = []

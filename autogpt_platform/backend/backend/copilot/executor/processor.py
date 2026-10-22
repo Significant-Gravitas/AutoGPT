@@ -83,7 +83,7 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]"
 
 
 SHUTDOWN_ERROR_MESSAGE = (
-    "Copilot executor shut down before this turn finished. Please retry."
+    "The server running this turn shut down before it finished. Please retry."
 )
 # A platform turn whose allowance can't be read doesn't run unmetered.
 RATE_LIMIT_UNAVAILABLE_CODE = "rate_limit_unavailable"

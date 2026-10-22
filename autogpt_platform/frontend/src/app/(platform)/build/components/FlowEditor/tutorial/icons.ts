@@ -23,10 +23,3 @@ export const ICONS = {
   Keyboard: createIcon(iconPaths.Keyboard),
   Drag: createIcon(iconPaths.Drag),
 };
-
-export function getIcon(
-  name: keyof typeof iconPaths,
-  options?: IconOptions,
-): string {
-  return createIcon(iconPaths[name], options);
-}

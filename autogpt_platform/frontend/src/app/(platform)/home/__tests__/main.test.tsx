@@ -1,7 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { StrictMode } from "react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
@@ -34,10 +34,6 @@ function funnelEventNames() {
   return capture.mock.calls.map(([event]) => event as string);
 }
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
@@ -45,11 +41,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: () => false,
   };
 });
 
@@ -218,10 +210,6 @@ const dashboard: HomeDashboardResponse = {
     ],
   },
 };
-
-afterEach(() => {
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
-});
 
 function mockDashboard(response: HomeDashboardResponse) {
   server.use(
@@ -531,21 +519,31 @@ test("shows a retryable page error when the aggregate cannot load", async () => 
   await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
 });
 
-test("does not track home_viewed while feature state is loading", async () => {
-  setFlagStatusMock.mockReturnValueOnce({ enabled: true, ready: false });
-  server.use();
+test("does not track home_viewed until the dashboard responds", async () => {
+  let releaseDashboard!: () => void;
+  const responseReady = new Promise<void>((resolve) => {
+    releaseDashboard = resolve;
+  });
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, async () => {
+      await responseReady;
+      return HttpResponse.json(dashboard);
+    }),
+  );
 
   render(<HomeRecap />);
   expect(screen.getByLabelText("Loading Home…")).toBeDefined();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
   expect(funnelEventNames()).not.toContain("home_viewed");
+  releaseDashboard();
+  await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
 });
 
-test("hides the recap when the experts feature is disabled", () => {
-  setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
-  const { container } = render(<HomeRecap />);
-  expect(container.textContent).toBe("");
+test("shows the recap without a feature flag rollout", async () => {
+  mockDashboard(dashboard);
+  render(<HomeRecap />);
+  expect(
+    await screen.findByRole("heading", { name: "Needs you" }),
+  ).toBeDefined();
 });
 
 test("opens the briefing with the AI-written narrative when there is one", async () => {

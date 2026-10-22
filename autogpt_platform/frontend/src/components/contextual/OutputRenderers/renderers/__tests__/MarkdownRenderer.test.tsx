@@ -96,15 +96,13 @@ describe("MarkdownRenderer images", () => {
     );
   });
 
-  it("embeds an image whose URL is a YouTube link as an iframe", () => {
+  it("loads nothing from YouTube for an image whose URL is a YouTube video until consent", () => {
     const container = renderMarkdown(
-      "![Talk](https://www.youtube.com/watch?v=abc123)",
+      "![Talk](https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
     );
 
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
-      "https://www.youtube.com/embed/abc123",
-    );
+    expect(container.querySelector("iframe")).toBeNull();
   });
 
   it("renders any other image as an image", () => {

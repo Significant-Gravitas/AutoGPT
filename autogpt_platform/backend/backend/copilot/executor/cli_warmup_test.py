@@ -1,6 +1,7 @@
 """The CLI warm-up reads the whole binary, runs it, and never fails the executor."""
 
 import logging
+import os
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -36,6 +37,20 @@ def test_reads_the_binary_then_runs_it(tmp_path, monkeypatch):
     cli_warmup.warm_cli(str(binary))
 
     assert steps == [("read", str(binary)), ("run", [str(binary), "-v"])]
+
+
+def test_runs_the_binary_with_only_what_a_launch_keeps(tmp_path, monkeypatch):
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"cli")
+    monkeypatch.setenv("SOME_PLATFORM_SECRET", "sk-FAKE-platform-secret")
+    run = MagicMock(return_value=MagicMock(returncode=0))
+
+    with patch("backend.copilot.executor.cli_warmup.subprocess.run", run):
+        cli_warmup.warm_cli(str(binary))
+
+    env = run.call_args.kwargs["env"]
+    assert "SOME_PLATFORM_SECRET" not in env
+    assert env["PATH"] == os.environ["PATH"]
 
 
 def test_a_failing_version_run_is_a_warning(tmp_path, caplog):

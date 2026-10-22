@@ -21,6 +21,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.context import get_current_envelope
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.copilot.trial_cost_context import capture_cost_context
@@ -452,7 +453,7 @@ def _typed_messages(session: ChatSession, upto: int | None = None) -> list[str]:
 
     typed = [
         strip_injected_context_for_display(message.content)
-        for message in session.messages[:upto]
+        for message in without_stored_first_turn_memory(session.messages[:upto])
         if message.role == "user"
         and message.content
         and not held.is_answer_row(message)

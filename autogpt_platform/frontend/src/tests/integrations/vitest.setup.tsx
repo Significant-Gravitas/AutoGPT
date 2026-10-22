@@ -5,6 +5,22 @@ import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup } from "@testing-library/react";
 import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 
+// Auth tests send the client IP in X-Forwarded-For, as a trusted proxy would
+// (lib/auth/client-ip.ts).
+process.env.TRUST_X_FORWARDED_FOR ??= "true";
+
+// Sign-ups look up their domain's MX (lib/auth/disposable-email.ts); no test
+// does that on the network.
+vi.mock("node:dns/promises", async (importActual) => {
+  const actual = await importActual<typeof import("node:dns/promises")>();
+  class Resolver {
+    async resolveMx() {
+      return [];
+    }
+  }
+  return { ...actual, default: { ...actual, Resolver }, Resolver };
+});
+
 // React 18.3 only ships `cache` under the `react-server` export condition.
 // Vitest doesn't set that condition, so any module that imports `cache` from
 // "react" (e.g. server-only helpers wrapped for per-request memoization) blows
