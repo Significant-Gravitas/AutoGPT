@@ -12,6 +12,7 @@ stored per user) are never granted and never filtered: every expert may use them
 or no expert could run a single LLM block.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -298,10 +299,16 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
 
     Raises ``ExpertNotFoundError`` for an expert the user does not own, so a
     bad scope fails the run rather than falling through to unrestricted access.
+    The grants are read beside the ownership check; an expert this call seeds
+    has them read again, after the seed.
     """
-    expert = await _owned_expert(user_id, expert_id)
-    await _seed_if_needed(user_id, expert)
-    return [grant.credentialId for grant in await _grants(expert_id)]
+    expert, grants = await asyncio.gather(
+        _owned_expert(user_id, expert_id), _grants(expert_id)
+    )
+    if expert.credentialsSeededAt is None:
+        await _seed_if_needed(user_id, expert)
+        grants = await _grants(expert_id)
+    return [grant.credentialId for grant in grants]
 
 
 def filter_credentials_for_expert(
