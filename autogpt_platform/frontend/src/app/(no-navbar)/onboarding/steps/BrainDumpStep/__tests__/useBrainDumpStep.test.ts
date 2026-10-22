@@ -1005,6 +1005,37 @@ describe("useBrainDumpStep — skip", () => {
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
+  // Back from Hire remounts the step while the skipped take may still be
+  // unfinalized on disk; offering it there would hand back what was refused.
+  it("does not offer back a skipped take whose cleanup is still running", async () => {
+    recorderState.recordingId = "rec-skipped";
+    const lookup = deferred<null>();
+    getMetaById.mockReturnValueOnce(lookup.promise);
+    const first = await renderStep();
+    await act(async () => {
+      void first.result.current.handleSkip();
+      await Promise.resolve();
+    });
+    first.unmount();
+
+    recorderState.recordingId = null;
+    recorderState.findRecoverable.mockResolvedValue({
+      recordingId: "rec-skipped",
+      mimeType: "audio/webm",
+      durationSecs: 30,
+    });
+    getParts.mockResolvedValue([part(0, "rec-skipped")]);
+    const back = await renderStep();
+
+    expect(back.result.current.screen).toBe("rest");
+    expect(back.result.current.recoverable).toBeNull();
+
+    await act(async () => {
+      lookup.resolve(null);
+      await Promise.resolve();
+    });
+  });
+
   // Being unable to say "no thanks" because the network is down would be
   // absurd — path B is the safe default anyway.
   it("lets the user through even when the skip call fails", async () => {

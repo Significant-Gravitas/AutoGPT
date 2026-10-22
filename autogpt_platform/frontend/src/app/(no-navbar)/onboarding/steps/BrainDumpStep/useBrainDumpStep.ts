@@ -29,6 +29,10 @@ export type ScreenState =
   | "failed"
   | "insufficient";
 
+// Takes a skip left behind whose local cleanup is still running. Module scope,
+// so the remount that Back from Hire causes does not offer one back.
+const releasingTakeIDs = new Set<string>();
+
 export function useBrainDumpStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
@@ -68,7 +72,7 @@ export function useBrainDumpStep() {
   useEffect(() => {
     async function checkForRecovery() {
       const meta = await recorder.findRecoverable();
-      if (!meta) return;
+      if (!meta || releasingTakeIDs.has(meta.recordingId)) return;
       const parts = await getParts(meta.recordingId).catch(() => []);
       if (parts.length === 0) return;
       setRecoverable(meta);
@@ -337,13 +341,17 @@ export function useBrainDumpStep() {
     const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
+    if (recordedId) releasingTakeIDs.add(recordedId);
     // Nothing below can change where a skip goes, so the user is not kept
     // waiting on it.
     nextStep();
     // Someone who talked for minutes and then skipped leaves multi-MB
     // blobs behind, and an unfinalized meta row makes the next visit
     // offer back a take they explicitly abandoned.
-    if (recordedId) await releaseTake(recordedId);
+    if (recordedId) {
+      await releaseTake(recordedId);
+      releasingTakeIDs.delete(recordedId);
+    }
     try {
       await finalizeBrainDump({
         recording_id: recordedId ?? crypto.randomUUID(),
