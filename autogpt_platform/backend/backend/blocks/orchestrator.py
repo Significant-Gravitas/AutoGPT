@@ -1,6 +1,7 @@
 import asyncio
 import contextvars
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -29,6 +30,8 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
 from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
 from backend.copilot.sdk.env import config as copilot_config
+from backend.copilot.sdk.env import without_url_credentials
+from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -1747,8 +1750,13 @@ class OrchestratorBlock(Block):
                 "ANTHROPIC_API_KEY": api_key,
             }
         else:
-            # Direct Anthropic key
+            # Direct Anthropic key, sent wherever the deployment points
+            # Anthropic traffic: the launch keeps nothing else of the
+            # backend's environment (``launch_env.py``), nor a user name and
+            # password the deployment embedded in that URL.
             sdk_env = {"ANTHROPIC_API_KEY": api_key}
+            if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
+                sdk_env["ANTHROPIC_BASE_URL"] = without_url_credentials(base_url)
 
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
@@ -1841,7 +1849,7 @@ class OrchestratorBlock(Block):
             options.cli_path = await asyncio.to_thread(
                 require_verbatim_prompts_cli, options.cli_path
             )
-            async with ClaudeSDKClient(options=options) as client:
+            async with ClaudeSDKClient(options=launch_options(options)) as client:
                 await client.query(user_message)
 
                 msg_iter = client.receive_response().__aiter__()

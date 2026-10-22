@@ -216,7 +216,8 @@ script uses that checkout; otherwise it clones the repository into a new
 
 Both create the three `.env` files if they are missing and generate the
 secrets `.env.default` leaves blank (`ENCRYPTION_KEY`,
-`UNSUBSCRIBE_SECRET_KEY`, `BETTER_AUTH_SECRET`), the same as `make init-env`.
+`UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`), the same
+as `make init-env`.
 Running a script again never changes a value that is already set. If you are
 upgrading an install that ran without its own `ENCRYPTION_KEY`, read
 [Upgrading: secrets are generated per install](getting-started.md#upgrading-secrets-are-generated-per-install)
