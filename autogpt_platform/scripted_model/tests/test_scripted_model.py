@@ -99,6 +99,12 @@ class MaximumConstrainedExtraction(BaseModel):
     number: float = Field(le=-0.25, multiple_of=0.5)
 
 
+class ExclusiveConstrainedExtraction(BaseModel):
+    integer: int = Field(gt=0, lt=3, multiple_of=2)
+    number: float = Field(gt=0.25, lt=0.75, multiple_of=0.25)
+    negative: int = Field(lt=-1, multiple_of=2)
+
+
 def test_messages_follow_the_script_through_a_tool_round(scripted_model):
     scripted_model.add_script("lookup", LOOKUP)
     client = _anthropic(scripted_model)
@@ -264,6 +270,20 @@ def test_responses_parse_honors_numeric_constraints(scripted_model):
     )
 
 
+def test_responses_parse_honors_exclusive_numeric_constraints(scripted_model):
+    response = _openai(scripted_model).responses.parse(
+        model="gpt-6-luna",
+        input="Extract exclusively bounded values.",
+        text_format=ExclusiveConstrainedExtraction,
+    )
+
+    assert response.output_parsed == ExclusiveConstrainedExtraction(
+        integer=2,
+        number=0.5,
+        negative=-2,
+    )
+
+
 def test_responses_rejects_unsatisfiable_numeric_constraints():
     with pytest.raises(ResponseError, match="no value satisfying its constraints"):
         structured_response(
@@ -279,6 +299,30 @@ def test_responses_rejects_unsatisfiable_numeric_constraints():
                                     "minimum": 1,
                                     "maximum": 1,
                                     "multipleOf": 2,
+                                }
+                            },
+                            "required": ["value"],
+                        }
+                    }
+                },
+            }
+        )
+
+
+def test_responses_rejects_unsatisfiable_exclusive_numeric_constraints():
+    with pytest.raises(ResponseError, match="no value"):
+        structured_response(
+            {
+                "model": "gpt-6-luna",
+                "text": {
+                    "format": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "value": {
+                                    "type": "integer",
+                                    "exclusiveMinimum": 0,
+                                    "exclusiveMaximum": 1,
                                 }
                             },
                             "required": ["value"],

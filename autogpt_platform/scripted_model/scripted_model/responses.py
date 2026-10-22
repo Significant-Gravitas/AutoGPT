@@ -165,37 +165,80 @@ def _schema_value(schema: dict[str, Any], root: dict[str, Any], depth: int = 0) 
 
 
 def _bounded_number(schema: dict[str, Any], *, integer: bool) -> int | float:
-    minimum = _numeric_constraint(schema, "minimum")
-    maximum = _numeric_constraint(schema, "maximum")
+    minimum, minimum_exclusive = _lower_bound(schema)
+    maximum, maximum_exclusive = _upper_bound(schema)
     multiple = _numeric_constraint(schema, "multipleOf")
 
-    if integer:
-        minimum = Fraction(_ceil_fraction(minimum)) if minimum is not None else None
-        maximum = Fraction(_floor_fraction(maximum)) if maximum is not None else None
-        if multiple is not None:
-            multiple = Fraction(multiple.numerator)
-
-    if minimum is not None and maximum is not None and minimum > maximum:
-        raise ResponseError("numeric schema has no value within its bounds")
     if multiple is not None and multiple <= 0:
         raise ResponseError("numeric schema multipleOf must be positive")
 
-    value = Fraction(0)
-    if minimum is not None and minimum > 0:
-        value = minimum
-    elif maximum is not None and maximum < 0:
-        value = maximum
+    if integer:
+        if minimum is not None:
+            minimum = Fraction(
+                _floor_fraction(minimum) + 1
+                if minimum_exclusive
+                else _ceil_fraction(minimum)
+            )
+            minimum_exclusive = False
+        if maximum is not None:
+            maximum = Fraction(
+                _ceil_fraction(maximum) - 1
+                if maximum_exclusive
+                else _floor_fraction(maximum)
+            )
+            maximum_exclusive = False
+        if multiple is not None:
+            multiple = Fraction(multiple.numerator)
+
+    if (
+        minimum is not None
+        and maximum is not None
+        and (
+            minimum > maximum
+            or (minimum == maximum and (minimum_exclusive or maximum_exclusive))
+        )
+    ):
+        raise ResponseError("numeric schema has no value within its bounds")
 
     if multiple is not None:
-        quotient = value / multiple
-        if value > 0:
-            quotient = Fraction(_ceil_fraction(quotient))
-        elif value < 0:
-            quotient = Fraction(_floor_fraction(quotient))
-        value = quotient * multiple
+        minimum_index = (
+            _floor_fraction(minimum / multiple) + 1
+            if minimum is not None and minimum_exclusive
+            else _ceil_fraction(minimum / multiple) if minimum is not None else None
+        )
+        maximum_index = (
+            _ceil_fraction(maximum / multiple) - 1
+            if maximum is not None and maximum_exclusive
+            else _floor_fraction(maximum / multiple) if maximum is not None else None
+        )
+        if (
+            minimum_index is not None
+            and maximum_index is not None
+            and minimum_index > maximum_index
+        ):
+            raise ResponseError(
+                "numeric schema has no value satisfying its constraints"
+            )
+        index = 0
+        if minimum_index is not None and index < minimum_index:
+            index = minimum_index
+        if maximum_index is not None and index > maximum_index:
+            index = maximum_index
+        value = Fraction(index) * multiple
+    else:
+        value = _unscaled_value(
+            minimum,
+            minimum_exclusive,
+            maximum,
+            maximum_exclusive,
+        )
 
-    if (minimum is not None and value < minimum) or (
-        maximum is not None and value > maximum
+    if not _within_bounds(
+        value,
+        minimum,
+        minimum_exclusive,
+        maximum,
+        maximum_exclusive,
     ):
         raise ResponseError("numeric schema has no value satisfying its constraints")
     if integer or value.denominator == 1:
@@ -204,6 +247,65 @@ def _bounded_number(schema: dict[str, Any], *, integer: bool) -> int | float:
         return float(value)
     except OverflowError as error:
         raise ResponseError("numeric schema value is too large") from error
+
+
+def _lower_bound(schema: dict[str, Any]) -> tuple[Fraction | None, bool]:
+    minimum = _numeric_constraint(schema, "minimum")
+    exclusive = _numeric_constraint(schema, "exclusiveMinimum")
+    if exclusive is not None and (minimum is None or exclusive >= minimum):
+        return exclusive, True
+    return minimum, False
+
+
+def _upper_bound(schema: dict[str, Any]) -> tuple[Fraction | None, bool]:
+    maximum = _numeric_constraint(schema, "maximum")
+    exclusive = _numeric_constraint(schema, "exclusiveMaximum")
+    if exclusive is not None and (maximum is None or exclusive <= maximum):
+        return exclusive, True
+    return maximum, False
+
+
+def _unscaled_value(
+    minimum: Fraction | None,
+    minimum_exclusive: bool,
+    maximum: Fraction | None,
+    maximum_exclusive: bool,
+) -> Fraction:
+    zero = Fraction(0)
+    if _within_bounds(
+        zero,
+        minimum,
+        minimum_exclusive,
+        maximum,
+        maximum_exclusive,
+    ):
+        return zero
+    if minimum is not None and minimum >= zero:
+        if not minimum_exclusive:
+            return minimum
+        return minimum + 1 if maximum is None else (minimum + maximum) / 2
+    if maximum is None:
+        raise ResponseError("numeric schema has no value within its bounds")
+    if not maximum_exclusive:
+        return maximum
+    return maximum - 1 if minimum is None else (minimum + maximum) / 2
+
+
+def _within_bounds(
+    value: Fraction,
+    minimum: Fraction | None,
+    minimum_exclusive: bool,
+    maximum: Fraction | None,
+    maximum_exclusive: bool,
+) -> bool:
+    if minimum is not None and (
+        value < minimum or (minimum_exclusive and value == minimum)
+    ):
+        return False
+    return not (
+        maximum is not None
+        and (value > maximum or (maximum_exclusive and value == maximum))
+    )
 
 
 def _numeric_constraint(schema: dict[str, Any], key: str) -> Fraction | None:
