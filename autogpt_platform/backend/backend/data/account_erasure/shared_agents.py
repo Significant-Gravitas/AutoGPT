@@ -4,10 +4,12 @@ theirs.
 
 An agent is shared when another account has it in its library or presets, has
 run it, lists it, or an expert of theirs (or a roster template) installed its
-listing, or when it is live in the marketplace. So is an agent in an org
-another member is active in, at the org's home or in one of its teams: every
-member of the org (or of the team) can open it (`tenancy.visibility_filter`)
-without a row of their own pointing at it. It keeps its org and team.
+listing. So is an agent in an org another member is active in, at the org's
+home or in one of its teams: every member of the org (or of the team) can
+open it (`tenancy.visibility_filter`) without a row of their own pointing at
+it. It keeps its org and team. Its own listing alone does not make it shared:
+closing the account took every listing of its own down, so nobody can add it
+any more.
 
 Deleting a shared agent would take their library entries, presets and runs
 with it, and the database refuses while one of their rows still points at
@@ -56,8 +58,7 @@ _SHARED_GRAPHS = """
                           JOIN {schema_prefix}"StoreListing" l
                             ON l."id" = v."storeListingId"
                          WHERE v."agentGraphId" = g."id"
-                           AND (l."owningUserId" <> $1
-                                OR (l."hasApprovedVersion" AND NOT l."isDeleted")))
+                           AND l."owningUserId" <> $1)
              OR EXISTS (SELECT 1 FROM {schema_prefix}"StoreListingVersion" v
                           JOIN {schema_prefix}"ExpertWorkflow" w
                             ON w."storeListingVersionId" = v."id"
