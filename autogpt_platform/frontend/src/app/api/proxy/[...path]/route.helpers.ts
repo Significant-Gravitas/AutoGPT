@@ -21,6 +21,18 @@ export function isPrivateStoreMediaRequest(path: string[]): boolean {
   );
 }
 
+// The store searches the backend limits per visitor, by the signed client IP.
+export function isStoreSearchRequest(
+  path: string[],
+  params: URLSearchParams,
+): boolean {
+  const route = path.join("/");
+  if (route === "api/store/search") return true;
+  return (
+    route === "api/store/agents" && Boolean(params.get("search_query")?.trim())
+  );
+}
+
 export function isPrivateStoreVideoRequest(path: string[]): boolean {
   return isPrivateStoreMediaRequest(path) && path[5] === "videos";
 }

@@ -60,7 +60,6 @@ async def _search(
     record_recall = MagicMock(return_value="hit-coroutine")
     spawn = MagicMock()
     with (
-        patch(f"{_MODULE}.is_enabled_for_user", AsyncMock(return_value=True)),
         patch(f"{_MODULE}.search_facts", search_facts),
         patch(f"{_MODULE}.recent_episodes", recent_episodes),
         patch(f"{_MODULE}.recheck", recheck),
@@ -159,7 +158,6 @@ async def test_scope_filter_drops_other_scopes_even_for_long_envelopes() -> None
 async def test_search_failure_is_reported_not_raised() -> None:
     session = ChatSession.new("user-1", dry_run=False)
     with (
-        patch(f"{_MODULE}.is_enabled_for_user", AsyncMock(return_value=True)),
         patch(f"{_MODULE}.search_facts", AsyncMock(side_effect=RuntimeError("down"))),
         patch(f"{_MODULE}.recent_episodes", AsyncMock(return_value=[])),
     ):

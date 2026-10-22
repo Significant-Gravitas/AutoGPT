@@ -55,6 +55,7 @@ function ChatHostBody({
     isUserStopping,
     createSession,
     onSend,
+    onStartTask,
     onEnqueue,
     queuedMessages,
     isLoadingSession,
@@ -128,6 +129,7 @@ function ChatHostBody({
           isUserStopping={isUserStopping}
           onCreateSession={createSession}
           onSend={onSend}
+          onStartTask={onStartTask}
           onStop={stop}
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
