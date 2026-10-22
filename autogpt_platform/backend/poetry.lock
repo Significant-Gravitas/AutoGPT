@@ -1678,14 +1678,14 @@ standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[stand
 
 [[package]]
 name = "fastapi-guard"
-version = "8.1.1"
+version = "8.1.2"
 description = "Production-ready security middleware for FastAPI — IP filtering, rate limiting, penetration detection, and 20+ per-route security decorators."
 optional = false
 python-versions = "<3.15,>=3.10"
 groups = ["main"]
 files = [
-    {file = "fastapi_guard-8.1.1-py3-none-any.whl", hash = "sha256:933c8588a1c16c41acdd6b9bf0abb73a9a8aa19f0372dc9f5ff8b2cc6f54d5ae"},
-    {file = "fastapi_guard-8.1.1.tar.gz", hash = "sha256:d863be886276021440031829b1447f51b22f605e0f893a184469720a7ef9e0e6"},
+    {file = "fastapi_guard-8.1.2-py3-none-any.whl", hash = "sha256:0d0cca1fd82f835609e8612d1366cbe42940609080e6a80957285d06edefc99f"},
+    {file = "fastapi_guard-8.1.2.tar.gz", hash = "sha256:33e7097fc0438319da9670d187916367bcba31c793f4251e7a5b45905e3b4897"},
 ]
 
 [package.dependencies]
@@ -9021,4 +9021,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "133d9f66e45f601a459943efdd82f9cd556e509165d22f78a31853de812b2eaa"
+content-hash = "352148cc8e3da9491ecbdaa1f89dca254e2ac4e6e4306aa297898833c6a3e971"
