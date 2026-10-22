@@ -1840,18 +1840,22 @@ async def _read_skills_cache(
 
 
 async def _claim_skills_cache(user_id: str, expert_id: str | None = None) -> str | None:
-    """Mark the owner's entry as being rebuilt. Returns the claim to write the
-    result under, or None when Redis can't take it and nothing will be
-    written."""
+    """Mark the owner's entry as being rebuilt, if nothing holds it. Returns the
+    claim to write the result under, or None when nothing will be written:
+    the entry holds an index another rebuild finished, or that rebuild's
+    claim, and both stay; or Redis can't take it."""
     claim = f"{_REBUILDING_MARKER}{uuid.uuid4().hex}"
     try:
         redis = await get_redis_async()
-        await redis.set(
-            _skills_cache_key(user_id, expert_id), claim, ex=_REBUILD_CLAIM_TTL_S
+        claimed = await redis.set(
+            _skills_cache_key(user_id, expert_id),
+            claim,
+            ex=_REBUILD_CLAIM_TTL_S,
+            nx=True,
         )
     except Exception:
         return None
-    return claim
+    return claim if claimed else None
 
 
 async def _write_skills_cache(

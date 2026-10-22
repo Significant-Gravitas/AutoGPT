@@ -936,9 +936,13 @@ class _FakeRedis:
     async def get(self, key):
         return self.store.get(key)
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        # redis-py: None when nx refuses a held key, True when set.
+        if nx and key in self.store:
+            return None
         self.store[key] = value
         self.ttls[key] = ex
+        return True
 
     async def delete(self, *keys):
         for key in keys:

@@ -5928,6 +5928,53 @@ async def test_update_skills_attaching_a_marketplace_skill_reaches_the_cached_in
     assert [s.name for s in listed] == ["deep-research"]
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_failing_part_way_still_drops_the_cached_index(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """A name written before the failure stays on the row, so the cached index
+    must not keep showing the list from before it for minutes."""
+    names = {"listing-1": "deep-research", "listing-2": "web-research"}
+    real_add = experts_db.add_expert_skill_name
+    added: list[str] = []
+
+    async def _listing_name(listing_id):
+        return names[listing_id]
+
+    async def _add_one_then_fail(user_id, expert_id, name):
+        if added:
+            raise RuntimeError("the database went away")
+        added.append(name)
+        await real_add(user_id, expert_id, name)
+
+    monkeypatch.setattr(experts_db, "_resolve_marketplace_skill_name", _listing_name)
+    monkeypatch.setattr(experts_db, "add_expert_skill_name", _add_one_then_fail)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    fake = _FakeWorkspaceManager()
+    fake.files["/skills/deep-research/SKILL.md"] = (
+        b"---\nname: deep-research\ndescription: d\n---\nsteps\n"
+    )
+
+    with patch(
+        "backend.copilot.tools.skills._get_user_skill_manager",
+        new=AsyncMock(return_value=fake),
+    ):
+        assert await list_user_skills(test_user.id, expert_id) == []
+        with pytest.raises(RuntimeError):
+            await experts_db.update_skills(
+                test_user.id,
+                expert_id,
+                [],
+                marketplace_listing_ids=["listing-1", "listing-2"],
+            )
+        listed = await list_user_skills(test_user.id, expert_id)
+
+    assert added == ["deep-research"]
+    assert [s.name for s in listed] == ["deep-research"]
+
+
 async def _no_library_skills(_user_id, _names):
     return {}
 

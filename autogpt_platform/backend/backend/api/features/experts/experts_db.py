@@ -1575,36 +1575,40 @@ async def update_skills(
             f"Skills cannot be both attached and removed: {', '.join(both)}"
         )
     resolved: list[str] = []
-    for canonical, folder in plan:
-        if folder is not None:
-            # Idempotent: also heals a name kept from before skills were
-            # owned per expert, which had no copy in the expert's folder.
-            if await copy_skill_to_expert(user_id, expert_id, folder) is None:
-                # Resolved moments ago and gone now. Keeping the name would
-                # leave the row listing a skill the expert cannot read, which
-                # is the one state this whole path exists to prevent.
-                logger.warning(
-                    f"Skill {canonical!r} vanished before it could be copied "
-                    f"to expert #{expert_id}; dropping it from the list"
-                )
-                continue
-        resolved.append(canonical)
-    for name in marketplace:
-        if name.lower() not in {r.lower() for r in resolved}:
-            resolved.append(name)
-    for dropped in [n for n in current.values() if skill_name_key(n) in removed]:
-        # delete_user_skill drops the row name itself — except for a built-in,
-        # where it raises first and _detach_expert_skill swallows that.
-        await _detach_expert_skill(user_id, expert_id, dropped)
-        await remove_expert_skill_name(user_id, expert_id, dropped)
-    # Per-name writes that each re-read the row, not one set computed up front:
-    # the expert can append to its own row with store_skill while the copies
-    # above run, and an overwrite from the pre-copy read would silently drop it.
-    for name in resolved:
-        await add_expert_skill_name(user_id, expert_id, name)
-    # A copy above clears the expert's skill index itself, but a marketplace
-    # name lands on the row alone, and only a rebuild heals it into the folder.
-    await invalidate_skills_index_cache(user_id, expert_id)
+    try:
+        for canonical, folder in plan:
+            if folder is not None:
+                # Idempotent: also heals a name kept from before skills were
+                # owned per expert, which had no copy in the expert's folder.
+                if await copy_skill_to_expert(user_id, expert_id, folder) is None:
+                    # Resolved moments ago and gone now. Keeping the name would
+                    # leave the row listing a skill the expert cannot read, which
+                    # is the one state this whole path exists to prevent.
+                    logger.warning(
+                        f"Skill {canonical!r} vanished before it could be copied "
+                        f"to expert #{expert_id}; dropping it from the list"
+                    )
+                    continue
+            resolved.append(canonical)
+        for name in marketplace:
+            if name.lower() not in {r.lower() for r in resolved}:
+                resolved.append(name)
+        for dropped in [n for n in current.values() if skill_name_key(n) in removed]:
+            # delete_user_skill drops the row name itself — except for a built-in,
+            # where it raises first and _detach_expert_skill swallows that.
+            await _detach_expert_skill(user_id, expert_id, dropped)
+            await remove_expert_skill_name(user_id, expert_id, dropped)
+        # Per-name writes that each re-read the row, not one set computed up front:
+        # the expert can append to its own row with store_skill while the copies
+        # above run, and an overwrite from the pre-copy read would silently drop it.
+        for name in resolved:
+            await add_expert_skill_name(user_id, expert_id, name)
+    finally:
+        # A copy above clears the expert's skill index itself, but a
+        # marketplace name lands on the row alone, and only a rebuild heals
+        # it into the folder. Also after a failure part-way: the rows written
+        # so far stand, and the index is cached for minutes.
+        await invalidate_skills_index_cache(user_id, expert_id)
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)

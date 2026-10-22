@@ -146,9 +146,33 @@ async def test_a_file_outside_every_skill_folder_drops_no_index(path):
     assert sorted(redis.store) == sorted(keys)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("held", ["finished index", "other claim"])
+async def test_a_rebuild_takes_no_claim_over_an_entry_another_holds(held):
+    """Two turns can miss at once. The one that claims second must leave the
+    index the first just finished, or the first's claim, where it is."""
+    redis = _FakeRedis()
+    key = _skills_cache_key(USER)
+    redis.store[key] = (
+        "[]" if held == "finished index" else f"{skills._REBUILDING_MARKER}first"
+    )
+    before = redis.store[key]
+    with patch(
+        "backend.copilot.tools.skills.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    ):
+        refused = await _claim_skills_cache(USER)
+        after_refusal = redis.store[key]
+        del redis.store[key]
+        taken = await _claim_skills_cache(USER)
+
+    assert refused is None and after_refusal == before
+    assert taken is not None and redis.store[key] == taken
+
+
 @requires_redis
 @pytest.mark.asyncio
-async def test_on_redis_an_index_is_written_only_while_its_claim_holds():
+async def test_on_redis_an_index_is_written_only_while_its_claim_holds(server):
     """The fake stands in for the write-if-claimed script everywhere else;
     this runs the script itself."""
     user = f"skills-index-{uuid.uuid4().hex}"
@@ -167,6 +191,12 @@ async def test_on_redis_an_index_is_written_only_while_its_claim_holds():
         assert cached is not None and [s.name for s in cached] == ["kept"]
         assert 0 < await redis.ttl(key) <= SKILLS_INDEX_CACHE_TTL_S
 
+        # A rebuild that missed before this index landed takes no claim over it.
+        assert await _claim_skills_cache(user) is None
+        cached = await _read_skills_cache(user)
+        assert cached is not None and [s.name for s in cached] == ["kept"]
+
+        await redis.delete(key)
         lost = await _claim_skills_cache(user)
         assert lost is not None
         await invalidate_skills_index_cache(user)
