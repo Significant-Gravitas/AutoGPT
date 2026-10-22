@@ -1,6 +1,7 @@
 "use client";
 
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
+import { ReplayRouteGuard } from "@/components/monitor/ReplayRouteGuard";
 import { SentryUserTracker } from "@/components/monitor/SentryUserTracker";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { getQueryClient } from "@/lib/react-query/queryClient";
@@ -27,10 +28,11 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
       <NuqsAdapter>
         <PostHogProvider>
           <BackendAPIProvider>
-            {/* All four read useSearchParams (directly or via useAuth), which
+            {/* All of these read useSearchParams (directly or via useAuth), which
                 bails out of static rendering unless it sits under Suspense. */}
             <Suspense fallback={null}>
               <SentryUserTracker />
+              <ReplayRouteGuard />
               <PostHogUserTracker />
               <AttributionReporter />
               <AdsConversionTracker />

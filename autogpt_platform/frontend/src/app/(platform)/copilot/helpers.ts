@@ -1,4 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import type { ChatStatus, UIMessage } from "ai";
 
@@ -7,8 +8,6 @@ import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
-
-export const ORIGINAL_TITLE = "AutoGPT";
 
 /**
  * Fallback title/body/icon for the OS-level notification fired when a copilot
@@ -58,6 +57,8 @@ export function resolveCompletionNotificationContent(notification: unknown): {
  * Returns HTTP headers required for direct backend requests from copilot:
  * - Authorization Bearer token (JWT)
  * - X-Act-As-User-Id impersonation header (if an admin is impersonating a user)
+ * - X-PostHog-Session-Id (with analytics consent), so the chat's backend
+ *   events join the browser's PostHog session
  *
  * Use this for all direct-to-backend fetch/SSE calls so that admin user
  * impersonation works consistently across the entire copilot feature.
@@ -71,6 +72,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
+    ...getPostHogSessionHeader(),
   };
 }
 
@@ -80,16 +82,6 @@ export class CopilotAuthError extends Error {
     super("Authentication failed — please sign in again.");
     this.name = "CopilotAuthError";
   }
-}
-
-/**
- * Build the document title showing how many sessions are ready.
- * Returns the base title when count is 0.
- */
-export function formatNotificationTitle(count: number): string {
-  return count > 0
-    ? `(${count}) New activity - ${ORIGINAL_TITLE}`
-    : ORIGINAL_TITLE;
 }
 
 /**
@@ -420,10 +412,15 @@ export function shouldDebounceReconnect(
  */
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
+  // Fingerprints seen per user turn. Nested rather than one composite
+  // `${userID}:${fingerprint}` string, which would be rebuilt and re-hashed in
+  // full for every assistant message on every call; the cached fingerprint
+  // string keeps its hash.
+  const seenFingerprintsByTurn = new Map<string, Set<string>>();
   let lastUserMsgID = "";
+  const newestIndex = messages.length - 1;
 
-  return messages.filter((msg) => {
+  const kept = messages.filter((msg, index) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
@@ -436,19 +433,9 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
     }
 
     if (msg.role === "assistant") {
-      // JSON.stringify the parts array to avoid separator-collision false
-      // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
-      // produces the same string. JSON encoding each element is unambiguous.
-      // Fall back to JSON.stringify(p) for parts that carry neither a text nor
-      // a toolCallId (e.g. step-start) so structurally different parts never
-      // collapse to the same empty-string fingerprint element.
-      const contentFingerprint = JSON.stringify(
-        msg.parts.map(
-          (p) =>
-            ("text" in p && p.text) ||
-            ("toolCallId" in p && p.toolCallId) ||
-            JSON.stringify(p),
-        ),
+      const contentFingerprint = getContentFingerprint(
+        msg,
+        index === newestIndex,
       );
 
       if (contentFingerprint !== "[]") {
@@ -460,14 +447,60 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
         // resumeStream() first strips the in-progress assistant message —
         // handleReconnect, the wake-resync path, and the hydration-effect path
         // all do this. See useCopilotStream.ts.
-        const contextKey = `assistant:${lastUserMsgID}:${contentFingerprint}`;
-        if (seenFingerprints.has(contextKey)) return false;
-        seenFingerprints.add(contextKey);
+        let seenInTurn = seenFingerprintsByTurn.get(lastUserMsgID);
+        if (!seenInTurn) {
+          seenInTurn = new Set<string>();
+          seenFingerprintsByTurn.set(lastUserMsgID, seenInTurn);
+        }
+        if (seenInTurn.has(contentFingerprint)) return false;
+        seenInTurn.add(contentFingerprint);
       }
     }
 
     return true;
   });
+  // Same array back when nothing was dropped, so memos keyed on it hold.
+  return kept.length === messages.length ? messages : kept;
+}
+
+// Keyed by the parts array, which every streamed update replaces, so a
+// message that has not changed is never serialised twice. The length check
+// catches parts pushed in place. The newest message is never cached: the SDK
+// can still be appending to it in place until its next flush.
+const contentFingerprints = new WeakMap<
+  UIMessage["parts"],
+  { partCount: number; fingerprint: string }
+>();
+
+function getContentFingerprint(msg: UIMessage, isNewest: boolean): string {
+  if (isNewest) return computeContentFingerprint(msg.parts);
+  const cached = contentFingerprints.get(msg.parts);
+  if (cached && cached.partCount === msg.parts.length) {
+    return cached.fingerprint;
+  }
+  const fingerprint = computeContentFingerprint(msg.parts);
+  contentFingerprints.set(msg.parts, {
+    partCount: msg.parts.length,
+    fingerprint,
+  });
+  return fingerprint;
+}
+
+function computeContentFingerprint(parts: UIMessage["parts"]): string {
+  // JSON.stringify the parts array to avoid separator-collision false
+  // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
+  // produces the same string. JSON encoding each element is unambiguous.
+  // Fall back to JSON.stringify(p) for parts that carry neither a text nor
+  // a toolCallId (e.g. step-start) so structurally different parts never
+  // collapse to the same empty-string fingerprint element.
+  return JSON.stringify(
+    parts.map(
+      (p) =>
+        ("text" in p && p.text) ||
+        ("toolCallId" in p && p.toolCallId) ||
+        JSON.stringify(p),
+    ),
+  );
 }
 
 /**
@@ -483,4 +516,14 @@ export function isEngineSwitchPart(dataPart: {
   if (dataPart.type !== "data-mode-changed") return false;
   const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
   return mode === "extended_thinking" || mode === "fast";
+}
+
+export const CREATE_SESSION_RETRY_DELAY_MS = 500;
+
+// A network error on create ("Load failed" on Safari, "Failed to fetch" on
+// Chrome) can mean the server committed and only the response was lost. The
+// request names its session id, so one retry adopts that session instead of
+// bouncing the message back to the composer.
+export function retryLostCreateResponse(failureCount: number, error: unknown) {
+  return failureCount < 1 && error instanceof TypeError;
 }

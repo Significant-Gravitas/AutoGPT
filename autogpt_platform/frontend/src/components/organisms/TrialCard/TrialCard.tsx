@@ -30,6 +30,7 @@ export function TrialCardContent({
     error,
     retry,
     isStarting,
+    isBlocked,
     isCanceling,
     isResuming,
     startTrial,
@@ -63,6 +64,7 @@ export function TrialCardContent({
         <TrialOffer
           trial={trial}
           isStarting={isStarting}
+          isBlocked={isBlocked}
           onStart={startTrial}
         />
       ) : (

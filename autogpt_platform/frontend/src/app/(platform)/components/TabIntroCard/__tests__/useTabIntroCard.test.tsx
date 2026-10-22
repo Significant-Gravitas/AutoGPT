@@ -11,23 +11,6 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: authUser.current }),
 }));
 
-const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
-const flagsReady = vi.hoisted(() => ({ current: true }));
-const flagReadiness = vi.hoisted(() => ({
-  current: {} as Record<string, boolean>,
-}));
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-    HIRE_EXPERTS: "hire-experts",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
-  },
-  useFlagStatus: (flag: string) => ({
-    enabled: flags.current[flag] ?? false,
-    ready: flagReadiness.current[flag] ?? flagsReady.current,
-  }),
-}));
-
 const onboarding = vi.hoisted(() => ({
   current: {
     state: null as { completedSteps: string[] } | null,
@@ -53,9 +36,6 @@ beforeEach(() => {
   window.localStorage.clear();
   capture.mockReset();
   authUser.current = { id: "user-1" };
-  flags.current = { "onboarding-brain-dump": true };
-  flagsReady.current = true;
-  flagReadiness.current = {};
   onboarding.current = { state: { completedSteps: [] }, completeStep: vi.fn() };
 });
 
@@ -73,19 +53,6 @@ describe("useTabIntroCard — when it opens", () => {
     expect(
       capture.mock.calls.filter(([event]) => event === "tab_intro_shown"),
     ).toHaveLength(1);
-  });
-
-  it("stays closed while the flag is off", () => {
-    flags.current = {};
-
-    expect(renderGate().result.current.isOpen).toBe(false);
-    expect(capture).not.toHaveBeenCalled();
-  });
-
-  it("stays closed until LaunchDarkly has answered", () => {
-    flagsReady.current = false;
-
-    expect(renderGate().result.current.isOpen).toBe(false);
   });
 
   it("stays closed until the onboarding record has loaded", () => {
@@ -164,11 +131,6 @@ describe("useTabIntroCard — when it opens", () => {
 describe("useTabIntroCard — workflow migration", () => {
   beforeEach(() => {
     authUser.current = { id: "user-1", created_at: "2026-09-01T00:00:00Z" };
-    flags.current = {
-      "onboarding-brain-dump": true,
-      "hire-experts": true,
-      "autogpt-new-layout": true,
-    };
   });
 
   it("replaces the old agents intro without recording or showing it", () => {
@@ -179,22 +141,6 @@ describe("useTabIntroCard — workflow migration", () => {
     expect(onboarding.current.completeStep).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(SEEN_KEY)).toBeNull();
   });
-
-  it.each(["hire-experts", "autogpt-new-layout"])(
-    "waits for %s before deciding which intro applies",
-    (flag) => {
-      flags.current[flag] = false;
-      flagReadiness.current[flag] = false;
-      const { result, rerender } = renderGate();
-      expect(result.current.isOpen).toBe(false);
-      expect(capture).not.toHaveBeenCalled();
-
-      flagReadiness.current[flag] = true;
-      rerender();
-
-      expect(result.current.isOpen).toBe(true);
-    },
-  );
 
   it.each(["marketplace", "build"] as const)(
     "preserves the %s intro for existing users",

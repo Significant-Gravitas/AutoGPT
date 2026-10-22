@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 
+from backend.copilot.sdk.cli_version import _VERSIONS, _cli_the_sdk_finds
 from backend.util import json
 
 
@@ -60,18 +60,20 @@ def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(var, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_cli_version_checks():
+    """No test sees a CLI version or path another test read."""
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
+    yield
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
+
+
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
 async def _server_noop() -> None:
     """No-op server stub — SDK tests don't need the full backend."""
     return None
-
-
-@pytest_asyncio.fixture(
-    scope="session", loop_scope="session", autouse=True, name="graph_cleanup"
-)
-async def _graph_cleanup_noop() -> AsyncIterator[None]:
-    """No-op graph cleanup stub."""
-    yield
 
 
 @pytest.fixture()
