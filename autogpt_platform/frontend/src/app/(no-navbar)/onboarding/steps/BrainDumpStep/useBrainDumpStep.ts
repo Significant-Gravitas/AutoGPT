@@ -29,10 +29,6 @@ export type ScreenState =
   | "failed"
   | "insufficient";
 
-// Takes a skip left behind whose local cleanup is still running. Module scope,
-// so the remount that Back from Hire causes does not offer one back.
-const releasingTakeIDs = new Set<string>();
-
 export function useBrainDumpStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
@@ -61,8 +57,7 @@ export function useBrainDumpStep() {
   const retryCountRef = useRef(0);
   // A submit in flight owns the screen: "Skip for now" must not race
   // `completeAndAdvance` to `nextStep()`, or the wizard advances twice and
-  // lands past the last step with nothing to render. A skip takes it for
-  // good, since it leaves the step.
+  // lands past the last step with nothing to render.
   const isSubmittingRef = useRef(false);
   const activeTakeActionRef = useRef<{
     action: "submit" | "discard";
@@ -72,7 +67,7 @@ export function useBrainDumpStep() {
   useEffect(() => {
     async function checkForRecovery() {
       const meta = await recorder.findRecoverable();
-      if (!meta || releasingTakeIDs.has(meta.recordingId)) return;
+      if (!meta) return;
       const parts = await getParts(meta.recordingId).catch(() => []);
       if (parts.length === 0) return;
       setRecoverable(meta);
@@ -333,25 +328,13 @@ export function useBrainDumpStep() {
   }
 
   async function handleSkip() {
-    // A skip that lands while the dump is being submitted, or behind
-    // another skip, would advance the wizard a second time, past Hire.
+    // A skip that lands while the dump is being submitted would advance
+    // the wizard a second time behind `completeAndAdvance`.
     if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
     trackBrainDump("brain_dump_skipped");
     const recordedId = recorder.recordingId;
-    recorder.resetQueue();
-    setIntroPath("B");
-    if (recordedId) releasingTakeIDs.add(recordedId);
-    // Nothing below can change where a skip goes, so the user is not kept
-    // waiting on it.
-    nextStep();
-    // Someone who talked for minutes and then skipped leaves multi-MB
-    // blobs behind, and an unfinalized meta row makes the next visit
-    // offer back a take they explicitly abandoned.
-    if (recordedId) {
-      await releaseTake(recordedId);
-      releasingTakeIDs.delete(recordedId);
-    }
+    // Best effort: a failed skip-record still has to let the user
+    // through — being unable to say "no thanks" would be absurd.
     try {
       await finalizeBrainDump({
         recording_id: recordedId ?? crypto.randomUUID(),
@@ -360,11 +343,18 @@ export function useBrainDumpStep() {
     } catch {
       // Path B is the safe default anyway.
     }
+    // Someone who talked for minutes and then skipped leaves multi-MB
+    // blobs behind, and an unfinalized meta row makes the next visit
+    // offer back a take they explicitly abandoned.
     if (recordedId) {
+      await releaseTake(recordedId);
       await discardBrainDump({ recording_id: recordedId }).catch(
         () => undefined,
       );
     }
+    recorder.resetQueue();
+    setIntroPath("B");
+    nextStep();
   }
 
   // IndexedDB is only cleared once the server has confirmed the dump —

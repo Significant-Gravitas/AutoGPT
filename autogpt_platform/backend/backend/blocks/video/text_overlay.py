@@ -14,7 +14,6 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.video._utils import (
-    VideoMediaStorage,
     extract_source_name,
     get_video_codecs,
     strip_chapters_inplace,
@@ -22,10 +21,10 @@ from backend.blocks.video._utils import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import MediaFileType, get_exec_file_path
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
 
-class VideoTextOverlayBlock(VideoMediaStorage, Block):
+class VideoTextOverlayBlock(Block):
     """Add text overlay/caption to video."""
 
     class Input(BlockSchemaInput):
@@ -85,6 +84,26 @@ class VideoTextOverlayBlock(VideoMediaStorage, Block):
                 "_store_output_video": lambda *args, **kwargs: "overlay_test.mp4",
             },
             effect=BlockEffect.WORKSPACE,
+        )
+
+    async def _store_input_video(
+        self, execution_context: ExecutionContext, file: MediaFileType
+    ) -> MediaFileType:
+        """Store input video. Extracted for testability."""
+        return await store_media_file(
+            file=file,
+            execution_context=execution_context,
+            return_format="for_local_processing",
+        )
+
+    async def _store_output_video(
+        self, execution_context: ExecutionContext, file: MediaFileType
+    ) -> MediaFileType:
+        """Store output video. Extracted for testability."""
+        return await store_media_file(
+            file=file,
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
 
     def _add_text_overlay(

@@ -7,6 +7,7 @@ unrestricted; it may also name one of the owner's experts to manage that
 expert's resources.
 """
 
+import asyncio
 import logging
 from collections.abc import Iterable
 from enum import Enum
@@ -239,22 +240,26 @@ def provider_slug(value: object) -> str:
 async def _ungranted_credentials(
     user_id: str, expert_id: str, providers: set[str]
 ) -> list[Credentials]:
-    """Account credentials for *providers* that *expert_id* cannot use yet."""
+    """Account credentials for *providers* that *expert_id* cannot use yet.
+
+    The credentials and the grants are read side by side: neither needs the
+    other."""
     from backend.integrations.creds_manager import IntegrationCredentialsManager
 
     try:
-        owned = await IntegrationCredentialsManager().store.get_all_creds(user_id)
-        allowed = set(
-            await experts_db().expert_allowed_credential_ids(user_id, expert_id)
+        owned, allowed = await asyncio.gather(
+            IntegrationCredentialsManager().store.get_all_creds(user_id),
+            experts_db().expert_allowed_credential_ids(user_id, expert_id),
         )
     except Exception:
         logger.warning("Could not resolve ungranted credentials", exc_info=True)
         return []
+    granted = set(allowed)
     return [
         c
         for c in owned
         if provider_slug(c.provider) in providers
-        and c.id not in allowed
+        and c.id not in granted
         and not is_system_credential(c.id)
     ]
 

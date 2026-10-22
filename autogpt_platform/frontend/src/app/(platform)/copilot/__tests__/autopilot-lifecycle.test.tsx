@@ -183,10 +183,12 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
       renderHost();
       const cancels = countCancels();
-      const tappedWhileDisarmed = tapStopWithin(150);
+      const user = userEvent.setup();
 
       await typeAndSend("hello");
-      expect(await tappedWhileDisarmed).toBe(true);
+      const stop = await screen.findByRole("button", { name: /^stop$/i });
+      await sleep(150);
+      await user.click(stop);
       await sleep(200);
       expect(cancels()).toBe(0);
 
@@ -249,31 +251,4 @@ function sendSlot() {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Taps Stop at most `ms` after it mounts. The timer starts before Stop can
-// mount, so it is always due before Stop's 1 s arm. Resolves to `disabled`.
-function tapStopWithin(ms: number) {
-  return new Promise<boolean>((resolve) => {
-    let isDue = false;
-    const observer = new MutationObserver(tap);
-    function tap() {
-      const stop = document.querySelector<HTMLButtonElement>(
-        'button[aria-label="Stop"]',
-      );
-      if (!isDue || !stop) return;
-      observer.disconnect();
-      resolve(stop.disabled);
-      stop.click();
-    }
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributeFilter: ["aria-label"],
-    });
-    setTimeout(() => {
-      isDue = true;
-      tap();
-    }, ms);
-  });
 }

@@ -69,14 +69,7 @@ export function useBrainDumpRecorder() {
 
   const queue = useUploadQueue();
 
-  const unmountedRef = useRef(false);
-  useEffect(() => {
-    unmountedRef.current = false;
-    return () => {
-      unmountedRef.current = true;
-      stopTracks();
-    };
-  }, []);
+  useEffect(() => stopTracks, []);
 
   function stopTracks() {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -128,12 +121,6 @@ export function useBrainDumpRecorder() {
       }
       return false;
     }
-    // Back during the prompt, or a skip during "Record again", can leave the
-    // step before the mic opens, and its unmount cleanup has already run.
-    if (unmountedRef.current) {
-      stream.getTracks().forEach((track) => track.stop());
-      return false;
-    }
 
     const recordingId = newRecordingId();
     const mimeType = pickMimeType();
@@ -158,10 +145,6 @@ export function useBrainDumpRecorder() {
       durationSecs: 0,
       finalized: false,
     });
-    if (unmountedRef.current) {
-      stopTracks();
-      return false;
-    }
 
     const recorder = new MediaRecorder(stream, { mimeType });
     recorder.ondataavailable = function handleChunk(event) {

@@ -387,16 +387,10 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
 
-      - name: Set up Platform - Pull service images and start database
+      - name: Set up Platform - Start database
         id: database
         background: true
         run: |
-          # Every image `up` would pull, pulled now through the retry, so a brief
-          # Docker Hub refusal can't fail a later `up`.
-          images=$(python -c "import yaml; s = yaml.safe_load(open('../docker-compose.resolved.yml'))['services']; built = {c.get('image') for c in s.values() if 'build' in c}; print(' '.join(sorted({c['image'] for c in s.values() if 'build' not in c} - built)))")
-          for image in $images; do
-            bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$image"
-          done
           docker compose -f ../docker-compose.resolved.yml up -d db --no-build
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
@@ -435,9 +429,7 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Set up tests - Install browser 'chromium'
-        # No --with-deps: the runner image already has Chromium's libraries, and the
-        # apt fetch it adds took up to 16 minutes when Ubuntu's mirror was slow.
-        run: pnpm playwright install chromium
+        run: pnpm playwright install --with-deps chromium
 
       - name: Wait for backend image build and database
         wait: [platform-build-backend, database]

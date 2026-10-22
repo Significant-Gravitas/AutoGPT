@@ -97,9 +97,7 @@ describe("SettingsMobileNav", () => {
     fireEvent.click(profileLink);
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("link", { name: /creator dashboard/i }),
-      ).toBeNull();
+      expect(screen.queryByRole("link", { name: /oauth apps/i })).toBeNull();
     });
   });
 });

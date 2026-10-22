@@ -1,0 +1,153 @@
+"""A chat's first turn recalls its memories while it builds its query: the
+setup doesn't wait for the recall, which is awaited where the query is
+sent."""
+
+import asyncio
+from unittest.mock import AsyncMock
+
+import pytest
+
+from backend.copilot.sdk import service
+
+from .retry_scenarios_test import TestFirstTurnWarmContextIsEphemeral as _FirstTurn
+from .retry_scenarios_test import TestFollowUpWarmContextCallSite as _FollowUp
+
+_SVC = "backend.copilot.sdk.service"
+_BLOCK = "<temporal_context>Alice works on Atlas</temporal_context>"
+_WAIT = 2
+
+
+def _noting_the_build(building: asyncio.Event):
+    """``inject_user_context`` that marks the first turn's query build."""
+    inject = service.inject_user_context
+
+    async def inject_noting_the_build(*args, **kwargs):
+        building.set()
+        return await inject(*args, **kwargs)
+
+    return inject_noting_the_build
+
+
+async def _run_first_turn(queries: list[str], extra: list, *, expect_error=False):
+    await _FirstTurn()._run(
+        _FirstTurn._first_turn("what is Alice working on"),
+        _FollowUp._clients(queries),
+        first_block=None,
+        refresh=_FirstTurn._no_refresh,
+        extra=extra,
+        expect_error=expect_error,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_first_turn_builds_its_query_while_its_memories_are_recalled():
+    building = asyncio.Event()
+    seen: list[str] = []
+
+    async def recall(user_id, message, *, expert_id=None):
+        try:
+            await asyncio.wait_for(building.wait(), _WAIT)
+            seen.append("recalled while the query was built")
+        except TimeoutError:
+            seen.append("the query waited for the recall")
+        return _BLOCK
+
+    queries: list[str] = []
+    await _run_first_turn(
+        queries,
+        [
+            (f"{_SVC}.fetch_warm_context", dict(new=recall)),
+            (f"{_SVC}.inject_user_context", dict(new=_noting_the_build(building))),
+        ],
+    )
+
+    assert seen == ["recalled while the query was built"]
+    assert len(queries) == 1
+    assert "Alice works on Atlas" in queries[0]
+
+
+@pytest.mark.asyncio
+async def test_a_first_turn_sends_its_query_only_once_its_memories_are_in():
+    recalled = asyncio.Event()
+
+    async def slow_recall(user_id, message, *, expert_id=None):
+        # Long enough that a query sent without waiting goes out first.
+        await asyncio.sleep(0.2)
+        recalled.set()
+        return _BLOCK
+
+    queries: list[str] = []
+    await _run_first_turn(
+        queries, [(f"{_SVC}.fetch_warm_context", dict(new=slow_recall))]
+    )
+
+    assert recalled.is_set()
+    assert len(queries) == 1
+    assert queries[0].count("Alice works on Atlas") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_first_turn_that_ends_before_its_query_stops_its_recall():
+    building = asyncio.Event()
+    outcome: list[str] = []
+
+    async def stuck_recall(user_id, message, *, expert_id=None):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            outcome.append("cancelled")
+            raise
+        return _BLOCK
+
+    async def build_fails(*args, **kwargs):
+        building.set()
+        raise RuntimeError("message store down")
+
+    queries: list[str] = []
+    with pytest.raises(RuntimeError, match="message store down"):
+        # Bounded: a setup that waited for the recall would never finish.
+        await asyncio.wait_for(
+            _run_first_turn(
+                queries,
+                [
+                    (f"{_SVC}.fetch_warm_context", dict(new=stuck_recall)),
+                    (f"{_SVC}.inject_user_context", dict(new=build_fails)),
+                ],
+            ),
+            _WAIT * 5,
+        )
+    # The cancelled recall runs its except clause on the next loop pass.
+    await asyncio.wait_for(_until(lambda: bool(outcome)), _WAIT)
+
+    assert building.is_set()
+    assert outcome == ["cancelled"]
+    assert queries == []
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_carries_its_own_refresh_not_a_first_turn_recall():
+    recall = AsyncMock(return_value=_BLOCK)
+
+    async def refresh(user_id, message, *, expert_id=None, force=False):
+        return "<temporal_context>Bob works on Nova</temporal_context>"
+
+    queries: list[str] = []
+    await _FirstTurn()._run(
+        _FirstTurn._second_turn(
+            "what is Alice working on", "what do you know about Bob now"
+        ),
+        _FollowUp._clients(queries),
+        first_block=None,
+        refresh=refresh,
+        extra=[(f"{_SVC}.fetch_warm_context", dict(new=recall))],
+    )
+
+    recall.assert_not_awaited()
+    assert len(queries) == 1
+    assert "Bob works on Nova" in queries[0]
+    assert "Alice works on Atlas" not in queries[0]
+
+
+async def _until(condition) -> None:
+    while not condition():
+        await asyncio.sleep(0)

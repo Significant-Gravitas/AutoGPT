@@ -1,11 +1,13 @@
 """Tests for the skill registry (frontmatter parsing + rendering + the
 ``<available_skills>`` index builder)."""
 
+import asyncio
 import hashlib
 import json
 import os
 import shutil
 import tempfile
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -52,6 +54,7 @@ from backend.copilot.tools.skills import (
     StoredSkill,
     StoreSkillResponse,
     StoreSkillTool,
+    _claim_skills_cache,
     _is_safe_relative,
     _list_user_skills_from_workspace,
     _read_skills_cache,
@@ -929,16 +932,48 @@ async def test_copy_to_expert_keeps_the_installed_origin():
 class _FakeRedis:
     def __init__(self):
         self.store: dict[str, str] = {}
+        self.ttls: dict[str, int | None] = {}
 
     async def get(self, key):
         return self.store.get(key)
 
     async def set(self, key, value, ex=None):
         self.store[key] = value
+        self.ttls[key] = ex
 
     async def delete(self, *keys):
         for key in keys:
             self.store.pop(key, None)
+
+    async def eval(self, script, numkeys, key, claim, value, ttl):
+        # The index's one script: write only while the rebuild's claim holds.
+        assert script == skills._WRITE_IF_CLAIMED
+        if self.store.get(key) != claim:
+            return 0
+        await self.set(key, value, ex=ttl)
+        return True
+
+
+@contextmanager
+def _cached_skills(fake: _FakeWorkspaceManager):
+    """``_patch_skills_path`` with a skill index cache that keeps what it is
+    given, and expert rows that list nothing for the heal to copy. Yields the
+    cache."""
+    redis = _FakeRedis()
+    experts = MagicMock()
+    experts.get_expert = AsyncMock(return_value=MagicMock(skills=[]))
+    experts.add_expert_skill_name = AsyncMock()
+    experts.add_expert_skill_names = AsyncMock()
+    experts.remove_expert_skill_name = AsyncMock()
+    with (
+        _patch_skills_path(fake),
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch("backend.copilot.tools.skills.experts_db", return_value=experts),
+    ):
+        yield redis
 
 
 @pytest.mark.asyncio
@@ -949,6 +984,8 @@ async def test_origin_survives_the_index_cache():
         "backend.copilot.tools.skills.get_redis_async",
         new=AsyncMock(return_value=_FakeRedis()),
     ):
+        claim = await _claim_skills_cache("user-1")
+        assert claim is not None
         await _write_skills_cache(
             "user-1",
             [
@@ -963,6 +1000,7 @@ async def test_origin_survives_the_index_cache():
                 ),
                 ParsedSkill(name="legacy", description="d", body=""),
             ],
+            claim=claim,
         )
         cached = await _read_skills_cache("user-1")
     assert cached is not None
@@ -1603,6 +1641,54 @@ async def test_skills_update_notice_empty_when_flag_disabled():
             "user-1", prior_contents=["<available_skills>\n</available_skills>\n\nhi"]
         )
     assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_reads_the_registry_and_versions_side_by_side(
+    fake_learning_store, monkeypatch
+):
+    """Each read waits until the others have started, so reads made one after
+    another would time out and the turn would get no notice at all."""
+    started = {name: asyncio.Event() for name in ("files", "paused", "heads", "seen")}
+
+    def read(name: str, result):
+        async def _read(*_args, **_kwargs):
+            started[name].set()
+            await asyncio.wait_for(
+                asyncio.gather(*(event.wait() for event in started.values())),
+                timeout=2,
+            )
+            return result
+
+        return AsyncMock(side_effect=_read)
+
+    files = read("files", [ParsedSkill(name="mine", description="d", body="x")])
+    paused = read("paused", set())
+    heads = read("heads", [])
+    seen = read("seen", None)
+    monkeypatch.setattr(skills_module, "list_user_skills", files)
+    monkeypatch.setattr(skills_module, "paused_skill_names", paused)
+    monkeypatch.setattr(fake_learning_store, "list_heads", heads)
+    monkeypatch.setattr(skills_module, "read_seen_index_revision", seen)
+    monkeypatch.setattr(
+        skills_module, "is_skills_feature_enabled", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(skills_module, "_consume_updated", AsyncMock(return_value=[]))
+
+    defaults = skills_module.get_default_skills_for_index()
+    notice = await build_skills_update_notice(
+        "user-1",
+        prior_contents=[
+            _history_with_index(skills_module.render_skills_index(defaults))
+        ],
+        session_id="chat-1",
+    )
+
+    assert "New skills: mine." in notice
+    files.assert_awaited_once()
+    paused.assert_awaited_once()
+    heads.assert_awaited_once()
+    seen.assert_awaited_once_with("chat-1")
 
 
 # ---------------------------------------------------------------------------

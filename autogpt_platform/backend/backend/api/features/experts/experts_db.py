@@ -46,6 +46,7 @@ from backend.api.features.experts.errors import (
 )
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
+    CheckedExpert,
     Expert,
     ExpertActivity,
     ExpertActivityDay,
@@ -104,6 +105,7 @@ from backend.copilot.tools.skills import (
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skill_with_body,
+    invalidate_skills_index_cache,
     skill_name_key,
 )
 from backend.data.db import prisma as db_client
@@ -940,6 +942,40 @@ async def resolve_private_expert_tenancy(
     those future scopes fail-closed instead of silently moving them into the
     owner's personal organization.
     """
+    await _active_private_expert_row(user_id, expert_id)
+    return await _private_expert_owner_scope(user_id, expert_id)
+
+
+async def check_private_expert(user_id: str, expert_id: str) -> CheckedExpert:
+    """The owner's active PRIVATE expert and the scope its work belongs to.
+
+    Everything an expert's turn needs to know about its expert before the
+    model runs, in one call: that the expert is still the owner's own (the
+    rules of :func:`resolve_private_expert_tenancy`), the personal
+    organization and team it works in, how far its hire setup got, and the
+    columns its identity prompt is built from. The latest run and the weekly
+    spend that :func:`get_expert` adds for the roster are not read.
+
+    The owner's scope doesn't depend on the expert's row, so the two are read
+    side by side; when both fail, the missing expert is the error.
+    """
+    scope = asyncio.create_task(_private_expert_owner_scope(user_id, expert_id))
+    try:
+        row = await _active_private_expert_row(user_id, expert_id)
+    except BaseException:
+        # Let the scope read finish rather than cancel it: on a user's first
+        # touch it creates their personal organization.
+        await asyncio.gather(scope, return_exceptions=True)
+        raise
+    organization_id, team_id = await scope
+    return CheckedExpert(
+        expert=_to_model(row), organization_id=organization_id, team_id=team_id
+    )
+
+
+async def _active_private_expert_row(
+    user_id: str, expert_id: str
+) -> prisma.models.Expert:
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -951,7 +987,12 @@ async def resolve_private_expert_tenancy(
     )
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    return expert
 
+
+async def _private_expert_owner_scope(
+    user_id: str, expert_id: str
+) -> tuple[str, str | None]:
     organization_id, team_id = await get_user_default_team(user_id)
     if organization_id is None:
         raise ExpertPrivateTenancyNotFoundError(expert_id)
@@ -1601,6 +1642,9 @@ async def update_skills(
     # above run, and an overwrite from the pre-copy read would silently drop it.
     for name in resolved:
         await add_expert_skill_name(user_id, expert_id, name)
+    # A copy above clears the expert's skill index itself, but a marketplace
+    # name lands on the row alone, and only a rebuild heals it into the folder.
+    await invalidate_skills_index_cache(user_id, expert_id)
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)

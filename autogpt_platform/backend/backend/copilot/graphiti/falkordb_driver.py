@@ -16,6 +16,8 @@ from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 from .config import graphiti_config
 from .fact_attributes import EdgeMergingSession, merging_save
 from .falkordb_connect import DeferredFalkorDB, build_off_loop, new_falkordb_client
+from .falkordb_origins import distinct_origins
+from .falkordb_projection import without_embeddings
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
@@ -113,7 +115,7 @@ def _is_pending_queue_overflow(exc: Exception) -> bool:
 
 
 class AutoGPTFalkorDriver(FalkorDriver):
-    """FalkorDriver subclass with four AutoGPT-specific tweaks.
+    """FalkorDriver subclass with seven AutoGPT-specific tweaks.
 
     1. ``build_fulltext_query`` adds the per-user ``group_id`` filter so
        multi-tenant searches don't cross user graphs.
@@ -154,6 +156,12 @@ class AutoGPTFalkorDriver(FalkorDriver):
        the platform wrote on a fact survives graphiti saving it again,
        and save nothing on a forgotten fact but its episode list
        (``fact_attributes.py``).
+    6. graphiti's reads return every property of a fact or entity but its
+       embedding, which graphiti would drop unread after the read had sent
+       and parsed it (``falkordb_projection.py``).
+    7. A graphiti BFS read that returns distinct rows walks out from each of
+       its origins once, where graphiti hands its second stage the same
+       origin once per fact found (``falkordb_origins.py``).
     """
 
     def __init__(
@@ -250,15 +258,21 @@ class AutoGPTFalkorDriver(FalkorDriver):
 
         Reimplemented rather than delegating to ``super()`` so per-attempt
         logging is under our control; the result-shaping mirrors upstream.
-        graphiti's saves of a fact run as merges (``merging_save``).
+        graphiti's saves of a fact run as merges (``merging_save``), and its
+        reads leave the embeddings out of what they return
+        (``without_embeddings``), and a BFS read walks each origin once
+        (``distinct_origins``).
         """
-        cypher_query_ = merging_save(cypher_query_)
+        cypher_query_ = without_embeddings(merging_save(cypher_query_))
         graph = self._get_graph(self._database)
         # falkordb's async ``Graph.query`` is typed as its sync counterpart in
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
         # cast to the real awaitable/param types rather than suppress. Same
         # runtime call upstream ``FalkorDriver.execute_query`` makes.
-        params = cast(dict[str, object], convert_datetimes_to_strings(dict(kwargs)))
+        params = cast(
+            dict[str, object],
+            convert_datetimes_to_strings(distinct_origins(cypher_query_, dict(kwargs))),
+        )
         attempts = max(1, graphiti_config.falkordb_query_max_attempts)
         read_only = _is_read_only_cypher(cypher_query_)
 

@@ -32,6 +32,7 @@ from .model import (
     ChatMessage,
     ChatSessionInfo,
     ChatSessionMetadata,
+    ChatSessionSaveFields,
     _get_session_lock,
     cache_chat_session,
 )
@@ -445,17 +446,15 @@ async def update_chat_session(
     of the session.
     """
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
-
-    if credentials is not None:
-        data["credentials"] = SafeJson(credentials)
-    if successful_agent_runs is not None:
-        data["successfulAgentRuns"] = SafeJson(successful_agent_runs)
-    if successful_agent_schedules is not None:
-        data["successfulAgentSchedules"] = SafeJson(successful_agent_schedules)
-    if total_prompt_tokens is not None:
-        data["totalPromptTokens"] = total_prompt_tokens
-    if total_completion_tokens is not None:
-        data["totalCompletionTokens"] = total_completion_tokens
+    data.update(
+        _save_fields_input(
+            credentials=credentials,
+            successful_agent_runs=successful_agent_runs,
+            successful_agent_schedules=successful_agent_schedules,
+            total_prompt_tokens=total_prompt_tokens,
+            total_completion_tokens=total_completion_tokens,
+        )
+    )
     if title is not None:
         data["title"] = title
     if update_tenancy:
@@ -470,6 +469,29 @@ async def update_chat_session(
         data=data,
     )
     return ChatSessionInfo.from_db(session) if session else None
+
+
+def _save_fields_input(
+    *,
+    credentials: dict[str, Any] | None = None,
+    successful_agent_runs: dict[str, Any] | None = None,
+    successful_agent_schedules: dict[str, Any] | None = None,
+    total_prompt_tokens: int | None = None,
+    total_completion_tokens: int | None = None,
+) -> ChatSessionUpdateInput:
+    """The columns of the fields a save rewrites; ``None`` leaves one as is."""
+    data: ChatSessionUpdateInput = {}
+    if credentials is not None:
+        data["credentials"] = SafeJson(credentials)
+    if successful_agent_runs is not None:
+        data["successfulAgentRuns"] = SafeJson(successful_agent_runs)
+    if successful_agent_schedules is not None:
+        data["successfulAgentSchedules"] = SafeJson(successful_agent_schedules)
+    if total_prompt_tokens is not None:
+        data["totalPromptTokens"] = total_prompt_tokens
+    if total_completion_tokens is not None:
+        data["totalCompletionTokens"] = total_completion_tokens
+    return data
 
 
 async def update_chat_session_title(
@@ -657,6 +679,7 @@ async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
     start_sequence: int,
+    session_fields: ChatSessionSaveFields | None = None,
 ) -> int:
     """Add multiple messages to a chat session in a batch.
 
@@ -665,6 +688,10 @@ async def add_chat_messages_batch(
     streaming loop and long-running callback race), queries the latest
     sequence and retries with the correct offset. This avoids unnecessary
     upserts and DB queries in the common case (no collision).
+
+    ``session_fields`` are written by the session update inside the rows'
+    transaction, so they land with the rows or not at all (and not without
+    rows: the call returns early when there are none).
 
     Returns:
         The actual ``start_sequence`` used for the (successful) insert.
@@ -746,13 +773,19 @@ async def add_chat_messages_batch(
 
                     messages_data.append(data)
 
+                session_data: ChatSessionUpdateInput = {"updatedAt": now}
+                if session_fields is not None:
+                    session_data.update(
+                        _save_fields_input(**session_fields.model_dump())
+                    )
+
                 # Run create_many and session update in parallel within transaction
                 # Both use the same timestamp for consistency
                 await asyncio.gather(
                     PrismaChatMessage.prisma(tx).create_many(data=messages_data),
                     PrismaChatSession.prisma(tx).update(
                         where={"id": session_id},
-                        data={"updatedAt": now},
+                        data=session_data,
                     ),
                 )
 
@@ -1613,6 +1646,8 @@ async def admit_chat_session_turn(
 
     The count precedes the flip inside one per-user lock, and relies on READ
     COMMITTED (Postgres's default) to see every flip committed before the lock.
+    The read, the count and the flip are one statement after the lock, so the
+    admit costs two round trips besides its begin and commit.
     """
     async with db.transaction() as tx:
         # execute_raw, not query_raw: pg_advisory_xact_lock returns void.
@@ -1620,26 +1655,56 @@ async def admit_chat_session_turn(
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             f"copilot-turns:{user_id}",
         )
-        sessions = PrismaChatSession.prisma(tx)
-        current = await sessions.find_unique(where={"id": session_id})
-        if (
-            current is None
-            or current.userId != user_id
-            or current.chatStatus != expect_status
-        ):
-            return "busy"
-        running = await sessions.count(
-            where={"userId": user_id, "chatStatus": CHAT_STATUS_RUNNING}
+        # Its own statement, never folded into the lock's: a statement's
+        # snapshot is taken when it starts, so only one that starts once the
+        # lock is held sees the admits committed while it waited.
+        rows = await db.query_raw_with_schema(
+            _ADMIT_TURN_QUERY,
+            session_id,
+            user_id,
+            expect_status,
+            CHAT_STATUS_RUNNING,
+            capacity,
+            client=tx,
         )
-        if running >= capacity:
-            return "full"
-        # Conditional: a transition outside this lock (a cancel) may have
-        # moved the row since it was read.
-        updated = await sessions.update_many(
-            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": CHAT_STATUS_RUNNING},
-        )
-    return "admitted" if updated else "busy"
+    row = rows[0]
+    if row["status"] != expect_status:
+        return "busy"
+    if row["running"] >= capacity:
+        return "full"
+    # The flip re-checks the status: a transition outside this lock (a cancel)
+    # may have moved the row since the statement's snapshot.
+    return "admitted" if row["flipped"] else "busy"
+
+
+# The session's status (NULL when it isn't the user's), the user's running
+# count and the conditional flip, read and written against one snapshot.
+# statement_timestamp(), not NOW(): NOW() is when the transaction began, before
+# the lock wait, and a running row stamped that far back can look like an
+# orphan to the stale-slot release.
+_ADMIT_TURN_QUERY = """
+WITH session_row AS (
+    SELECT "chatStatus"::text AS status
+    FROM {schema_prefix}"ChatSession"
+    WHERE "id" = $1 AND "userId" = $2
+), running AS (
+    SELECT COUNT(*)::int AS count
+    FROM {schema_prefix}"ChatSession"
+    WHERE "userId" = $2 AND "chatStatus" = $4::{schema_prefix}"ChatSessionStatus"
+), flipped AS (
+    UPDATE {schema_prefix}"ChatSession"
+    SET "chatStatus" = $4::{schema_prefix}"ChatSessionStatus",
+        "updatedAt" = statement_timestamp()
+    WHERE "id" = $1 AND "userId" = $2
+        AND "chatStatus" = $3::{schema_prefix}"ChatSessionStatus"
+        AND (SELECT count FROM running) < $5
+    RETURNING "id"
+)
+SELECT
+    (SELECT status FROM session_row) AS status,
+    (SELECT count FROM running) AS running,
+    EXISTS (SELECT 1 FROM flipped) AS flipped
+"""
 
 
 async def update_chat_session_status(

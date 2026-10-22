@@ -179,8 +179,8 @@ describe("shouldSuppressDuplicateSend", () => {
     ).toBe(false);
   });
 
-  it("suppresses when text matches an unanswered last user message", () => {
-    const messages = [makeMsg("user", "hello")];
+  it("suppresses when text matches last submitted AND last user message", () => {
+    const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
     expect(
       shouldSuppressDuplicateSend({
         text: "hello",
@@ -339,20 +339,7 @@ describe("getSendSuppressionReason", () => {
     ).toBe("reconnecting");
   });
 
-  it("returns 'duplicate' while the echoed send is still unanswered", () => {
-    const messages = [makeMsg("user", "hello")];
-    expect(
-      getSendSuppressionReason({
-        text: "hello",
-        isReconnectScheduled: false,
-        lastSubmittedText: "hello",
-        messages,
-        status: "ready",
-      }),
-    ).toBe("duplicate");
-  });
-
-  it("sends the same text again once it has been answered", () => {
+  it("returns 'duplicate' when text matches last submitted AND last user message", () => {
     const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
     expect(
       getSendSuppressionReason({
@@ -360,29 +347,15 @@ describe("getSendSuppressionReason", () => {
         isReconnectScheduled: false,
         lastSubmittedText: "hello",
         messages,
-        status: "ready",
       }),
-    ).toBeNull();
-  });
-
-  it("sends the same text again after the previous turn was stopped", () => {
-    const messages = [
-      makeMsg("user", "hello"),
-      makeMsg("assistant", "[__COPILOT_ERROR_f7a1__] Operation cancelled"),
-    ];
-    expect(
-      getSendSuppressionReason({
-        text: "hello",
-        isReconnectScheduled: false,
-        lastSubmittedText: "hello",
-        messages,
-        status: "ready",
-      }),
-    ).toBeNull();
+    ).toBe("duplicate");
   });
 
   it("lets the same caption through when it carries other attachments", () => {
-    const messages = [makeMsg("user", "summarize this")];
+    const messages = [
+      makeMsg("user", "summarize this"),
+      makeMsg("assistant", "ok"),
+    ];
     expect(
       getSendSuppressionReason({
         text: "summarize this",

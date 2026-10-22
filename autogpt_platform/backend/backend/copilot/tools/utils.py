@@ -1,5 +1,6 @@
 """Shared utilities for chat tools."""
 
+import asyncio
 import logging
 import re
 from collections.abc import Mapping
@@ -343,10 +344,16 @@ async def match_credentials_to_requirements(
 async def get_user_credentials(
     user_id: str, expert_id: str | None = None
 ) -> list[Credentials]:
-    """Get the credentials available for a user, scoped to an expert if given."""
-    creds_manager = IntegrationCredentialsManager()
-    credentials = await creds_manager.store.get_all_creds(user_id)
-    return await scope_credentials_to_expert(user_id, expert_id, credentials)
+    """Get the credentials available for a user, scoped to an expert if given.
+
+    The expert's grants are read beside the credentials, not after them:
+    neither read needs the other.
+    """
+    credentials, granted = await asyncio.gather(
+        IntegrationCredentialsManager().store.get_all_creds(user_id),
+        _granted_credential_ids(user_id, expert_id),
+    )
+    return _keep_granted(credentials, granted)
 
 
 async def scope_credentials_to_expert(
@@ -361,14 +368,31 @@ async def scope_credentials_to_expert(
     what makes an ungranted integration surface as "missing credentials", so the
     user is offered the connect/grant step instead of a run that fails later.
     """
+    return _keep_granted(credentials, await _granted_credential_ids(user_id, expert_id))
+
+
+async def _granted_credential_ids(
+    user_id: str, expert_id: str | None
+) -> set[str] | None:
+    """The credential ids *expert_id* has been granted, or ``None`` for a plain
+    session, which keeps everything."""
     if expert_id is None:
+        return None
+
+    from backend.data.db_accessors import experts_db
+
+    return set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
+
+
+def _keep_granted(
+    credentials: list[Credentials], granted: set[str] | None
+) -> list[Credentials]:
+    if granted is None:
         return credentials
 
     from backend.api.features.experts.credentials import filter_credentials_for_expert
-    from backend.data.db_accessors import experts_db
 
-    allowed = set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
-    return filter_credentials_for_expert(credentials, allowed)
+    return filter_credentials_for_expert(credentials, granted)
 
 
 def keep_to_pins(available: list[Credentials]) -> list[Credentials]:
@@ -524,12 +548,7 @@ async def match_user_credentials_to_graph(
         return graph_credentials_inputs, missing_creds
 
     # Get the credentials available for the user, narrowed to the expert's grants
-    creds_manager = IntegrationCredentialsManager()
-    available_creds = keep_to_pins(
-        await scope_credentials_to_expert(
-            user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
-        )
-    )
+    available_creds = keep_to_pins(await get_user_credentials(user_id, expert_id))
     selected = await selected_credentials(session_id)
 
     # For each required credential field, find a matching user credential
@@ -648,10 +667,7 @@ async def check_user_has_required_credentials(
     if not required_credentials:
         return []
 
-    creds_manager = IntegrationCredentialsManager()
-    available_creds = await scope_credentials_to_expert(
-        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
-    )
+    available_creds = await get_user_credentials(user_id, expert_id)
 
     missing: list[CredentialsMetaInput] = []
     for required in required_credentials:

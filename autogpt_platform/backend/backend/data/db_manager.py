@@ -651,6 +651,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    check_private_expert = _(experts_db.check_private_expert)
     get_autopilot_mode = _(experts_db.get_autopilot_mode)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
@@ -1201,6 +1202,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    check_private_expert = d.check_private_expert
     get_autopilot_mode = d.get_autopilot_mode
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread

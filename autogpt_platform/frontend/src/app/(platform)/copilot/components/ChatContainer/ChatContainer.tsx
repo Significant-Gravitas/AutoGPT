@@ -270,29 +270,16 @@ export const ChatContainer = ({
     : (expertIdentity?.autopilotMode ?? null);
   // ChatInput is memoised, and this container renders on every streamed
   // flush: each element and callback it gets keeps its identity until its
-  // own inputs change, so a flush leaves the composer alone. Approvals
-  // stay locked until the chat knows its session and its expert: the mode
-  // shown is the session's, and the Unsupervised confirm names the expert.
-  // A background roster refetch keeps the expert it already knows.
+  // own inputs change, so a flush leaves the composer alone.
   const modeSelector = useMemo(
     () =>
       isAutoModeEnabled ? (
         <AutopilotModeSelector
           sessionId={sessionId}
           persistedMode={initialMode}
-          disabled={
-            isLoadingSession || (!!isResolvingExpertIdentity && !expertIdentity)
-          }
         />
       ) : undefined,
-    [
-      isAutoModeEnabled,
-      sessionId,
-      initialMode,
-      isLoadingSession,
-      isResolvingExpertIdentity,
-      expertIdentity,
-    ],
+    [isAutoModeEnabled, sessionId, initialMode],
   );
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({

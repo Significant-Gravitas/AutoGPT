@@ -114,11 +114,6 @@ function expireCooldowns(db: TestDB) {
   }
 }
 
-function pinRateLimitWindow() {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-01-01T00:05:00.000Z"));
-}
-
 // A send can queue another (the repeat sign-up's reset email), so drain until
 // nothing is left.
 async function emailsSent() {
@@ -219,7 +214,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllEnvs();
 });
 
@@ -731,7 +725,6 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("lets one IP have only a few addresses emailed through the sign-up page", async () => {
-    pinRateLimitWindow();
     const { api } = await createAuthHandler(true);
 
     // The page's server action calls auth.api, which Better Auth's own per-IP
@@ -770,7 +763,6 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("counts the resend button against the same per-IP cap", async () => {
-    pinRateLimitWindow();
     const { handler } = await createAuthHandler(true);
     await signUp(handler, "resends@example.com");
 

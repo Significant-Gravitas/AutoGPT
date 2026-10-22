@@ -22,14 +22,9 @@ import { useAutopilotModeSelector } from "./useAutopilotModeSelector";
 interface Props {
   sessionId: string | null;
   persistedMode: AutopilotMode | null;
-  disabled?: boolean;
 }
 
-export function AutopilotModeSelector({
-  sessionId,
-  persistedMode,
-  disabled = false,
-}: Props) {
+export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
   const {
     mode,
     isDefault,
@@ -44,7 +39,7 @@ export function AutopilotModeSelector({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={disabled}>
+        <DropdownMenuTrigger asChild>
           <button
             type="button"
             aria-label={`Approval mode: ${current.label}. Change mode`}
@@ -58,7 +53,6 @@ export function AutopilotModeSelector({
                 "bg-zinc-100 text-zinc-700 hover:bg-zinc-200",
               mode === "unsupervised" &&
                 "bg-amber-50 text-amber-700 hover:bg-amber-100",
-              disabled && "opacity-40",
             )}
           >
             <Icon icon={current.icon} size={16} aria-hidden="true" />

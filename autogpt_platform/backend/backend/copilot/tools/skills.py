@@ -88,7 +88,11 @@ from backend.data.skill_package import (
     package_tree_sha256,
 )
 from backend.data.skill_version_files import SkillVersionFile
-from backend.data.skill_versions import SkillVersionRecord, content_hash
+from backend.data.skill_versions import (
+    SkillHeadRecord,
+    SkillVersionRecord,
+    content_hash,
+)
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -176,10 +180,25 @@ def skill_folder(expert_id: str | None) -> str:
     return SKILL_FOLDER if expert_id is None else expert_skills_folder(expert_id)
 
 
-# Redis-cached index TTL.  Skill content changes only on store/delete so a
-# 60s TTL with explicit invalidation gives near-zero index latency on warm
-# turns without unbounded staleness for cross-instance edits.
-SKILLS_INDEX_CACHE_TTL_S = 60
+# Redis-cached index TTL. Every write that changes an owner's folder drops the
+# owner's entry, so the TTL only bounds what no write announces: a marketplace
+# publish reaching the owner's copies. A chat's follow-ups arrive about two
+# minutes apart, so a one-minute entry had expired by most of them and the
+# rebuild ran on the turn's critical path.
+SKILLS_INDEX_CACHE_TTL_S = 15 * 60
+# A rebuild claims its entry with this marker before it reads the folder and
+# writes its result only while the marker is still there. A write that lands
+# meanwhile drops the marker with the entry, so the rebuild cannot put back
+# the older view it read. The marker is not JSON, so every reader, this
+# version's or the one before, takes it for a miss; it expires on its own if
+# the rebuild dies.
+_REBUILDING_MARKER = "rebuilding:"
+_REBUILD_CLAIM_TTL_S = 60
+# KEYS: index. ARGV: claim, index, TTL.
+_WRITE_IF_CLAIMED = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3]) else return 0 end'
+)
 # Versioned: an entry cached before origins were recorded would count every
 # installed skill as the owner's for a TTL after deploy.
 SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v2:{user_id}"
@@ -1824,9 +1843,31 @@ async def _read_skills_cache(
         return None
 
 
+async def _claim_skills_cache(user_id: str, expert_id: str | None = None) -> str | None:
+    """Mark the owner's entry as being rebuilt. Returns the claim to write the
+    result under, or None when Redis can't take it and nothing will be
+    written."""
+    claim = f"{_REBUILDING_MARKER}{uuid.uuid4().hex}"
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            _skills_cache_key(user_id, expert_id), claim, ex=_REBUILD_CLAIM_TTL_S
+        )
+    except Exception:
+        return None
+    return claim
+
+
 async def _write_skills_cache(
-    user_id: str, skills: list[ParsedSkill], expert_id: str | None = None
+    user_id: str,
+    skills: list[ParsedSkill],
+    expert_id: str | None = None,
+    *,
+    claim: str,
 ) -> None:
+    """Store a rebuilt index, unless a write has dropped *claim* since the
+    rebuild took it: the folder has changed under it, and the next turn reads
+    it afresh."""
     try:
         redis = await get_redis_async()
         payload = json.dumps(
@@ -1845,10 +1886,13 @@ async def _write_skills_cache(
                 for s in skills
             ]
         )
-        await redis.set(
+        await redis.eval(
+            _WRITE_IF_CLAIMED,
+            1,
             _skills_cache_key(user_id, expert_id),
+            claim,
             payload,
-            ex=SKILLS_INDEX_CACHE_TTL_S,
+            SKILLS_INDEX_CACHE_TTL_S,
         )
     except Exception:
         # Cache write is best-effort.
@@ -1859,8 +1903,9 @@ async def invalidate_skills_index_cache(
     user_id: str, expert_id: str | None = None
 ) -> None:
     """Drop the cached per-user skill index so the next turn rebuilds it.
-    Called by ``store_skill`` / ``delete_user_skill`` so an edit shows up
-    immediately rather than after the 60s TTL.
+    Called by every write that changes an owner's folder or the skill names
+    an expert's row lists, so the change shows on the next turn rather than
+    after the TTL; a rebuild in flight loses its claim with the entry.
 
     Also drops the expert's heal backoff: the folder just changed, so a name
     that resolved to nothing before may resolve now.
@@ -1876,6 +1921,17 @@ async def invalidate_skills_index_cache(
         # state for up to ``SKILLS_INDEX_CACHE_TTL_S`` seconds.
         pass
 
+
+async def invalidate_skills_index_for_path(user_id: str, path: str) -> None:
+    """Drop the index of the owner whose skill folder *path* lies in, if it
+    lies in one. For writes that reach a skill folder as plain files, such as
+    the workspace routes' rename and delete."""
+    match = _OWNER_FOLDER.match(path)
+    if match is not None:
+        await invalidate_skills_index_cache(user_id, match.group(1))
+
+
+_OWNER_FOLDER = re.compile(r"^/(?:experts/([^/]+)/)?skills/")
 
 async def saved_skill_limit_reached(
     user_id: str, expert_id: str | None, name: str
@@ -1908,7 +1964,7 @@ async def list_user_skills(
 ) -> list[ParsedSkill]:
     """Return the skills owned by *expert_id* (personal Otto when ``None``).
 
-    Two-level fast path: a 60s Redis cache covers warm turns, the
+    Two-level fast path: a Redis cache covers warm turns, the
     ``WorkspaceFile.metadata`` index covers cold turns without any storage
     reads, and a parallelised body parse covers any skills written before
     the metadata-cache change shipped.  Skips files whose contents do not
@@ -1918,6 +1974,8 @@ async def list_user_skills(
     cached = await _read_skills_cache(user_id, expert_id)
     if cached is not None:
         return cached
+    # Before the folder is read, so a write landing from here on drops it.
+    claim = await _claim_skills_cache(user_id, expert_id)
     skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     if (
         heal_missing
@@ -1926,7 +1984,10 @@ async def list_user_skills(
     ):
         skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     skills = await _reconcile_marketplace_copies(user_id, expert_id, skills, scope)
-    await _write_skills_cache(user_id, skills, expert_id)
+    if claim is not None:
+        # A heal or reconcile that wrote dropped the claim itself, so the next
+        # turn reads again and a large bundle keeps catching up turn by turn.
+        await _write_skills_cache(user_id, skills, expert_id, claim=claim)
     return skills
 
 
@@ -2045,8 +2106,10 @@ async def _reconcile_marketplace_copies(
             "[skills] could not read active marketplace versions", exc_info=True
         )
         return skills
-    manager = await _get_user_skill_manager(user_id, scope)
     backoff = await _read_update_backoff(user_id, expert_id)
+    # Looked up for the first copy that is actually updated: on most cold
+    # turns every copy is current, and the lookup is a database round trip.
+    manager: WorkspaceManager | None = None
     flags: dict[str, str] = {}
     rewritten: list[str] = []
     failed: dict[str, str] = {}
@@ -2073,6 +2136,8 @@ async def _reconcile_marketplace_copies(
         # An attempt spends budget whether or not it lands, so copies that
         # cannot be updated bound the turn like the ones that can.
         budget -= 1
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current
@@ -2804,8 +2869,11 @@ async def list_all_skills(
     """
     skills = get_default_skills_for_index()
     if user_id:
-        owned = await list_user_skills(user_id, expert_id, scope)
-        paused = await paused_skill_names(user_id, expert_id)
+        # Independent reads: the owner's skill files and the paused names.
+        owned, paused = await asyncio.gather(
+            list_user_skills(user_id, expert_id, scope),
+            paused_skill_names(user_id, expert_id),
+        )
         if paused is None and require_complete:
             raise RuntimeError("Skill registry availability could not be verified")
         if paused is not None:
@@ -2946,7 +3014,11 @@ async def build_skills_update_notice(
     try:
         if not await is_skills_feature_enabled(user_id):
             return ""
-        current = await list_all_skills(user_id, expert_id, require_complete=True)
+        # The registry and the session's skill versions are independent reads.
+        current, session_versions = await asyncio.gather(
+            list_all_skills(user_id, expert_id, require_complete=True),
+            _session_skill_versions(user_id, expert_id, session_id),
+        )
     except Exception:
         logger.exception("[skills] failed to diff skills for update notice")
         return ""
@@ -2959,17 +3031,14 @@ async def build_skills_update_notice(
         for slug in await _consume_updated(user_id, expert_id)
         if slug in current_slugs and slug not in added
     ]
-    if session_id:
+    if session_id and session_versions is not None:
+        heads, previous = session_versions
         try:
-            heads = await skill_versions_db().list_heads(
-                user_id, owner_key_for(expert_id)
-            )
             current_versions = {
                 h.skill_name: h.current_version_id
                 for h in heads
                 if h.skill_name in current_slugs
             }
-            previous = await read_seen_index_revision(session_id)
             try:
                 previous_versions = json.loads(previous) if previous else {}
             except ValueError:
@@ -3019,6 +3088,23 @@ async def build_skills_update_notice(
     return (
         f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
     )
+
+
+async def _session_skill_versions(
+    user_id: str, expert_id: str | None, session_id: str | None
+) -> tuple[list[SkillHeadRecord], str | None] | None:
+    """The owner's skill heads and the versions this chat last saw, or
+    ``None`` without a session or when the heads can't be read."""
+    if not session_id:
+        return None
+    try:
+        return await asyncio.gather(
+            skill_versions_db().list_heads(user_id, owner_key_for(expert_id)),
+            read_seen_index_revision(session_id),
+        )
+    except Exception:
+        logger.warning("[skills] could not check session skill versions", exc_info=True)
+        return None
 
 
 # ---------------------------------------------------------------------------

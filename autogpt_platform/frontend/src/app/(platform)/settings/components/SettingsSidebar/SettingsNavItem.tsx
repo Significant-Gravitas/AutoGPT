@@ -6,16 +6,10 @@ import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
-import type { IconSvgElement } from "@hugeicons/react";
-
-export interface SectionNavLink {
-  label: string;
-  href: string;
-  Icon: IconSvgElement;
-}
+import type { SettingsNavItem as SettingsNavItemType } from "./helpers";
 
 type Props = {
-  item: SectionNavLink;
+  item: SettingsNavItemType;
   isActive: boolean;
 };
 
@@ -25,7 +19,7 @@ function NavItemContent({
   isActive,
 }: {
   label: string;
-  Icon: IconSvgElement;
+  Icon: SettingsNavItemType["Icon"];
   isActive: boolean;
 }) {
   const { pending } = useLinkStatus();
@@ -54,7 +48,7 @@ function NavItemContent({
   );
 }
 
-export function SectionNavItem({ item, isActive }: Props) {
+export function SettingsNavItem({ item, isActive }: Props) {
   const reduceMotion = useReducedMotion();
 
   const variants: Variants = reduceMotion

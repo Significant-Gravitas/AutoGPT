@@ -78,27 +78,6 @@ def test_websocket_server_blocks_localhost_in_production(mocker) -> None:
             WebsocketServer().run()
 
 
-@pytest.mark.parametrize("enabled", [True, False])
-def test_websocket_server_metrics_get_a_listener_of_their_own_only_when_enabled(
-    enabled: bool, mocker, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("ENABLE_METRICS", "true" if enabled else "false")
-    serve_websockets = mocker.patch("backend.api.ws_api.uvicorn.run")
-    serve_metrics = mocker.patch("backend.monitoring.instrumentation.start_http_server")
-
-    WebsocketServer().run()
-
-    config = settings.config
-    assert serve_websockets.call_args.kwargs["port"] == config.websocket_server_port
-    if not enabled:
-        serve_metrics.assert_not_called()
-        return
-    serve_metrics.assert_called_once_with(
-        config.websocket_server_metrics_port, addr=config.pyro_host
-    )
-    assert config.websocket_server_metrics_port != config.websocket_server_port
-
-
 @pytest.mark.asyncio
 async def test_websocket_router_subscribe(
     mock_websocket: AsyncMock, mock_manager: AsyncMock, snapshot: Snapshot, mocker

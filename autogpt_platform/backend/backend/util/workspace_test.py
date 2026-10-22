@@ -2,6 +2,7 @@
 Tests for WorkspaceManager.write_file UniqueViolationError handling.
 """
 
+import asyncio
 import hashlib
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -292,6 +293,72 @@ async def test_write_file_skips_the_scan_only_for_bytes_already_scanned(
         )
     # Kills: skipping on any recorded hash, or never skipping.
     assert scan.await_count == (1 if expect_scan else 0)
+
+
+@pytest.mark.parametrize("overwrite", [False, True], ids=["new", "overwrite"])
+async def test_write_file_reads_the_path_beside_the_quota(
+    manager, mock_storage, mock_db, overwrite
+):
+    """Each read returns only once all three are in flight, so looking up the
+    file at the path after the quota reads times out."""
+    started: list[str] = []
+    together = asyncio.Event()
+
+    def in_flight(name: str, value):
+        async def read(*_args, **_kwargs):
+            started.append(name)
+            if len(started) == 3:
+                together.set()
+            await asyncio.wait_for(together.wait(), timeout=1)
+            return value
+
+        return read
+
+    mock_db.get_workspace_total_size = AsyncMock(side_effect=in_flight("usage", 0))
+    mock_db.get_workspace_file_by_path = AsyncMock(side_effect=in_flight("path", None))
+    mock_db.create_workspace_file.return_value = _make_workspace_file()
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage", return_value=mock_storage
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            new=AsyncMock(side_effect=in_flight("limit", 1_000)),
+        ),
+    ):
+        await manager.write_file(
+            filename="test.txt", content=b"hello", overwrite=overwrite
+        )
+
+    assert sorted(started) == ["limit", "path", "usage"]
+    mock_db.get_workspace_file_by_path.assert_awaited_once_with("ws-123", "/test.txt")
+
+
+async def test_write_file_refuses_an_existing_path_before_storing(
+    manager, mock_storage, mock_db
+):
+    mock_db.get_workspace_file_by_path.return_value = _make_workspace_file()
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage", return_value=mock_storage
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch(
+            "backend.util.workspace.scan_content_safe", new_callable=AsyncMock
+        ) as scan,
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=1_000,
+        ),
+        pytest.raises(ValueError, match="File already exists"),
+    ):
+        await manager.write_file(filename="test.txt", content=b"hello")
+
+    scan.assert_not_called()
+    mock_storage.store.assert_not_called()
+    mock_db.create_workspace_file.assert_not_called()
 
 
 @pytest.mark.asyncio

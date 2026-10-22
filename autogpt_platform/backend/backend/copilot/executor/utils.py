@@ -931,13 +931,9 @@ async def schedule_chat_turn(
                 content=message,
                 metadata=message_metadata,
             )
-            # A refreshed slot means a turn already runs for this chat, so the
-            # same text again is a double send, whatever id it carries.
             is_duplicate = (
                 await append_and_save_message(
-                    session_id,
-                    chat_message,
-                    dedupe_content=dedupe_content or not slot.admitted,
+                    session_id, chat_message, dedupe_content=dedupe_content
                 )
             ) is None
             if not is_duplicate and is_user_message:
