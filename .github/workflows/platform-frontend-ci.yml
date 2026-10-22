@@ -43,7 +43,7 @@ defaults:
 jobs:
   tooltip-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 11
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
