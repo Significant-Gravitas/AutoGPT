@@ -498,10 +498,18 @@ class TestBasePromptApprovalFallback:
 
 
 class TestCapabilityIdRule:
-    def test_mcp_server_url_is_the_named_exception_to_the_id_rule(self):
-        notes = prompting.SHARED_TOOL_NOTES
+    @pytest.mark.parametrize("use_e2b", [None, False, True])
+    def test_named_ids_and_verified_mcp_urls_are_discovery_exceptions(self, use_e2b):
+        notes = (
+            prompting.SHARED_TOOL_NOTES
+            if use_e2b is None
+            else prompting.get_sdk_supplement(use_e2b=use_e2b)
+        )
+        id_rule = next(line for line in notes.splitlines() if line.startswith("2. "))
+        assert "platform IDs explicitly named in these instructions" in id_rule
         assert "the only other exception is the MCP server URL fallback below" in notes
-        assert "that verified vendor URL is the only non-skill id" in notes
+        assert "Apart from those listed skills and explicit platform IDs" in notes
+        assert "that verified vendor URL is the only id" in notes
         assert "Check the hostname belongs to the vendor" in notes
         assert "Writes to servers outside the catalog pause for review." in notes
 
