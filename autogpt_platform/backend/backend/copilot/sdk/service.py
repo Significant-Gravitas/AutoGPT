@@ -195,6 +195,7 @@ from ..builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from ..expert_check import forget_expert_checks
 from ..expert_context import build_expert_identity_suffix
 from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
@@ -7198,6 +7199,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # r3105523410 — text-only requeue silently stripped it).
             _auto_requeued = False
             _first_auto_event = True
+            # The continuation reads its expert again instead of reusing the
+            # turn's check: the user may have archived the expert since.
+            forget_expert_checks()
 
             async def _requeue_drained(reason: str) -> None:
                 logger.warning(

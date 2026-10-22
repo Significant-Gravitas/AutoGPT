@@ -11,6 +11,7 @@ from backend.api.features.experts.models import (
 )
 from backend.copilot.expert_check import (
     checked_expert,
+    forget_expert_checks,
     remember_expert_check,
     sharing_expert_checks,
 )
@@ -51,6 +52,14 @@ def test_the_next_turn_checks_again():
     with sharing_expert_checks():
         remember_expert_check("user-1", "expert-1", CHECK)
     with sharing_expert_checks():
+        assert checked_expert("user-1", "expert-1") is None
+
+
+def test_a_forgotten_check_is_read_again():
+    with sharing_expert_checks():
+        remember_expert_check("user-1", "expert-1", CHECK)
+        forget_expert_checks()
+
         assert checked_expert("user-1", "expert-1") is None
 
 
