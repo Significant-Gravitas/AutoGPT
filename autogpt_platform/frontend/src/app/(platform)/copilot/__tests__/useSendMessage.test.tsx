@@ -87,6 +87,7 @@ describe("useSendMessage with local attachments", () => {
           mediaType: "application/pdf",
           sizeBytes: 2048,
           isUploading: true,
+          file: expect.any(File),
         },
       ],
     });
@@ -246,6 +247,7 @@ describe("useSendMessage with local attachments", () => {
           mediaType: "application/pdf",
           sizeBytes: 2048,
           isUploading: true,
+          file: expect.any(File),
         },
       ],
     });

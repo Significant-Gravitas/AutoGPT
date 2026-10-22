@@ -71,9 +71,15 @@ export function FileChips({
                     : attachment.kind === "workspace"
                       ? attachment.mimeType
                       : "";
-                const chipIcon = isFolder
-                  ? Folder01Icon
-                  : getFileTypeIcon(mimeType);
+                const chipIcon = (
+                  <Icon
+                    icon={isFolder ? Folder01Icon : getFileTypeIcon(mimeType)}
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 text-zinc-900",
+                      stacked && "text-zinc-400",
+                    )}
+                  />
+                );
                 const count = isFolder
                   ? folderSummary(
                       attachment.fileCount,
@@ -122,15 +128,10 @@ export function FileChips({
                       <ChipThumbnail
                         attachment={attachment}
                         stacked={stacked}
+                        fallback={chipIcon}
                       />
                     ) : (
-                      <Icon
-                        icon={chipIcon}
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0 text-zinc-900",
-                          stacked && "text-zinc-400",
-                        )}
-                      />
+                      chipIcon
                     )}
                     <span className="max-w-[160px] truncate">{name}</span>
                     {count ? (

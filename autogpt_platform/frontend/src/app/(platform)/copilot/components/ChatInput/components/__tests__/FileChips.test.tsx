@@ -79,6 +79,26 @@ describe("FileChips", () => {
     expect(screen.getByText("photo.jpg")).toBeTruthy();
   });
 
+  it("falls back to the file icon when an image thumbnail fails to load", () => {
+    const stored: Attachment = {
+      kind: "workspace",
+      fileId: "file-2",
+      name: "shot.png",
+      mimeType: "image/png",
+    };
+    const { container } = render(
+      <FileChips attachments={[stored]} onRemove={vi.fn()} />,
+    );
+
+    const image = container.querySelector("img");
+    expect(image).not.toBeNull();
+    fireEvent.error(image!);
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
+    expect(screen.getByText("shot.png")).toBeTruthy();
+  });
+
   it("shows a spinner instead of a remove button for local files while uploading", () => {
     render(
       <FileChips

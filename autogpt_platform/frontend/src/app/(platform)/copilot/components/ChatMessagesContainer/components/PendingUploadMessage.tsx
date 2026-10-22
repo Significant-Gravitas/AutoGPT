@@ -129,6 +129,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
                   <PendingImageThumbnail
                     key={`${attachment.name}-${i}`}
                     attachment={attachment}
+                    fallback={<PendingArtifactCard attachment={attachment} />}
                   />
                 ))}
               </div>

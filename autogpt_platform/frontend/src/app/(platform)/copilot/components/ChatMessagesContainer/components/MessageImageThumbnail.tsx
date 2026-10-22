@@ -3,7 +3,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { PendingUploadAttachment } from "../../../copilotStreamStore";
 import type { ArtifactRef } from "../../../store";
 import { useCopilotUIStore } from "../../../store";
@@ -41,6 +41,8 @@ export function MessageImageThumbnail({ artifact, readOnly }: Props) {
         src={artifact.sourceUrl}
         alt={artifact.title}
         className={IMAGE}
+        loading="lazy"
+        decoding="async"
         onError={() => setFailed(true)}
       />
     </button>
@@ -49,11 +51,17 @@ export function MessageImageThumbnail({ artifact, readOnly }: Props) {
 
 interface PendingProps {
   attachment: PendingUploadAttachment;
+  /** Shown instead when the image fails to load. */
+  fallback: ReactNode;
 }
 
 /** The same picture while the message's files upload, so nothing moves when
  *  the sent message replaces the placeholder. */
-export function PendingImageThumbnail({ attachment }: PendingProps) {
+export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) return fallback;
+
   return (
     <div className={cn(FRAME, "relative")}>
       {attachment.file ? (
@@ -61,10 +69,16 @@ export function PendingImageThumbnail({ attachment }: PendingProps) {
           file={attachment.file}
           alt={attachment.name}
           className={IMAGE}
+          onError={() => setFailed(true)}
         />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={attachment.url} alt={attachment.name} className={IMAGE} />
+        <img
+          src={attachment.url}
+          alt={attachment.name}
+          className={IMAGE}
+          onError={() => setFailed(true)}
+        />
       )}
       {attachment.isUploading && (
         <span className="absolute inset-0 flex items-center justify-center bg-black/20">
