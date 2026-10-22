@@ -5,13 +5,15 @@ const SECRET_PATTERNS: RegExp[] = [
   // OpenAI (sk-, sk-proj-, ...) and Anthropic (sk-ant-...). The run of 20
   // letters and digits keeps hyphenated words like "sk-learn" out.
   /\bsk-[A-Za-z0-9_-]*[A-Za-z0-9]{20}/,
-  // GitHub classic and app tokens, then fine-grained tokens.
-  /\bgh[pousr]_[A-Za-z0-9]{36,}/,
+  // GitHub classic and app tokens, including the stateless app installation
+  // tokens (ghs_<app id>_<JWT>), then fine-grained tokens.
+  /\bgh[pousr]_[A-Za-z0-9._-]{36,}/,
   /\bgithub_pat_[A-Za-z0-9_]{22,}/,
   // AWS access key IDs, long-lived (AKIA) and temporary (ASIA).
   /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/,
-  // Slack bot, user, app and refresh tokens.
-  /\bxox[abposr]-\d+-[A-Za-z0-9-]{10,}/,
+  // Slack bot, user, refresh and app-level tokens (xoxb-, xoxp-, xoxe-,
+  // xapp-, and the rotating xoxe.xoxb- / xoxe.xapp- forms).
+  /\b(?:xox[abposre]|xapp)-\d+-[A-Za-z0-9-]{10,}/,
   // Stripe live secret and restricted keys.
   /\b[sr]k_live_[A-Za-z0-9]{20,}/,
   // Google API keys.

@@ -20,6 +20,10 @@ describe("containsLikelySecret", () => {
     ["GitHub server-to-server token", sample("ghs_", ALNUM_40.slice(0, 36))],
     ["GitHub refresh token", sample("ghr_", ALNUM_40.slice(0, 36))],
     [
+      "GitHub stateless installation token",
+      sample("ghs_", "1234567_eyJhbGciOi." + ALNUM_40 + "." + ALNUM_40),
+    ],
+    [
       "GitHub fine-grained token",
       sample("github_", "pat_11ABCDEFG0" + ALNUM_40 + "_" + ALNUM_40),
     ],
@@ -27,6 +31,19 @@ describe("containsLikelySecret", () => {
     ["AWS temporary key", sample("AS", "IAZ2Q4W6E8R0T2Y4U6")],
     ["Slack bot token", sample("xo", "xb-123456789012-1234567890123-AbCdEfGh")],
     ["Slack user token", sample("xo", "xp-123456789012-98765-AbCdEfGhIjKl")],
+    ["Slack refresh token", sample("xo", "xe-1-My0xNi0yNDY4MDEz-AbCdEfGh")],
+    [
+      "Slack app-level token",
+      sample("xa", "pp-1-A0123456789-1234567-abcdef12"),
+    ],
+    [
+      "Slack rotating bot token",
+      sample("xoxe.", "xoxb-1-My0xNi0yNDY4MDEz-AbCdEfGh"),
+    ],
+    [
+      "Slack rotating app token",
+      sample("xoxe.", "xapp-1-A0123456789-1234567-abcdef12"),
+    ],
     ["Stripe live key", sample("sk_", "live_" + ALNUM_40.slice(0, 24))],
     ["Stripe restricted key", sample("rk_", "live_" + ALNUM_40.slice(0, 24))],
     ["Google API key", sample("AI", "za" + ALNUM_40.slice(0, 35))],
