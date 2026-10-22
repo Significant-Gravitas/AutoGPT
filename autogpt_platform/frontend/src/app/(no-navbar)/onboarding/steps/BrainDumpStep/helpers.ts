@@ -98,6 +98,8 @@ export const BRAIN_DUMP_HEADLINE = "Talk to me about your work";
 // transcription succeeded but carried nothing to personalize from —
 // silence, filler, or an STT hallucination. Distinct from a transcription
 // failure: the take went through fine, it just didn't say enough.
+// `quality_check_unavailable` is left out on purpose: the judge never ruled,
+// so the take gets the failure screen, whose retry can still pass.
 const INSUFFICIENT_DUMP_ERROR_CODES = [
   "no_usable_speech",
   "insufficient_content",

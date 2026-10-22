@@ -771,6 +771,33 @@ describe("useBrainDumpStep — retry", () => {
     });
   });
 
+  it("retries the recording, not earlier typed text, when sending it failed", async () => {
+    finalizeBrainDump.mockRejectedValueOnce(new Error("offline"));
+    const { result } = await renderStep();
+    act(() => {
+      result.current.setTypedText("notes");
+    });
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockRejectedValueOnce(new Error("stop failed"));
+    await act(async () => {
+      await result.current.handleDone();
+    });
+    finalizeBrainDump.mockClear();
+
+    await act(async () => {
+      await result.current.handleRetry();
+    });
+
+    expect(recorderState.resendAllParts).toHaveBeenCalledWith("rec-1");
+    expect(finalizeBody()).toMatchObject({
+      recording_id: "rec-1",
+      input_mode: "voice",
+    });
+  });
+
   it("does not replay parts when there is no recording to retry", async () => {
     recorderState.recordingId = null;
     const { result } = await renderStep();
