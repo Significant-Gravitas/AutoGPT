@@ -24,6 +24,7 @@ from .chat_text_e2e_test import (
     _run_turn,
     _session,
 )
+from .launch_env import SKIP_SDK_VERSION_CHECK
 
 # A setting of the backend's own, which no CLI process may keep.
 _SETTING = ("BACKEND_ONLY_SETTING", "FAKE-backend-setting")
@@ -54,9 +55,11 @@ async def test_every_cli_a_turn_starts_has_the_backends_settings_blanked(
     pod."""
     _require_cli()
     monkeypatch.setenv(*_SETTING)
-    # As the copilot executor does: the SDK's own version check runs on the
-    # parent's environment, and only reports a version.
-    monkeypatch.setenv("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+    # Unset, as on a worker that never set it, so the SDK's own version check
+    # is recorded if it runs. Set first, so a launch's setting is undone after
+    # the test.
+    monkeypatch.setenv(SKIP_SDK_VERSION_CHECK, "1")
+    monkeypatch.delenv(SKIP_SDK_VERSION_CHECK)
     spawned: list[dict[str, str] | None] = []
     open_process = anyio.open_process
 

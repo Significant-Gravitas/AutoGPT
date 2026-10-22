@@ -17,10 +17,17 @@ from claude_agent_sdk import ClaudeAgentOptions, CLIConnectionError
 from claude_agent_sdk._internal.transport import subprocess_cli
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.executor import processor
 
 from . import cli_version, subscription
 from .env import build_sdk_env
-from .launch_env import SDK_MANAGED_NAMES, inherited, kept_by_launch, launch_options
+from .launch_env import (
+    SDK_MANAGED_NAMES,
+    SKIP_SDK_VERSION_CHECK,
+    inherited,
+    kept_by_launch,
+    launch_options,
+)
 
 # The platform's own Anthropic key and the host's Claude login: each is the
 # credential of exactly one route below and must reach no other.
@@ -62,8 +69,8 @@ def parent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv(name, value)
     monkeypatch.setenv(*_CLI_SETTING)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    # The SDK's version probe spawns the CLI too; this test reads the launch.
-    monkeypatch.setenv("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+    # Set as a launch sets it, so a launch's setting is undone after each test.
+    monkeypatch.setenv(SKIP_SDK_VERSION_CHECK, "1")
 
 
 async def _spawned_env(
@@ -189,11 +196,33 @@ async def test_a_variable_the_backend_gains_later_is_blanked_too(
     assert spawned["SOME_SERVICE_TOKEN_ADDED_LATER"] == ""
 
 
+@pytest.mark.asyncio
+async def test_a_launch_turns_off_the_sdks_own_version_check(
+    parent: None, monkeypatch: pytest.MonkeyPatch
+):
+    """The SDK's check would start the CLI on the parent's whole environment
+    before the launch."""
+    monkeypatch.delenv(SKIP_SDK_VERSION_CHECK)
+    spawned: list[dict[str, str] | None] = []
+
+    async def open_process(*_args, **kwargs):
+        spawned.append(kwargs.get("env"))
+        raise _Spawned
+
+    monkeypatch.setattr(anyio, "open_process", open_process)
+    options = launch_options(ClaudeAgentOptions(cli_path="claude-under-test"))
+    transport = subprocess_cli.SubprocessCLITransport(prompt="", options=options)
+    with pytest.raises(CLIConnectionError):
+        await transport.connect()
+
+    assert None not in spawned, "the SDK's version check started the CLI"
+    [env] = spawned
+    assert env["DATABASE_URL"] == ""
+
+
 def test_the_worker_warm_up_starts_the_cli_from_the_runtime_only(
     parent: None, monkeypatch: pytest.MonkeyPatch
 ):
-    from backend.copilot.executor import processor
-
     runs: list[dict[str, str]] = []
 
     def run(args, **kwargs):

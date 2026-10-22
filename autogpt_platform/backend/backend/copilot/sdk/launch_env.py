@@ -14,11 +14,13 @@ set the CLI up through it: the direct-Anthropic route's key and base URL
 come from the parent, and every other route sets the credential variables
 it uses (``sdk/env.py``).
 
-Two things fall outside it: a variable added to ``os.environ`` between
-``launch_options`` and the spawn, which the SDK merges in as it spawns, and
-the SDK's own ``claude -v`` version check, which runs on the parent
-environment (the copilot executor skips it). The backend writes no secret
-to ``os.environ`` after import.
+One thing falls outside it: a variable added to ``os.environ`` between
+``launch_options`` and the spawn, which the SDK merges in as it spawns. The
+backend writes no secret to ``os.environ`` after import.
+
+The SDK's own ``claude -v`` version check would start the CLI on the parent's
+whole environment before the launch, so ``launch_options`` turns it off: each
+launch has already checked its CLI's version (``require_verbatim_prompts_cli``).
 """
 
 from __future__ import annotations
@@ -88,6 +90,9 @@ CLAUDE_OAUTH_BLANK: dict[str, str] = {
     "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "",
     "CLAUDE_CODE_REFRESH_TOKEN": "",
 }
+# The SDK's switch for its own version check, which it runs outside a launch's
+# options, on the parent's whole environment.
+SKIP_SDK_VERSION_CHECK = "CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"
 
 
 def inherited(name: str) -> bool:
@@ -128,7 +133,12 @@ def isolated_launch_env(env: Mapping[str, str]) -> dict[str, str]:
 
 def launch_options(options: ClaudeAgentOptions) -> ClaudeAgentOptions:
     """A copy of *options* with the environment a launch starts from, worked
-    out now."""
+    out now.
+
+    Also turns the SDK's own version check off for the process, as the
+    copilot executor does when it starts.
+    """
+    os.environ[SKIP_SDK_VERSION_CHECK] = "1"
     launched = copy.copy(options)
     launched.env = isolated_launch_env(options.env)
     return launched
