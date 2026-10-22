@@ -57,7 +57,9 @@ hallucinates — the gate must reject the result, whatever it is. One wrong
 verdict fails the run, exactly like a WER breach: a garbage dump that
 personalizes and a real dump that bounces are both release blockers. The
 LLM half of the gate needs the usual chat key (`OPEN_ROUTER_API_KEY` or an
-OpenAI key) on top of the STT key.
+OpenAI key) on top of the STT key. A file the judge could not be asked
+about (no key, a timeout, an error) scores as wrong even where a reject was
+expected, so an outage can fail the run but never pass it.
 
 ## The committed baseline corpus
 

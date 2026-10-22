@@ -498,6 +498,8 @@ model OnboardingBrainDump {
   transcript     String?
   transcriptLang String?
   errorCode      String?
+  /// What decided a quality-gate rejection (`quality.QualityRejection.reason`).
+  errorReason    String?
 
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting

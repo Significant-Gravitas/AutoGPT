@@ -828,6 +828,20 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(recordingStoreState.parts).toHaveLength(1);
   });
 
+  it("offers a retry of the same take when the quality check was unavailable", async () => {
+    finalizeReturns({
+      status: "failed",
+      error_code: "quality_check_unavailable",
+    });
+
+    await recordAndSend();
+
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+    expect(screen.queryByText("We didn't catch enough of that.")).toBeNull();
+    expect(recordingStoreState.parts).toHaveLength(1);
+  });
+
   it("opens the typed composer from the recovery screen", async () => {
     finalizeReturns({ status: "failed", error_code: "no_usable_speech" });
 
