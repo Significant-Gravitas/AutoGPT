@@ -347,7 +347,9 @@ describe("ExpertChatDrawer attachments", () => {
 
     const bubble = await screen.findByTestId("pending-upload-message");
     expect(within(bubble).getByText("what is this")).toBeDefined();
-    expect(within(bubble).getByText("photo.png")).toBeDefined();
+    expect(
+      within(bubble).getByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
     expect(screen.queryByText("What can I do for you?")).toBeNull();
     expect(recorder.uploadSessionIds).toEqual([]);
 
@@ -410,7 +412,9 @@ describe("ExpertChatDrawer attachments", () => {
 
     const bubble = await screen.findByTestId("pending-upload-message");
     expect(within(bubble).getByText("and this")).toBeDefined();
-    expect(within(bubble).getByText("photo.png")).toBeDefined();
+    expect(
+      within(bubble).getByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
     await waitFor(() =>
       expect(recorder.uploadSessionIds).toEqual([SESSION_ID]),
     );
@@ -588,7 +592,9 @@ describe("ExpertChatDrawer attachments", () => {
 
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
     expect(recorder.streamBodies[0].expert_kickoff).toBe(true);
-    expect(within(pendingBubble()).getByText("photo.png")).toBeDefined();
+    expect(
+      within(pendingBubble()).getByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
 
     kickoffReply.release();
 

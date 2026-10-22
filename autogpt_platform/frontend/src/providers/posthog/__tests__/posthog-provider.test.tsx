@@ -41,6 +41,7 @@ vi.mock("@/services/analytics/anonymous-id", () => ({
 }));
 
 vi.mock("../posthog-consent", () => ({
+  dropWithoutConsent: vi.fn(),
   followAnalyticsConsent: () => () => {},
   forgetPostHogStorageWithoutConsent: vi.fn(),
   getConsentGatedConfig: () => ({}),
@@ -69,17 +70,19 @@ describe("PostHogProvider", () => {
     );
   });
 
-  it("marks the events an admin sends while acting as a user", async () => {
+  it("drops events without consent, then marks those an admin sends while acting as a user", async () => {
     const { PostHogProvider } = await import("../posthog-provider");
     const { markImpersonatedEvent } = await import(
       "@/services/analytics/posthog-request-context"
     );
+    const { dropWithoutConsent } = await import("../posthog-consent");
 
     render(<PostHogProvider>app</PostHogProvider>);
 
-    expect(posthog.init.mock.calls[0][1].before_send).toBe(
+    expect(posthog.init.mock.calls[0][1].before_send).toEqual([
+      dropWithoutConsent,
       markImpersonatedEvent,
-    );
+    ]);
   });
 
   it("talks to a self-hosted PostHog directly", async () => {
