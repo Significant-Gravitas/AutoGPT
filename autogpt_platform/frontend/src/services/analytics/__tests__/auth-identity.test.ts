@@ -1,3 +1,4 @@
+import { fetchUser, validateSession } from "@/lib/auth/hooks/helpers";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
 import {
@@ -143,17 +144,54 @@ describe("analytics identity on account transitions", () => {
       document.cookie = "agpt_account_created=; Path=/; Max-Age=0";
     });
 
-    it("adopts the website's id once the session shows nobody signed in", () => {
+    function initializeAuth() {
+      return useAuthStore.getState().initialize({
+        api: {} as never,
+        router: {} as never,
+        path: "/",
+      });
+    }
+
+    it("adopts the website's id once the session shows nobody signed in", async () => {
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: false,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: true,
+        shouldUpdateUser: false,
+      });
       answerCookiebot({ statistics: true });
       expect(getAnonymousID()).not.toBe("website-device");
       expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
 
-      useAuthStore.setState({ isUserLoading: false });
+      await initializeAuth();
 
       expect(getAnonymousID()).toBe("website-device");
       expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
         "website-device",
       );
+    });
+
+    it("keeps it from an account the fallback validation finds", async () => {
+      // fetchUser can miss a session right after login; validation finds it.
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: false,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: true,
+        user: userA,
+        shouldUpdateUser: true,
+      });
+      answerCookiebot({ statistics: true });
+
+      await initializeAuth();
+
+      expect(useAuthStore.getState().user).toEqual(userA);
+      expect(getAnonymousID()).not.toBe("website-device");
     });
 
     it("adopts it for an account created here after the signup flag is gone", () => {

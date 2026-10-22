@@ -1,5 +1,6 @@
 import {
   getAnonymousID,
+  isAnonymousIDSettled,
   subscribeToAnonymousIDSettled,
 } from "@/services/analytics/anonymous-id";
 import { environment } from "@/services/environment";
@@ -23,7 +24,7 @@ const PERSISTENT_STORAGE = "localStorage+cookie";
  */
 export function getConsentGatedConfig() {
   return {
-    persistence: hasConsentFor("analytics") ? PERSISTENT_STORAGE : "memory",
+    persistence: canPersist() ? PERSISTENT_STORAGE : "memory",
     opt_out_capturing_by_default: true,
     opt_out_persistence_by_default: true,
     opt_out_capturing_persistence_type: "localStorage",
@@ -42,9 +43,16 @@ export function getConsentGatedConfig() {
  * adopts (services/analytics/anonymous-id.ts).
  */
 export function forgetPostHogStorageWithoutConsent(token: string) {
-  if (hasConsentFor("analytics")) return;
+  if (canPersist()) return;
   if (hasDeclinedConsentFor("analytics")) clearPostHogStorage(token);
   else clearPostHogOptIn();
+}
+
+// With consent, once the anonymous id is decided: until the session is known
+// it may still move to the website's, and PostHog must not write (or send
+// under) the page's id meanwhile.
+function canPersist() {
+  return hasConsentFor("analytics") && isAnonymousIDSettled();
 }
 
 /**
@@ -110,6 +118,8 @@ export function syncPostHogConsent() {
     return;
   }
 
+  // The settled listener comes back once the id is decided.
+  if (!isAnonymousIDSettled()) return;
   // Before the storage turns persistent, which writes the shared cookie.
   adoptAnonymousID();
   if (!posthog.has_opted_in_capturing()) {

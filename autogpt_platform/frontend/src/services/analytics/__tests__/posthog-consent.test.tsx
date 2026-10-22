@@ -699,14 +699,48 @@ describe("PostHog hand-over from the marketing site", () => {
 
     act(() => answerCookiebot({ statistics: true }));
 
+    // Nothing is sent or stored under the page's id meanwhile.
     expect(posthog.get_distinct_id()).toBe(pageID);
+    expect(posthog.has_opted_out_capturing()).toBe(true);
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
+    expect(sharedCookie()).toEqual({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+    expect(captured).toEqual([]);
 
-    setAnalyticsIdentitySignedIn(false);
+    act(() => setAnalyticsIdentitySignedIn(false));
 
     expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
     expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
+    // The landing page view was held, and goes out under the website's id.
+    await vi.waitFor(() => expect(captured).toContain("$pageview"));
+    expect(
+      capturedEvents.find((event) => event.event === "$pageview")?.properties
+        .distinct_id,
+    ).toBe(WEBSITE_ID);
+  });
+
+  it("starts in memory on a stored grant until the session is known", async () => {
+    installCookiebot({ statistics: true });
+    window.localStorage.setItem("agpt_posthog_consent", "1");
+
+    const { posthog, setAnalyticsIdentitySignedIn } = await renderPostHog({
+      sessionKnown: false,
+    });
+
+    expect(posthog.config.persistence).toBe("memory");
+    expect(posthog.has_opted_out_capturing()).toBe(true);
+    expect(sharedCookie()).toEqual({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+
+    act(() => setAnalyticsIdentitySignedIn(true));
+
+    expect(posthog.config.persistence).toBe("localStorage+cookie");
+    expect(posthog.get_distinct_id()).not.toBe(WEBSITE_ID);
   });
 });
 

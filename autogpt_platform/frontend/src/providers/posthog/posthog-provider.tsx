@@ -7,6 +7,7 @@ import {
   getAnonymousID,
 } from "@/services/analytics/anonymous-id";
 import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-properties";
+import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { PageEvent } from "@/services/analytics/posthog-events";
 import { markImpersonatedEvent } from "@/services/analytics/posthog-request-context";
 import { useConsent } from "@/services/consent/useConsent";
@@ -116,7 +117,9 @@ export function PostHogPageViewTracker() {
       if (searchParams && searchParams.toString()) {
         url = url + `?${searchParams.toString()}`;
       }
-      posthog.capture(PageEvent.PAGEVIEW, { $current_url: url });
+      // Held until PostHog captures: it can start after this page's first
+      // render, and after the grant while the anonymous id settles.
+      capturePostHogEvent(PageEvent.PAGEVIEW, { $current_url: url });
     }
   }, [pathname, searchParams, isPostHogEnabled, analytics]);
 

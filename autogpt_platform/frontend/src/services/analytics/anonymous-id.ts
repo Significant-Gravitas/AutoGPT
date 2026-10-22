@@ -91,6 +91,15 @@ export function setAnalyticsIdentitySignedIn(signedIn: boolean): void {
   if (settled) settledListeners.forEach((listener) => listener());
 }
 
+/**
+ * Whether the consented id is decided. False while it waits for the session
+ * (see above); PostHog stays opted out and in memory until then.
+ */
+export function isAnonymousIDSettled(): boolean {
+  getAnonymousID();
+  return settled;
+}
+
 /** Calls `listener` when a consented id settles after the session is known. */
 export function subscribeToAnonymousIDSettled(
   listener: () => void,

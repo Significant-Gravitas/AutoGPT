@@ -107,6 +107,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         } else {
           set({ isUserLoading: false });
         }
+        // Signed out only once the fallback validation has had its say: a
+        // signed-out result before it would let an older account take the
+        // marketing site's visitor id (anonymous-id.ts).
+        if (!get().user) setAnalyticsIdentitySignedIn(false);
 
         const existingCleanup = get().listenersCleanup;
         if (existingCleanup) {
@@ -299,9 +303,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 });
 
 useAuthStore.subscribe((state, previousState) => {
-  if (state.user || !state.isUserLoading) {
-    setAnalyticsIdentitySignedIn(Boolean(state.user));
-  }
+  // Signing out is reported here; the signed-out state on load once
+  // initialize() is done.
+  if (state.user) setAnalyticsIdentitySignedIn(true);
+  else if (previousState.user) setAnalyticsIdentitySignedIn(false);
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
     clearCopilotCompletedSessions();
