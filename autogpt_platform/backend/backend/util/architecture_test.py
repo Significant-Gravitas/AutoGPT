@@ -181,6 +181,103 @@ def test_backend_uses_pydantic_not_dataclasses():
     )
 
 
+# ---------------------------------------------------------------------------
+# Rule: tests never patch the clock or sleep by its global name
+# ---------------------------------------------------------------------------
+#
+# Motivation: ``patch("asyncio.sleep")`` or ``patch.object(time, "time")``
+# replaces the attribute on the shared module, so every coroutine and library
+# in the test's event loop sleeps or reads the clock through the stub. That
+# made the copilot dispatch-retry test flaky (OPEN-3475), stalled the desktop
+# opener test (#14633), and expired an ``ExpiringDict`` lock table under
+# ``creds_manager_lock_test.py``. Patch the name in the module under test
+# (``patch("backend.x.y.asyncio.sleep")``) or inject the clock instead.
+
+_GLOBAL_CLOCK_PATCH_TARGETS = frozenset(
+    {"time.sleep", "asyncio.sleep", "time.time", "time.monotonic"}
+)
+
+# Pre-existing offenders, as "<path> <target>". Burn this list down; do not
+# add to it. An entry that no longer matches fails the test, so a fixed file
+# must leave the list too.
+_GLOBAL_CLOCK_PATCH_OFFENDERS = frozenset(
+    {
+        "blocks/exa/cost_tracking_test.py asyncio.sleep",
+        "copilot/sdk/p0_guardrails_test.py asyncio.sleep",
+        "data/credential_refresh_test.py time.time",
+        "data/user_test.py time.time",
+        "integrations/creds_manager_lock_test.py time.time",
+        "integrations/creds_manager_test.py time.time",
+        "integrations/oauth/microsoft_365_copilot_test.py time.time",
+        "integrations/oauth/todoist_test.py time.time",
+    }
+)
+
+
+def test_no_global_clock_or_sleep_patches():
+    found = _global_clock_patches()
+    new = sorted(
+        f"  backend/{rel}:{lineno} patches {target}"
+        for rel, target, lineno in found
+        if f"{rel} {target}" not in _GLOBAL_CLOCK_PATCH_OFFENDERS
+    )
+    assert not new, (
+        "Tests must not patch time.sleep, asyncio.sleep, time.time or "
+        "time.monotonic by their global names: the stub reaches every "
+        "coroutine and library in the process. Patch the name in the module "
+        'under test (e.g. patch("backend.x.y.asyncio.sleep")) or inject the '
+        "clock:\n" + "\n".join(new)
+    )
+
+
+def test_global_clock_patch_offenders_are_not_stale():
+    still_there = {f"{rel} {target}" for rel, target, _ in _global_clock_patches()}
+    stale = sorted(_GLOBAL_CLOCK_PATCH_OFFENDERS - still_there)
+    assert not stale, (
+        "These _GLOBAL_CLOCK_PATCH_OFFENDERS entries no longer patch the "
+        "global name; remove them from the list:\n  " + "\n  ".join(stale)
+    )
+
+
+def _global_clock_patches() -> list[tuple[str, str, int]]:
+    found: list[tuple[str, str, int]] = []
+    for py in _iter_backend_py_files():
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        except SyntaxError:
+            continue
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                target = _global_clock_patch_target(node)
+                if target:
+                    found.append((rel, target, node.lineno))
+    return found
+
+
+def _global_clock_patch_target(call: ast.Call) -> str | None:
+    """`patch("time.time")`, `monkeypatch.setattr("time.time", ...)`,
+    `patch.object(time, "time")` and `monkeypatch.setattr(time, "time", ...)`."""
+    name = _decorator_name(call.func)
+    args = call.args
+    if (
+        name in ("patch", "setattr")
+        and args
+        and isinstance(args[0], ast.Constant)
+        and args[0].value in _GLOBAL_CLOCK_PATCH_TARGETS
+    ):
+        return args[0].value
+    if (
+        name in ("object", "setattr")
+        and len(args) >= 2
+        and isinstance(args[0], ast.Name)
+        and isinstance(args[1], ast.Constant)
+        and f"{args[0].id}.{args[1].value}" in _GLOBAL_CLOCK_PATCH_TARGETS
+    ):
+        return f"{args[0].id}.{args[1].value}"
+    return None
+
+
 def test_known_offenders_use_posix_separators():
     """_KNOWN_OFFENDERS must use forward slashes since the comparison key
     is built from pathlib.Path.relative_to() which uses OS-native separators.
@@ -188,7 +285,9 @@ def test_known_offenders_use_posix_separators():
 
     Ensure the key construction normalises to forward slashes.
     """
-    for entry in _KNOWN_OFFENDERS | _DATACLASS_KNOWN_OFFENDERS:
+    for entry in (
+        _KNOWN_OFFENDERS | _DATACLASS_KNOWN_OFFENDERS | _GLOBAL_CLOCK_PATCH_OFFENDERS
+    ):
         path_part = entry.split()[0]
         assert "\\" not in path_part, (
             f"known-offenders entry uses backslash: {entry!r}. "
