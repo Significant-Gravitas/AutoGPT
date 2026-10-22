@@ -1,8 +1,8 @@
-"""Check a signed-in route's token before FastAPI reads the request body.
+"""Check a signed-in route's token before FastAPI parses the request body.
 
 FastAPI reads and parses a route's body before it resolves the route's
 dependencies, the sign-in check among them. Without this, a request with no
-token or a bad one still had its upload received and spooled to disk, or its
+token or a bad one still had its upload parsed and spooled to disk, or its
 JSON parsed, before it got its 401.
 """
 
@@ -12,6 +12,7 @@ from typing import Any
 from autogpt_libs.auth.jwt_utils import bearer_jwt_auth, get_jwt_payload
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.dependencies.models import Dependant
+from fastapi.dependencies.utils import get_dependant
 from fastapi.routing import APIRoute, request_response
 
 
@@ -38,32 +39,41 @@ def _token_first(route: APIRoute) -> Callable[[Request], Awaitable[Response]]:
 
 
 async def _check_token(request: Request) -> None:
-    """Raise the 401 the route's own dependency would, plus a connection close
-    so the client stops sending a body nobody will read.
+    """Raise the 401 the route's own dependency would, before the body is parsed.
+
+    A refused request's body is still received, chunk by chunk, and thrown
+    away, so the client reads the 401 whatever it does with the connection (a
+    browser with an expired token refreshes it and retries). Answering with
+    the body unread can reset the connection before the client reads it.
 
     A valid token is verified again when the route resolves its dependencies,
     which go on to check bans, organizations and impersonation. That second
-    check is deliberate: this one only keeps a refused request from reading
-    its body, it doesn't replace the route's own."""
+    check is deliberate: this one only keeps a refused request from parsing
+    or spooling its body, it doesn't replace the route's own."""
     try:
         await get_jwt_payload(await bearer_jwt_auth(request))
-    except HTTPException as refused:
-        raise HTTPException(
-            refused.status_code,
-            refused.detail,
-            headers={**(refused.headers or {}), "Connection": "close"},
-        ) from refused
+    except HTTPException:
+        async for _ in request.stream():
+            pass
+        raise
 
 
 def _needs_token(dependant: Dependant, overrides: Mapping[Any, Any]) -> bool:
     """Whether resolving `dependant` reaches `get_jwt_payload`, as FastAPI
-    resolves it: an overridden dependency replaces everything below it.
+    resolves it: an overridden dependency is replaced by its override's own
+    dependency tree, built the way `solve_dependencies` builds it.
 
     `get_jwt_payload` is the anchor: a route that authenticates some other way
     isn't checked early until that way is added here."""
     for sub in dependant.dependencies:
         if sub.call in overrides:
-            continue
+            sub = get_dependant(
+                path=sub.path or "",
+                call=overrides[sub.call],
+                name=sub.name,
+                parent_oauth_scopes=sub.oauth_scopes,
+                scope=sub.scope,
+            )
         if sub.call is get_jwt_payload or _needs_token(sub, overrides):
             return True
     return False
