@@ -22,11 +22,10 @@ export function SentryUserTracker() {
       // Wait until user loading is complete before setting user context
       if (isUserLoading) return;
 
-      // Set user context for Sentry error tracking
+      // The id is enough to find a user's errors; their email stays out of
+      // Sentry. The role only tells admins apart.
       Sentry.setUser({
         id: user.id,
-        email: user.email ?? undefined,
-        // Add custom attributes
         ...(user.role && { role: user.role }),
       });
     } else {

@@ -66,37 +66,3 @@ export const banner = (
   </div>
 `;
 };
-
-// Requirement box components
-export const requirementBox = (
-  title: string,
-  items: string,
-  variant: "warning" | "success" = "warning",
-) => {
-  const isSuccess = variant === "success";
-  return `
-  <div id="requirements-box" class="mt-3 p-3 ${isSuccess ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"} rounded-2xl">
-    <p class="text-sm font-medium ${isSuccess ? "text-green-600" : "text-amber-600"} m-0 mb-2">${title}</p>
-    ${items}
-  </div>
-`;
-};
-
-export const requirementItem = (id: string, content: string) => `
-  <li id="${id}" class="flex items-center gap-2 text-amber-600">
-    <span class="req-icon">○</span> ${content}
-  </li>
-`;
-
-// Connection status box
-export const connectionStatusBox = (
-  id: string,
-  variant: "waiting" | "connected" = "waiting",
-) => {
-  const isConnected = variant === "connected";
-  return `
-  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"} rounded-2xl text-center text-sm ${isConnected ? "text-green-600" : "text-amber-600"}">
-    ${isConnected ? "✅ Connection already exists!" : "Waiting for connection..."}
-  </div>
-`;
-};

@@ -61,7 +61,11 @@ vi.mock("next/navigation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/navigation")>();
   return {
     ...actual,
-    useRouter: () => ({ push: routerPush, prefetch: vi.fn() }),
+    useRouter: () => ({
+      push: routerPush,
+      replace: vi.fn(),
+      prefetch: vi.fn(),
+    }),
     usePathname: () => "/marketplace",
     useSearchParams: () => new URLSearchParams(),
   };
@@ -120,14 +124,14 @@ describe("AppSidebar", () => {
 
   it("renders the primary navigation links", () => {
     renderSidebar();
-    expect(screen.getByText("Workflows")).toBeDefined();
+    expect(screen.queryByText("Workflows")).toBeNull();
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
-    expect(screen.queryByText("Files")).toBeNull();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
     expect(screen.getByText("Home")).toBeDefined();
   });
 
-  it("shows Team instead of Workflows when the hire-experts flag is on", () => {
+  it("shows Team instead of Workflows for every signed-in user", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const teamLink = screen.getByRole("link", { name: /team/i });
@@ -135,7 +139,7 @@ describe("AppSidebar", () => {
     expect(screen.queryByText("Workflows")).toBeNull();
   });
 
-  it("keeps a Home link when the hire-experts flag is on", () => {
+  it("keeps a Home link for every signed-in user", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const homeLink = screen.getByRole("link", { name: /home/i });
@@ -156,27 +160,12 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Recent chats")).toBeDefined();
   });
 
-  it.each([
-    [false, false],
-    [false, true],
-    [true, false],
-    [true, true],
-  ])(
-    "shows Workspace only for available destinations (Experts %s, Files %s)",
-    (experts, files) => {
-      useGetFlagMock.mockImplementation((flag) =>
-        flag === Flag.HIRE_EXPERTS
-          ? experts
-          : flag === Flag.ARTIFACTS_PAGE
-            ? files
-            : false,
-      );
-      renderSidebar();
-      expect(!!screen.queryByText("Workspace")).toBe(experts || files);
-      expect(!!screen.queryByRole("link", { name: /files/i })).toBe(files);
-      expect(screen.getByText("Recent chats")).toBeDefined();
-    },
-  );
+  it("always shows Team and Files when the flag provider returns false", () => {
+    renderSidebar();
+    expect(screen.getByText("Workspace")).toBeDefined();
+    expect(screen.getByRole("link", { name: /team/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
+  });
 
   it("marks the active link based on the current pathname", () => {
     // global next/navigation mock resolves usePathname() to "/marketplace"

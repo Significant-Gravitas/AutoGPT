@@ -309,7 +309,7 @@ describe("Send at reset", () => {
       timeout: 5000,
     });
     await within(dialog).findByText(
-      "You’re out of AutoPilot budget for this week",
+      "You’re out of budget for this week",
       undefined,
       { timeout: 5000 },
     );
@@ -358,7 +358,7 @@ describe("Send at reset", () => {
   });
 });
 
-describe("Out of AutoPilot budget", () => {
+describe("Out of budget", () => {
   it("gives a top-tier plan the reset time, the meters, and ChatGPT to continue on", async () => {
     server.use(
       ...budgetHandlers({
@@ -373,9 +373,7 @@ describe("Out of AutoPilot budget", () => {
     renderChat();
 
     const notice = await screen.findByRole("status", { name: "Usage notice" });
-    await within(notice).findByText(
-      "You’re out of AutoPilot budget for this week",
-    );
+    await within(notice).findByText("You’re out of budget for this week");
     expect(
       within(notice).getByText(
         "It resets Monday at 1:00 AM, in 2 days. You can still browse, edit workflows and read results.",
@@ -410,7 +408,7 @@ describe("Out of AutoPilot budget", () => {
     );
     renderChat();
 
-    await screen.findByText("You’re out of AutoPilot budget for this week");
+    await screen.findByText("You’re out of budget for this week");
     await waitFor(() => expect(offersRead).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByRole("button", { name: /Continue on/ })).toBeNull();
@@ -470,7 +468,7 @@ describe("Out of AutoPilot budget", () => {
     );
     renderChat();
 
-    await screen.findByText("You’re out of AutoPilot budget for this week");
+    await screen.findByText("You’re out of budget for this week");
     expect(
       await screen.findByRole("button", { name: "Send at reset" }),
     ).toBeDefined();

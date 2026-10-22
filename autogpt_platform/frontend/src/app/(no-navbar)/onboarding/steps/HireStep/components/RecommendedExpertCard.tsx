@@ -14,8 +14,10 @@ interface Props {
   expert: RecommendedExpert;
   isHired: boolean;
   isHiringThis: boolean;
+  isIncluded: boolean;
   disabled: boolean;
   onHire: () => void;
+  onToggleIncluded: () => void;
 }
 
 export const EXPERT_CARD_CLASS =
@@ -25,19 +27,54 @@ export function RecommendedExpertCard({
   expert,
   isHired,
   isHiringThis,
+  isIncluded,
   disabled,
   onHire,
+  onToggleIncluded,
 }: Props) {
+  const isLeftOut = !isHired && !isIncluded;
   return (
     <div
       className={cn(
         EXPERT_CARD_CLASS,
+        "relative isolate",
         isHired ? "border-zinc-900" : "border-zinc-200",
       )}
       data-testid="hire-step-expert"
       data-hired={isHired || undefined}
     >
-      <div className="flex items-center gap-3">
+      {isHired ? null : (
+        // The wizard's own pick badge (SelectableCard), as a toggle: ticked
+        // cards are what the step's primary action hires. z-10 lifts it over the
+        // faded header; the card's `isolate` keeps it under the list's edge fades.
+        <button
+          type="button"
+          aria-pressed={isIncluded}
+          aria-label={`Include ${expert.name}`}
+          disabled={disabled}
+          onClick={onToggleIncluded}
+          className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
+        >
+          <span
+            className={cn(
+              "flex size-4 items-center justify-center rounded-full border transition-colors",
+              isIncluded
+                ? "border-zinc-900 bg-zinc-900"
+                : "border-zinc-300 bg-white",
+            )}
+          >
+            {isIncluded ? (
+              <Icon icon={Tick02Icon} size={10} className="text-white" />
+            ) : null}
+          </span>
+        </button>
+      )}
+      <div
+        className={cn(
+          "flex items-center gap-3 pr-6 transition-opacity",
+          isLeftOut && "opacity-50",
+        )}
+      >
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url ?? null}
@@ -56,7 +93,10 @@ export function RecommendedExpertCard({
         <Text
           variant="body"
           tone="secondary"
-          className="line-clamp-2 text-pretty"
+          className={cn(
+            "line-clamp-2 text-pretty transition-opacity",
+            isLeftOut && "opacity-50",
+          )}
         >
           {expert.reason}
         </Text>

@@ -65,10 +65,14 @@ async def test_sdk_matching_survives_resume_disabled_and_context_retry(
         stack.enter_context(
             patch.object(sdk_service.config, "claude_agent_use_resume", resume)
         )
+        held_statuses = MagicMock()
+        held_statuses.__aiter__.return_value = []
+        stack.enter_context(
+            patch.object(sdk_service, "resolve_answered", return_value=held_statuses)
+        )
         for name, result in {
             "build_expert_identity_suffix": "",
             "build_skills_update_notice": "",
-            "resolve_answered": [],
             "clear_pending_question": None,
             "persist_and_record_usage": None,
             "active_mode": None,

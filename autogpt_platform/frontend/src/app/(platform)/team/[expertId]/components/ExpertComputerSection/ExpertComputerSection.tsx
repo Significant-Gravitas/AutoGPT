@@ -28,16 +28,11 @@ import { useExpertComputerSection } from "./useExpertComputerSection";
 interface Props {
   expertId: string;
   expertName: string;
-  enabled: boolean;
 }
 
-export function ExpertComputerSection({
-  expertId,
-  expertName,
-  enabled,
-}: Props) {
+export function ExpertComputerSection({ expertId, expertName }: Props) {
   const { computer, isLoading, refetch, stream, openDesktop, isOpening } =
-    useExpertComputerSection({ expertId, enabled });
+    useExpertComputerSection({ expertId });
 
   if (isLoading) {
     return (

@@ -22,6 +22,7 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
+from backend.data.subscription_payment_failure import PaymentFailureOutcome
 from backend.util.test import SpinTestServer
 
 from .billing.subscriptions.routes import (
@@ -1011,21 +1012,49 @@ def test_subscription_deleted_triggers_the_plan_ended_email(
     stub_lifecycle_emails["deleted"].assert_awaited_once()
 
 
-def test_payment_failure_triggers_the_payment_email(
-    mocker: pytest_mock.MockFixture, stub_lifecycle_emails
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_failed", "invoice_payment.payment_failed"]
+)
+@pytest.mark.parametrize("outcome", list(PaymentFailureOutcome))
+def test_payment_failure_only_emails_when_customer_action_is_required(
+    mocker: pytest_mock.MockFixture, stub_lifecycle_emails, event_type, outcome
 ) -> None:
+    invoice = {"id": "in_1", "customer": "cus_1"}
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_failure",
         new_callable=AsyncMock,
+        return_value=outcome,
+    )
+    trial_notice = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.on_trial_invoice",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "stripe.Invoice.retrieve_async", new_callable=AsyncMock, return_value=invoice
     )
     _post_event(
         mocker,
         {
-            "type": "invoice.payment_failed",
-            "data": {"object": {"id": "in_1", "customer": "cus_1"}},
+            "type": event_type,
+            "created": 1792800000,
+            "data": {
+                "object": (
+                    invoice
+                    if event_type == "invoice.payment_failed"
+                    else {"invoice": "in_1"}
+                )
+            },
         },
     )
-    stub_lifecycle_emails["payment_failed"].assert_awaited_once()
+    if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+        stub_lifecycle_emails["payment_failed"].assert_awaited_once_with(
+            invoice, attempted_at=1792800000
+        )
+        trial_notice.assert_awaited_once_with(invoice, paid=False)
+    else:
+        stub_lifecycle_emails["payment_failed"].assert_not_awaited()
+        trial_notice.assert_not_awaited()
 
 
 def test_trial_ending_event_reconciles_and_queues_trial_reminder(
