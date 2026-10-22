@@ -40,6 +40,11 @@ export function useBrainDumpStep() {
   const [insufficientMode, setInsufficientMode] = useState<"voice" | "typed">(
     "voice",
   );
+  // Which kind of take was last sent: the failure screen retries that one,
+  // and a typed take has no recording to resend.
+  const [submittedMode, setSubmittedMode] = useState<"voice" | "typed">(
+    "voice",
+  );
   const [typedText, setTypedText] = useState("");
   const [reachedTimeLimit, setReachedTimeLimit] = useState(false);
 
@@ -118,6 +123,7 @@ export function useBrainDumpStep() {
   }
 
   async function handleDone() {
+    setSubmittedMode("voice");
     setScreen("processing");
     // Duration comes back from `stop()` for the same reason the id is
     // passed in below — `recorder.elapsedSeconds` here is this render's
@@ -163,6 +169,7 @@ export function useBrainDumpStep() {
     recordingId: string | null,
     durationSecs: number,
   ) {
+    setSubmittedMode("voice");
     const actionToken = recordingId
       ? claimTakeAction(recordingId, "submit")
       : null;
@@ -266,6 +273,10 @@ export function useBrainDumpStep() {
   async function handleRetry() {
     retryCountRef.current += 1;
     trackBrainDump("brain_dump_retry", { attempt: retryCountRef.current });
+    if (submittedMode === "typed") {
+      await handleSubmitTyped();
+      return;
+    }
     setScreen("processing");
     const recordingId = recorder.recordingId;
     if (recordingId) await recorder.resendAllParts(recordingId);
@@ -295,6 +306,7 @@ export function useBrainDumpStep() {
   }
 
   async function submitTyped(text: string) {
+    setSubmittedMode("typed");
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
     try {
@@ -461,6 +473,7 @@ export function useBrainDumpStep() {
     headline: BRAIN_DUMP_HEADLINE,
     screen,
     insufficientMode,
+    submittedMode,
     typedText,
     setTypedText,
     elapsedSeconds: recorder.elapsedSeconds,

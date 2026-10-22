@@ -779,6 +779,64 @@ describe("onboarding brain dump — failure", () => {
     // The wizard must not advance on failure.
     expect(screen.queryByTestId("step-hire")).toBeNull();
   });
+
+  it("retries a typed take with its text and sends no recording", async () => {
+    const partUploads: string[] = [];
+    server.use(
+      getUploadBrainDumpPartMockHandler200(() => {
+        partUploads.push("part");
+        return {
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        };
+      }),
+    );
+    const responses = [
+      { status: "failed" as const, error_code: "quality_check_unavailable" },
+      { status: "completed" as const },
+    ];
+    const finalizeBodies: unknown[] = [];
+    server.use(
+      getFinalizeBrainDumpMockHandler200(async (info) => {
+        finalizeBodies.push(await info.request.json());
+        return {
+          ...responses[finalizeBodies.length - 1],
+          input_mode: "typed" as const,
+        };
+      }),
+    );
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await userEvent.type(
+      await screen.findByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "I run a bakery",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(
+      await screen.findByText("Your text is safe. Try again."),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Download recording" }),
+    ).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(finalizeBodies).toHaveLength(2);
+    expect(finalizeBodies[1]).toMatchObject({
+      input_mode: "typed",
+      text: "I run a bakery",
+    });
+    expect(partUploads).toHaveLength(0);
+  });
 });
 
 describe("onboarding brain dump — insufficient content", () => {
