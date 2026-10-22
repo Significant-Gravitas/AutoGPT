@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           submodules: recursive
@@ -71,7 +71,7 @@ jobs:
       # ------------------------ Backend setup ------------------------
 
       - name: Set up Backend - Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
@@ -83,7 +83,7 @@ jobs:
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
 
       - name: Set up Backend - Set up dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -115,14 +115,14 @@ jobs:
       # ------------------------ Frontend setup ------------------------
 
       - name: Set up Frontend - Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Frontend - Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -169,7 +169,7 @@ jobs:
 
       - name: Upload validator test report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fullstack-validator-tests
           path: ${{ runner.temp }}/fullstack-validator-results/playwright-validator-tests.xml
@@ -225,7 +225,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           submodules: recursive
@@ -233,7 +233,7 @@ jobs:
       - name: Set up tests - Cache E2E test data
         id: e2e-data-cache
         if: matrix.seed
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: /tmp/e2e_test_data.sql
           # Hash checkout inputs before fresh secrets and resolved Compose exist.
@@ -330,7 +330,7 @@ jobs:
         wait: [buildkit-image]
 
       - name: Set up Platform - Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
           # The runner is thrown away; removing the builder only costs ~30 s.
           cleanup: false
@@ -343,7 +343,7 @@ jobs:
       # mount. A fresh builder starts empty, so seed the mount from the last run.
       - name: Set up Platform - Restore Next.js build cache
         id: next-build-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: /tmp/next-build-cache
           # Next.js drops the whole cache when next.config.mjs or its dependencies change
@@ -355,7 +355,7 @@ jobs:
         working-directory: /tmp/next-build-cache
         run: |
           docker buildx build --progress=plain -f - . <<'EOF'
-          FROM node:24.18-alpine3.23
+          FROM node:24.22.1-alpine3.23
           RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
               --mount=type=bind,target=/seed \
               cp -a /seed/. /app/.next/cache/
@@ -387,29 +387,35 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
 
-      - name: Set up Platform - Start database
+      - name: Set up Platform - Pull service images and start database
         id: database
         background: true
         run: |
+          # Every image `up` would pull, pulled now through the retry, so a brief
+          # Docker Hub refusal can't fail a later `up`.
+          images=$(python -c "import yaml; s = yaml.safe_load(open('../docker-compose.resolved.yml'))['services']; built = {c.get('image') for c in s.values() if 'build' in c}; print(' '.join(sorted({c['image'] for c in s.values() if 'build' not in c} - built)))")
+          for image in $images; do
+            bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$image"
+          done
           docker compose -f ../docker-compose.resolved.yml up -d db --no-build
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
 
       - name: Set up tests - Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up tests - Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Set up tests - Cache Playwright browsers
         if: matrix.suite == 'smoke'
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
@@ -418,7 +424,7 @@ jobs:
 
       - name: Set up tests - Restore Playwright browsers
         if: matrix.suite != 'smoke'
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
@@ -429,7 +435,9 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Set up tests - Install browser 'chromium'
-        run: pnpm playwright install --with-deps chromium
+        # No --with-deps: the runner image already has Chromium's libraries, and the
+        # apt fetch it adds took up to 16 minutes when Ubuntu's mirror was slow.
+        run: pnpm playwright install chromium
 
       - name: Wait for backend image build and database
         wait: [platform-build-backend, database]
@@ -469,7 +477,9 @@ jobs:
             exit 1
           }
           echo "Waiting for scheduler_server to be ready..."
-          timeout 180 sh -c 'until curl -fsS http://localhost:8003/health_check >/dev/null; do sleep 2; done' || {
+          # Its port is internal (not published to the host), so ask from
+          # inside its own container; the image has Python but no curl.
+          timeout 180 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T scheduler_server python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:8003/health_check\", timeout=5)" >/dev/null 2>&1; do sleep 2; done' || {
             echo "scheduler_server did not become healthy in 180s"
             docker compose -f ../docker-compose.resolved.yml logs --tail=100 scheduler_server
             exit 1
@@ -551,7 +561,7 @@ jobs:
           rm -rf /tmp/next-build-cache
           # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
           docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
-          FROM node:24.18-alpine3.23 AS export
+          FROM node:24.22.1-alpine3.23 AS export
           ARG RUN_ID
           RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
               mkdir /out && cp -a /app/.next/cache/. /out/
@@ -579,7 +589,7 @@ jobs:
 
       - name: Upload E2E coverage to Codecov
         if: ${{ !cancelled() && steps.validate-e2e-coverage.outcome == 'success' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend-e2e
@@ -589,7 +599,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report-${{ matrix.suite }}
           path: autogpt_platform/frontend/playwright-report
@@ -598,7 +608,7 @@ jobs:
 
       - name: Upload Playwright test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-test-results-${{ matrix.suite }}
           path: |
@@ -617,7 +627,7 @@ jobs:
       - name: Save Next.js build cache
         if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache-export.outcome == 'success' }}
         continue-on-error: true
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: /tmp/next-build-cache
           key: ${{ steps.next-build-cache.outputs.cache-primary-key }}

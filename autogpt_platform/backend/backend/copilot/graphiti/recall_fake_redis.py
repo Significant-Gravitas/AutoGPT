@@ -13,6 +13,24 @@ class FakeRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
         self.ttls: dict[str, int] = {}
+        # The graphs noted as holding a pending dream record
+        # (``provenance_pending.py``), by set.
+        self.sets: dict[str, set[str]] = {}
+
+    async def sadd(self, name: str, *values: object) -> int:
+        bucket = self.sets.setdefault(name, set())
+        added = {str(value) for value in values} - bucket
+        bucket |= added
+        return len(added)
+
+    async def srem(self, name: str, *values: object) -> int:
+        bucket = self.sets.get(name, set())
+        removed = {str(value) for value in values} & bucket
+        bucket -= removed
+        return len(removed)
+
+    async def srandmember(self, name: str, number: int) -> list[str]:
+        return sorted(self.sets.get(name, set()))[:number]
 
     async def get(self, key: str) -> str | None:
         return self.values.get(key)

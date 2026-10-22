@@ -2,25 +2,22 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect } from "react";
 
+import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
 import { LearningHistoryCard } from "./components/LearningHistoryCard";
-import { OpenDecisionsCard } from "./components/OpenDecisionsCard";
-import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
-import { learningSheetScope } from "./helpers";
 import { MemoryChatPanel } from "./components/MemoryChatPanel/MemoryChatPanel";
 import { useMemoryChatPanel } from "./components/MemoryChatPanel/useMemoryChatPanel";
+import { OpenDecisionsCard } from "./components/OpenDecisionsCard";
 import { RecentMemoriesCard } from "./components/RecentMemoriesCard";
 import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
+import { learningSheetScope } from "./helpers";
 import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
-import { MemoryPageAccess } from "./components/MemoryPageAccess";
 
-function SettingsMemoryPage() {
-  const memoryEnabled = Boolean(useGetFlag(Flag.GRAPHITI_MEMORY));
+export default function SettingsMemoryPage() {
   useEffect(() => {
     document.title = "Memory – AutoGPT Platform";
   }, []);
@@ -40,7 +37,7 @@ function SettingsMemoryPage() {
     forgettingUuid,
     eraseScope,
     isErasing,
-  } = useMemoryPage(memoryEnabled);
+  } = useMemoryPage();
 
   const chatPanel = useMemoryChatPanel({ scopeExpertID });
   const learning = useLearningHistory(scopeExpertID);
@@ -52,9 +49,7 @@ function SettingsMemoryPage() {
           Memory
         </Text>
         <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
-          {memoryEnabled
-            ? "What AutoGPT remembers about you — and who remembers it."
-            : "Skills learned from your work and when they changed."}
+          {"What AutoGPT remembers about you — and who remembers it."}
         </Text>
       </header>
 
@@ -64,31 +59,27 @@ function SettingsMemoryPage() {
         onSelect={selectScope}
       />
 
-      {memoryEnabled ? (
-        <>
-          <SummaryCard
-            scopeExpertID={scopeExpertID}
-            scopeName={scopeName}
-            onViewSummary={() => void chatPanel.openWithSeed("summary")}
-          />
+      <SummaryCard
+        scopeExpertID={scopeExpertID}
+        scopeName={scopeName}
+        onViewSummary={() => void chatPanel.openWithSeed("summary")}
+      />
 
-          {isFactsError ? (
-            <ErrorCard
-              responseError={factsError || undefined}
-              context="memory"
-              onRetry={refetchFacts}
-            />
-          ) : (
-            <RecentMemoriesCard
-              facts={facts}
-              isLoading={isLoadingFacts}
-              forgettingUuid={forgettingUuid}
-              onForget={forgetFact}
-              onForgetTopic={() => void chatPanel.openWithSeed("forget")}
-            />
-          )}
-        </>
-      ) : null}
+      {isFactsError ? (
+        <ErrorCard
+          responseError={factsError || undefined}
+          context="memory"
+          onRetry={refetchFacts}
+        />
+      ) : (
+        <RecentMemoriesCard
+          facts={facts}
+          isLoading={isLoadingFacts}
+          forgettingUuid={forgettingUuid}
+          onForget={forgetFact}
+          onForgetTopic={() => void chatPanel.openWithSeed("forget")}
+        />
+      )}
 
       {learning.enabled ? (
         <>
@@ -121,40 +112,28 @@ function SettingsMemoryPage() {
         </>
       ) : null}
 
-      {memoryEnabled ? (
-        <>
-          <EraseMemoryCard
-            scopeName={scopeName}
-            memoryCount={memoryCount}
-            isErasing={isErasing}
-            onErase={eraseScope}
-          />
+      <EraseMemoryCard
+        scopeName={scopeName}
+        memoryCount={memoryCount}
+        isErasing={isErasing}
+        onErase={eraseScope}
+      />
 
-          <MemoryChatPanel
-            scopeName={scopeName}
-            isOpen={chatPanel.isOpen}
-            isStarting={chatPanel.isStarting}
-            startError={chatPanel.startError}
-            sessionId={chatPanel.sessionId}
-            messages={chatPanel.messages}
-            status={chatPanel.status}
-            error={chatPanel.error}
-            queuedMessages={chatPanel.queuedMessages}
-            onSend={chatPanel.onSend}
-            onStop={chatPanel.stop}
-            onRetry={chatPanel.retryStart}
-            onClose={chatPanel.close}
-          />
-        </>
-      ) : null}
+      <MemoryChatPanel
+        scopeName={scopeName}
+        isOpen={chatPanel.isOpen}
+        isStarting={chatPanel.isStarting}
+        startError={chatPanel.startError}
+        sessionId={chatPanel.sessionId}
+        messages={chatPanel.messages}
+        status={chatPanel.status}
+        error={chatPanel.error}
+        queuedMessages={chatPanel.queuedMessages}
+        onSend={chatPanel.onSend}
+        onStop={chatPanel.stop}
+        onRetry={chatPanel.retryStart}
+        onClose={chatPanel.close}
+      />
     </div>
-  );
-}
-
-export default function SettingsMemoryPageWithAccess() {
-  return (
-    <MemoryPageAccess>
-      <SettingsMemoryPage />
-    </MemoryPageAccess>
   );
 }

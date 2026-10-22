@@ -12,7 +12,7 @@ export function SignupMarketingPanel() {
       headingLines={[
         "AI agents",
         <span key="line-2">
-          that work <span className="text-slate-400">for you.</span>
+          that work <span className="text-violet-600">for you.</span>
         </span>,
       ]}
       description="Discover, build, and deploy AI agents that automate real work — no code required. Start building agents in minutes."

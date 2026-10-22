@@ -37,11 +37,13 @@ class TestGetSdkSupplementStaticPlaceholder:
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
-        guidance = result.split("### SDK tool-result files\n", 1)[1].split("\n### ", 1)[
-            0
-        ]
-        assert "`read_tool_result`" in guidance
-        assert "`Read`" not in guidance
+        headings = ["### SDK tool-result files\n"]
+        if use_e2b:
+            headings.append("### SDK tool-result files in E2B\n")
+        for heading in headings:
+            guidance = result.split(heading, 1)[1].split("\n### ", 1)[0]
+            assert "`read_tool_result`" in guidance
+            assert "`Read`" not in guidance
 
 
 class TestComputerNote:
