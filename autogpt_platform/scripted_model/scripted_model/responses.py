@@ -153,15 +153,23 @@ def _schema_value(schema: dict[str, Any], root: dict[str, Any], depth: int = 0) 
         minimum = schema.get("minLength", 0)
         return "x" * minimum if isinstance(minimum, int) and minimum > 0 else ""
     if schema_type == "integer":
-        minimum = schema.get("minimum", 0)
+        minimum = schema.get("minimum")
+        maximum = schema.get("maximum")
+        value = 0
         if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
-            return max(0, math.ceil(minimum))
-        return 0
+            value = max(value, math.ceil(minimum))
+        if isinstance(maximum, (int, float)) and not isinstance(maximum, bool):
+            value = min(value, math.floor(maximum))
+        return value
     if schema_type == "number":
-        minimum = schema.get("minimum", 0)
+        minimum = schema.get("minimum")
+        maximum = schema.get("maximum")
+        value: int | float = 0.0
         if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
-            return max(0, minimum)
-        return 0.0
+            value = max(value, minimum)
+        if isinstance(maximum, (int, float)) and not isinstance(maximum, bool):
+            value = min(value, maximum)
+        return value
     if schema_type == "boolean":
         return False
     if schema_type == "null" or schema_type is None:
