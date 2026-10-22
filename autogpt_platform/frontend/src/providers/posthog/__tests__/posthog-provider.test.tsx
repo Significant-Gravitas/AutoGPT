@@ -64,6 +64,7 @@ describe("PostHogProvider", () => {
       expect.objectContaining({
         api_host: "/relay/pnosthog",
         ui_host: "https://eu.posthog.com",
+        capture_exceptions: false,
       }),
     );
   });
