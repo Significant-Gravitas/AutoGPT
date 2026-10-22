@@ -1,5 +1,10 @@
-import { hasConsentFor, subscribeToConsent } from "@/services/consent/consent";
-import posthog, { type PostHogConfig } from "posthog-js";
+import { getAnonymousID } from "@/services/analytics/anonymous-id";
+import {
+  hasConsentFor,
+  hasDeclinedConsentFor,
+  subscribeToConsent,
+} from "@/services/consent/consent";
+import posthog, { type CaptureResult, type PostHogConfig } from "posthog-js";
 
 const POSTHOG_CONSENT_KEY = "agpt_posthog_consent";
 const PERSISTENT_STORAGE = "localStorage+cookie";
@@ -7,9 +12,10 @@ const PERSISTENT_STORAGE = "localStorage+cookie";
 /**
  * PostHog starts opted out: capture() drops events instead of queueing them
  * and session replay stays off. Without analytics consent it also keeps its
- * state in memory, and forgetPostHogStorageWithoutConsent has deleted
- * anything an earlier visit stored. Feature flags still evaluate, so
- * experiments keep working for visitors who decline.
+ * state in memory, so nothing an earlier visit stored is read, and
+ * forgetPostHogStorageWithoutConsent has deleted it if the visitor declined.
+ * Feature flags still evaluate, so experiments keep working for visitors who
+ * decline.
  */
 export function getConsentGatedConfig() {
   return {
@@ -23,14 +29,31 @@ export function getConsentGatedConfig() {
 }
 
 /**
- * Cookiebot is the source of truth. Run before init: without analytics
- * consent, delete what PostHog stored on an earlier visit (its identity,
- * which may belong to an identified user, and its own opt-in), since memory
- * persistence only stops it being read.
+ * Cookiebot is the source of truth. Run before init. Once the visitor has
+ * answered without analytics, delete what PostHog stored (its identity, which
+ * may belong to an identified user, and its own opt-in), since memory
+ * persistence only stops it being read. While the answer is pending only
+ * PostHog's own opt-in goes, so it starts opted out; its identity stays,
+ * including the `.agpt.co` cookie the marketing site writes, which a grant
+ * adopts (services/analytics/anonymous-id.ts).
  */
 export function forgetPostHogStorageWithoutConsent(token: string) {
   if (hasConsentFor("analytics")) return;
-  clearPostHogStorage(token);
+  if (hasDeclinedConsentFor("analytics")) clearPostHogStorage(token);
+  else clearPostHogOptIn();
+}
+
+/**
+ * PostHog `before_send` hook: drops every event (autocapture, page leave and
+ * replay included) while analytics is not allowed. This is how PostHog stops
+ * while the answer is pending after it started with consent (Cookiebot no
+ * longer accepting the stored answer): every posthog-js way to opt out or
+ * stop also deletes its stored state, the shared `.agpt.co` cookie included.
+ */
+export function dropWithoutConsent(
+  event: CaptureResult | null,
+): CaptureResult | null {
+  return hasConsentFor("analytics") ? event : null;
 }
 
 /** Call once posthog.init has run; returns the unsubscribe. */
@@ -45,14 +68,18 @@ export function followAnalyticsConsent() {
  */
 export function syncPostHogConsent() {
   if (!hasConsentFor("analytics")) {
+    posthog.stopSessionRecording();
+    // Pending: leave PostHog as it is; dropWithoutConsent drops its events.
+    if (!hasDeclinedConsentFor("analytics")) return;
     // Withdrawal also reloads the page; stop and drop PostHog's storage now,
     // whatever PostHog itself believes its opt-in to be.
-    posthog.stopSessionRecording();
     posthog.clear_opt_in_out_capturing();
     clearPostHogStorage(posthog.config.token);
     return;
   }
 
+  // Before the storage turns persistent, which writes the shared cookie.
+  adoptAnonymousID();
   if (!posthog.has_opted_in_capturing()) {
     posthog.opt_in_capturing({ captureEventName: false });
   }
@@ -64,6 +91,32 @@ export function syncPostHogConsent() {
   }
 }
 
+/**
+ * PostHog started on this page's in-memory id while the answer was pending. On
+ * a grant the visitor's anonymous id can turn out to be another one: the
+ * website's PostHog device id from the shared `.agpt.co` cookie
+ * (anonymous-id.ts). Move PostHog onto it, so its storage keeps that id
+ * rather than overwriting the cookie with this page's. Nothing was captured
+ * under the in-memory id, since PostHog was opted out, so there is nothing to
+ * merge; flags are read again for the adopted id. This is the same call
+ * posthog-js makes for `bootstrap`, and it spares the visitor a reload.
+ */
+function adoptAnonymousID() {
+  if (posthog.get_property("$user_state") === "identified") return;
+  const id = getAnonymousID();
+  if (!id || posthog.get_distinct_id() === id) return;
+  posthog.register({ distinct_id: id, $device_id: id });
+  posthog.reloadFeatureFlags();
+}
+
+function clearPostHogOptIn() {
+  try {
+    window.localStorage.removeItem(POSTHOG_CONSENT_KEY);
+  } catch {
+    // Storage blocked: PostHog cannot have stored an opt-in either.
+  }
+}
+
 // PostHog keeps ph_<token>_posthog in a cookie and localStorage, and
 // ph_<token>_window_id / _primary_window_exists in sessionStorage.
 function clearPostHogStorage(token: string) {
@@ -71,11 +124,7 @@ function clearPostHogStorage(token: string) {
   const prefix = `ph_${token}_`;
   clearStorage(() => window.localStorage, prefix);
   clearStorage(() => window.sessionStorage, prefix);
-  try {
-    window.localStorage.removeItem(POSTHOG_CONSENT_KEY);
-  } catch {
-    // Storage blocked: PostHog cannot have stored an opt-in either.
-  }
+  clearPostHogOptIn();
   document.cookie
     .split(";")
     .map((part) => part.trim().split("=")[0])

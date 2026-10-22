@@ -18,6 +18,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import posthog from "posthog-js";
 import { ReactNode, useEffect, useRef } from "react";
 import {
+  dropWithoutConsent,
   followAnalyticsConsent,
   forgetPostHogStorageWithoutConsent,
   getConsentGatedConfig,
@@ -36,7 +37,8 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       // Seed PostHog's anonymous identity with the first-party anonymous id
       // LaunchDarkly and the backend also use, so pre-signup activity from
       // every tool lands on the same person once identify() runs. Without
-      // analytics consent that id only lives for this page load.
+      // analytics consent that id only lives for this page load, and a grant
+      // moves PostHog onto the visitor's lasting id (posthog-consent.ts).
       const anonymousID = getAnonymousID();
       forgetPostHogStorageWithoutConsent(postHogCredentials.key);
       posthog.init(postHogCredentials.key, {
@@ -50,7 +52,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
         ...getConsentGatedConfig(),
-        before_send: markImpersonatedEvent,
+        before_send: [dropWithoutConsent, markImpersonatedEvent],
       });
       posthog.register(getPostHogBaseProperties());
       unfollowConsent = followAnalyticsConsent();

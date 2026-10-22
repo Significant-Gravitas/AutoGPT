@@ -63,6 +63,21 @@ export function hasConsentFor(category: ConsentCategory): boolean {
   return getConsent()[category];
 }
 
+/**
+ * Whether the visitor has answered without allowing `category`. False while
+ * the answer is still pending (uc.js not loaded yet and no stored answer, or
+ * the banner asking): nothing for the category is read or written then, but
+ * what an earlier visit stored stays until the visitor actually declines.
+ * Cookiebot answers per domain, so the visitor may have allowed it on agpt.co,
+ * whose PostHog cookie on `.agpt.co` this app shares. Without a consent
+ * manager nothing can ever be allowed, so that counts as declined.
+ */
+export function hasDeclinedConsentFor(category: ConsentCategory): boolean {
+  if (!isConsentManagerConfigured()) return true;
+  const answer = getConsentAnswer();
+  return answer !== null && !answer[category];
+}
+
 export function isSameConsent(a: ConsentState, b: ConsentState): boolean {
   return (
     a.analytics === b.analytics &&
@@ -121,17 +136,24 @@ export function getConsentManagerStatus(): ConsentManagerStatus {
   return document.readyState === "complete" ? "unavailable" : "loading";
 }
 
+// The script is injected after hydration, so the page can finish loading
+// before it arrives (and before its tag exists to listen to), and a visitor
+// with no answer yet gets no consent event until they reply: the dialog
+// events are what say Cookiebot arrived for them.
 export function subscribeToConsentManagerStatus(
   listener: () => void,
 ): () => void {
   if (typeof window === "undefined") return () => {};
   const script = document.getElementById(COOKIEBOT_SCRIPT_ID);
-  window.addEventListener("load", listener);
+  const windowEvents = ["load", ...COOKIEBOT_DIALOG_EVENTS];
+  windowEvents.forEach((event) => window.addEventListener(event, listener));
   script?.addEventListener("load", listener);
   script?.addEventListener("error", listener);
   const unsubscribe = subscribeToConsent(listener);
   return () => {
-    window.removeEventListener("load", listener);
+    windowEvents.forEach((event) =>
+      window.removeEventListener(event, listener),
+    );
     script?.removeEventListener("load", listener);
     script?.removeEventListener("error", listener);
     unsubscribe();

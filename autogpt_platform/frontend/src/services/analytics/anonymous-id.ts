@@ -17,12 +17,20 @@
  * It only outlives the page with analytics consent. Without it the id is
  * minted fresh for each page load and kept in memory, nothing an earlier
  * visit stored is read, and the first landing stays in memory too. Granting
- * persists both without a reload; withdrawing deletes them. With consent an
- * existing PostHog device id is adopted rather than replaced, so returning
- * visitors keep their history.
+ * persists both without a reload; declining deletes them. While the answer is
+ * still pending, what is stored is left alone.
+ *
+ * With consent the id is, in order: the one this browser stored on an
+ * earlier visit, so returning visitors keep theirs; else PostHog's device id,
+ * which the marketing site (agpt.co) leaves in the shared `.agpt.co` cookie,
+ * so the website visits join this visitor at signup; else this page's id.
  */
 
-import { hasConsentFor, subscribeToConsent } from "@/services/consent/consent";
+import {
+  hasConsentFor,
+  hasDeclinedConsentFor,
+  subscribeToConsent,
+} from "@/services/consent/consent";
 
 const ANONYMOUS_ID_KEY = "agpt_anonymous_id";
 const FIRST_LANDING_KEY = "agpt_first_landing";
@@ -49,20 +57,28 @@ export interface FirstLanding {
 }
 
 let memoryID: string | null = null;
+// Whether memoryID is settled for this page: resolved with consent, or set by
+// a reset. Before consent it only stands in until the visitor answers.
+let settled = false;
 let pageLanding: FirstLanding | null = null;
 
 export function getAnonymousID(): string | null {
   if (typeof window === "undefined") return null;
-  if (memoryID) return memoryID;
-
   if (!hasConsentFor("analytics")) {
-    memoryID = newID();
+    memoryID ??= newID();
     return memoryID;
   }
+  if (!settled) {
+    memoryID = resolveConsentedID();
+    settled = true;
+  }
+  return memoryID;
+}
+
+function resolveConsentedID(): string {
   const stored = readStorage(ANONYMOUS_ID_KEY);
-  const id = stored ?? readPostHogDeviceID() ?? newID();
+  const id = stored ?? readPostHogDeviceID() ?? memoryID ?? newID();
   if (!stored) writeStorage(ANONYMOUS_ID_KEY, id);
-  memoryID = id;
   return id;
 }
 
@@ -90,9 +106,9 @@ export function readFirstLanding(): FirstLanding | null {
 }
 
 /**
- * Keep the stored identity in step with analytics consent: persist this page's
- * id and landing on a grant, delete them otherwise (also clearing whatever a
- * visit with consent left behind). Returns the unsubscribe.
+ * Keep the stored identity in step with analytics consent: persist the id and
+ * landing on a grant, delete them on an answer without it (also clearing
+ * whatever a visit with consent left behind). Returns the unsubscribe.
  */
 export function followAnalyticsConsentForIdentity(): () => void {
   if (typeof window === "undefined") return () => {};
@@ -102,7 +118,7 @@ export function followAnalyticsConsentForIdentity(): () => void {
 
 function syncStoredIdentity(): void {
   if (!hasConsentFor("analytics")) {
-    forgetStoredIdentity();
+    if (hasDeclinedConsentFor("analytics")) forgetStoredIdentity();
     return;
   }
   const id = getAnonymousID();
@@ -137,6 +153,7 @@ export function resetAnonymousID(nextID?: string): void {
     return;
   }
   memoryID = nextID || newID();
+  settled = true;
   pageLanding = null;
   forgetStoredIdentity();
   if (hasConsentFor("analytics")) writeStorage(ANONYMOUS_ID_KEY, memoryID);
@@ -144,6 +161,7 @@ export function resetAnonymousID(nextID?: string): void {
 
 export function resetAnonymousIDForTests(): void {
   memoryID = null;
+  settled = false;
   pageLanding = null;
 }
 

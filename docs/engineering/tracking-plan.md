@@ -67,7 +67,7 @@ Every event must carry:
 | Property | Value |
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
-| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
+| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser), `website` (the marketing site, see [Marketing site](#marketing-site)). |
 | `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
 
 Every backend event goes through `capture()` in
@@ -221,6 +221,86 @@ any event fired before consent is known. So the DataFast tour funnel misses
 mount-time steps (`tour_start`, the first `tour_scenario_start`) on a first
 visit where the answer arrives only after the page loads; `tour_start` is
 retried on the next tour visit in that session.
+
+## Marketing site
+
+The marketing site, `agpt.co` (repo `Significant-Gravitas/autogpt-marketing-site`),
+sends to the same PostHog project as the app, so one funnel runs from a
+website visit to a paid account (SECRT-2769). Its code is
+`lib/posthog/posthog.ts` and `lib/posthog/goals.ts` there.
+
+- **Consent.** The site asks through Cookiebot too, but Cookiebot keeps one
+  answer per domain, so a visitor answers once on `agpt.co` and once on
+  `platform.agpt.co`. The site downloads and starts `posthog-js` only once its
+  answer allows analytics; before that nothing reaches PostHog, not even
+  `/flags`.
+- **Settings.** The app's: opted out by default, `localStorage+cookie`
+  persistence with consent, autocapture and page leave, no session replay, and
+  the same-origin relay at `/relay/pnosthog`.
+- **Base properties.** `environment` (`prod`, `preview`, `local`, from
+  Vercel), `source: website`, and `revision` (the commit) where the build has
+  one.
+
+| Event | Fires when |
+| --- | --- |
+| `$pageview` | A route or query string changes, and once more when consent arrives, so the landing page counts. |
+| `$pageleave`, `$autocapture` | As in the app. |
+| `section_viewed` | A section marked for DataFast's scroll goals comes on screen: as soon as any of it shows, and again after it left the screen and comes back. `section` is the part after `scroll_to_` (e.g. `faq`). |
+| DataFast goals | Every DataFast goal is also sent to PostHog under an `object_action`, past-tense name, with the same parameters (`data-fast-goal-*` attributes, hyphens turned into underscores, or the properties passed from code, such as `pricing_billing_toggled.billing`). |
+
+The goal names (`POSTHOG_GOAL_EVENTS` on the site, where a test fails for a
+goal without one):
+
+| DataFast goal | PostHog event |
+| --- | --- |
+| `demo_tour_click` | `demo_tour_clicked` |
+| `demo_video_play` | `demo_video_played` |
+| `demo_video_sound` | `demo_video_sound_toggled` |
+| `get_started_click` | `get_started_clicked` |
+| `github_selfhost_click` | `github_selfhost_clicked` |
+| `github_stars_click` | `github_stars_clicked` |
+| `hero_prompt_chip_click` | `hero_prompt_chip_clicked` |
+| `hero_prompt_focus` | `hero_prompt_focused` |
+| `hero_prompt_submit` | `hero_prompt_submitted` |
+| `marketplace_agent_click` | `marketplace_agent_clicked` |
+| `marketplace_browse_click` | `marketplace_browse_clicked` |
+| `nav_product_click` | `nav_product_clicked` |
+| `press_source_click` | `press_source_clicked` |
+| `pricing_billing_toggle` | `pricing_billing_toggled` |
+| `pricing_click` | `pricing_clicked` |
+| `pricing_plan_cta_click` | `pricing_plan_cta_clicked` |
+| `product_demo_interact` | `product_demo_interacted` |
+| `product_video_play` | `product_video_played` |
+| `see_it_in_action_click` | `see_it_in_action_clicked` |
+| `signin_click` | `signin_clicked` |
+| `testimonial_source_click` | `testimonial_source_clicked` |
+| `usecase_cta_click` | `usecase_cta_clicked` |
+| `watch_demo_click` | `watch_demo_clicked` |
+
+These names follow the [naming rules](#naming) and are never renamed. They
+live in the site's repo, not in `posthog-events.ts`.
+
+### Hand-over to the app
+
+The site keeps PostHog's state in the `ph_<project key>_posthog` cookie on
+`.agpt.co`, which `platform.agpt.co` can read. It carries `$device_id`. The
+app adopts that id as the visitor's anonymous id, so `identify()` at signup
+merges the website pageviews into the new user:
+
+- **While the app's answer is pending,** the app leaves the cookie (and its
+  own stored identity) alone and runs PostHog on an in-memory id. Only an
+  answer without analytics deletes them, the shared cookie included; the site
+  does the same on its side.
+- **On a grant,** during the page or from an earlier answer, the visitor's
+  anonymous id is, in order: the app's own `agpt_anonymous_id`; else the
+  cookie's `$device_id`; else the page's in-memory id
+  (`src/services/analytics/anonymous-id.ts`). If PostHog started on the
+  in-memory id, it moves onto the adopted one before its storage turns
+  persistent, without a reload (`src/providers/posthog/posthog-consent.ts`).
+- **Returning app visitors keep their own id.** A browser that already has
+  `agpt_anonymous_id` from an earlier visit with consent keeps it, so
+  website visits made under another id do not merge into the account.
+- LaunchDarkly keeps the in-memory id until the next page load.
 
 ## Onboarding and activation
 
