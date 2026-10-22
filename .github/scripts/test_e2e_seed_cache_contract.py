@@ -13,6 +13,8 @@ SEED_VERIFY_STEP = "Set up tests - Verify seeded credentials with fresh encrypti
 SEED_SAVE_STEP = "Push E2E test data to GHCR"
 PLAYWRIGHT_STEP = "Run Playwright E2E suite"
 PLAYWRIGHT_REPORT_STEP = "Validate Playwright JSON report"
+# What the seed prints once every item has an embedding.
+EMBEDDINGS_COMPLETE = "Embeddings complete:"
 # Backend modules whose functions the seed calls to write rows into the dump.
 # The dump's encrypted payloads are re-encrypted on every run, so the
 # encryption module is not one of them.
@@ -26,6 +28,7 @@ SEED_WRITERS = (
     "data/credit",
     "data/graph",
     "data/org_migration",
+    "data/profile",
     "data/user",
     "util/json",
 )
@@ -244,6 +247,7 @@ class E2ESeedCacheContractTests(unittest.TestCase):
             [
                 "matrix.seed && env.WRITE_BUILD_CACHE == 'true' && "
                 "steps.e2e-seed-create.outcome == 'success' && "
+                "steps.e2e-seed-create.outputs.publishable == 'true' && "
                 "steps.e2e-seed-verify.outcome == 'success' && "
                 "steps.e2e-playwright.outcome == 'success' && "
                 "steps.e2e-playwright-report.outcome == 'success'"
@@ -263,6 +267,26 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         self.assertLess(
             workflow.index(f"- name: {PLAYWRIGHT_REPORT_STEP}\n"),
             workflow.index(f"- name: {SEED_SAVE_STEP}\n"),
+        )
+
+    def test_seed_dump_with_incomplete_embeddings_is_not_published(self):
+        # The seed warns and exits 0 when the embedding backfill errors, stalls
+        # or runs out of time; a dump without full coverage must not be reused.
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        seed = (
+            Path(__file__).resolve().parents[2]
+            / "autogpt_platform/backend/test/e2e_test_data.py"
+        ).read_text(encoding="utf-8")
+        create = _step(workflow, SEED_CREATE_STEP)
+        self.assertIn(EMBEDDINGS_COMPLETE, seed)
+        self.assertIn(f"grep -q '{EMBEDDINGS_COMPLETE}' /tmp/e2e_seed.log", create)
+        self.assertIn("matrix.embeddings", create)
+        self.assertIn('echo "publishable=true" >> "$GITHUB_OUTPUT"', create)
+        self.assertIn(
+            "steps.e2e-seed-create.outputs.publishable == 'true'",
+            _step(workflow, SEED_SAVE_STEP),
         )
 
     def test_seed_dump_is_pushed_and_pulled_under_one_name(self):

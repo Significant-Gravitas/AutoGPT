@@ -264,6 +264,7 @@ jobs:
                 autogpt_platform/backend/backend/data/credit.py \
                 autogpt_platform/backend/backend/data/graph.py \
                 autogpt_platform/backend/backend/data/org_migration.py \
+                autogpt_platform/backend/backend/data/profile.py \
                 autogpt_platform/backend/backend/data/user.py \
                 autogpt_platform/backend/backend/util/json.py
               sed -n '/- name: Set up tests - Create E2E test data$/,/^      - name:/p' \
@@ -541,10 +542,12 @@ jobs:
       - name: Set up tests - Create E2E test data
         id: e2e-seed-create
         if: matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'
+        env:
+          EMBEDDINGS: ${{ matrix.embeddings }}
         run: |
           echo "Creating E2E test data..."
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
-          docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" | tee /tmp/e2e_seed.log || {
             echo "❌ E2E test data creation failed!"
             docker compose -f ../docker-compose.resolved.yml logs --tail=50 rest_server
             exit 1
@@ -563,6 +566,14 @@ jobs:
             postgres > /tmp/e2e_test_data.sql
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
+
+          # The seed only warns when the embedding backfill errors, stalls or
+          # times out. Such a dump serves this run but is not published.
+          if [[ "$EMBEDDINGS" != "true" ]] || grep -q 'Embeddings complete:' /tmp/e2e_seed.log; then
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=e2e-seed-not-published::Embedding coverage is incomplete; this dump will not be pushed to GHCR"
+          fi
 
       - name: Set up tests - Verify seeded credentials with fresh encryption key
         id: e2e-seed-verify
@@ -639,7 +650,7 @@ jobs:
       # so only a dump the whole suite passed on is published. Pull requests
       # only read it.
       - name: Push E2E test data to GHCR
-        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-verify.outcome == 'success' && steps.e2e-playwright.outcome == 'success' && steps.e2e-playwright-report.outcome == 'success'
+        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-create.outputs.publishable == 'true' && steps.e2e-seed-verify.outcome == 'success' && steps.e2e-playwright.outcome == 'success' && steps.e2e-playwright-report.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 5
         working-directory: /tmp
