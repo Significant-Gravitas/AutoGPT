@@ -25,8 +25,12 @@ INTERNAL_PORTS = {
 # Every internal service port, including those with no Compose service today.
 ANY_INTERNAL = {int(port) for port in INTERNAL_PORTS.values()} | {8010, 8011, 8012}
 _PORTS_KEY = re.compile(r"^\s*(?:-\s+)?ports:\s*(.*)$")
-# Any other spelling of the key: quoted, spaced, or inside a flow mapping.
-_ANY_PORTS_KEY = re.compile(r"""(?<![\w-])["']?ports["']?\s*:""")
+# Any other spelling of the key where a key can stand: quoted or spaced at
+# the start of a line, or inside a flow mapping. A value such as a URL is not
+# a key.
+_ANY_PORTS_KEY = re.compile(r"""(?:^\s*(?:-\s+)?|[{,]\s*)["']?ports["']?\s*:""")
+# A YAML explicit key (`? ports` with its value on the next line).
+_EXPLICIT_KEY = re.compile(r"^\s*(?:-\s+)?\?(?:\s|$)")
 _TARGET = re.compile(r"""["']?\btarget["']?\s*:\s*["']?(\d+)""")
 # The other keys of a long-syntax entry, which carry no container port.
 _OTHER_LONG_KEYS = re.compile(
@@ -100,7 +104,7 @@ def _published_ports(text: str) -> set[int]:
         ):
             ports_indent = None
         key = _PORTS_KEY.match(line)
-        if not key and _ANY_PORTS_KEY.search(line):
+        if _EXPLICIT_KEY.match(line) or (not key and _ANY_PORTS_KEY.search(line)):
             raise ValueError(f"write this as a plain `ports:` line: {line.strip()!r}")
         if key:
             inline = key.group(1).strip()
@@ -230,6 +234,7 @@ class ComposeInternalPortsTest(unittest.TestCase):
             'services:\n  db:\n    "ports": ["18005:8005"]\n',
             'services:\n  db:\n    ports : ["18005:8005"]\n',
             'services: {db: {image: busybox, ports: ["18005:8005"]}}\n',
+            'services:\n  db:\n    ? ports\n    : ["18005:8005"]\n',
         ):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 _published_ports(text)
@@ -245,9 +250,12 @@ class ComposeInternalPortsTest(unittest.TestCase):
             '      - "127.0.0.1:3000:3000"  # the frontend\n'
             "    environment:\n"
             "      - PORT=8005\n"
+            "    x-ports: not a key the check reads\n"
             "    command: [serve, --port, '8005']\n"
         )
         self.assertEqual(_published_ports(text), {18005, 3000})
+        url = "services:\n  db:\n    environment:\n      UPSTREAM: http://ports:8005\n"
+        self.assertEqual(_published_ports(url), set())
         self.assertEqual(_published_ports("services:\n  db:\n    ports: []\n"), set())
         block = ["    ports:", '      - "8005:8005"', "    networks:", "      - x"]
         self.assertEqual(_key_items(block, "ports"), ["8005:8005"])
