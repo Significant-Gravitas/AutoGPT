@@ -123,6 +123,7 @@ from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.security import SecurityHeadersMiddleware
+from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
 from .utils.openapi import sort_openapi
 
@@ -698,6 +699,10 @@ async def health():
     if not backend.data.db.is_connected():
         raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
+
+
+# After the last route: a route added below this wouldn't check its token first.
+check_token_before_body(app)
 
 
 class AgentServer(backend.util.service.AppProcess):
