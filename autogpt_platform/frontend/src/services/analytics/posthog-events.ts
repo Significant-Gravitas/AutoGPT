@@ -91,9 +91,12 @@ export const BrainDumpEvent = {
   // through, or skip straight to the builder.
   EXPERT_RECOMMENDED: "expert_recommended",
   EXPERT_RECOMMENDATION_CLICKED: "expert_recommendation_clicked",
+  // The hire step's primary was clicked to hire every expert still unhired
+  // (or, with `retry`, the ones a batch failed to hire).
+  HIRE_ALL_CLICKED: "hire_all_clicked",
   // The wizard's hire step was left, with how many of the proposed experts
   // were hired, so the funnel can tell "hired a team" from "skipped past it".
-  // The hires themselves are the backend's `expert_hired`.
+  // `via` says how. The hires themselves are the backend's `expert_hired`.
   HIRE_STEP_CONTINUED: "hire_step_continued",
 } as const;
 

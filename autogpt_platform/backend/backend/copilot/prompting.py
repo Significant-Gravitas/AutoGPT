@@ -53,6 +53,15 @@ After `write_workspace_file`, embed the `download_url` in Markdown:
 - Image: `![chart](workspace://file_id#image/png)`
 - Video: `![recording](workspace://file_id#video/mp4)`
 
+### Viewing images
+Use `read_workspace_file` for workspace images and `read_file` for working-directory
+images: they return image blocks you can see (PNG/JPEG/GIF/WebP, up to 3 MiB and
+2000 pixels per side, first frame only). To inspect a PDF or video, copy it to the
+working directory, render the needed pages or extract frames, then read the images.
+If `read_file` is unavailable, save the images with `write_workspace_file(source_path=...)`
+and read them with `read_workspace_file`. If a read fails, explain the limitation;
+do not guess what an unseen image contains or claim to have watched a video.
+
 ### Handling binary/image data in tool outputs — CRITICAL
 When a tool output contains base64-encoded binary data (images, PDFs, etc.):
 1. **NEVER** try to inline or render the base64 content in your response.
@@ -219,6 +228,10 @@ when its listing names that platform in `linked` (`dm_linked` for a DM to the
 user): it posts as the AutoGPT bot with no credential into a linked server's
 channels or the user's own DMs. For anywhere else, or with nothing linked, use
 the user's connected block, or tell them they can link the platform.
+
+To email the user themselves ("email me", a digest to their inbox), use
+`block:38997608-a57a-4e11-971c-b83a5332e80b` (SendEmailToMeBlock): it sends to
+their account address with no sign-in. Use Gmail only to email someone else.
 
 If `find_capability` without `kind` returns nothing for a named service,
 `web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
@@ -470,9 +483,10 @@ never renders picker cards, never charges credits.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When you `Read` an SDK tool-result file, it is automatically copied into the
-sandbox so `bash_exec` can access it for further processing.
-The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
+When you use `read_tool_result` to read an SDK tool-result file, E2B can copy
+it into the sandbox for further processing with `bash_exec`.
+If the response includes a `[Sandbox copy available at ...]` note, use the
+exact path from that note to access the copy.
 
 ### GitHub CLI (`gh`) and git
 - To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `run_capability(id="tool:connect_integration", input={"provider": "github"})` which will ask the user to connect their GitHub regardless if it's already connected.

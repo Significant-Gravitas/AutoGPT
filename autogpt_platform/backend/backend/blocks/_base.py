@@ -205,6 +205,12 @@ class BlockCost(BaseModel):
             **data,
         )
 
+    @property
+    def is_free(self) -> bool:
+        """Whether this entry can never charge. Every cost type scales
+        ``cost_amount`` except TOKENS, which prices from the token rate table."""
+        return self.cost_amount == 0 and self.cost_type != BlockCostType.TOKENS
+
 
 class BlockInfo(BaseModel):
     id: str
