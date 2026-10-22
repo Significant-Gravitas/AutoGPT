@@ -144,6 +144,7 @@
         "src/app/(platform)/copilot/components/ChatInput/useVoiceRecording.ts",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/components/VirtualTranscript/useVirtualTranscript.ts",
+        "src/app/(platform)/copilot/components/OnboardingIntroCard/useOnboardingIntroCard.ts",
         "src/app/(platform)/copilot/components/OnboardingWelcomeDialog/OnboardingWelcomeDialog.tsx",
         "src/app/(platform)/copilot/components/RateLimitResetDialog/useRateLimitRefresh.ts",
         "src/app/(platform)/copilot/components/SetupRequirementsCard/SetupRequirementsCard.tsx",
@@ -180,6 +181,7 @@
     },
     {
       "files": [
+        "src/app/(platform)/copilot/components/ApprovalQueue/useApprovalQueue.ts",
         "src/app/(platform)/copilot/components/ArtifactPanel/components/ArtifactReactPreview.tsx",
         "src/app/(platform)/copilot/components/ArtifactPanel/components/useArtifactContent.ts",
         "src/app/(platform)/copilot/components/ArtifactPanel/useArtifactFullscreen.ts",
@@ -198,7 +200,6 @@
         "src/app/(platform)/copilot/components/CopilotPendingReviews/useCopilotPendingReviews.ts",
         "src/app/(platform)/copilot/components/CredentialMention/useCredentialMentionEditor.ts",
         "src/app/(platform)/copilot/components/NotificationBanner/NotificationBanner.tsx",
-        "src/app/(platform)/copilot/components/NotificationDialog/NotificationDialog.tsx",
         "src/app/(platform)/copilot/components/OnboardingIntroCard/useOnboardingIntroCard.ts",
         "src/app/(platform)/copilot/components/RateLimitResetDialog/useRateLimitRefresh.ts",
         "src/app/(platform)/copilot/components/ToolChain/ChainRowView.tsx",
