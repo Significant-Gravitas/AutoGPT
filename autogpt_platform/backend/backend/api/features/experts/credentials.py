@@ -305,15 +305,20 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
     Raises ``ExpertNotFoundError`` for an expert the user does not own, so a
     bad scope fails the run rather than falling through to unrestricted access.
 
-    The grants are read beside the ownership check, and again after a seed:
-    this call's, or one stamped while these reads ran. A seed writes its grants
-    before its stamp, so a grants read that started before the stamp may have
-    missed them.
+    The grants are read beside the ownership check, whose failure is the one
+    raised when both fail. They are read again after a seed: this call's, or
+    one stamped while these reads ran. A seed writes its grants before its
+    stamp, so a grants read that started before the stamp may have missed them.
     """
     started = datetime.now(timezone.utc)
-    expert, grants = await asyncio.gather(
-        _owned_expert(user_id, expert_id), _grants(expert_id)
+    owned, granted = await asyncio.gather(
+        _owned_expert(user_id, expert_id), _grants(expert_id), return_exceptions=True
     )
+    if isinstance(owned, BaseException):
+        raise owned
+    if isinstance(granted, BaseException):
+        raise granted
+    expert, grants = owned, granted
     if expert.credentialsSeededAt is None:
         await _seed_if_needed(user_id, expert)
         grants = await _grants(expert_id)

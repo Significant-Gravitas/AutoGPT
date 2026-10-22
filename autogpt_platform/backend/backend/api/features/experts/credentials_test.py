@@ -428,6 +428,37 @@ async def test_an_expert_the_user_does_not_own_grants_nothing(
         await expert_allowed_credential_ids("user-1", "expert-1")
 
 
+@pytest.mark.asyncio
+async def test_an_unowned_expert_is_not_found_even_when_the_grants_read_fails_first(
+    mocker: pytest_mock.MockFixture,
+):
+    async def not_owned(*_args):
+        await asyncio.sleep(0.05)
+        raise ExpertNotFoundError("Expert #expert-1 not found")
+
+    mocker.patch(f"{_CREDENTIALS}._owned_expert", AsyncMock(side_effect=not_owned))
+    mocker.patch(
+        f"{_CREDENTIALS}._grants", AsyncMock(side_effect=RuntimeError("db down"))
+    )
+
+    with pytest.raises(ExpertNotFoundError):
+        await expert_allowed_credential_ids("user-1", "expert-1")
+
+
+@pytest.mark.asyncio
+async def test_a_failed_grants_read_fails_the_call(mocker: pytest_mock.MockFixture):
+    seeded = SimpleNamespace(
+        id="expert-1", credentialsSeededAt=datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
+    mocker.patch(f"{_CREDENTIALS}._owned_expert", AsyncMock(return_value=seeded))
+    mocker.patch(
+        f"{_CREDENTIALS}._grants", AsyncMock(side_effect=RuntimeError("db down"))
+    )
+
+    with pytest.raises(RuntimeError):
+        await expert_allowed_credential_ids("user-1", "expert-1")
+
+
 def test_refs_carry_the_service_behind_an_mcp_credential():
     from backend.integrations.mcp_catalog import get_mcp_catalog
 
