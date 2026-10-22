@@ -68,7 +68,7 @@ def test_account_deleted_has_no_button_link_or_ignore_line():
         assert "Copy this link" not in part
         assert "expires" not in part
     assert 'bgcolor="#6144DF"' not in email.html
-    assert set(re.findall(r'href="([^"]+)"', email.html)) == {
+    assert set(re.findall(r'<a\b[^>]*?\bhref="([^"]+)"', email.html)) == {
         "https://agpt.co",
         "mailto:contact@agpt.co",
         discord,

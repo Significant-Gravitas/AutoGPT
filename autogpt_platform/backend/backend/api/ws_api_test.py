@@ -457,7 +457,6 @@ async def test_authenticate_websocket_closed_account_closes_4003(mocker) -> None
     """A token minted before the account closed still verifies for an hour."""
     from backend.api.ws_api import authenticate_websocket
 
-    mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-closed"}),
