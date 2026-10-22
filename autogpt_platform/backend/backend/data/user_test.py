@@ -2,9 +2,10 @@
 
 import asyncio
 import base64
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -35,6 +36,25 @@ def _application_user(user_id: str, email: str) -> user_module.User:
 
 
 class TestUpdateUserTimezone:
+    @pytest.fixture(autouse=True)
+    def _stub_background_reregistration(self, mocker):
+        """The update spawns the dream and briefing re-registrations as
+        background tasks. Left live, they reach the flag service, the
+        registry and Redis from the test's loop and can outlive the test;
+        the tests that pin those tasks patch them again themselves."""
+        mocker.patch(
+            "backend.copilot.dream.registry.reregister_user",
+            new=AsyncMock(return_value={}),
+        )
+        mocker.patch(
+            "backend.copilot.briefing.scheduling.clear_briefing_registration_marker",
+            new=AsyncMock(),
+        )
+        mocker.patch(
+            "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+            new=AsyncMock(),
+        )
+
     @pytest.mark.asyncio
     async def test_invalidates_all_three_user_caches(self):
         prisma_user = MagicMock(id="user-1", email="user@example.com")
@@ -91,19 +111,19 @@ class TestUpdateUserTimezone:
         assert "connection lost" in str(exc.value)
 
     @pytest.mark.asyncio
-    async def test_eagerly_re_registers_dream_schedules_with_force_refresh(self):
+    async def test_eagerly_re_registers_every_memory_scope_of_the_user(self):
         """APScheduler cron triggers bind to the timezone at registration
-        time. A profile-page timezone change MUST eagerly re-register
-        the dream-system crons so they fire at the right local time
-        without waiting for the 7-day Redis dedup-key TTL to expire."""
+        time. A profile-page timezone change MUST eagerly re-register the
+        dream-system crons of every memory scope the user has (the account
+        and each expert) so they fire at the right local time."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
-        captured: list[tuple[str, bool]] = []
+        captured: list[str] = []
 
-        async def fake_ensure(user_id: str, *, force_refresh: bool = False):
-            captured.append((user_id, force_refresh))
+        async def fake_reregister(user_id: str):
+            captured.append(user_id)
             return {}
 
         with (
@@ -112,9 +132,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=fake_ensure
-            ),
+            patch.object(dream_registry, "reregister_user", new=fake_reregister),
             # This test isolates the dream-system re-registration contract;
             # the sibling morning-briefing re-registration (also wired here)
             # is covered separately by scheduling_test.py.
@@ -137,7 +155,7 @@ class TestUpdateUserTimezone:
             # assert it was called.
             await asyncio.sleep(0)
 
-        assert captured == [("user-tz", True)]
+        assert captured == ["user-tz"]
 
     @pytest.mark.asyncio
     async def test_re_register_task_is_retained_and_its_failure_logged(self):
@@ -147,11 +165,11 @@ class TestUpdateUserTimezone:
         ``_background_tasks`` until done and log failures via the
         done-callback instead of dropping them."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
 
-        async def failing_ensure(user_id: str, *, force_refresh: bool = False):
+        async def failing_reregister(user_id: str):
             raise RuntimeError("scheduler unreachable")
 
         with (
@@ -160,9 +178,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=failing_ensure
-            ),
+            patch.object(dream_registry, "reregister_user", new=failing_reregister),
             # Isolate the dream-system task-retention contract under test
             # from the sibling morning-briefing re-registration (also wired
             # here) — real Redis/flag I/O in that path would otherwise give
@@ -208,7 +224,7 @@ class TestUpdateUserTimezone:
         stored marker before re-ensuring, or the drift check would read
         the just-superseded timezone and skip the re-register."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
         calls: list[str] = []
@@ -225,9 +241,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=AsyncMock()
-            ),
+            patch.object(dream_registry, "reregister_user", new=AsyncMock()),
             patch.object(
                 briefing_scheduling,
                 "clear_briefing_registration_marker",
@@ -1056,6 +1070,83 @@ class TestTableBackedCredentials:
         assert where == {"ownerType": "USER", "ownerId": "u1", "status": "active"}
 
     @pytest.mark.asyncio
+    async def test_get_near_expiry_oauth_credentials_returns_only_refreshable_due_rows(
+        self, mocker
+    ):
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials, OAuth2Credentials
+        from backend.data.user import get_near_expiry_oauth_credentials
+        from backend.util.encryption import JSONCryptor
+
+        due = OAuth2Credentials(
+            id="due",
+            provider="github",
+            access_token=SecretStr("access"),
+            access_token_expires_at=790_399,
+            refresh_token=SecretStr("refresh"),
+            scopes=[],
+        )
+        future = due.model_copy(
+            update={"id": "future", "access_token_expires_at": 790_401}
+        )
+        provider_runtime = due.model_copy(
+            update={"id": "runtime", "refresh_strategy": "provider_runtime"}
+        )
+        managed = due.model_copy(update={"id": "managed", "is_managed": True})
+        without_refresh = due.model_copy(
+            update={"id": "without-refresh", "refresh_token": None}
+        )
+        expired = due.model_copy(
+            update={"id": "expired", "access_token_expires_at": 999}
+        )
+        expired_refresh = due.model_copy(
+            update={"id": "expired-refresh", "refresh_token_expires_at": 999}
+        )
+        without_expiry = due.model_copy(
+            update={"id": "without-expiry", "access_token_expires_at": None}
+        )
+        api_key = APIKeyCredentials(
+            id="api-key", provider="github", api_key=SecretStr("key")
+        )
+        cryptor = JSONCryptor()
+
+        def row(owner_id, credentials):
+            return MagicMock(
+                id=credentials.id,
+                ownerId=owner_id,
+                encryptedPayload=cryptor.encrypt(credentials.model_dump()),
+            )
+
+        corrupt = MagicMock(
+            id="corrupt", ownerId="user-corrupt", encryptedPayload="bad"
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[
+                row("user-due", due),
+                row("user-future", future),
+                row("user-runtime", provider_runtime),
+                row("user-managed", managed),
+                row("user-without-refresh", without_refresh),
+                row("user-expired", expired),
+                row("user-expired-refresh", expired_refresh),
+                row("user-without-expiry", without_expiry),
+                row("user-api", api_key),
+                corrupt,
+            ]
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+        mocker.patch("time.time", return_value=2_000_000)
+
+        result = await get_near_expiry_oauth_credentials(790_400)
+
+        assert result == [("user-due", due), ("user-expired", expired)]
+        mock_prisma.integrationcredential.find_many.assert_awaited_once_with(
+            where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+        )
+
+    @pytest.mark.asyncio
     async def test_set_updates_existing_creates_new_revokes_missing(self, mocker):
         from unittest.mock import AsyncMock, MagicMock
 
@@ -1217,15 +1308,18 @@ class TestGetOrCreateUserStatus:
             )
 
             result = await user_module.get_or_create_user_with_status(
-                {"sub": "user-hooked", "email": "hook@example.com"}
+                {"sub": "user-hooked", "email": "hook@example.com", "role": "admin"}
             )
 
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
         track.assert_called_once_with(user_id="user-hooked", signup_method="email")
-        # The email type and sign-in method MailerLite segments on.
-        person.assert_called_once_with("user-hooked", "hook@example.com", "email")
+        # The email type and sign-in method MailerLite segments on, and the
+        # token's role, which flags our own team.
+        person.assert_called_once_with(
+            "user-hooked", "hook@example.com", "email", "admin"
+        )
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):
@@ -1601,6 +1695,35 @@ class TestGetAuthUserFlagFields:
         assert fields is None
 
 
+class TestIsUserBanned:
+    """The ban states themselves are driven through the real dependencies in
+    ``api/banned_account_test.py``; these pin what those can't reach."""
+
+    @pytest.mark.asyncio
+    async def test_a_missing_auth_row_is_not_a_ban(self):
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            mock_auth_user.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            assert await user_module.is_auth_user_banned("no-auth-row") is False
+
+    @pytest.mark.asyncio
+    async def test_the_answer_is_shared_until_it_expires(self, mocker):
+        """Every request asks, so a hit must not reach the database."""
+        mocker.patch("backend.data.db.is_connected", return_value=True)
+        user_id = f"cached-{uuid.uuid4()}"
+        now = datetime.now(timezone.utc)
+        row = MagicMock(banned=True, banExpires=now + timedelta(days=1))
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            find_unique = AsyncMock(return_value=row)
+            mock_auth_user.prisma.return_value.find_unique = find_unique
+            assert await user_module.is_user_banned(user_id) is True
+            assert await user_module.is_user_banned(user_id) is True
+        user_module.is_user_banned.cache_delete(user_id)
+
+        find_unique.assert_awaited_once_with(where={"id": user_id})
+
+
 class TestGetUserDefaultChatRoute:
     @pytest.mark.asyncio
     async def test_returns_the_saved_route(self):
@@ -1874,7 +1997,7 @@ async def test_unsubscribe_error_does_not_repeat_the_token():
     never expires."""
     token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
 
-    with pytest.raises(DatabaseError) as exc:
+    with pytest.raises(ValueError) as exc:
         await user_module.unsubscribe_user_by_token(token)
 
     assert token not in str(exc.value)

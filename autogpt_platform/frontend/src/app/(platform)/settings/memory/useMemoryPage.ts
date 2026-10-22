@@ -1,3 +1,4 @@
+import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import {
   getGetMyExpertMemoryOverviewQueryKey,
   getGetMyMemoryOverviewQueryKey,
@@ -12,7 +13,6 @@ import {
   useListMyExpertMemoryFacts,
   useListMyMemoryFacts,
 } from "@/app/api/__generated__/endpoints/memory/memory";
-import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -31,8 +31,6 @@ export function useMemoryPage() {
   );
   const queryClient = useQueryClient();
 
-  // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay
-  // manageable here even if the hiring UI is dark.
   const expertsQuery = useListExperts();
   const expertsSettled = expertsQuery.data?.status === 200;
   const experts = getActiveExperts(

@@ -7,11 +7,13 @@ import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.jina.search import SearchTheWebBlock
+from backend.blocks.typesafe.choice import JevChoiceBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
-from backend.executor.billing import charge_reconciled_usage
+from backend.executor.billing import charge_reconciled_usage, charge_usage
+from backend.sdk.cost_integration import sync_all_provider_costs
 
 
 @pytest.fixture(autouse=True)
@@ -117,6 +119,27 @@ def test_dynamic_cost_block_with_positive_balance_starts(tmp_block_costs_overrid
     assert remaining == 50
     # Dynamic-cost block returns 0 pre-flight; reconciliation will settle.
     assert block_pre_flight == 0
+    db_client.spend_credits.assert_not_called()
+
+
+def test_free_sdk_price_runs_with_an_empty_wallet():
+    """Jev's SDK price is 0 (TypeSafe bills the user's own key), and block
+    loading registers it, unfiltered, in the executor too. A free entry never
+    debits, so it must not trip the dynamic-cost balance guard."""
+    exec_entry = _node_exec(JevChoiceBlock().id)
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 0  # empty wallet
+
+    with (
+        patch.dict(BLOCK_COSTS),
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=JevChoiceBlock()),
+    ):
+        BLOCK_COSTS.pop(JevChoiceBlock, None)
+        sync_all_provider_costs([JevChoiceBlock])
+        total_cost, _, block_pre_flight = charge_usage(exec_entry, execution_count=0)
+
+    assert (total_cost, block_pre_flight) == (0, 0)
     db_client.spend_credits.assert_not_called()
 
 

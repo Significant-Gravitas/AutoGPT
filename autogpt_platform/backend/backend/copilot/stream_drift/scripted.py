@@ -4,7 +4,7 @@ import contextlib
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +12,7 @@ from claude_agent_sdk import Message
 from openai.types.chat import ChatCompletionChunk
 
 from backend.copilot.baseline import service as baseline
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamBaseResponse, StreamStart
@@ -20,6 +21,7 @@ from backend.copilot.sdk.compaction import CompactionTracker
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.tree import root_envelope
+from backend.copilot.turn_budget import TurnBudget
 
 # Its presence alone picks the OpenRouter transport the fixtures were recorded
 # under; without a key (fork PRs have no secrets) the turns record differently.
@@ -170,6 +172,17 @@ async def sdk_service_turn(
         connection.__aenter__.return_value = client
         return connection
 
+    async def answered_cards(
+        _user_id: str,
+        _session: ChatSession,
+        deliver: Callable[[PendingMessage], None],
+        **__: Any,
+    ) -> AsyncGenerator[StreamBaseResponse, None]:
+        for result in held_results or []:
+            deliver(result)
+        return
+        yield
+
     def lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
         return MagicMock(
             try_acquire=AsyncMock(return_value=owner_id),
@@ -179,6 +192,7 @@ async def sdk_service_turn(
 
     stubs: dict[str, Any] = {
         "ClaudeSDKClient": MagicMock(side_effect=cli),
+        "require_verbatim_prompts_cli": MagicMock(return_value="claude"),
         "AsyncClusterLock": MagicMock(side_effect=lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
         "propagate_attributes": MagicMock(),
@@ -193,11 +207,14 @@ async def sdk_service_turn(
         "_resolve_sdk_model": MagicMock(return_value=None),
         "set_execution_context": MagicMock(),
         "get_user_tier": AsyncMock(return_value=None),
-        "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),
+        "resolve_turn_budget": AsyncMock(
+            return_value=TurnBudget(usd=100.0, limiting="task")
+        ),
+        "gate_auto_continue": AsyncMock(return_value=AutoContinueGate(proceed=True)),
         "drain_pending_safe": AsyncMock(
             side_effect=[[], queued_after_first] + [[]] * len(queries)
         ),
-        "resolve_answered": AsyncMock(return_value=held_results or []),
+        "resolve_answered": answered_cards,
         "build_session_context": AsyncMock(return_value=""),
         "build_skills_context": AsyncMock(return_value=""),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),

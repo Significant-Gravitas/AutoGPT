@@ -8,16 +8,18 @@ LLM extraction step and ends up on production :RELATES_TO edges.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
 
 import pytest
 from pydantic import ValidationError
 
-from .memory_model import MemoryStatus, SourceKind
+from .memory_model import ExtractedStatus, MemoryStatus, SourceKind
+from .recall import USER_FORGET_REASON
 from .types import (
     EDGE_TYPE_MAP,
     EDGE_TYPES,
     ENTITY_TYPES,
+    POLICY_EDGE_FIELDS,
     MemoryFact,
     Organization,
     Person,
@@ -32,8 +34,6 @@ def test_memoryfact_defaults_match_envelope():
     assert fact.source_kind == SourceKind.user_asserted
     assert fact.scope == "real:global"
     assert fact.provenance is None
-    assert fact.web_verified_at is None
-    assert fact.ratified_at is None
     assert fact.expiration_reason is None
 
 
@@ -56,6 +56,21 @@ def test_memoryfact_status_enum_restricted():
         MemoryFact(status="archived")  # type: ignore[arg-type]
 
 
+def test_memoryfact_leaves_a_forgets_marks_out_of_the_extraction_schema():
+    """``MemoryFact`` is graphiti's schema for what its extraction model fills
+    from an episode's text: every status but ``retracted``, and no
+    ``user_signal`` among the example reasons, since only a forget writes
+    them ("I retracted my application" is no forget)."""
+    assert {s.value for s in ExtractedStatus} == {s.value for s in MemoryStatus} - {
+        MemoryStatus.retracted.value
+    }
+    with pytest.raises(ValidationError):
+        MemoryFact.model_validate({"status": MemoryStatus.retracted.value})
+    schema = json.dumps(MemoryFact.model_json_schema())
+    assert MemoryStatus.retracted.value not in schema
+    assert USER_FORGET_REASON not in schema
+
+
 def test_memoryfact_carries_full_envelope_metadata():
     """All audit-required fields can be set in one shot."""
     fact = MemoryFact(
@@ -64,8 +79,6 @@ def test_memoryfact_carries_full_envelope_metadata():
         source_kind=SourceKind.assistant_derived,
         scope="project:foo",
         provenance="session:s1#msg:42",
-        web_verified_at=datetime(2026, 5, 12, tzinfo=timezone.utc),
-        ratified_at=datetime(2026, 5, 14, tzinfo=timezone.utc),
         expiration_reason="stale_fact",
     )
     dumped = fact.model_dump(mode="json")
@@ -74,8 +87,6 @@ def test_memoryfact_carries_full_envelope_metadata():
     assert dumped["source_kind"] == "assistant_derived"
     assert dumped["scope"] == "project:foo"
     assert dumped["provenance"] == "session:s1#msg:42"
-    assert dumped["web_verified_at"] == "2026-05-12T00:00:00Z"
-    assert dumped["ratified_at"] == "2026-05-14T00:00:00Z"
     assert dumped["expiration_reason"] == "stale_fact"
 
 
@@ -125,3 +136,21 @@ def test_organization_entity_has_optional_industry():
     assert o.industry is None
     o = Organization(industry="aerospace")
     assert o.industry == "aerospace"
+
+
+@pytest.mark.parametrize(
+    "model", [*EDGE_TYPES.values(), *ENTITY_TYPES.values()], ids=lambda m: m.__name__
+)
+def test_no_extraction_model_declares_a_policy_field(model) -> None:
+    """Only the platform writes these: a model declaring one would let
+    graphiti's extraction write it (``extracted_attributes``)."""
+    assert not model.model_fields.keys() & POLICY_EDGE_FIELDS
+    assert not any(
+        field in json.dumps(model.model_json_schema()) for field in POLICY_EDGE_FIELDS
+    )
+
+
+def test_the_attestation_stamps_are_the_platforms():
+    """The ratification loop writes ``ratified_at``, and ``web_verified_at``
+    has no writer yet: neither is offered to graphiti's extraction model."""
+    assert {"ratified_at", "web_verified_at"} <= POLICY_EDGE_FIELDS

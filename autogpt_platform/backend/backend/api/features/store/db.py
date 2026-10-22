@@ -40,6 +40,9 @@ settings = Settings()
 DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
+# Creator search reads only this much of a query, which bounds its ILIKE pattern.
+MAX_CREATOR_SEARCH_QUERY_LENGTH = 100
+
 
 class StoreAgentsSortOptions(Enum):
     RATING = "rating"
@@ -56,6 +59,7 @@ async def get_store_agents(
     category: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    public_search: bool = False,
 ) -> store_model.StoreAgentsResponse:
     """
     Get PUBLIC store agents from the StoreAgent view.
@@ -64,6 +68,8 @@ async def get_store_agents(
     - With search_query: Uses hybrid search (semantic + lexical)
     - Fallback: If embeddings unavailable, gracefully degrades to lexical-only
     - Rationale: User-facing endpoint prioritizes availability over accuracy
+    - public_search: a new query embedding takes a slot from store search's
+      per-minute budget, and the search ranks by text alone once it is spent
 
     Note: Admin operations (approval) use fail-fast to prevent inconsistent state.
     """
@@ -93,6 +99,7 @@ async def get_store_agents(
                     sorted_by="relevance",  # Use hybrid scoring for relevance
                     page=page,
                     page_size=page_size,
+                    public_search=public_search,
                 )
                 search_used_hybrid = True
             except Exception as e:
@@ -513,12 +520,8 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    if search_query:
-        # Sanitize and validate search query by escaping special characters
-        sanitized_query = search_query.strip()
-        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
-            raise DatabaseError("Invalid search query")
-
+    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    if sanitized_query:
         # Escape special SQL characters
         sanitized_query = (
             sanitized_query.replace("\\", "\\\\")

@@ -2,11 +2,13 @@ import asyncio
 import contextlib
 import inspect
 import logging
+import sys
+import threading
 import time
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import orjson
@@ -17,6 +19,7 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -34,7 +37,9 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
     get_service_client,
+    resolve_type_hints,
 )
+from backend.util.service_auth import internal_auth_headers
 
 TEST_SERVICE_PORT = 8765
 
@@ -130,6 +135,11 @@ class ServiceTest(AppService):
         """Method that always fails - for testing no retry when disabled"""
         raise RuntimeError("Intended error for testing")
 
+    # Exposed functions defined in another module that uses
+    # ``from __future__ import annotations`` (string annotations).
+    echo_record = expose(rpc_models.echo_record)
+    list_records = expose(rpc_models.list_records)
+
 
 class ServiceTestClient(AppServiceClient):
     @classmethod
@@ -145,6 +155,24 @@ class ServiceTestClient(AppServiceClient):
     add_async = endpoint_to_async(ServiceTest.add)
     list_reviews_async = endpoint_to_async(ServiceTest.list_reviews)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
+    echo_record = endpoint_to_async(ServiceTest.echo_record)
+    list_records = endpoint_to_async(ServiceTest.list_records)
+
+
+@pytest.mark.asyncio
+async def test_rpc_resolves_future_annotations_for_request_and_return(server):
+    """A model-valued argument and a ``Model | None`` return declared with
+    string annotations in another module must round-trip as models, not
+    raw dicts, and ``None`` must survive."""
+    with ServiceTest():
+        client = get_service_client(ServiceTestClient)
+        echoed = await client.echo_record(rpc_models.SampleRecord(id="r1", count=2))
+        assert isinstance(echoed, rpc_models.SampleRecord)
+        assert echoed.count == 3
+        assert await client.echo_record(rpc_models.SampleRecord(id="missing")) is None
+        listed = await client.list_records(["a", "b"])
+        assert [r.id for r in listed] == ["a", "b"]
+        assert all(isinstance(r, rpc_models.SampleRecord) for r in listed)
 
 
 @pytest.mark.asyncio
@@ -890,7 +918,7 @@ async def wait_until_service_ready(base_url: str, timeout: float = 10):
 
 async def send_slow_request(base_url: str) -> dict:
     """Send a slow request and return the result"""
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, headers=internal_auth_headers()) as client:
         response = await client.post(f"{base_url}/slow_endpoint", json={"duration": 5})
         assert response.status_code == 200
         return response.json()
@@ -916,7 +944,9 @@ async def test_graceful_shutdown(test_service):
 
     # Try to send a new request - should be rejected or connection refused
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx.AsyncClient(
+            timeout=5, headers=internal_auth_headers()
+        ) as client:
             response = await client.post(f"{test_service_url}/fast_endpoint", json={})
             # Should get 503 Service Unavailable during shutdown
             assert response.status_code == 503
@@ -975,6 +1005,74 @@ async def test_health_check_during_shutdown(test_service):
 # ============================================================================
 # Unit tests for DynamicClient._get_return
 # ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_a_pooled_call_survives_a_server_freeze_past_its_idle_time(
+    keep_alive_service,
+):
+    """A call written into a pooled connection while the server is frozen past
+    that connection's idle time is answered, not reset (httpx.ReadError)."""
+    client = get_service_client(KeepAliveServiceClient)
+    await asyncio.gather(*(client.ping() for _ in range(3)))
+    # The service freezes from 4 s to 7 s of idle, across uvicorn's default 5 s
+    # keep-alive, which it must outlive; the calls arrive mid-freeze.
+    await get_service_client(KeepAliveServiceClient).hold_gil(after=4.0, seconds=3.0)
+    await asyncio.sleep(5.5)
+
+    assert await asyncio.gather(*(client.ping() for _ in range(3))) == [1, 1, 1]
+
+
+@pytest.fixture
+async def keep_alive_service():
+    service = KeepAliveService()
+    service.start(background=True)
+    try:
+        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
+        yield service
+    finally:
+        service.stop()
+
+
+class KeepAliveService(AppService):
+    @classmethod
+    def get_port(cls) -> int:
+        return 18998
+
+    @expose
+    def ping(self) -> int:
+        return 1
+
+    @expose
+    def hold_gil(self, after: float, seconds: float) -> int:
+        """Freeze every other thread for *seconds*, starting *after* seconds from
+        now, as a full gen2 GC does: the event loop is then idle in select()."""
+        timer = threading.Timer(after, _spin_holding_gil, args=(seconds,))
+        timer.daemon = True
+        timer.start()
+        return 1
+
+
+class KeepAliveServiceClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return KeepAliveService
+
+    ping = endpoint_to_async(KeepAliveService.ping)
+    hold_gil = endpoint_to_async(KeepAliveService.hold_gil)
+
+
+def _spin_holding_gil(seconds: float) -> None:
+    # A spinning thread keeps the GIL until another has waited a whole switch
+    # interval for it, so an interval this long hands it over only at the end.
+    previous = sys.getswitchinterval()
+    sys.setswitchinterval(seconds)
+    try:
+        deadline = time.perf_counter() + seconds
+        while time.perf_counter() < deadline:
+            pass
+    finally:
+        sys.setswitchinterval(previous)
 
 
 class TestGetReturn:
@@ -1099,6 +1197,10 @@ class TestForwardRefReturnAnnotation:
         with pytest.raises(ValidationError):
             adapter.validate_python([{"id": "0"}, {"id": "1"}])
 
+        resolved = resolve_type_hints(_returns_at_most_one_review)["return"]
+        with pytest.raises(ValidationError):
+            TypeAdapter(resolved).validate_python([{"id": "0"}, {"id": "1"}])
+
     def test_annotation_without_a_schema_yields_no_adapter(self, caplog):
         """Resolvable, but pydantic cannot build a schema: warn once, skip validation."""
 
@@ -1210,3 +1312,34 @@ def test_an_untraced_rpc_carries_no_trace(sentry_transactions):
     [request] = sent
     assert "sentry-trace" not in request.headers
     assert "baggage" not in request.headers
+
+
+async def test_an_app_service_freezes_its_heap_after_its_own_startup(mocker):
+    order: list[str] = []
+    mocker.patch("backend.util.service.redis_client.get_redis_async", AsyncMock())
+    mocker.patch("backend.util.service.redis_client.disconnect_async", AsyncMock())
+    mocker.patch(
+        "backend.util.service.freeze_startup_heap", lambda: order.append("freeze")
+    )
+    app = _StartupRecordingService(order).build_fastapi_app()
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert order == ["subclass startup", "freeze"]
+
+
+class _StartupRecordingService(AppService):
+    def __init__(self, order: list[str]):
+        super().__init__()
+        self.order = order
+
+    @classmethod
+    def get_port(cls) -> int:
+        return 0
+
+    @contextlib.asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        async with super().lifespan(app):
+            self.order.append("subclass startup")
+            yield

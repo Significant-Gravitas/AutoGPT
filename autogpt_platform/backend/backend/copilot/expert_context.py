@@ -31,7 +31,6 @@ from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -238,25 +237,13 @@ async def build_expert_context(
     if not user_id:
         return ""
     try:
-        # ``delegate_to_expert`` is hidden from the tool schema and refused by
-        # execute_tool when the hire-experts flag is off, so the roster block
-        # must not tell the model to call it. Same boolean the engines use to
-        # gate the delegation supplement and the tool groups.
-        delegation_enabled = await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
-        )
         if expert_id:
             return await _expert_session_context(
                 user_id,
                 expert_id,
-                delegation_enabled=delegation_enabled,
                 include_teammates=include_teammates,
             )
-        team = await _team_context(user_id, delegation_enabled=delegation_enabled)
-        if not delegation_enabled:
-            # ``expert_resources`` is hidden without the flag, and naming a
-            # tool the turn cannot execute is worse than saying nothing.
-            return team
+        team = await _team_context(user_id)
         return (
             team
             + render_account_standing_work_block()
@@ -271,7 +258,6 @@ async def _expert_session_context(
     user_id: str,
     expert_id: str,
     *,
-    delegation_enabled: bool,
     include_teammates: bool,
 ) -> str:
     async def _load_teammates() -> str:
@@ -282,7 +268,6 @@ async def _expert_session_context(
         try:
             return await _team_context(
                 user_id,
-                delegation_enabled=delegation_enabled,
                 exclude_expert_id=expert_id,
             )
         except Exception as e:
@@ -476,7 +461,6 @@ def render_expert_computer_block() -> str:
 async def _team_context(
     user_id: str,
     *,
-    delegation_enabled: bool,
     exclude_expert_id: str | None = None,
 ) -> str:
     """Roster block for the first user message.
@@ -489,13 +473,9 @@ async def _team_context(
     normal, and the delegated turn runs under the teammate's own identity,
     memory, and budget rather than being ghost-written.
 
-    With the hire-experts flag off the roster still helps the model route a
-    request, but the rule falls back to pointing at the expert's thread —
-    naming a tool the turn cannot execute is worse than saying nothing.
-
     An empty roster on a plain session is the Head-of-AI moment: instead of
     saying nothing, hand the model the hiring roster so it can propose a
-    first teammate. The flag and the template read are paid only there — an
+    first teammate. The template read is paid only there — an
     expert session's empty teammate list is just a solo roster, not a user
     without a team.
     """
@@ -504,15 +484,10 @@ async def _team_context(
     if (
         not any(e.id != exclude_expert_id for e in experts)
         and exclude_expert_id is None
-        and delegation_enabled
-        and await is_feature_enabled(
-            Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False
-        )
     ):
         hiring_roster = await experts_db().list_templates()
     return render_team_context(
         experts,
-        delegation_enabled=delegation_enabled,
         exclude_expert_id=exclude_expert_id,
         hiring_roster=hiring_roster,
     )
@@ -521,13 +496,12 @@ async def _team_context(
 def render_team_context(
     experts: list[Expert],
     *,
-    delegation_enabled: bool,
     exclude_expert_id: str | None = None,
     hiring_roster: list[Expert] | None = None,
 ) -> str:
     """Pure renderer; ``hiring_roster`` is the template list for the
-    Head-of-AI block and is only passed when the caller already checked the
-    flag and found nobody hired. ``None`` keeps the empty roster silent."""
+    Head-of-AI block and is only passed when the caller found nobody hired. ``None`` keeps the empty roster silent.
+    """
     teammates = [e for e in experts if e.id != exclude_expert_id]
     if not teammates:
         if hiring_roster is None:
@@ -536,7 +510,6 @@ def render_team_context(
 
     lines = "\n".join(_team_line(e) for e in teammates)
     rule = _team_rule(
-        delegation_enabled=delegation_enabled,
         exclude_expert_id=exclude_expert_id,
     )
     header = (
@@ -547,20 +520,7 @@ def render_team_context(
     return f"<team_context>\n{header}\n{lines}\n{rule}\n</team_context>\n\n"
 
 
-def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> str:
-    if not delegation_enabled:
-        if exclude_expert_id is None:
-            return (
-                "When a request clearly matches an expert's domain, suggest "
-                "opening that expert's thread (by expert id) instead of "
-                "handling it here; never silently answer as an expert."
-            )
-        return (
-            "These are your teammates. When a task needs their skills or "
-            "workflows rather than yours, tell the user which teammate owns "
-            "it and point them at that expert's thread. Never impersonate a "
-            "teammate or guess at their domain yourself."
-        )
+def _team_rule(*, exclude_expert_id: str | None) -> str:
     if exclude_expert_id is None:
         return (
             "When a request clearly matches an expert's domain, you may hand "

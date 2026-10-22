@@ -15,8 +15,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import Link, { useLinkStatus } from "next/link";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import {
+  BookOpen01Icon,
   Delete02Icon,
   Download04Icon,
   Loading03Icon,
@@ -53,6 +54,8 @@ interface Props {
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
   onShare: (id: string) => void;
+  isLearningEnabled: boolean;
+  onExcludeFromLearning: (id: string) => void;
   onDelete: (id: string, title: string | null | undefined) => void;
 }
 
@@ -71,7 +74,9 @@ function ChatLinkLoader() {
   );
 }
 
-export function RecentChatItem({
+// Memoised: the list hands every row the same shared callbacks (taking the
+// session id), so a list refetch only re-renders rows whose session changed.
+export const RecentChatItem = memo(function RecentChatItem({
   session,
   isActive,
   isEditing,
@@ -86,6 +91,8 @@ export function RecentChatItem({
   onRename,
   onExport,
   onShare,
+  isLearningEnabled,
+  onExcludeFromLearning,
   onDelete,
 }: Props) {
   const title = session.title || "Untitled chat";
@@ -203,6 +210,12 @@ export function RecentChatItem({
             <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
             Share chat
           </DropdownMenuItem>
+          {isLearningEnabled && (
+            <DropdownMenuItem onClick={() => onExcludeFromLearning(session.id)}>
+              <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
+              Exclude from learning
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
@@ -215,4 +228,4 @@ export function RecentChatItem({
       </DropdownMenu>
     </SidebarMenuItem>
   );
-}
+});

@@ -81,7 +81,7 @@ export function ExpertChatDrawer({
             variant="ghost"
             size="icon-xs"
             leadingIcon={ArrowExpandIcon}
-            aria-label="Open in Copilot"
+            aria-label="Open in Chat"
           />
         </>
       }
@@ -120,6 +120,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
     isLoadingSession,
     isCreating,
     suppressOnboarding,
+    pendingSend,
   } = chat;
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -133,12 +134,13 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
               Opening chat…
             </Text>
           </div>
-        ) : sessionId ? (
+        ) : sessionId || pendingSend ? (
           <div className="flex min-h-0 flex-1 flex-col">
             <NewChatOnboarding
               expertId={target.expertId}
               enabled={
                 messages.length === 0 &&
+                !pendingSend &&
                 !isLoadingSession &&
                 !suppressOnboarding &&
                 !isStreaming
@@ -151,6 +153,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
                 isLoading={false}
                 sessionID={sessionId}
                 queuedMessages={queuedMessages}
+                pendingSend={pendingSend}
                 variant="compact"
                 showThreadHeader={false}
               />
@@ -184,11 +187,16 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
             variant="compact"
             onSend={onSend}
             disabled={isResolvingSession || isCreating}
+            isUploadingFiles={!!pendingSend}
             isStreaming={isStreaming}
+            isTurnStarting={status === "submitted"}
             onStop={stop}
             onEnqueue={onSend}
+            canAttachWhileStreaming
             placeholder={`Message ${target.name}…`}
             hasSession={!!sessionId}
+            expertId={target.expertId}
+            expertName={target.name}
           />
         </div>
       </div>

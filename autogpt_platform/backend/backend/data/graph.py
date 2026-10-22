@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Container, Mapping
+from collections.abc import Container, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -148,6 +148,46 @@ class Node(BaseDbModel):
             return _UnknownBlockBase(self.block_id)
         return block
 
+    def stripped_for_export(self) -> Self:
+        """
+        Returns a copy of the node with non-transferable input values removed:
+        - fields the block schema declares as a `CredentialsMetaInput`
+          (point at the original owner's credentials store; importers must
+          wire up their own)
+        - fields the block schema marks with `secret: true` via
+          `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
+          which name the owner's file and embed their `_credentials_id`. These
+          are nulled rather than removed: an explicit None tells the executor the
+          file was cleared, so importers and forks pick their own.
+        - a sub-agent node's `user_id`, which `reassign_ids` stamps with the
+          owner's id on save and stamps again with the importer's. It is
+          blanked rather than removed: the field is required, and the agent
+          generator validates an edited copy before its save stamps the id.
+        """
+        stripped_node = self.model_copy(deep=True)
+
+        if self.block_id == AgentExecutorBlock().id:
+            stripped_node.input_default["user_id"] = ""
+
+        if stripped_node.input_default:
+            for field_name in self.block.input_schema.get_credentials_fields():
+                stripped_node.input_default.pop(field_name, None)
+
+            schema_props = self.block.input_schema.jsonschema().get("properties", {})
+            for field_name, field_schema in schema_props.items():
+                if (
+                    isinstance(field_schema, dict)
+                    and field_schema.get("secret", False) is True
+                ):
+                    stripped_node.input_default.pop(field_name, None)
+
+            for field_name in _auto_credentials_field_names(self):
+                if field_name in stripped_node.input_default:
+                    stripped_node.input_default[field_name] = None
+
+        return stripped_node
+
 
 class NodeModel(Node):
     graph_id: str
@@ -176,40 +216,11 @@ class NodeModel(Node):
     def is_triggered_by_event_type(self, event_type: str) -> bool:
         return self.block.is_triggered_by_event_type(self.input_default, event_type)
 
-    def stripped_for_export(self) -> "NodeModel":
-        """
-        Returns a copy of the node model with non-transferable references removed:
-        - fields the block schema declares as a `CredentialsMetaInput`
-          (point at the original owner's credentials store; importers must
-          wire up their own)
-        - fields the block schema marks with `secret: true` via
-          `SchemaField(secret=True)` (block-author-declared sensitive values)
-        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
-          which name the owner's file and embed their `_credentials_id`. These
-          are nulled rather than removed: an explicit None tells the executor the
-          file was cleared, so importers and forks pick their own.
-        - `webhook_id` (points at the original owner's webhook subscription)
-        """
-        stripped_node = self.model_copy(deep=True)
-
-        if stripped_node.input_default:
-            for field_name in self.block.input_schema.get_credentials_fields():
-                stripped_node.input_default.pop(field_name, None)
-
-            schema_props = self.block.input_schema.jsonschema().get("properties", {})
-            for field_name, field_schema in schema_props.items():
-                if (
-                    isinstance(field_schema, dict)
-                    and field_schema.get("secret", False) is True
-                ):
-                    stripped_node.input_default.pop(field_name, None)
-
-            for field_name in _auto_credentials_field_names(self):
-                if field_name in stripped_node.input_default:
-                    stripped_node.input_default[field_name] = None
-
+    def stripped_for_export(self) -> Self:
+        """`Node.stripped_for_export`, and also drops `webhook_id` (points at
+        the original owner's webhook subscription)."""
+        stripped_node = super().stripped_for_export()
         stripped_node.webhook_id = None
-
         return stripped_node
 
 
@@ -1316,6 +1327,37 @@ class GraphModel(Graph, GraphMeta):
         """
         return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
 
+    def shared_copy(self) -> Self:
+        """A copy safe to show someone who doesn't own this graph.
+
+        Every node, sub-graphs' included, is stripped the way an export strips
+        it (`stripped_for_export`), and the owner's identity is blanked, as
+        `from_db(..., for_export=True)` does. It works on an already-loaded
+        model, so a route can decide by ownership once it knows the owner.
+        Internal callers that act on the owner's behalf (presets, triggers, the
+        executor) keep reading the full graph.
+        """
+        return self.model_copy(
+            update={
+                "user_id": "",
+                "organization_id": None,
+                "team_id": None,
+                "nodes": [node.stripped_for_export() for node in self.nodes],
+                # Sub-graphs serialize without their owner's ids only because
+                # they are typed `BaseGraph`, which has no such fields.
+                "sub_graphs": [
+                    sub_graph.model_copy(
+                        update={
+                            "nodes": [
+                                node.stripped_for_export() for node in sub_graph.nodes
+                            ]
+                        }
+                    )
+                    for sub_graph in self.sub_graphs
+                ],
+            }
+        )
+
 
 def _describe_node_errors(
     graph: BaseGraph, node_errors: Mapping[str, Mapping[str, str]]
@@ -1713,52 +1755,80 @@ async def get_graph_as_admin(
 
 
 async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
-    """
-    Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
-    This call involves a DB fetch in batch, breadth-first, per-level of graph depth.
-    On each DB fetch we will only fetch the sub-graphs that are not already in the list.
-    """
-    sub_graphs = {graph.id: graph}
-    search_graphs = [graph]
-    agent_block_id = AgentExecutorBlock().id
+    """All sub-graphs of a given graph, recursively, flattened into a list."""
+    [sub_graphs] = await get_sub_graphs_of_each([graph])
+    return sub_graphs
 
-    while search_graphs:
-        sub_graph_ids = [
-            (graph_id, graph_version)
-            for graph in search_graphs
-            for node in graph.Nodes or []
-            if (
-                node.AgentBlock
-                and node.AgentBlock.id == agent_block_id
-                and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
-                and (
-                    graph_version := cast(
-                        int, dict(node.constantInput).get("graph_version")
-                    )
+
+async def get_sub_graphs_of_each(
+    graphs: Sequence[AgentGraph],
+) -> list[list[AgentGraph]]:
+    """
+    Each graph's sub-graphs, recursively, flattened, in the order of `graphs`.
+    Fetched breadth-first with one DB query per level of depth for all `graphs`
+    together, so a sub-graph they share (e.g. across versions) is fetched once.
+    """
+    agent_block_id = AgentExecutorBlock().id
+    fetched: dict[tuple[str, int, str], AgentGraph | None] = {}
+    found = [{graph.id: graph} for graph in graphs]
+    frontiers = [[graph] for graph in graphs]
+
+    while any(frontiers):
+        refs = [
+            [
+                # A sub-graph counts only if the root graph's owner owns it
+                (graph_id, graph_version, root.userId)
+                for graph in frontier
+                for graph_id, graph_version in _sub_graph_refs(graph, agent_block_id)
+            ]
+            for root, frontier in zip(graphs, frontiers)
+        ]
+        if missing := {ref for level in refs for ref in level} - fetched.keys():
+            fetched.update(dict.fromkeys(missing))
+            rows = await AgentGraph.prisma().find_many(
+                where={
+                    "OR": [
+                        {"id": graph_id, "version": graph_version, "userId": user_id}
+                        for graph_id, graph_version, user_id in missing
+                    ]
+                },
+                include=AGENT_GRAPH_INCLUDE,
+            )
+            fetched.update({(row.id, row.version, row.userId): row for row in rows})
+
+        for i, level in enumerate(refs):
+            # Walk every version a level references, as get_sub_graphs always
+            # has; the result still keeps one graph per id.
+            frontiers[i] = list(
+                {
+                    ref: graph
+                    for ref in level
+                    if (graph := fetched[ref]) and graph.id not in found[i]
+                }.values()
+            )
+            found[i].update({graph.id: graph for graph in frontiers[i]})
+
+    return [
+        [g for g in sub_graphs.values() if g.id != root.id]
+        for root, sub_graphs in zip(graphs, found)
+    ]
+
+
+def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, int]]:
+    return [
+        (graph_id, graph_version)
+        for node in graph.Nodes or []
+        if (
+            node.AgentBlock
+            and node.AgentBlock.id == agent_block_id
+            and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
+            and (
+                graph_version := cast(
+                    int, dict(node.constantInput).get("graph_version")
                 )
             )
-        ]
-        if not sub_graph_ids:
-            break
-
-        graphs = await AgentGraph.prisma().find_many(
-            where={
-                "OR": [
-                    {
-                        "id": graph_id,
-                        "version": graph_version,
-                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
-                    }
-                    for graph_id, graph_version in sub_graph_ids
-                ]
-            },
-            include=AGENT_GRAPH_INCLUDE,
         )
-
-        search_graphs = [graph for graph in graphs if graph.id not in sub_graphs]
-        sub_graphs.update({graph.id: graph for graph in search_graphs})
-
-    return [g for g in sub_graphs.values() if g.id != graph.id]
+    ]
 
 
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
@@ -1804,6 +1874,7 @@ async def get_graph_all_versions(
     limit: int = MAX_GRAPH_VERSIONS_FETCH,
     team_id: str | None = None,
     organization_id: str | None = None,
+    include_subgraphs: bool = False,
 ) -> list[GraphModel]:
     where_clause: AgentGraphWhereInput = {"id": graph_id}
     if organization_id is not None:
@@ -1832,7 +1903,15 @@ async def get_graph_all_versions(
     if not graph_versions:
         return []
 
-    versions = [GraphModel.from_db(graph) for graph in graph_versions]
+    sub_graphs = (
+        await get_sub_graphs_of_each(graph_versions)
+        if include_subgraphs
+        else [None] * len(graph_versions)
+    )
+    versions = [
+        GraphModel.from_db(graph, sub_graphs=subs)
+        for graph, subs in zip(graph_versions, sub_graphs)
+    ]
     for version in versions:
         if version.user_id != user_id:
             # A teammate reading the history: only the owner sees the files

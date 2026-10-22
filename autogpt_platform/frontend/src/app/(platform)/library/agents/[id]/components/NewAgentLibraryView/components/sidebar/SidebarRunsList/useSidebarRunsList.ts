@@ -18,7 +18,10 @@ import {
   retryUnlessClientError,
 } from "../../../helpers";
 import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
-import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import {
+  EXECUTION_REFETCH_THROTTLE_MS,
+  useExecutionEvents,
+} from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
@@ -150,6 +153,9 @@ export function useSidebarRunsList({
   useExecutionEvents({
     graphId: graphId || undefined,
     enabled: !!graphId && tabValue === "runs",
+    // Refetching the infinite query reloads every loaded page in turn, so a
+    // burst of events is folded into one refetch now and one at the end.
+    throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
     onExecutionUpdate: (_execution) => {
       // Invalidate and refetch the query to ensure we have the latest data
       // This is simpler and more reliable than manually updating the cache

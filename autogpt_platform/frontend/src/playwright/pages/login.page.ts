@@ -3,7 +3,10 @@ import {
   getSeededTestUser,
   type SeededTestAccountKey,
 } from "../credentials/accounts";
-import { skipOnboardingIfPresent } from "../utils/onboarding";
+import {
+  dismissTabIntrosViaAPI,
+  skipOnboardingIfPresent,
+} from "../utils/onboarding";
 
 export class LoginPage {
   constructor(private page: Page) {}
@@ -19,10 +22,7 @@ export class LoginPage {
   }
 
   async login(email: string, password: string) {
-    console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
-      email,
-      password,
-    });
+    console.log(`ℹ️ Attempting login on ${this.page.url()} as ${email}`);
 
     // Wait for the form to be ready
     await this.page.waitForSelector("form", { state: "visible" });
@@ -85,7 +85,10 @@ export class LoginPage {
     await this.page.waitForLoadState("load", { timeout: 10_000 });
 
     // If redirected to onboarding, complete it via API so tests can proceed
+    const wasOnOnboarding = this.page.url().includes("/onboarding");
     await skipOnboardingIfPresent(this.page, "/marketplace");
+    // Seeded users are past onboarding but have not seen the tab intros.
+    if (!wasOnOnboarding) await dismissTabIntrosViaAPI(this.page);
 
     console.log("➡️ Navigating to /marketplace ...");
     await this.page.goto("/marketplace", { timeout: 20_000 });

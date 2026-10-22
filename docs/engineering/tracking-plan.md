@@ -5,6 +5,15 @@ sender and one set of properties. [Activation Metrics & Experiments](activation-
 explains how PostHog fits next to the SQL views, Looker, LaunchDarkly and
 DataFast; this page is the event contract.
 
+PostHog is the only place for what people do in the app. DataFast gets no
+in-app events (SECRT-2718): it keeps its script for visits and marketing
+attribution, the `/tour` goals (including `tour_cta_click` with
+`surface: marketplace` from the logged-out marketplace sidebar, which shares
+the tour's tracking), the server-side `signup` goal
+(`datafast-server.ts`), and the DataFast visitor and session ids that ride
+along to the backend (`X-Datafast-*` headers) and into Stripe Checkout
+metadata, so purchases are attributed to the channel that brought the visitor.
+
 Event names follow the product analytics plan, *Every Second Counts* (owner:
 Toran), section "What we will record". Where that plan names an event for an
 action, this list uses its name; [Differences from the analytics plan](#differences-from-the-analytics-plan)
@@ -58,11 +67,19 @@ Every event must carry:
 | Property | Value |
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
-| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
+| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser), `website` (the marketing site, see [Marketing site](#marketing-site)). |
+| `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
 
 Every backend event goes through `capture()` in
-`backend/util/posthog_client.py`, which applies both last, so a caller cannot
-overwrite them. The browser registers them once as PostHog super properties
+`backend/util/posthog_client.py`, which applies `environment` and `source`
+last, so a caller cannot overwrite them. `revision` is a super property of
+every backend PostHog client instead (`revision_properties()`), so the flag
+client's `$feature_flag_called` carries it too. AutoPilot's `$ai_generation`
+is the exception: OpenRouter builds it from the request rather than through
+our client, so it carries no `revision`; the build arrives as
+`metadata_revision` from `trace.revision` instead. AutoPilot's `$ai_trace` and
+`$ai_span` go through `capture()`, so they carry `revision`. The
+browser registers all three once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
 at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a
@@ -92,6 +109,46 @@ something else now use `hire_started.surface`,
 - **No email or name in event properties.** Identify ids only. The email and
   display name are person properties set by `identify` and nowhere else.
   (`expert_hired.name` is the expert's display name, not a person's.)
+
+### Our own team and impersonation
+
+Our team's clicks and an admin acting as a user would otherwise skew every
+chart, funnel and experiment, so both are marked and a project filter leaves
+them out (SECRT-2728):
+
+- **`is_internal`** is a person property: true for an admin (Better Auth role
+  `admin`) or an `@agpt.co` email, false for everyone else. The backend sets
+  it at signup with the other account properties, and again whenever an
+  internal account signs in (`POST /api/auth/user`), so someone made an admin
+  later is flagged from their next sign-in. `poetry run cli
+  posthog-audience-backfill` sets it on earlier accounts. Someone who stops
+  being an admin keeps it until that backfill runs again.
+- **`impersonated`** is an event property, true on every event an admin
+  caused while acting as a user (`X-Act-As-User-Id`). The backend sets it in
+  `posthog_client.capture` for every event a request sends with that header
+  (`api/middleware/analytics.py`) and every event of a chat turn such an admin
+  started; the AutoPilot events above carry it too. The browser stays the
+  admin's while impersonating, so its events land on the admin's person; a
+  PostHog `before_send` hook adds `impersonated` and `impersonated_user_id`
+  to them (`src/services/analytics/posthog-request-context.ts`).
+- **An admin acting as a user never changes the user's person.** The backend
+  drops `$set_person_properties` while impersonated (the onboarding role, the
+  checkout properties). The lifecycle sync still runs, since it mirrors the
+  stored trial and Stripe state rather than the admin's action.
+- **Session.** With analytics consent, and not while impersonating, the
+  browser sends its PostHog session id as `X-PostHog-Session-Id` on API
+  requests (`customMutator` through the proxy, and the chat's direct
+  requests), and the backend adds it
+  as `$session_id` to the events that request sends, so they join the
+  browser's session and its replay. Events sent later by the executor, the
+  scheduler or a webhook have no session.
+
+The project's "Filter out internal and test users" setting (PostHog project
+settings, Product analytics) holds the filter, applied to every insight that
+has "Filter out internal and test users" on:
+
+- person property `is_internal` is not `true`;
+- event property `impersonated` is not `true`.
 
 ## What counts as a task
 
@@ -157,16 +214,123 @@ require `surface = tour`. The signup CTA uses `free-trial` in cloud mode and
 The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
 `tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with
 the same properties and nothing identifying in them: `/tour` is public and
-pre-signup, so they land on the visitor's anonymous id. `/tour` sends the
-DataFast goals without consent (SECRT-2713), but the PostHog events wait for
-analytics consent like every browser event, so the two funnels count
-differently.
+pre-signup, so they land on the visitor's anonymous id. Both need analytics
+consent, on `/tour` like everywhere else, but they still count differently:
+PostHog holds an event until the visitor's answer arrives, while DataFast drops
+any event fired before consent is known. So the DataFast tour funnel misses
+mount-time steps (`tour_start`, the first `tour_scenario_start`) on a first
+visit where the answer arrives only after the page loads; `tour_start` is
+retried on the next tour visit in that session.
+
+## Marketing site
+
+The marketing site, `agpt.co` (repo `Significant-Gravitas/autogpt-marketing-site`),
+sends to the same PostHog project as the app, so one funnel runs from a
+website visit to a paid account (SECRT-2769). Its code is
+`lib/posthog/posthog.ts` and `lib/posthog/goals.ts` there.
+
+- **Consent.** The site asks through Cookiebot too, but Cookiebot keeps one
+  answer per domain, so a visitor answers once on `agpt.co` and once on
+  `platform.agpt.co`. The site downloads and starts `posthog-js` only once its
+  answer allows analytics; before that nothing reaches PostHog, not even
+  `/flags`.
+- **Settings.** The app's: opted out by default, `localStorage+cookie`
+  persistence with consent, autocapture and page leave, no session replay, and
+  the same-origin relay at `/relay/pnosthog`.
+- **Base properties.** `environment` (`prod`, `preview`, `local`, from
+  Vercel), `source: website`, and `revision` (the commit) where the build has
+  one.
+
+| Event | Fires when |
+| --- | --- |
+| `$pageview` | A route or query string changes, and once more when consent arrives, so the landing page counts. |
+| `$pageleave`, `$autocapture` | As in the app. |
+| `section_viewed` | A section marked for DataFast's scroll goals comes on screen: as soon as any of it shows, and again after it left the screen and comes back. `section` is the part after `scroll_to_` (e.g. `faq`). |
+| DataFast goals | Every DataFast goal is also sent to PostHog under an `object_action`, past-tense name, with the same parameters (`data-fast-goal-*` attributes, hyphens turned into underscores, or the properties passed from code, such as `pricing_billing_toggled.billing`). |
+
+The goal names (`POSTHOG_GOAL_EVENTS` on the site, where a test fails for a
+goal without one):
+
+| DataFast goal | PostHog event |
+| --- | --- |
+| `demo_tour_click` | `demo_tour_clicked` |
+| `demo_video_play` | `demo_video_played` |
+| `demo_video_sound` | `demo_video_sound_toggled` |
+| `get_started_click` | `get_started_clicked` |
+| `github_selfhost_click` | `github_selfhost_clicked` |
+| `github_stars_click` | `github_stars_clicked` |
+| `hero_prompt_chip_click` | `hero_prompt_chip_clicked` |
+| `hero_prompt_focus` | `hero_prompt_focused` |
+| `hero_prompt_submit` | `hero_prompt_submitted` |
+| `marketplace_agent_click` | `marketplace_agent_clicked` |
+| `marketplace_browse_click` | `marketplace_browse_clicked` |
+| `nav_product_click` | `nav_product_clicked` |
+| `press_source_click` | `press_source_clicked` |
+| `pricing_billing_toggle` | `pricing_billing_toggled` |
+| `pricing_click` | `pricing_clicked` |
+| `pricing_plan_cta_click` | `pricing_plan_cta_clicked` |
+| `product_demo_interact` | `product_demo_interacted` |
+| `product_video_play` | `product_video_played` |
+| `see_it_in_action_click` | `see_it_in_action_clicked` |
+| `signin_click` | `signin_clicked` |
+| `testimonial_source_click` | `testimonial_source_clicked` |
+| `usecase_cta_click` | `usecase_cta_clicked` |
+| `watch_demo_click` | `watch_demo_clicked` |
+
+These names follow the [naming rules](#naming) and are never renamed. They
+live in the site's repo, not in `posthog-events.ts`.
+
+### Hand-over to the app
+
+The site keeps PostHog's state in the `ph_<project key>_posthog` cookie on
+`.agpt.co`, which `platform.agpt.co` can read. It carries `$device_id`. The
+app adopts that id as the visitor's anonymous id, so `identify()` at signup
+merges the website pageviews into the new user:
+
+- **While the app's answer is pending,** the app leaves the cookie (and its
+  own stored identity) alone and runs PostHog on an in-memory id. Only an
+  answer without analytics deletes them, the shared cookie included; the site
+  does the same on its side. If Cookiebot asks again after PostHog started
+  with an earlier grant, PostHog stops capturing (so it writes nothing until
+  the visitor answers) but keeps its storage, the shared cookie included; a
+  grant resumes it on the same id.
+- **On a grant,** during the page or from an earlier answer, the visitor's
+  anonymous id is, in order: the app's own `agpt_anonymous_id`; else the
+  device id in the app's own PostHog storage; else the cookie's `$device_id`;
+  else the page's in-memory id (`src/services/analytics/anonymous-id.ts`).
+  Both device ids are read before PostHog rewrites them. If PostHog started
+  on the in-memory id, it moves onto the adopted one without a reload
+  (`src/providers/posthog/posthog-consent.ts`).
+- **Returning app visitors keep their own id.** A browser that already has
+  `agpt_anonymous_id` from an earlier visit with consent keeps it, so
+  website visits made under another id do not merge into the account.
+- **Only a new visitor or a new account takes the website's id.** The
+  cookie's `$device_id` is adopted only when nobody is signed in, or the
+  account was created in this browser (the `agpt_account_created` signup flag,
+  as seen while signed in on that page: the ads signup conversion clears it).
+  An older account signed in on a browser someone else used on agpt.co keeps
+  the in-memory id, so `identify()` doesn't merge that person's website visits
+  into it. Until the auth store knows the session (after its fallback
+  validation; an auth error leaves it unknown for the page), the choice
+  waits: PostHog stays opted out and in memory, events
+  are held, and nothing is stored. The id then settles, PostHog moves onto it
+  and starts, before `identify()`.
+- **Logout and account switches forget the shared cookie** when analytics is
+  not allowed (declined or still pending): PostHog then runs in memory, so its
+  `reset()` would leave the previous person's id there for the next account.
+- **The backend gets the id PostHog ends up with.** The attribution report
+  (`useReportAttribution`, the `anonymous_id` and `posthog_distinct_id` on
+  `UserAttribution`) waits while the answer is pending, then sends the adopted
+  id on a grant, or the in-memory id (and no PostHog id) on a decline. It
+  goes at once without a Cookiebot domain group, and when uc.js still hasn't
+  arrived 10 seconds after the page loaded (blocked). A visitor who never
+  answers is reported on the first later page where they do.
 
 ## Onboarding and activation
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab, same keys as the DataFast `onboarding_<step>` goals). The paywall step reports `paywall_viewed` instead. |
+| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | — | Recording starts. |
 | `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
@@ -189,7 +353,8 @@ differently.
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
 | `expert_recommended` | browser | live | `template_id`, `position`, `team_source` | A recommended expert card is shown. |
 | `expert_recommendation_clicked` | browser | live | `template_id`, `position` | A recommended expert card is clicked. |
-| `hire_step_continued` | browser | live | `hired`, `recommended` | The hire step is left. |
+| `hire_all_clicked` | browser | live | `count` (experts this click hires), `already_hired`, `recommended`, `retry` | The hire step's primary button is clicked to hire every expert still unhired, or with `retry` the ones a batch failed to hire. |
+| `hire_step_continued` | browser | live | `hired`, `recommended`, `via` (`auto` after a full batch, `continue`, `later` for "I'll add members later") | The hire step is left. |
 | `tab_intro_shown` | browser | live | `tab` | A tab intro card is shown. |
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
 | `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
@@ -225,7 +390,7 @@ differently.
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
-| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked. |
+| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked, or once per expert of the hire step's batch. |
 | `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
 | `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
@@ -235,6 +400,8 @@ differently.
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
+| `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one) | A suggested first task is clicked, on the greeting or under the Home composer. |
+| `home_suggestion_dismissed` | browser | live | `position` (null for `all`), `surface`, `remaining`, `scope` (`one`, `all`) | A suggested first task is hidden, or "Hide all" is used. An Undo sends nothing. |
 | `listing_added_to_library` | backend | live | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. Only a user adding a listing counts (the library route and the add-to-library block). Restoring an entry the user already had does not, and neither does a system install: an add inside another write's transaction, an expert's hire preloads, or attaching a marketplace workflow to an expert (that is `workflow_installed_on_expert`). |
 | `listing_downloaded` | backend | live | `store_listing_version_id`, `graph_id` | A signed-in user downloads a marketplace agent file. Signed-out downloads have no user and are not sent. |
 
@@ -267,8 +434,7 @@ differently.
 
 The paywall funnel in PostHog is `paywall_viewed` → `plan_selected` →
 `checkout_started` → `payment_succeeded`, with `checkout_abandoned`
-as the way out. The onboarding paywall's DataFast goals (`paywall_view`,
-`paywall_checkout_cancelled`) keep firing alongside.
+as the way out.
 
 Browser events captured before PostHog captures (a page's mount effect on a
 full page load, such as the return from Stripe, runs before `posthog.init`
@@ -298,17 +464,67 @@ sent or dropped this way, not while it is held.
 Return visits are `$pageview`; account-level retention is computed in
 `retention_task_weekly` and `user_lifecycle`, not sent as events.
 
-## LLM analytics
+### Email
 
-AutoPilot's LLM calls and the ratings of its replies, in PostHog's LLM
-analytics (SECRT-2730). Both are sent server-side for every user, whatever
-their cookie consent, like every backend event. The event names are
-PostHog's own, not the analytics plan's.
+Postmark's webhooks for the mail the platform sends itself
+(`api/features/postmark/`). MailerLite's mail (the onboarding tour, the
+changelog) is not covered.
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
-| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+| `email_delivered` | backend | live | `email_type`, `message_stream`, `message_id` | The receiving mail server accepts the email (Postmark's Delivery webhook). |
+| `email_opened` | backend | live | `email_type`, `message_stream`, `message_id`, `first_open` | The email's tracking pixel loads (Open webhook). Mail apps that preload images, such as Apple Mail, report opens nobody made, so read it as an upper bound. |
+| `email_clicked` | backend | live | `email_type`, `message_stream`, `message_id`, `link` | A link in the email is followed (Click webhook). |
+| `email_bounced` | backend | live | `email_type`, `message_stream`, `message_id`, `bounce_type` | The email bounces (Bounce webhook), soft bounces included. A hard bounce also marks the address unverified. |
+
+- **`email_type`** is the Postmark tag the email was sent with: the
+  notification type in lower case (`briefing`, `alert`, `verdict`, `ops`,
+  `subscription_welcome`, `payment_failed`, `payment_final_notice`,
+  `subscription_cancelled`, `subscription_resumed`, `subscription_ended`,
+  `trial_update`), or `auth` for Better Auth's verification and password
+  emails. Unset for mail sent before tags were added.
+- **`message_stream`** is the Postmark stream (`POSTMARK_TRANSACTIONAL_STREAM`)
+  and **`message_id`** Postmark's message id, which ties the events of one
+  email together.
+- **`link`** is the clicked link's scheme, host and path only: the query
+  string and fragment are dropped, and a path segment that isn't a plain
+  lower-case word, or that looks like an id or a token, becomes `:id`
+  (`https://platform.agpt.co/library/agents/:id`). A link that is not
+  `http(s)` keeps only its scheme (`mailto:`).
+- **`bounce_type`** is Postmark's bounce type (`HardBounce`, `SoftBounce`,
+  `Transient`, `SpamNotification`, ...).
+- **`first_open`** is whether Postmark counts it as the first open of that
+  email.
+- **Who it is for.** The recipient address is looked up among users, and the
+  user id is the `distinct_id`. An address with no account (such as the Ops
+  inbox) sends nothing. The address is never sent or logged.
+- **When.** The event carries Postmark's own time, not the time the webhook
+  arrived, and is deduplicated on message id, record type and that time (and
+  the link, for a click), so a webhook Postmark redelivers counts once.
+- **Opens and clicks need tracking on.** Each notification email asks
+  Postmark to track opens and to rewrite links in its HTML part only when
+  `POSTMARK_TRACK_OPENS_AND_CLICKS` is true (off by default). Auth email is
+  never tracked, since its links carry sign-in tokens. Postmark only calls the
+  webhook for the record types ticked on the stream's webhook.
+
+## LLM analytics
+
+AutoPilot's LLM calls, tool calls and the ratings of its replies, in
+PostHog's LLM analytics (SECRT-2730, SECRT-2979). All are sent server-side
+for every user, whatever their cookie consent, like every backend event. The
+event names are PostHog's own, not the analytics plan's.
+
+Each AutoPilot reply is one trace, whose id is the turn id of the reply
+(`$ai_trace_id`). An expert subtask or sub-session the reply spawns joins the
+same trace. No event carries a tool's input or output, or an error message:
+they can hold Gmail or Drive content (Google Limited Use).
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the reply's trace: the id of the executor turn that made the call, or for a subtask the trace of the turn that spawned it, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
+| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+| `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `system`; `spawned` on a subtask's span), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). A redelivered turn sends it again under the same event uuid (dedup key = the turn id), so PostHog keeps one; likewise a subtask's span. |
+| `$ai_span` | backend | live | `$ai_trace_id`, `$ai_span_id`, `$ai_parent_id`, `$ai_span_name`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `impersonated`. A **tool call**: `$ai_span_name` = the tool's name, `tool_call_id`, `cancelled` (platform tools) or `builtin` (the SDK CLI's own tools, sub-agents' calls included; the high-volume lookups `TodoWrite`, `Read`, `Glob`, `Grep`, `LS` and `NotebookRead` get no span, and no built-in gets one with `CHAT_POSTHOG_BUILTIN_TOOL_SPANS=false`), `$ai_is_error` true when it raised, a gate refused it or it answered with an error, but not when it stopped for an approval card or a sign-in, `$ai_error` = the exception's type name when a platform tool raised (never its message); its parent is the turn (the trace root, or the subtask's span) or the tool that called it. A built-in tool's span is parented to the turn, not to the `Task` span of the sub-agent that called it. A **subtask**: `$ai_span_name` = `copilot-subtask`, `$ai_span_id` = its turn id, parent = the spawning tool's span, which its envelope keeps, so a child that waited in the turn queue or a subtask woken by an approval stays in the trace and under the span its spawner gave it (the trace root for one queued or held before this was recorded), `depth`, plus the `$ai_trace` turn properties, with `turn_origin` = `spawned` (or `scheduled` when the subtask's own turn runs unattended) | A platform tool call ends (`BaseTool.execute`, both engines), an SDK built-in tool call ends (Pre/PostToolUse hooks), or a spawned turn ends. |
 
 What joins them:
 
@@ -317,11 +533,18 @@ What joins them:
   both land on the person with their product events and replays.
 - **Chat.** `$ai_session_id` is the chat session id on both, so a chat's
   generations and its ratings group in the Sessions tab and join on it.
-  `message_id` says which reply was rated; a rating carries no
-  `$ai_trace_id`, since Broadcast assigns the generations' trace ids.
+  `message_id` says which reply was rated.
+- **Reply.** `$ai_trace_id` is the reply's turn id on its generations, its
+  spans, its `$ai_trace` and its ratings, so they form one trace.
+  Generations sit at the trace's top level: Broadcast has no field for a
+  generation's parent span, so a subtask's model calls are not nested under
+  its span.
 - **Environment.** OpenRouter forwards our `trace` keys as `metadata_<key>`,
   so a generation's environment is `metadata_environment`, not the
-  `environment` base property; `$ai_metric` has both base properties as usual.
+  `environment` base property; `$ai_metric`, `$ai_trace` and `$ai_span` have
+  both base properties as usual. Likewise the build is `metadata_revision` on
+  a generation; the backend's events set no build property of their own and
+  carry only the base properties our PostHog client adds to every event.
 - **Impersonation.** A turn or rating an admin made while impersonating the
   user (`X-Act-As-User-Id`) is still sent, as the user, with
   `metadata_impersonated` / `impersonated` true, so it can be filtered out.
@@ -359,16 +582,65 @@ replaying events.
 
 | Property | Value |
 | --- | --- |
-| `subscription_status` | `signed`, `in_trial`, `trial_canceled` (a trial set to cancel, which keeps access until its end and goes back to `in_trial` on resume, or a trial that ended unconverted), `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
+| `subscription_status` | One of the values below. Worked out from the current trial and Stripe state, never from the last event received. |
 | `signup_at` | When the user row was created. |
 | `trial_started_at` | When the trial started. |
-| `subscription_started_at` | Start of the current or last paid subscription; for a converted trial, the conversion. |
-| `subscription_canceled_at` | When the subscription was canceled, while `subscription_canceled` or `subscription_ended`. |
-| `subscription_ended_at` | When the subscription ended, while `subscription_ended`. |
+| `subscription_started_at` | When the person first became a paying subscriber: the earliest start of any paid subscription, kept across a resubscribe after a gap. For a converted trial, the conversion (its first successful charge), not the trial start. |
+| `subscription_canceled_at` | When the current or last paid subscription was canceled, while `subscription_canceled` or `subscription_ended`. |
+| `subscription_ended_at` | When it ended, while `subscription_ended`. |
 
 Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
 date that doesn't apply to the current status is `$unset`, never sent as
 null.
+
+`subscription_status` counts only **paying** subscribers as `subscribed`
+(SECRT-2795). First match wins:
+
+| Value | Meaning |
+| --- | --- |
+| `subscription_canceled` | A live paid subscription set to cancel; active until the period ends. |
+| `subscribed` | A live (`active`) paid subscription. |
+| `trial_canceled` | A running trial set to cancel (keeps access until its end, back to `in_trial` on resume), or a trial that ended unpaid because the user canceled it. |
+| `in_trial` | A running trial, ours or a Stripe-native one; includes the hour between the trial's end and its first charge. |
+| `payment_failed` | The latest paid subscription is `past_due` or `unpaid`, or a trial's first charge failed and Stripe is still retrying it. Access is lost meanwhile. |
+| `subscription_ended` | Has paid before, and no paid subscription is live. |
+| `trial_expired` | A trial that ended without a payment and without the user canceling it: it ran out, or its first charge never cleared and Stripe gave up. |
+| `signed` | Anything else, including a signup that never started a trial, and a former payer now on a free (fully discounted) subscription, who keeps `subscription_started_at`. |
+
+- **Paid** means the subscription charges something. A subscription whose
+  discounts take the whole price (a 100% coupon, or an amount off at least the
+  price, on the subscription or on the customer) is not paid: it never makes
+  anyone `subscribed`, `subscription_canceled` or `subscription_ended`, and
+  its start is not a paid start. Neither is one whose only invoice so far
+  charged nothing (a 100% coupon for the first period, which Stripe takes off
+  the subscription once that invoice is made). A partial discount is paid. A
+  full discount that ends (a repeating coupon) makes the subscription paid
+  from then on. Stacked discounts apply one after another, in Stripe's
+  order. A customer's discount counts only from its start, so a coupon given
+  later doesn't make an older subscription free. Someone who paid before and
+  now has a live free subscription (another one, or the same one given a
+  coupon after it first charged) is `signed` (not `payment_failed` or
+  `subscription_ended`), keeping their first paid start.
+- **The plan tier is not read.** An admin-granted plan (ENTERPRISE, BUSINESS
+  or any other) with no paid Stripe subscription is `signed`; one who pays
+  through Stripe is `subscribed` by the usual rule.
+- **The user canceled** a trial when it was set to cancel, or canceled on
+  request without a comment of ours (a comment the customer typed in the
+  billing portal still counts as theirs). Our own cancels (after a failed
+  payment, of a rejected trial, of a replaced plan) carry a comment starting
+  `autogpt:` or `autogpt_trial:`, and Stripe giving up on the first charge
+  says `payment_failed`: both are `trial_expired`.
+
+MailerLite's `subscription_status` and its `*_date` fields hold the same
+values by the same rules: both come from one mapping
+(`backend/data/posthog_lifecycle.py`). Each lifecycle sync queues them for
+MailerLite as well (`backend/notifications/lifecycle_audience.py`), written
+only into a subscriber MailerLite already has and only when they differ. The
+daily sweep is PostHog only, so nothing corrects MailerLite on a schedule: a
+sync that failed before it was queued, or two syncs from different pods queued
+out of order, leave it stale until the user's next sync. `poetry run cli
+mailerlite-backfill --fields-only --apply --yes` (after its dry run) catches
+MailerLite up. MailerLite holds days, not moments.
 
 The role picked in the onboarding wizard is set with a `$set` of its own when
 the profile is submitted at the Preparing step (`POST /api/onboarding/profile`,
@@ -391,14 +663,16 @@ The fields GTM segments checkout openers on in MailerLite are on the person
 too (SECRT-2895, `backend/notifications/posthog_audience.py`). They are worked
 out by the same code (`audience_enrichment.checkout_fields`) and named as in
 MailerLite, except the checkout open, which is a moment here and a day there.
-Every account gets the first two at signup. Every checkout opener gets all of
-them from the checkout routes and the completed-checkout webhook. Unlike
+Every account gets `email_type`, `signin_method` and `is_internal` (PostHog
+only) at signup. Every checkout opener gets the MailerLite fields from the
+checkout routes and the completed-checkout webhook. Unlike
 MailerLite, PostHog also gets accounts that opted out of marketing or that a
 signal places in Iran or Russia: it is analytics, not marketing.
 
 | Property | Value |
 | --- | --- |
 | `email_type` | `business`, `personal` (a webmail provider) or `education`. |
+| `is_internal` | `true` for our own team (an admin or an `@agpt.co` email), else `false`; see [Our own team and impersonation](#our-own-team-and-impersonation). Every account, not only openers. |
 | `signin_method` | `google` or `email`; `google` wins for an account that has both. |
 | `checkout_opened_at` | When the account first opened Stripe checkout. |
 | `country` | The country's English name, from the strongest source seen (see `country_source`). |
@@ -428,7 +702,7 @@ history PostHog already holds.
 | Event | Was sent by | Read instead |
 | --- | --- | --- |
 | `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `trial_started` carries it. |
-| `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). The DataFast `hire_completed` goal is unchanged. |
+| `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). |
 | `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
 | `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |
 | `copilot_message_sent` | backend | `chat_message_sent`, which carries `message_length`. |
@@ -506,8 +780,11 @@ line:
   `artifact_created`, `file_produced` and `answer_only` do not.
 - **Plan events we do not send yet** (`signup_started`, `chat_session_started`,
   `chat_response_completed`, `chat_blocked`, `screen_viewed`,
-  `screen_engaged`, `milestone_reached`, the builder, library and email
-  families, ...) come with the plan's phases, not with this list.
+  `screen_engaged`, `milestone_reached`, the builder and library families,
+  `email_sent`, ...) come with the plan's phases, not with this list.
+- **`email_delivered` instead of the plan's `email_sent`.** Postmark's
+  webhook reports that the receiving server accepted the email, which is
+  delivery, not sending. `email_sent` stays free for the send itself.
 - **Events the plan has no name for keep their own**, e.g.
   `integration_connected`, `schedule_created`, `hire_started`,
   `billing_portal_opened`, `marketing_opted_out`, `tour_*`,

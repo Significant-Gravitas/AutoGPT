@@ -8,6 +8,7 @@ import signal
 import sys
 import threading
 import time
+import typing
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import update_wrapper
@@ -40,8 +41,9 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
+from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,10 @@ api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
 api_comm_max_wait = config.pyro_client_max_wait
+# A client retires an idle pooled connection long before the server closes it: a
+# call written into a connection as the server closes it fails with httpx.ReadError.
+rpc_server_keepalive_seconds = 60
+rpc_client_keepalive_expiry_seconds = rpc_server_keepalive_seconds / 2
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -92,6 +98,30 @@ def expose(func: C) -> C:
     func = getattr(func, "__func__", func)
     setattr(func, EXPOSED_FLAG, True)
     return func
+
+
+def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
+    """Type hints of ``func`` evaluated in its *defining* module.
+
+    Exposed service functions are plain functions from other modules (or
+    stubs wrapping them via ``update_wrapper``), and those modules may use
+    ``from __future__ import annotations``. ``inspect.signature`` then yields
+    string annotations such as ``"SomeRecord | None"`` that neither
+    ``create_model`` nor ``TypeAdapter`` can resolve from here — the request
+    model would reject model-valued arguments and the client would hand
+    back raw dicts. Unwrapping to the original function and using
+    ``typing.get_type_hints`` evaluates the strings where the names live.
+    Falls back to the raw annotations when evaluation is impossible.
+    """
+    target = inspect.unwrap(func)
+    target = getattr(target, "__func__", target)
+    try:
+        return typing.get_type_hints(target, include_extras=True)
+    except Exception:
+        try:
+            return typing.get_type_hints(func, include_extras=True)
+        except Exception:
+            return {}
 
 
 # --------------------------------------------------
@@ -317,6 +347,7 @@ class AppService(BaseAppService, ABC):
         :return: A FastAPI endpoint function.
         """
         sig = inspect.signature(func)
+        hints = resolve_type_hints(func)
         fields = {}
 
         is_bound_method = False
@@ -325,9 +356,18 @@ class AppService(BaseAppService, ABC):
                 is_bound_method = True
                 continue
 
-            # Use the provided annotation or fallback to str if not specified
-            annotation = (
-                param.annotation if param.annotation != inspect.Parameter.empty else str
+            # Use the resolved annotation or fallback to str if not specified.
+            # ``resolve_type_hints`` evaluates string annotations (modules
+            # using ``from __future__ import annotations``) in the defining
+            # module's namespace; the raw signature would leave model names
+            # as strings that a dynamic model created here cannot resolve.
+            annotation = hints.get(
+                name,
+                (
+                    param.annotation
+                    if param.annotation != inspect.Parameter.empty
+                    else str
+                ),
             )
 
             # If a default value is provided, use it; otherwise, mark the field as required with '...'
@@ -386,6 +426,7 @@ class AppService(BaseAppService, ABC):
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
+                timeout_keep_alive=rpc_server_keepalive_seconds,
                 log_config=None,  # Explicitly None to avoid uvicorn replacing the logger.
                 log_level=self.log_level,
             )
@@ -474,12 +515,28 @@ class AppService(BaseAppService, ABC):
         sentry_init()
         super().run()
 
-        self.fastapi_app = FastAPI(lifespan=self.lifespan)
+        self.fastapi_app = self.build_fastapi_app()
+
+        # Start the FastAPI server in a separate thread.
+        api_thread = threading.Thread(
+            target=self.__start_fastapi,
+            daemon=True,
+            name=f"{self.service_name}-http-server",
+        )
+        api_thread.start()
+
+        # Run the main service loop (blocking).
+        self.run_service()
+
+    def build_fastapi_app(self) -> FastAPI:
+        """The service's HTTP app: one POST route per exposed method, the
+        health checks and metrics, and nothing else."""
+        app = FastAPI(lifespan=self._serving_lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
             instrument_fastapi(
-                self.fastapi_app,
+                app,
                 service_name=self.service_name,
                 expose_endpoint=True,
                 endpoint="/metrics",
@@ -498,29 +555,27 @@ class AppService(BaseAppService, ABC):
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
-                self.fastapi_app.add_api_route(
+                app.add_api_route(
                     route_path,
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
                 )
-        self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST", "GET"]
-        )
-        self.fastapi_app.add_api_route(
+        app.add_api_route("/health_check", self.health_check, methods=["POST", "GET"])
+        app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self._register_exception_handlers(self.fastapi_app)
+        self._register_exception_handlers(app)
+        # Last, so it is the outermost middleware: every request but the health
+        # checks and /metrics needs the internal key before anything reads it.
+        require_internal_key(app, self.service_name)
+        return app
 
-        # Start the FastAPI server in a separate thread.
-        api_thread = threading.Thread(
-            target=self.__start_fastapi,
-            daemon=True,
-            name=f"{self.service_name}-http-server",
-        )
-        api_thread.start()
-
-        # Run the main service loop (blocking).
-        self.run_service()
+    @asynccontextmanager
+    async def _serving_lifespan(self, app: FastAPI):
+        async with self.lifespan(app):
+            # After every subclass's startup, so its long-lived state is frozen too.
+            freeze_startup_heap()
+            yield
 
 
 # --------------------------------------------------
@@ -654,19 +709,24 @@ def get_service_client(
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
+            self._headers = internal_auth_headers()
             self._connection_failure_count = 0
             self._last_client_reset = 0
             self._async_clients = {}  # None key for default async client
             self._sync_clients = {}  # For sync clients (no event loop concept)
 
+        # trust_env=False: an HTTP_PROXY meant for outbound traffic must never
+        # carry these plain-HTTP calls, nor the internal key they hold.
         def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
                 base_url=self.base_url,
+                headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
-                    keepalive_expiry=30.0,  # Keep connections alive longer
+                    keepalive_expiry=rpc_client_keepalive_expiry_seconds,
                 ),
                 event_hooks={"request": [_send_trace_headers]},
             )
@@ -674,11 +734,13 @@ def get_service_client(
         def _create_async_client(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(
                 base_url=self.base_url,
+                headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
-                    keepalive_expiry=30.0,  # Keep connections alive longer
+                    keepalive_expiry=rpc_client_keepalive_expiry_seconds,
                 ),
                 event_hooks={"request": [_send_trace_headers_async]},
             )
@@ -904,7 +966,9 @@ def get_service_client(
 
             rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
-            ret_ann = sig.return_annotation
+            ret_ann = resolve_type_hints(original_func).get(
+                "return", sig.return_annotation
+            )
             expected_return = (
                 None
                 if ret_ann is inspect.Signature.empty

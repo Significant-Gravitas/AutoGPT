@@ -2,19 +2,22 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Flag } from "@/services/feature-flags/use-get-flag";
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
 import { useEffect } from "react";
 
+import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
+import { LearningHistoryCard } from "./components/LearningHistoryCard";
 import { MemoryChatPanel } from "./components/MemoryChatPanel/MemoryChatPanel";
 import { useMemoryChatPanel } from "./components/MemoryChatPanel/useMemoryChatPanel";
+import { OpenDecisionsCard } from "./components/OpenDecisionsCard";
 import { RecentMemoriesCard } from "./components/RecentMemoriesCard";
 import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
+import { learningSheetScope } from "./helpers";
+import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
 
-function SettingsMemoryPage() {
+export default function SettingsMemoryPage() {
   useEffect(() => {
     document.title = "Memory – AutoGPT Platform";
   }, []);
@@ -37,6 +40,7 @@ function SettingsMemoryPage() {
   } = useMemoryPage();
 
   const chatPanel = useMemoryChatPanel({ scopeExpertID });
+  const learning = useLearningHistory(scopeExpertID);
 
   return (
     <div className="flex flex-col gap-4">
@@ -45,7 +49,7 @@ function SettingsMemoryPage() {
           Memory
         </Text>
         <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
-          What AutoGPT remembers about you — and who remembers it.
+          {"What AutoGPT remembers about you — and who remembers it."}
         </Text>
       </header>
 
@@ -77,6 +81,37 @@ function SettingsMemoryPage() {
         />
       )}
 
+      {learning.enabled ? (
+        <>
+          <OpenDecisionsCard
+            decisions={learning.decisions}
+            experts={experts}
+            isDeciding={learning.isDeciding}
+            onDecide={learning.decideProposal}
+          />
+          <LearningHistoryCard
+            items={learning.items}
+            isLoading={learning.isLoading}
+            experts={experts}
+            origin={learning.origin}
+            state={learning.state}
+            onOriginChange={learning.setOrigin}
+            onStateChange={learning.setState}
+            onOpen={learning.openRecordFor}
+          />
+          <SkillLearningSheet
+            scope={learningSheetScope(
+              learning.openRecord?.expertId ?? null,
+              experts,
+            )}
+            skillName={learning.openRecord?.skillName ?? null}
+            initialVersionId={learning.openRecord?.versionId ?? null}
+            onChanged={learning.refreshHistory}
+            onClose={learning.closeRecord}
+          />
+        </>
+      ) : null}
+
       <EraseMemoryCard
         scopeName={scopeName}
         memoryCount={memoryCount}
@@ -102,5 +137,3 @@ function SettingsMemoryPage() {
     </div>
   );
 }
-
-export default withFeatureFlag(SettingsMemoryPage, Flag.GRAPHITI_MEMORY);
