@@ -1,7 +1,8 @@
 "use client";
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { createIconComponent } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -22,7 +23,7 @@ const ERROR_PREVIEW_LIMIT = 300;
 const ERROR_CLASS_NAME = "whitespace-pre-wrap break-words !text-zinc-800";
 
 interface Props {
-  run: GetV1GetExecutionDetails200;
+  run: GraphExecution | GraphExecutionWithNodes;
 }
 
 export function RunFailures({ run }: Props) {

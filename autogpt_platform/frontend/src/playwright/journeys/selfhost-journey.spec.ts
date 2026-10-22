@@ -84,6 +84,31 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     await expect.soft(notice).toBeVisible();
   });
 
+  await test.step("builder chat with no model says how to fix it, and saves no agent", async () => {
+    const buildPage = new BuildPage(page);
+    await buildPage.open();
+    await page.getByRole("button", { name: "Chat with builder" }).click();
+    const panel = page.getByRole("complementary", {
+      name: "Builder chat panel",
+    });
+    const notice = panel.getByRole("status", { name: "No AI connection" });
+    await expect.soft(notice).toBeVisible();
+    await expect
+      .soft(notice.getByRole("link", { name: /setup guide/i }))
+      .toHaveAttribute("href", /single-container\.md#models-and-memory/);
+    await expect
+      .soft(panel.getByRole("button", { name: "Retry" }))
+      .toHaveCount(0);
+
+    await page.getByRole("button", { name: "Close chat" }).click();
+    expect
+      .soft(
+        await libraryAgentNames(page),
+        "opening the builder chat must not save an empty agent",
+      )
+      .toEqual([]);
+  });
+
   const agentName = createUniqueAgentName("Selfhost Journey Agent");
   const expectedOutput = `selfhost-output-${runID}`;
   const outputName = `selfhost-result-${runID}`;
@@ -103,7 +128,6 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     await connectHandles(page, "output", "value");
     await expect.poll(() => buildPage.getEdgeCount()).toBe(1);
     await buildPage.fillLastNodeTextInput("Agent Output", outputName);
-    await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
     await buildPage.saveAgent(agentName, "Self-hosted first-hour journey");
     await buildPage.waitForSaveComplete();
     await buildPage.waitForSaveButton();
@@ -118,6 +142,15 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     await libraryPage.assertRunOutputValue(outputName, expectedOutput);
     await expect.soft(page.getByText(/^Cost: \$/)).toHaveCount(0);
     await expectNoHostedOnlyChrome(page);
+  });
+
+  await test.step("the Library's briefing shows no spend", async () => {
+    await page.goto("/library");
+    await expect(page.getByText("Workflow Briefing")).toBeVisible();
+    await expect.soft(page.getByText("Spent this month")).toHaveCount(0);
+    await expect
+      .soft(page.getByRole("button", { name: /costs breakdown/i }))
+      .toHaveCount(0);
   });
 
   await test.step("settings: memory is reachable, billing is not", async () => {
@@ -146,8 +179,6 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     "a self-hosted install must not make the browser call other hosts",
   ).toEqual([]);
 });
-
-const AGENTATION = "[data-agentation-root], [data-agentation-toolbar]";
 
 // Drags from the first node's named output to the second node's named input.
 // BuildPage.connectNodes takes each node's first handle, which for Store Value
@@ -178,6 +209,15 @@ async function connectHandles(page: Page, output: string, input: string) {
     );
   }
   await page.mouse.up();
+}
+
+async function libraryAgentNames(page: Page) {
+  const response = await page.request.get(
+    "/api/proxy/api/library/agents?page_size=100",
+  );
+  expect(response.ok()).toBe(true);
+  const { agents } = (await response.json()) as { agents: { name: string }[] };
+  return agents.map((agent) => agent.name);
 }
 
 async function centerOf(locator: Locator) {
@@ -226,7 +266,6 @@ async function expectNoHostedOnlyChrome(page: Page) {
   const accountMenu = page.getByTestId("profile-popout-menu-trigger");
   await expect(accountMenu).toBeVisible();
   await expect.soft(page.getByText(/earn credits/i)).toHaveCount(0);
-  await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
 
   await accountMenu.click();
   const menu = page.getByTestId("account-menu-popover");

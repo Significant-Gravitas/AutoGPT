@@ -21,13 +21,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .invoice import CLI_ESTIMATE_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .ledger import CreditBilling, PlannedDrain
 from .provider import PlannedFault
 
 ChargeBasis = Literal["invoice", "cli_estimate", "moonshot_estimate", "none"]
 # What a finding is about: whether the thread took its planned path, what the
-# turn was charged, or the tokens recorded against it.
-Check = Literal["path", "charge", "tokens"]
+# turn was charged, the tokens recorded against it, or the live spend the SDK
+# turn's governor lands tasks on.
+Check = Literal["path", "charge", "tokens", "meter"]
 
 
 class KnownGap(BaseModel):
@@ -67,6 +69,10 @@ class Scenario(BaseModel):
     fault_ends_turn: bool = False
     # CLAUDE_CODE_MAX_RETRIES for the CLI; None keeps its own default.
     cli_max_retries: int | None = None
+    # Each turn the AutoPilot block's past the plan's used-up allowance: it
+    # pays its charge from this credit balance, rounded up to whole credits,
+    # instead of the plan's spend windows. None where the allowance covers it.
+    credits: CreditBilling | None = None
     known_gap: KnownGap | None = None
 
     def owed_calls(self, turn: int, calls: list[Call]) -> list[Call]:
@@ -100,13 +106,23 @@ _OPENROUTER = {
 # is configured.
 _DIRECT = {"use_openrouter": False, "api_key": "sk-ant-billing-e2e"}
 
+# Anthropic reports no cost, so a direct turn is charged the CLI's own
+# estimate rather than the invoice (see ``CLI_ESTIMATE_PRICES``).
 _SDK_ANTHROPIC = Scenario(
     id="sdk-anthropic",
     engine="sdk",
     model=SONNET,
-    charge="invoice",
+    charge="cli_estimate",
     cost_log_provider="anthropic",
     config={**_DIRECT, "claude_agent_model": SONNET},
+)
+_SDK_OPENROUTER = Scenario(
+    id="sdk-openrouter",
+    engine="sdk",
+    model=f"anthropic/{SONNET}",
+    charge="invoice",
+    cost_log_provider="open_router",
+    config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
 )
 
 
@@ -166,14 +182,7 @@ SCENARIOS = [
         PlannedFault(kind="overloaded", turn=2, request=1),
         calls_per_turn=(1, 2, 1),
     ),
-    Scenario(
-        id="sdk-openrouter",
-        engine="sdk",
-        model=f"anthropic/{SONNET}",
-        charge="invoice",
-        cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
-    ),
+    _SDK_OPENROUTER,
     Scenario(
         id="sdk-openrouter-lookups-refused",
         engine="sdk",
@@ -223,6 +232,22 @@ SCENARIOS = [
         cost_log_provider="codex",
         config=_DIRECT,
         codex=True,
+    ),
+    # On OpenRouter, the default route, the turn's charge waits for the
+    # reconcile's invoice; direct, the CLI's own price lands as the stream ends.
+    _SDK_OPENROUTER.model_copy(
+        update={"id": "sdk-openrouter-credits", "credits": CreditBilling()}
+    ),
+    _SDK_ANTHROPIC.model_copy(
+        update={"id": "sdk-anthropic-credits", "credits": CreditBilling()}
+    ),
+    # Other runs spend all but a credit once the resumed turn has read the
+    # balance: it takes the credit that is left and never overdraws.
+    _SDK_OPENROUTER.model_copy(
+        update={
+            "id": "sdk-openrouter-credits-drained",
+            "credits": CreditBilling(drain=PlannedDrain(turn=2, left=1)),
+        }
     ),
     Scenario(
         id="baseline-openrouter",
@@ -283,8 +308,8 @@ def expected_charge_usd(basis: ChargeBasis, call: Call) -> float:
     if basis == "invoice":
         return call.invoice_usd
     if basis == "cli_estimate":
-        list_price = ANTHROPIC_PRICES[call.model.removeprefix("anthropic/")]
-        return list_price.of(call.usage, call.cache_ttl)
+        cli_price = CLI_ESTIMATE_PRICES[call.model.removeprefix("anthropic/")]
+        return cli_price.of(call.usage, call.cache_ttl)
     if basis == "moonshot_estimate":
         return MOONSHOT_FALLBACK.of(call.usage, None)
     return 0.0

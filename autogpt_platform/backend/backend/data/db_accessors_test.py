@@ -8,7 +8,9 @@ from backend.api.features.library import _get_many as library_batch_module
 from backend.api.features.onboarding_dump import db as onboarding_dump_module
 from backend.api.features.orgs import db as orgs_module
 from backend.data import bot_installs as bot_installs_module
-from backend.data import db_accessors, onboarding_audience, onboarding_role
+from backend.data import db_accessors
+from backend.data import dream_pass as dream_pass_module
+from backend.data import onboarding_audience, onboarding_role
 from backend.data.db_manager import DatabaseManager, DatabaseManagerAsyncClient
 
 
@@ -48,6 +50,28 @@ def test_bot_installs_db_falls_back_to_database_manager_client():
         ),
     ):
         assert db_accessors.bot_installs_db() is client
+
+
+def test_dream_db_uses_direct_module_when_connected():
+    with patch("backend.data.db_accessors.db.is_connected", return_value=True):
+        assert db_accessors.dream_db() is dream_pass_module
+
+
+def test_dream_db_falls_back_to_a_non_retrying_database_manager_client():
+    # The scheduler (sync passes) and the batch executor (batch callbacks)
+    # keep no Prisma connection, so the dream store's writes cross the RPC.
+    # The store bounds each write itself; client retries would only keep
+    # going on a request the store has already given up on.
+    client = MagicMock()
+    with (
+        patch("backend.data.db_accessors.db.is_connected", return_value=False),
+        patch(
+            "backend.util.clients.get_database_manager_async_client",
+            return_value=client,
+        ) as get_client,
+    ):
+        assert db_accessors.dream_db() is client
+    get_client.assert_called_once_with(should_retry=False)
 
 
 @pytest.mark.parametrize(

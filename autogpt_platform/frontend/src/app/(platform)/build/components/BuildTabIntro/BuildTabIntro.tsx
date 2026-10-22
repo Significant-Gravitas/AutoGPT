@@ -1,8 +1,8 @@
 "use client";
 
+import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { TabIntroCard } from "@/app/(platform)/components/TabIntroCard/TabIntroCard";
 import { useTabIntroCard } from "@/app/(platform)/components/TabIntroCard/useTabIntroCard";
-import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { FlowIcon } from "@hugeicons/core-free-icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { startTutorial } from "../FlowEditor/tutorial";
@@ -16,9 +16,12 @@ export function BuildTabIntro() {
   // agent. Vetoing the visit leaves the step unrecorded, so a later blank
   // /build still gets the introduction.
   const isEditingSavedGraph = Boolean(useSearchParams().get("flowID"));
+  const isTutorialRunning = useTutorialStore(
+    (state) => state.isTutorialRunning,
+  );
   const { isOpen, dismiss, takeAction } = useTabIntroCard(
     "build",
-    !isEditingSavedGraph,
+    !isEditingSavedGraph && !isTutorialRunning,
   );
   const setIsTutorialRunning = useTutorialStore(
     (state) => state.setIsTutorialRunning,
@@ -41,7 +44,7 @@ export function BuildTabIntro() {
       isOpen={isOpen}
       icon={FlowIcon}
       title="Create your own workflows."
-      body="Wire blocks into an agent that runs exactly how you want — or let Otto build it."
+      body="Wire blocks into a workflow that runs exactly how you want — or let Otto build it."
       cta={{ label: "Ask Otto to build it", onClick: askAutoPilot }}
       altAction={{ label: "Learn to build it yourself", onClick: learnToBuild }}
       onDismiss={dismiss}

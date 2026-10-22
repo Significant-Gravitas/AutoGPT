@@ -51,14 +51,17 @@ test("an old chat creation cannot settle setup in a new thread", async () => {
   }
   const { rerender } = render(drawer(0));
   fireEvent.click(await screen.findByRole("radio", { name: "Pricing" }));
-  fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Send answers" }));
   await waitFor(() => expect(createSession).toHaveBeenCalledOnce());
   rerender(drawer(1));
   finishCreate();
   await waitFor(() => {
     expect(
-      (screen.getByRole("button", { name: "Skip" }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: "Skip questions",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(false);
   });
   expect(screen.getByText("Which outcome should I start with?")).toBeDefined();

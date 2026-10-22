@@ -6,7 +6,6 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
-import { analytics } from "@/services/analytics";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -51,17 +50,12 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
         await queryClient.invalidateQueries({
           queryKey: getGetV2ListLibraryAgentsQueryKey(),
         });
-
-        analytics.sendDatafastEvent("add_to_library", {
-          name: data.name,
-          id: data.id,
-        });
       }
 
       router.push(`/library/agents/${data.id}`);
 
       toast({
-        title: "Agent Added",
+        title: "Workflow Added",
         description: "Redirecting to your library...",
         duration: 2000,
       });
@@ -70,13 +64,13 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
 
       toast({
         title: "Error",
-        description: "Failed to add agent to library. Please try again.",
+        description: "Failed to add workflow to library. Please try again.",
         variant: "destructive",
       });
     }
   };
 
-  const handleDownload = async (agentId: string, agentName: string) => {
+  const handleDownload = async (agentName: string) => {
     try {
       const { data: file } = await downloadAgent();
 
@@ -85,20 +79,15 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
         agentGraphExportFilename(file, agentName),
       );
 
-      analytics.sendDatafastEvent("download_agent", {
-        name: agentName,
-        id: agentId,
-      });
-
       toast({
         title: "Download Complete",
-        description: "Your agent has been successfully downloaded.",
+        description: "Your workflow has been successfully downloaded.",
       });
     } catch (error) {
       Sentry.captureException(error);
       toast({
         title: "Error",
-        description: "Failed to download agent. Please try again.",
+        description: "Failed to download workflow. Please try again.",
         variant: "destructive",
       });
     }

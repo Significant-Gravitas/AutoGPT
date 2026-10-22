@@ -15,11 +15,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 async def test_disconnect_bounds_the_engine_shutdown(monkeypatch):
     """Prisma's shutdown wait is unbounded unless a timeout is handed to it.
 

@@ -10,6 +10,10 @@ Full API documentation with interactive examples is available at:
 
 This Swagger UI documentation includes all available endpoints, request/response schemas, and allows you to try out API calls directly.
 
+{% hint style="info" %}
+**Self-hosting?** Use your own server instead of `backend.agpt.co`. With Docker Compose the External API is at `http://localhost:8006/external-api/v1/...` and its Swagger UI at `http://localhost:8006/external-api/docs`. The single-container image serves the API under your public URL at `/_agpt/external-api/v1/...` and does not expose the Swagger UI.
+{% endhint %}
+
 ## Authentication Methods
 
 The External API supports two authentication methods:

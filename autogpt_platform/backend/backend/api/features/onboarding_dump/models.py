@@ -1,5 +1,6 @@
 """Request / response models for the onboarding brain dump."""
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
@@ -43,6 +44,19 @@ ALLOWED_AUDIO_MIME_TYPES = frozenset(
         "audio/ogg",
     }
 )
+
+# Stored recordings are named ``brain-dump-{recording_id}.{ext}``. The
+# retention sweep finds them in the bucket by this name, so the two must
+# stay in step.
+RECORDING_FILENAME_PREFIX = "brain-dump-"
+AUDIO_FILE_EXTENSIONS = {
+    "audio/webm": "webm",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+}
 
 
 class UploadPartResponse(BaseModel):
@@ -97,6 +111,43 @@ class SuggestedPrompt(BaseModel):
     title: str
     prompt: str
     icon: str = "sparkle"
+
+
+SuggestedTaskState = Literal["open", "sent", "dismissed"]
+
+
+class SuggestedTask(SuggestedPrompt):
+    """One row of the Home checklist: a suggested prompt and what became of it.
+
+    Stored inside ``OnboardingBrainDump.suggestedPrompts``; a row written
+    before states existed reads as ``open``, with its list index as ``id``.
+    """
+
+    id: str
+    state: SuggestedTaskState = "open"
+    session_id: str | None = None
+    """The chat a ``sent`` row started."""
+    updated_at: datetime | None = None
+
+
+class SuggestedTasksResponse(BaseModel):
+    """The user's suggested first tasks, every state included.
+
+    ``stored`` is false when the user has no list of their own and these
+    are the generic starters: the greeting shows them, the regular Home
+    page does not, until a state change stores them.
+    """
+
+    tasks: list[SuggestedTask] = []
+    stored: bool = False
+
+
+class SuggestedTasksUpdate(BaseModel):
+    task_ids: list[str] = Field(min_length=1, max_length=20)
+    state: SuggestedTaskState
+    """``open`` is Undo: a hidden row goes back to where it was, which is
+    ``sent`` for one that had started a chat."""
+    session_id: str | None = Field(default=None, max_length=64)
 
 
 class RecommendedExpert(BaseModel):

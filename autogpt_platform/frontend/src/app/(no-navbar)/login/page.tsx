@@ -16,7 +16,10 @@ import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
-import { EMAIL_VERIFICATION_NOTICE_COPY } from "./helpers";
+import {
+  ACCOUNT_BANNED_NOTICE_COPY,
+  EMAIL_VERIFICATION_NOTICE_COPY,
+} from "./helpers";
 import { useLoginPage } from "./useLoginPage";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +38,7 @@ export default function LoginPage() {
     nextUrl: safeNextUrl,
     verificationEmail,
     verificationNotice,
+    showBannedNotice,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
@@ -66,10 +70,16 @@ export default function LoginPage() {
   return (
     <AuthSplitLayout marketing={<LoginMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-slate-950">
+        <Text variant="h3" as="h1" className="!text-zinc-900">
           Log in to your account to continue
         </Text>
       </div>
+
+      {showBannedNotice ? (
+        <Alert variant="error" className="mb-6">
+          <AlertDescription>{ACCOUNT_BANNED_NOTICE_COPY}</AlertDescription>
+        </Alert>
+      ) : null}
 
       {verificationNotice ? (
         <Alert className="mb-6">
@@ -149,7 +159,7 @@ export default function LoginPage() {
       </Form>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
+        <Text variant="body-medium" className="!text-zinc-500">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

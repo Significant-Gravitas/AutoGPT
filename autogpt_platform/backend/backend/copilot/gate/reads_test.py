@@ -17,7 +17,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.context import set_turn_unattended
-from backend.copilot.gate import held, reads
+from backend.copilot.gate import ALLOW, Decision, held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import read_review_id
@@ -27,6 +27,7 @@ from backend.copilot.model import (
     ChatSession,
     ChatSessionMetadata,
 )
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk.tool_adapter import (
     _consecutive_tool_failures,
@@ -37,6 +38,11 @@ from backend.copilot.sdk.tool_adapter import (
 )
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.trial_cost_context import (
+    TrialCostContext,
+    capture_cost_context,
+    restore_cost_context,
+)
 from backend.util.json import sanitize_json
 
 _READS = "backend.copilot.gate.reads"
@@ -62,12 +68,21 @@ class _Rows:
         self.held.append(call)
         return True
 
+    async def held_calls(self, session_id):
+        return {call.review_id: call for call in self.held}
+
+    async def claim(self, session_id, review_id):
+        kept = [call for call in self.held if call.review_id != review_id]
+        claimed, self.held = len(kept) < len(self.held), kept
+        return claimed
+
     async def get_reviews_by_node_exec_ids(self, ids, user_id):
         return {i: self.rows[i] for i in ids if i in self.rows}
 
     async def open_review_row(self, review_id, user_id, session, payload, instructions):
         self.rows[review_id] = SimpleNamespace(
             node_exec_id=review_id,
+            session_id=session.session_id,
             status=ReviewStatus.WAITING,
             created_at=datetime.now(UTC),
             updated_at=None,
@@ -132,14 +147,32 @@ def _session(mode: AutopilotMode | None = "auto") -> ChatSession:
 def rows():
     fake = _Rows()
     with (
+        patch(
+            f"{_READS}.capture_cost_context",
+            AsyncMock(return_value=TrialCostContext(user_id="user-1", trial_id=None)),
+        ),
         patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
         patch.object(held, "remember", fake.remember),
+        patch.object(held, "_held", fake.held_calls),
+        patch.object(held, "_claim", fake.claim),
         patch.object(held, "review_db", lambda: fake),
         patch.object(review_store, "open_review_row", fake.open_review_row),
     ):
         yield fake
+
+
+async def test_held_read_keeps_the_origin_of_its_request(rows):
+    origin = TrialCostContext(user_id="user-1", trial_id="trial-1")
+    with (
+        restore_cost_context("user-1", origin),
+        patch(f"{_READS}.capture_cost_context", capture_cost_context),
+        patch(f"{_READS}.judge_content", _judge(_HELD)),
+    ):
+        await _call(_Fetch(_MARKER), _session())
+    assert len(rows.held) == 1
+    assert rows.held[0].cost_context == origin
 
 
 def _experts(**by_name: str | None):
@@ -379,13 +412,18 @@ async def test_an_approved_held_read_arrives_as_its_late_result_byte_identical(r
     (call,) = rows.held
     assert call.tool_call_id == "call-7"
     rows.answer(ReviewStatus.APPROVED)
+    delivered: list[PendingMessage] = []
 
-    outcome, late = await held._outcome(
-        "user-1", session, call, tool, rows.rows[call.review_id]
-    )
+    with patch("backend.copilot.tools.get_tool", return_value=tool):
+        heard = [
+            s async for s in held.resolve_answered("user-1", session, delivered.append)
+        ]
 
-    assert (outcome, late) == ("approved", _plain_output(_MARKER))
+    [late] = delivered
+    assert late.metadata["held_call"]["outcome"] == "approved"
+    assert _late_body(late) == _plain_output(_MARKER)
     assert tool.runs == 1, "the late result must be the stored bytes, not a refetch"
+    assert heard == [], "a released read is not an action the chat hears run"
     assert rows.rows == {}
 
 
@@ -399,12 +437,10 @@ async def test_a_rejected_held_read_never_arrives_and_sets_no_chat_rule(rows):
 
     set_ask = AsyncMock()
     with patch.object(held.chat_rules, "set_ask", set_ask):
-        outcome, late = await held._outcome(
-            "user-1", session, call, tool, rows.rows[call.review_id]
-        )
+        [late] = await _resolved(session)
 
-    assert outcome == "rejected"
-    assert _MARKER not in late and "declined" in late
+    assert late.metadata["held_call"]["outcome"] == "rejected"
+    assert _MARKER not in late.content and "declined" in late.content
     set_ask.assert_not_awaited()
     assert tool.runs == 1
 
@@ -447,11 +483,10 @@ async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
             await _call(_Fetch(content), session)
         cap = str  # the baseline passes no cap: execute already capped
 
-    (call,) = rows.held
     rows.answer(ReviewStatus.APPROVED)
-    late = await held._deliver("user-1", session, call, cap)
+    [late] = await _resolved(session, cap=cap)
 
-    body = late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
+    body = _late_body(late)
     assert body == direct
     assert len(body) > 30_000
 
@@ -847,7 +882,20 @@ async def test_a_blocks_own_output_is_still_judged(rows):
 
 
 def _no_action_gate():
-    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False)))
+    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, ALLOW)))
+
+
+async def _resolved(session: ChatSession, **kwargs: Any) -> list[PendingMessage]:
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(
+        "user-1", session, delivered.append, **kwargs
+    ):
+        pass
+    return delivered
+
+
+def _late_body(late: PendingMessage) -> str:
+    return late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
 
 
 # What a producer declares came from outside AutoGPT is all the judge reads.
@@ -963,7 +1011,13 @@ async def test_a_blocks_output_is_judged_without_the_platforms_message(rows):
     with (
         patch(f"{_READS}.judge_content", judge),
         # Approved, so the block runs without its own review pause.
-        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, True))),
+        patch.object(
+            BaseTool,
+            "_gate",
+            AsyncMock(
+                return_value=(None, Decision(allowed=True, approved=True, decided=True))
+            ),
+        ),
         _resolves_to(_capability("block", _STORE_VALUE)),
         patch("backend.copilot.tools.helpers.workspace_db", lambda: workspace),
         patch("backend.copilot.tools.helpers.user_db", lambda: users),
@@ -1165,6 +1219,10 @@ async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
         patch(f"{_READS}.judge_content", judge),
         patch(
             "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
+        ),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            AsyncMock(side_effect=lambda raw_output, *args, **kwargs: raw_output),
         ),
     ):
         to_model = _text_from_mcp_result(await wrapper({"url": "u"}))

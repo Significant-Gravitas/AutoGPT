@@ -5,6 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
   installGtagShim,
   removeGtagShim,
@@ -25,6 +26,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../store";
 import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
+import { translateText } from "@/tests/integrations/translation";
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
@@ -77,6 +79,128 @@ function mockStatus(response = eligible()) {
   server.use(getGetTrialsGetTrialStatusMockHandler200(response));
 }
 
+test.each(["paid", "trial"])(
+  "keeps a translated %s checkout usable while the request is pending",
+  async (mode) => {
+    mockStatus(
+      mode === "trial"
+        ? eligible()
+        : trialResponse({
+            eligible: false,
+            active: false,
+            status: null,
+            offer: null,
+          }),
+    );
+    let finishCheckout = () => {};
+    const pending = new Promise<void>((resolve) => {
+      finishCheckout = resolve;
+    });
+    const requested = vi.fn();
+    server.use(
+      http.post(
+        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        async ({ request }) => {
+          requested(await request.json());
+          await pending;
+          return HttpResponse.json({
+            url: "https://checkout.stripe.com/translated",
+          });
+        },
+      ),
+    );
+    render(<SubscriptionStep />);
+    const label = mode === "paid" ? "Get Pro" : "Start 7-day trial";
+    const button = await screen.findByRole("button", { name: label });
+    const translatedLabel =
+      mode === "paid" ? "احصل على برو" : "ابدأ الفترة التجريبية";
+    const translation = translateText(button, label, translatedLabel);
+
+    try {
+      fireEvent.click(button);
+      await waitFor(() => expect(requested).toHaveBeenCalledOnce());
+      expect(screen.getByRole("button", { name: translatedLabel })).toBe(
+        button,
+      );
+      expect(button.contains(translation)).toBe(true);
+      expect(button.hasAttribute("disabled")).toBe(true);
+      expect(requested).toHaveBeenCalledWith(
+        mode === "paid"
+          ? expect.objectContaining({ tier: "PRO", billing_cycle: "monthly" })
+          : { offer_token: trialOffer.token, return_to: "onboarding" },
+      );
+    } finally {
+      finishCheckout();
+    }
+
+    await waitFor(() => {
+      if (mode === "paid")
+        expect(checkoutLocation.href).toBe(
+          "https://checkout.stripe.com/translated",
+        );
+      else
+        expect(checkoutLocation.assign).toHaveBeenCalledWith(
+          "https://checkout.stripe.com/translated",
+        );
+    });
+  },
+);
+
+test.each(["paid", "trial"])(
+  "can retry a translated %s checkout after a failed request",
+  async (mode) => {
+    mockStatus(
+      mode === "trial"
+        ? eligible()
+        : trialResponse({
+            eligible: false,
+            active: false,
+            status: null,
+            offer: null,
+          }),
+    );
+    let attempts = 0;
+    server.use(
+      http.post(
+        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        () => {
+          attempts++;
+          return attempts === 1
+            ? HttpResponse.json({ detail: "Please try again" }, { status: 503 })
+            : HttpResponse.json({ url: "https://checkout.stripe.com/retried" });
+        },
+      ),
+    );
+    render(<SubscriptionStep />);
+    const label = mode === "paid" ? "Get Pro" : "Start 7-day trial";
+    const button = await screen.findByRole("button", { name: label });
+    const translation = translateText(button, label, "Translated checkout");
+
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(attempts).toBe(1);
+      expect(button.hasAttribute("disabled")).toBe(false);
+    });
+    expect(screen.getByRole("button", { name: "Translated checkout" })).toBe(
+      button,
+    );
+    expect(button.contains(translation)).toBe(true);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      if (mode === "paid")
+        expect(checkoutLocation.href).toBe(
+          "https://checkout.stripe.com/retried",
+        );
+      else
+        expect(checkoutLocation.assign).toHaveBeenCalledWith(
+          "https://checkout.stripe.com/retried",
+        );
+    });
+    expect(attempts).toBe(2);
+  },
+);
+
 test.each([
   ["PRO", "Pro"],
   ["MAX", "Max"],
@@ -98,7 +222,6 @@ test.each([
     const start = await card.findByRole("button", {
       name: "Start 7-day trial",
     });
-    expect(start.getAttribute("data-fast-goal")).not.toBe("plan_cta_click");
     fireEvent.click(start);
     await waitFor(() =>
       expect(checkoutLocation.assign).toHaveBeenCalledWith(
@@ -210,7 +333,7 @@ test("refreshes a rejected offer and submits its new token on retry", async () =
   });
 });
 
-test("retains paid checkout, Google Ads value, and DataFast metadata while a trial is eligible", async () => {
+test("retains paid checkout and Google Ads value while a trial is eligible", async () => {
   mockStatus();
   vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
   vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
@@ -227,10 +350,6 @@ test("retains paid checkout, Google Ads value, and DataFast metadata while a tri
   const pro = within(
     screen.getByRole("region", { name: "Pro plan" }),
   ).getByRole("button", { name: /^Get Pro/ });
-  expect(pro.getAttribute("data-fast-goal")).toBe("plan_cta_click");
-  expect(pro.getAttribute("data-fast-goal-plan")).toBe("pro");
-  expect(pro.getAttribute("data-fast-goal-cycle")).toBe("monthly");
-  expect(pro.getAttribute("data-fast-goal-surface")).toBe("onboarding_paywall");
   fireEvent.click(pro);
   await waitFor(() =>
     expect(checkoutLocation.href).toBe("https://checkout.stripe.com/paid"),
@@ -261,9 +380,6 @@ test("switches to the offered billing cycle without starting either checkout", a
   expect(
     screen.queryByRole("button", { name: "Start 7-day trial" }),
   ).toBeNull();
-  const toggle = screen.getByRole("button", { name: /Monthly billing/i });
-  expect(toggle.getAttribute("data-fast-goal")).toBe("paywall_billing_toggle");
-  expect(toggle.getAttribute("data-fast-goal-cycle")).toBe("monthly");
   fireEvent.click(alternative);
   expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
   await screen.findByRole("button", { name: "Start 7-day trial" });
@@ -393,3 +509,51 @@ test("also flushes the draft from the standalone fallback trial card", async () 
   expect(await card.findByRole("alert")).toBeDefined();
   expect(checkoutLocation.assign).not.toHaveBeenCalled();
 });
+
+test.each(["failed", "left with Back"])(
+  "a %s Pro checkout leaves no spinner on Pro once the trial redirects",
+  async (outcome) => {
+    mockStatus();
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        outcome === "failed"
+          ? HttpResponse.json({ detail: "Please try again" }, { status: 503 })
+          : HttpResponse.json({ url: "https://checkout.stripe.com/paid" }),
+      ),
+      getPostTrialsStartTrialCheckoutMockHandler200({
+        url: "https://checkout.stripe.com/trial",
+      }),
+    );
+    render(<SubscriptionStep />);
+    const card = within(
+      await screen.findByRole("region", { name: "Pro plan" }),
+    );
+    const start = await card.findByRole("button", {
+      name: "Start 7-day trial",
+    });
+    const pro = card.getByRole("button", { name: /^Get Pro/ });
+
+    fireEvent.click(pro);
+    if (outcome === "failed") {
+      await waitFor(() => expect(pro.hasAttribute("disabled")).toBe(false));
+      expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
+    } else {
+      await waitFor(() =>
+        expect(checkoutLocation.href).toBe("https://checkout.stripe.com/paid"),
+      );
+      expect(pro.querySelector(".animate-spin")).not.toBeNull();
+      restoreFromBackForwardCache();
+      expect(pro.hasAttribute("disabled")).toBe(false);
+    }
+    expect(pro.querySelector(".animate-spin")).toBeNull();
+
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(checkoutLocation.assign).toHaveBeenCalledWith(
+        "https://checkout.stripe.com/trial",
+      ),
+    );
+    expect(pro.hasAttribute("disabled")).toBe(true);
+    expect(pro.querySelector(".animate-spin")).toBeNull();
+  },
+);
