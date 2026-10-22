@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -26,6 +28,7 @@ jobs:
       - name: Open PR with refreshed rates
         uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
         with:
+          token: ${{ github.token }}
           branch: chore/refresh-anthropic-rates
           base: dev
           title: "chore(backend): refresh Anthropic rate card from LiteLLM"
