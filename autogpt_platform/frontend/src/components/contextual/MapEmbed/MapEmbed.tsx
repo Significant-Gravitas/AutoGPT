@@ -1,3 +1,4 @@
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { googleMapsPinUrl, type MapData } from "./helpers";
 import { useMapEmbed } from "./useMapEmbed";
@@ -46,11 +47,18 @@ export function MapEmbed({ data }: Props) {
       {status === "failed" ? (
         <PinLinks data={data} />
       ) : (
-        <div
-          ref={containerRef}
-          className="h-72 w-full bg-zinc-100"
-          aria-label={data.title ?? "Map"}
-        />
+        <div className="relative h-72 w-full bg-zinc-100">
+          <div
+            ref={containerRef}
+            className="h-full w-full"
+            aria-label={data.title ?? "Map"}
+          />
+          {status === "loading" ? (
+            <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
+              <LoadingSpinner />
+            </div>
+          ) : null}
+        </div>
       )}
     </figure>
   );

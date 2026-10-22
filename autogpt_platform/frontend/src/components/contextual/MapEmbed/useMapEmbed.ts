@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { loadGoogleMaps, onMapsAuthFailure } from "./googleMapsLoader";
 import type { MapPin } from "./helpers";
 
+const LOAD_TIMEOUT_MS = 10000;
+
 function pinPopup(pin: MapPin) {
   const wrapper = document.createElement("div");
   const name = document.createElement("strong");
@@ -28,6 +30,11 @@ export function useMapEmbed(pins: MapPin[]) {
     if (!apiKey || !container) return;
     let cancelled = false;
     let rejected = false;
+    const markers: Array<{ map: unknown }> = [];
+    let info: { close(): void } | null = null;
+    const timeout = setTimeout(() => {
+      if (!cancelled) setStatus("failed");
+    }, LOAD_TIMEOUT_MS);
     const unsubscribe = onMapsAuthFailure(() => {
       rejected = true;
       if (!cancelled) setStatus("failed");
@@ -43,7 +50,8 @@ export function useMapEmbed(pins: MapPin[]) {
           mapTypeControl: false,
           streetViewControl: false,
         });
-        const info = new InfoWindow();
+        const infoWindow = new InfoWindow();
+        info = infoWindow;
         const bounds = new LatLngBounds();
         pins.forEach((pin) => {
           const pinMarker = new marker.AdvancedMarkerElement({
@@ -53,12 +61,14 @@ export function useMapEmbed(pins: MapPin[]) {
             gmpClickable: true,
           });
           pinMarker.addListener("gmp-click", () => {
-            info.setContent(pinPopup(pin));
-            info.open({ map, anchor: pinMarker });
+            infoWindow.setContent(pinPopup(pin));
+            infoWindow.open({ map, anchor: pinMarker });
           });
+          markers.push(pinMarker);
           bounds.extend({ lat: pin.lat, lng: pin.lng });
         });
         if (pins.length > 1) map.fitBounds(bounds, 48);
+        clearTimeout(timeout);
         setStatus("ready");
       })
       .catch(() => {
@@ -66,7 +76,13 @@ export function useMapEmbed(pins: MapPin[]) {
       });
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
       unsubscribe();
+      info?.close();
+      markers.forEach((pinMarker) => {
+        pinMarker.map = null;
+      });
+      container.replaceChildren();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, pinsKey]);

@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MapAwarePre } from "../MapAwarePre";
 
 const SOURCE = JSON.stringify({
@@ -8,7 +8,14 @@ const SOURCE = JSON.stringify({
 });
 
 describe("MapAwarePre", () => {
-  afterEach(cleanup);
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "");
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllEnvs();
+  });
 
   it("shows pin links when no Maps key is configured", () => {
     render(

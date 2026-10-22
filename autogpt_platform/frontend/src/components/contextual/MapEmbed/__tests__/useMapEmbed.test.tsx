@@ -3,13 +3,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const DATA = { pins: [{ name: "Cafe X", lat: 37.78, lng: -122.4 }] };
 
-class FakeMap {}
+const fitBounds = vi.fn();
+const addListener = vi.fn();
+const markerCtor = vi.fn();
+
+class FakeMap {
+  fitBounds = fitBounds;
+}
 class FakeBounds {
   extend() {}
 }
-class FakeInfoWindow {}
+class FakeInfoWindow {
+  close() {}
+}
 class FakeMarker {
-  addListener() {}
+  map: unknown = null;
+  constructor(options: unknown) {
+    markerCtor(options);
+  }
+  addListener = addListener;
 }
 
 function installFakeMaps() {
@@ -41,6 +53,9 @@ describe("MapEmbed with a Maps key", () => {
     cleanup();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    fitBounds.mockClear();
+    addListener.mockClear();
+    markerCtor.mockClear();
   });
 
   it("falls back to pin links when Google rejects the key", async () => {
@@ -66,5 +81,26 @@ describe("MapEmbed with a Maps key", () => {
     });
     expect(screen.getByLabelText("Map")).toBeDefined();
     expect(screen.queryByRole("link", { name: "Cafe X" })).toBeNull();
+  });
+
+  it("creates a clickable marker per pin and fits bounds for several pins", async () => {
+    const { MapEmbed: FreshMapEmbed } = await import("../MapEmbed");
+    render(
+      <FreshMapEmbed
+        data={{
+          pins: [
+            { name: "Cafe X", lat: 37.78, lng: -122.4 },
+            { name: "Cafe Y", lat: 37.8, lng: -122.3 },
+          ],
+        }}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(markerCtor).toHaveBeenCalledTimes(2));
+    expect(markerCtor.mock.calls[0][0]).toMatchObject({ gmpClickable: true });
+    expect(addListener).toHaveBeenCalledWith("gmp-click", expect.any(Function));
+    expect(fitBounds).toHaveBeenCalledTimes(1);
   });
 });

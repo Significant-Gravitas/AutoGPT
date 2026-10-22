@@ -11,11 +11,13 @@ interface MapInstance {
 
 interface MarkerInstance {
   addListener(event: string, handler: () => void): void;
+  map: MapInstance | null;
 }
 
 interface InfoWindowInstance {
   setContent(content: Node): void;
   open(options: { map: MapInstance; anchor: MarkerInstance }): void;
+  close(): void;
 }
 
 export interface GoogleMapsApi {
