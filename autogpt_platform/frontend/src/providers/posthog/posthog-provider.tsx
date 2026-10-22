@@ -45,6 +45,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         capture_pageview: false,
         capture_pageleave: true,
         autocapture: true,
+        capture_exceptions: false,
         ...(anonymousID && {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
