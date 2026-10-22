@@ -2293,14 +2293,17 @@ async def stream_chat_completion_baseline(
                 openai_messages.append(format_pending_as_user_message(pm))
 
     if is_user_message:
+        turn_text = message or next(
+            (m.content or "" for m in reversed(session.messages) if m.role == "user"),
+            "",
+        )
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
-                existing = msg.get("content", "")
-                if isinstance(existing, str):
-                    matched_skills_notice = await build_matched_skills_notice(
-                        user_id, session, message or existing, permissions=permissions
-                    )
-                    msg["content"] = existing + matched_skills_notice
+                matched_skills_notice = await build_matched_skills_notice(
+                    user_id, session, turn_text, permissions=permissions
+                )
+                if matched_skills_notice:
+                    _add_message_text(msg, matched_skills_notice, prepend=False)
                 break
 
     # Live budget, every turn — the first-turn ``<budget_context>`` above is

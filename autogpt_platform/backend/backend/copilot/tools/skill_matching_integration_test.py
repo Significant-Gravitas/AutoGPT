@@ -7,6 +7,7 @@ import pytest
 from backend.copilot.baseline import service
 from backend.copilot.baseline import service_cancellation_test as baseline_fixtures
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.retry_scenarios_test import (
@@ -16,6 +17,7 @@ from backend.copilot.sdk.retry_scenarios_test import (
     _build_transcript,
     _make_sdk_patches,
 )
+from backend.copilot.tool_image import ToolImage
 from backend.copilot.tools import skill_matching_test as skill_fixtures
 
 baseline_io = baseline_fixtures.baseline_io
@@ -101,11 +103,13 @@ async def test_sdk_matching_survives_resume_disabled_and_context_retry(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("provided_message", [True, False])
+@pytest.mark.parametrize("pending_image", [True, False])
 async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
     monkeypatch: pytest.MonkeyPatch,
     baseline_io: list[ChatSession],
     available_skills: AsyncMock,
     provided_message: bool,
+    pending_image: bool,
 ) -> None:
     session = ChatSession.new("user-1", dry_run=False, expert_id="expert-a")
     session.title = "Partner research"
@@ -130,12 +134,22 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
     task = (
         "Add Northwind to my partner list in Airtable and go find me a partner contact"
     )
+    starting_message = "Use this approved image" if pending_image else task
+    image = ToolImage(mime_type="image/png", data_base64="aW1hZ2U=")
+    if pending_image:
+        pending = PendingMessage(content=task, model_image=image)
+        monkeypatch.setattr(
+            service, "drain_pending_safe", AsyncMock(return_value=[pending])
+        )
+        monkeypatch.setattr(
+            service, "persist_pending_as_user_rows", AsyncMock(return_value=True)
+        )
     if not provided_message:
-        session.messages.append(ChatMessage(role="user", content=task))
+        session.messages.append(ChatMessage(role="user", content=starting_message))
     async with asyncio.timeout(10):
         async for _ in service.stream_chat_completion_baseline(
             session.session_id,
-            message=task if provided_message else None,
+            message=starting_message if provided_message else None,
             user_id="user-1",
             session=session,
         ):
@@ -144,6 +158,9 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
     provider.assert_awaited_once()
     assert provider.await_args is not None
     current = provider.await_args.kwargs["messages"][-1]["content"]
+    if pending_image:
+        assert image.openai() in current
+        current = "".join(part["text"] for part in current if part["type"] == "text")
     assert "<matched_skills>" in current
     assert "partner-first-touch-outreach" in current
     assert current.index(task) < current.index("<matched_skills>")
