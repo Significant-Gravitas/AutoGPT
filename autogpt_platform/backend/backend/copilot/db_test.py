@@ -20,6 +20,7 @@ from backend.copilot.db import (
     get_user_chat_sessions,
     set_turn_duration,
     update_chat_message_tool_calls,
+    update_chat_session,
     update_chat_session_llm_route,
     update_chat_session_pinned,
     update_message_content_by_sequence,
@@ -107,6 +108,30 @@ async def test_update_chat_session_llm_route_merges_metadata_atomically(
     assert "jsonb_build_object" in sql
     assert '"updatedAt" = NOW()' in sql
     assert params == ["sess-1", "user-1", "codex", "cred-1"]
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_writes_only_the_columns_it_is_given():
+    """A field left as ``None`` keeps its column as it is, so a partial update
+    never blanks the session's other fields."""
+    with patch.object(PrismaChatSession, "prisma") as mock_prisma:
+        mock_prisma.return_value.update = AsyncMock(return_value=None)
+
+        await update_chat_session(
+            "sess-1",
+            title="Plans",
+            organization_id="org-1",
+            team_id=None,
+            update_tenancy=True,
+        )
+
+    data = mock_prisma.return_value.update.await_args.kwargs["data"]
+    assert set(data) == {"updatedAt", "title", "organizationId", "teamId"}
+    assert (data["title"], data["organizationId"], data["teamId"]) == (
+        "Plans",
+        "org-1",
+        None,
+    )
 
 
 @pytest.mark.asyncio

@@ -1153,12 +1153,12 @@ async def _save_session_to_db(
     else:
         new_messages = [m for m in session.messages if m.sequence is None]
 
-    # New rows carry the session's fields into their own transaction, so a save
-    # with messages is one write instead of two. Only where this process writes
-    # the database itself: during a rolling deploy, a database manager from
-    # before ``session_fields`` drops them without an error, and a cache dropped
-    # before the next save would lose them for good. A scope change keeps its
-    # own write too: the fields the rows carry don't include it.
+    # The rows carry the session's fields into their own transaction only where
+    # this process writes the database itself. The database manager's RPC drops
+    # request fields it doesn't know, so a manager older than ``session_fields``
+    # would lose them, and with them any increments a cache dropped before the
+    # next save could not restore. A scope change keeps its own update too: the
+    # fields the rows carry don't include it.
     rows_carry_fields = (
         bool(new_messages) and not persist_tenancy and chat_db_is_local()
     )
