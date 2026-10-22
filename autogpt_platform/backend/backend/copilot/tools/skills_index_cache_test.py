@@ -170,6 +170,53 @@ async def test_a_rebuild_takes_no_claim_over_an_entry_another_holds(held):
     assert taken is not None and redis.store[key] == taken
 
 
+@pytest.mark.asyncio
+async def test_a_rebuild_that_fails_frees_the_entry_for_the_next_turn():
+    redis = _FakeRedis()
+    with (
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.copilot.tools.skills._list_user_skills_from_workspace",
+            new=AsyncMock(side_effect=RuntimeError("storage went away")),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        await list_user_skills(USER)
+
+    assert _skills_cache_key(USER) not in redis.store
+
+
+@pytest.mark.asyncio
+async def test_a_failed_rebuild_leaves_another_rebuilds_claim():
+    """A write dropped this rebuild's claim and another rebuild claimed the
+    entry since: the failure must not free the other one's claim."""
+    redis = _FakeRedis()
+    key = _skills_cache_key(USER)
+    other = f"{skills._REBUILDING_MARKER}other"
+
+    async def _read_then_fail(*_args, **_kwargs):
+        redis.store[key] = other
+        raise RuntimeError("storage went away")
+
+    with (
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.copilot.tools.skills._list_user_skills_from_workspace",
+            new=AsyncMock(side_effect=_read_then_fail),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        await list_user_skills(USER)
+
+    assert redis.store[key] == other
+
+
 @requires_redis
 @pytest.mark.asyncio
 async def test_on_redis_an_index_is_written_only_while_its_claim_holds(server):
@@ -204,5 +251,14 @@ async def test_on_redis_an_index_is_written_only_while_its_claim_holds(server):
             user, [ParsedSkill(name="stale", description="d", body="")], claim=lost
         )
         assert await redis.get(key) is None
+
+        # A failed rebuild frees its own claim and nobody else's.
+        mine = await _claim_skills_cache(user)
+        assert mine is not None
+        await skills._release_skills_cache_claim(user, None, mine)
+        assert await redis.get(key) is None
+        theirs = await _claim_skills_cache(user)
+        await skills._release_skills_cache_claim(user, None, mine)
+        assert await redis.get(key) == theirs
     finally:
         await redis.delete(key)

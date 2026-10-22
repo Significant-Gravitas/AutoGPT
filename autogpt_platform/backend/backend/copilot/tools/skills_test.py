@@ -948,11 +948,16 @@ class _FakeRedis:
         for key in keys:
             self.store.pop(key, None)
 
-    async def eval(self, script, numkeys, key, claim, value, ttl):
-        # The index's one script: write only while the rebuild's claim holds.
-        assert script == skills._WRITE_IF_CLAIMED
+    async def eval(self, script, numkeys, key, claim, *args):
+        # The index's two scripts: write, or release, only while the rebuild's
+        # claim holds.
+        assert script in (skills._WRITE_IF_CLAIMED, skills._RELEASE_IF_CLAIMED)
         if self.store.get(key) != claim:
             return 0
+        if script == skills._RELEASE_IF_CLAIMED:
+            await self.delete(key)
+            return 1
+        value, ttl = args
         await self.set(key, value, ex=ttl)
         return True
 

@@ -178,22 +178,26 @@ def skill_folder(expert_id: str | None) -> str:
 
 # Redis-cached index TTL. Every write that changes an owner's folder drops the
 # owner's entry, so the TTL only bounds what no write announces: a marketplace
-# publish reaching the owner's copies. A chat's follow-ups arrive about two
-# minutes apart, so a one-minute entry had expired by most of them and the
-# rebuild ran on the turn's critical path.
+# publish reaching the owner's copies. It outlasts the gaps between a chat's
+# follow-ups, which arrive about two minutes apart.
 SKILLS_INDEX_CACHE_TTL_S = 15 * 60
 # A rebuild claims its entry with this marker before it reads the folder and
 # writes its result only while the marker is still there. A write that lands
 # meanwhile drops the marker with the entry, so the rebuild cannot put back
 # the older view it read. The marker is not JSON, so every reader, this
-# version's or the one before, takes it for a miss; it expires on its own if
-# the rebuild dies.
+# version's or the one before, takes it for a miss. A rebuild that fails
+# releases it; it expires on its own if the process dies.
 _REBUILDING_MARKER = "rebuilding:"
 _REBUILD_CLAIM_TTL_S = 60
 # KEYS: index. ARGV: claim, index, TTL.
 _WRITE_IF_CLAIMED = (
     'if redis.call("get", KEYS[1]) == ARGV[1] then '
     'return redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3]) else return 0 end'
+)
+# KEYS: index. ARGV: claim.
+_RELEASE_IF_CLAIMED = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("del", KEYS[1]) else return 0 end'
 )
 # Versioned: an entry cached before origins were recorded would count every
 # installed skill as the owner's for a TTL after deploy.
@@ -1858,6 +1862,21 @@ async def _claim_skills_cache(user_id: str, expert_id: str | None = None) -> str
     return claim if claimed else None
 
 
+async def _release_skills_cache_claim(
+    user_id: str, expert_id: str | None, claim: str
+) -> None:
+    """Drop *claim* if the owner's entry still holds it; an index or another
+    rebuild's claim stays."""
+    try:
+        redis = await get_redis_async()
+        await redis.eval(
+            _RELEASE_IF_CLAIMED, 1, _skills_cache_key(user_id, expert_id), claim
+        )
+    except Exception:
+        # Best-effort: an unreleased claim expires on its own.
+        pass
+
+
 async def _write_skills_cache(
     user_id: str,
     skills: list[ParsedSkill],
@@ -1977,14 +1996,21 @@ async def list_user_skills(
         return cached
     # Before the folder is read, so a write landing from here on drops it.
     claim = await _claim_skills_cache(user_id, expert_id)
-    skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
-    if (
-        heal_missing
-        and expert_id is not None
-        and await _copy_assigned_skills_not_yet_owned(user_id, expert_id, skills)
-    ):
+    try:
         skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
-    skills = await _reconcile_marketplace_copies(user_id, expert_id, skills, scope)
+        if (
+            heal_missing
+            and expert_id is not None
+            and await _copy_assigned_skills_not_yet_owned(user_id, expert_id, skills)
+        ):
+            skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
+        skills = await _reconcile_marketplace_copies(user_id, expert_id, skills, scope)
+    except BaseException:
+        if claim is not None:
+            # Free the entry for the next turn's rebuild, which could otherwise
+            # neither read nor cache an index until the claim expired.
+            await _release_skills_cache_claim(user_id, expert_id, claim)
+        raise
     if claim is not None:
         # A heal or reconcile that wrote dropped the claim itself, so the next
         # turn reads again and a large bundle keeps catching up turn by turn.
