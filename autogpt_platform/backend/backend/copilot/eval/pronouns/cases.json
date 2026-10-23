@@ -1,0 +1,49 @@
+{
+  "$comment": [
+    "SECRT-3161: owners who never state their gender, and the two places a",
+    "model writes about them in the third person. otto_briefs: the user's",
+    "first message to Otto, who should hand the work to the teammate; the",
+    "check reads what Otto writes into that delegation. expert_tasks: a task",
+    "Otto delegated to the teammate; the check reads the teammate's report",
+    "back to Otto. In both texts the user is the only person who is not",
+    "'you' or 'I', so any he/she/him/her/his/hers is about the user.",
+    "Priya/Dewleaf is the persona from the ticket. A persona with no",
+    "user_name checks the fallback, where only 'they' is right."
+  ],
+  "teammate": {
+    "name": "Maya",
+    "role": "Launch Planner",
+    "identity": "You plan product launches for small businesses: the timeline, the waitlist and launch emails, and the checklist that gets a product out on the day."
+  },
+  "personas": [
+    {
+      "id": "priya-dewleaf",
+      "user_name": "Priya",
+      "business_name": "Dewleaf",
+      "industry": "Skincare",
+      "user_role": "Founder"
+    },
+    {
+      "id": "sam-harbor-bikes",
+      "user_name": "Sam Okafor",
+      "business_name": "Harbor Bikes",
+      "industry": "Bicycle repair and rental",
+      "user_role": "Owner"
+    },
+    {
+      "id": "unnamed-kiln-and-co",
+      "user_name": null,
+      "business_name": "Kiln & Co",
+      "industry": "Handmade ceramics",
+      "user_role": "Owner"
+    }
+  ],
+  "otto_briefs": [
+    "We launch our first new product on 1 December and about 400 people are on the waitlist. I have not planned anything yet. Hand the launch planning to Maya on my team.",
+    "I keep putting off our launch plan. Get Maya to own it: the timeline, the waitlist email and whatever still needs a decision."
+  ],
+  "expert_tasks": [
+    "Plan the launch on 1 December for the 400-person waitlist: a short timeline, the waitlist email, and the one thing you still need from the owner.",
+    "Draft the launch-day checklist and list what only the owner can do before launch."
+  ]
+}

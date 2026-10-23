@@ -96,6 +96,8 @@ class Turn(BaseModel):
     rounds: int = 0
     finish_reasons: list[str] = Field(default_factory=list)
     hit_round_cap: bool = False
+    # What the turn wrote for a teammate or subtask to read, one entry a call.
+    delegated_tasks: list[str] = Field(default_factory=list)
 
 
 def chat_client(config: ChatConfig) -> openai.AsyncOpenAI:
@@ -176,6 +178,11 @@ async def generate_turn(
             break
         turn.tool_calls += [
             called_name(tc.function.name, tc.function.arguments) for tc in tool_calls
+        ]
+        turn.delegated_tasks += [
+            task
+            for tc in tool_calls
+            if (task := delegated_task(tc.function.name, tc.function.arguments))
         ]
         asked = [tc for tc in tool_calls if tc.function.name == TERMINAL_TOOL]
         if asked:
@@ -312,6 +319,20 @@ def stub_tool_result(
             )
         )
     return _dump(NoResultsResponse(message=f"Nothing to return from {name}."))
+
+
+def delegated_task(name: str, arguments: str) -> str | None:
+    """The text a delegation or handoff call hands its teammate, or ``None``
+    for any other call. Read through the ``run_capability`` wrapper too."""
+    target = called_name(name, arguments)
+    if target not in (*DELEGATION_TOOLS, HANDOFF_TOOL):
+        return None
+    args = _arguments(arguments)
+    if name in CAPABILITY_WRAPPERS:
+        nested = args.get("input")
+        args = dict(nested) if isinstance(nested, dict) else {}
+    fields = ("system_context", "context", "prompt")
+    return "\n\n".join(str(args[f]) for f in fields if args.get(f)) or None
 
 
 def called_name(name: str, arguments: str) -> str:
