@@ -87,7 +87,7 @@ export const TaskProgressBar = memo(function TaskProgressBar({
               <Icon
                 icon={CheckmarkBadge01Icon}
                 size={22}
-                // TODO(tokens): SECRT-3152, no text token for text-[#00a656]
+                // TODO(tokens): no exact role for text-[#00a656]
                 className="flex-shrink-0 text-[#00a656]"
               />
               <Text
