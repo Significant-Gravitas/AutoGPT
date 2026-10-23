@@ -57,10 +57,7 @@ export function PendingAnswerContexts({
   );
   // A re-delegated hand-off counts once; the share viewer shows it the same.
   const superseded = useEqualValue(
-    useMemo(
-      () => getSupersededCallIds(getChatDelegations(messages, heldOutcomes)),
-      [messages, heldOutcomes],
-    ),
+    getSupersededCallIds(getChatDelegations(messages, heldOutcomes)),
   );
   if (readOnly) {
     return (

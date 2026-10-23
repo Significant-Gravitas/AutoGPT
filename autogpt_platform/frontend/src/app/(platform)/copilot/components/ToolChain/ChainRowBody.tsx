@@ -79,27 +79,20 @@ function isLiveSubSessionRow(row: ChainRow): boolean {
 }
 
 export function ChainRowBody({ row, isLast, readOnly = false }: Props) {
-  const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-
-  // What the row needs from the user is only known once the output lands, so
-  // a live row mounts closed and flips here — the user can still collapse it.
-  useEffect(() => {
-    if (row.requiresAction) setOpen(true);
-  }, [row.requiresAction]);
-  // Browser steps carry the page screenshots the artifact panel shows —
-  // auto-expand them while the panel is open so the steps are visible
-  // from the start.
-  useEffect(() => {
-    if (row.category === "browser" && artifactPanelOpen) setOpen(true);
-  }, [row.category, artifactPanelOpen]);
   // A delegated run's card is the live view of the teammate working —
   // surface it without a click while the sub-session is still going.
   const liveSubSession = isLiveSubSessionRow(row) && !row.supersededSubSession;
-  useEffect(() => {
-    if (liveSubSession) setOpen(true);
-  }, [liveSubSession]);
+  const [open, setOpen] = useAutoOpen([
+    // What the row needs from the user is only known once the output lands,
+    // so a live row mounts closed and opens when it does.
+    row.requiresAction === true,
+    // Browser steps carry the page screenshots the artifact panel shows, so
+    // they open while the panel is open and the steps are visible at once.
+    row.category === "browser" && artifactPanelOpen,
+    liveSubSession,
+  ]);
   // A delegate output frozen at "running" got its done-state label
   // ("Teammate handled:") while the teammate is in fact still working —
   // keep the running label + shimmer until the polled session goes idle.
@@ -241,4 +234,18 @@ export function ChainRowBody({ row, isLast, readOnly = false }: Props) {
       </div>
     </div>
   );
+}
+
+/** Closed by default: the row opens each time one of
+ *  `triggers` turns true, and the user can still collapse it after. Adjusted
+ *  during render (React's "storing information from previous renders"), so
+ *  the row never paints closed between the trigger and the open. */
+function useAutoOpen(triggers: boolean[]) {
+  const [open, setOpen] = useState(() => triggers.some(Boolean));
+  const [seen, setSeen] = useState(triggers);
+  if (triggers.some((on, i) => on !== seen[i])) {
+    setSeen(triggers);
+    if (triggers.some((on, i) => on && !seen[i])) setOpen(true);
+  }
+  return [open, setOpen] as const;
 }

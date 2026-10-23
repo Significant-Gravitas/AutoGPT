@@ -50,23 +50,21 @@ export function useDelegationAnswer() {
     const answer = text.trim();
     if (!answer || isSending) return;
     setIsSending(true);
-    try {
-      const delivery = await deliverAnswer(subSessionId, answer);
-      if (delivery === "sent")
-        recordAnswer(subSessionId, {
-          question,
-          text: answer,
-          sentAt: Date.now(),
-        });
-      else
-        toast({
-          title: "Couldn't send your answer",
-          description: "It's drafted in the thread for you to send.",
-          variant: "destructive",
-        });
-    } finally {
-      setIsSending(false);
-    }
+    const delivery = await deliverAnswer(subSessionId, answer).finally(() =>
+      setIsSending(false),
+    );
+    if (delivery === "sent")
+      recordAnswer(subSessionId, {
+        question,
+        text: answer,
+        sentAt: Date.now(),
+      });
+    else
+      toast({
+        title: "Couldn't send your answer",
+        description: "It's drafted in the thread for you to send.",
+        variant: "destructive",
+      });
   }
 
   return { sendAnswer, isSending };

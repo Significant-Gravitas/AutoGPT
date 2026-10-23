@@ -30,27 +30,22 @@ export function useDelegationControls(
   async function cancel() {
     if (!subSessionId || isCancelling) return;
     setIsCancelling(true);
-    try {
-      const res = await postV2CancelSessionTask(subSessionId);
-      if (res.status !== 200) throw new Error("cancel failed");
-    } catch {
+    if (!(await stopSubSession(subSessionId)))
       toast({
         title: `Couldn't stop ${name}`,
         description: "They may keep working in their own thread.",
         variant: "destructive",
       });
-    } finally {
-      await Promise.all(
-        [subSessionId, chatSessionId]
-          .filter((id): id is string => !!id)
-          .map((id) =>
-            queryClient.invalidateQueries({
-              queryKey: getGetV2GetSessionQueryKey(id),
-            }),
-          ),
-      );
-      setIsCancelling(false);
-    }
+    await Promise.all(
+      [subSessionId, chatSessionId]
+        .filter((id): id is string => !!id)
+        .map((id) =>
+          queryClient.invalidateQueries({
+            queryKey: getGetV2GetSessionQueryKey(id),
+          }),
+        ),
+    );
+    setIsCancelling(false);
   }
 
   return {
@@ -63,4 +58,14 @@ export function useDelegationControls(
     raiseBudget: () =>
       askOtto(`Raise the cap and retry the hand-off to ${name}.`),
   };
+}
+
+// Out of the hook: the React Compiler cannot lower a try inside one.
+async function stopSubSession(subSessionId: string) {
+  try {
+    const res = await postV2CancelSessionTask(subSessionId);
+    return res.status === 200;
+  } catch {
+    return false;
+  }
 }

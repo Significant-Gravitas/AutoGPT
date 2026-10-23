@@ -11,6 +11,7 @@ import {
 import {
   type ChatRule,
   type RuleScope,
+  answerReview,
   isGateReview,
   toApprovalItem,
 } from "../../../../ApprovalQueue/helpers";
@@ -30,22 +31,14 @@ function SubSessionReviewCard({ review, expertName }: CardProps) {
   async function answer(approved: boolean, rule?: ChatRule, scope?: RuleScope) {
     setStatus(approved ? "approving" : "rejecting");
     setFailed(false);
-    try {
-      const res = await processReviews(
-        [
-          {
-            node_exec_id: item.reviewId,
-            approved,
-            chat_rule: approved ? (rule ?? null) : null,
-            ...(approved && rule && scope ? { chat_rule_scope: scope } : {}),
-          },
-        ],
-        [item.scope],
-      );
-      setFailed(!(res.status === 200 && res.data.failed_count === 0));
-    } catch {
-      setFailed(true);
-    }
+    const ok = await answerReview({
+      processReviews,
+      item,
+      approved,
+      rule,
+      scope,
+    });
+    setFailed(!ok);
     setStatus("idle");
   }
 

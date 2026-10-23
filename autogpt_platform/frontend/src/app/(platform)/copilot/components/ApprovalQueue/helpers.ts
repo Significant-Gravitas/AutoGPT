@@ -1,4 +1,6 @@
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import type { ReviewItem } from "@/app/api/__generated__/models/reviewItem";
+import type { useProcessReviews } from "@/hooks/useProcessReviews";
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
@@ -308,4 +310,45 @@ function toSpend(raw: unknown): ApprovalSpend | null {
   if (![estimate, spent, ceiling, unit].every((n) => typeof n === "number"))
     return null;
   return { estimate, spent, ceiling, unit } as ApprovalSpend;
+}
+
+type ProcessReviews = ReturnType<typeof useProcessReviews>["processReviews"];
+
+interface AnswerReviewArgs {
+  processReviews: ProcessReviews;
+  item: ApprovalItem;
+  approved: boolean;
+  rule?: ChatRule;
+  scope?: RuleScope;
+  // Fields only an approval sends, such as the edits made on the card.
+  approvedExtras?: Partial<ReviewItem>;
+}
+
+/** Sends one card's answer; true only when the server took it. Kept out of
+ *  the hooks that call it: the React Compiler cannot lower a try in them. */
+export async function answerReview({
+  processReviews,
+  item,
+  approved,
+  rule,
+  scope,
+  approvedExtras = {},
+}: AnswerReviewArgs) {
+  try {
+    const res = await processReviews(
+      [
+        {
+          node_exec_id: item.reviewId,
+          approved,
+          chat_rule: approved ? (rule ?? null) : null,
+          ...(approved && rule && scope ? { chat_rule_scope: scope } : {}),
+          ...(approved ? approvedExtras : {}),
+        },
+      ],
+      [item.scope],
+    );
+    return res.status === 200 && res.data.failed_count === 0;
+  } catch {
+    return false;
+  }
 }

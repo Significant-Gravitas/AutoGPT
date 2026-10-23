@@ -226,13 +226,14 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const [liveStatuses, setLiveStatuses] = useState<
     Record<string, LiveDelegationStatus>
   >({});
-  const reportDelegationStatus = useCallback(
-    (toolCallId: string, status: LiveDelegationStatus) =>
-      setLiveStatuses((prev) =>
-        prev[toolCallId] === status ? prev : { ...prev, [toolCallId]: status },
-      ),
-    [],
-  );
+  function reportDelegationStatus(
+    toolCallId: string,
+    status: LiveDelegationStatus,
+  ) {
+    setLiveStatuses((prev) =>
+      prev[toolCallId] === status ? prev : { ...prev, [toolCallId]: status },
+    );
+  }
 
   const { rows, delegations } = useMemo(() => {
     const chainDelegations = withSuperseded(
@@ -274,6 +275,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     pendingQuestions,
     heldOutcomes,
     heldAnswers,
+    superseded,
     liveStatuses,
     readOnly,
   ]);
