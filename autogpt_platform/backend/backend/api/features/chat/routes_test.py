@@ -975,6 +975,23 @@ def test_stream_chat_resend_keeps_the_held_follow_ups_files_and_page(
     assert scheduled["message"] == "Summarise this\n\n[files: report.pdf]"
 
 
+def test_stream_chat_resend_of_another_sessions_message_keeps_its_provenance(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    provenance = {"from_session_id": "sess-maya", "from_expert_id": "maya"}
+    mocks.take_held.return_value = PendingMessage(
+        content="Draft is ready for review", metadata=provenance
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream", json={"message": "Draft is ready for review"}
+    )
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["message_metadata"] == provenance
+
+
 def test_stream_chat_resend_while_a_turn_starts_queues_no_second_copy(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

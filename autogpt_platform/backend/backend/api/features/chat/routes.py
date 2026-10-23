@@ -2163,6 +2163,10 @@ async def stream_chat_post(
                 file_ids=sanitized_file_ids,
                 context=turn_context,
             )
+            # Another session's message keeps its provenance, as the turn's
+            # own read of the queue would have stored it.
+            if resent.metadata and message_metadata is None:
+                message_metadata = dict(resent.metadata)
         if claim == "accepted":
             turn_id = None
         else:
