@@ -68,24 +68,24 @@ describe("decideOnboardingRedirect", () => {
     ).toBeNull();
   });
 
-  test("completed user on /onboarding is sent to /copilot", () => {
+  test("completed user on /onboarding is sent to /home", () => {
     expect(
       decideOnboardingRedirect({
         ...base,
         isCompleted: true,
         isOnOnboardingRoute: true,
       }),
-    ).toBe("/copilot");
+    ).toBe("/home");
   });
 
-  test("completed user on /signup or /login is sent to /copilot", () => {
+  test("completed user on /signup or /login is sent to /home", () => {
     expect(
       decideOnboardingRedirect({
         ...base,
         isCompleted: true,
         isOnAuthRoute: true,
       }),
-    ).toBe("/copilot");
+    ).toBe("/home");
   });
 
   test("completed user already on the product is left alone", () => {

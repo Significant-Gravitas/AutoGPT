@@ -2,13 +2,16 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
+from backend.copilot.graphiti.memory_model import MemoryForgetFailure
+from backend.copilot.tool_image import ImageCarrier
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 
 class ResponseType(str, Enum):
@@ -45,6 +48,7 @@ class ResponseType(str, Enum):
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
+    APPROVAL_REQUIRED = "approval_required"
 
     # Capability registry (find/describe/run_capability)
     CAPABILITY_LIST = "capability_list"
@@ -58,6 +62,9 @@ class ResponseType(str, Enum):
     EXPERT_WORKFLOW = "expert_workflow"
     EXPERT_WORKFLOWS = "expert_workflows"
     EXPERT_CREDENTIALS = "expert_credentials"
+    # Standing work: the routines an expert offers, and one switched on or off.
+    ROUTINES = "routines"
+    ROUTINE = "routine"
     CREDENTIAL_GRANT_REQUESTED = "credential_grant_requested"
     SCHEDULE_CREATED = "schedule_created"
 
@@ -149,12 +156,40 @@ class ResponseType(str, Enum):
 
 
 # Base response model
-class ToolResponseBase(BaseModel):
+class ToolResponseBase(ImageCarrier):
     """Base model for all tool responses."""
 
     type: ResponseType
     message: str
     session_id: str | None = None
+    # None until the producer declares it, and the content judge then reads the
+    # whole response.
+    _outside: tuple[Any, ...] | None = PrivateAttr(default=None)
+
+    def from_outside(self, *parts: Any) -> Self:
+        """Declare the values in this response that came from outside AutoGPT,
+        exactly as placed in it; with none, the response is wholly ours. The
+        content judge reads only these, and every image. An agent's name,
+        description and schema count as ours: discovery returns them unjudged."""
+        self._outside = (*(self._outside or ()), *parts)
+        return self
+
+    @property
+    def outside(self) -> tuple[Any, ...] | None:
+        return self._outside
+
+    _google_data: bool = PrivateAttr(default=False)
+
+    def with_google_data(self, google_data: bool = True) -> Self:
+        """Mark this response as carrying what a Google block returned."""
+        self._google_data = self._google_data or google_data
+        return self
+
+    @property
+    def holds_google_data(self) -> bool:
+        """Whether this carries what a Google block returned, which must stay
+        out of LLM traces (see ``backend.copilot.google_data_redaction``)."""
+        return self._google_data
 
 
 # Agent discovery models
@@ -217,7 +252,7 @@ class AgentsFoundResponse(ToolResponseBase):
     """Response for find_agent tool."""
 
     type: ResponseType = ResponseType.AGENTS_FOUND
-    title: str = "Available Agents"
+    title: str = "Available Workflows"
     agents: list[AgentInfo]
     count: int
     name: str = "agents_found"
@@ -396,6 +431,19 @@ class WorkspaceFileInfoData(BaseModel):
     path: str
     mime_type: str
     size_bytes: int
+
+
+class WorkspaceFolderInfoData(BaseModel):
+    """A workspace folder as ``list_workspace_files`` reports it.
+
+    ``file_count`` counts the files directly inside; a subfolder's own files
+    are counted on that subfolder.
+    """
+
+    folder_id: str
+    name: str
+    parent_id: str | None = None
+    file_count: int
 
 
 class DelegatedExpertInfo(BaseModel):
@@ -593,6 +641,7 @@ class ExpertChangePreview(BaseModel):
     kind: ExpertChangeKind
     name: str
     role: str = ""
+    job_title: str = ""
     tagline: str = ""
     about: str = ""
     boundaries: str = ""
@@ -782,6 +831,9 @@ class ClarifyingQuestion(BaseModel):
     keyword: str
     example: str | None = None
     options: list[str] = Field(default_factory=list)
+    # Several of `options` may be picked. Only ever set alongside options:
+    # there is nothing to multi-select in a free-text question.
+    allow_multiple: bool = False
 
 
 class AgentPreviewResponse(ToolResponseBase):
@@ -822,6 +874,9 @@ class ExpertOnboardingStep(BaseModel):
     # Tappable answers. The card always offers a free-text escape as well, so
     # an empty list simply means "this one is open-ended".
     options: list[str] = Field(default_factory=list)
+    # Several of `options` may be picked. Only ever set alongside options:
+    # there is nothing to multi-select in a free-text question.
+    allow_multiple: bool = False
 
 
 class ExpertOnboardingResponse(ToolResponseBase):
@@ -945,6 +1000,8 @@ class CapabilityListResponse(ToolResponseBase):
     count: int
     # Generic primitives offered when the query named a service.
     fallback: list[dict[str, Any]] = Field(default_factory=list)
+    # Connected or better-covering entries a ``kind`` filter hid.
+    other_kinds: list[dict[str, Any]] = Field(default_factory=list)
     service: str | None = None
 
 
@@ -990,6 +1047,10 @@ class BlockOutputResponse(ToolResponseBase):
         None  # only set to True on dry-run; omitted in normal runs
     )
 
+    @property
+    def holds_google_data(self) -> bool:
+        return self.provider == ProviderName.GOOGLE.value or self._google_data
+
 
 class ReviewRequiredResponse(ToolResponseBase):
     """Response when a block requires human review before execution."""
@@ -998,12 +1059,22 @@ class ReviewRequiredResponse(ToolResponseBase):
     block_id: str
     block_name: str
     review_id: str = Field(description="The review ID for tracking approval status")
-    graph_exec_id: str = Field(
-        description="The graph execution ID for fetching review status"
-    )
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
+
+
+class ApprovalRequiredResponse(ToolResponseBase):
+    """An action the auto-mode gate parked for the user to approve; with a
+    ``review_id`` it mounts the chat's approval card."""
+
+    type: ResponseType = ResponseType.APPROVAL_REQUIRED
+    tool_name: str
+    reason: str
+    review_id: str | None = None
+    # The chain row's label, from the same table as the card's headline.
+    ask: str | None = None
+    object: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):
@@ -1023,12 +1094,12 @@ class WebFetchResponse(ToolResponseBase):
 
 
 class WebSearchResult(BaseModel):
-    """One entry in a web_search tool response."""
+    """One source in a web_search tool response.  ``n`` is the number the
+    answer cites it by, as ``[n]``."""
 
+    n: int
     title: str
     url: str
-    snippet: str = ""
-    page_age: str | None = None
 
 
 class WebSearchResponse(ToolResponseBase):
@@ -1341,36 +1412,17 @@ class MemoryForgetCandidatesResponse(ToolResponseBase):
     candidates: list[dict[str, str]] = Field(default_factory=list)
 
 
-class MemoryForgetFailureCode(str, Enum):
-    """Stable, machine-switchable reason a forget delete failed.
-
-    The frontend/model can branch on this code (retry vs. give up) without
-    parsing the free-text ``reason``. New codes may be added over time, so
-    consumers must tolerate unknown values.
-    """
-
-    NO_MATCH = "no_match"
-    QUERY_ERROR = "query_error"
-
-
-class MemoryForgetFailure(BaseModel):
-    """One edge that could not be deleted, with an actionable reason.
-
-    Surfaced so the assistant (and user) can tell *why* a delete failed —
-    e.g. the edge was not found vs. the query itself errored — instead of a
-    bare "N failed" count that gives the model nothing to act on.
-    """
-
-    uuid: str
-    code: MemoryForgetFailureCode
-    reason: str
-
-
 class MemoryForgetConfirmResponse(ToolResponseBase):
     """Response after deleting specific memory edges."""
 
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
+    # Facts the dream derived from the deleted ones, retracted with them
+    # (``graphiti/recall_cascade.py``).
+    derived_uuids: list[str] = Field(default_factory=list)
+    # Requested uuids already erased by an earlier hard forget whose cascade
+    # this one went on with (``graphiti/recall_forget.py``).
+    resumed_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
     failures: list[MemoryForgetFailure] = Field(default_factory=list)
 

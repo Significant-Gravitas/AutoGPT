@@ -281,6 +281,102 @@ class TestMessageSessionDelivery:
         assert meta["from_session_id"] == CALLER_SESSION
 
 
+class TestEveryDeliveryCarriesTheSender:
+    """The target's thread renders "Sent from" off the persisted user row,
+    so the provenance must ride every delivery path — not only the wake.
+    An injected or queued message goes through the pending buffer, whose
+    ``PendingMessage`` becomes that row."""
+
+    EXPECTED = {"from_session_id": CALLER_SESSION, "from_expert_id": None}
+
+    async def test_injected_into_a_running_turn(self) -> None:
+        queued = QueuePendingMessageResponse(
+            buffer_length=1, max_buffer_length=10, turn_in_flight=True
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ) as deliver:
+                result = await MessageSessionTool()._execute(
+                    OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                )
+        assert isinstance(result, SessionMessageResponse)
+        assert result.delivery == "injected"
+        assert deliver.await_args.kwargs["metadata"] == self.EXPECTED
+
+    async def test_queued_for_a_waiting_turn(self) -> None:
+        queued = QueuePendingMessageResponse(
+            buffer_length=0, max_buffer_length=10, turn_in_flight=False
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION, status="queued")),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ) as deliver:
+                with patch(
+                    f"{_MSG}.get_chat_session_status",
+                    new=AsyncMock(return_value="queued"),
+                ):
+                    result = await MessageSessionTool()._execute(
+                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                    )
+        assert isinstance(result, SessionMessageResponse)
+        assert result.delivery == "queued"
+        assert all(
+            call.kwargs["metadata"] == self.EXPECTED for call in deliver.await_args_list
+        )
+
+    async def test_woken_from_idle(self) -> None:
+        queued = QueuePendingMessageResponse(
+            buffer_length=0, max_buffer_length=10, turn_in_flight=False
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION)),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ):
+                with patch(
+                    f"{_MSG}.get_chat_session_status",
+                    new=AsyncMock(return_value="idle"),
+                ), patch(
+                    f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
+                ) as enqueue:
+                    result = await MessageSessionTool()._execute(
+                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                    )
+        assert isinstance(result, SessionMessageResponse)
+        assert result.delivery == "woke"
+        assert enqueue.await_args.kwargs["message_metadata"] == self.EXPECTED
+
+    async def test_an_expert_sender_is_named_by_id(self) -> None:
+        queued = QueuePendingMessageResponse(
+            buffer_length=1, max_buffer_length=10, turn_in_flight=True
+        )
+        sender = _session()
+        sender.expert_id = "expert-a"
+        with patch(
+            f"{_MSG}.get_chat_session_metadata",
+            new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ) as deliver:
+                await MessageSessionTool()._execute(
+                    OWNER, sender, session_id=TARGET_SESSION, message="hi"
+                )
+        assert deliver.await_args.kwargs["metadata"] == {
+            "from_session_id": CALLER_SESSION,
+            "from_expert_id": "expert-a",
+        }
+
+
 class TestWakeCarriesTheTargetsOwnExecutionContext:
     """A woken turn is the TARGET's own turn, so it must run under the
     target's permissions, provider and credential.

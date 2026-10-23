@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.registry import configure_tools
 from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.response_model import StreamToolOutputAvailable
@@ -79,6 +80,7 @@ from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
 from .resume_capability import ResumeCapabilityTool
+from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
 from .run_capability import RunCapabilityTool
 from .run_sub_session import RunSubSessionTool
@@ -218,6 +220,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "install_expert_workflow": InstallExpertWorkflowTool(),
     "remove_expert_workflow": RemoveExpertWorkflowTool(),
     "list_expert_workflows": ListExpertWorkflowsTool(),
+    # Standing work: what the expert offers to do unattended, and the round
+    # trip that turns one of those offers into a real cadence.
+    "list_routines": ListRoutinesTool(),
+    "schedule_routine": ScheduleRoutineTool(),
     "list_expert_credentials": ListExpertCredentialsTool(),
     "grant_expert_credential": GrantExpertCredentialTool(),
     "revoke_expert_credential": RevokeExpertCredentialTool(),
@@ -236,7 +242,7 @@ DEFERRED_TOOL_NAMES: frozenset[str] = frozenset(TOOL_REGISTRY) - EAGER_CORE
 
 # Capability groups a tool may belong to.  The service layer can hide all
 # tools in a group when the backing capability isn't available to this user
-# (e.g. Graphiti memory behind a feature flag), so the model doesn't reach
+# (e.g. memory on an anonymous turn), so the model doesn't reach
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
@@ -270,7 +276,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "read_expert_chat": "expert_admin",
     # Delegation works from either side of ``session.expert_id`` (Otto
     # and expert sessions alike), so it has its own group: the engines
-    # disable it only when the user's hire-experts flag is off.
+    # disable it only for unauthenticated turns.
     "delegate_to_expert": "delegation",
     # A consult is read-only and costs one bounded completion, but it is
     # meaningless without teammates to ask, so it rides the same gate.
@@ -284,13 +290,17 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "install_expert_workflow": "expert_resources",
     "remove_expert_workflow": "expert_resources",
     "list_expert_workflows": "expert_resources",
+    # Routines ride the same gate as workflow installs: an expert manages its
+    # own standing work, and personal AutoPilot manages any expert's — and,
+    # with no expert named, the account's own.
+    "list_routines": "expert_resources",
+    "schedule_routine": "expert_resources",
     "list_expert_credentials": "expert_resources",
     "grant_expert_credential": "expert_admin",
     "revoke_expert_credential": "expert_admin",
     # Only an expert has someone to ask.
     "request_credential_grant": "experts",
-    # Read-only, but it shares the same gate: with the flag off there is no
-    # team to list.
+    # Team reads require an authenticated owner.
     "list_team": "delegation",
 }
 
@@ -305,7 +315,7 @@ def expert_tool_disabled_groups(
 ) -> list[ToolGroup]:
     """Expert-team groups to disable for a turn — shared by both engines.
 
-    Without the hire-experts flag every team tool is hidden. With it, the
+    For unauthenticated turns every team tool is hidden. Otherwise, the
     split follows the session role: an expert session loses the staffing
     tools (``expert_admin``), a plain Otto session loses the
     expert-session tools (``experts``).
@@ -453,9 +463,9 @@ async def execute_tool(
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
 
-    ``DEFERRED_TOOL_NAMES`` are refused outright: they are reached by id
-    through ``run_capability``, which applies the permission and envelope
-    gates this function does not.
+    ``DEFERRED_TOOL_NAMES`` are refused when the model names one directly:
+    they are reached by id through ``run_capability``, whose dispatch this
+    function resolves back into a call to the tool itself.
 
     ``disabled_groups`` and ``disabled_tools`` are keyword-only and have no
     default on purpose: they are an enforcement boundary, so a new call site
@@ -493,6 +503,12 @@ async def execute_tool(
             ).model_dump_json(),
             success=False,
         )
+
+    # A dispatch of a platform tool IS a call to that tool, so it runs the rest
+    # of this path under its own name: the refusal above still answers the model
+    # that named a deferred tool directly, because it ran before the resolve.
+    if dispatch := resolve_tool_dispatch(tool_name, parameters):
+        tool, tool_name, parameters = dispatch
 
     # Track tool call in PostHog
     logger.info(

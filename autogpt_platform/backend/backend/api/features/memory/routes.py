@@ -6,14 +6,18 @@ expert routes at ``/memory/experts/{expert_id}/...``. Every route resolves the
 scope from the *authenticated caller* — there is no target-user path segment,
 so these routes can never read or delete another user's memory by construction.
 
-Deletion semantics match the chat forget tool: single-fact forget is a
-bi-temporal system retraction (sets only ``expired_at``; the edge stops being
-served but stays for audit), while the scope erase hard-deletes every node and
-edge in the scope's graph, raw episode text included.
+Facts are listed and counted with the recall policy's live-fact test
+(``graphiti/recall.py``), and a single-fact forget is the chat forget tool's
+soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
+``retracted`` and stops being served but stays for audit, every episode it
+came from stops being recalled, and so does every fact the dream derived
+from it (counted in the response's ``derived_forgotten``). A forget whose
+clean-up failed, or that left derived facts for a second forget, answers
+500, not success, and one that found memory busy answers 409; both retry.
+The scope erase hard-deletes every node and edge in the scope's graph.
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Annotated
 
 import autogpt_libs.auth as autogpt_auth_lib
@@ -28,9 +32,11 @@ from backend.api.features.memory.models import (
     MemoryFactListResponse,
     MemoryScopeOverview,
 )
-from backend.copilot.graphiti.client import derive_memory_group_id
-from backend.copilot.graphiti.config import graphiti_config, is_enabled_for_user
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
+from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.copilot.graphiti.recall_forget import retract
+from backend.copilot.graphiti.scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +55,6 @@ _LIMIT_QUERY = Query(ge=1, le=500)
 _MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
 
 
-def _now_iso() -> str:
-    """FalkorDB has no Cypher ``datetime()``; timestamps are bound in Python."""
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _is_missing_graph_error(exc: BaseException) -> bool:
     if not isinstance(exc, ResponseError):
         return False
@@ -61,33 +62,16 @@ def _is_missing_graph_error(exc: BaseException) -> bool:
     return any(marker in msg for marker in _MISSING_GRAPH_MARKERS)
 
 
-def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
-    """Cypher-only driver — skips LLM-client construction and the per-init
-    index build (indices exist from the long-lived chat-write client)."""
-    return AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        build_indices=False,
-    )
+async def _resolve_scope(user_id: str, expert_id: str | None) -> MemoryScope:
+    """Resolve the caller-owned memory scope for the request.
 
-
-async def _resolve_scope(user_id: str, expert_id: str | None) -> tuple[str, str | None]:
-    """Resolve the caller-owned memory group for the requested scope.
-
-    Memory must be enabled for the caller, and an expert scope must name an
-    active expert the caller owns — archived experts 404 here, matching the
+    An expert scope must name an active expert the caller owns — archived
+    experts 404 here, matching the
     settings page's active-experts-only dropdown.
     """
-    if not await is_enabled_for_user(user_id):
-        raise HTTPException(
-            status_code=403, detail="Memory is not enabled for your account"
-        )
-
     if expert_id is None:
         try:
-            return derive_memory_group_id(user_id), None
+            return MemoryScope.for_user(user_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
@@ -96,7 +80,7 @@ async def _resolve_scope(user_id: str, expert_id: str | None) -> tuple[str, str 
         raise HTTPException(status_code=404, detail="Expert not found")
 
     try:
-        return derive_memory_group_id(user_id, expert.id), expert.id
+        return MemoryScope.for_expert(user_id, expert.id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -115,20 +99,26 @@ async def _count(driver: AutoGPTFalkorDriver, query: str) -> int:
 async def _get_overview_impl(
     user_id: str, expert_id: str | None
 ) -> MemoryScopeOverview:
-    group_id, resolved_expert_id = await _resolve_scope(user_id, expert_id)
-    driver = _open_driver(group_id)
+    scope = await _resolve_scope(user_id, expert_id)
+    driver = open_driver(scope)
     try:
         facts = await _count(
             driver,
-            "MATCH ()-[e:RELATES_TO]->() WHERE e.expired_at IS NULL "
+            f"MATCH ()-[e:RELATES_TO]->() WHERE {live_fact_predicate('e')} "
             "RETURN count(e) AS c",
         )
         entities = await _count(driver, "MATCH (n:Entity) RETURN count(n) AS c")
-        episodes = await _count(driver, "MATCH (n:Episodic) RETURN count(n) AS c")
+        # A hard forget's tombstone is a record that a conversation
+        # happened, not an episode the user still has.
+        episodes = await _count(
+            driver,
+            "MATCH (n:Episodic) WHERE n.hard_deleted_at IS NULL "
+            "RETURN count(n) AS c",
+        )
     finally:
         await driver.close()
     return MemoryScopeOverview(
-        expert_id=resolved_expert_id,
+        expert_id=scope.expert_id,
         facts=facts,
         entities=entities,
         episodes=episodes,
@@ -157,13 +147,13 @@ async def get_my_expert_memory_overview(
 async def _list_facts_impl(
     user_id: str, expert_id: str | None, limit: int
 ) -> MemoryFactListResponse:
-    group_id, resolved_expert_id = await _resolve_scope(user_id, expert_id)
-    driver = _open_driver(group_id)
+    scope = await _resolve_scope(user_id, expert_id)
+    driver = open_driver(scope)
     try:
         result = await driver.execute_query(
-            """
+            f"""
             MATCH (src:Entity)-[e:RELATES_TO]->(tgt:Entity)
-            WHERE e.group_id = $g AND e.expired_at IS NULL
+            WHERE e.group_id = $g AND {live_fact_predicate("e")}
             RETURN e.uuid AS uuid,
                    e.fact AS fact,
                    e.name AS name,
@@ -173,7 +163,7 @@ async def _list_facts_impl(
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
-            g=group_id,
+            g=scope.group_id,
             limit=limit,
         )
         rows = result[0] if result else []
@@ -195,7 +185,7 @@ async def _list_facts_impl(
         )
         for r in rows
     ]
-    return MemoryFactListResponse(expert_id=resolved_expert_id, items=items)
+    return MemoryFactListResponse(expert_id=scope.expert_id, items=items)
 
 
 @router.get("/facts", operation_id="list_my_memory_facts")
@@ -220,34 +210,30 @@ async def list_my_expert_memory_facts(
 async def _forget_fact_impl(
     user_id: str, expert_id: str | None, fact_uuid: str
 ) -> ForgetFactResponse:
-    group_id, _ = await _resolve_scope(user_id, expert_id)
-    driver = _open_driver(group_id)
-    try:
-        # Same retraction the chat forget tool performs (``expired_at`` only —
-        # a system retraction, not a world change), plus a ``group_id``
-        # predicate as defense-in-depth on top of the per-group database.
-        result = await driver.execute_query(
-            """
-            MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER
-                      {uuid: $uuid, group_id: $g}]->()
-            SET e.expired_at = $now
-            RETURN e.uuid AS uuid
-            """,
-            uuid=fact_uuid,
-            g=group_id,
-            now=_now_iso(),
+    scope = await _resolve_scope(user_id, expert_id)
+    # The chat forget tool's soft retraction (a system retraction, not a
+    # world change), so the fact and its episode text stop being recalled.
+    result = await retract(scope, [fact_uuid])
+    codes = {failure.code for failure in result.failures}
+    if MemoryForgetFailureCode.BUSY in codes:  # every uuid busy, nothing written
+        raise HTTPException(status_code=409, detail=result.failures[0].reason)
+    if MemoryForgetFailureCode.CLEANUP_ERROR in codes:
+        # Recall already hides the fact and its text, but the redaction did
+        # not land; a retry finishes it, so this is not reported as done.
+        raise HTTPException(
+            status_code=500,
+            detail="Forgot this memory but could not finish cleaning up; try again",
         )
-        records = result[0] if result else []
-    except ResponseError as exc:
-        if not _is_missing_graph_error(exc):
-            raise
-        records = []
-    finally:
-        await driver.close()
-
-    if not records:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return ForgetFactResponse(uuid=fact_uuid, forgotten=True)
+    if result.deleted or result.resumed:
+        return ForgetFactResponse(
+            uuid=fact_uuid,
+            forgotten=True,
+            derived_forgotten=len(result.derived),
+            resumed=bool(result.resumed),
+        )
+    if MemoryForgetFailureCode.QUERY_ERROR in codes:
+        raise HTTPException(status_code=500, detail="Could not forget this memory")
+    raise HTTPException(status_code=404, detail="Memory not found")
 
 
 @router.delete("/facts/{fact_uuid}", operation_id="forget_my_memory_fact")
@@ -273,8 +259,8 @@ async def forget_my_expert_memory_fact(
 
 
 async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryResponse:
-    group_id, resolved_expert_id = await _resolve_scope(user_id, expert_id)
-    driver = _open_driver(group_id)
+    scope = await _resolve_scope(user_id, expert_id)
+    driver = open_driver(scope)
     deleted = 0
     try:
         deleted = await _count(driver, "MATCH (n) RETURN count(n) AS c")
@@ -291,10 +277,10 @@ async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryR
 
     logger.info(
         f"Memory erase: user {user_id[:12]} wiped scope "
-        f"{resolved_expert_id or 'Otto'} ({deleted} nodes)"
+        f"{scope.expert_id or 'Otto'} ({deleted} nodes)"
     )
     return EraseMemoryResponse(
-        expert_id=resolved_expert_id, deleted_nodes=deleted, erased=True
+        expert_id=scope.expert_id, deleted_nodes=deleted, erased=True
     )
 
 

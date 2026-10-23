@@ -22,6 +22,7 @@ from backend.copilot.bot.adapters.shared import (
     should_ignore,
 )
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
@@ -39,6 +40,7 @@ from ..base import (
     SocketAdapter,
 )
 from . import choice_ui, commands, config, intro
+from .location import location_of
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -143,7 +145,7 @@ class DiscordAdapter(SocketAdapter):
         self._on_message_callback = callback
         # Choice buttons are stateless and outlive this process, so their
         # click handler is registered once here rather than per sent message.
-        choice_ui.register_choice_handler(self._client, self, callback)
+        choice_ui.register_choice_handler(self._client, self, callback, self._api)
 
     async def start(self) -> None:
         await self._client.start(config.get_bot_token())
@@ -220,13 +222,14 @@ class DiscordAdapter(SocketAdapter):
         options: list[str],
         token: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
     ) -> bool:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             return False
         if self._on_message_callback is None:
             return False
-        view = choice_ui.build_choice_view(token, options)
+        view = choice_ui.build_choice_view(token, options, kind)
         await channel.send(text, view=view, tts=False)
         return True
 
@@ -564,14 +567,15 @@ class DiscordAdapter(SocketAdapter):
 
             channel_type = self._channel_type(message)
             bot_mentioned = self._is_mentioned(message)
+            replied_to_bot = await self._replied_to_bot(message)
 
-            # Channels require an explicit @mention; DMs and threads always forward
-            # (handler checks thread subscription).
-            if channel_type == "channel" and not bot_mentioned:
+            # Channels require an @mention or a reply to the bot; DMs and
+            # threads always forward (handler checks thread subscription).
+            if channel_type == "channel" and not bot_mentioned and not replied_to_bot:
                 return
 
             thread_history = ()
-            if channel_type == "thread" and bot_mentioned:
+            if channel_type == "thread" and (bot_mentioned or replied_to_bot):
                 thread_history = await self._thread_history(message)
 
             own_text = self._strip_mentions(message)
@@ -592,6 +596,7 @@ class DiscordAdapter(SocketAdapter):
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
             attachments, skipped = await self._extract_attachments(message)
+            location = location_of(message.guild, message.channel)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -602,6 +607,13 @@ class DiscordAdapter(SocketAdapter):
                 username=message.author.display_name,
                 text=message_text,
                 bot_mentioned=bot_mentioned,
+                server_name=location.server_name,
+                channel_name=location.channel_name,
+                public_channel_id=location.public_channel_id,
+                thread_name=location.thread_name,
+                public_thread_id=location.public_thread_id,
+                post_channel_id=location.post_channel_id,
+                replied_to_bot=replied_to_bot,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
@@ -668,6 +680,15 @@ class DiscordAdapter(SocketAdapter):
             return False
         return any(user.id == bot_user.id for user in message.mentions)
 
+    async def _replied_to_bot(self, message: discord.Message) -> bool:
+        """The message is a reply to one of the bot's own messages, fetching
+        the replied-to message when Discord didn't include it."""
+        bot_user = self._client.user
+        if bot_user is None:
+            return False
+        replied = await self._resolve_reply(message)
+        return replied is not None and replied.author.id == bot_user.id
+
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:
         if message.guild is None:
@@ -732,14 +753,20 @@ class DiscordAdapter(SocketAdapter):
             return None
         if isinstance(ref.resolved, discord.Message):
             return ref.resolved
+        # A deleted target can only 404, and every such reply runs this check.
+        if isinstance(ref.resolved, discord.DeletedReferencedMessage):
+            return None
         if ref.message_id is None or not isinstance(
             message.channel, discord.abc.Messageable
         ):
             return None
         try:
-            return await message.channel.fetch_message(ref.message_id)
+            fetched = await message.channel.fetch_message(ref.message_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
+        # Keep it so the reply context doesn't fetch the same message again.
+        ref.resolved = fetched
+        return fetched
 
     @staticmethod
     def _forwarded_text(message: discord.Message) -> str:

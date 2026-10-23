@@ -1,10 +1,14 @@
 import asyncio
 import contextlib
+import inspect
+import logging
+import sys
+import threading
 import time
 from datetime import datetime, timezone
 from functools import cached_property
-from typing import Any, Protocol, cast
-from unittest.mock import Mock
+from typing import Annotated, Any, Protocol, cast
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import orjson
@@ -12,9 +16,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prisma.errors import DataError, UniqueViolationError
-from pydantic import TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import service_rpc_models_test_support as rpc_models
+from backend.util import tracing
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -26,12 +32,39 @@ from backend.util.service import (
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
+    _build_return_adapter,
+    _usable_adapter,
     endpoint_to_async,
     expose,
     get_service_client,
+    resolve_type_hints,
 )
+from backend.util.service_auth import internal_auth_headers
 
 TEST_SERVICE_PORT = 8765
+
+
+class ReviewLike(BaseModel):
+    """Stand-in for a model that only the service module can name.
+
+    Referenced by ``ServiceTest.list_reviews`` as a forward reference, which is
+    what backend.data.human_review does for PendingHumanReviewModel.
+    """
+
+    id: str
+    name: str = "review"
+
+
+class _NotAPydanticType:
+    """Resolvable name that pydantic cannot build a schema for."""
+
+    def __init__(self, value: Any):
+        self.value = value
+
+
+def _returns_at_most_one_review() -> Annotated[list["ReviewLike"], Field(max_length=1)]:
+    """Forward reference under Annotated: the constraint is part of the contract."""
+    return [ReviewLike(id="0")]
 
 
 class _SupportsGetReturn(Protocol):
@@ -85,6 +118,11 @@ class ServiceTest(AppService):
         return self.run_and_wait(add_async(a, b))
 
     @expose
+    def list_reviews(self, count: int) -> list["ReviewLike"]:
+        """Quoted return annotation: unresolvable from backend.util.service."""
+        return [ReviewLike(id=str(i)) for i in range(count)]
+
+    @expose
     def failing_add(self, a: int, b: int) -> int:
         """Method that fails 2 times then succeeds - for testing retry logic"""
         self.fail_count += 1
@@ -97,6 +135,11 @@ class ServiceTest(AppService):
         """Method that always fails - for testing no retry when disabled"""
         raise RuntimeError("Intended error for testing")
 
+    # Exposed functions defined in another module that uses
+    # ``from __future__ import annotations`` (string annotations).
+    echo_record = expose(rpc_models.echo_record)
+    list_records = expose(rpc_models.list_records)
+
 
 class ServiceTestClient(AppServiceClient):
     @classmethod
@@ -108,8 +151,28 @@ class ServiceTestClient(AppServiceClient):
     fun_with_async = ServiceTest.fun_with_async
     failing_add = ServiceTest.failing_add
     always_failing_add = ServiceTest.always_failing_add
+    list_reviews = ServiceTest.list_reviews
     add_async = endpoint_to_async(ServiceTest.add)
+    list_reviews_async = endpoint_to_async(ServiceTest.list_reviews)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
+    echo_record = endpoint_to_async(ServiceTest.echo_record)
+    list_records = endpoint_to_async(ServiceTest.list_records)
+
+
+@pytest.mark.asyncio
+async def test_rpc_resolves_future_annotations_for_request_and_return(server):
+    """A model-valued argument and a ``Model | None`` return declared with
+    string annotations in another module must round-trip as models, not
+    raw dicts, and ``None`` must survive."""
+    with ServiceTest():
+        client = get_service_client(ServiceTestClient)
+        echoed = await client.echo_record(rpc_models.SampleRecord(id="r1", count=2))
+        assert isinstance(echoed, rpc_models.SampleRecord)
+        assert echoed.count == 3
+        assert await client.echo_record(rpc_models.SampleRecord(id="missing")) is None
+        listed = await client.list_records(["a", "b"])
+        assert [r.id for r in listed] == ["a", "b"]
+        assert all(isinstance(r, rpc_models.SampleRecord) for r in listed)
 
 
 @pytest.mark.asyncio
@@ -826,12 +889,16 @@ async def test_service():
     service = TestGracefulShutdownService()
     service.start(background=True)
 
-    base_url = f"http://localhost:{service.get_port()}"
-
-    await wait_until_service_ready(base_url)
-    yield service, base_url
-
-    service.stop()
+    # `wait_until_service_ready` raises when the port never answers. Without
+    # the `finally`, the already-started child is orphaned: nothing stops it,
+    # and `multiprocessing`'s atexit handler then joins it forever — so the
+    # session prints its summary line and the process still never exits.
+    try:
+        base_url = f"http://localhost:{service.get_port()}"
+        await wait_until_service_ready(base_url)
+        yield service, base_url
+    finally:
+        service.stop()
 
 
 async def wait_until_service_ready(base_url: str, timeout: float = 10):
@@ -851,7 +918,7 @@ async def wait_until_service_ready(base_url: str, timeout: float = 10):
 
 async def send_slow_request(base_url: str) -> dict:
     """Send a slow request and return the result"""
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, headers=internal_auth_headers()) as client:
         response = await client.post(f"{base_url}/slow_endpoint", json={"duration": 5})
         assert response.status_code == 200
         return response.json()
@@ -877,7 +944,9 @@ async def test_graceful_shutdown(test_service):
 
     # Try to send a new request - should be rejected or connection refused
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx.AsyncClient(
+            timeout=5, headers=internal_auth_headers()
+        ) as client:
             response = await client.post(f"{test_service_url}/fast_endpoint", json={})
             # Should get 503 Service Unavailable during shutdown
             assert response.status_code == 503
@@ -938,6 +1007,74 @@ async def test_health_check_during_shutdown(test_service):
 # ============================================================================
 
 
+@pytest.mark.asyncio
+async def test_a_pooled_call_survives_a_server_freeze_past_its_idle_time(
+    keep_alive_service,
+):
+    """A call written into a pooled connection while the server is frozen past
+    that connection's idle time is answered, not reset (httpx.ReadError)."""
+    client = get_service_client(KeepAliveServiceClient)
+    await asyncio.gather(*(client.ping() for _ in range(3)))
+    # The service freezes from 4 s to 7 s of idle, across uvicorn's default 5 s
+    # keep-alive, which it must outlive; the calls arrive mid-freeze.
+    await get_service_client(KeepAliveServiceClient).hold_gil(after=4.0, seconds=3.0)
+    await asyncio.sleep(5.5)
+
+    assert await asyncio.gather(*(client.ping() for _ in range(3))) == [1, 1, 1]
+
+
+@pytest.fixture
+async def keep_alive_service():
+    service = KeepAliveService()
+    service.start(background=True)
+    try:
+        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
+        yield service
+    finally:
+        service.stop()
+
+
+class KeepAliveService(AppService):
+    @classmethod
+    def get_port(cls) -> int:
+        return 18998
+
+    @expose
+    def ping(self) -> int:
+        return 1
+
+    @expose
+    def hold_gil(self, after: float, seconds: float) -> int:
+        """Freeze every other thread for *seconds*, starting *after* seconds from
+        now, as a full gen2 GC does: the event loop is then idle in select()."""
+        timer = threading.Timer(after, _spin_holding_gil, args=(seconds,))
+        timer.daemon = True
+        timer.start()
+        return 1
+
+
+class KeepAliveServiceClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return KeepAliveService
+
+    ping = endpoint_to_async(KeepAliveService.ping)
+    hold_gil = endpoint_to_async(KeepAliveService.hold_gil)
+
+
+def _spin_holding_gil(seconds: float) -> None:
+    # A spinning thread keeps the GIL until another has waited a whole switch
+    # interval for it, so an interval this long hands it over only at the end.
+    previous = sys.getswitchinterval()
+    sys.setswitchinterval(seconds)
+    try:
+        deadline = time.perf_counter() + seconds
+        while time.perf_counter() < deadline:
+            pass
+    finally:
+        sys.setswitchinterval(previous)
+
+
 class TestGetReturn:
     """Direct unit tests for DynamicClient._get_return typed-return contract."""
 
@@ -974,3 +1111,235 @@ class TestGetReturn:
 
         result = client._get_return(adapter, invalid_dict)
         assert result == invalid_dict
+
+
+class TestForwardRefReturnAnnotation:
+    """Regression tests for list["Model"] return annotations over the RPC.
+
+    ``backend.data.human_review.get_pending_reviews_for_user`` is annotated
+    ``-> list["PendingHumanReviewModel"]``. The client builds the TypeAdapter in
+    backend.util.service, where that name does not exist, so before the fix the
+    adapter was never fully defined and every call raised PydanticUserError inside
+    ``_get_return`` and handed callers raw dicts.
+    """
+
+    @property
+    def annotation(self):
+        """The unresolved ``list["ReviewLike"]`` as the client sees it."""
+        return inspect.signature(ServiceTest.list_reviews).return_annotation
+
+    def test_annotation_is_unresolvable_from_the_service_module(self):
+        """Guards the premise of the fix.
+
+        Pydantic resolves a forward reference against the namespace of whoever
+        builds the adapter. Built from backend.util.service — where the client
+        builds it — the name is not in scope and there is no usable adapter.
+        """
+        assert _usable_adapter(self.annotation) is None
+
+    def test_resolvable_annotation_is_adapted_without_resolution(self):
+        """The ordinary case: nothing to resolve, so the annotation is used as-is."""
+        adapter = _build_return_adapter(ServiceTest.add, int, "add")
+
+        assert adapter is not None
+        assert adapter.validate_python("3") == 3
+
+    def test_build_return_adapter_resolves_the_forward_ref(self):
+        """The declaring module's namespace is what makes the name resolvable."""
+        adapter = _build_return_adapter(
+            ServiceTest.list_reviews, self.annotation, "list_reviews"
+        )
+        assert adapter is not None
+        assert adapter.validate_python([{"id": "1"}]) == [ReviewLike(id="1")]
+
+    def test_build_return_adapter_resolves_through_an_async_stub(self):
+        """endpoint_to_async wraps the endpoint, so resolution must unwrap it."""
+        stub = ServiceTestClient.list_reviews_async
+        adapter = _build_return_adapter(
+            stub, inspect.signature(stub).return_annotation, "list_reviews"
+        )
+        assert adapter is not None
+        assert adapter.validate_python([{"id": "1"}]) == [ReviewLike(id="1")]
+
+    def test_get_return_deserializes_the_forward_ref_payload(self):
+        """_get_return with that adapter returns models, not the raw dicts."""
+        adapter = _build_return_adapter(
+            ServiceTest.list_reviews, self.annotation, "list_reviews"
+        )
+        client = cast(_SupportsGetReturn, get_service_client(ServiceTestClient))
+        result = client._get_return(adapter, [{"id": "1", "name": "first"}])
+        assert result == [ReviewLike(id="1", name="first")]
+
+    def test_unresolvable_annotation_yields_no_adapter(self):
+        """A name nothing can resolve degrades to unvalidated results, not an error."""
+
+        def never_defined() -> "NeverDefinedModel": ...  # type: ignore[name-defined] # noqa: F821
+
+        annotation = inspect.signature(never_defined).return_annotation
+        assert (
+            _build_return_adapter(never_defined, list[annotation], "never_defined")
+            is None
+        )
+
+    def test_annotated_metadata_survives_the_hint_resolution(self):
+        """``get_type_hints`` drops Annotated metadata unless asked to keep it.
+
+        Losing it here would hand back an adapter with a *different* validation
+        contract — the max_length below would silently stop being enforced.
+        """
+        annotation = inspect.signature(_returns_at_most_one_review).return_annotation
+        adapter = _build_return_adapter(
+            _returns_at_most_one_review, annotation, "at_most_one_review"
+        )
+
+        assert adapter is not None
+        assert adapter.validate_python([{"id": "0"}]) == [ReviewLike(id="0")]
+        with pytest.raises(ValidationError):
+            adapter.validate_python([{"id": "0"}, {"id": "1"}])
+
+        resolved = resolve_type_hints(_returns_at_most_one_review)["return"]
+        with pytest.raises(ValidationError):
+            TypeAdapter(resolved).validate_python([{"id": "0"}, {"id": "1"}])
+
+    def test_annotation_without_a_schema_yields_no_adapter(self, caplog):
+        """Resolvable, but pydantic cannot build a schema: warn once, skip validation."""
+
+        def returns_unschemable() -> "_NotAPydanticType": ...
+
+        with caplog.at_level(logging.WARNING, logger="backend.util.service"):
+            adapter = _build_return_adapter(
+                returns_unschemable, _NotAPydanticType, "returns_unschemable"
+            )
+
+        assert adapter is None
+        assert "has no usable TypeAdapter" in caplog.text
+
+
+def _client_with_canned_response(payload: Any):
+    """A real client whose HTTP transport answers every call with *payload*.
+
+    Exercises the whole client path — adapter construction in ``__getattr__``,
+    the HTTP round trip and ``_get_return`` — without a service process.
+    """
+    client = get_service_client(ServiceTestClient)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    inner = cast(Any, client)
+    inner._sync_clients[ServiceTest.__name__] = httpx.Client(
+        transport=transport, base_url=inner.base_url
+    )
+    inner._async_clients[None] = httpx.AsyncClient(
+        transport=transport, base_url=inner.base_url
+    )
+    return client
+
+
+def test_forward_ref_return_is_deserialized_over_the_rpc():
+    """The sync client must hand back models, not the raw JSON list."""
+    served = ServiceTest.list_reviews(cast(Any, None), 2)
+    client = _client_with_canned_response([r.model_dump() for r in served])
+
+    reviews = client.list_reviews(2)
+
+    assert reviews == [ReviewLike(id="0"), ReviewLike(id="1")]
+    assert all(isinstance(review, ReviewLike) for review in reviews)
+
+
+@pytest.mark.asyncio
+async def test_forward_ref_return_is_deserialized_over_the_async_rpc():
+    """Same contract through the async stub, which wraps the endpoint."""
+    client = _client_with_canned_response([{"id": "0"}])
+    inner = cast(Any, client)
+    # The async client is keyed by running event loop; reuse the mocked one.
+    inner._async_clients[asyncio.get_running_loop()] = inner._async_clients[None]
+
+    reviews = await client.list_reviews_async(1)
+
+    assert reviews == [ReviewLike(id="0")]
+    assert isinstance(reviews[0], ReviewLike)
+
+
+def _client_recording_requests(
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> tuple[Any, list[httpx.Request]]:
+    """A client built as in production, with only its network layer swapped
+    for one that records each request and answers 8."""
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json=8)
+
+    client = get_service_client(ServiceTestClient)
+    inner = cast(Any, client)
+    sync_client = inner._create_sync_client()
+    sync_client._transport = httpx.MockTransport(answer)
+    inner._sync_clients[ServiceTest.__name__] = sync_client
+    async_client = inner._create_async_client()
+    async_client._transport = httpx.MockTransport(answer)
+    inner._async_clients[loop] = async_client
+    return client, sent
+
+
+def test_an_rpc_carries_the_callers_trace(sentry_transactions):
+    client, sent = _client_recording_requests()
+
+    with tracing.start_transaction("executor.node", "Block") as transaction:
+        assert client.add(5, 3) == 8
+
+    [request] = sent
+    assert request.headers["sentry-trace"].startswith(transaction.trace_id)
+    assert f"sentry-trace_id={transaction.trace_id}" in request.headers["baggage"]
+
+
+@pytest.mark.asyncio
+async def test_an_async_rpc_carries_the_callers_trace(sentry_transactions):
+    client, sent = _client_recording_requests(asyncio.get_running_loop())
+
+    with tracing.start_transaction("executor.node", "Block") as transaction:
+        assert await client.add_async(5, 3) == 8
+
+    [request] = sent
+    assert request.headers["sentry-trace"].startswith(transaction.trace_id)
+
+
+def test_an_untraced_rpc_carries_no_trace(sentry_transactions):
+    """Without a transaction the service starts a trace of its own rather than
+    joining whatever trace the calling thread last saw."""
+    client, sent = _client_recording_requests()
+
+    assert client.add(5, 3) == 8
+
+    [request] = sent
+    assert "sentry-trace" not in request.headers
+    assert "baggage" not in request.headers
+
+
+async def test_an_app_service_freezes_its_heap_after_its_own_startup(mocker):
+    order: list[str] = []
+    mocker.patch("backend.util.service.redis_client.get_redis_async", AsyncMock())
+    mocker.patch("backend.util.service.redis_client.disconnect_async", AsyncMock())
+    mocker.patch(
+        "backend.util.service.freeze_startup_heap", lambda: order.append("freeze")
+    )
+    app = _StartupRecordingService(order).build_fastapi_app()
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert order == ["subclass startup", "freeze"]
+
+
+class _StartupRecordingService(AppService):
+    def __init__(self, order: list[str]):
+        super().__init__()
+        self.order = order
+
+    @classmethod
+    def get_port(cls) -> int:
+        return 0
+
+    @contextlib.asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        async with super().lifespan(app):
+            self.order.append("subclass startup")
+            yield

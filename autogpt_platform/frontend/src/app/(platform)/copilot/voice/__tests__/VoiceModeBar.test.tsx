@@ -1,7 +1,7 @@
 import { act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 
 vi.mock("../speechLevel", () => ({ readSpeechLevel: vi.fn(() => null) }));
 
@@ -28,6 +28,35 @@ describe("VoiceModeBar", () => {
     const status = screen.getByRole("status");
     expect(status.textContent).toContain("Listening");
     expect(status.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("offers the retry and the recording when transcription fails", () => {
+    const onRetry = vi.fn();
+    const onDownload = vi.fn();
+    render(
+      <VoiceModeBar
+        state="listening"
+        statusLabel="Listening"
+        failure={{ message: "Transcription failed" }}
+        onRetry={onRetry}
+        onDownload={onDownload}
+        leaveButton={<VoiceModeButton isActive onClick={vi.fn()} />}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe("Transcription failed");
+    // The trace says "all well"; it has no business sitting next to an error.
+    expect(screen.queryByRole("status")).toBeNull();
+    // Leaving voice mode stays reachable with the error up.
+    expect(
+      screen.getByRole("button", { name: "Leave voice mode" }),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download recording" }));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onDownload).toHaveBeenCalledTimes(1);
   });
 
   it("gives listening, thinking and speaking each their own colour", () => {

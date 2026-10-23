@@ -1,9 +1,11 @@
 """Data model for the copilot capability registry.
 
 One :class:`CapabilityEntry` describes one thing the copilot can do: a
-platform tool, a block, an MCP server from the catalog, or (phase 2) a
-library agent.  The registry indexes entries by name, purpose and tags;
-argument schemas are fetched on demand and never indexed.
+platform tool, a block, an MCP server from the catalog, a skill of the
+session's owner, an expert to hire or already hired, or (phase 2) a library
+agent.  The registry indexes
+entries by name, description and tags; argument schemas are fetched on
+demand and never indexed.
 """
 
 from __future__ import annotations
@@ -12,12 +14,21 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-CapabilityKindName = Literal["tool", "block", "mcp_server", "mcp_tool", "agent"]
+CapabilityKindName = Literal[
+    "tool", "block", "mcp_server", "mcp_tool", "agent", "skill", "expert"
+]
 CapabilityClass = Literal["service", "primitive"]
 CapabilityContext = Literal["direct", "graph", "both"]
 ConnectionKeyType = Literal["provider", "server_url", "host", "none"]
 
 PURPOSE_MAX_CHARS = 160
+# Bounds the index-only description: room for any real block, tool or catalog
+# text (the longest block description is under 1,000 chars), and a ceiling on
+# what a runaway one can add to the index and its memory.
+DESCRIPTION_MAX_CHARS = 4000
+# The tool a skill runs through.  A turn that may not call it may not see
+# skills either, and a ``skill:`` dispatch is a call to it.
+SKILL_TOOL = "read_skill"
 
 
 class Implementation(BaseModel):
@@ -53,8 +64,16 @@ class CapabilityEntry(BaseModel):
     id: str
     kind: CapabilityKindName
     klass: CapabilityClass = "service"
+    # The vendor behind the entry, the same for a block and the MCP server
+    # of one service.  None for primitives and tools.
+    service: str | None = None
     name: str
     purpose: str = Field(max_length=PURPOSE_MAX_CHARS)
+    # Everything the source says about the capability, for the index only:
+    # ``purpose`` is the first sentence or two of it, sized for a listing,
+    # and the sentence that names what a block does in CoPilot ("saves to
+    # workspace") is often the one clipped away.  Never listed.
+    description: str = ""
     tags: list[str] = Field(default_factory=list)
     context: CapabilityContext = "both"
     implementations: list[Implementation] = Field(default_factory=list)
@@ -69,6 +88,8 @@ class CapabilityEntry(BaseModel):
     # Blocks the platform hides for a reason (disabled / graph-only) keep an
     # entry for graph context but stay out of direct results.
     sensitive: bool = False
+    # An expert already on the user's team, as opposed to a roster template.
+    hired: bool = False
 
     def listing(self) -> dict[str, object]:
         """Compact form for a search result (about 40-60 tokens)."""
@@ -84,15 +105,29 @@ class CapabilityEntry(BaseModel):
             out["connected"] = self.connection.connected
         if self.eager:
             out["eager"] = True
+        if self.kind == "expert":
+            out["hired"] = self.hired
         return out
 
     def available_in(self, context: CapabilityContext) -> bool:
         return self.context == "both" or context == "both" or self.context == context
 
 
+def normalize_text(text: str | None, limit: int = DESCRIPTION_MAX_CHARS) -> str:
+    """*text* with its whitespace collapsed and cut at *limit* on a word
+    boundary, for the index."""
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    # One past the limit, so a word that ends exactly there is kept whole.
+    cut = text[: limit + 1]
+    idx = cut.rfind(" ")
+    return (cut[:idx] if idx >= limit // 2 else cut[:limit]).rstrip()
+
+
 def clip_purpose(text: str | None, limit: int = PURPOSE_MAX_CHARS) -> str:
     """First sentence-ish of *text*, at most *limit* characters."""
-    text = " ".join((text or "").split())
+    text = normalize_text(text)
     if len(text) <= limit:
         return text
     cut = text[: limit - 1]

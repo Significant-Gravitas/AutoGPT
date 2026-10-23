@@ -16,7 +16,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-CONFIG_VERSION = "1"
+CONFIG_VERSION = "2"
 SAFE_SECRET = re.compile(r"^[A-Za-z0-9._~-]+={0,2}$")
 SAFE_USERNAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SAFE_DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -74,12 +74,22 @@ def main() -> int:
 
 
 def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
-    """Return the existing secrets or atomically create them on first boot."""
+    """Return the existing secrets or atomically create them on first boot.
+
+    A version 1 config, written before INTERNAL_API_KEY existed, gets one. It
+    is saved as the current version once it passes every check, so a boot that
+    fails them leaves the file as it was."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
     if path.exists():
         values = _read_config(path)
+        upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1"
+        if upgrade:
+            values = _upgraded_from_version_1(values, environment)
+        _validate_values(values)
         _verify_environment_matches(values, environment)
+        if upgrade:
+            _write_config(path, values)
         path.chmod(0o600)
         return values
 
@@ -208,6 +218,24 @@ def _configured_or_generated(
     return environment.get(name) or generator()
 
 
+def _upgraded_from_version_1(
+    values: dict[str, str], environment: Mapping[str, str]
+) -> dict[str, str]:
+    """A version 1 config is a version 2 config without INTERNAL_API_KEY.
+
+    This step produces version 2, whatever the current version is: a later
+    version's own step takes it from there."""
+    if "INTERNAL_API_KEY" in values:
+        raise ValueError("runtime configuration has missing or unknown keys")
+    return {
+        **values,
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "2",
+        "INTERNAL_API_KEY": _configured_or_generated(
+            environment, "INTERNAL_API_KEY", SECRET_GENERATORS["INTERNAL_API_KEY"]
+        ),
+    }
+
+
 def _configured_or_generated_vapid(
     environment: Mapping[str, str],
 ) -> tuple[str, str]:
@@ -251,6 +279,7 @@ SECRET_GENERATORS: dict[str, Callable[[], str]] = {
     "ENCRYPTION_KEY": _fernet_key,
     "UNSUBSCRIBE_SECRET_KEY": lambda: secrets.token_urlsafe(36),
     "GRAPHITI_FALKORDB_PASSWORD": lambda: secrets.token_urlsafe(36),
+    "INTERNAL_API_KEY": lambda: secrets.token_urlsafe(32),
 }
 
 # Secrets already retired from the public .env.default files (SECRT-2611).
@@ -258,7 +287,11 @@ SECRET_GENERATORS: dict[str, Callable[[], str]] = {
 # a freshly generated key pasted back into one of these lines, so the invariant
 # is asserted directly. Paths are relative to autogpt_platform/.
 BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
-    "backend/.env.default": ("ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY"),
+    "backend/.env.default": (
+        "ENCRYPTION_KEY",
+        "UNSUBSCRIBE_SECRET_KEY",
+        "INTERNAL_API_KEY",
+    ),
     "frontend/.env.default": ("BETTER_AUTH_SECRET",),
 }
 
@@ -278,6 +311,7 @@ def _validate_values(values: dict[str, str]) -> None:
         "ENCRYPTION_KEY",
         "UNSUBSCRIBE_SECRET_KEY",
         "GRAPHITI_FALKORDB_PASSWORD",
+        "INTERNAL_API_KEY",
         "VAPID_PRIVATE_KEY",
         "VAPID_PUBLIC_KEY",
     }
@@ -333,7 +367,6 @@ def _read_config(path: Path) -> dict[str, str]:
         if not separator or not name or name in values:
             raise ValueError(f"invalid runtime configuration line {line_number}")
         values[name] = value
-    _validate_values(values)
     return values
 
 

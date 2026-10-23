@@ -1,6 +1,7 @@
 "use client";
 
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -20,6 +21,7 @@ import { WorkflowCredentialStack } from "./WorkflowCredentialStack";
 
 interface Props {
   workflow: ExpertWorkflowRef;
+  libraryAgent: LibraryAgent | undefined;
   expertId?: string;
   coverColor: string | undefined;
   onAsk?: (prompt: string) => void;
@@ -27,13 +29,13 @@ interface Props {
 
 export function ExpertWorkflowCard({
   workflow,
+  libraryAgent,
   expertId,
   coverColor,
   onAsk,
 }: Props) {
   const {
     name,
-    libraryAgent,
     runCount,
     isTriggerWorkflow,
     status,
@@ -44,7 +46,11 @@ export function ExpertWorkflowCard({
     chatPrompt,
     openRun,
     openTriggers,
-  } = useExpertWorkflowCard({ workflow, expertId });
+  } = useExpertWorkflowCard({
+    workflow,
+    libraryAgent,
+    expertId,
+  });
   const [hasImageError, setHasImageError] = useState(false);
 
   return (

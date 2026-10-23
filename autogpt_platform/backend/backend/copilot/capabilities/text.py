@@ -63,6 +63,12 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "stringify": ("json", "encode"),
     "count": ("length",),
     "fetch": ("get", "read"),
+    # Saving, storing and writing are one intent spread over three entries
+    # (FileStoreBlock, write_workspace_file, memory_store); without the link
+    # "save a file" reached neither of the first two.
+    "save": ("store", "write"),
+    "store": ("save", "write"),
+    "write": ("save", "store"),
     "scrape": ("extract", "crawl"),
     "webpage": ("website", "web", "page"),
     "http": ("web",),

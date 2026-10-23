@@ -66,3 +66,23 @@ def test_legacy_names_validate():
 def test_denied_tool_names_empty_without_filter():
     assert denied_tool_names(None) == frozenset()
     assert denied_tool_names(CopilotPermissions()) == frozenset()
+
+
+def test_allowing_a_deferred_tool_grants_the_dispatcher():
+    """A deferred tool is not in the model's tool list (#14569), so a list
+    naming one and not ``run_capability`` hands the model no way to reach it."""
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES
+
+    for name in ("list_schedules", "hire_expert", "memory_store"):
+        assert name in DEFERRED_TOOL_NAMES
+        allowed = CopilotPermissions(
+            tools=[name], tools_exclude=False
+        ).effective_allowed_tools(ALL_TOOL_NAMES)
+        assert {name, "run_capability"} <= allowed
+
+
+def test_allowing_an_eager_tool_does_not_grant_the_dispatcher():
+    allowed = CopilotPermissions(
+        tools=["web_fetch"], tools_exclude=False
+    ).effective_allowed_tools(ALL_TOOL_NAMES)
+    assert allowed == frozenset({"web_fetch"})

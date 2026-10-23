@@ -10,6 +10,8 @@ import {
 import { ApiKeyConnectForm } from "./ApiKeyConnectForm";
 import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
 import { ChatGPTConnectExplainer } from "./ChatGPTConnectExplainer";
+import { InlineHostScopedForm } from "../ConnectMethodView/InlineHostScopedForm";
+import { InlineUserPasswordForm } from "../ConnectMethodView/InlineUserPasswordForm";
 import { OAuthConnectButton } from "./OAuthConnectButton";
 import { UnsupportedNotice } from "./UnsupportedNotice";
 
@@ -56,6 +58,20 @@ export function MethodPanel({ method, provider, onSuccess }: Props) {
   if (method === AuthType.device_code) {
     return (
       <DeviceAuthConnectButton
+        provider={provider.id}
+        providerName={provider.name}
+        onSuccess={onSuccess}
+      />
+    );
+  }
+  if (method === AuthType.host_scoped) {
+    return (
+      <InlineHostScopedForm provider={provider.id} onSuccess={onSuccess} />
+    );
+  }
+  if (method === AuthType.user_password) {
+    return (
+      <InlineUserPasswordForm
         provider={provider.id}
         providerName={provider.name}
         onSuccess={onSuccess}

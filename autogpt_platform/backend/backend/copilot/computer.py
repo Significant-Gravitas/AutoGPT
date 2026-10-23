@@ -7,8 +7,15 @@ that box* and hands back the live stream, whether the ask comes from the
 ``start_desktop`` tool inside a turn or from the Computer tab and side
 panel.  The box pauses at turn end like any other and comes back with the
 screen exactly as it was, but under a fresh stream password: the password
-is kept here, off the box, and forgotten whenever the box pauses, so a
-stream URL that may have leaked is good for one running stretch only.
+is kept here, off the box, and when the turn-end pause comes the stream is
+stopped and the password forgotten, so a stream URL that may have leaked
+stops working there.  "Screen on" therefore means the display was started
+in this box; the next open is what serves it again.
+
+One pause is out of our hands: a box left idle is paused by E2B's own
+timeout with its stream still up, and any request to the stream URL resumes
+it.  That stream is stopped at our next connect to the box
+(``e2b_sandbox._settle_stream``), not before.
 
 ``describe_computer`` only lists: it never connects, so a paused box stays
 paused (connecting is what E2B's auto-resume reacts to).  Whether the screen
@@ -33,7 +40,9 @@ from backend.blocks.desktop._common import (
 )
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.tools.e2b_sandbox import (
+    KEEP_CEILING,
     METADATA_MOUNTS,
+    Ceiling,
     SandboxLookupError,
     SandboxOwner,
     get_or_create_owner_sandbox,
@@ -133,6 +142,7 @@ async def open_desktop(
     *,
     user_id: Optional[str],
     session_id: Optional[str] = None,
+    providers: Ceiling = KEEP_CEILING,
 ) -> tuple[DesktopStream, bool, bool]:
     """Turn the screen on in the owner's box; return ``(stream, first_time, shared)``.
 
@@ -142,6 +152,8 @@ async def open_desktop(
     an idle box opened from the UI is paused by the lifecycle timeout instead.
     *user_id* is who the stream link is issued to (see ``_owner_bound``) and,
     with *session_id*, provenance stamped on a newly created box.
+    *providers* is the turn's ceiling on connected accounts when a turn opens
+    it (``start_desktop``); the UI has none and keeps the box's.
 
     One opener at a time per owner: the panel's button and the model's
     ``start_desktop`` (or two tabs) would otherwise race to start a second
@@ -151,7 +163,7 @@ async def open_desktop(
     if not user_id:
         raise ValueError("A desktop needs an authenticated user to issue its link to")
     redis = await get_redis_async()
-    lock_key = f"{owner.display_key()}:lock"
+    lock_key = owner.display_lock_key()
     token = uuid.uuid4().hex
     waited = 0.0
     while not await redis.set(lock_key, token, nx=True, ex=_DESKTOP_LOCK_TTL_SECONDS):
@@ -162,7 +174,12 @@ async def open_desktop(
     try:
         return await asyncio.wait_for(
             _open_desktop_locked(
-                owner, mounts, api_key, user_id=user_id, session_id=session_id
+                owner,
+                mounts,
+                api_key,
+                user_id=user_id,
+                session_id=session_id,
+                providers=providers,
             ),
             timeout=_DESKTOP_OPEN_DEADLINE_SECONDS,
         )
@@ -177,6 +194,7 @@ async def _open_desktop_locked(
     *,
     user_id: str,
     session_id: Optional[str],
+    providers: Ceiling = KEEP_CEILING,
 ) -> tuple[DesktopStream, bool, bool]:
     sandbox = await get_or_create_owner_sandbox(
         owner,
@@ -188,6 +206,7 @@ async def _open_desktop_locked(
         user_id=user_id,
         session_id=session_id,
         count_turn=False,
+        providers=providers,
     )
     was_on = await screen_is_on(owner, sandbox.sandbox_id)
     desktop = DesktopSession(sandbox)
@@ -223,9 +242,11 @@ async def _stream_password(owner: SandboxOwner) -> Optional[str]:
 async def _remember_screen(owner: SandboxOwner, sandbox_id: str, password: str) -> None:
     """Record the screen as on in this box, and the password its stream uses.
 
-    The password outlives a pause only as long as the box could have kept
-    running: its expiry is the box's running-time limit, and the turn-end
-    pause drops it outright (``e2b_sandbox._forget_stream``).
+    The password is remembered only as long as the box could have kept
+    running: its expiry is the box's running-time limit, pushed out again
+    whenever a connect re-arms that limit (``e2b_sandbox._settle_stream``),
+    and the turn-end pause stops the stream and drops it outright
+    (``e2b_sandbox._revoke_stream``).
     """
     redis = await get_redis_async()
     await redis.set(owner.display_key(), sandbox_id, ex=owner.ttl)

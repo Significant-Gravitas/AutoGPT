@@ -1,6 +1,8 @@
 "use client";
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { HeldCallDetail } from "./HeldCallRowParts";
+import { heldShowsOwnCall } from "./heldRow";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
@@ -15,9 +17,11 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { capabilityTargetRow } from "./capabilityRow";
 import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
+import { SkillLoadedCard } from "./SkillLoadedCard";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
 import {
@@ -52,6 +56,7 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isWebhookIngressUrl,
   str,
   stripBaseFields,
 } from "./resultHelpers";
@@ -137,6 +142,10 @@ function linkCard(
       url={url}
       title={str(output, "title", "issue_title") ?? undefined}
       meta={meta}
+      secret={
+        isWebhookIngressUrl(url) ||
+        url === str(output, "webhook_url", "ingress_url")
+      }
     />
   );
 }
@@ -148,6 +157,16 @@ function chipStrings(value: unknown, key: string): string[] | null {
     .map((item) => str(item, key))
     .filter((label): label is string => !!label);
   return labels.length > 0 ? labels : null;
+}
+
+/** The live desktop is the whole point of start_desktop: embed the stream
+ *  instead of letting the payload fall through to a truncated key/value
+ *  dump. The same renderer serves block outputs and attachments, and the
+ *  card is what tells the side panel a desktop exists. */
+function desktopCard(output: Record<string, unknown>, readOnly: boolean) {
+  const stream = output.desktop_stream;
+  if (!stream || !desktopStreamRenderer.canRender(stream)) return null;
+  return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
 }
 
 const CAPABILITY_RUN_TOOLS = new Set([
@@ -229,6 +248,71 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
+/** Every tool with a card of its own. toolCard's switch is typed against
+ *  this list, so a new case cannot land without joining it — and the
+ *  chat-surface parity test renders each entry on every chat, not just the
+ *  main one. */
+export const TOOL_CARD_TOOLS = [
+  "run_agent",
+  "schedule_agent",
+  "view_agent_output",
+  "create_agent",
+  "customize_agent",
+  "edit_agent",
+  "run_sub_session",
+  "get_sub_session_result",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "consult_teammate",
+  "find_agent",
+  "find_library_agent",
+  "find_block",
+  "find_capability",
+  "run_block",
+  "continue_run_block",
+  "describe_capability",
+  "run_capability",
+  "resume_capability",
+  "connect_integration",
+  "decompose_goal",
+  "validate_agent_graph",
+  "fix_agent_graph",
+  "ask_question",
+  "list_schedules",
+  "schedule_followup",
+  "list_folders",
+  "create_folder",
+  "update_folder",
+  "move_folder",
+  "list_workspace_files",
+  "search_docs",
+  "get_doc_page",
+  "setup_agent_webhook_trigger",
+  "search_feature_requests",
+  "create_feature_request",
+  "run_mcp_tool",
+  "store_skill",
+  "read_skill",
+  "delete_skill",
+  "list_skills",
+  "list_chat_platform_channels",
+  "web_search",
+  "bash_exec",
+  "start_desktop",
+  "TodoWrite",
+  "read_workspace_file",
+  "write_workspace_file",
+  "delete_workspace_file",
+  "Read",
+  "Write",
+] as const;
+
+type ToolCardTool = (typeof TOOL_CARD_TOOLS)[number];
+
+function cardTool(tool: string | undefined): ToolCardTool | undefined {
+  return TOOL_CARD_TOOLS.find((name) => name === tool);
+}
+
 function toolCard(
   row: ChainRow,
   output: Record<string, unknown> | null,
@@ -243,7 +327,7 @@ function toolCard(
     if (questions) return <QuestionsCard questions={questions} />;
   }
 
-  switch (row.tool) {
+  switch (cardTool(row.tool)) {
     case "run_agent":
     case "schedule_agent": {
       const name =
@@ -340,6 +424,11 @@ function toolCard(
     case "run_capability":
     case "resume_capability": {
       if (!output) return null;
+      // Transcripts recorded while start_desktop was deferred (#14569 until
+      // it went eager again) carry its result on a run_capability row: same
+      // payload, same card.
+      const desktop = desktopCard(output, readOnly);
+      if (desktop) return desktop;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
@@ -415,8 +504,12 @@ function toolCard(
       return output && "result" in output ? (
         <KeyValueList value={output.result} />
       ) : null;
-    case "store_skill":
     case "read_skill":
+      if (output && typeof output.version === "number") {
+        return <SkillLoadedCard output={output} />;
+      }
+      return output ? <SkillCard output={output} /> : null;
+    case "store_skill":
     case "delete_skill":
       return output ? <SkillCard output={output} /> : null;
     case "list_skills": {
@@ -438,16 +531,8 @@ function toolCard(
     }
     case "bash_exec":
       return <Terminal row={row} />;
-    case "start_desktop": {
-      // The live desktop is the whole point of the tool: embed the stream
-      // instead of letting the payload fall through to a truncated key/value
-      // dump. The same renderer serves block outputs and attachments.
-      const stream = output ? output.desktop_stream : null;
-      if (stream && desktopStreamRenderer.canRender(stream)) {
-        return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
-      }
-      return null;
-    }
+    case "start_desktop":
+      return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":
@@ -494,7 +579,29 @@ export function ToolResult({ row, readOnly = false }: Props) {
     );
   }
 
-  const card = toolCard(row, output, readOnly);
+  if (row.held) {
+    const approved = row.held.state === "approved";
+    const ownCall = heldShowsOwnCall(row);
+    const ran = row.output !== undefined && row.output !== "";
+    return (
+      <div className="flex flex-col gap-2">
+        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        {approved && (ran || ownCall) && (
+          <ToolOutput row={row} readOnly={readOnly} />
+        )}
+      </div>
+    );
+  }
+
+  return <ToolOutput row={row} readOnly={readOnly} />;
+}
+
+function ToolOutput({ row, readOnly }: Required<Props>) {
+  const output = asObject(row.output);
+  const target = capabilityTargetRow(row);
+  const card =
+    toolCard(target, output, readOnly) ??
+    (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;
@@ -508,7 +615,7 @@ export function ToolResult({ row, readOnly = false }: Props) {
     return <KeyValueList value={str(output, "message") ?? ""} />;
 
   return (
-    linkCard(data, asObject(row.input)) ??
+    linkCard(data, asObject(target.input)) ??
     shapeCard(data) ?? <KeyValueList value={data} />
   );
 }

@@ -1,8 +1,11 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { getCategoryHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { CategoryTag } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -14,11 +17,13 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
 import { IntegrationIcons } from "./components/IntegrationIcons";
+import { SetupStatus } from "./components/SetupStatus";
 
 import { SpendMeter } from "./components/SpendMeter";
 import {
@@ -49,9 +54,19 @@ export function ExpertTeamCard({
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const cover = getExpertCover(expert);
-  const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
-    useExpertTeamCard(expert.id);
+  // The area the expert works in, in the chip the marketplace already uses.
+  const topic = expert.categories?.[0];
+  const {
+    handleResume,
+    isResuming,
+    retrySetup,
+    isRetryingSetup,
+    isFireOpen,
+    openFire,
+    closeFire,
+  } = useExpertTeamCard(expert);
   const isPaused = Boolean(expert.schedules_paused_at);
+  const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
 
   function handleInstallClick() {
     onInstallWorkflow(expert.id);
@@ -67,7 +82,7 @@ export function ExpertTeamCard({
       {/* Floated over the cover so the whole body stays one link target. */}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
         <Button
-          variant="floating"
+          variant="secondary"
           size="icon-sm"
           aria-label="Edit Soul"
           leadingIcon={PencilEdit02Icon}
@@ -97,8 +112,9 @@ export function ExpertTeamCard({
               name={expert.name}
               avatarUrl={expert.avatar_url}
               color={expert.color}
+              backgroundColor={cover.color}
               size={88}
-              className="ring-4 ring-background"
+              className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
             />
           </span>
 
@@ -110,7 +126,6 @@ export function ExpertTeamCard({
               <Text
                 variant="small-medium"
                 tone="secondary"
-                unmask={false}
                 className="tabular-nums"
               >
                 {weeklySpend
@@ -130,13 +145,22 @@ export function ExpertTeamCard({
           <ExpertIdentityDetails
             name={expert.name}
             role={expert.role}
-            nameAccessory={
-              <IntegrationIcons
-                expertName={expert.name}
-                providers={expert.credential_providers ?? []}
-              />
-            }
+            jobTitle={expert.job_title}
+            nameAlign="baseline"
+            areaColor={getCategoryHex(topic)}
           />
+          <div className="flex items-center gap-2 empty:hidden">
+            {topic ? <CategoryTag category={topic} /> : null}
+            {isAutoModeEnabled && expert.autopilot_mode === "unsupervised" ? (
+              <Badge variant="warning" size="small">
+                Unsupervised
+              </Badge>
+            ) : null}
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
+          </div>
           <ExpertTagline tagline={expert.tagline} compact />
         </div>
 
@@ -163,6 +187,12 @@ export function ExpertTeamCard({
           </CardStats>
         </div>
       </Link>
+
+      <SetupStatus
+        expert={expert}
+        isRetrying={isRetryingSetup}
+        onRetry={retrySetup}
+      />
 
       {isPaused ? (
         <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">

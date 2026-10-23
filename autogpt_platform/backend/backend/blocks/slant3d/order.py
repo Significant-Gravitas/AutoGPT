@@ -1,4 +1,4 @@
-from backend.blocks._base import BlockOutput, BlockSchemaOutput
+from backend.blocks._base import BlockEffect, BlockOutput, BlockSchemaOutput
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
 
@@ -34,7 +34,8 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
                     "data": {"publicId": "SLANT_1234567890"}
                 },
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -98,6 +99,8 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
                 ("order_id", "SLANT_1234567890"),
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
+            # Judged: the estimate POSTs an uncharged draft order to Slant3D.
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -154,6 +157,8 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
                 ("order_id", "SLANT_1234567890"),
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
+            # Judged: the estimate POSTs an uncharged draft order to Slant3D.
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

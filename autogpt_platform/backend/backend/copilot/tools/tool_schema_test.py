@@ -217,7 +217,69 @@ from ._test_data import make_session
 #     + #14207 multi-expert-teams  +981          71,751 (86 tools)
 # consult_teammate has measured +981 at every dev tip since 2026-09-09; what
 # moves this line is dev, not this branch.
-_CHAR_BUDGET = 73_030
+# Bumped 73_030 -> 75_260 for the two tools this PR adds: set_expert_routine
+# measures 1,823 (nine parameters, because it both creates standing work and
+# switches it on, and because the modes and the credential grant are each a
+# decision the owner makes out loud) and list_expert_routines 403. Measured on
+# the branch merged with dev, plus one — this line carries no margin by design.
+# Bumped 75_261 -> 75_693 in the same PR, for two arguments those tools grew:
+# `delay_seconds` (a routine can now be a one-shot, so the durable record
+# covers "check the deploy at six" and not only work that repeats) and
+# `session_id` (PINNED can name any chat the owner holds, which is the one
+# thing schedule_followup could do that a routine could not). Every other
+# description in both tools was cut first — that paid back 377 of the 808 —
+# so what is left here is the two new arguments, not wording. Measured on the
+# branch merged with dev at 75,692, plus one.
+# Bumped 75_693 -> 75_839 after merging dev, which reworded `raise_expert`,
+# `setup_agent_webhook_trigger` and `run_agent` — no tool was added and this
+# branch's own delta did not move. Re-measured on the merged tree at 75,838,
+# plus one, per the rule above about measuring on the merge ref.
+# Bumped 75_839 -> 76_300 for the ``tool:`` capability ids in tool descriptions
+# (SECRT-2667) and the routine/follow-up split in ``schedule_followup``.
+# Measured on this branch merged with dev at 76,110, +272 over dev's 75,838.
+# The margin over the measurement is deliberate, and the exception to the
+# no-margin rule above: this lands during the v0.8.0 release while dev is
+# still moving, and the two rewordings that cost 146 chars last week would
+# each have reded this PR at the queue on a measured-plus-one ceiling.
+# Bumped 76_300 -> 76_686 for list_workspace_files' folder_id and recursive
+# arguments and the description rewrite that tells the model where the user's
+# own uploads live, plus the matching sentence in read_workspace_file. No tool
+# was added (89 either side). Measured on the branch merged with dev, which
+# here is the branch itself — it already contains dev's tip 480c6f5509:
+#     dev 480c6f5509                              76,245 (89 tools)
+#     + this PR's two descriptions   +440         76,685 (89 tools)
+# Plus one; that line carried no margin by design, and dev overtook it within
+# the day: #14779 made the session's skills first-class find_capability
+# candidates, growing find_capability and run_capability, and the merge ref
+# measured 76,714 — 28 over — with none of this branch's delta having moved.
+# Re-measured on this branch merged with dev b6b03f5e72:
+#     merged tree                                 76,714 (89 tools)
+#     + headroom                       +300       77,014
+# The margin is deliberate and is the same exception the wire budget's #14476
+# note names: this is queued while dev is still moving, and a measured-plus-one
+# ceiling reds the queue's merge ref on the next reworded description.
+# Bumped 77_014 -> 77_401 for memory_forget_search's `include_forgotten`
+# argument (#14972): a soft forget left a fact the chat could no longer find,
+# so it could never be made permanent with hard_delete. No tool was added.
+# Measured on this branch merged with dev 8432f734f5:
+#     merged tree, before                         76,975 (89 tools)
+#     + include_forgotten              +126       77,101 (89 tools)
+#     + headroom                       +300       77,401
+# The same deliberate margin as the line above, for the same reason.
+# Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
+# provider (SECRT-2878): the enum entry, its place in the supported list, one
+# sentence telling the model it returns the account-linking link (never a key
+# field), and scoping the sandbox-failure-only rule to the other providers so
+# it no longer forbids the ayrshare call. No tool was added (89 either side).
+# Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
+#     dev 583fc0bb4e                              76,975 (89 tools)
+#     + this PR's connect_integration  +200       77,175 (89 tools)
+# Plus one.
+# Both bumps met in the memory-core stack's merge with dev f05d2d7393;
+# re-measured on that merged tree (89 tools), with the stack's margin:
+#     merged tree                                 77,301 (89 tools)
+#     + headroom                       +300       77,601
+_CHAR_BUDGET = 77_601
 
 
 @pytest.fixture(scope="module")
@@ -369,10 +431,58 @@ def test_total_schema_char_budget() -> None:
 # registry's delta. Prose lands byte-for-byte in both, so the two brakes only
 # diverge on tool shape — `required` and separators — not on wording.
 #
+# Raised 65_630 -> 67_767 for the same two tools. They ride the
+# ``expert_resources`` group, so they are declared in every session that can
+# manage an expert's resources — which is the largest one. Measured 67,767,
+# plus one.
+# Raised 67_768 -> 68_188 for the same two arguments as ``_CHAR_BUDGET`` above;
+# both tools are in that largest session, so the whole delta lands here too.
+# Measured 68,187, plus one.
+# Raised 68_188 -> 68_329 for the same dev rewordings; all three tools are in
+# the largest session, so the whole delta lands here too. Measured 68,328,
+# plus one.
+#
+# Raised 68_329 -> 68_800 for the ``tool:`` capability ids in tool
+# descriptions (SECRT-2667) and the routine/follow-up split in
+# ``schedule_followup``: a deferred tool named bare is refused, so text
+# pointing at one spells its id. Measured on this branch merged with dev at
+# 68,595, +267 over dev's 68,328. Dev's 68,329 was measured without those
+# prefixes, so the higher of the two conflicting values was the floor here,
+# not the answer. Carries the same deliberate margin as ``_CHAR_BUDGET``.
+#
+# Raised 68_800 -> 69_156 for the same two descriptions as ``_CHAR_BUDGET``
+# above. Both file tools are in the largest session, so the whole delta lands
+# here too — but the wire form drops ``required`` and prefixes each name, so it
+# is +430 here against +440 there. Measured on the branch merged with dev,
+# which here is the branch itself (it contains dev's tip 480c6f5509):
+#     dev 480c6f5509                              68,725
+#     + this PR's two descriptions   +430         69,155
+# Plus one. Dev's 68,725 sits 75 under the old 68,800, which was the margin
+# that line took deliberately; this one takes none.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 65_630
+#
+# Re-measured on this branch merged with dev b6b03f5e72, after #14779 grew
+# find_capability and run_capability: the merge ref measured 69,183, 27 over
+# the plus-one ceiling above. Same headroom, for the same reason.
+#     merged tree                                 69,183
+#     + headroom                       +300       69,483
+#
+# Re-measured on #15149 merged with dev f2c683cf2b, which itself measured
+# 69,461, 22 under the line above; find_capability's expert kind adds 27.
+#     merged tree                                 69,488
+#     + headroom                       +300       69,788
+#
+# Re-measured on the memory-core stack merged with dev f05d2d7393. Neither
+# side moved this line, but each grew the largest session under it: the
+# stack's memory_forget_search `include_forgotten` (69,609 alone) and dev's
+# connect_integration `ayrshare` (69,687 alone). Together they measure 20
+# over it. Same headroom, for the same reason.
+#     merged tree                                 69,808
+#     + headroom                       +300       70,108
+_SESSION_WIRE_BUDGET = 70_108
 
 
 def test_largest_declared_session_wire_budget() -> None:
@@ -480,10 +590,12 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
         f"{MCP_TOOL_PREFIX}memory_forget_confirm",
     }
 
-    # Memory tools are deferred: never in the schema list, reached through
-    # run_capability instead.  Disabling the group must not resurrect them.
+    # ``memory_search`` is eager — the memory supplement orders a search by
+    # name — and the other three are deferred, reached through
+    # run_capability.  Disabling the group must hide all four either way.
+    deferred_mcp_names = memory_mcp_names - {f"{MCP_TOOL_PREFIX}memory_search"}
     default = set(get_copilot_tool_names())
-    assert not memory_mcp_names & default
+    assert not deferred_mcp_names & default
 
     filtered = set(get_copilot_tool_names(disabled_groups=["graphiti"]))
     assert not (
@@ -550,7 +662,7 @@ async def test_a_deferred_tool_named_directly_is_refused() -> None:
     from backend.copilot.tools import DEFERRED_TOOL_NAMES, execute_tool, get_tool
     from backend.copilot.tools.models import ErrorResponse
 
-    name = "memory_search"
+    name = "memory_store"
     assert name in DEFERRED_TOOL_NAMES, "test relies on this tool being deferred"
     tool = get_tool(name)
     assert tool is not None

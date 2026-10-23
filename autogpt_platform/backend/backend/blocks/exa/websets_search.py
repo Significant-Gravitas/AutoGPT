@@ -16,6 +16,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -240,6 +241,7 @@ class ExaCreateWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetSearchBlock.Input,
             output_schema=ExaCreateWebsetSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -437,6 +439,7 @@ class ExaGetWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetSearchBlock.Input,
             output_schema=ExaGetWebsetSearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -519,6 +522,7 @@ class ExaCancelWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelWebsetSearchBlock.Input,
             output_schema=ExaCancelWebsetSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -600,6 +604,7 @@ class ExaFindOrCreateSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaFindOrCreateSearchBlock.Input,
             output_schema=ExaFindOrCreateSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

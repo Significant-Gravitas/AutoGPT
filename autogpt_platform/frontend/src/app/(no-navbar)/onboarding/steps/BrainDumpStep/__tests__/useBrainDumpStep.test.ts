@@ -413,7 +413,13 @@ describe("useBrainDumpStep — finishing a take", () => {
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
       duration_secs: 65,
       input_mode: "voice",
+      finalize_latency_ms: expect.any(Number),
     });
+    // The finalize round trip rides on the outcome, not on an event of its own.
+    expect(trackBrainDump).not.toHaveBeenCalledWith(
+      "finalize_latency_ms",
+      expect.anything(),
+    );
   });
 
   it("marks the take finalized by id and clears it before advancing", async () => {
@@ -501,6 +507,7 @@ describe("useBrainDumpStep — finishing a take", () => {
     expect(result.current.screen).toBe("failed");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       error_code: "transcription_error",
+      finalize_latency_ms: expect.any(Number),
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
   });
@@ -517,6 +524,7 @@ describe("useBrainDumpStep — finishing a take", () => {
     expect(result.current.screen).toBe("failed");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       error_code: 500,
+      finalize_latency_ms: expect.any(Number),
     });
   });
 
@@ -551,6 +559,7 @@ describe("useBrainDumpStep — insufficient content", () => {
     expect(result.current.screen).toBe("insufficient");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       error_code: "no_usable_speech",
+      finalize_latency_ms: expect.any(Number),
     });
     // No accidental advance, and nothing personalized to advance to.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
@@ -759,6 +768,33 @@ describe("useBrainDumpStep — retry", () => {
 
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_retry", {
       attempt: 2,
+    });
+  });
+
+  it("retries the recording, not earlier typed text, when sending it failed", async () => {
+    finalizeBrainDump.mockRejectedValueOnce(new Error("offline"));
+    const { result } = await renderStep();
+    act(() => {
+      result.current.setTypedText("notes");
+    });
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockRejectedValueOnce(new Error("stop failed"));
+    await act(async () => {
+      await result.current.handleDone();
+    });
+    finalizeBrainDump.mockClear();
+
+    await act(async () => {
+      await result.current.handleRetry();
+    });
+
+    expect(recorderState.resendAllParts).toHaveBeenCalledWith("rec-1");
+    expect(finalizeBody()).toMatchObject({
+      recording_id: "rec-1",
+      input_mode: "voice",
     });
   });
 
@@ -973,6 +1009,58 @@ describe("useBrainDumpStep — skip", () => {
     // One advance, down the path the recording earned.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+  });
+
+  // The wizard moves on before the skip is recorded, so the guard is all
+  // that stops a second skip from advancing it again, past Hire.
+  it("advances once when a second skip lands before the first is recorded", async () => {
+    const recording = deferred<ReturnType<typeof completed>>();
+    finalizeBrainDump.mockReturnValue(recording.promise);
+    const { result } = await renderStep();
+
+    await act(async () => {
+      void result.current.handleSkip();
+      void result.current.handleSkip();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      recording.resolve(completed());
+      await Promise.resolve();
+    });
+
+    expect(finalizeBrainDump).toHaveBeenCalledTimes(1);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
+  // Back from Hire remounts the step while the skipped take may still be
+  // unfinalized on disk; offering it there would hand back what was refused.
+  it("does not offer back a skipped take whose cleanup is still running", async () => {
+    recorderState.recordingId = "rec-skipped";
+    const lookup = deferred<null>();
+    getMetaById.mockReturnValueOnce(lookup.promise);
+    const first = await renderStep();
+    await act(async () => {
+      void first.result.current.handleSkip();
+      await Promise.resolve();
+    });
+    first.unmount();
+
+    recorderState.recordingId = null;
+    recorderState.findRecoverable.mockResolvedValue({
+      recordingId: "rec-skipped",
+      mimeType: "audio/webm",
+      durationSecs: 30,
+    });
+    getParts.mockResolvedValue([part(0, "rec-skipped")]);
+    const back = await renderStep();
+
+    expect(back.result.current.screen).toBe("rest");
+    expect(back.result.current.recoverable).toBeNull();
+
+    await act(async () => {
+      lookup.resolve(null);
+      await Promise.resolve();
+    });
   });
 
   // Being unable to say "no thanks" because the network is down would be

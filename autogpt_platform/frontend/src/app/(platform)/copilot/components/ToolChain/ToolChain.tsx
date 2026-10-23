@@ -23,18 +23,27 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { AnsweredQuestions } from "../AnsweredQuestions/AnsweredQuestions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
+import { AnsweredQuestionsContext } from "../QuestionDock/AnsweredQuestionsContext";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
-import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import {
+  buildChainReply,
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
+import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import { applyHeldOutcome } from "./heldRow";
+import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
   type ChainRow,
+  getAskedQuestions,
   getChainHeading,
   isLiftedSetupRow,
   isToolCallPending,
@@ -61,9 +70,13 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
+  const answeredQuestions = useContext(AnsweredQuestionsContext);
+  const heldOutcomes = useContext(HeldOutcomesContext);
+  const heldAnswers = useHeldAnswersStore((state) => state.answers);
   const { onSend } = useCopilotChatActions();
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
+  const sendingRef = useRef(false);
   const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
@@ -146,13 +159,9 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       if (!canAutoSend || autoSentRef.current) return;
       autoSentRef.current = true;
       setAutoSent(true);
-      const message = pendingActions
-        .map((entry) => entry.buildMessage())
-        .filter(Boolean)
-        .join("\n\n");
+      const message = buildChainReply(pendingActions);
       if (!message) return;
-      pendingActions.forEach((entry) => entry.onSent?.());
-      sendReply(message);
+      void sendAfter(pendingActions, message);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
@@ -166,6 +175,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         parts
           .map((part, i) => toChainRow(part, i))
           .filter((row): row is ChainRow => row !== null)
+          .map((row) => applyHeldOutcome(row, heldOutcomes, heldAnswers))
           // Unanswered clarifying questions and setup cards render their work
           // in the card below the chain — their rows are lifted out of view.
           .map((row) =>
@@ -176,11 +186,29 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 : row,
           ),
       ),
-    [parts, pendingQuestions],
+    [parts, pendingQuestions, heldOutcomes, heldAnswers],
   );
   if (rows.length === 0) return null;
 
-  const shownRows = rows.filter((row) => !row.lifted);
+  const askedRecords = rows.flatMap((row) => {
+    const questions = getAskedQuestions(row);
+    if (questions.length === 0) return [];
+    const answers = answeredQuestions.get(row.key);
+    return [
+      {
+        key: row.key,
+        items: questions.map((q) => ({
+          key: q.keyword,
+          question: q.question,
+          answer: answers?.get(q.keyword),
+        })),
+      },
+    ];
+  });
+  const shownRows = rows.filter(
+    (row) =>
+      !row.lifted && !askedRecords.some((record) => record.key === row.key),
+  );
   const liftedRows = rows.filter((row) => row.lifted);
 
   const expanded = manualExpanded === true;
@@ -218,13 +246,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // points at the thread rather than the composer.
   function sendReply(message: string) {
     void Promise.resolve(onSend(message)).catch((error: unknown) =>
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "it is still in the thread, use Retry to send it again",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
       }),
     );
   }
@@ -234,13 +261,24 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // unconnected MCP server) are left out instead of blocking the ready ones.
   function handleProceed() {
     const readyActions = pendingActions.filter((entry) => entry.ready);
-    const message = readyActions
-      .map((entry) => entry.buildMessage())
-      .filter(Boolean)
-      .join("\n\n");
+    const message = buildChainReply(readyActions);
     if (!message) return;
-    readyActions.forEach((entry) => entry.onSent?.());
-    sendReply(message);
+    void sendAfter(readyActions, message);
+  }
+
+  // Proceed stays clickable while beforeSend runs, and a second click would
+  // send the same reply again. The ref is set before the first await, so the
+  // second click sees it in time.
+  async function sendAfter(entries: ChainActionEntry[], message: string) {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+      entries.forEach((entry) => entry.onSent?.());
+      sendReply(message);
+    } finally {
+      sendingRef.current = false;
+    }
   }
 
   return (
@@ -371,6 +409,16 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Questions the user has moved past stay where their card was,
+            with the answers given, instead of folding away with the chain. */}
+        {askedRecords.length > 0 && (
+          <div className="mt-1 flex flex-col gap-2">
+            {askedRecords.map((record) => (
+              <AnsweredQuestions key={record.key} items={record.items} />
+            ))}
+          </div>
         )}
 
         {/* Lifted rows render off-screen: their cards must stay mounted so

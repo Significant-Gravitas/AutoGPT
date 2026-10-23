@@ -34,7 +34,7 @@ export function Avatar({
   className,
   children,
   ...props
-}: AvatarProps): JSX.Element {
+}: AvatarProps): React.JSX.Element {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [hasImage, setHasImage] = useState<boolean>(false);
 
@@ -59,8 +59,12 @@ export function Avatar({
 }
 
 export interface AvatarImageProps
-  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
+  extends Omit<
+    React.ImgHTMLAttributes<HTMLImageElement>,
+    "src" | "width" | "height"
+  > {
   as?: "NextImage" | "img";
+  src?: string;
   width?: number;
   height?: number;
   fill?: boolean;
@@ -94,7 +98,7 @@ export function AvatarImage({
   priority,
   unoptimized,
   ...rest
-}: AvatarImageProps): JSX.Element | null {
+}: AvatarImageProps): React.JSX.Element | null {
   const { setIsLoaded, setHasImage, hasImage } = useAvatarContext();
 
   const normalizedSrc = typeof src === "string" ? src.trim() : src;
@@ -171,6 +175,13 @@ export type AvatarFallbackProps = React.HTMLAttributes<HTMLSpanElement> & {
    * with a smaller radius can clip the marble to a rounded square.
    */
   square?: boolean;
+  /**
+   * Names the fallback for assistive tech once the image is gone for good.
+   * Without it an avatar whose image fails to load has no accessible name at
+   * all. Pass it alongside your own `children`: the default marble is already
+   * an `img`, and two of those on one avatar help nobody.
+   */
+  accessibleLabel?: string;
 };
 
 export function AvatarFallback({
@@ -178,8 +189,9 @@ export function AvatarFallback({
   children,
   size: _size, // accepted for API compatibility; currently not used
   square = false,
+  accessibleLabel,
   ...props
-}: AvatarFallbackProps): JSX.Element | null {
+}: AvatarFallbackProps): React.JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
@@ -206,8 +218,10 @@ export function AvatarFallback({
   return (
     <span
       // decorative gradient — hide from AT so the marble's unnamed role="img"
-      // svg doesn't surface as an axe violation
-      aria-hidden="true"
+      // svg doesn't surface as an axe violation, unless the caller named it
+      role={accessibleLabel ? "img" : undefined}
+      aria-label={accessibleLabel}
+      aria-hidden={accessibleLabel ? undefined : "true"}
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
         // svg stretched to fill so the marble always matches the avatar size

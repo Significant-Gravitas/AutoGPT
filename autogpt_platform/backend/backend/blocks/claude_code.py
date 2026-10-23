@@ -21,6 +21,12 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
@@ -321,6 +327,11 @@ class ClaudeCodeBlock(Block):
 
         sandbox = None
         sandbox_id = ""
+        egress_owner = EgressOwner(
+            kind="block",
+            id=execution_context.user_id or "anonymous",
+            user_id=execution_context.user_id,
+        )
 
         try:
             # Either reconnect to existing sandbox or create a new one
@@ -338,13 +349,17 @@ class ClaudeCodeBlock(Block):
                     raise PermissionError(
                         f"Sandbox {existing_sandbox_id} does not belong to this user"
                     )
-                sandbox = await BaseAsyncSandbox.connect(
-                    sandbox_id=existing_sandbox_id,
+                sandbox = await connect_sandbox(
+                    BaseAsyncSandbox,
+                    existing_sandbox_id,
+                    egress_owner,
                     api_key=e2b_api_key,
                 )
             else:
                 # Create new sandbox
-                sandbox = await BaseAsyncSandbox.create(
+                sandbox = await create_sandbox(
+                    BaseAsyncSandbox,
+                    egress_owner,
                     template=self.DEFAULT_TEMPLATE,
                     api_key=e2b_api_key,
                     timeout=timeout,
@@ -499,7 +514,7 @@ class ClaudeCodeBlock(Block):
 
         finally:
             if dispose_sandbox and sandbox:
-                await sandbox.kill()
+                await kill_sandbox(sandbox)
 
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""

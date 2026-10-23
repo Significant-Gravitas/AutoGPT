@@ -1,11 +1,18 @@
+import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { getPostV2ProcessReviewActionMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import type { ReviewRequest } from "@/app/api/__generated__/models/reviewRequest";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { PendingReviewsList } from "../PendingReviewsList";
+
+const { toastSpy } = vi.hoisted(() => ({ toastSpy: vi.fn() }));
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: toastSpy,
+  useToast: () => ({ toast: toastSpy, dismiss: vi.fn() }),
+}));
 
 function makeReview(
   overrides: Partial<PendingHumanReviewModel> = {},
@@ -19,6 +26,8 @@ function makeReview(
     graph_version: 1,
     payload: { to: "x@y.com" },
     instructions: "SendEmailBlock",
+    action: "Send Email",
+    agent_name: "Invoice follow-up",
     editable: true,
     status: "WAITING",
     created_at: new Date(),
@@ -107,10 +116,144 @@ test("a collapsed group offers no way to decide it", async () => {
 
   expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
 
-  await userEvent.click(
-    screen.getByRole("button", { name: /Review required for/ }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: /Send Email/ }));
 
   expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+});
+
+test("action-gate approvals offer no auto-approve toggle", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          node_exec_id: "copilot-node-gate-bash_exec:abc",
+          node_id: "copilot-node-gate-bash_exec",
+          editable: false,
+        }),
+        makeReview({ node_exec_id: "ne-2", node_id: "n-2" }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getAllByText("Auto-approve future executions of this node"),
+  ).toHaveLength(1);
+});
+
+test("auto-approve on an ordinary node is sent with the approval", async () => {
+  const captured = captureReviewAction();
+
+  render(
+    <PendingReviewsList
+      reviews={[makeReview({ node_exec_id: "ne-1", node_id: "n-1" })]}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("switch"));
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body?.reviews).toEqual([
+    expect.objectContaining({
+      node_exec_id: "ne-1",
+      approved: true,
+      auto_approve_future: true,
+    }),
+  ]);
+});
+
+test("a block's group is titled by its action and names its workflow", () => {
+  render(<PendingReviewsList reviews={[makeReview()]} />);
+
+  expect(screen.getByText("Send Email")).toBeDefined();
+  expect(screen.getByText("In workflow “Invoice follow-up”")).toBeDefined();
+  expect(screen.queryByText(/SendEmailBlock/)).toBeNull();
+});
+
+test("an AutoPilot action's card neither calls it a workflow nor offers an edit", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          node_exec_id: "copilot-node-gate-bash_exec:abc",
+          node_id: "copilot-node-gate-bash_exec",
+          action: undefined,
+          agent_name: undefined,
+          instructions: "Bash exec — lists files",
+          editable: false,
+        }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Otto is waiting for your approval before the action below.",
+    ),
+  ).toBeDefined();
+  expect(screen.queryByText(/edit it if needed/)).toBeNull();
+  expect(screen.queryByText(/Node #/)).toBeNull();
+});
+
+// The JSON editor keeps a half-typed draft on screen. Approving must not send
+// the last valid JSON in its place: with a trailing comma left behind,
+// "b@x.com" would still go out while the reviewer sees it deleted.
+test.each([
+  ["a draft that doesn't parse", '[\n  "a@x.com",\n]'],
+  ["an emptied draft", ""],
+])(
+  "approving %s is blocked instead of sending stale data",
+  async (_, draft) => {
+    const captured = captureReviewAction();
+    render(
+      <PendingReviewsList
+        reviews={[
+          makeReview({
+            payload: [
+              "a@x.com",
+              "b@x.com",
+            ] as unknown as PendingHumanReviewModel["payload"],
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Edit JSON data"), {
+      target: { value: draft },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Invalid JSON" }),
+      ),
+    );
+    expect(captured.body).toBeUndefined();
+  },
+);
+
+test("rejecting goes through while the JSON draft doesn't parse", async () => {
+  const captured = captureReviewAction();
+  const payload = ["a@x.com", "b@x.com"];
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          payload: payload as unknown as PendingHumanReviewModel["payload"],
+        }),
+      ]}
+    />,
+  );
+
+  fireEvent.change(screen.getByPlaceholderText("Edit JSON data"), {
+    target: { value: '[\n  "a@x.com",\n]' },
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body?.reviews[0]).toMatchObject({
+    approved: false,
+    reviewed_data: payload,
+  });
 });

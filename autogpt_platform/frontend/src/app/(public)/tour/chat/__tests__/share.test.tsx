@@ -13,6 +13,12 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+
 import TourChatPage from "../page";
 import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
@@ -29,6 +35,10 @@ describe("Tour share button", () => {
     });
     clipboardWrite.mockClear();
     clipboardWrite.mockImplementation(async () => {});
+    // DataFast waits for analytics consent on the tour like everywhere else.
+    configureCookiebot();
+    installCookiebot({ statistics: true });
+    window.history.pushState({}, "", "/tour/chat");
     window.datafast = datafast;
     datafast.mockClear();
     sessionStorage.clear();
@@ -44,6 +54,9 @@ describe("Tour share button", () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
+    removeCookiebot();
+    window.history.pushState({}, "", "/");
   });
 
   test("copies the tour URL with share attribution and flips to 'Link copied'", async () => {

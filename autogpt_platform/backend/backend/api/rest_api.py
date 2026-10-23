@@ -17,6 +17,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
@@ -28,6 +29,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -36,12 +38,16 @@ import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
+import backend.api.features.chat.at_reset as chat_at_reset
+import backend.api.features.chat.continuation as chat_continuation
+import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
 import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.feature_flags.routes as feature_flags_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
@@ -49,6 +55,7 @@ import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
@@ -63,10 +70,12 @@ import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
 import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skill_learning.routes as skill_learning_routes
 import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
+import backend.api.features.subscription_activation_routes as subscription_activation_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
@@ -94,7 +103,7 @@ from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.monitoring.instrumentation import instrument_fastapi
+from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.exceptions import (
@@ -104,14 +113,17 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
-from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.process import freeze_startup_heap
 from backend.util.service import UnhealthyServiceError
+from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.security import SecurityHeadersMiddleware
+from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
 from .utils.openapi import sort_openapi
 
@@ -124,18 +136,6 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
-
-
-@contextlib.contextmanager
-def launch_darkly_context():
-    if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_launchdarkly()
-        try:
-            yield
-        finally:
-            shutdown_launchdarkly()
-    else:
-        yield
 
 
 @contextlib.asynccontextmanager
@@ -200,8 +200,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
-    with launch_darkly_context():
-        yield
+    freeze_startup_heap()
+
+    yield
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
@@ -285,6 +286,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+# Marks the PostHog events of an admin acting as a user, and joins a request's
+# events to the browser's PostHog session.
+app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
@@ -295,15 +299,9 @@ add_auth_responses_to_openapi(app)
 # Sort OpenAPI schema to eliminate diff on refactors
 sort_openapi(app)
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="rest-api",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env
-    == backend.util.settings.AppEnvironment.LOCAL,
-)
+# Add Prometheus instrumentation. The metrics are served by AgentServer.run on
+# their own port, never on this public app.
+instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
@@ -313,7 +311,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.exception(
                     "%s %s failed. Investigate and resolve the underlying issue: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     exc,
                     exc_info=exc,
                 )
@@ -321,7 +319,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.warning(
                     "%s %s failed with %d: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     status_code,
                     exc,
                 )
@@ -349,7 +347,7 @@ async def validation_error_handler(
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
-        request.url.path,
+        redact_url(request.url.path),
         exc,
     )
     errors: list | str
@@ -397,6 +395,7 @@ app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
 )
 app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(subscription_activation_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
     tags=["v1", "api-keys"],
@@ -528,8 +527,18 @@ app.include_router(
     tags=["v2", "admin"],
     prefix="/api",
 )
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.access_block_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
 # Dev-only surface: the test-data seeder is never mounted outside a local
-# app_env, matching how docs_url/metrics are gated above. The runtime
+# app_env, matching how docs_url is gated above. The runtime
 # `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
 if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
     app.include_router(
@@ -552,7 +561,11 @@ app.include_router(
 app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+app.include_router(
+    skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
+)
 app.include_router(home_routes.router, prefix="/api")
+app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
@@ -568,7 +581,27 @@ app.include_router(
     prefix="/api/email",
 )
 app.include_router(
+    mailerlite_routes.router,
+    tags=["v1", "email"],
+    prefix="/api/email",
+)
+app.include_router(
     chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_feedback.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_at_reset.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_continuation.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )
@@ -662,6 +695,10 @@ async def health():
     return {"status": "healthy"}
 
 
+# After the last route: a route added below this wouldn't check its token first.
+check_token_before_body(app)
+
+
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
         cors_params = build_cors_params(
@@ -683,6 +720,9 @@ class AgentServer(backend.util.service.AppProcess):
 
             # Enable asyncio debug mode via environment variable
             os.environ["PYTHONASYNCIODEBUG"] = "1"
+
+        # This process's metrics, the mounted external API's included.
+        start_metrics_server(settings.config.agent_api_metrics_port)
 
         # Configure uvicorn with performance optimizations from Kludex FastAPI tips
         uvicorn.run(

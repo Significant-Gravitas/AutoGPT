@@ -43,7 +43,7 @@ export function useNeedsAttentionList() {
             auto_approve_future: false,
           },
         ],
-        [review.graph_exec_id],
+        [review],
       );
 
       // The mutation resolves rather than throws on a non-200, and a 200 can

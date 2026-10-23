@@ -14,6 +14,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@testing-library/react";
 
 import { AppSidebar } from "../AppSidebar";
+import { Flag } from "@/services/feature-flags/use-get-flag";
+
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", email: "alice@example.com", role: "user" },
+    isLoggedIn: true,
+    isUserLoading: false,
+  }),
+}));
 
 function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
   return { ...getGetHomeDashboardResponseMock200(), agents };
@@ -52,13 +61,19 @@ vi.mock("next/navigation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/navigation")>();
   return {
     ...actual,
-    useRouter: () => ({ push: routerPush, prefetch: vi.fn() }),
+    useRouter: () => ({
+      push: routerPush,
+      replace: vi.fn(),
+      prefetch: vi.fn(),
+    }),
     usePathname: () => "/marketplace",
     useSearchParams: () => new URLSearchParams(),
   };
 });
 
-const useGetFlagMock = vi.hoisted(() => vi.fn(() => false));
+const useGetFlagMock = vi.hoisted(() =>
+  vi.fn<(flag: Flag) => boolean>(() => false),
+);
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -67,7 +82,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: () => useGetFlagMock(),
+    useGetFlag: (flag: Flag) => useGetFlagMock(flag),
   };
 });
 
@@ -104,44 +119,52 @@ describe("AppSidebar", () => {
     expect(event.defaultPrevented).toBe(false);
 
     fireEvent.keyDown(document, { key: "O", ctrlKey: true, shiftKey: true });
-    expect(routerPush).toHaveBeenCalledWith("/copilot");
+    expect(routerPush).toHaveBeenCalledWith("/home");
   });
 
   it("renders the primary navigation links", () => {
     renderSidebar();
-    expect(screen.getByText("Agents")).toBeDefined();
+    expect(screen.queryByText("Workflows")).toBeNull();
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
-    expect(screen.getByText("Files")).toBeDefined();
-    // /home 404s without the experts flag, so it must not be offered here.
-    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
+    expect(screen.getByText("Home")).toBeDefined();
   });
 
-  it("shows Team instead of Agents when the hire-experts flag is on", () => {
+  it("shows Team instead of Workflows for every signed-in user", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const teamLink = screen.getByRole("link", { name: /team/i });
     expect(teamLink.getAttribute("href")).toBe("/team");
-    expect(screen.queryByText("Agents")).toBeNull();
+    expect(screen.queryByText("Workflows")).toBeNull();
   });
 
-  it("adds a Home link when the hire-experts flag is on", () => {
+  it("keeps a Home link for every signed-in user", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const homeLink = screen.getByRole("link", { name: /home/i });
     expect(homeLink.getAttribute("href")).toBe("/home");
   });
 
-  it("renders the New Task call-to-action pointing at /copilot", () => {
+  it("combines Home and New Task into one navigation entry", () => {
     renderSidebar();
-    const newTask = screen.getByRole("link", { name: /new task/i });
-    expect(newTask.getAttribute("href")).toBe("/copilot");
+    expect(screen.queryByRole("link", { name: /new task/i })).toBeNull();
+    const home = screen.getByRole("link", { name: /^home/i });
+    expect(home.getAttribute("href")).toBe("/home");
   });
 
   it("renders the workspace and recent chats group headers", () => {
+    useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     expect(screen.getByText("Workspace")).toBeDefined();
     expect(screen.getByText("Recent chats")).toBeDefined();
+  });
+
+  it("always shows Team and Files when the flag provider returns false", () => {
+    renderSidebar();
+    expect(screen.getByText("Workspace")).toBeDefined();
+    expect(screen.getByRole("link", { name: /team/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
   });
 
   it("marks the active link based on the current pathname", () => {

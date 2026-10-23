@@ -7,10 +7,9 @@ import {
   SEEDED_TEST_USERS,
   getAuthStatePath,
 } from "../credentials/accounts";
-import { buildCookieConsentStorageState } from "../credentials/storage-state";
 import { signupTestUser } from "./signup";
 import { getBrowser } from "./get-browser";
-import { skipOnboardingIfPresent } from "./onboarding";
+import { dismissTabIntrosViaAPI, skipOnboardingIfPresent } from "./onboarding";
 
 export interface TestUser {
   email: string;
@@ -40,19 +39,6 @@ export async function createTestUser(
     const browser = await getBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
-
-    // Auto-accept cookies in test environment to prevent banner from appearing
-    await page.addInitScript(() => {
-      window.localStorage.setItem(
-        "autogpt_cookie_consent",
-        JSON.stringify({
-          hasConsented: true,
-          timestamp: Date.now(),
-          analytics: true,
-          monitoring: true,
-        }),
-      );
-    });
 
     try {
       const testUser = await signupTestUser(
@@ -187,11 +173,14 @@ async function authStateHasLiveSession(
       await page.goto("/marketplace");
       await page.waitForLoadState("domcontentloaded");
       await skipOnboardingIfPresent(page, "/marketplace");
-      return await page
+      const isLive = await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10_000 })
         .then(() => true)
         .catch(() => false);
+      // A state stored before its user's intros were marked seen would meet one.
+      if (isLive) await dismissTabIntrosViaAPI(page);
+      return isLive;
     } finally {
       await page.close();
       await context.close();
@@ -275,11 +264,7 @@ async function attemptCreateAuthState(
 
   try {
     const { email, password } = SEEDED_TEST_ACCOUNTS[accountKey];
-    const origin = new URL(baseURL).origin;
-    const context = await browser.newContext({
-      baseURL,
-      storageState: buildCookieConsentStorageState(origin),
-    });
+    const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
     const loginPage = new LoginPage(page);
 
@@ -287,7 +272,7 @@ async function attemptCreateAuthState(
     await loginPage.login(email, password);
     await page.waitForURL(
       (url: URL) =>
-        /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+        /\/(onboarding|marketplace|copilot|home|library)/.test(url.pathname),
       { timeout: 20000 },
     );
     await skipOnboardingIfPresent(page, "/marketplace");

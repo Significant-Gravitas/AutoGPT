@@ -3,13 +3,22 @@ import logging
 from typing import Any, List
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, HTTPException, Query, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
-from backend.copilot.constants import (
-    is_copilot_synthetic_id,
-    parse_node_id_from_exec_id,
+from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
+from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
+from backend.copilot.gate.held import answered_cards as held_answered_cards
+from backend.copilot.gate.held import subject_keys as held_subject_keys
+from backend.copilot.gate.held import wake as wake_for_held_calls
+from backend.copilot.gate.workflow import (
+    close_step_cards,
+    finish_step_cards,
+    is_step_card,
+    step_of,
+    step_rule_keys,
 )
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -19,6 +28,7 @@ from backend.data.execution import (
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
     create_auto_approval_record,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
@@ -43,18 +53,17 @@ router = APIRouter(
 
 async def _resolve_node_ids(
     node_exec_ids: list[str],
-    graph_exec_id: str,
-    is_copilot: bool,
+    graph_exec_id: str | None,
 ) -> dict[str, str]:
     """Resolve node_exec_id -> node_id for auto-approval records.
 
-    CoPilot synthetic IDs encode node_id in the format "{node_id}:{random}".
-    Graph executions look up node_id from NodeExecution records.
+    A chat review's id encodes its node id as "{node_id}:{random}"; graph
+    executions look up node_id from NodeExecution records.
     """
     if not node_exec_ids:
         return {}
 
-    if is_copilot:
+    if graph_exec_id is None:
         return {neid: parse_node_id_from_exec_id(neid) for neid in node_exec_ids}
 
     node_execs = await get_node_executions(
@@ -146,22 +155,63 @@ async def list_pending_reviews_for_execution(
         Reviews with invalid status are excluded with warning logs.
     """
 
-    # Verify user owns the graph execution before returning reviews
-    # (CoPilot synthetic IDs don't have graph execution records)
-    if not is_copilot_synthetic_id(graph_exec_id):
-        graph_exec = await get_graph_execution_meta(
-            user_id=user_id, execution_id=graph_exec_id
+    # Clients built before chat reviews had their own route ask for a chat
+    # under its old synthetic id.
+    if session_id := legacy_chat_session_id(graph_exec_id):
+        return await get_pending_reviews_for_chat_session(session_id, user_id)
+
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph execution #{graph_exec_id} not found",
         )
-        if not graph_exec:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Graph execution #{graph_exec_id} not found",
-            )
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
 
 
-@router.post("/action", response_model=ReviewResponse)
+@router.get(
+    "/session/{chat_session_id}",
+    summary="Get Pending Reviews for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+    responses={
+        200: {"description": "List of pending reviews for the chat session"},
+        500: {"description": "Server error", "content": {"application/json": {}}},
+    },
+)
+async def list_pending_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> List[PendingHumanReviewModel]:
+    """Get the reviews an AutoPilot chat is waiting on, oldest first.
+
+    Only the caller's own reviews are returned, so another user's chat session
+    id yields an empty list.
+    """
+    return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
+
+
+@router.get(
+    "/session/{chat_session_id}/answered",
+    summary="Get Answered Reviews Waiting to Run for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+)
+async def list_answered_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> List[PendingHumanReviewModel]:
+    """The chat's answered cards whose calls have not run yet, oldest first, so
+    its box still shows them as answered, with Close and continue, after a reload."""
+    return await held_answered_cards(user_id, chat_session_id)
+
+
+@router.post(
+    "/action",
+    response_model=ReviewResponse,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def process_review_action(
     request: ReviewRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -190,19 +240,30 @@ async def process_review_action(
             detail=f"Review(s) not found: {', '.join(missing_ids)}",
         )
 
-    # Validate all reviews belong to the same execution
-    graph_exec_ids = {review.graph_exec_id for review in reviews_map.values()}
-    if len(graph_exec_ids) > 1:
+    # Validate all reviews belong to the same execution or chat
+    scopes = {
+        (review.graph_exec_id, review.session_id) for review in reviews_map.values()
+    }
+    if len(scopes) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="All reviews in a single request must belong to the same execution.",
         )
 
-    graph_exec_id = next(iter(graph_exec_ids))
-    is_copilot = is_copilot_synthetic_id(graph_exec_id)
+    graph_exec_id, chat_session_id = next(iter(scopes))
 
-    # Validate execution status for graph executions (skip for CoPilot synthetic IDs)
-    if not is_copilot:
+    # A run still running would finish its pass with nothing waiting, the step
+    # unrun; a queued or ended run is safe to answer.
+    for review in reviews_map.values():
+        step = step_of(review)
+        if step is not None and await _running(user_id, step.graph_exec_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This workflow is still running other steps. Answer once it pauses.",
+            )
+
+    # Validate execution status for graph executions; a chat has none
+    if graph_exec_id is not None:
         graph_exec_meta = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
@@ -238,6 +299,15 @@ async def process_review_action(
         )
         auto_approve_requests[review.node_exec_id] = review.auto_approve_future
 
+    # Read before the answer lands: a turn it wakes claims the held calls.
+    ruled = [r.node_exec_id for r in request.reviews if r.chat_rule]
+    chat_rule_keys = (
+        await held_subject_keys(chat_session_id, ruled)
+        | step_rule_keys(reviews_map[node_exec_id] for node_exec_id in ruled)
+        if chat_session_id is not None
+        else {}
+    )
+
     # Process all reviews
     updated_reviews = await process_all_reviews_for_execution(
         user_id=user_id,
@@ -257,11 +327,12 @@ async def process_review_action(
         try:
             await create_auto_approval_record(
                 user_id=user_id,
+                node_id=node_id,
+                payload=review_result.payload,
                 graph_exec_id=review_result.graph_exec_id,
                 graph_id=review_result.graph_id,
                 graph_version=review_result.graph_version,
-                node_id=node_id,
-                payload=review_result.payload,
+                chat_session_id=review_result.session_id,
             )
             return (node_id, True)
         except Exception as e:
@@ -280,7 +351,7 @@ async def process_review_action(
     ]
 
     node_id_map = await _resolve_node_ids(
-        node_exec_ids_needing_auto_approval, graph_exec_id, is_copilot
+        node_exec_ids_needing_auto_approval, graph_exec_id
     )
 
     # Deduplicate by node_id — one auto-approval per node
@@ -322,44 +393,61 @@ async def process_review_action(
         if review.status == ReviewStatus.REJECTED
     )
 
-    # Resume graph execution only for real graph executions (not CoPilot)
-    # CoPilot sessions are resumed by the LLM retrying run_block with review_id
-    if not is_copilot and updated_reviews:
-        still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
+    if chat_session_id is not None and chat_rule_keys:
+        await set_chat_rules(
+            chat_session_id,
+            user_id,
+            updated_reviews,
+            {review.node_exec_id: review.chat_rule for review in request.reviews},
+            chat_rule_keys,
+            {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
+        )
 
-        if not still_has_pending:
+    # A held call finishes on its own: an answer starts the chat's next turn, or
+    # from the chat's own queue, its last answer does.
+    awaiting_other_cards = False
+    if chat_session_id is not None and updated_reviews:
+        # A workflow step's card answers the step's own row; its run resumes
+        # below, so the card never wakes the chat.
+        finished = await finish_step_cards(user_id, updated_reviews.values())
+        for run in {step.graph_exec_id: step for step in finished.answered}.values():
+            meta = await get_graph_execution_meta(
+                user_id=user_id, execution_id=run.graph_exec_id
+            )
+            if (
+                meta is not None
+                and meta.status in (ExecutionStatus.REVIEW, ExecutionStatus.INCOMPLETE)
+                and not await has_pending_reviews_for_graph_exec(run.graph_exec_id)
+            ):
+                await resume_reviewed_execution(
+                    user_id, run.graph_exec_id, run.graph_id, run.graph_version
+                )
+        awaiting_other_cards = not await wake_for_held_calls(
+            user_id,
+            chat_session_id,
+            [r for r in updated_reviews.values() if not is_step_card(r)],
+            until_last=request.wait_for_other_cards,
+        )
+        if finished.failed:
+            # Each card is kept, so answering it again finishes the job.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The answer could not reach its workflow step. Try again.",
+            )
+
+    # Resume graph execution only for real graph executions; a chat is resumed
+    # by the LLM calling resume_capability with the review_id
+    if graph_exec_id is not None and updated_reviews:
+        await close_step_cards(user_id, updated_reviews)
+        if not await has_pending_reviews_for_graph_exec(graph_exec_id):
             first_review = next(iter(updated_reviews.values()))
-
-            try:
-                user = await get_user_by_id(user_id)
-                settings = await get_graph_settings(
-                    user_id=user_id,
-                    graph_id=first_review.graph_id,
-                    graph_version=first_review.graph_version,
-                )
-
-                user_timezone = (
-                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-                )
-
-                workspace = await get_or_create_workspace(user_id)
-
-                execution_context = ExecutionContext(
-                    human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
-                    sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
-                    user_timezone=user_timezone,
-                    workspace_id=workspace.id,
-                )
-
-                await add_graph_execution(
-                    graph_id=first_review.graph_id,
-                    user_id=user_id,
-                    graph_exec_id=graph_exec_id,
-                    execution_context=execution_context,
-                )
-                logger.info(f"Resumed execution {graph_exec_id}")
-            except Exception as e:
-                logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
+            assert first_review.graph_id and first_review.graph_version is not None
+            await resume_reviewed_execution(
+                user_id,
+                graph_exec_id,
+                first_review.graph_id,
+                first_review.graph_version,
+            )
 
     # Build error message if auto-approvals failed
     error_message = None
@@ -374,4 +462,56 @@ async def process_review_action(
         rejected_count=rejected_count,
         failed_count=auto_approval_failed_count,
         error=error_message,
+        awaiting_other_cards=awaiting_other_cards,
     )
+
+
+@router.post(
+    "/session/{chat_session_id}/continue",
+    summary="Continue Chat With Answered Reviews",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
+async def continue_with_answered_reviews(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> None:
+    """Start the chat's turn with the cards answered so far; the rest stay open
+    and the turn is told how many still wait."""
+    await wake_for_held_calls(user_id, chat_session_id)
+
+
+async def _running(user_id: str, graph_exec_id: str) -> bool:
+    meta = await get_graph_execution_meta(user_id=user_id, execution_id=graph_exec_id)
+    return meta is not None and meta.status == ExecutionStatus.RUNNING
+
+
+async def resume_reviewed_execution(
+    user_id: str, graph_exec_id: str, graph_id: str, graph_version: int
+) -> None:
+    """Re-queue a run whose reviews are all answered; its paused steps re-run
+    and find their answers."""
+    try:
+        user = await get_user_by_id(user_id)
+        settings = await get_graph_settings(
+            user_id=user_id, graph_id=graph_id, graph_version=graph_version
+        )
+        user_timezone = (
+            user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+        )
+        workspace = await get_or_create_workspace(user_id)
+        execution_context = ExecutionContext(
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            user_timezone=user_timezone,
+            workspace_id=workspace.id,
+        )
+        await add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            execution_context=execution_context,
+        )
+        logger.info(f"Resumed execution {graph_exec_id}")
+    except Exception as e:
+        logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")

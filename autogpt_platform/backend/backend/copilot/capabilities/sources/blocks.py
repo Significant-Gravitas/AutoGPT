@@ -19,9 +19,11 @@ from backend.copilot.capabilities.models import (
     Connection,
     Implementation,
     clip_purpose,
+    normalize_text,
 )
 from backend.copilot.capabilities.text import tokenize
 from backend.data.model import CredentialsFieldInfo
+from backend.integrations.service_identity import service_for_provider
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +69,22 @@ def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
         id=f"block:{block.id}",
         kind="block",
         klass=block.capability_kind,
+        service=(
+            service_for_provider(provider).service
+            if provider and block.capability_kind == "service"
+            else None
+        ),
         name=block.name,
         purpose=clip_purpose(block.optimized_description or block.description),
+        # The optimized description is curated for retrieval (it is loaded from
+        # the database at runtime), so the index sees it as well as the source.
+        description=normalize_text(
+            " ".join(
+                text
+                for text in (block.optimized_description, block.description)
+                if text
+            )
+        ),
         tags=tags,
         context="graph" if graph_only else "both",
         implementations=[Implementation(kind="block", ref=block.id, name=block.name)],
@@ -79,7 +95,7 @@ def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
             if field not in credential_infos
         ],
         schema_ref=f"block:{block.id}",
-        sensitive=block.is_sensitive_action,
+        sensitive=block.is_irreversible_action,
     )
 
 

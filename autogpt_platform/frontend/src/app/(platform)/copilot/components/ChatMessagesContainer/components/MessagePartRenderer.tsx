@@ -1,8 +1,9 @@
-import { MessageResponse } from "@/components/ai-elements/message";
+import { parseSpecialMarkers } from "../../../helpers/messageMarkers";
+import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMentionMarkdown";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { useMemo } from "react";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
@@ -27,6 +28,8 @@ import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
+import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
+import { TURN_PAUSED_PART_TYPE } from "../../../turnPause";
 import {
   parseCompactionOutput,
   type CompactionPhase,
@@ -36,7 +39,6 @@ import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
   extractWorkspaceArtifacts,
   isRetiredCompactionRow,
-  parseSpecialMarkers,
   resolveWorkspaceUrls,
 } from "../helpers";
 import { ReasoningCollapse } from "./ReasoningCollapse";
@@ -51,7 +53,7 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 
   if (!src) return null;
 
-  if (alt?.startsWith("video:")) {
+  if (alt?.startsWith("video:") && typeof src === "string") {
     return (
       <span className="my-2 inline-block">
         <video
@@ -84,29 +86,33 @@ const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 function TextWithArtifactCards({
   text,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
 }: {
   text: string;
   fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
   readOnly?: boolean;
 }) {
-  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
-  const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
-  const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
+  // A settled part's text never changes, so this only re-runs for the part
+  // that is streaming.
+  const artifacts = useMemo(
+    () => extractWorkspaceArtifacts(text, fileUrlBuilder),
+    [text, fileUrlBuilder],
+  );
+  const resolved = useMemo(
+    () => resolveWorkspaceUrls(text, fileUrlBuilder),
+    [text, fileUrlBuilder],
+  );
 
   // Text reads first, with the artifact cards trailing.
   return (
     <>
-      <MessageResponse
+      <CredentialMentionMarkdown
         components={STREAMDOWN_COMPONENTS}
         className="[&_li]:py-0"
       >
         {resolved}
-      </MessageResponse>
-      {isArtifactsEnabled && artifacts.length > 0 && (
+      </CredentialMentionMarkdown>
+      {artifacts.length > 0 && (
         <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {artifacts.map((artifact) => (
             <ArtifactCard
@@ -131,9 +137,6 @@ interface Props {
    *  the public share viewer passes a token-aware builder so anonymous
    *  readers can download via the public allowlist-gated route. */
   fileUrlBuilder?: (fileId: string) => string;
-  /** Force inline artifact-card rendering for workspace:// URIs in
-   *  prose, regardless of the ``ARTIFACTS`` LD flag. */
-  forceArtifacts?: boolean;
   /** Read-only mode — forwarded so embedded ``ArtifactCard``s
    *  download on click instead of opening a panel. */
   readOnly?: boolean;
@@ -161,7 +164,6 @@ export function MessagePartRenderer({
   partIndex,
   onRetry,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
   compactionPhase,
   liveCompactionCallId,
@@ -206,7 +208,7 @@ export function MessagePartRenderer({
           <ErrorCard
             key={key}
             responseError={{ message: markerText }}
-            context="execution"
+            context="the response"
             onRetry={markerType === "retryable_error" ? onRetry : undefined}
           />
         );
@@ -228,8 +230,20 @@ export function MessagePartRenderer({
           key={key}
           text={cleanText}
           fileUrlBuilder={fileUrlBuilder}
-          forceArtifacts={forceArtifacts}
           readOnly={readOnly}
+        />
+      );
+    }
+    case TURN_PAUSED_PART_TYPE: {
+      // A pause built from its stored row is keyed by that row; one still
+      // streaming in has no row yet, so its key is this render's only.
+      const rowKey = "id" in part ? part.id : undefined;
+      return (
+        <TurnPausedCard
+          key={key}
+          data={"data" in part ? part.data : undefined}
+          pauseKey={rowKey || key}
+          isStoredRow={Boolean(rowKey)}
         />
       );
     }

@@ -24,13 +24,21 @@ import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
+from prisma.models import AuthUser as PrismaAuthUser
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
+from pytest_mock import MockerFixture
 
 from backend.api.rest_api import app
+from backend.data.auth.oauth import (
+    InvalidGrantError,
+    create_refresh_token,
+    refresh_tokens,
+)
+from backend.data.user import is_user_banned
 
 keysmith = APIKeySmith()
 
@@ -923,6 +931,92 @@ async def test_refresh_token_creates_new_tokens(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_banned_owners_tokens_neither_refresh_nor_introspect_active(
+    client: httpx.AsyncClient,
+    test_user: str,
+    test_oauth_app: dict,
+    real_ban_lookup,
+):
+    """The external API refuses them anyway; the app hears it here too, and
+    the refresh token survives for when the ban is lifted."""
+    from urllib.parse import parse_qs, urlparse
+
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "banned_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    tokens = (
+        await client.post(
+            "/api/oauth/token",
+            json={
+                "grant_type": "authorization_code",
+                "code": auth_code,
+                "redirect_uri": test_oauth_app["redirect_uri"],
+                "client_id": test_oauth_app["client_id"],
+                "client_secret": test_oauth_app["client_secret"],
+                "code_verifier": verifier,
+            },
+        )
+    ).json()
+    app_credentials = {
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": test_oauth_app["client_secret"],
+    }
+
+    await PrismaAuthUser.prisma().create(
+        data={
+            "id": test_user,
+            "name": "Banned",
+            "email": f"banned-{test_user}@example.com",
+            "banned": True,
+        }
+    )
+    is_user_banned.cache_delete(test_user)
+    try:
+        refresh = await client.post(
+            "/api/oauth/token",
+            json={
+                "grant_type": "refresh_token",
+                "refresh_token": tokens["refresh_token"],
+                **app_credentials,
+            },
+        )
+        introspected = [
+            (
+                await client.post(
+                    "/api/oauth/introspect",
+                    json={"token": tokens[kind], **app_credentials},
+                )
+            ).json()
+            for kind in ("access_token", "refresh_token")
+        ]
+    finally:
+        await PrismaAuthUser.prisma().delete(where={"id": test_user})
+        is_user_banned.cache_delete(test_user)
+
+    assert refresh.status_code == 400
+    assert [result["active"] for result in introspected] == [False, False]
+    refresh_hash = hashlib.sha256(tokens["refresh_token"].encode()).hexdigest()
+    stored = await PrismaOAuthRefreshToken.prisma().find_unique(
+        where={"token": refresh_hash}
+    )
+    assert stored is not None and stored.revokedAt is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_token_refresh_invalid_token(
     client: httpx.AsyncClient,
     test_oauth_app: dict,
@@ -1089,6 +1183,79 @@ async def test_token_refresh_wrong_application(
 
     assert response.status_code == 400
     assert "does not belong" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_refresh_token_concurrent_refresh_succeeds_once(
+    mocker: MockerFixture,
+    test_user: str,
+    test_oauth_app: dict,
+):
+    """Two refreshes of one token that both pass the checks before either
+    revokes it must not both mint a token pair (#15288)."""
+    refresh_token = await create_refresh_token(
+        test_oauth_app["id"], test_user, [APIKeyPermission.EXECUTE_GRAPH]
+    )
+    _hold_refreshes_after_their_checks(mocker, parties=2)
+
+    results = await asyncio.gather(
+        *(
+            refresh_tokens(refresh_token.token.get_secret_value(), test_oauth_app["id"])
+            for _ in range(2)
+        ),
+        return_exceptions=True,
+    )
+
+    minted = [r for r in results if isinstance(r, tuple)]
+    refused = [r for r in results if isinstance(r, InvalidGrantError)]
+    assert (len(minted), len(refused)) == (1, 1), results
+    assert "revoked" in str(refused[0])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_token_endpoint_concurrent_refresh_issues_one_token_pair(
+    client: httpx.AsyncClient,
+    mocker: MockerFixture,
+    test_user: str,
+    test_oauth_app: dict,
+):
+    """Concurrent refresh grants with one token: one gets new tokens, the rest
+    get invalid_grant, and the database holds a single live pair."""
+    refresh_token = await create_refresh_token(
+        test_oauth_app["id"], test_user, [APIKeyPermission.EXECUTE_GRAPH]
+    )
+    _hold_refreshes_after_their_checks(mocker, parties=3)
+    grant = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token.token.get_secret_value(),
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": test_oauth_app["client_secret"],
+    }
+
+    responses = await asyncio.gather(
+        *(client.post("/api/oauth/token", json=grant) for _ in range(3))
+    )
+
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [200, 400, 400], [r.text for r in responses]
+    refusals = [r.json()["detail"] for r in responses if r.status_code == 400]
+    assert all("revoked" in detail for detail in refusals), refusals
+    live = {"applicationId": test_oauth_app["id"], "revokedAt": None}
+    assert await PrismaOAuthRefreshToken.prisma().count(where=live) == 1
+    assert await PrismaOAuthAccessToken.prisma().count(where=live) == 1
+
+
+def _hold_refreshes_after_their_checks(mocker: MockerFixture, parties: int) -> None:
+    """Hold each refresh at its ban check, the last check before it revokes the
+    old token, until `parties` refreshes have reached it. All of them then
+    claim the token at once, which is the race in #15288."""
+    checks_passed = asyncio.Barrier(parties)
+
+    async def not_banned(user_id: str) -> bool:
+        await asyncio.wait_for(checks_passed.wait(), timeout=10)
+        return False
+
+    mocker.patch("backend.data.auth.oauth.is_user_banned", new=not_banned)
 
 
 # ============================================================================

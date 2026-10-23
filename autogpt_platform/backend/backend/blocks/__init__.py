@@ -26,11 +26,18 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
     current_dir = Path(__file__).parent
     modules = []
     for f in current_dir.rglob("*.py"):
-        if not f.is_file() or f.name == "__init__.py" or f.name.startswith("test_"):
+        if (
+            not f.is_file()
+            or f.name in {"__init__.py", "conftest.py"}
+            or f.name.startswith("test_")
+            or f.name.endswith("_test.py")
+        ):
             continue
 
         # Skip examples directory if not enabled
         relative_path = f.relative_to(current_dir)
+        if {"test", "tests"}.intersection(relative_path.parts[:-1]):
+            continue
         if not load_examples and relative_path.parts[0] == "examples":
             continue
 
@@ -108,6 +115,12 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
     for block_id, block_cls in available_blocks.items():
         if is_block_auth_configured(block_cls):
             filtered_blocks[block_id] = block_cls
+
+    # Price SDK blocks from their provider's `with_base_cost` here, so every
+    # process that loads blocks bills them, not only the REST API process.
+    from backend.sdk.cost_integration import sync_all_provider_costs
+
+    sync_all_provider_costs(filtered_blocks.values())
 
     return filtered_blocks
 

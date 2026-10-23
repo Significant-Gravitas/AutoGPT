@@ -26,6 +26,7 @@ import type { JobTriggerResponse } from "@/app/api/__generated__/models/jobTrigg
 import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
 import type { RatificationResult } from "@/app/api/__generated__/models/ratificationResult";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { getDreamResult } from "./helpers";
 import type { AnyJobStatus } from "./memoryJobStatus";
 
 // The state enum is identical across all three concrete envelopes
@@ -80,6 +81,11 @@ export function useMemoryVisualizer(expertID?: string) {
   const [activeRebuildJobId, setActiveRebuildJobId] = useState<
     string | undefined
   >();
+  // The last dream job that finished. Ending a job clears its active id,
+  // which also drops its polled status, so the result panel reads this.
+  const [finishedDreamStatus, setFinishedDreamStatus] = useState<
+    AnyJobStatus | undefined
+  >();
 
   const baseGraphParams = {
     include_episodes: includeEpisodes,
@@ -133,6 +139,7 @@ export function useMemoryVisualizer(expertID?: string) {
     mutation: {
       onSuccess: (res) => {
         const result = res.data as JobTriggerResponse;
+        setFinishedDreamStatus(undefined);
         setActiveDreamJobId(result.job_id);
       },
       onError: (error: Error) => {
@@ -241,10 +248,14 @@ export function useMemoryVisualizer(expertID?: string) {
     activeDreamJobId,
     dreamStatus.data?.data as AnyJobStatus | undefined,
     dreamStatus.error,
-    () => {
+    (finishedStatus) => {
+      setFinishedDreamStatus(finishedStatus);
       setActiveDreamJobId(undefined);
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetDreamPassStatusQueryKey(USER_ID, activeDreamJobId),
+        queryKey: getGetV2GetDreamPassStatusQueryKey(
+          USER_ID,
+          activeDreamJobId ?? "",
+        ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
     },
@@ -261,7 +272,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetNightlyBatchStatusQueryKey(
           USER_ID,
-          activeNightlyJobId,
+          activeNightlyJobId ?? "",
         ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
@@ -279,7 +290,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetCommunityRebuildStatusQueryKey(
           USER_ID,
-          activeRebuildJobId,
+          activeRebuildJobId ?? "",
         ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
@@ -307,6 +318,10 @@ export function useMemoryVisualizer(expertID?: string) {
   function triggerNightly() {
     if (readOnly) return;
     nightly.mutate({ userId: USER_ID });
+  }
+
+  function dismissDreamResult() {
+    setFinishedDreamStatus(undefined);
   }
 
   // --- Scope tripwire -----------------------------------------------------
@@ -376,6 +391,8 @@ export function useMemoryVisualizer(expertID?: string) {
     triggerDream,
     triggerRatification,
     triggerNightly,
+    dreamResult: getDreamResult(finishedDreamStatus),
+    dismissDreamResult,
     force,
     setForce,
     includeEpisodes,
@@ -405,7 +422,7 @@ function useTerminalEffect(
   activeJobId: string | undefined,
   status: AnyJobStatus | undefined,
   queryError: unknown,
-  onTerminal: () => void,
+  onTerminal: (finishedStatus?: AnyJobStatus) => void,
   toast: ReturnType<typeof useToast>["toast"],
 ) {
   // Reacts to ``status`` transitioning to a terminal state OR the
@@ -447,7 +464,7 @@ function useTerminalEffect(
         variant: "destructive",
       });
     }
-    onTerminal();
+    onTerminal(status);
     // ``onTerminal`` and ``toast`` are intentionally omitted — they
     // change on every render and would cause infinite re-runs. The
     // job_id + state transition + query error are what we want to

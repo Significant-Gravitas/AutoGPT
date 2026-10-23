@@ -70,3 +70,16 @@ def test_guard_covers_every_secret_that_env_default_used_to_ship():
     for digests in secrets_guard._RETIRED_DIGESTS.values():
         assert digests, "a name with no digests silently disables the guard"
         assert all(len(digest) == 64 for digest in digests)
+
+
+def test_encryption_key_errors_point_at_the_upgrade_path(monkeypatch):
+    published = "pretend-this-was-shipped-in-env-default"
+    monkeypatch.setitem(
+        secrets_guard._RETIRED_DIGESTS,
+        "ENCRYPTION_KEY",
+        {hashlib.sha256(published.encode()).hexdigest()},
+    )
+
+    for encryption_key in ("", published):
+        with pytest.raises(ValueError, match="Upgrading: secrets are generated"):
+            check_secrets(_settings(encryption_key))

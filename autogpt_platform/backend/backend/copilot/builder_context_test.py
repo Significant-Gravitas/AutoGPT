@@ -387,6 +387,36 @@ async def test_system_prompt_suffix_for_building_session():
 
 
 @pytest.mark.asyncio
+async def test_system_prompt_suffix_force_bypasses_the_history_read():
+    """``force`` serves the caller that already knows the answer — the SDK
+    building-mode restart, which runs in the same turn as the enter call and
+    so cannot find it in persisted history yet."""
+    session = _session(None)
+    assert session.messages == []
+
+    assert await build_builder_system_prompt_suffix(session) == ""
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        return_value="# Guide body",
+    ):
+        forced = await build_builder_system_prompt_suffix(session, force=True)
+
+    assert "<building_guide>" in forced
+    assert "# Guide body" in forced
+    assert "<builder_session>" not in forced
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_force_still_empty_when_guide_load_fails():
+    session = _session(None)
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        side_effect=OSError("missing"),
+    ):
+        assert await build_builder_system_prompt_suffix(session, force=True) == ""
+
+
+@pytest.mark.asyncio
 async def test_system_prompt_suffix_empty_without_prior_guide_read():
     session = _session(None)
     session.messages = [

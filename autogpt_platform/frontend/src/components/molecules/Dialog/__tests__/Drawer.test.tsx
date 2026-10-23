@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { Dialog } from "../Dialog";
 
@@ -62,5 +62,39 @@ describe("Dialog rendered as a drawer", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     expect(set).toHaveBeenCalledWith(false);
+  });
+
+  // A DropdownMenu that opened this drawer hands focus back to its trigger as
+  // it closes; Radix vetoes that focus-outside, and the drawer must honour it.
+  test("stays open when focus moves to an element outside it", () => {
+    const set = vi.fn();
+    render(<button type="button">Menu trigger</button>);
+    renderDrawer({ set });
+
+    act(() => screen.getByText("Menu trigger").focus());
+
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("closes on a pointer-down outside it", async () => {
+    const set = vi.fn();
+    renderDrawer({ set });
+    // Radix attaches its outside-pointer listener one tick after mount.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    fireEvent.pointerDown(document.body);
+
+    expect(set).toHaveBeenCalledWith(false);
+  });
+
+  test("associates an sr-only Description with constant text Dialog", () => {
+    renderDrawer({ set: vi.fn() });
+
+    const dialog = screen.getByRole("dialog");
+    const descriptionId = dialog.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    const description = document.getElementById(descriptionId ?? "");
+    expect(description?.textContent).toBe("Dialog");
+    expect(description?.classList.contains("sr-only")).toBe(true);
   });
 });

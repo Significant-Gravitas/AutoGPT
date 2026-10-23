@@ -3,6 +3,7 @@
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
@@ -10,6 +11,9 @@ import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 import { SwapText } from "./SwapText";
+import { HeldTag } from "./HeldCallRowParts";
+import { heldShowsOwnCall } from "./heldRow";
+import { hidesOutputFromReplay } from "./replayPrivacy";
 import { getCatalogLabel } from "./toolCatalog";
 import { ToolResult } from "./ToolResult";
 import { ToolStatusBadge } from "./ToolStatusBadge";
@@ -123,7 +127,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
-      ((row.output !== undefined && row.output !== "") || liveSubSession);
+      ((row.output !== undefined && row.output !== "") ||
+        liveSubSession ||
+        !!row.held?.card ||
+        heldShowsOwnCall(row));
   const showContent = liveReasoning || (open && hasContent);
   const rowText = (
     <SwapText
@@ -135,10 +142,19 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       shimmer={row.state === "running" || stillWorking}
       className={cn(
         "max-w-full text-sm transition-colors duration-300",
-        row.state === "error" ? "text-red-500" : "text-zinc-600",
+        row.state === "error"
+          ? "text-red-500"
+          : row.held &&
+              row.held.state !== "approved" &&
+              row.held.state !== "waiting"
+            ? "text-zinc-400"
+            : "text-zinc-600",
       )}
     />
   );
+  const heldTag = row.held ? (
+    <HeldTag state={row.held.state} read={row.held.read} />
+  ) : null;
 
   return (
     <div className="flex items-stretch gap-2.5">
@@ -167,9 +183,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
             type="button"
             onClick={() => setOpen(!open)}
             aria-expanded={showContent}
-            className="group/row flex h-7 items-center gap-1.5"
+            className="group/row flex h-7 min-w-0 items-center gap-1.5"
           >
             {rowText}
+            {heldTag}
             {!liveReasoning && (
               <Icon
                 icon={ArrowDown01Icon}
@@ -182,7 +199,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
             )}
           </button>
         ) : (
-          <div className="flex h-7 items-center gap-1.5">{rowText}</div>
+          <div className="flex h-7 items-center gap-1.5">
+            {rowText}
+            {heldTag}
+          </div>
         )}
         {row.detail && (
           <p className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none">
@@ -196,7 +216,11 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
             className="min-h-0 overflow-hidden"
           >
             <div
-              className={cn("px-px pb-px pt-1.5", showContent && PANEL_REVEAL)}
+              className={cn(
+                "px-px pb-px pt-1.5",
+                showContent && PANEL_REVEAL,
+                hidesOutputFromReplay(row) && HIDDEN_FROM_REPLAY,
+              )}
             >
               {isReasoning ? (
                 <ReasoningStream

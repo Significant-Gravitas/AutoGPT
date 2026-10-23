@@ -187,6 +187,9 @@ async def test_channel_message_carries_team_as_server_id(app_id):
     assert ctx is not None
     assert ctx.channel_type == "channel"
     assert ctx.server_id == "19:team@thread.tacv2"
+    # post_to_chat_platform can't target Teams channels, so none is offered.
+    assert ctx.post_channel_id is None
+    assert ctx.public_channel_id is None
 
 
 @pytest.mark.asyncio
@@ -460,6 +463,27 @@ async def test_choice_click_resolves_posts_confirmation_and_dispatches(app_id):
     assert dispatched_adapter is adapter
     assert ctx.text == "EU"
     assert ctx.platform == "teams"
+
+
+@pytest.mark.asyncio
+async def test_a_click_without_its_team_is_told_nothing_ran(app_id):
+    api = MagicMock()
+    api.answer_card = AsyncMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(
+        text="",
+        conversation={"id": "19:room@thread.tacv2", "conversationType": "channel"},
+        value={"qans_token": "abcdef012345", "qans_index": 0, "qans_kind": "appr"},
+    )
+
+    await adapter._dispatch_activity(activity)
+
+    posted = adapter._client.send_activity.await_args.args[2]["text"]
+    assert "nothing ran" in posted
+    api.answer_card.assert_not_awaited()
+    adapter._on_message_callback.assert_not_awaited()
 
 
 @pytest.mark.asyncio

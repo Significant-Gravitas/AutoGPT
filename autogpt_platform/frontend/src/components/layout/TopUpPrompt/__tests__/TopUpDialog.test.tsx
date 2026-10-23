@@ -15,7 +15,9 @@ describe("TopUpDialog", () => {
     render(<TopUpDialog isOpen onClose={() => {}} />);
 
     expect(screen.getByText("You're out of automation credits")).toBeDefined();
-    expect(screen.getByText(/Top up to keep your agents/)).toBeDefined();
+    expect(
+      screen.getByText(/Top up to keep your workflows and experts running/),
+    ).toBeDefined();
     expect(screen.queryByText("Add automation credits")).toBeNull();
   });
 
@@ -24,7 +26,7 @@ describe("TopUpDialog", () => {
 
     expect(screen.getByText("Add automation credits")).toBeDefined();
     expect(
-      screen.getByText(/Credits are used to run your agents/),
+      screen.getByText(/Credits are used to run your workflows and experts/),
     ).toBeDefined();
     expect(screen.queryByText("You're out of automation credits")).toBeNull();
   });

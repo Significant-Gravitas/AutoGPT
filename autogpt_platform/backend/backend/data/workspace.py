@@ -8,18 +8,24 @@ import logging
 import posixpath
 import re
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import pydantic
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
+from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
+    SHARED_ROOTS,
     WorkspaceAccessDeniedError,
     resolve_expert_workspace_scope,
 )
 from backend.util.json import SafeJson
+
+if TYPE_CHECKING:
+    # Imported for typing only: workspace_folder imports this module.
+    from backend.data.workspace_folder import WorkspaceFolder
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
@@ -266,8 +272,10 @@ async def list_workspace_files(
     metadata_equals: Optional[dict] = None,
     metadata_not_equals: Optional[dict] = None,
     folder_id: Optional[str] = None,
+    folder_ids: Optional[list[str]] = None,
     root_only: bool = False,
     allowed_path_prefixes: Optional[list[str]] = None,
+    include_user_files: bool = False,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -292,17 +300,24 @@ async def list_workspace_files(
             is never SQL NULL (column default ``{}``), so whole-object
             inequality is null-safe and covers untagged/legacy files.
         folder_id: If set, only return files in this folder.
+        folder_ids: If set, only return files in any of these folders — a
+            folder and its descendants, for a recursive listing. An empty
+            list matches nothing. Ignored when ``folder_id`` is set.
         root_only: If True, only return root-level files (folderId IS NULL).
-            Ignored when ``folder_id`` is set.
+            Ignored when either folder filter is set.
         allowed_path_prefixes: When set, only files whose path starts with
             one of these prefixes are returned (ANDed with ``path_prefix``).
             An empty list matches nothing. Used to apply an expert session's
             resolved scope inside the query so pagination stays correct.
+        include_user_files: Widen ``allowed_path_prefixes`` with the owner's
+            own files (see :func:`_scope_branches`). Ignored when the caller
+            passes no prefixes, which already reaches the whole workspace.
 
     Returns:
         List of WorkspaceFile instances
     """
-    if allowed_path_prefixes is not None and not allowed_path_prefixes:
+    scope_branches = _scope_branches(allowed_path_prefixes, include_user_files)
+    if scope_branches is not None and not scope_branches:
         return []
     where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
 
@@ -311,6 +326,10 @@ async def list_workspace_files(
 
     if folder_id:
         where_clause["folderId"] = folder_id
+    elif folder_ids is not None:
+        if not folder_ids:
+            return []
+        where_clause["folderId"] = {"in": folder_ids}
     elif root_only:
         where_clause["folderId"] = None
 
@@ -338,8 +357,8 @@ async def list_workspace_files(
     if name_contains:
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
 
-    if allowed_path_prefixes:
-        where_clause["AND"] = [{"OR": _path_prefix_filters(allowed_path_prefixes)}]
+    if scope_branches:
+        where_clause["AND"] = [{"OR": scope_branches}]
 
     files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
@@ -350,17 +369,40 @@ async def list_workspace_files(
     return [WorkspaceFile.from_db(f) for f in files]
 
 
-def _path_prefix_filters(prefixes: list[str]) -> list[UserWorkspaceFileWhereInput]:
-    """Nested under ``AND`` so the scope filter can never replace another
-    ``OR`` branch a caller adds later; scope prefixes are always rooted."""
-    return [{"path": {"startswith": prefix}} for prefix in prefixes]
+def _scope_branches(
+    allowed_path_prefixes: Optional[list[str]],
+    include_user_files: bool,
+) -> Optional[list[UserWorkspaceFileWhereInput]]:
+    """The OR-branches a scoped listing may match, or None when unscoped.
+
+    Nested under ``AND`` by the callers so the scope filter can never replace
+    another ``OR`` branch added later; scope prefixes are always rooted. An
+    empty list means the scope reaches nothing, which callers answer with an
+    empty result rather than an unfiltered query.
+    """
+    if allowed_path_prefixes is None:
+        return None
+    branches: list[UserWorkspaceFileWhereInput] = [
+        {"path": {"startswith": prefix}} for prefix in allowed_path_prefixes
+    ]
+    if include_user_files:
+        # The owner's own uploads: every path outside the managed roots, which
+        # is the SQL form of ``workspace_scope.is_user_file_path``.
+        branches.append(
+            {"NOT": [{"path": {"startswith": root}} for root in SHARED_ROOTS]}
+        )
+    return branches
 
 
 async def count_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
     include_deleted: bool = False,
+    folder_id: Optional[str] = None,
+    folder_ids: Optional[list[str]] = None,
+    root_only: bool = False,
     allowed_path_prefixes: Optional[list[str]] = None,
+    include_user_files: bool = False,
 ) -> int:
     """
     Count files in a workspace.
@@ -369,16 +411,30 @@ async def count_workspace_files(
         workspace_id: The workspace ID
         path_prefix: Optional path prefix to filter (e.g., "/sessions/abc123/")
         include_deleted: Whether to include soft-deleted files
+        folder_id: See :func:`list_workspace_files`.
+        folder_ids: See :func:`list_workspace_files`.
+        root_only: See :func:`list_workspace_files`.
         allowed_path_prefixes: See :func:`list_workspace_files`.
+        include_user_files: See :func:`list_workspace_files`.
 
     Returns:
         Number of files
     """
-    if allowed_path_prefixes is not None and not allowed_path_prefixes:
+    scope_branches = _scope_branches(allowed_path_prefixes, include_user_files)
+    if scope_branches is not None and not scope_branches:
         return 0
     where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
     if not include_deleted:
         where_clause["isDeleted"] = False
+
+    if folder_id:
+        where_clause["folderId"] = folder_id
+    elif folder_ids is not None:
+        if not folder_ids:
+            return 0
+        where_clause["folderId"] = {"in": folder_ids}
+    elif root_only:
+        where_clause["folderId"] = None
 
     if path_prefix:
         # Normalize prefix
@@ -386,8 +442,8 @@ async def count_workspace_files(
             path_prefix = f"/{path_prefix}"
         where_clause["path"] = {"startswith": path_prefix}
 
-    if allowed_path_prefixes:
-        where_clause["AND"] = [{"OR": _path_prefix_filters(allowed_path_prefixes)}]
+    if scope_branches:
+        where_clause["AND"] = [{"OR": scope_branches}]
 
     return await UserWorkspaceFile.prisma().count(where=where_clause)
 
@@ -408,6 +464,13 @@ async def rename_workspace_file(
     file = await get_workspace_file(file_id, workspace_id)
     if file is None:
         return None
+    folder = skill_owner_folder(
+        posixpath.join(posixpath.dirname(file.path), "SKILL.md")
+    )
+    if folder is not None:
+        from backend.data.workspace_skill import rename_workspace_skill_file
+
+        return await rename_workspace_skill_file(file_id, workspace_id, name, folder)
     new_path = posixpath.join(posixpath.dirname(file.path), name)
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},
@@ -426,8 +489,9 @@ async def soft_delete_workspace_file(
     """
     Soft-delete a workspace file.
 
-    The path is modified to include a deletion timestamp to free up the original
-    path for new files while preserving the record for potential recovery.
+    The row keeps the path it was deleted at: the unique index over
+    ``(workspaceId, path)`` covers live rows only, so the path is free for the
+    next write and the record still says where the file was.
 
     Args:
         file_id: The file ID
@@ -441,17 +505,11 @@ async def soft_delete_workspace_file(
     if file is None:
         return None
 
-    deleted_at = datetime.now(timezone.utc)
-    # Frees the path for the next write, to microseconds: `write_file` soft-deletes
-    # the row it overwrites, so two writes in one second would collide here.
-    deleted_path = f"{file.path}__deleted__{deleted_at.timestamp():.6f}"
-
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},
         data={
             "isDeleted": True,
-            "deletedAt": deleted_at,
-            "path": deleted_path,
+            "deletedAt": datetime.now(timezone.utc),
         },
     )
 
@@ -492,10 +550,11 @@ async def resolve_attachable_workspace_files(
     """Resolve attachment IDs for a message sent in ``session_id``.
 
     Personal Otto sessions may attach any file in the owner's workspace.
-    Expert sessions are confined to the expert's resolved scope: attaching a
-    file from another expert's conversations raises
-    ``WorkspaceAccessDeniedError`` naming the files, so the caller can surface
-    a clear error instead of leaking the file's metadata into the turn.
+    Expert sessions are confined to the expert's resolved scope — their own
+    conversations plus the owner's own files — so only another expert's
+    conversation file is refused, with a ``WorkspaceAccessDeniedError`` naming
+    the files so the caller can surface a clear error instead of leaking the
+    file's metadata into the turn.
 
     Runs in the API server with direct DB access, so the resolver is called
     in-process; code in the executor must go through ``workspace_db()``.
@@ -508,29 +567,44 @@ async def resolve_attachable_workspace_files(
     denied = [f.name for f in files if not scope.allows_path(f.path)]
     if denied:
         raise WorkspaceAccessDeniedError(
-            "These files are outside this expert's conversations and cannot be "
-            f"attached here: {', '.join(denied)}. Upload them in this chat instead."
+            "These files belong to another expert's conversations and cannot "
+            f"be attached here: {', '.join(denied)}."
         )
     return files
 
 
-def build_files_block(files: list[UserWorkspaceFile]) -> str:
+def build_files_block(
+    files: list[UserWorkspaceFile],
+    folders: Optional[list["WorkspaceFolder"]] = None,
+) -> str:
     """Return a formatted ``[Attached files]`` block for injection into a message.
 
-    Returns an empty string when *files* is empty so callers can do a simple
+    An attached folder is named rather than expanded: the model opens it with
+    ``list_workspace_files``, so attaching one costs a line whatever it holds.
+
+    Returns an empty string when nothing is attached so callers can do a simple
     ``message += build_files_block(files)`` without an extra ``if`` check.
     """
-    if not files:
+    if not files and not folders:
         return ""
     lines = [
         f"- {f.name} ({f.mimeType}, {round(f.sizeBytes / 1024, 1)} KB), file_id={f.id}"
         for f in files
     ]
-    return (
-        "\n\n[Attached files]\n"
-        + "\n".join(lines)
-        + "\nUse read_workspace_file with the file_id to access file contents."
-    )
+    lines += [
+        f"- {d.name} (folder, {d.file_count} file(s) directly inside), folder_id={d.id}"
+        for d in folders or []
+    ]
+    hints = []
+    if files:
+        hints.append(
+            "Use read_workspace_file with the file_id to access file contents."
+        )
+    if folders:
+        hints.append(
+            "Use list_workspace_files with the folder_id to see what is in a folder."
+        )
+    return "\n\n[Attached files]\n" + "\n".join(lines) + "\n" + "\n".join(hints)
 
 
 async def get_workspace_total_size(workspace_id: str) -> int:

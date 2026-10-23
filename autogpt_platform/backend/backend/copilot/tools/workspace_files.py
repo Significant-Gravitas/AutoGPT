@@ -1,9 +1,11 @@
 """CoPilot tools for workspace file operations."""
 
+import asyncio
 import base64
 import logging
 import mimetypes
 import os
+from collections import deque
 from typing import Any, Optional
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -15,19 +17,37 @@ from backend.copilot.context import (
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_image import (
+    BINARY_IMAGE_READ_GUIDANCE,
+    IMAGE_EXTENSIONS,
+    IMAGE_MIME_TYPES,
+    IMAGE_READ_DESCRIPTION,
+    IMAGE_TOO_LARGE_MESSAGE,
+    MAX_IMAGE_BYTES,
+    ImageReadError,
+    prepare_image,
+)
 from backend.copilot.tools.workdir import (
     resolve_sandbox_path_or_error,
     save_to_workdir,
     validate_ephemeral_path,
 )
 from backend.data.activity_event import ActivityEventDraft
+from backend.data.workspace_folder import WorkspaceFolder
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase, WorkspaceFileInfoData
+from .models import (
+    ErrorResponse,
+    ResponseType,
+    ToolResponseBase,
+    WorkspaceFileInfoData,
+    WorkspaceFolderInfoData,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +162,6 @@ _TEXT_MIME_PREFIXES = (
     "application/x-sh",
 )
 
-_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
-
 
 def _is_text_mime(mime_type: str) -> bool:
     return any(mime_type.startswith(t) for t in _TEXT_MIME_PREFIXES)
@@ -183,6 +201,10 @@ class WorkspaceFileListResponse(ToolResponseBase):
     type: ResponseType = ResponseType.WORKSPACE_FILE_LIST
     files: list[WorkspaceFileInfoData]
     total_count: int
+    # Folders at the listed level, so the model can walk the tree without a
+    # second tool. Folders are user-level: an expert sees the whole tree and
+    # only the files inside it are filtered by its scope.
+    folders: list[WorkspaceFolderInfoData] = []
 
 
 class WorkspaceFileContentResponse(ToolResponseBase):
@@ -329,7 +351,13 @@ class ListWorkspaceFilesTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "List persistent workspace files. For ephemeral session files, use SDK Glob/Read instead. Optionally filter by path prefix."
+        return (
+            "List persistent workspace files, with the folders at that level. "
+            "Files uploaded on the Files page sit at the workspace root or in "
+            "a folder; pass folder_id to list one, then read a file with "
+            "read_workspace_file. For ephemeral session files, use SDK "
+            "Glob/Read instead."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -340,6 +368,20 @@ class ListWorkspaceFilesTool(BaseTool):
                     "type": "string",
                     "description": "Filter by path prefix (e.g. '/documents/').",
                 },
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Files in this folder. Omit for this chat's files and "
+                        "the folders at the workspace root."
+                    ),
+                },
+                "recursive": {
+                    "type": "boolean",
+                    "description": (
+                        "With folder_id, also list files in its subfolders "
+                        "(default: false)."
+                    ),
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Max files to return (default 50, max 100).",
@@ -349,9 +391,9 @@ class ListWorkspaceFilesTool(BaseTool):
                 "include_all_sessions": {
                     "type": "boolean",
                     "description": (
-                        "Include files from all sessions (default: false). "
-                        "Expert chats only ever see files from their own "
-                        "conversations and ones they delegated."
+                        "Include files from every chat, not just this one "
+                        "(default: false). An expert chat sees its own "
+                        "conversations, ones it delegated, and the user's files."
                     ),
                 },
             },
@@ -367,6 +409,8 @@ class ListWorkspaceFilesTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         path_prefix: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        recursive: bool = False,
         limit: int = 50,
         include_all_sessions: bool = False,
         **kwargs,
@@ -379,13 +423,35 @@ class ListWorkspaceFilesTool(BaseTool):
 
         limit = min(limit, 100)
 
+        # "" is not "no folder": it survives the manager's `is not None` test,
+        # which drops the current-session filter, and then reads as false in the
+        # query, which drops the folder filter — listing the whole workspace.
+        if folder_id is not None and not folder_id.strip():
+            return ErrorResponse(
+                message="folder_id must name a folder; omit it to list the root",
+                session_id=session_id,
+            )
+
         try:
             manager = await get_workspace_manager(user_id, session_id)
+            folders = await manager.list_folders()
+            descend = folder_id if recursive else None
+            subtree, unsearched = (
+                _folder_subtree(folders, descend) if descend else ([], 0)
+            )
+            list_kwargs: dict[str, Any] = (
+                {"folder_ids": subtree} if descend else {"folder_id": folder_id}
+            )
             files = await manager.list_files(
-                path=path_prefix, limit=limit, include_all_sessions=include_all_sessions
+                path=path_prefix,
+                limit=limit,
+                include_all_sessions=include_all_sessions,
+                **list_kwargs,
             )
             total = await manager.get_file_count(
-                path=path_prefix, include_all_sessions=include_all_sessions
+                path=path_prefix,
+                include_all_sessions=include_all_sessions,
+                **list_kwargs,
             )
             file_infos = [
                 WorkspaceFileInfoData(
@@ -397,20 +463,47 @@ class ListWorkspaceFilesTool(BaseTool):
                 )
                 for f in files
             ]
+            folder_infos = [
+                WorkspaceFolderInfoData(
+                    folder_id=f.id,
+                    name=f.name,
+                    parent_id=f.parent_id,
+                    file_count=f.file_count,
+                )
+                for f in folders
+                if f.parent_id == folder_id
+            ]
             scope = "all sessions" if include_all_sessions else "current session"
+            names = {f.id: f.name for f in folders}
+            where = (
+                f"folder {names.get(folder_id, folder_id)}"
+                if folder_id
+                else f"workspace ({scope})"
+            )
             total_size = sum(f.size_bytes for f in file_infos)
 
             # Build a human-readable summary so the agent can relay details.
-            lines = [f"Found {len(files)} file(s) in workspace ({scope}):"]
+            lines = [f"Found {len(files)} file(s) in {where}:"]
             for f in file_infos:
                 lines.append(f"  - {f.path} ({f.size_bytes:,} bytes, {f.mime_type})")
             if total > len(files):
                 lines.append(f"  ... and {total - len(files)} more")
+            for d in folder_infos:
+                lines.append(
+                    f"  [folder] {d.name} ({d.file_count} file(s)), "
+                    f"folder_id={d.folder_id}"
+                )
+            if unsearched:
+                lines.append(
+                    f"  ... and {unsearched} subfolder(s) not searched; "
+                    "list them with folder_id."
+                )
             lines.append(f"Total size: {total_size:,} bytes")
 
             return WorkspaceFileListResponse(
                 files=file_infos,
                 total_count=total,
+                folders=folder_infos,
                 message="\n".join(lines),
                 session_id=session_id,
             )
@@ -427,10 +520,49 @@ class ListWorkspaceFilesTool(BaseTool):
             )
 
 
+# A recursive listing walks at most this many folders. Deep trees are the
+# user's own making, and an unbounded ``IN`` grows with every folder they add.
+_MAX_RECURSIVE_FOLDERS = 200
+
+
+def _folder_subtree(
+    folders: list[WorkspaceFolder], folder_id: str
+) -> tuple[list[str], int]:
+    """*folder_id* plus its descendants, capped, and how many were left out.
+
+    Nearest first, so a cap truncates the deepest folders rather than an
+    arbitrary set, and the caller can name the remainder for the model to
+    list directly. Deliberately not shared with ``workspace_folder._subtree_ids``:
+    that one walks DB rows and must not cap, since it drives a delete.
+    """
+    children: dict[str | None, list[str]] = {}
+    for folder in folders:
+        children.setdefault(folder.parent_id, []).append(folder.id)
+
+    subtree = [folder_id]
+    seen = {folder_id}
+    queue = deque([folder_id])
+    overflow = 0
+    while queue:
+        for child in children.get(queue.popleft(), []):
+            if child in seen:
+                continue
+            seen.add(child)
+            queue.append(child)
+            # Past the cap the walk keeps going but stops collecting, so the
+            # count the caller reports is every folder left out, not just the
+            # first one over the line.
+            if len(subtree) >= _MAX_RECURSIVE_FOLDERS:
+                overflow += 1
+            else:
+                subtree.append(child)
+    return subtree, overflow
+
+
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
+    MAX_INLINE_SIZE_BYTES = 32 * 1024
     PREVIEW_SIZE = 500
 
     @property
@@ -440,13 +572,11 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Read a file from persistent workspace. Specify file_id or path. "
-            "Small text/image files return inline; large/binary return metadata+URL. "
-            "Use save_to_path to copy to working dir for processing. "
-            "Use offset/length for paginated reads. "
-            "Paths scoped to current session; use /sessions/<id>/... for "
-            "cross-session access (expert chats can read their own "
-            "conversations and ones they delegated)."
+            "Read workspace file_id or path. Small text is inline; other files return metadata+URL. "
+            + IMAGE_READ_DESCRIPTION
+            + "save_to_path copies for processing; offset/length paginate text. "
+            "Paths are session-relative; use /sessions/<id>/... or file_id elsewhere. "
+            "Expert chats can read their own/delegated conversations and the user's files."
         )
 
     @property
@@ -558,6 +688,9 @@ class ReadWorkspaceFileTool(BaseTool):
                 return resolved
             target_file_id, file_info = resolved
 
+            # A saved Google block output, read back, is still Google data.
+            google_data = file_info.metadata.get(GOOGLE_DATA_METADATA_KEY) is True
+
             # If save_to_path, read + save; cache bytes for possible inline reuse.
             cached_content: bytes | None = None
             if save_to_path:
@@ -566,6 +699,49 @@ class ReadWorkspaceFileTool(BaseTool):
                 if isinstance(result, ErrorResponse):
                     return result
                 save_to_path = result
+
+            is_image = (
+                file_info.mime_type in IMAGE_MIME_TYPES
+                or os.path.splitext(file_info.name)[1].lower() in IMAGE_EXTENSIONS
+            )
+            if is_image and (char_offset > 0 or char_length is not None):
+                return ErrorResponse(
+                    message="Image not shown: offset/length only apply to text. Read the whole image.",
+                    session_id=session_id,
+                ).from_outside()
+            if is_image and not force_download_url:
+                try:
+                    if file_info.size_bytes > MAX_IMAGE_BYTES:
+                        raise ImageReadError(IMAGE_TOO_LARGE_MESSAGE)
+                    image = await asyncio.to_thread(
+                        prepare_image,
+                        (
+                            cached_content
+                            if cached_content is not None
+                            else await manager.read_file_by_id(target_file_id)
+                        ),
+                    )
+                except ImageReadError as exc:
+                    return ErrorResponse(
+                        message=str(exc)
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    ).from_outside()
+                return (
+                    WorkspaceFileMetadataResponse(
+                        file_id=file_info.id,
+                        name=file_info.name,
+                        path=file_info.path,
+                        mime_type=image.mime_type,
+                        size_bytes=file_info.size_bytes,
+                        download_url=f"workspace://{target_file_id}",
+                        message=f"Viewed {file_info.name} as an image (first frame only)."
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    )
+                    .with_image(image)
+                    .with_google_data(google_data)
+                )
 
             # Ranged read: return a character slice directly.
             if char_offset > 0 or char_length is not None:
@@ -593,14 +769,12 @@ class ReadWorkspaceFileTool(BaseTool):
                         f"from {file_info.name}"
                     ),
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
-            is_image = file_info.mime_type in _IMAGE_MIME_TYPES
 
-            # Inline content for small text/image files
-            if is_small and (is_text or is_image) and not force_download_url:
+            if is_small and is_text and not force_download_url:
                 content = cached_content or await manager.read_file_by_id(
                     target_file_id
                 )
@@ -618,7 +792,7 @@ class ReadWorkspaceFileTool(BaseTool):
                     content_base64=base64.b64encode(content).decode("utf-8"),
                     message=msg,
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             # Metadata + download URL for large/binary files
             preview: str | None = None
@@ -640,19 +814,32 @@ class ReadWorkspaceFileTool(BaseTool):
             if save_to_path:
                 msg += f" — saved to {save_to_path}"
             else:
+                msg += " — use save_to_path to copy this file to the working directory for processing"
+            if (
+                file_info.mime_type == "application/pdf"
+                or file_info.mime_type.startswith("video/")
+            ):
+                msg += ". " + BINARY_IMAGE_READ_GUIDANCE
+            elif file_info.mime_type.startswith("image/") and not is_image:
                 msg += (
-                    " — use read_workspace_file with this file_id to retrieve content"
+                    ". Image not shown: convert it to PNG/JPEG/GIF/WebP, then read it."
                 )
-            return WorkspaceFileMetadataResponse(
-                file_id=file_info.id,
-                name=file_info.name,
-                path=file_info.path,
-                mime_type=file_info.mime_type,
-                size_bytes=file_info.size_bytes,
-                download_url=f"workspace://{target_file_id}",
-                preview=preview,
-                message=msg,
-                session_id=session_id,
+            return (
+                WorkspaceFileMetadataResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type=file_info.mime_type,
+                    size_bytes=file_info.size_bytes,
+                    download_url=f"workspace://{target_file_id}",
+                    preview=preview,
+                    message=msg,
+                    session_id=session_id,
+                )
+                .from_outside(
+                    file_info.name, file_info.path, file_info.mime_type, preview
+                )
+                .with_google_data(google_data)
             )
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
@@ -671,7 +858,7 @@ class ReadWorkspaceFileTool(BaseTool):
 
 # Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the
 # skills registry — the ``store_skill`` / ``delete_skill`` tools enforce
-# frontmatter validation, the per-user cap, name regex, and content
+# frontmatter validation, the per-expert cap, name regex, and content
 # sanitisation. Allowing plain write_workspace_file / delete_workspace_file
 # there would bypass all of that and let the model accidentally (or
 # maliciously) corrupt the registry. Reads stay open so the model can still
@@ -679,8 +866,8 @@ class ReadWorkspaceFileTool(BaseTool):
 _SKILLS_REGISTRY_PREFIX = "skills/"
 _EXPERTS_PREFIX = "experts/"
 _SKILLS_REGISTRY_ERROR = (
-    "Path is managed by the skills registry; use store_skill / "
-    "delete_skill instead. (read_workspace_file can still read "
+    "Path is managed by the skills registry; use tool:store_skill / "
+    "tool:delete_skill instead. (read_workspace_file can still read "
     "sibling files inside a skill bundle.)"
 )
 
@@ -933,8 +1120,8 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use list_workspace_files to find candidates, then "
-                    "delete_workspace_file to free space and retry — or ask "
+                    " Use tool:list_workspace_files to find candidates, then "
+                    "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
             return ErrorResponse(message=msg, session_id=session_id)
@@ -966,6 +1153,7 @@ class DeleteWorkspaceFileTool(BaseTool):
                 "file_id": {
                     "type": "string",
                     "description": "File ID from list_workspace_files.",
+                    "entity": "workspace_file",
                 },
                 "path": {
                     "type": "string",

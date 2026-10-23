@@ -17,6 +17,7 @@ import {
 } from "../ExpertCards";
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
+import gatedProposal from "./gatedProposal.json";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
@@ -28,12 +29,6 @@ vi.mock("../../../tools/GenericTool/GenericTool", () => ({
 }));
 
 const onSend = vi.fn();
-
-const artifactsFlag = { enabled: false };
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS: "artifacts" },
-  useGetFlag: () => artifactsFlag.enabled,
-}));
 
 function row(tool: string, output: unknown): ChainRow {
   return {
@@ -48,7 +43,6 @@ function row(tool: string, output: unknown): ChainRow {
 
 describe("expert change cards", () => {
   afterEach(() => {
-    artifactsFlag.enabled = false;
     useCopilotUIStore.getState().resetArtifactPanel();
   });
 
@@ -73,7 +67,7 @@ describe("expert change cards", () => {
       />,
     );
 
-    expect(screen.getByText("Raise an expert")).toBeDefined();
+    expect(screen.getByText("Create an Expert")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Inbox triage")).toBeDefined();
     expect(screen.getByText("Sorts your morning inbox.")).toBeDefined();
@@ -85,7 +79,6 @@ describe("expert change cards", () => {
   });
 
   it("opens the full charter in the side panel from Show more", async () => {
-    artifactsFlag.enabled = true;
     const user = userEvent.setup();
     render(
       <ExpertChangeCard
@@ -166,7 +159,6 @@ describe("expert change cards", () => {
   });
 
   it("always offers Details when the panel is available", () => {
-    artifactsFlag.enabled = true;
     render(
       <ExpertChangeCard
         artifactId="call-1"
@@ -240,7 +232,7 @@ describe("expert change cards", () => {
       />,
     );
 
-    expect(screen.getByText("Expert raised")).toBeDefined();
+    expect(screen.getByText("Expert created")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Inbox triage")).toBeDefined();
     expect(screen.queryByText("Raised")).toBeNull();
@@ -419,6 +411,19 @@ describe("expert approval", () => {
       </CopilotChatActionsProvider>,
     );
   }
+
+  it("offers Approve on a preview run under Ask First", async () => {
+    const user = userEvent.setup();
+    renderGroup([expertPart("output-available", gatedProposal)]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    // The line gate/card_approval.py takes as the answer to the confirm.
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Otto (confirmation_id: 5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10).",
+    );
+  });
 
   it("moves to the next expert on each decision, then sends all of them", async () => {
     const user = userEvent.setup();

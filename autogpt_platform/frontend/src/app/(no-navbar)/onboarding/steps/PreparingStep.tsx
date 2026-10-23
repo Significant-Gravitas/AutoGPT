@@ -10,22 +10,17 @@ import { usePreparingStep } from "./usePreparingStep";
 
 interface Props {
   onComplete: () => void;
-  isBrainDumpEnabled?: boolean;
 }
 
-export function PreparingStep({
-  onComplete,
-  isBrainDumpEnabled = false,
-}: Props) {
+export function PreparingStep({ onComplete }: Props) {
   const { started, progress, completedItems, checklist } = usePreparingStep({
     onComplete,
-    isBrainDumpEnabled,
   });
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-8 px-4">
       <div className="flex flex-col items-center gap-4">
-        <AutopilotAvatar size={120} />
+        <AutopilotAvatar size={120} transparent />
         <Text variant="h4" className="text-center">
           <TypingText
             text="Preparing your workspace..."

@@ -17,6 +17,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
@@ -30,12 +31,14 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
+from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
 
 from . import model as library_model
@@ -799,6 +802,8 @@ async def create_graph_in_library(
     # to a user-friendly response.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -836,6 +841,8 @@ async def update_graph_in_library(
     # version half-saved. Raises GraphActivationError for the caller.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -1216,13 +1223,25 @@ async def is_store_listing_version_available_for_install(
 async def add_store_agent_to_library(
     store_listing_version_id: str,
     user_id: str,
+    *,
+    track_listing_added: bool = True,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
+
+    ``track_listing_added`` sends ``listing_added_to_library`` on a first-time
+    add. Pass ``False`` when the system installs the agent on the user's
+    behalf (an expert's preloads or workflows), which is not the user adding
+    a listing.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
+    return await _add_store_agent_to_library(
+        store_listing_version_id,
+        user_id,
+        tx=None,
+        track_listing_added=track_listing_added,
+    )
 
 
 async def add_store_agent_to_library_in_transaction(
@@ -1230,8 +1249,14 @@ async def add_store_agent_to_library_in_transaction(
     user_id: str,
     tx: prisma.Prisma,
 ) -> library_model.LibraryAgent:
-    """Add a marketplace agent using the caller's transaction."""
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+    """Add a marketplace agent using the caller's transaction.
+
+    Sends no ``listing_added_to_library``: the caller may still roll back, and
+    the upsert cannot tell a first-time add from a restore.
+    """
+    return await _add_store_agent_to_library(
+        store_listing_version_id, user_id, tx=tx, track_listing_added=False
+    )
 
 
 async def _add_store_agent_to_library(
@@ -1239,6 +1264,7 @@ async def _add_store_agent_to_library(
     user_id: str,
     *,
     tx: prisma.Prisma | None,
+    track_listing_added: bool,
 ) -> library_model.LibraryAgent:
     logger.debug(
         "Adding agent from store listing version #%s to library for user #%s",
@@ -1257,9 +1283,17 @@ async def _add_store_agent_to_library(
     graph_model = await resolve_graph_model_for_library(
         store_listing_version, user_id, admin=False
     )
-    return await add_graph_to_library(
+    library_agent = await add_graph_to_library(
         graph_model, user_id, store_listing_version, tx=tx
     )
+    if track_listing_added:
+        track_listing_added_to_library(
+            user_id=user_id,
+            store_listing_version_id=store_listing_version.id,
+            graph_id=graph_model.id,
+            library_agent_id=library_agent.id,
+        )
+    return library_agent
 
 
 async def add_store_agent_to_library_as_admin(
@@ -2085,8 +2119,9 @@ async def create_preset(
     )
     # A preset may only reference a graph the caller can access (owned, or in
     # their library and submitted); get_graph() enforces that, None if not.
-    # The preset then inherits the graph's org/team (resource-follows-parent),
-    # resolved here so callers can't forget it.
+    # The preset then inherits the graph's org/team (resource-follows-parent)
+    # where the caller belongs to it, and their own otherwise, resolved here
+    # so callers can't forget it.
     graph = await graph_db.get_graph(
         preset.graph_id, preset.graph_version, user_id=user_id
     )
@@ -2115,7 +2150,9 @@ async def create_preset(
         ) != (organization_id, team_id):
             raise NotFoundError(f"Webhook #{webhook_id} not found")
     else:
-        organization_id, team_id = graph.organization_id, graph.team_id
+        organization_id, team_id = await resolve_member_tenancy(
+            user_id, graph.organization_id, graph.team_id
+        )
 
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,

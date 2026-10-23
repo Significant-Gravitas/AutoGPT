@@ -1,5 +1,14 @@
 export { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 
+/** Text the backend escaped for a model's context (`&`, `<`, `>`), as the
+ *  user reads it. `&amp;` is decoded last, so a literal `&lt;` survives. */
+export function unescapePromptTags(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 export function asObject(value: unknown): Record<string, unknown> | null {
   if (typeof value === "string") {
     try {
@@ -14,6 +23,12 @@ export function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+// Anyone holding a webhook ingress URL can trigger the agent unless the
+// trigger sets a secret_token, so it is treated as a credential.
+export function isWebhookIngressUrl(url: string): boolean {
+  return /\/webhooks\/[^/?#]+\/ingress(?:[/?#]|$)/.test(url);
 }
 
 export function safeHostname(url: string): string | null {

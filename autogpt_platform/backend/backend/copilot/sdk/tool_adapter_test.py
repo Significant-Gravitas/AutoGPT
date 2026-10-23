@@ -10,6 +10,11 @@ from mcp.types import ListToolsRequest, ToolAnnotations
 
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.google_data_redaction import (
+    REDACTED,
+    redact_google_data,
+    remember_google_output,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
@@ -24,6 +29,7 @@ from .tool_adapter import (
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
     get_sdk_disallowed_tools,
@@ -745,6 +751,10 @@ class TestSDKDisallowedTools:
     def test_schedule_wakeup_tool_is_disallowed(self):
         assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
 
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_workflow_tool_is_disallowed(self, use_e2b: bool):
+        assert "Workflow" in get_sdk_disallowed_tools(use_e2b=use_e2b)
+
     @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
     def test_cli_cron_tools_are_disallowed(self, tool: str):
         """The CLI's cron built-ins schedule nothing that outlives the turn.
@@ -766,6 +776,12 @@ class TestSDKDisallowedTools:
     def test_cron_tools_reach_security_hook_denylist(self, tool: str):
         """Defence in depth: security_hooks denies on BLOCKED_TOOLS, which is
         a denylist — an unlisted tool falls through and executes."""
+        assert tool in BLOCKED_TOOLS
+
+    @pytest.mark.parametrize("tool", ["ListAgents", "SendMessage"])
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_cli_cross_session_tools_are_disallowed(self, tool: str, use_e2b: bool):
+        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
         assert tool in BLOCKED_TOOLS
 
     def test_orchestrator_block_disallows_every_known_builtin(self):
@@ -1492,6 +1508,34 @@ class TestEmptyArgsCircuitBreaker:
         assert "Do NOT retry" in text
 
 
+class TestNonRegistryGateSeam:
+    """The file handlers never reach ``BaseTool.execute``; this seam is their gate."""
+
+    @pytest.mark.asyncio
+    async def test_a_refused_file_write_never_reaches_its_handler(self):
+        called = False
+
+        async def handler(_args):
+            nonlocal called
+            called = True
+            return {"content": [{"type": "text", "text": "wrote"}], "isError": False}
+
+        refusal = {"content": [{"type": "text", "text": "no"}], "isError": True}
+        _init_ctx(_make_test_session())
+        with patch(
+            "backend.copilot.sdk.tool_adapter.gate_non_registry_tool",
+            new=AsyncMock(return_value=refusal),
+        ) as gate:
+            wrapper = _make_truncating_wrapper(
+                handler, "write_file", required_args=["path"]
+            )
+            result = await wrapper({"path": "a.txt", "content": "x"})
+
+        gate.assert_awaited_once()
+        assert called is False
+        assert result.get("isError") is True
+
+
 def test_set_execution_context_carries_hidden_tools():
     """The SDK engine hands its per-turn hidden tool set through this
     adapter's ``set_execution_context`` (not ``context.set_execution_context``),
@@ -1505,3 +1549,60 @@ def test_set_execution_context_carries_hidden_tools():
     finally:
         set_execution_context(None, session)
     assert get_current_hidden_tools() == frozenset()
+
+
+class TestLateToolResultCap:
+    """A held call's late result must read as the direct result would have."""
+
+    @pytest.mark.asyncio
+    async def test_a_late_result_is_cut_exactly_as_the_wrapper_cuts_a_direct_one(
+        self,
+    ):
+        text = "x" * (_MCP_MAX_CHARS + 20_000)
+
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        _init_ctx(_make_test_session())
+        wrapper = _make_truncating_wrapper(handler, "read_workspace_file")
+        direct = _text_from_mcp_result(await wrapper({}))
+
+        assert len(direct) < len(text)
+        assert cap_late_tool_result(text) == direct
+
+
+class TestCutGoogleOutputIsRemembered:
+    """A Google output too large for the model is cut here, after
+    ``BaseTool`` remembered it whole; the cut text has to be redacted too."""
+
+    @staticmethod
+    async def _cut(text: str) -> str:
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(handler, "google_cut_tool")
+        with patch(
+            "backend.copilot.sdk.tool_adapter.get_execution_context",
+            return_value=(None, None),
+        ):
+            result = await wrapper({"q": "x"})
+        cut = _text_from_mcp_result(result)
+        assert cut != text
+        return cut
+
+    @pytest.mark.asyncio
+    async def test_a_remembered_google_output(self):
+        text = "Subject: payroll " + "x" * (_MCP_MAX_CHARS + 5_000)
+        remember_google_output(text)
+
+        cut = await self._cut(text)
+
+        assert redact_google_data({"output": cut}) == {"output": REDACTED}
+
+    @pytest.mark.asyncio
+    async def test_other_output_stays_readable(self):
+        text = "a harmless page " + "y" * (_MCP_MAX_CHARS + 5_000)
+
+        cut = await self._cut(text)
+
+        assert redact_google_data({"output": cut}) == {"output": cut}

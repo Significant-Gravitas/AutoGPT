@@ -23,6 +23,12 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
@@ -130,6 +136,7 @@ class BaseE2BExecutorMixin:
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
         envs: Optional[dict[str, str]] = None,
+        input_files: Optional[dict[str, bytes]] = None,
         metadata: Optional[dict[str, str]] = None,
     ):
         """
@@ -141,9 +148,15 @@ class BaseE2BExecutorMixin:
         Args:
             extract_files: If True and execution_context provided, extract files
                            created/modified during execution and store to workspace.
+            input_files: Files to write into the sandbox before the code
+                         runs, keyed by absolute path.
         """  # noqa
         sandbox = None
         files: list[SandboxFileOutput] = []
+        owner_user_id = execution_context.user_id if execution_context else None
+        egress_owner = EgressOwner(
+            kind="block", id=owner_user_id or "anonymous", user_id=owner_user_id
+        )
         try:
             if sandbox_id:
                 # Connect to existing sandbox (ExecuteCodeStepBlock case).  The
@@ -158,12 +171,14 @@ class BaseE2BExecutorMixin:
                     raise PermissionError(
                         f"Sandbox {sandbox_id} does not belong to this user"
                     )
-                sandbox = await AsyncSandbox.connect(
-                    sandbox_id=sandbox_id, api_key=api_key
+                sandbox = await connect_sandbox(
+                    AsyncSandbox, sandbox_id, egress_owner, api_key=api_key
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
-                sandbox = await AsyncSandbox.create(
+                sandbox = await create_sandbox(
+                    AsyncSandbox,
+                    egress_owner,
                     api_key=api_key,
                     template=template_id,
                     timeout=timeout,
@@ -172,6 +187,9 @@ class BaseE2BExecutorMixin:
                 if setup_commands:
                     for cmd in setup_commands:
                         await sandbox.commands.run(cmd)
+
+            for path, data in (input_files or {}).items():
+                await sandbox.files.write(path, data)
 
             # Capture timestamp before execution to scope file extraction
             start_timestamp = None
@@ -184,7 +202,7 @@ class BaseE2BExecutorMixin:
                 code,
                 language=language.value,
                 envs=envs or {},
-                on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
+                on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error
             )
 
             if execution.error:
@@ -216,7 +234,7 @@ class BaseE2BExecutorMixin:
         finally:
             # Dispose of sandbox if requested to reduce usage costs
             if dispose_sandbox and sandbox:
-                await sandbox.kill()
+                await kill_sandbox(sandbox)
 
     def process_execution_results(
         self, results: list[E2BExecutionResult]
@@ -275,7 +293,13 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 "variable with the same name (`{name}`) in your code. "
                 "Values wired in from other blocks keep their type; default values set "
                 "on this node come in as strings, so parse them in your code "
-                "if you need a number or other type."
+                "if you need a number or other type. "
+                "Values arrive exactly as given (any quotes, backslashes or "
+                "unicode); in JavaScript, NaN and Infinity arrive as null. "
+                "Up to 10 MB of JSON in total. Up to 64 KB it is also in the "
+                "`AGPT_VARIABLES` env var (base64 JSON); above that it is in "
+                "the JSON file named by `AGPT_VARIABLES_FILE`. For more than "
+                "10 MB, put the data at a URL and download it in your code."
             ),
             default_factory=dict,
             advanced=False,
@@ -343,7 +367,11 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         super().__init__(
             id="0b02b072-abe7-11ef-8372-fb5d162dd712",
             capability_kind="primitive",
-            description="Executes code in a sandbox environment with internet access.",
+            description=(
+                "Executes code in a sandbox environment with internet access. "
+                "Python and JavaScript code can take up to 10 MB of input "
+                "data through `variables`."
+            ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExecuteCodeBlock.Input,
             output_schema=ExecuteCodeBlock.Output,
@@ -374,13 +402,14 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         **kwargs,
     ) -> BlockOutput:
         try:
-            # Expose user-provided variables by passing them as a JSON env var and
-            # prepending a constant snippet that deserializes them into the runtime.
-            # Keeping the data in the env var (not the code string) avoids injection.
-            envs, prefix = build_variable_injection(
+            # Expose user-provided variables through an env var (or, for large
+            # payloads, a file) and prepend a constant snippet that loads them
+            # into the runtime. Keeping the data out of the code string avoids
+            # injection.
+            injection = build_variable_injection(
                 input_data.variables, input_data.language
             )
-            code = prefix + input_data.code
+            code = injection.prefix + input_data.code
 
             results, text_output, stdout, stderr, _, files = await self.execute_code(
                 api_key=credentials.api_key.get_secret_value(),
@@ -392,7 +421,8 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 dispose_sandbox=input_data.dispose_sandbox,
                 execution_context=execution_context,
                 extract_files=True,
-                envs=envs,
+                envs=injection.envs,
+                input_files=injection.files,
                 metadata=SandboxMetadata.for_block(
                     execution_context, "code", self.id, input_data.template_id
                 ).as_e2b(),
@@ -518,6 +548,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 api_key=credentials.api_key.get_secret_value(),
                 code=input_data.setup_code,
                 language=input_data.language,
+                execution_context=execution_context,
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,

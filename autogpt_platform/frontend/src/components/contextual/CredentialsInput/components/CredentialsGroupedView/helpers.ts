@@ -1,4 +1,5 @@
 import { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
+import { getHostFromUrl } from "@/lib/utils/url";
 import { filterSystemCredentials, getSystemCredentials } from "../../helpers";
 
 export type CredentialField = [string, any];
@@ -38,13 +39,9 @@ function matchesDiscriminatorValues(
   // Host-scoped credentials match by host
   if (credential.type === "host_scoped" && credential.host) {
     if (!discriminatorValues || discriminatorValues.length === 0) return true;
-    return discriminatorValues.some((v) => {
-      try {
-        return new URL(v).hostname === credential.host;
-      } catch {
-        return false;
-      }
-    });
+    return discriminatorValues.some(
+      (v) => getHostFromUrl(v) === credential.host,
+    );
   }
   return true;
 }

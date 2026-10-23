@@ -44,7 +44,18 @@ tools are denied and everything else is allowed.  An empty list means
 ``tools_exclude=False`` — ``tools`` is a **whitelist**; only listed tools
 are allowed.
 
-``blocks_exclude`` follows the same pattern for ``blocks``.
+``blocks_exclude`` follows the same pattern for ``blocks``, and
+``providers_exclude`` for ``providers``.
+
+Providers
+---------
+``providers`` filters the connected accounts a run's sandbox may use, by
+provider slug (``github``).  It is a ceiling on credentials, not on tools: the
+backend records it on the sandbox when the box's egress is pinned
+(``backend.util.e2b_network``), and the swap proxy's credential service
+(``backend.copilot.swap_credentials``) refuses to hand out a value for a
+provider outside it.  Nothing in the sandbox enforces it, so nothing there can
+widen it.
 
 Denying a capability denies the tools that extend it (see
 ``_IMPLIED_DENIALS``); allowing a capability gate allows the tool that now
@@ -66,9 +77,12 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
+
+from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.integrations.providers import ProviderName
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -130,6 +144,7 @@ ToolName = Literal[
     "list_expert_workflows",
     "list_folders",
     "list_presets",
+    "list_routines",
     "list_schedules",
     "list_skills",
     "list_team",
@@ -156,6 +171,7 @@ ToolName = Literal[
     "run_capability",
     "run_sub_session",
     "schedule_followup",
+    "schedule_routine",
     "search_docs",
     "search_feature_requests",
     "setup_agent_webhook_trigger",
@@ -203,6 +219,82 @@ LEGACY_TOOL_ALIASES: dict[str, str] = {
 }
 
 DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset(LEGACY_TOOL_ALIASES)
+
+
+# What a routine reaches when nobody has bound it to anything.  A roster
+# template is read by whoever reviews the PR, not by the owner whose account it
+# will run on, so a seeded routine ships able to research, think, read its own
+# workspace and write to its own thread — and nothing else.  Denying the names
+# that carry a credential outward is what makes "a cadence may only carry work
+# that acts on nothing outside the platform" (``PreloadSeed.cron``) a boundary
+# rather than a comment.  An owner who wants their queue swept says so when they
+# switch the routine on, and that answer is what lifts this.
+#
+# The grant is the whole rule at fire time.  Where the prompt came from decides
+# what that grant STARTS as — a template arrives ungranted, and a routine the
+# owner dictated in their own chat arrives granted, because the same words typed
+# into the same chat already run with every tool here and taking ``run_agent``
+# off somebody's own morning briefing protects nobody.  Both remain the owner's
+# to change, and neither reads as permission on its own.
+UNGRANTED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
+    {
+        # The two capability gates, so denying them withholds every block and
+        # every MCP server rather than one tool's worth of them.
+        BLOCK_GATE,
+        MCP_GATE,
+        "run_agent",
+        "post_to_chat_platform",
+        # ``bash_exec`` is the one that looks harmless and is not. On E2B the
+        # sandbox is handed ``get_integration_env_vars(user_id)`` — the
+        # owner's live GH_TOKEN and friends — keyed on the user alone, with no
+        # reference to this filter or to the grant. A shell plus internet
+        # access plus the owner's tokens in ``env`` is the whole mute undone by
+        # one ``echo $GH_TOKEN``, so an ungranted routine does not get a shell.
+        "bash_exec",
+    }
+)
+
+
+# Refused on EVERY routine turn, however the routine was written and whatever
+# its owner granted it.  An unattended turn reads things nobody is watching it
+# read — an issue tracker, an inbox, a web page — and text in any of them can
+# ask it to schedule more work.  Without this, one injected page buys standing
+# access to the account forever: a routine that can write a routine can grant
+# itself the credentials its own prompt was denied, and the owner sees a
+# schedule they never agreed to.  Standing work is created where somebody is
+# present to refuse it.
+ROUTINE_SELF_ESCALATION_TOOLS: frozenset[str] = frozenset(
+    {
+        "schedule_routine",
+        "schedule_followup",
+        "setup_agent_webhook_trigger",
+    }
+)
+
+
+def routine_disabled_tools(*, granted: bool) -> frozenset[str]:
+    """Tools to refuse on a routine's unattended turn.
+
+    *granted* is the owner's answer to "may this routine use my connected
+    services", which they give per routine when they switch it on.  It only ever
+    removes the outward-reaching denials; nothing makes a routine able to
+    schedule more of itself.
+
+    Deliberately a denylist of what reaches *outward*, not a narrow allowlist:
+    reading, searching, and drafting into the thread are the whole point of an
+    unattended routine, and a routine that can do none of those is not worth
+    shipping off.
+
+    Kept here rather than beside the other tool gates in ``tools/__init__``:
+    the scheduler needs it at import time, and ``executor.scheduler`` importing
+    ``copilot.tools`` closes a cycle (tools -> helpers -> executor -> scheduler).
+    ``routines_test`` asserts every name here is a live tool or gate.
+    """
+    if granted:
+        return ROUTINE_SELF_ESCALATION_TOOLS
+    return UNGRANTED_ROUTINE_DENIED_TOOLS | ROUTINE_SELF_ESCALATION_TOOLS
+
+
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and
@@ -270,10 +362,24 @@ _IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
 
 
 def _with_implied_grants(allowed: frozenset[str]) -> frozenset[str]:
-    """Expand an allow set with the tools its entries imply."""
-    return allowed.union(
+    """Expand an allow set with the tools its entries imply.
+
+    A deferred tool is no longer handed to the model, so allowing it without
+    ``run_capability`` allows nothing: the dispatcher is the only way in.
+    """
+    grants = allowed.union(
         implied for name in allowed for implied in _IMPLIED_GRANTS.get(name, ())
     )
+    if grants & _deferred_tool_names():
+        grants = grants | {"run_capability"}
+    return grants
+
+
+def _deferred_tool_names() -> frozenset[str]:
+    """The registry's deferred set, imported late (heavy tool imports)."""
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES  # noqa: PLC0415
+
+    return DEFERRED_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -311,12 +417,18 @@ class CopilotPermissions(BaseModel):
             when False it is a whitelist.  Ignored when *tools* is empty.
         blocks: Block identifiers (name, full UUID, or 8-char partial UUID).
         blocks_exclude: Same semantics as *tools_exclude* but for blocks.
+        providers: Provider slugs (``github``) whose connected accounts the
+            run's sandbox may use.
+        providers_exclude: Same semantics as *tools_exclude* but for
+            providers.
     """
 
     tools: list[str] = []
     tools_exclude: bool = True
     blocks: list[str] = []
     blocks_exclude: bool = True
+    providers: list[str] = []
+    providers_exclude: bool = True
 
     # Private: parent permissions for recursion inheritance.
     # Set only by merged_with_parent(); never exposed in block input schema.
@@ -369,6 +481,38 @@ class CopilotPermissions(BaseModel):
         return not matched if self.blocks_exclude else matched
 
     # ------------------------------------------------------------------
+    # Provider helpers
+    # ------------------------------------------------------------------
+
+    def is_provider_allowed(self, provider: str) -> bool:
+        """True if the run may use the user's *provider* account; the whole
+        inheritance chain must agree."""
+        if self.providers:
+            listed = provider in self.providers
+            if listed == self.providers_exclude:
+                return False
+        if self._parent is not None:
+            return self._parent.is_provider_allowed(provider)
+        return True
+
+    def flattened_providers(self) -> tuple[list[str], bool]:
+        """``(providers, providers_exclude)`` for the effective ceiling of this
+        instance and its whole parent chain, needing no parent to read.
+
+        An allow-list of the providers left, or, when none are left, a deny
+        list of every one (an empty list means no filter at all)."""
+        if not self.providers and self._parent is None:
+            return [], True
+        allowed = [p for p in SUPPORTED_PROVIDERS if self.is_provider_allowed(p)]
+        if len(allowed) == len(SUPPORTED_PROVIDERS):
+            # No filter, not an allow-list of today's providers: one added
+            # later must not be denied to an unrestricted run.
+            return [], True
+        if allowed:
+            return allowed, False
+        return list(SUPPORTED_PROVIDERS), True
+
+    # ------------------------------------------------------------------
     # Recursion / merging
     # ------------------------------------------------------------------
 
@@ -380,8 +524,9 @@ class CopilotPermissions(BaseModel):
         """Return a new instance that is at most as permissive as *parent*.
 
         - Tools: intersection of effective-allowed sets, stored as a whitelist.
-        - Blocks: parent is stored internally; both constraints are applied
-          during :meth:`is_block_allowed`.
+        - Blocks and providers: parent is stored internally; both
+          constraints are applied during :meth:`is_block_allowed` and
+          :meth:`is_provider_allowed`.
         """
         merged_tools = self.effective_allowed_tools(
             all_tools
@@ -391,8 +536,15 @@ class CopilotPermissions(BaseModel):
             tools_exclude=False,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
+            # The child's own filter first, then the parent's chain on top.
+            providers=self.providers,
+            providers_exclude=self.providers_exclude,
         )
         result._parent = parent
+        # Unlike blocks, the provider ceiling is written out in full rather
+        # than left to ``_parent``: a private attribute does not survive the
+        # executor queue's JSON, and the child turn must not come back wider.
+        result.providers, result.providers_exclude = result.flattened_providers()
         return result
 
     # ------------------------------------------------------------------
@@ -401,7 +553,12 @@ class CopilotPermissions(BaseModel):
 
     def is_empty(self) -> bool:
         """Return True when no filtering is configured (allow-all passthrough)."""
-        return not self.tools and not self.blocks and self._parent is None
+        return (
+            not self.tools
+            and not self.blocks
+            and not self.providers
+            and self._parent is None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +594,78 @@ def validate_tool_names(tools: list[str]) -> list[str]:
 
 
 _tool_names_checked = False
+
+
+def allowed_providers(
+    permissions: CopilotPermissions | None,
+) -> tuple[str, ...] | None:
+    """The providers a run may use, of those a sandbox can be handed; ``None``
+    when nothing restricts them, which is what a box's egress record stores
+    for "every provider"."""
+    if permissions is None or permissions.is_empty():
+        return None
+    allowed = tuple(
+        p for p in SUPPORTED_PROVIDERS if permissions.is_provider_allowed(p)
+    )
+    if len(allowed) == len(SUPPORTED_PROVIDERS):
+        return None
+    return allowed
+
+
+def _denied(permissions: CopilotPermissions, infos: Iterable[Any]) -> list[str]:
+    """The providers named by credential field specs *infos* that
+    *permissions* keeps from the run, of those the ceiling covers."""
+    named = {ProviderName(p).value for info in infos for p in info.provider}
+    return sorted(
+        p
+        for p in named
+        if p in SUPPORTED_PROVIDERS and not permissions.is_provider_allowed(p)
+    )
+
+
+def denied_block_providers(
+    permissions: CopilotPermissions | None, block: object
+) -> list[str]:
+    """The providers among *block*'s credential fields that *permissions*
+    keeps from the run, of those the providers ceiling covers
+    (``SUPPORTED_PROVIDERS``).  Empty when nothing restricts them."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    schema = getattr(block, "input_schema", None)
+    fields = schema.get_credentials_fields_info() if schema is not None else {}
+    return _denied(permissions, fields.values())
+
+
+def denied_graph_providers(
+    permissions: CopilotPermissions | None, graph: Any
+) -> list[str]:
+    """``denied_block_providers`` for every block of an agent graph: an agent
+    run is its blocks acting with the user's credentials.
+
+    An AutoPilot block counts as acting with every provider: its turn runs in
+    the graph executor, which this run's ceiling does not reach, so it could
+    use any account the user connected."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    fields = graph.aggregate_credentials_inputs()
+    denied = _denied(permissions, (info for info, _, _ in fields.values()))
+    if _runs_autopilot(graph):
+        denied += [
+            p
+            for p in SUPPORTED_PROVIDERS
+            if p not in denied and not permissions.is_provider_allowed(p)
+        ]
+    return denied
+
+
+def _runs_autopilot(graph: Any) -> bool:
+    from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
+
+    return any(
+        node.block_id == AUTOPILOT_BLOCK_ID
+        for g in [graph, *graph.sub_graphs]
+        for node in g.nodes
+    )
 
 
 def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:

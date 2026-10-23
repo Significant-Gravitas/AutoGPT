@@ -89,23 +89,23 @@ def client():
 
 
 class TestEnableChatSharing:
-    def test_enables_share_when_flag_on(self, client):
+    def test_enables_share(self, client, test_user_id):
         with (
-            patch(
-                "backend.api.features.chat.share.is_feature_enabled",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.api.features.chat.share.share_db.enable_chat_session_share",
                 new_callable=AsyncMock,
                 return_value=VALID_TOKEN,
-            ),
+            ) as enable_share,
         ):
             response = client.post(
                 f"/api/chat/sessions/{SESSION_ID}/share",
                 json={"auto_share_executions": False},
             )
+        enable_share.assert_awaited_once_with(
+            session_id=SESSION_ID,
+            user_id=test_user_id,
+            auto_share_executions=False,
+        )
         assert response.status_code == 200
         body = response.json()
         assert body["share_token"] == VALID_TOKEN
@@ -120,11 +120,6 @@ class TestEnableChatSharing:
 
         with (
             patch(
-                "backend.api.features.chat.share.is_feature_enabled",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.api.features.chat.share.share_db.enable_chat_session_share",
                 side_effect=fake_enable,
             ),
@@ -138,25 +133,27 @@ class TestEnableChatSharing:
         # backend can auto-link existing + future runs.
         assert captured["auto_share_executions"] is True
 
-    def test_flag_off_refuses_with_403(self, client):
-        with patch(
-            "backend.api.features.chat.share.is_feature_enabled",
-            new_callable=AsyncMock,
-            return_value=False,
+    def test_enables_share_without_launchdarkly(self, client):
+        with (
+            patch(
+                "backend.util.feature_flag.get_client",
+                side_effect=RuntimeError("LaunchDarkly unavailable"),
+            ),
+            patch(
+                "backend.api.features.chat.share.share_db.enable_chat_session_share",
+                new_callable=AsyncMock,
+                return_value=VALID_TOKEN,
+            ),
         ):
             response = client.post(
                 f"/api/chat/sessions/{SESSION_ID}/share",
                 json={"auto_share_executions": False},
             )
-        assert response.status_code == 403
+        assert response.status_code == 200
+        assert response.json()["share_token"] == VALID_TOKEN
 
     def test_missing_session_returns_404(self, client):
         with (
-            patch(
-                "backend.api.features.chat.share.is_feature_enabled",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.api.features.chat.share.share_db.enable_chat_session_share",
                 new_callable=AsyncMock,
