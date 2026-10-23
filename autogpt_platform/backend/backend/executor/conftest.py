@@ -30,6 +30,20 @@ def _bypass_paywall(mocker):
 
 
 @pytest.fixture(autouse=True)
+def _no_bans(mocker):
+    """No owner is banned unless a test says so. Without this the lookup goes
+    to a DatabaseManager these tests don't run, and waits out its retries."""
+    for module in (
+        "backend.executor.utils",
+        "backend.executor.scheduler",
+        "backend.copilot.turn_queue",
+    ):
+        mocker.patch(
+            f"{module}.is_user_banned", new=mocker.AsyncMock(return_value=False)
+        )
+
+
+@pytest.fixture(autouse=True)
 def _default_team_untenanted(mocker):
     """Default the born-tenanted fallback to a no-op for executor tests.
 

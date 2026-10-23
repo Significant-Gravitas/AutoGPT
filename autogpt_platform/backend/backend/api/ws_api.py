@@ -17,9 +17,10 @@ from backend.api.model import (
 )
 from backend.api.utils.cors import build_cors_params
 from backend.data import db, redis_client
-from backend.data.user import DEFAULT_USER_ID
+from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
+    start_metrics_server,
     update_websocket_connections,
 )
 from backend.util.service import AppProcess
@@ -27,6 +28,8 @@ from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+ACCOUNT_BANNED_CLOSE_CODE = 4004
 
 
 @asynccontextmanager
@@ -55,14 +58,9 @@ docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="websocket-server",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env == AppEnvironment.LOCAL,
-)
+# Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
+# on their own port, never on this public app.
+instrument_fastapi(app, service_name="websocket-server", expose_endpoint=False)
 
 
 def get_connection_manager():
@@ -73,9 +71,6 @@ def get_connection_manager():
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if not settings.config.enable_auth:
-        return DEFAULT_USER_ID
-
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=4001, reason="Missing authentication token")
@@ -83,14 +78,26 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
     try:
         payload = await parse_jwt_token_async(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            await websocket.close(code=4002, reason="Invalid token")
-            return ""
-        return user_id
     except ValueError:
         await websocket.close(code=4003, reason="Invalid token")
         return ""
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4002, reason="Invalid token")
+        return ""
+
+    # Refused when the ban can't be read, as a request to a signed-in route is;
+    # 1011 rather than the ban's code, so an outage never reads as a ban.
+    try:
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; refusing the socket")
+        await websocket.close(code=1011, reason="Try again")
+        return ""
+    if banned:
+        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+        return ""
+    return user_id
 
 
 # ===================== Message Handlers ===================== #
@@ -242,6 +249,10 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
+            # The socket outlives its token, so a ban ends it at the next message.
+            if await _banned_now(user_id):
+                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+                break
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:
@@ -332,6 +343,15 @@ async def websocket_router(
         update_websocket_connections(user_id, -1)
 
 
+async def _banned_now(user_id: str) -> bool:
+    """A lookup that fails keeps the socket; the next message asks again."""
+    try:
+        return await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
+        return False
+
+
 @app.get("/")
 @app.get("/health")
 async def health():
@@ -355,6 +375,7 @@ class WebsocketServer(AppProcess):
             allow_headers=["*"],
         )
 
+        start_metrics_server(Config().websocket_server_metrics_port)
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,

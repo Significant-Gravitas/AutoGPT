@@ -38,6 +38,7 @@ class PostHogEvent(StrEnum):
     WRITING_STYLE_ADDED = "writing_style_added"
     WORKFLOW_INSTALLED_ON_EXPERT = "workflow_installed_on_expert"
     EXPERT_FIRED = "expert_fired"
+    EXPERT_MODE_SET_UNSUPERVISED = "expert_mode_set_unsupervised"
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
 
@@ -62,9 +63,20 @@ class PostHogEvent(StrEnum):
     TRIAL_CONVERTED = "trial_converted"
     PAYMENT_FAILED = "payment_failed"
 
-    # Person properties: backend/data/posthog_lifecycle_sync.py. PostHog's own
-    # person-update event, not a user action; keep it out of funnels.
+    # Person properties: backend/data/posthog_lifecycle_sync.py,
+    # product_analytics.set_onboarding_role and
+    # backend/notifications/posthog_audience.py. PostHog's own person-update
+    # event, not a user action; keep it out of funnels.
     SET_PERSON_PROPERTIES = "$set"
+
+    # LLM analytics (SECRT-2730): backend/copilot/feedback.py. PostHog's own
+    # event for a score on a generative AI trace, named by PostHog rather
+    # than the analytics plan; a thumbs up/down or copy of an AutoPilot reply.
+    AI_METRIC = "$ai_metric"
+    # backend/copilot/ai_spans.py (SECRT-2979): an AutoPilot reply's trace
+    # root, and a tool call or expert subtask within it.
+    AI_TRACE = "$ai_trace"
+    AI_SPAN = "$ai_span"
 
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
@@ -73,6 +85,13 @@ class PostHogEvent(StrEnum):
     SUBSCRIPTION_ENDED = "subscription_ended"
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
+
+    # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
+    # webhooks for the mail the platform sends itself.
+    EMAIL_DELIVERED = "email_delivered"
+    EMAIL_OPENED = "email_opened"
+    EMAIL_CLICKED = "email_clicked"
+    EMAIL_BOUNCED = "email_bounced"
 
 
 class PlannedPostHogEvent(StrEnum):

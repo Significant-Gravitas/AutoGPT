@@ -590,7 +590,7 @@ def json_to_graph(agent_json: dict[str, Any]) -> Graph:
         id=agent_json.get("id", str(uuid.uuid4())),
         version=agent_json.get("version", 1),
         is_active=agent_json.get("is_active", True),
-        name=agent_json.get("name", "Generated Agent"),
+        name=agent_json.get("name", "Generated Workflow"),
         description=agent_json.get("description", ""),
         nodes=nodes,
         links=links,
@@ -698,4 +698,8 @@ async def get_agent_as_json(
     if not graph:
         return None
 
+    if graph.user_id != user_id:
+        # A library copy of someone else's workflow: the file the caller gets
+        # mustn't carry the owner's stored secrets or references.
+        graph = graph.shared_copy()
     return graph_to_json(graph)

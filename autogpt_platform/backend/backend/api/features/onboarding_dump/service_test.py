@@ -28,7 +28,6 @@ from backend.api.features.onboarding_dump import (
 from backend.api.features.onboarding_dump.models import (
     ExpertRecommendations,
     RecommendedExpert,
-    RecommendedExpertsResponse,
 )
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
@@ -185,6 +184,7 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "assemble_parts": AsyncMock(return_value=b"opus-audio-bytes"),
         "store_audio": AsyncMock(return_value=AUDIO_PATH),
         "discard_parts": AsyncMock(),
+        "delete_audio": AsyncMock(),
     }
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
@@ -249,7 +249,7 @@ async def finalize_voice(duration_secs: float = 12.0, mime_type: str | None = No
 
 @pytest.mark.asyncio
 async def test_transcription_failure_keeps_the_audio_and_records_the_error(
-    dumps: DumpStore, transcribe: AsyncMock
+    dumps: DumpStore, transcribe: AsyncMock, storage_mocks: dict[str, AsyncMock]
 ):
     await start_voice_take(dumps)
     transcribe.side_effect = RuntimeError("provider blew up")
@@ -261,8 +261,75 @@ async def test_transcription_failure_keeps_the_audio_and_records_the_error(
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "transcription_failed"
-    # The zero-lost-recordings guarantee: the audio is still addressable.
+    # The zero-lost-recordings guarantee: the audio is still addressable,
+    # until the retention sweep's 48 hours are up.
     assert dumps.row.audioPath == AUDIO_PATH
+    storage_mocks["delete_audio"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_transcribed_take_deletes_its_recording_and_keeps_the_transcript(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock]
+):
+    """Only the transcript is kept, so the recording goes the moment the
+    transcript is safely stored."""
+    await start_voice_take(dumps)
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.transcribed
+    storage_mocks["delete_audio"].assert_awaited_once_with(AUDIO_PATH)
+    assert dumps.row is not None
+    assert dumps.row.audioPath is None
+    assert dumps.row.transcript == TRANSCRIPT
+    assert dumps.row.status == BrainDumpStatus.completed
+
+
+@pytest.mark.asyncio
+async def test_a_failed_recording_delete_never_fails_the_take(
+    dumps: DumpStore,
+    storage_mocks: dict[str, AsyncMock],
+    caplog: pytest.LogCaptureFixture,
+):
+    """The retention sweep deletes the file within 48 hours instead."""
+    await start_voice_take(dumps)
+    storage_mocks["delete_audio"].side_effect = RuntimeError(f"boom {AUDIO_PATH}")
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.transcript == TRANSCRIPT
+    # The row stops pointing at it either way, so nothing offers it again.
+    assert dumps.row.audioPath is None
+    [logged] = [
+        r.getMessage() for r in caplog.records if "not deleted" in r.getMessage()
+    ]
+    assert AUDIO_PATH not in logged
+    assert USER_ID not in logged
+
+
+@pytest.mark.asyncio
+async def test_a_retried_take_deletes_the_copy_its_failed_attempt_stored(
+    dumps: DumpStore, transcribe: AsyncMock, storage_mocks: dict[str, AsyncMock]
+):
+    """The retry re-uploads the take from the browser and stores it again,
+    so once it is transcribed the failed attempt's copy has to go too."""
+    await start_voice_take(dumps)
+    transcribe.side_effect = RuntimeError("provider blew up")
+    await finalize_voice()
+    await start_voice_take(dumps)
+    transcribe.side_effect = None
+    retry_path = "brain-dumps/rec-1-retry.webm"
+    storage_mocks["store_audio"].return_value = retry_path
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.transcribed
+    deleted = {c.args[0] for c in storage_mocks["delete_audio"].await_args_list}
+    assert deleted == {AUDIO_PATH, retry_path}
+    assert dumps.row is not None and dumps.row.audioPath is None
 
 
 @pytest.mark.asyncio
@@ -597,7 +664,7 @@ async def test_a_voice_finalize_for_a_superseded_take_reports_its_own_take(
 
 @pytest.mark.asyncio
 async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
-    dumps: DumpStore, transcribe: AsyncMock
+    dumps: DumpStore, transcribe: AsyncMock, storage_mocks: dict[str, AsyncMock]
 ):
     """The old take loses the row the moment a second tab claims it.
 
@@ -624,6 +691,9 @@ async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
     assert dumps.row.transcript is None
     assert dumps.row.greeting is None
     assert dumps.row.status == BrainDumpStatus.recording_uploaded
+    # Its transcript was never saved, so its recording is left for the
+    # retention sweep rather than deleted on the strength of a lost write.
+    storage_mocks["delete_audio"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1038,8 +1108,11 @@ async def test_intro_card_falls_back_when_the_greeting_was_never_generated(
 
 
 @pytest.mark.asyncio
-async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
-    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothing(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    storage_mocks: dict[str, AsyncMock],
 ):
     await start_voice_take(dumps)
     quality_gate.return_value = "no_usable_speech"
@@ -1055,9 +1128,12 @@ async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "no_usable_speech"
-    # Rejection is not deletion: audio and transcript both survive.
-    assert dumps.row.audioPath == AUDIO_PATH
+    # The transcript survives the rejection for debugging. The recording
+    # does not: it went once the transcript was stored, and the user
+    # re-records from the browser rather than from it.
     assert dumps.row.transcript == TRANSCRIPT
+    assert dumps.row.audioPath is None
+    storage_mocks["delete_audio"].assert_awaited_once_with(AUDIO_PATH)
     # And nothing personalized was queued from the rejected content.
     assert background.tasks == []
     extraction["extract_business_understanding"].assert_not_awaited()
@@ -1269,15 +1345,6 @@ def _stored_team(dumps: DumpStore) -> dict:
 
 
 @pytest.fixture
-def team_flag(mocker: MockerFixture) -> AsyncMock:
-    """Both flags on. ``ONBOARDING_EXPERT_TEAM`` is a child of
-    ``HIRE_EXPERTS``, so the reads are separate and both must pass."""
-    mock = AsyncMock(return_value=True)
-    mocker.patch.object(service, "is_feature_enabled", new=mock)
-    return mock
-
-
-@pytest.fixture
 def templates(mocker: MockerFixture) -> AsyncMock:
     mock = AsyncMock(return_value=TEMPLATES)
     mocker.patch.object(service, "list_templates", new=mock)
@@ -1306,38 +1373,8 @@ def generate_team(mocker: MockerFixture) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_the_flag_being_off_costs_no_llm_call_and_no_roster_read(
-    dumps: DumpStore,
-    mocker: MockerFixture,
-    templates: AsyncMock,
-    generate_team: AsyncMock,
-):
-    """A dark feature must not bill for itself.
-
-    The result is still written: a null column reads as "still running",
-    and the client would poll it to its own ceiling.
-    """
-    mocker.patch.object(
-        service, "is_feature_enabled", new=AsyncMock(return_value=False)
-    )
-    await start_voice_take(dumps)
-
-    await finalize_voice()
-
-    generate_team.assert_not_awaited()
-    templates.assert_not_awaited()
-    assert _stored_team(dumps) == {
-        "diagnosis": "",
-        "experts": [],
-        "raise_suggestion": None,
-        "source": "disabled",
-    }
-
-
-@pytest.mark.asyncio
 async def test_the_generated_team_is_stored_with_the_wizard_answers(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],
@@ -1361,7 +1398,6 @@ async def test_the_generated_team_is_stored_with_the_wizard_answers(
 @pytest.mark.asyncio
 async def test_a_failed_team_job_still_stores_an_answer(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
 ):
@@ -1385,25 +1421,8 @@ async def test_a_failed_team_job_still_stores_an_answer(
 
 
 @pytest.mark.asyncio
-async def test_the_team_is_withheld_entirely_while_the_flag_is_off(
-    dumps: DumpStore, mocker: MockerFixture
-):
-    mocker.patch.object(
-        service, "is_feature_enabled", new=AsyncMock(return_value=False)
-    )
-    await start_voice_take(dumps)
-
-    response = await service.get_recommended_experts(USER_ID)
-    card = await service.get_intro_card(USER_ID)
-
-    assert response == RecommendedExpertsResponse(ready=True, team=None)
-    assert card.team is None
-    assert card.team_pending is False
-
-
-@pytest.mark.asyncio
 async def test_the_team_is_pending_while_the_job_is_still_running(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1422,7 +1441,7 @@ async def test_the_team_is_pending_while_the_job_is_still_running(
 
 @pytest.mark.asyncio
 async def test_a_terminal_dump_with_no_stored_team_falls_back(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     """The job died with the process, so nothing is coming.
 
@@ -1447,7 +1466,7 @@ async def test_a_terminal_dump_with_no_stored_team_falls_back(
 
 @pytest.mark.asyncio
 async def test_a_stored_team_is_served_as_written(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1475,7 +1494,7 @@ async def test_a_stored_team_is_served_as_written(
 
 @pytest.mark.asyncio
 async def test_a_malformed_stored_team_falls_back_rather_than_500s(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1495,7 +1514,7 @@ async def test_a_malformed_stored_team_falls_back_rather_than_500s(
 
 @pytest.mark.asyncio
 async def test_a_team_written_while_the_flag_was_off_is_recomputed(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     """A flag flip must not strand the user with an empty section.
 
@@ -1520,9 +1539,7 @@ async def test_a_team_written_while_the_flag_was_off_is_recomputed(
 
 
 @pytest.mark.asyncio
-async def test_a_skipped_dump_still_gets_a_team(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
-):
+async def test_a_skipped_dump_still_gets_a_team(dumps: DumpStore, templates: AsyncMock):
     """Path B has no transcript, so the job never ran for it.
 
     The raise door has to be reachable anyway, which means the section
@@ -1541,7 +1558,6 @@ async def test_a_skipped_dump_still_gets_a_team(
 @pytest.mark.asyncio
 async def test_the_intro_card_carries_the_stored_team(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
 ):
@@ -1557,39 +1573,22 @@ async def test_the_intro_card_carries_the_stored_team(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "hire_enabled,team_enabled",
-    [(False, False), (False, True), (True, False), (True, True)],
-)
-async def test_pending_greeting_only_waits_for_an_enabled_team(
-    dumps: DumpStore,
-    team_flag: AsyncMock,
-    templates: AsyncMock,
-    hire_enabled: bool,
-    team_enabled: bool,
+async def test_pending_greeting_waits_for_the_team(
+    dumps: DumpStore, templates: AsyncMock
 ):
-    team_flag.side_effect = lambda flag, *args, **kwargs: (
-        hire_enabled if flag == service.Flag.HIRE_EXPERTS else team_enabled
-    )
     await start_voice_take(dumps)
     await dumps.update_dump(
-        USER_ID,
-        RECORDING_ID,
-        status=BrainDumpStatus.extracting,
-        transcript=TRANSCRIPT,
+        USER_ID, RECORDING_ID, status=BrainDumpStatus.extracting, transcript=TRANSCRIPT
     )
-
     card = await service.get_intro_card(USER_ID)
-
     assert card.greeting_pending is True
-    assert card.team_pending is (hire_enabled and team_enabled)
+    assert card.team_pending is True
     assert card.team is None
 
 
 @pytest.mark.asyncio
 async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishes(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],

@@ -8,11 +8,13 @@ combining the storage backend and database layer.
 import asyncio
 import logging
 import mimetypes
+import posixpath
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
+from pydantic import BaseModel
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import (
@@ -20,15 +22,7 @@ from backend.data.db_accessors import (
     workspace_folder_db,
     workspace_skill_db,
 )
-from backend.data.skill_capacity import (
-    MAX_SKILLS_PER_EXPERT,
-    SKILL_ORIGIN_LABELS,
-    SKILL_ORIGIN_USER,
-    SkillLimitError,
-    SkillOwnedError,
-    skill_origin,
-    skill_owner_folder,
-)
+from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace import WorkspaceFile
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
@@ -36,10 +30,19 @@ from backend.data.workspace_scope import (
     WorkspaceAccessDeniedError,
     WorkspaceScope,
 )
-from backend.data.workspace_skill import WorkspaceSkillWrite
+from backend.data.workspace_skill import (
+    WorkspaceSkillFile,
+    WorkspaceSkillPublication,
+    WorkspaceSkillWrite,
+    publication_refusal,
+)
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
-from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
+from backend.util.workspace_storage import (
+    WorkspaceStorageBackend,
+    compute_file_checksum,
+    get_workspace_storage,
+)
 
 if TYPE_CHECKING:
     from backend.data.workspace_folder import WorkspaceFolder
@@ -60,6 +63,15 @@ def format_bytes(n: int) -> str:
 
 
 logger = logging.getLogger(__name__)
+
+
+class SkillPackageFile(BaseModel):
+    """One file of a skill package written by :meth:`WorkspaceManager.write_skill_package`."""
+
+    path: str
+    content: bytes
+    mime_type: str | None = None
+    metadata: dict | None = None
 
 
 class WorkspaceManager:
@@ -394,33 +406,24 @@ class WorkspaceManager:
         replaced_file_id: str | None = None
         try:
             if skill_owner_folder(path) is not None:
-                publication = await workspace_skill_db().publish_workspace_skill_file(
-                    WorkspaceSkillWrite(
-                        workspace_id=self.workspace_id,
-                        file_id=file_id,
-                        name=filename,
-                        path=path,
-                        storage_path=storage_path,
-                        mime_type=mime_type,
-                        size_bytes=len(content),
-                        overwrite=overwrite,
-                        checksum=checksum,
-                        metadata=metadata,
-                    )
+                write = WorkspaceSkillWrite(
+                    workspace_id=self.workspace_id,
+                    file_id=file_id,
+                    name=filename,
+                    path=path,
+                    storage_path=storage_path,
+                    mime_type=mime_type,
+                    size_bytes=len(content),
+                    overwrite=overwrite,
+                    checksum=checksum,
+                    metadata=metadata,
                 )
-                if publication.status == "capacity":
-                    origin = skill_origin(metadata) or SKILL_ORIGIN_USER
-                    raise SkillLimitError(
-                        f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {SKILL_ORIGIN_LABELS[origin]} "
-                        "skills). Delete an unused skill first."
-                    )
-                if publication.status == "owned":
-                    raise SkillOwnedError(
-                        f"'{path.rsplit('/', 2)[1]}' is one of the owner's own skills; "
-                        "rename or delete it before installing a skill by that name."
-                    )
-                if publication.status == "exists":
-                    raise ValueError(f"File already exists at path: {path}")
+                publication = await workspace_skill_db().publish_workspace_skill_file(
+                    write
+                )
+                refusal = publication_refusal(publication, write)
+                if refusal is not None:
+                    raise refusal
                 assert publication.file is not None
                 file = publication.file
                 replaced_storage_path = publication.replaced_storage_path
@@ -475,6 +478,191 @@ class WorkspaceManager:
             logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
 
         return file
+
+    async def write_skill_package(
+        self,
+        root: SkillPackageFile,
+        files: Sequence[SkillPackageFile],
+        removed_paths: Collection[str],
+        scanned_checksums: Collection[str] = (),
+        *,
+        config: Config | None = None,
+    ) -> WorkspaceFile:
+        """Write a skill package as one change: ``root`` is its SKILL.md,
+        ``files`` the other files that changed, and ``removed_paths`` the
+        files it no longer has.
+
+        Every blob is checked, scanned and stored before one transaction
+        swaps the rows, so a failure anywhere leaves the previous package
+        exactly as it was, rather than new files beside an old SKILL.md.
+        """
+        package = [
+            item.model_copy(update={"path": self._resolve_path(item.path)})
+            for item in [root, *files]
+        ]
+        removed = [self._resolve_path(path) for path in removed_paths]
+        for path in [*(item.path for item in package), *removed]:
+            self._authorize_path(path, write=True)
+        config = config if config is not None else Config()
+        await self._require_package_room(package, removed, config.max_file_size_mb)
+        for item in package:
+            if compute_file_checksum(item.content) not in scanned_checksums:
+                await scan_content_safe(
+                    item.content, filename=posixpath.basename(item.path)
+                )
+        storage = await get_workspace_storage(config=config)
+        stored: list[WorkspaceSkillFile] = []
+        try:
+            for item in package:
+                stored.append(await self._store_package_blob(storage, item))
+            write = WorkspaceSkillWrite(
+                workspace_id=self.workspace_id,
+                overwrite=True,
+                files=stored[1:],
+                removed_paths=removed,
+                **stored[0].model_dump(),
+            )
+            publication = await workspace_skill_db().publish_workspace_skill_file(write)
+        except BaseException:
+            # Cancellation included: a save stopped part-way must not leave
+            # blobs no row points at. Shielded so a second cancel cannot
+            # interrupt the cleanup itself.
+            await asyncio.shield(self._discard_unpublished(storage, stored))
+            raise
+        refusal = publication_refusal(publication, write)
+        if refusal is not None:
+            await asyncio.shield(self._discard_unpublished(storage, stored))
+            raise refusal
+        assert publication.file is not None
+        await self._retire_replaced(storage, publication)
+        logger.info(
+            f"Wrote skill package {publication.file.path} ({len(stored)} files, "
+            f"{len(removed)} removed) to workspace {self.workspace_id}"
+        )
+        for blob in stored:
+            self._schedule_embedding(blob.file_id, blob.name, blob.path)
+        return publication.file
+
+    async def _discard_unpublished(
+        self, storage: WorkspaceStorageBackend, stored: list[WorkspaceSkillFile]
+    ) -> None:
+        """Delete blobs a failed package write staged. A publication whose
+        reply was lost may have committed anyway; its root row then exists
+        and every blob it names must stay."""
+        if not stored:
+            return
+        try:
+            if await workspace_db().get_workspace_file(
+                stored[0].file_id, self.workspace_id
+            ):
+                return
+        except Exception:
+            logger.warning(
+                "Could not tell whether a skill package was published; "
+                "keeping its blobs",
+                exc_info=True,
+            )
+            return
+        for blob in stored:
+            try:
+                await storage.delete(blob.storage_path)
+            except Exception:
+                logger.warning("Failed to clean up unpublished skill blob")
+
+    async def _require_package_room(
+        self, package: list[SkillPackageFile], removed: list[str], max_file_size_mb: int
+    ) -> None:
+        max_file_size = max_file_size_mb * 1024 * 1024
+        for item in package:
+            if len(item.content) > max_file_size:
+                raise ValueError(
+                    f"File too large: {len(item.content)} bytes exceeds "
+                    f"{max_file_size_mb}MB limit"
+                )
+        db = workspace_db()
+        storage_limit, current_usage = await asyncio.gather(
+            get_workspace_storage_limit_bytes(self.user_id),
+            db.get_workspace_total_size(self.workspace_id),
+        )
+        for path in {item.path for item in package} | set(removed):
+            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
+            if existing is not None:
+                current_usage -= existing.size_bytes
+        current_usage = max(0, current_usage)
+        projected = current_usage + sum(len(item.content) for item in package)
+        if storage_limit > 0 and projected > storage_limit:
+            raise ValueError(
+                f"Storage limit exceeded. "
+                f"You've used {format_bytes(current_usage)} of your "
+                f"{format_bytes(storage_limit)} quota. "
+                f"Delete some files or upgrade your plan for more storage."
+            )
+
+    async def _store_package_blob(
+        self, storage: WorkspaceStorageBackend, item: SkillPackageFile
+    ) -> WorkspaceSkillFile:
+        file_id = str(uuid.uuid4())
+        name = posixpath.basename(item.path)
+        mime_type = item.mime_type or (
+            mimetypes.guess_type(name)[0] or "application/octet-stream"
+        )
+        storage_path = await storage.store(
+            workspace_id=self.workspace_id,
+            file_id=file_id,
+            filename=name,
+            content=item.content,
+        )
+        return WorkspaceSkillFile(
+            file_id=file_id,
+            name=name,
+            path=item.path,
+            storage_path=storage_path,
+            mime_type=mime_type,
+            size_bytes=len(item.content),
+            checksum=compute_file_checksum(item.content),
+            metadata=item.metadata,
+        )
+
+    async def _retire_replaced(
+        self, storage: WorkspaceStorageBackend, publication: WorkspaceSkillPublication
+    ) -> None:
+        """Best-effort cleanup once the new package is live: the blobs and
+        search entries of every row it replaced."""
+        retired = [(f.file_id, f.storage_path) for f in publication.retired_files]
+        if publication.replaced_file_id and publication.replaced_storage_path:
+            retired.append(
+                (publication.replaced_file_id, publication.replaced_storage_path)
+            )
+        for file_id, storage_path in retired:
+            try:
+                await storage.delete(storage_path)
+            except Exception:
+                logger.warning("Failed to clean up replaced skill blob", exc_info=True)
+            try:
+                from backend.api.features.workspace.embeddings import (
+                    delete_workspace_file_embedding,
+                )
+
+                await delete_workspace_file_embedding(
+                    file_id=file_id, user_id=self.user_id
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to clean up replaced skill embedding", exc_info=True
+                )
+
+    def _schedule_embedding(self, file_id: str, name: str, path: str) -> None:
+        try:
+            from backend.api.features.workspace.embeddings import (
+                schedule_workspace_file_embedding,
+            )
+
+            schedule_workspace_file_embedding(
+                file_id=file_id, user_id=self.user_id, name=name, path=path
+            )
+        except Exception as e:
+            # Embedding is purely a search-quality concern — never block writes.
+            logger.warning(f"Failed to schedule file embedding for {file_id}: {e}")
 
     async def list_folders(self) -> list["WorkspaceFolder"]:
         """The folder tree; empty for a scope without the owner's files, whose

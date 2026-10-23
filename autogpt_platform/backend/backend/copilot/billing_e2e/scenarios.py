@@ -10,19 +10,26 @@ charge is expected to rest on:
   the CLI's price (Anthropic rates) would be far off.
 - ``none``: the user's own subscription pays, or nobody does; the platform
   must not charge the user's spend budgets at all.
+
+A turn the platform relaunches after a provider failure owes only the calls
+billed after the failure. The failed attempt is the platform's to absorb, not
+the user's. A turn the failure ends, because it had already streamed a tool
+call that a relaunch would roll back and could repeat, owes nothing.
 """
 
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .invoice import CLI_ESTIMATE_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .ledger import CreditBilling, PlannedDrain
 from .provider import PlannedFault
 
 ChargeBasis = Literal["invoice", "cli_estimate", "moonshot_estimate", "none"]
 # What a finding is about: whether the thread took its planned path, what the
-# turn was charged, or the tokens recorded against it.
-Check = Literal["path", "charge", "tokens"]
+# turn was charged, the tokens recorded against it, or the live spend the SDK
+# turn's governor lands tasks on.
+Check = Literal["path", "charge", "tokens", "meter"]
 
 
 class KnownGap(BaseModel):
@@ -51,9 +58,34 @@ class Scenario(BaseModel):
     # Calls the provider bills per turn: one, a tool round of two, one.
     calls_per_turn: tuple[int, int, int] = (1, 2, 1)
     fault: PlannedFault | None = None
+    # Whether the platform relaunches the turn after the fault, rather than
+    # its client retrying the one request. The fault then ends the failed
+    # attempt, so every call after it is the retry's: the CLI's own retries
+    # must be off (``cli_max_retries=0``) for this to hold.
+    fault_relaunches_turn: bool = False
+    # Whether the fault ends the turn in an error instead: the turn had
+    # already streamed a tool call, which a relaunch would roll back out of
+    # the chat and could run again.
+    fault_ends_turn: bool = False
     # CLAUDE_CODE_MAX_RETRIES for the CLI; None keeps its own default.
     cli_max_retries: int | None = None
+    # Each turn the AutoPilot block's past the plan's used-up allowance: it
+    # pays its charge from this credit balance, rounded up to whole credits,
+    # instead of the plan's spend windows. None where the allowance covers it.
+    credits: CreditBilling | None = None
     known_gap: KnownGap | None = None
+
+    def owed_calls(self, turn: int, calls: list[Call]) -> list[Call]:
+        """The turn's billed calls the user pays for: after a relaunch, only
+        the attempt that succeeded, and none for a turn the fault ended."""
+        fault = self.fault
+        if fault is None or fault.turn != turn:
+            return calls
+        if self.fault_ends_turn:
+            return []
+        if not self.fault_relaunches_turn:
+            return calls
+        return [call for call in calls if call.request > fault.request]
 
     @property
     def needs_cli(self) -> bool:
@@ -74,13 +106,23 @@ _OPENROUTER = {
 # is configured.
 _DIRECT = {"use_openrouter": False, "api_key": "sk-ant-billing-e2e"}
 
+# Anthropic reports no cost, so a direct turn is charged the CLI's own
+# estimate rather than the invoice (see ``CLI_ESTIMATE_PRICES``).
 _SDK_ANTHROPIC = Scenario(
     id="sdk-anthropic",
     engine="sdk",
     model=SONNET,
-    charge="invoice",
+    charge="cli_estimate",
     cost_log_provider="anthropic",
     config={**_DIRECT, "claude_agent_model": SONNET},
+)
+_SDK_OPENROUTER = Scenario(
+    id="sdk-openrouter",
+    engine="sdk",
+    model=f"anthropic/{SONNET}",
+    charge="invoice",
+    cost_log_provider="open_router",
+    config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
 )
 
 
@@ -88,7 +130,8 @@ def _sdk_anthropic_failing(
     scenario_id: str,
     fault: PlannedFault,
     calls_per_turn: tuple[int, int, int],
-    known_gap: KnownGap | None = None,
+    *,
+    relaunches: bool = True,
 ) -> Scenario:
     """The direct-Anthropic thread with one request failed and the CLI's own
     retries off, so the platform's handling of the failure is what runs."""
@@ -96,66 +139,50 @@ def _sdk_anthropic_failing(
         update={
             "id": scenario_id,
             "fault": fault,
+            "fault_relaunches_turn": relaunches,
+            "fault_ends_turn": not relaunches,
             "calls_per_turn": calls_per_turn,
             "cli_max_retries": 0,
-            "known_gap": known_gap,
         }
     )
 
 
-_CLI_529_NOT_TRANSIENT = (
-    "The bundled CLI words a 529 as 'API Error: 529 Overloaded. This is a "
-    "server-side issue...', which is_transient_api_error does not match (it "
-    "looks for 'status code 529'), so the platform never retries it: the "
-    "reply is the CLI's error text"
-)
-
 SCENARIOS = [
     _SDK_ANTHROPIC,
-    # The tool round's second call is refused. Unmatched as transient (see
-    # _CLI_529_NOT_TRANSIENT), the CLI's error becomes the reply, and the
-    # turn still owes the first call.
+    # The tool round's second call is refused after the tool ran. Relaunching
+    # would roll the call the user watched out of the chat and could repeat
+    # it, so the turn ends in the error: the provider billed the tool round's
+    # first call, and a turn that failed owes nothing.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-after-tool",
         PlannedFault(kind="overloaded", turn=1, request=2),
         calls_per_turn=(1, 1, 1),
+        relaunches=False,
     ),
-    # The connection drops instead, which is transient: the platform stops
-    # reading before the CLI's result and relaunches the CLI on the session.
-    # The turn owes the first call and the retry's.
+    # The connection drops instead, which is transient too, and ends the turn
+    # the same way.
     _sdk_anthropic_failing(
         "sdk-anthropic-dropped-after-tool",
         PlannedFault(kind="dropped", turn=1, request=2),
-        calls_per_turn=(1, 2, 1),
-        known_gap=KnownGap(
-            check="tokens",
-            reason=(
-                "A retried turn is charged the failed attempt's spend, but its "
-                "cost-log row and session usage keep only the retry's tokens"
-            ),
-        ),
+        calls_per_turn=(1, 1, 1),
+        relaunches=False,
     ),
-    # A resumed turn whose first request drops is relaunched before anything
-    # streamed, and charged its one successful call.
+    # A chat's first request drops before anything streamed. The relaunch
+    # starts the CLI session over, which the CLI refuses while the failed
+    # launch's session file is still there, and is charged its one call.
     _sdk_anthropic_failing(
-        "sdk-anthropic-dropped-on-resume",
-        PlannedFault(kind="dropped", turn=2, request=1),
+        "sdk-anthropic-dropped-first-turn",
+        PlannedFault(kind="dropped", turn=0, request=1),
         calls_per_turn=(1, 2, 1),
     ),
+    # A resumed turn whose first request is refused is relaunched on the
+    # session before anything streamed, and charged its one successful call.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-on-resume",
         PlannedFault(kind="overloaded", turn=2, request=1),
         calls_per_turn=(1, 2, 1),
-        known_gap=KnownGap(check="path", reason=_CLI_529_NOT_TRANSIENT),
     ),
-    Scenario(
-        id="sdk-openrouter",
-        engine="sdk",
-        model=f"anthropic/{SONNET}",
-        charge="invoice",
-        cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
-    ),
+    _SDK_OPENROUTER,
     Scenario(
         id="sdk-openrouter-lookups-refused",
         engine="sdk",
@@ -205,6 +232,22 @@ SCENARIOS = [
         cost_log_provider="codex",
         config=_DIRECT,
         codex=True,
+    ),
+    # On OpenRouter, the default route, the turn's charge waits for the
+    # reconcile's invoice; direct, the CLI's own price lands as the stream ends.
+    _SDK_OPENROUTER.model_copy(
+        update={"id": "sdk-openrouter-credits", "credits": CreditBilling()}
+    ),
+    _SDK_ANTHROPIC.model_copy(
+        update={"id": "sdk-anthropic-credits", "credits": CreditBilling()}
+    ),
+    # Other runs spend all but a credit once the resumed turn has read the
+    # balance: it takes the credit that is left and never overdraws.
+    _SDK_OPENROUTER.model_copy(
+        update={
+            "id": "sdk-openrouter-credits-drained",
+            "credits": CreditBilling(drain=PlannedDrain(turn=2, left=1)),
+        }
     ),
     Scenario(
         id="baseline-openrouter",
@@ -265,8 +308,8 @@ def expected_charge_usd(basis: ChargeBasis, call: Call) -> float:
     if basis == "invoice":
         return call.invoice_usd
     if basis == "cli_estimate":
-        list_price = ANTHROPIC_PRICES[call.model.removeprefix("anthropic/")]
-        return list_price.of(call.usage, call.cache_ttl)
+        cli_price = CLI_ESTIMATE_PRICES[call.model.removeprefix("anthropic/")]
+        return cli_price.of(call.usage, call.cache_ttl)
     if basis == "moonshot_estimate":
         return MOONSHOT_FALLBACK.of(call.usage, None)
     return 0.0

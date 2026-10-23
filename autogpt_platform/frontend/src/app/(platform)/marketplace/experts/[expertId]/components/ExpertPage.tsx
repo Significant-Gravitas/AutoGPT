@@ -5,32 +5,30 @@ import {
   getExpertAccessProviders,
   getExpertFirstName,
 } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
-import { Text } from "@/components/atoms/Text/Text";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
+import { useTrackExpertProfileOpened } from "@/services/experts/use-track-funnel-view-once";
+import { useHireFlow } from "@/services/experts/useHireFlow";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ReactNode } from "react";
+import { useExpertPage } from "../useExpertPage";
 import { ExpertAbout } from "./ExpertAbout";
 import { ExpertAccess } from "./ExpertAccess";
-import { ExpertComingSoonLabel } from "./ExpertComingSoonLabel";
 import { ExpertDayOne } from "./ExpertDayOne";
 import { ExpertHireActions } from "./ExpertHireActions";
-import { ExpertPageHeader } from "./ExpertPageHeader";
-import { ExpertPlanNote } from "./ExpertPlanNote";
+import { ExpertHireCard } from "./ExpertHireCard";
+import { ExpertHeroBand, ExpertHeroIdentity } from "./ExpertPageHeader";
 import { ExpertProtectedRules } from "./ExpertProtectedRules";
 import { ExpertSkills } from "./ExpertSkills";
 import { ExpertWorkflowList } from "./ExpertWorkflowList";
-import { useExpertPage } from "../useExpertPage";
-import { useHireFlow } from "@/services/experts/useHireFlow";
-import { useTrackExpertProfileOpened } from "@/services/experts/use-track-funnel-view-once";
 
 const MAIN_CLASS =
-  "mx-auto flex w-full max-w-[760px] flex-col px-6 pb-24 pt-8 md:px-8";
+  "mx-auto flex w-full max-w-[1120px] flex-col px-4 pb-24 pt-8 sm:px-6 md:px-8";
 
 function BackToMarketplaceLink() {
   return (
@@ -51,7 +49,6 @@ export function ExpertPage() {
     expert,
     hiredExpert,
     isLoggedIn,
-    isHiringOpen,
     isActionReady,
     systemProviders,
     isLoading,
@@ -110,10 +107,15 @@ export function ExpertPage() {
 
   const accent = getExpertAccent(expert.role);
   const firstName = getExpertFirstName(expert.name);
+  const accessProviders = getExpertAccessProviders(
+    expert.workflows,
+    systemProviders,
+  );
+  const stats = getExpertStats(expert, accessProviders.length);
 
-  let actions: ReactNode = <Skeleton className="h-9 w-28 rounded-full" />;
+  let actions: ReactNode = <Skeleton className="h-9 w-full rounded-full" />;
   if (isActionReady) {
-    actions = isHiringOpen ? (
+    actions = (
       <ExpertHireActions
         expert={expert}
         hiredExpert={hiredExpert}
@@ -121,47 +123,45 @@ export function ExpertPage() {
         isHiring={isHiring}
         onHire={hire}
       />
-    ) : (
-      <ExpertComingSoonLabel />
     );
   }
 
   return (
     <main className={MAIN_CLASS}>
       <BackToMarketplaceLink />
-      <ExpertPageHeader expert={expert} actions={actions} />
-      <Text variant="body" tone="secondary" className="mt-4">
-        Hire an AI Expert for supported tasks you might otherwise contract out.
-        Review outputs before using them.
-      </Text>
-      <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
-        <ExpertDayOne
-          name={firstName}
-          items={expert.day_one ?? []}
-          accent={accent}
-        />
-        <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
-        <ExpertSkills
-          skills={expert.bundled_skills ?? []}
-          category={expert.categories?.[0]}
-        />
-        <ExpertWorkflowList
-          name={expert.name}
-          workflows={expert.workflows}
-          accent={accent}
-        />
-        <ExpertAccess
-          name={firstName}
-          providers={getExpertAccessProviders(
-            expert.workflows,
-            systemProviders,
-          )}
-        />
-        <ExpertPlanNote
-          name={firstName}
-          weeklyBudget={expert.weekly_budget ?? null}
-        />
-        <ExpertProtectedRules rules={expert.protected_soul_rules ?? []} />
+      <ExpertHeroBand expert={expert} />
+      {/* One grid for the hero's text, the hire card and the story. On wide
+          screens the card spans the right column, pulled up over the band's
+          end and sticky while the story scrolls; on phones it sits between
+          the hero text and the story. */}
+      <div className="grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
+          <ExpertHeroIdentity expert={expert} stats={stats} />
+        </div>
+        <div className="relative z-10 order-2 mt-8 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-mt-24">
+          <div className="lg:sticky lg:top-6">
+            <ExpertHireCard
+              expert={expert}
+              firstName={firstName}
+              actions={actions}
+            />
+          </div>
+        </div>
+        <div className="order-3 mt-12 flex min-w-0 flex-col gap-12 lg:col-start-1 lg:row-start-2">
+          <ExpertDayOne
+            name={firstName}
+            items={expert.day_one ?? []}
+            accent={accent}
+          />
+          <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
+          <ExpertSkills
+            skills={expert.bundled_skills ?? []}
+            category={expert.categories?.[0]}
+          />
+          <ExpertAccess name={firstName} providers={accessProviders} />
+          <ExpertProtectedRules rules={expert.protected_soul_rules ?? []} />
+          <ExpertWorkflowList name={expert.name} workflows={expert.workflows} />
+        </div>
       </div>
 
       {/* The voice pick follows a successful hire when the persona ships
@@ -189,4 +189,23 @@ export function ExpertPage() {
       </Dialog>
     </main>
   );
+}
+
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+/** The hero's at-a-glance chips: only the counts that are not zero. */
+function getExpertStats(
+  expert: { bundled_skills?: unknown[] | null; workflows: unknown[] },
+  serviceCount: number,
+) {
+  const skillCount = expert.bundled_skills?.length ?? 0;
+  return [
+    skillCount > 0 ? plural(skillCount, "skill") : null,
+    expert.workflows.length > 0
+      ? plural(expert.workflows.length, "workflow")
+      : null,
+    serviceCount > 0 ? plural(serviceCount, "service") : null,
+  ].filter((stat): stat is string => stat !== null);
 }

@@ -19,6 +19,7 @@ from backend.data.graph import (
 )
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
+from backend.data.profile import ensure_user_profile
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings
@@ -39,6 +40,9 @@ settings = Settings()
 DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
+# Creator search reads only this much of a query, which bounds its ILIKE pattern.
+MAX_CREATOR_SEARCH_QUERY_LENGTH = 100
+
 
 class StoreAgentsSortOptions(Enum):
     RATING = "rating"
@@ -55,6 +59,7 @@ async def get_store_agents(
     category: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    public_search: bool = False,
 ) -> store_model.StoreAgentsResponse:
     """
     Get PUBLIC store agents from the StoreAgent view.
@@ -63,6 +68,8 @@ async def get_store_agents(
     - With search_query: Uses hybrid search (semantic + lexical)
     - Fallback: If embeddings unavailable, gracefully degrades to lexical-only
     - Rationale: User-facing endpoint prioritizes availability over accuracy
+    - public_search: a new query embedding takes a slot from store search's
+      per-minute budget, and the search ranks by text alone once it is spent
 
     Note: Admin operations (approval) use fail-fast to prevent inconsistent state.
     """
@@ -92,6 +99,7 @@ async def get_store_agents(
                     sorted_by="relevance",  # Use hybrid scoring for relevance
                     page=page,
                     page_size=page_size,
+                    public_search=public_search,
                 )
                 search_used_hybrid = True
             except Exception as e:
@@ -156,7 +164,7 @@ async def get_store_agents(
         )
     except Exception as e:
         logger.error(f"Error getting store agents: {e}")
-        raise DatabaseError("Failed to fetch store agents") from e
+        raise DatabaseError("Failed to fetch store workflows") from e
     # TODO: commenting this out as we concerned about potential db load issues
     # finally:
     #     if search_term:
@@ -310,7 +318,7 @@ async def get_store_agent_details(
 
         if not agent:
             logger.warning(f"Agent not found: {username}/{agent_name}")
-            raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            raise NotFoundError(f"Workflow {username}/{agent_name} not found")
 
         # Fetch changelog data if requested
         changelog_data = None
@@ -341,7 +349,7 @@ async def get_store_agent_details(
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
-        raise DatabaseError("Failed to fetch agent details") from e
+        raise DatabaseError("Failed to fetch workflow details") from e
 
 
 @overload
@@ -400,7 +408,7 @@ async def get_available_graph(
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
-        raise DatabaseError("Failed to fetch agent") from e
+        raise DatabaseError("Failed to fetch workflow") from e
 
 
 async def get_store_agent_by_version_id(
@@ -420,7 +428,7 @@ async def get_store_agent_by_version_id(
 
         if not agent:
             logger.warning(f"Agent not found: {store_listing_version_id}")
-            raise NotFoundError(f"Agent {store_listing_version_id} not found")
+            raise NotFoundError(f"Workflow {store_listing_version_id} not found")
 
         logger.debug(f"Found agent details for {store_listing_version_id}")
         return store_model.StoreAgentDetails.from_db(agent)
@@ -428,7 +436,7 @@ async def get_store_agent_by_version_id(
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
-        raise DatabaseError("Failed to fetch agent details") from e
+        raise DatabaseError("Failed to fetch workflow details") from e
 
 
 async def get_store_agent_details_as_admin(
@@ -512,12 +520,8 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    if search_query:
-        # Sanitize and validate search query by escaping special characters
-        sanitized_query = search_query.strip()
-        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
-            raise DatabaseError("Invalid search query")
-
+    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    if sanitized_query:
         # Escape special SQL characters
         sanitized_query = (
             sanitized_query.replace("\\", "\\\\")
@@ -910,19 +914,19 @@ async def create_store_submission(
             # Provide more user-friendly error message when graph_id is empty
             if not graph_id or graph_id.strip() == "":
                 raise ValueError(
-                    "No agent selected. "
-                    "Please select an agent before submitting to the store."
+                    "No workflow selected. "
+                    "Please select a workflow before submitting to the store."
                 )
             else:
                 raise NotFoundError(
-                    f"Agent #{graph_id} v{graph_version} not found "
+                    f"Workflow #{graph_id} v{graph_version} not found "
                     f"for this user (#{user_id})"
                 )
 
         if not graph.User or not graph.User.Profile:
             logger.warning(f"User #{user_id} does not have a Profile")
             raise PreconditionFailed(
-                "User must create a Marketplace Profile before submitting an agent"
+                "User must create a Marketplace Profile before submitting a workflow"
             )
 
         async with transaction() as tx:
@@ -1023,7 +1027,7 @@ async def create_store_submission(
         if "slug" in error_str.lower():
             logger.debug(f"Slug '{slug}' is already in use by graph #{graph_id}")
             raise store_exceptions.SlugAlreadyInUseError(
-                f"The slug '{slug}' is already in use by another one of your agents. "
+                f"The slug '{slug}' is already in use by another one of your workflows. "
                 "Please choose a different slug."
             ) from exc
         else:
@@ -1218,6 +1222,22 @@ async def get_user_profile(
         raise DatabaseError("Failed to get user profile") from e
 
 
+async def get_or_create_user_profile(
+    user_id: str,
+) -> store_model.ProfileDetails | None:
+    """The user's profile, creating their default one if they have none yet.
+
+    A brand-new user's first page asks for it as soon as the session exists,
+    which can be before account setup (``POST /auth/user``) has created it.
+    None only for an id with no platform user, or if no free handle was found.
+    """
+    profile = await get_user_profile(user_id)
+    if profile is not None:
+        return profile
+    await ensure_user_profile(user_id)
+    return await get_user_profile(user_id)
+
+
 async def update_profile(
     user_id: str, profile: store_model.Profile
 ) -> store_model.ProfileDetails:
@@ -1409,7 +1429,7 @@ async def get_my_agents(
         )
     except Exception as e:
         logger.error(f"Error getting my agents: {e}")
-        raise DatabaseError("Failed to fetch my agents") from e
+        raise DatabaseError("Failed to fetch my workflows") from e
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:

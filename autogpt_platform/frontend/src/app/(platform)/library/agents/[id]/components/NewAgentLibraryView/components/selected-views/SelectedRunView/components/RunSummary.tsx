@@ -1,6 +1,7 @@
 "use client";
 
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
 import {
   Tooltip,
@@ -10,7 +11,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
 interface Props {
-  run: GetV1GetExecutionDetails200;
+  run: GraphExecution | GraphExecutionWithNodes;
 }
 
 export function RunSummary({ run }: Props) {
@@ -62,12 +63,12 @@ export function RunSummary({ run }: Props) {
                   AI-generated estimate of how well this execution achieved its
                   intended purpose. This score indicates
                   {correctnessScore >= 0.8
-                    ? " the agent was highly successful."
+                    ? " the workflow was highly successful."
                     : correctnessScore >= 0.6
-                      ? " the agent was mostly successful with minor issues."
+                      ? " the workflow was mostly successful with minor issues."
                       : correctnessScore >= 0.4
-                        ? " the agent was partially successful with some gaps."
-                        : " the agent had limited success with significant issues."}
+                        ? " the workflow was partially successful with some gaps."
+                        : " the workflow had limited success with significant issues."}
                 </p>
               </TooltipContent>
             </Tooltip>

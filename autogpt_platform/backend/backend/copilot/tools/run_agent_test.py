@@ -6,7 +6,11 @@ import orjson
 import pytest
 
 from backend.copilot.context import set_turn_unattended
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionMeta,
+    GraphExecutionWithNodes,
+)
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
@@ -533,7 +537,7 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
         "unknown_field",
     }
     assert "inputs" in result_data  # Contains the valid schema
-    assert "Agent was not executed" in result_data["message"]
+    assert "Workflow was not executed" in result_data["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -1663,13 +1667,10 @@ def _completed_run_mocks(
     outputs: dict,
     node_executions: list | None = None,
     detailed_fetch_error: Exception | None = None,
+    node_error_count: int = 0,
 ):
     """Wire the waited-COMPLETED path: library agent, execution, waiter,
     outputs, and the detailed per-node trace fetch."""
-    from unittest.mock import MagicMock
-
-    from backend.data.execution import GraphExecutionWithNodes
-
     lib = MagicMock()
     lib.graph_id = "graph-1"
     lib.graph_version = 1
@@ -1698,6 +1699,7 @@ def _completed_run_mocks(
     completed.status = ExecutionStatus.COMPLETED
     completed.started_at = None
     completed.ended_at = None
+    completed.stats = GraphExecutionMeta.Stats(node_error_count=node_error_count)
     mocker.patch(
         "backend.copilot.tools.run_agent.wait_for_execution",
         AsyncMock(return_value=completed),
@@ -1843,6 +1845,22 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 
     assert "completed successfully" in response.message
     assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_detailed_fetch_failure_still_reports_the_runs_failed_nodes(mocker):
+    """Without the per-node trace, the run's own failed-node count still keeps
+    a COMPLETED run with a failed node from reading as success."""
+    _completed_run_mocks(
+        mocker,
+        outputs={"result": ["ok"]},
+        detailed_fetch_error=RuntimeError("db down"),
+        node_error_count=1,
+    )
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "1 node(s) FAILED despite the COMPLETED" in response.message
+    assert "completed successfully" not in response.message
 
 
 @pytest.mark.asyncio(loop_scope="session")
