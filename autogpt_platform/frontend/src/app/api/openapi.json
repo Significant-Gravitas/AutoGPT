@@ -30240,7 +30240,7 @@
       "NotificationPreference": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "email": { "type": "string", "format": "email", "title": "Email" },
+          "email": { "type": "string", "title": "Email" },
           "briefing_frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
             "default": "WEEKLY"
@@ -30268,7 +30268,12 @@
       },
       "NotificationPreferenceDTO": {
         "properties": {
-          "email": { "type": "string", "format": "email", "title": "Email" },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Ignored: saving preferences never changes the account's email address. Use POST /auth/user/email for that.",
+            "default": ""
+          },
           "briefing_frequency": {
             "$ref": "#/components/schemas/BriefingFrequency"
           },
@@ -30286,7 +30291,6 @@
         },
         "type": "object",
         "required": [
-          "email",
           "briefing_frequency",
           "alerts_enabled",
           "store_verdicts_enabled"
