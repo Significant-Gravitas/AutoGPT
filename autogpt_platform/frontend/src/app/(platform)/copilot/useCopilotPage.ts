@@ -32,6 +32,7 @@ import {
   rememberHeldFollowUp,
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
+import { isFollowUpStillHeld } from "./helpers/isFollowUpStillHeld";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
@@ -529,12 +530,22 @@ function useCopilotPageChat(
     return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
   // A follow-up the last turn ended without reading goes out as a new send;
-  // the server takes its waiting copy out, so Otto reads it once.
-  function retryQueuedMessage(text: string) {
-    takeQueuedMessage(text);
-    void sendOrQueue(text).catch((err: unknown) =>
+  // the server takes its waiting copy out, so Otto reads it once. One retry
+  // at a time: the turn it starts reads every held follow-up, so a second
+  // click before that turn shows would queue its message a second time.
+  const isRetryingRef = useRef(false);
+  async function retryQueuedMessage(text: string) {
+    if (!sessionId || isRetryingRef.current || isInflightRef.current) return;
+    isRetryingRef.current = true;
+    await resendHeldFollowUp(sessionId, text).catch((err: unknown) =>
       recoverFailedDeferredSend(text, [], err),
     );
+    isRetryingRef.current = false;
+  }
+  async function resendHeldFollowUp(forSessionId: string, text: string) {
+    const stillHeld = await isFollowUpStillHeld(forSessionId, text);
+    takeQueuedMessage(text);
+    if (stillHeld) await sendOrQueue(text);
   }
 
   // One function for the host's lifetime that runs the latest `sendOrQueue`,

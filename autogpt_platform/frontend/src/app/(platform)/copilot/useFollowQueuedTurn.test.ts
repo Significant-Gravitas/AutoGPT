@@ -18,7 +18,11 @@ describe("useFollowQueuedTurn", () => {
           refetchSession,
           followBackendTurn,
         }),
-      { initialProps: { sessionChatStatus: "queued" } },
+      {
+        initialProps: {
+          sessionChatStatus: "queued" as string | undefined,
+        },
+      },
     );
     return { view, refetchSession, followBackendTurn };
   }

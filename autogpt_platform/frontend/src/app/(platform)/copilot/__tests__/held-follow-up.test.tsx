@@ -93,6 +93,81 @@ describe("a follow-up the last turn ended without reading", () => {
     expect(screen.getAllByText(FOLLOW_UP)).toHaveLength(1);
   });
 
+  it("sends one message when two held follow-ups are retried at once", async () => {
+    const SECOND = "And Monday?";
+    buffer.messages = [FOLLOW_UP, SECOND];
+    const posts: string[] = [];
+    const queued: string[] = [];
+    server.use(
+      http.post(STREAM_URL, async ({ request }) => {
+        const { message = "" } = (await request.json()) as {
+          message?: string;
+        };
+        posts.push(message);
+        // The new turn reads every held follow-up at its start.
+        buffer.messages = [];
+        store("user", message);
+        store("assistant", ANSWER);
+        return streamSseResponse(
+          assistantTextChunks(ANSWER, {
+            messageId: "retry-answer",
+            textPartId: "retry-answer-text",
+          }),
+          { abortSignal: request.signal },
+        );
+      }),
+      http.post(PENDING_URL, async ({ request }) => {
+        queued.push(((await request.json()) as { message: string }).message);
+        return HttpResponse.json({
+          buffer_length: 1,
+          max_buffer_length: 10,
+          turn_in_flight: true,
+        });
+      }),
+    );
+    renderChat();
+    await waitFor(
+      () =>
+        expect(screen.getAllByRole("button", { name: /retry/i })).toHaveLength(
+          2,
+        ),
+      { timeout: 5000 },
+    );
+    const [first, second] = screen.getAllByRole("button", { name: /retry/i });
+
+    first.click();
+    second.click();
+
+    await screen.findByText(ANSWER, undefined, { timeout: 5000 });
+    expect(posts).toEqual([FOLLOW_UP]);
+    expect(queued).toEqual([]);
+  }, 15_000);
+
+  it("clears a held chip another turn has read since, without sending it again", async () => {
+    const posts: string[] = [];
+    server.use(
+      http.post(STREAM_URL, async ({ request }) => {
+        posts.push("sent");
+        return streamSseResponse([], { abortSignal: request.signal });
+      }),
+    );
+    renderChat();
+    const retry = await screen.findByRole(
+      "button",
+      { name: /retry/i },
+      { timeout: 5000 },
+    );
+    // Another tab's turn read the queue in the meantime.
+    buffer.messages = [];
+
+    await userEvent.setup().click(retry);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Didn't go through")).toBeNull(),
+    );
+    expect(posts).toEqual([]);
+  });
+
   it("goes out once on Retry and gets its answer", async () => {
     const posts: string[] = [];
     server.use(
