@@ -52,6 +52,7 @@ from backend.data.llm_registry.llm_models import (
     strip_anthropic_vendor_prefix,
 )
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.egress_proxy import egress_proxy_url
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -68,7 +69,7 @@ from backend.util.openai_responses import (
     extract_responses_tool_calls,
     extract_responses_usage,
 )
-from backend.util.request import validate_url_host
+from backend.util.request import parse_url, validate_url_host
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -760,6 +761,46 @@ async def _call_groq(
 # Ollama (local-runner chat API)
 # ---------------------------------------------------------------------------
 
+_OLLAMA_DEFAULT_PORT = 11434
+_SCHEME_PORTS = {"http": 80, "https": 443}
+
+
+def _ollama_url(host: str) -> str:
+    """*host* as a URL naming the port Ollama's client would connect to: 11434
+    for a host given with neither scheme nor port, otherwise its scheme's."""
+    url = parse_url(host)
+    # parse_url adds "http://" itself to a host that names no scheme.
+    scheme_given = "://" in host.replace("\\", "/")
+    port = _SCHEME_PORTS.get(url.scheme) if scheme_given else _OLLAMA_DEFAULT_PORT
+    if url.port is None and port is not None:
+        url = url._replace(netloc=f"{url.netloc}:{port}")
+    return url.geturl()
+
+
+def _configured_ollama_url() -> httpx.URL | None:
+    try:
+        return httpx.URL(_ollama_url(settings.config.ollama_host))
+    except (ValueError, httpx.InvalidURL):
+        return None
+
+
+async def _scope_ollama_key(request: httpx.Request) -> None:
+    """Drop the process's OLLAMA_API_KEY, which ollama.AsyncClient sends with
+    every request, redirects included, unless this request goes to the
+    configured Ollama endpoint itself, in scheme, host and port alike.
+
+    Being trusted is not enough: trust ignores the scheme, lets any port
+    through for an entry configured without one, and covers the copilot's chat
+    endpoint. httpx also keeps the header on an http-to-https redirect."""
+    url, configured = request.url, _configured_ollama_url()
+    # Both read by httpx: IDNA-encoded host, a scheme's default port as None.
+    if configured is None or (url.scheme, url.raw_host, url.port) != (
+        configured.scheme,
+        configured.raw_host,
+        configured.port,
+    ):
+        request.headers.pop("authorization", None)
+
 
 async def _call_ollama(
     *,
@@ -777,7 +818,16 @@ async def _call_ollama(
 
     # SSRF guard — the host can be user-supplied (block-layer input
     # field), so it must match an operator-configured trust list.
-    await validate_url_host(ollama_host, trusted_hostnames=_trusted_ollama_hostnames())
+    checked, is_trusted, _ = await validate_url_host(
+        _ollama_url(ollama_host), trusted_hostnames=_trusted_ollama_hostnames()
+    )
+    if checked.port == 0:
+        # Ollama's client reads port 0 as no port and connects to its default.
+        raise ValueError(f"Ollama host {ollama_host!r} has an invalid port")
+    # Connect to the URL that was checked, never the raw input: Ollama's own
+    # parser reads some spellings (a backslash before "@", a leading "//") as a
+    # different host.
+    host = checked.geturl()
 
     # ``num_predict`` is Ollama's OUTPUT token cap. ``num_ctx`` (the
     # input context window) is deliberately left at the model default —
@@ -787,14 +837,13 @@ async def _call_ollama(
     if temperature is not None:
         options["temperature"] = temperature
 
-    client = ollama.AsyncClient(
-        host=ollama_host, timeout=request_timeout(timeout_seconds)
-    )
-    response = await client.chat(
+    response = await _send_ollama_chat(
+        host,
+        is_trusted=is_trusted,
+        timeout_seconds=timeout_seconds,
         model=model,
         messages=messages,
-        stream=False,
-        format="json" if force_json_output else None,
+        json_format=force_json_output,
         options=options,
     )
     return ProviderResponse(
@@ -803,6 +852,51 @@ async def _call_ollama(
         completion_tokens=response.eval_count or 0,
         raw_response=response,
     )
+
+
+async def _send_ollama_chat(
+    host: str,
+    *,
+    is_trusted: bool,
+    timeout_seconds: float,
+    model: str,
+    messages: list[dict],
+    json_format: bool,
+    options: dict[str, Any],
+) -> ollama.ChatResponse:
+    """Send one chat to the checked *host*, connecting the way its trust
+    allows."""
+    client_kwargs: dict[str, Any] = {
+        "host": host,
+        "timeout": request_timeout(timeout_seconds),
+        "event_hooks": {"request": [_scope_ollama_key]},
+    }
+    if not is_trusted:
+        # The host passed the address check, but ollama.AsyncClient hands the
+        # name to httpx, which resolves it again to connect and follows
+        # redirects on its own: a changed DNS answer or a redirect could still
+        # reach an internal address. The egress proxy checks every address it
+        # dials, on every hop. Trusted operator hosts connect without it: they
+        # are usually loopback, which the public-only proxy refuses.
+        client_kwargs["proxy"] = egress_proxy_url()
+
+    client = ollama.AsyncClient(**client_kwargs)
+    try:
+        return await client.chat(
+            model=model,
+            messages=messages,
+            stream=False,
+            format="json" if json_format else None,
+            options=options,
+        )
+    except httpx.ProxyError as e:
+        if is_trusted:
+            raise
+        # httpx's wording names a proxy the user never configured.
+        raise ConnectionError(
+            f"Could not connect to Ollama at {host}: it is unreachable or "
+            "not on a public address."
+        ) from e
 
 
 def _trusted_ollama_hostnames() -> list[str]:

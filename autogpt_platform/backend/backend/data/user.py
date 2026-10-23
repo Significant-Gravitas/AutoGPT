@@ -765,21 +765,25 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
         ) from e
 
 
-async def disable_all_user_notifications(user_id: str) -> None:
+async def disable_all_user_notifications(
+    user_id: str, *, zero_daily_limit: bool = False
+) -> None:
     """Turn the volume knob all the way down.
 
     Used when a user's email bounces or is marked inactive, so we stop trying
-    to reach an address that cannot receive mail.
+    to reach an address that cannot receive mail. `zero_daily_limit` also sets
+    the daily ceiling to zero, as a one-click unsubscribe does, for an address
+    whose owner asked not to be mailed.
     """
+    data: UserUpdateInput = {
+        "briefingFrequency": BriefingFrequency.OFF,
+        "alertsEnabled": False,
+        "notifyOnStoreVerdict": False,
+    }
+    if zero_daily_limit:
+        data["maxEmailsPerDay"] = 0
     try:
-        await PrismaUser.prisma().update(
-            where={"id": user_id},
-            data={
-                "briefingFrequency": BriefingFrequency.OFF,
-                "alertsEnabled": False,
-                "notifyOnStoreVerdict": False,
-            },
-        )
+        await PrismaUser.prisma().update(where={"id": user_id}, data=data)
         # Invalidate cache for this user
         get_user_by_id.cache_delete(user_id)
         logger.info(f"Disabled all notification preferences for user {user_id}")

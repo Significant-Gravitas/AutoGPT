@@ -1,5 +1,7 @@
-"""Postmark's delivery, open, click and bounce webhooks become PostHog events
-for the user the email went to, without the address and without link secrets."""
+"""Postmark's delivery, open, click, bounce and spam complaint webhooks become
+PostHog events for the user the email went to, without the address and without
+link secrets. A hard bounce, a complaint or a suppression also stops our side
+from mailing the user."""
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -52,6 +54,13 @@ def unverify(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     return unverify
 
 
+@pytest.fixture
+def silence(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    silence = AsyncMock()
+    monkeypatch.setattr(postmark, "disable_all_user_notifications", silence)
+    return silence
+
+
 def test_a_delivery_is_sent_for_the_recipients_user(posthog: Mock, lookup: AsyncMock):
     _post(_delivery())
 
@@ -92,8 +101,8 @@ def test_a_click_keeps_only_the_links_scheme_host_and_path(
     assert call["properties"]["link"] == "https://platform.agpt.co/library/agents/:id"
 
 
-def test_a_hard_bounce_is_sent_and_unverifies_the_address(
-    posthog: Mock, lookup: AsyncMock, unverify: AsyncMock
+def test_a_hard_bounce_is_sent_and_turns_the_users_mail_off(
+    posthog: Mock, lookup: AsyncMock, unverify: AsyncMock, silence: AsyncMock
 ):
     _post(_bounce(type_name="HardBounce", type_code=1))
 
@@ -102,10 +111,11 @@ def test_a_hard_bounce_is_sent_and_unverifies_the_address(
     assert call["properties"]["bounce_type"] == "HardBounce"
     assert RECIPIENT not in str(call)
     unverify.assert_awaited_once_with(USER_ID, False)
+    silence.assert_awaited_once_with(USER_ID)
 
 
-def test_a_soft_bounce_is_sent_but_keeps_the_address_verified(
-    posthog: Mock, lookup: AsyncMock, unverify: AsyncMock
+def test_a_soft_bounce_is_sent_but_keeps_the_users_mail_on(
+    posthog: Mock, lookup: AsyncMock, unverify: AsyncMock, silence: AsyncMock
 ):
     _post(_bounce(type_name="SoftBounce", type_code=4096))
 
@@ -113,6 +123,49 @@ def test_a_soft_bounce_is_sent_but_keeps_the_address_verified(
         "SoftBounce"
     )
     unverify.assert_not_awaited()
+    silence.assert_not_awaited()
+
+
+def test_a_spam_complaint_is_sent_and_turns_the_users_mail_off(
+    posthog: Mock, lookup: AsyncMock, unverify: AsyncMock, silence: AsyncMock
+):
+    _post(_spam_complaint())
+
+    lookup.assert_awaited_once_with(RECIPIENT)
+    call = posthog.capture.call_args.kwargs
+    assert call["distinct_id"] == USER_ID
+    assert call["event"] == "email_complained"
+    assert call["properties"]["email_type"] == "briefing"
+    assert RECIPIENT not in str(call)
+    unverify.assert_awaited_once_with(USER_ID, False)
+    silence.assert_awaited_once_with(USER_ID, zero_daily_limit=True)
+
+
+@pytest.mark.parametrize("origin", ["Recipient", "Customer", "Admin"])
+def test_a_suppression_turns_the_users_mail_off(
+    origin: str,
+    posthog: Mock,
+    lookup: AsyncMock,
+    unverify: AsyncMock,
+    silence: AsyncMock,
+):
+    """Including one made by hand, which Postmark sends with no message."""
+    _post(_subscription_change(suppress=True, origin=origin))
+
+    lookup.assert_awaited_once_with(RECIPIENT)
+    unverify.assert_awaited_once_with(USER_ID, False)
+    silence.assert_awaited_once_with(USER_ID, zero_daily_limit=True)
+    posthog.capture.assert_not_called()
+
+
+def test_a_reactivation_changes_nothing(
+    posthog: Mock, lookup: AsyncMock, unverify: AsyncMock, silence: AsyncMock
+):
+    _post(_subscription_change(suppress=False, origin="Customer"))
+
+    lookup.assert_not_awaited()
+    unverify.assert_not_awaited()
+    silence.assert_not_awaited()
 
 
 # Whether each bounce type unverifies the address, given Postmark's Inactive.
@@ -159,10 +212,11 @@ def test_only_a_failed_address_is_unverified(
     posthog: Mock,
     lookup: AsyncMock,
     unverify: AsyncMock,
+    silence: AsyncMock,
 ):
-    """A hard bounce always unverifies and a temporary one never does. Any
-    other type, such as an out-of-office reply, only does once Postmark has
-    deactivated the address."""
+    """A hard bounce always unverifies and turns notifications off, and a
+    temporary one never does. Any other type, such as an out-of-office reply,
+    only does once Postmark has deactivated the address."""
     _post(
         _bounce(
             type_name=bounce_type.name,
@@ -178,13 +232,22 @@ def test_only_a_failed_address_is_unverified(
     )
     if expected:
         unverify.assert_awaited_once_with(USER_ID, False)
+        silence.assert_awaited_once_with(USER_ID)
     else:
         unverify.assert_not_awaited()
+        silence.assert_not_awaited()
 
 
-@pytest.mark.parametrize("record_type", ["Delivery", "Open", "Click", "Bounce"])
+@pytest.mark.parametrize(
+    "record_type",
+    ["Delivery", "Open", "Click", "Bounce", "SpamComplaint", "SubscriptionChange"],
+)
 def test_an_address_with_no_account_sends_nothing(
-    record_type: str, posthog: Mock, lookup: AsyncMock, unverify: AsyncMock
+    record_type: str,
+    posthog: Mock,
+    lookup: AsyncMock,
+    unverify: AsyncMock,
+    silence: AsyncMock,
 ):
     lookup.return_value = None
     payload = {
@@ -192,12 +255,15 @@ def test_an_address_with_no_account_sends_nothing(
         "Open": _open,
         "Click": lambda: _click("https://platform.agpt.co/copilot"),
         "Bounce": lambda: _bounce(type_name="HardBounce", type_code=1),
+        "SpamComplaint": _spam_complaint,
+        "SubscriptionChange": lambda: _subscription_change(suppress=True),
     }[record_type]()
 
     _post(payload)
 
     posthog.capture.assert_not_called()
     unverify.assert_not_awaited()
+    silence.assert_not_awaited()
 
 
 def test_a_redelivered_webhook_is_the_same_event(posthog: Mock, lookup: AsyncMock):
@@ -211,18 +277,21 @@ def test_a_redelivered_webhook_is_the_same_event(posthog: Mock, lookup: AsyncMoc
     assert later["uuid"] != first["uuid"]
 
 
-@pytest.mark.parametrize("failing", ["lookup", "unverify"])
+@pytest.mark.parametrize("failing", ["lookup", "unverify", "silence"])
 def test_a_failure_asks_postmark_to_retry_without_the_address(
     failing: str,
     posthog: Mock,
     lookup: AsyncMock,
     unverify: AsyncMock,
+    silence: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
     """Not raised: Sentry would send the frames' locals, which hold the
     webhook and so the address."""
     error = RuntimeError(f"connection reset while reading {RECIPIENT}")
-    (lookup if failing == "lookup" else unverify).side_effect = error
+    {"lookup": lookup, "unverify": unverify, "silence": silence}[
+        failing
+    ].side_effect = error
 
     response = client.post(
         "/",
@@ -391,5 +460,50 @@ def _bounce(*, type_name: str, type_code: int, inactive: bool = True) -> dict:
         "Content": "",
         "Name": "Hard bounce",
         "Description": "The server was unable to deliver your message.",
+        "Metadata": {},
+    }
+
+
+def _spam_complaint() -> dict:
+    return {
+        "RecordType": "SpamComplaint",
+        "ID": 43,
+        "Type": "SpamComplaint",
+        "TypeCode": 100001,
+        "Tag": "briefing",
+        "MessageID": MESSAGE_ID,
+        "Details": "Test spam complaint details",
+        "Email": RECIPIENT,
+        "From": "notify@agpt.co",
+        "BouncedAt": "2019-11-05T16:33:54.9070259Z",
+        "Inactive": True,
+        "DumpAvailable": True,
+        "CanActivate": False,
+        "Subject": "Your weekly briefing",
+        "ServerID": 23,
+        "MessageStream": "outbound",
+        "Content": "",
+        "Name": "Spam complaint",
+        "Description": "The subscriber explicitly marked this message as spam.",
+        "Metadata": {},
+    }
+
+
+def _subscription_change(*, suppress: bool, origin: str = "Recipient") -> dict:
+    """Shaped as Postmark documents it: a suppression made by hand (Customer
+    or Admin) and a reactivation carry no MessageID, and a reactivation no
+    Tag or SuppressionReason."""
+    from_a_message = suppress and origin == "Recipient"
+    return {
+        "RecordType": "SubscriptionChange",
+        "MessageID": MESSAGE_ID if from_a_message else None,
+        "ServerID": 23,
+        "MessageStream": "outbound",
+        "ChangedAt": "2020-02-01T10:53:34.416071Z",
+        "Recipient": RECIPIENT,
+        "Origin": origin,
+        "SuppressSending": suppress,
+        "SuppressionReason": "ManualSuppression" if suppress else None,
+        "Tag": "briefing" if suppress else None,
         "Metadata": {},
     }
