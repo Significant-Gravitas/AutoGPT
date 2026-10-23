@@ -1239,13 +1239,13 @@ async def _run_nested_tool(
     tool_error: Exception | None = None,
     settle=None,
 ) -> GraphExecutionStats:
-    """Run ``_execute_single_tool_with_manager`` against a tool node whose
-    pre-flight is 60 credits, with the charge and the node run replaced by
-    fakes that record what the executor would see: ``events`` collects
-    "charge" / "run" in call order and ``seen_baseline`` the
-    ``pre_flight_charge`` each run was started with. ``settle``, if given, is
-    awaited with the entry after the run, where the executor reconciles, and
-    the delta it returns is added to the run's stats as the manager does.
+    """Run ``_execute_single_tool_with_manager`` against a tool node, with the
+    charge and the node run replaced by fakes that record what the executor
+    would see; the pre-flight is whatever ``charge_side_effect`` charges.
+    ``events`` collects "charge" / "run" in call order and ``seen_baseline``
+    the ``pre_flight_charge`` each run was started with. ``settle``, if given,
+    is awaited with the entry after the run, where the executor reconciles,
+    and the delta it returns is added to the run's stats as the manager does.
     Returns the run's stats.
     """
     from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
@@ -1344,7 +1344,8 @@ async def test_nested_tool_reconciles_against_the_charge_actually_collected():
 async def test_nested_tool_baseline_is_zero_when_nothing_was_charged():
     """If the charge does not happen (dry run) or fails for a reason other than
     the balance, the tool runs with a baseline of 0, so reconciliation can
-    never refund a pre-flight that was not collected."""
+    never refund a pre-flight that was not collected, and nothing is added to
+    the run's cost."""
 
     async def broken_charge(_entry):
         raise RuntimeError("database unavailable")
@@ -1354,14 +1355,15 @@ async def test_nested_tool_baseline_is_zero_when_nothing_was_charged():
 
     events: list[str] = []
     seen_baseline: list = []
-    await _run_nested_tool(
+    run_stats = await _run_nested_tool(
         events=events, seen_baseline=seen_baseline, charge_side_effect=broken_charge
     )
     assert events == ["charge", "run"]
     assert seen_baseline == [0]
+    assert run_stats.cost == 0
 
     events, seen_baseline = [], []
-    await _run_nested_tool(
+    run_stats = await _run_nested_tool(
         events=events,
         seen_baseline=seen_baseline,
         charge_side_effect=no_charge,
@@ -1369,6 +1371,7 @@ async def test_nested_tool_baseline_is_zero_when_nothing_was_charged():
     )
     assert events == ["run"]
     assert seen_baseline == [0]
+    assert run_stats.cost == 0
 
 
 @pytest.mark.asyncio
