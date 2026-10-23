@@ -60,6 +60,123 @@ const textShadow = plugin(function textShadow({ matchUtilities, theme }) {
   );
 });
 
+// Every colour role is an RGB triplet in src/app/globals.css. Reading it
+// through `rgb(... / <alpha-value>)` keeps opacity modifiers (`bg-surface/50`)
+// working in Tailwind 3.
+function role(name: string) {
+  return `rgb(var(--color-${name}) / <alpha-value>)`;
+}
+
+const COLOR_ROLES = [
+  "canvas",
+  "surface",
+  "surface-muted",
+  "surface-hover",
+  "surface-active",
+  "overlay",
+  "foreground-base",
+  "foreground-strong",
+  "foreground-emphasis",
+  "foreground-body",
+  "foreground-secondary",
+  "foreground-tertiary",
+  "foreground-subtle",
+  "foreground-disabled",
+  "placeholder",
+  "separator",
+  "border-base",
+  "border-strong",
+  "focus",
+  "action",
+  "action-hover",
+  "action-foreground",
+  "brand",
+  "brand-hover",
+  "accent-surface",
+  "accent-strong",
+  "error",
+  "error-hover",
+  "error-foreground",
+  "error-surface",
+  "warning",
+  "warning-foreground",
+  "warning-surface",
+  "warning-border",
+  "success",
+  "success-foreground",
+  "success-surface",
+  "info",
+  "info-foreground",
+  "info-surface",
+] as const;
+
+const roleColors = Object.fromEntries(
+  COLOR_ROLES.map((name) => [name, role(name)]),
+);
+
+// Text tokens carry exactly the values in use today. A size never bundles a
+// line-height, so swapping `text-[13px]` for `text-13` changes nothing.
+// Role names (h1 … eyebrow) are the Text atom's variants; numeric sizes are
+// px at a 16px root, numeric line-heights follow Tailwind's 0.25rem steps.
+const fontSize = {
+  h1: "2.75rem",
+  h2: "2rem",
+  h3: "1.75rem",
+  h4: "1.375rem",
+  h5: "1rem",
+  lead: "1.25rem",
+  large: "1rem",
+  body: "0.875rem",
+  small: "0.75rem",
+  label: "0.6785rem",
+  eyebrow: "0.75rem",
+  "5": "0.3125rem",
+  "9": "0.5625rem",
+  "10": "0.625rem",
+  "11": "0.6875rem",
+  "12": "0.75rem",
+  "13": "0.8125rem",
+  "14": "0.875rem",
+  "15": "0.9375rem",
+  "16": "1rem",
+  "20": "1.25rem",
+  "22": "1.375rem",
+  "23": "1.4375rem",
+  "26": "1.625rem",
+  "28": "1.75rem",
+};
+
+const lineHeight = {
+  h1: "3.5rem",
+  h2: "2.5rem",
+  h3: "2.5rem",
+  h4: "1.5rem",
+  h5: "1.5rem",
+  lead: "1.75rem",
+  large: "1.625rem",
+  body: "1.375rem",
+  small: "1.125rem",
+  label: "1.25rem",
+  eyebrow: "1rem",
+  "4.5": "1.125rem",
+  "5.5": "1.375rem",
+  "6.5": "1.625rem",
+  "14": "3.5rem",
+};
+
+const letterSpacing = {
+  h1: "-0.033rem",
+  h2: "-0.02rem",
+  h3: "-0.01313rem",
+  label: "0.06785rem",
+  eyebrow: "0.06em",
+  display: "-0.04em",
+  heading: "-0.02em",
+  title: "-0.01em",
+  caps: "0.12em",
+  "caps-wide": "0.14em",
+};
+
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
@@ -78,40 +195,47 @@ const config = {
         mono: ["var(--font-geist-mono)"],
         poppins: ["var(--font-poppins)"],
       },
+      fontSize,
+      lineHeight,
+      letterSpacing,
       colors: {
+        // The custom palette stays registered until DS5 has migrated every
+        // directory: removing it would repaint each raw `zinc-*` class with
+        // Tailwind's default palette.
         ...colors,
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        ...roleColors,
+        border: role("border"),
+        input: role("input"),
+        ring: role("ring"),
+        background: role("background"),
+        foreground: role("foreground"),
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: role("primary"),
+          foreground: role("primary-foreground"),
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: role("secondary"),
+          foreground: role("secondary-foreground"),
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: role("destructive"),
+          foreground: role("destructive-foreground"),
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: role("muted"),
+          foreground: role("muted-foreground"),
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: role("accent"),
+          foreground: role("accent-foreground"),
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: role("popover"),
+          foreground: role("popover-foreground"),
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: role("card"),
+          foreground: role("card-foreground"),
         },
         customGray: {
           "100": "#d9d9d9",
@@ -123,14 +247,14 @@ const config = {
           "700": "#272727",
         },
         sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
+          DEFAULT: role("sidebar"),
+          foreground: role("sidebar-foreground"),
+          primary: role("sidebar-primary"),
+          "primary-foreground": role("sidebar-primary-foreground"),
+          accent: role("sidebar-accent"),
+          "accent-foreground": role("sidebar-accent-foreground"),
+          border: role("sidebar-border"),
+          ring: role("sidebar-ring"),
         },
       },
       spacing: {
