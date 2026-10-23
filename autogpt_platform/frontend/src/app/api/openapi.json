@@ -30872,7 +30872,18 @@
             "type": "array",
             "title": "Messages"
           },
-          "count": { "type": "integer", "title": "Count" }
+          "count": { "type": "integer", "title": "Count" },
+          "held_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["error", "stopped", "paused", "ended"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Held Reason",
+            "description": "Set when the turn that should have read these messages ended first (error, stopped, paused or ended), so nothing will answer them unless they are sent again."
+          }
         },
         "type": "object",
         "required": ["messages", "count"],

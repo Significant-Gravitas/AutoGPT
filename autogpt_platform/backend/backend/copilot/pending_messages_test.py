@@ -32,6 +32,7 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     release_client_message,
     stash_pending_for_persist,
+    take_pending_message,
 )
 from backend.copilot.tool_image import ToolImage
 
@@ -96,6 +97,14 @@ class _FakeRedis:
         if stop == -1:
             return list(lst[start:])
         return list(lst[start : stop + 1])
+
+    async def lrem(self, key: str, count: int, value: str) -> int:
+        lst = self.lists.get(key, [])
+        for index, item in enumerate(lst):
+            if (item.decode() if isinstance(item, bytes) else item) == value:
+                del lst[index]
+                return 1
+        return 0
 
     async def delete(self, key: str) -> int:
         if key in self.lists:
@@ -557,6 +566,24 @@ async def test_peek_pending_messages_returns_all_without_consuming(
 
 
 @pytest.mark.asyncio
+async def test_take_pending_message_removes_only_the_oldest_copy_of_that_text(
+    fake_redis: _FakeRedis,
+) -> None:
+    await push_pending_message("sess1", PendingMessage(content="status?"))
+    await push_pending_message("sess1", PendingMessage(content="and Monday"))
+    await push_pending_message("sess1", PendingMessage(content="status?"))
+
+    taken = await take_pending_message("sess1", "status?")
+
+    assert taken is not None and taken.content == "status?"
+    assert [m.content for m in await peek_pending_messages("sess1")] == [
+        "and Monday",
+        "status?",
+    ]
+    assert await take_pending_message("sess1", "not queued") is None
+
+
+@pytest.mark.asyncio
 async def test_peek_pending_messages_empty_buffer(fake_redis: _FakeRedis) -> None:
     """Peek on a missing key returns an empty list without raising."""
     result = await peek_pending_messages("no_such_session")
@@ -896,7 +923,7 @@ async def test_client_message_reservation_is_short_and_acceptance_long(
     await claim_client_message("sess-1", "msg-a", "first")
     assert fake_redis.ttls[key] == pm_module._CLIENT_MESSAGE_RESERVE_TTL_SECONDS
     await accept_client_message("sess-1", "msg-a", "first")
-    assert fake_redis.ttls[key] == pm_module._PENDING_TTL_SECONDS
+    assert fake_redis.ttls[key] == pm_module.PENDING_TTL_SECONDS
 
 
 @pytest.mark.asyncio

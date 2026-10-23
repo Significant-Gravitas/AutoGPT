@@ -51,6 +51,11 @@ from backend.copilot.expert_kickoff import (
     scoped_client_message_id,
 )
 from backend.copilot.gate.card_approval import record_card_decisions
+from backend.copilot.held_follow_ups import (
+    held_follow_up_reason,
+    restore_held_follow_up,
+    take_held_follow_up,
+)
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -114,6 +119,7 @@ from backend.copilot.rate_limit import (
     reset_daily_usage,
 )
 from backend.copilot.response_model import (
+    FollowUpHeldReason,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -122,6 +128,7 @@ from backend.copilot.response_model import (
     StreamStart,
     StreamStartStep,
     StreamStatus,
+    StreamTurnQueued,
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.session_permissions import resolve_session_permissions
@@ -453,6 +460,12 @@ class PeekPendingMessagesResponse(BaseModel):
 
     messages: list[str]
     count: int
+    held_reason: FollowUpHeldReason | None = Field(
+        default=None,
+        description="Set when the turn that should have read these messages "
+        "ended first (error, stopped, paused or ended), so nothing will "
+        "answer them unless they are sent again.",
+    )
 
 
 class CreateSessionRequest(BaseModel):
@@ -1818,6 +1831,7 @@ def _ui_message_stream_headers() -> dict[str, str]:
 
 def _empty_ui_message_stream_response(
     follow_up_queued: bool = False,
+    turn_queued: StreamTurnQueued | None = None,
 ) -> StreamingResponse:
     # Stable placeholder messageId for the empty queued-mid-turn stream.
     # Real turns generate per-message UUIDs via the executor; this stream
@@ -1836,6 +1850,8 @@ def _empty_ui_message_stream_response(
         yield StreamStartStep().to_sse()
         if follow_up_queued:
             yield StreamFollowUpQueued().to_sse()
+        if turn_queued is not None:
+            yield turn_queued.to_sse()
         yield StreamFinishStep().to_sse()
         yield StreamFinish().to_sse()
         yield "data: [DONE]\n\n"
@@ -2098,6 +2114,14 @@ async def stream_chat_post(
         if claim == "claimed" and client_message_id is not None:
             await accept_client_message(session_id, client_message_id, claim_owner)
 
+    # A follow-up the last turn left unread, sent again: this turn's start
+    # would read the waiting copy too, so take it out while the send is made.
+    resent = (
+        await take_held_follow_up(session_id, request.message)
+        if request.is_user_message and claim != "accepted"
+        else None
+    )
+
     try:
         if claim == "accepted":
             turn_id = None
@@ -2130,6 +2154,7 @@ async def stream_chat_post(
             )
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
+            await restore_held_follow_up(session_id, resent)
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
         # if total in-flight (running + queued) is still under the hard
@@ -2161,6 +2186,7 @@ async def stream_chat_post(
             )
         except turn_queue.InflightCapExceeded:
             await release_client_message_claim()
+            await restore_held_follow_up(session_id, resent)
             raise HTTPException(
                 status_code=429,
                 detail=inflight_turn_limit_message(inflight_cap),
@@ -2169,19 +2195,27 @@ async def stream_chat_post(
             # Raised inside the handler above, so the outer BaseException
             # clause never sees it.
             await release_client_message_claim()
+            await restore_held_follow_up(session_id, resent)
             raise
         await accept_client_message_claim()
+        position = await turn_queue.queue_position(user_id, session_id)
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
-            f"(running cap reached; inflight cap={inflight_cap})"
+            f"(running cap reached; inflight cap={inflight_cap}; "
+            f"position={position})"
         )
-        return _empty_ui_message_stream_response()
+        return _empty_ui_message_stream_response(
+            turn_queued=StreamTurnQueued(position=position)
+        )
     except BaseException:
         await release_client_message_claim()
+        await restore_held_follow_up(session_id, resent)
         raise
     await accept_client_message_claim()
 
     if turn_id is None:
+        # No turn starts to read the message, so the held copy stays.
+        await restore_held_follow_up(session_id, resent)
         logger.info(
             f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
         )
@@ -2450,7 +2484,19 @@ async def get_pending_messages(
     return PeekPendingMessagesResponse(
         messages=[m.content for m in pending],
         count=len(pending),
+        held_reason=(await _held_reason_while_idle(session_id) if pending else None),
     )
+
+
+async def _held_reason_while_idle(session_id: str) -> FollowUpHeldReason | None:
+    """A running turn reads the queue, so its messages are held only while
+    none runs. An unknown registry state reads as running."""
+    try:
+        if await is_turn_in_flight(session_id):
+            return None
+    except StreamRegistryUnavailable:
+        return None
+    return await held_follow_up_reason(session_id)
 
 
 class StreamResumeRefusal(BaseModel):

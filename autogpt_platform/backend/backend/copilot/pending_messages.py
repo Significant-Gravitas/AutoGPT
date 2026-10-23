@@ -49,7 +49,7 @@ MAX_PENDING_MESSAGES = 10
 # Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
 _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
-_PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
+PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 
 # Secondary queue: carries drained-but-awaiting-persist PendingMessages from
 # the tool wrapper (which injects them into tool output) to sdk/service.py
@@ -229,7 +229,7 @@ async def _accept_client_message(session_id: str, message_id: str, owner: str) -
             _client_message_key(session_id, message_id),
             expected=_CLIENT_MESSAGE_RESERVED + owner,
             new=_CLIENT_MESSAGE_ACCEPTED,
-            ttl_seconds=_PENDING_TTL_SECONDS,
+            ttl_seconds=PENDING_TTL_SECONDS,
             or_missing=True,
         )
     except Exception as e:
@@ -293,7 +293,7 @@ async def push_pending_message(
     """Append a pending message to the session's buffer, capped at
     ``MAX_PENDING_MESSAGES`` (oldest trimmed). Returns the new buffer length.
 
-    The buffer survives consumer crashes until ``_PENDING_TTL_SECONDS``
+    The buffer survives consumer crashes until ``PENDING_TTL_SECONDS``
     expires; messages not drained within that window are dropped.
     """
     redis = await get_redis_async()
@@ -305,7 +305,7 @@ async def push_pending_message(
         key,
         payload,
         max_len=MAX_PENDING_MESSAGES,
-        ttl_seconds=_PENDING_TTL_SECONDS,
+        ttl_seconds=PENDING_TTL_SECONDS,
     )
 
     # Fire-and-forget wake-up hint via sharded pub/sub (SPUBLISH routes to
@@ -346,7 +346,7 @@ async def push_pending_message_if_session_running(
         list_key=key,
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
-        ttl_seconds=_PENDING_TTL_SECONDS,
+        ttl_seconds=PENDING_TTL_SECONDS,
     )
     if new_length is None:
         logger.info(
@@ -470,6 +470,29 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     return messages
 
 
+async def take_pending_message(session_id: str, content: str) -> PendingMessage | None:
+    """Remove the oldest waiting message whose text is *content* and return it,
+    or None when no waiting message has that text.
+
+    Removes the exact stored payload (``LREM``), so a message pushed or
+    drained meanwhile is never touched.
+    """
+    redis = await get_redis_async()
+    key = _buffer_key(session_id)
+    items = await cast("Any", redis.lrange(key, 0, -1))
+    for item in items:
+        payload = _decode_redis_item(item)
+        try:
+            message = _from_buffer(json.loads(payload))
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+            continue
+        if message.content != content:
+            continue
+        if await cast("Any", redis.lrem(key, 1, payload)):
+            return message
+    return None
+
+
 async def clear_pending_messages_unsafe(session_id: str) -> None:
     """Drop the session's pending buffer — operator/debug escape hatch.
 
@@ -520,7 +543,7 @@ async def stash_pending_for_persist(
         key = _persist_queue_key(session_id)
         payloads = [m.model_dump_json() for m in messages]
         await redis.rpush(key, *payloads)  # type: ignore[misc]
-        await redis.expire(key, _PENDING_TTL_SECONDS)  # type: ignore[misc]
+        await redis.expire(key, PENDING_TTL_SECONDS)  # type: ignore[misc]
     except Exception:
         logger.warning(
             "pending_messages: failed to stash %d message(s) for persist "

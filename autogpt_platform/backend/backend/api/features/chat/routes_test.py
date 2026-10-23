@@ -24,6 +24,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -375,6 +376,23 @@ def _mock_stream_internals(
         "backend.api.features.chat.routes.cancel_resume_at_reset_in_background"
     )
     claims = _mock_client_message_claims(mocker)
+    # The queue position is informational; tests that read it set their own.
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "queue_position",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    # No follow-up is held unless a test says so.
+    mock_take_held = mocker.patch(
+        "backend.api.features.chat.routes.take_held_follow_up",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mock_restore_held = mocker.patch(
+        "backend.api.features.chat.routes.restore_held_follow_up",
+        new_callable=AsyncMock,
+    )
     return types.SimpleNamespace(
         enqueue=mock_schedule,
         paywall=mock_paywall,
@@ -382,6 +400,8 @@ def _mock_stream_internals(
         owns_active_expert=mock_owns_active_expert,
         cancel_resume=mock_cancel_resume,
         claims=claims,
+        take_held=mock_take_held,
+        restore_held=mock_restore_held,
     )
 
 
@@ -872,6 +892,71 @@ def test_stream_chat_marks_a_send_queued_behind_a_running_turn(
     queue_pending.assert_awaited_once()
     mocks.enqueue.assert_not_awaited()
     assert '"type": "data-follow-up-queued"' in response.text
+
+
+def test_stream_chat_marks_a_send_queued_at_the_running_cap(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """At the running cap the send's row is stored and its turn waits; the
+    client is told so, with its place in the queue, rather than getting an
+    empty stream it cannot tell from a turn that never started."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    enqueue_turn = mocker.patch.object(
+        chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock
+    )
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "queue_position",
+        new_callable=AsyncMock,
+        return_value=2,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "Status?"})
+
+    assert response.status_code == 200
+    enqueue_turn.assert_awaited_once()
+    assert '"type": "data-turn-queued"' in response.text
+    assert '"position": 2' in response.text
+    assert "data-follow-up-queued" not in response.text
+
+
+def test_stream_chat_resend_of_a_held_follow_up_takes_its_waiting_copy(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A follow-up the last turn left unread, sent again, is read once: its
+    waiting copy comes out before the turn that answers it starts."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.take_held.return_value = PendingMessage(content="Status?")
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "Status?"})
+
+    assert response.status_code == 200
+    mocks.take_held.assert_awaited_once_with("sess-1", "Status?")
+    mocks.enqueue.assert_awaited_once()
+    mocks.restore_held.assert_not_awaited()
+
+
+def test_stream_chat_refused_resend_puts_the_held_follow_up_back(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A resend refused at the in-flight cap never started a turn, so the
+    follow-up goes back to wait for the next one."""
+    mocks = _mock_stream_internals(mocker)
+    held = PendingMessage(content="Status?")
+    mocks.take_held.return_value = held
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "try_enqueue_turn",
+        new_callable=AsyncMock,
+        side_effect=chat_routes.turn_queue.InflightCapExceeded(),
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "Status?"})
+
+    assert response.status_code == 429
+    mocks.restore_held.assert_awaited_once_with("sess-1", held)
 
 
 async def test_other_empty_streams_carry_no_follow_up_marker() -> None:
@@ -3214,6 +3299,11 @@ def test_get_pending_messages_returns_queued_messages(
         return_value=mocker.MagicMock(),
     )
     mocker.patch(
+        "backend.api.features.chat.routes._held_reason_while_idle",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
         new_callable=AsyncMock,
         return_value=[
@@ -3228,6 +3318,56 @@ def test_get_pending_messages_returns_queued_messages(
     data = response.json()
     assert data["count"] == 2
     assert data["messages"] == ["first message", "second message"]
+    assert data["held_reason"] is None
+
+
+def _mock_pending_peek(
+    mocker: pytest_mock.MockerFixture, *, turn_in_flight: bool, held: str | None
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.peek_pending_messages",
+        new_callable=AsyncMock,
+        return_value=[MagicMock(content="What is my team working on?")],
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=turn_in_flight,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.held_follow_up_reason",
+        new_callable=AsyncMock,
+        return_value=held,
+    )
+
+
+def test_get_pending_messages_reports_follow_ups_a_finished_turn_left_unread(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """After a reload the client still learns nothing will answer them."""
+    _mock_pending_peek(mocker, turn_in_flight=False, held="error")
+
+    data = client.get("/sessions/sess-1/messages/pending").json()
+
+    assert data["messages"] == ["What is my team working on?"]
+    assert data["held_reason"] == "error"
+
+
+def test_get_pending_messages_reports_no_hold_while_a_turn_runs(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A running turn reads the queue, so its follow-ups are just queued."""
+    _mock_pending_peek(mocker, turn_in_flight=True, held="error")
+
+    data = client.get("/sessions/sess-1/messages/pending").json()
+
+    assert data["count"] == 1
+    assert data["held_reason"] is None
 
 
 def test_get_pending_messages_session_not_found_returns_404(
