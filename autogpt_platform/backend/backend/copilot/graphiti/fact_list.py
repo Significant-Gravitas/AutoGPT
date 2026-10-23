@@ -6,10 +6,14 @@ list and its total hold exactly the facts the assistant can still recall.
 
 Pages are keyset pages: the cursor is the sort key of the last fact a page
 returned, so a fact forgotten while someone pages through the list does not
-shift the facts after it out of the next page, as an offset would.
+shift the facts after it out of the next page, as an offset would. A cursor
+also names its scope, by digest, and is refused in any other: it could only
+move the caller's own page boundary there (the query always runs on the
+caller's graph), so it needs no signature, but it is not that list's cursor.
 """
 
 import base64
+import hashlib
 import json
 from collections.abc import Awaitable
 from typing import Any
@@ -50,7 +54,7 @@ LIMIT $fetch
 
 _TOTAL = _LIVE_FACTS + "RETURN count(e) AS c"
 
-_CURSOR = TypeAdapter(tuple[str, str])
+_CURSOR = TypeAdapter(tuple[str, str, str])
 
 
 class InvalidFactCursorError(ValueError):
@@ -83,7 +87,7 @@ async def list_live_facts(
     Raises ``InvalidFactCursorError`` for a cursor this module did not write.
     A scope whose graph does not exist yet has no facts.
     """
-    after = _decode_cursor(cursor) if cursor else None
+    after = _decode_cursor(cursor, scope) if cursor else None
     query = _LIVE_FACTS + (_AFTER_CURSOR if after else "") + _PAGE
     params: dict[str, object] = {"g": scope.group_id, "fetch": limit + 1}
     if after:
@@ -102,7 +106,7 @@ async def list_live_facts(
         items=[_to_fact(row) for row in page],
         total=int(total_rows[0]["c"]) if total_rows else 0,
         next_cursor=(
-            _encode_cursor(str(last["sort_key"]), str(last["uuid"]))
+            _encode_cursor(scope, str(last["sort_key"]), str(last["uuid"]))
             if more and last
             else None
         ),
@@ -131,17 +135,21 @@ def _to_fact(row: dict) -> LiveFact:
     )
 
 
-def _encode_cursor(sort_key: str, uuid: str) -> str:
-    raw = json.dumps([sort_key, uuid], separators=(",", ":")).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+def _encode_cursor(scope: MemoryScope, sort_key: str, uuid: str) -> str:
+    raw = json.dumps([_scope_tag(scope), sort_key, uuid], separators=(",", ":"))
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
 
-def _decode_cursor(cursor: str) -> tuple[str, str]:
+def _decode_cursor(cursor: str, scope: MemoryScope) -> tuple[str, str]:
     try:
         raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
-        sort_key, uuid = _CURSOR.validate_json(raw)
+        tag, sort_key, uuid = _CURSOR.validate_json(raw)
     except ValueError as exc:  # bad base64 or JSON, a ValidationError too
         raise InvalidFactCursorError("Invalid cursor") from exc
-    if not uuid:
+    if tag != _scope_tag(scope) or not uuid:
         raise InvalidFactCursorError("Invalid cursor")
     return sort_key, uuid
+
+
+def _scope_tag(scope: MemoryScope) -> str:
+    return hashlib.sha256(scope.group_id.encode()).hexdigest()[:16]
