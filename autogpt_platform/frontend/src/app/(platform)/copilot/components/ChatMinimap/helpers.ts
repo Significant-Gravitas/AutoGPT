@@ -1,4 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { getCardDecisions } from "../../cardDecisions";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 
 export interface MinimapEntry {
@@ -49,7 +50,11 @@ export function haveSameMinimapRows(
 function isMinimapRow(
   message: UIMessage<unknown, UIDataTypes, UITools>,
 ): boolean {
-  return message.role === "user" && !isHeldCallRow(message);
+  return (
+    message.role === "user" &&
+    !isHeldCallRow(message) &&
+    getCardDecisions(message) === null
+  );
 }
 
 function messageText(

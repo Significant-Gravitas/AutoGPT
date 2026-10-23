@@ -17,6 +17,7 @@ import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import { getCardDecisions } from "../../cardDecisions";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -44,6 +45,7 @@ import { TailSpacer } from "./components/TailSpacer";
 import { VirtualTranscript } from "./components/VirtualTranscript/VirtualTranscript";
 import type { TranscriptRow } from "./components/VirtualTranscript/helpers";
 import type { JumpToMessage } from "./components/VirtualTranscript/useVirtualTranscript";
+import { CardDecisionNote } from "./components/CardDecisionNote";
 import { MessageRow } from "./components/MessageRow/MessageRow";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
@@ -462,6 +464,13 @@ export function ChatMessagesContainer({
         <Text variant="small" className="py-1 text-center text-zinc-500">
           {answeredLabel(renderRows, rowIndex)}
         </Text>
+      );
+    }
+
+    const cardDecisions = getCardDecisions(message);
+    if (cardDecisions) {
+      return (
+        <CardDecisionNote messageID={message.id} decisions={cardDecisions} />
       );
     }
 

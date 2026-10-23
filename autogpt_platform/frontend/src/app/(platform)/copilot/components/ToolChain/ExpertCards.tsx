@@ -18,6 +18,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
+import { type Decision, decisionLine } from "../../cardDecisions";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
@@ -48,8 +49,6 @@ interface Props {
 }
 
 export type StepDirection = "forward" | "back";
-
-export type Decision = "approved" | "declined";
 
 // Same shell as the chain's action card (connect / inputs / questions) so
 // every "your turn" card in the thread reads as one family.
@@ -122,19 +121,6 @@ function proposalOf(part: ToolUIPart): Proposal | null {
     name: str(preview, "name") ?? "this expert",
     confirmationId,
   };
-}
-
-// gate/card_approval.py reads the Approved line as the answer to the confirm.
-function decisionLine(proposal: Proposal, decision: Decision): string {
-  const verb =
-    proposal.kind === "hire"
-      ? "hire"
-      : proposal.kind === "update" || proposal.kind === "soul"
-        ? "update"
-        : "create";
-  return decision === "approved"
-    ? `Approved: ${verb} ${proposal.name} (confirmation_id: ${proposal.confirmationId}).`
-    : `Not approved: do not ${verb} ${proposal.name}, discard that proposal (confirmation_id: ${proposal.confirmationId}).`;
 }
 
 function toExpertArtifact(
@@ -566,7 +552,9 @@ export function ExpertChangeGroup({
   function send() {
     if (!actions) return;
     const message = proposals
-      .map((proposal) => decisionLine(proposal, decisions[proposal.toolCallId]))
+      .map((proposal) =>
+        decisionLine({ ...proposal, decision: decisions[proposal.toolCallId] }),
+      )
       .join("\n");
     // The card stays marked sent because the message is already in the
     // thread for Retry — the failure only needs saying.
