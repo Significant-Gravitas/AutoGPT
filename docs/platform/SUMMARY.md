@@ -59,7 +59,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
-  * [Chats that pick up where they paused, and a clearer view of your team](changelog/october-21-2026.md)
+  * [Chats that pick up where they paused, your whole team in one click, and redesigned Expert pages](changelog/october-22-2026.md)
   * [A clearer wallet, a kinder trial, and shorter replies from Otto](changelog/october-8-october-14-2026.md)
   * [A bigger roster, Clay & Rock avatars, folders in your workspace](changelog/september-24-september-30-2026.md)
   * [Meet your Experts: hire a specialist and put it to work](changelog/september-19-2026.md)

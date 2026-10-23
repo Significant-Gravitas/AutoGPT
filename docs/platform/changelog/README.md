@@ -8,7 +8,7 @@ Release windows reflect how changes were grouped for publication and may overlap
 
 | Date | Highlights |
 | ---- | ---------- |
-| [October 21](october-21-2026.md) | Resumable chats, clearer usage limits, routines that recover, redesigned Expert pages, mobile chat, Windows installer |
+| [October 22](october-22-2026.md) | Resumable chats, your whole team in one click, redesigned Expert pages, clearer usage limits, routines that recover, Otto emails you results, mobile chat, Windows installer |
 | [October 8 – October 14](october-8-october-14-2026.md) | Redesigned wallet, trial cancel keeps access, verified email at signup, Chats in the collapsed sidebar, shorter replies |
 | [September 24 – September 30](september-24-september-30-2026.md) | A bigger roster, Clay & Rock avatars, nested folders, multi-select answers, free trial on the paywall |
 | [September 19](september-19-2026.md) | Meet your Experts: hire or raise an Expert, Expert pages, routines, Skills marketplace, Otto's desktop |
