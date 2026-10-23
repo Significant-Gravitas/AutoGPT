@@ -298,42 +298,57 @@ export function buildReplacementMap() {
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mdx"]);
 const SKIP_DIRS = new Set(["node_modules", ".next", "__generated__"]);
 
-// A class candidate: variants, optional `!`, the utility, optional /opacity.
-// Bounded by characters that cannot appear inside a Tailwind class.
-const CLASS_PATTERN =
-  /(?<=^|[\s"'`{}])((?:[a-z0-9-]+(?:-\[[^\]\s]+\])?:|\[[^\]\s]+\]:|[a-z-]+\[[^\]\s]+\]:)*)(!?)([a-z][a-z0-9-]*(?:-\[[^\]\s]+\])?|[a-z][a-z0-9-]*\.[0-9])(\/(?:[0-9.]+|\[[^\]\s]+\]))?(?=$|[\s"'`{}])/gm;
+// A class candidate is any run of characters that cannot end a Tailwind
+// class. Each candidate is then parsed in code (variants, optional `!`, the
+// utility, optional /opacity) rather than by one large regex, which keeps
+// matching linear on any input.
+const CANDIDATE = /[^\s"'`{}]+/g;
+const OPACITY = /^\/(?:[0-9.]+|\[[^\]]+\])$/;
 
-function splitVariant(variants: string) {
+/** Index of the last `ch` outside square brackets, or -1. */
+function lastTopLevel(text: string, ch: string) {
+  let depth = 0;
+  let found = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "[") depth++;
+    else if (text[i] === "]") depth = Math.max(0, depth - 1);
+    else if (text[i] === ch && depth === 0) found = i;
+  }
+  return found;
+}
+
+function parseCandidate(candidate: string) {
+  const colon = lastTopLevel(candidate, ":");
+  let variants = candidate.slice(0, colon + 1);
+  let rest = candidate.slice(colon + 1);
+  const bang = rest.startsWith("!") ? "!" : "";
+  rest = rest.slice(bang.length);
+  let opacity = "";
+  const slash = lastTopLevel(rest, "/");
+  if (slash > 0 && OPACITY.test(rest.slice(slash))) {
+    opacity = rest.slice(slash);
+    rest = rest.slice(0, slash);
+  }
   // `placeholder:` mappings are keyed with their variant.
-  const match = /(^|:)(placeholder:)$/.exec(variants);
-  if (!match) return { prefix: variants, keyed: "" };
-  return {
-    prefix: variants.slice(0, variants.length - "placeholder:".length),
-    keyed: "placeholder:",
-  };
+  let keyed = "";
+  if (variants === "placeholder:" || variants.endsWith(":placeholder:")) {
+    variants = variants.slice(0, -"placeholder:".length);
+    keyed = "placeholder:";
+  }
+  return { variants, keyed, bang, utility: rest, opacity };
 }
 
 export function rewriteSource(source: string, map: Map<string, string>) {
   const changes: { from: string; to: string; line: number }[] = [];
-  const output = source.replace(
-    CLASS_PATTERN,
-    (
-      whole,
-      variants: string,
-      bang: string,
-      utility: string,
-      opacity = "",
-      offset: number,
-    ) => {
-      const { prefix, keyed } = splitVariant(variants);
-      const target = map.get(`${keyed}${utility}`);
-      if (!target) return whole;
-      const next = `${prefix}${bang}${target}${opacity}`;
-      const line = source.slice(0, offset).split("\n").length;
-      changes.push({ from: whole, to: next, line });
-      return next;
-    },
-  );
+  const output = source.replace(CANDIDATE, (whole: string, offset: number) => {
+    const { variants, keyed, bang, utility, opacity } = parseCandidate(whole);
+    const target = map.get(`${keyed}${utility}`);
+    if (!target) return whole;
+    const next = `${variants}${bang}${target}${opacity}`;
+    const line = source.slice(0, offset).split("\n").length;
+    changes.push({ from: whole, to: next, line });
+    return next;
+  });
   return { output, changes };
 }
 
