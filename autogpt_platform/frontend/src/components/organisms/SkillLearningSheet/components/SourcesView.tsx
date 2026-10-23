@@ -23,7 +23,7 @@ export function SourcesView({ version, isBusy, onExclude }: Props) {
   return (
     <ul className="flex flex-col gap-3" aria-label="Sources">
       {sources.map((source) => (
-        <li key={source.source_id} className="rounded-lg bg-zinc-50 p-3">
+        <li key={source.source_id} className="rounded-lg bg-surface-muted p-3">
           {source.accessible ? (
             <>
               <Text variant="small-medium" tone="primary">
@@ -39,7 +39,7 @@ export function SourcesView({ version, isBusy, onExclude }: Props) {
                     href={source.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-sm text-violet-700 underline"
+                    className="text-sm text-accent-strong underline"
                   >
                     Open source
                   </Link>

@@ -5,15 +5,19 @@ import { InfoIcon, AlertTriangleIcon, XCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border border-zinc-200 px-4 py-3 text-sm [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-1/2 [&>svg]:-translate-y-1/2 [&>svg]:text-zinc-800 [&>svg~*]:pl-7",
+  "relative w-full rounded-lg border border-border-base px-4 py-3 text-body leading-5 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-1/2 [&>svg]:-translate-y-1/2 [&>svg]:text-foreground-emphasis [&>svg~*]:pl-7",
   {
     variants: {
       variant: {
-        default: "bg-white text-zinc-800 [&>svg]:text-purple-500",
+        default: "bg-surface text-foreground-emphasis [&>svg]:text-brand",
+        // TODO(tokens): no role for orange-50 at 0x80 (#FFF3E680), yellow-300
+        // (#F8D554) or orange-600 (#E77B00).
         warning:
-          "bg-[#FFF3E680] border-yellow-300 text-zinc-800 [&>svg]:text-orange-600",
+          "bg-[#FFF3E680] border-yellow-300 text-foreground-emphasis [&>svg]:text-orange-600",
+        // TODO(tokens): no role for red-100 at 0x80 (#FDECEC80) or red-300
+        // (#F69999).
         error:
-          "bg-[#FDECEC80] border-red-300 text-zinc-800 [&>svg]:text-red-500",
+          "bg-[#FDECEC80] border-red-300 text-foreground-emphasis [&>svg]:text-error",
       },
     },
     defaultVariants: {
@@ -60,6 +64,7 @@ const AlertTitle = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
+  // TODO(tokens): no tracking role for tracking-tight (-0.025em).
   <h5
     ref={ref}
     className={cn("mb-1 font-medium leading-none tracking-tight", className)}
@@ -75,7 +80,7 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm [&_p]:leading-relaxed", className)}
+    className={cn("text-body leading-5 [&_p]:leading-relaxed", className)}
     {...props}
   />
 ));

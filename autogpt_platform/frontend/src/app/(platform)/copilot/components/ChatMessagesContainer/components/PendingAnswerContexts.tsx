@@ -2,7 +2,7 @@
 
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import isEqual from "lodash/isEqual";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { getHeldOutcomes, type HeldOutcome } from "../heldCallRows";
 import { HeldOutcomesContext } from "../HeldOutcomesContext";
 import { getPendingOnboardingCallId } from "../../ExpertOnboardingCard/helpers";
@@ -43,18 +43,9 @@ export function PendingAnswerContexts({
   // consumer re-renders on every flush. The onboarding call id is a string
   // and the pause is the part's own `data` object (cards compare it by
   // reference), so both are passed through as they are.
-  const pendingQuestions = useEqualValue(
-    useMemo(() => getPendingQuestions(messages), [messages]),
-  );
-  const answeredQuestions = useEqualValue(
-    useMemo(() => getAnsweredQuestions(messages), [messages]),
-  );
-  const heldOutcomes = useEqualValue(
-    useMemo(() => {
-      const outcomes = getHeldOutcomes(messages);
-      return outcomes.size === 0 ? NO_HELD_OUTCOMES : outcomes;
-    }, [messages]),
-  );
+  const pendingQuestions = useEqualValue(getPendingQuestions(messages));
+  const answeredQuestions = useEqualValue(getAnsweredQuestions(messages));
+  const heldOutcomes = useEqualValue(getHeldOutcomesOrNone(messages));
   // A re-delegated hand-off counts once; the share viewer shows it the same.
   const superseded = useEqualValue(
     getSupersededCallIds(getChatDelegations(messages, heldOutcomes)),
@@ -87,6 +78,13 @@ export function PendingAnswerContexts({
       </PendingQuestionsContext.Provider>
     </ChatSessionContext.Provider>
   );
+}
+
+function getHeldOutcomesOrNone(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+) {
+  const outcomes = getHeldOutcomes(messages);
+  return outcomes.size === 0 ? NO_HELD_OUTCOMES : outcomes;
 }
 
 // Kept in state, not a ref: a render React throws away cannot change it.

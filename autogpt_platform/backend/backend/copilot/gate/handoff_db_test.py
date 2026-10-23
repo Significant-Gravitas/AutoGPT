@@ -15,6 +15,7 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.data.db_accessors import review_db
@@ -129,7 +130,7 @@ async def test_an_edited_card_runs_the_edited_hand_off(
         review_decisions={review_id: (ReviewStatus.APPROVED, edited, None)},
     )
 
-    results = await held.resolve_answered(test_user_id, session)
+    results = await _resolve_answered(test_user_id, session)
 
     assert [r.metadata["held_call"]["outcome"] for r in results] == ["approved"]
     assert wiring.runs == [
@@ -154,6 +155,14 @@ async def test_an_approved_card_left_as_is_runs_the_original_call(
         review_decisions={review_id: (ReviewStatus.APPROVED, None, None)},
     )
 
-    await held.resolve_answered(test_user_id, session)
+    await _resolve_answered(test_user_id, session)
 
     assert wiring.runs == [_ARGS]
+
+
+async def _resolve_answered(user_id: str, session: ChatSession) -> list[PendingMessage]:
+    """The late results ``resolve_answered`` delivers for the answered cards."""
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(user_id, session, delivered.append):
+        pass
+    return delivered

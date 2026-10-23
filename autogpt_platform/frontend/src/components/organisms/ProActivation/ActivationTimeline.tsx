@@ -12,13 +12,13 @@ export function ActivationTimeline({ terms }: Props) {
   const plan = terms.plan === "MAX" ? "Max" : "Pro";
   return (
     <ol className="space-y-4 text-sm">
-      <li className="relative grid grid-cols-[0.75rem_4.5rem_1fr] gap-x-3 before:absolute before:bottom-[-1rem] before:left-[5px] before:top-4 before:w-px before:bg-zinc-200">
+      <li className="relative grid grid-cols-[0.75rem_4.5rem_1fr] gap-x-3 before:absolute before:bottom-[-1rem] before:left-[5px] before:top-4 before:w-px before:bg-surface-active">
         <span
           aria-hidden="true"
-          className="mt-1.5 h-2.5 w-2.5 rounded-full bg-zinc-900"
+          className="mt-1.5 h-2.5 w-2.5 rounded-full bg-action-hover"
         />
-        <span className="font-medium text-zinc-900">Today</span>
-        <span className="leading-relaxed text-zinc-600">
+        <span className="font-medium text-foreground-strong">Today</span>
+        <span className="leading-relaxed text-foreground-secondary">
           After payment succeeds, {plan} starts and your daily and weekly
           allowances reset.
         </span>
@@ -26,12 +26,14 @@ export function ActivationTimeline({ terms }: Props) {
       <li className="grid grid-cols-[0.75rem_4.5rem_1fr] gap-x-3">
         <span
           aria-hidden="true"
-          className="mt-1.5 h-2.5 w-2.5 rounded-full border border-zinc-400 bg-white"
+          // TODO(tokens): no border role for zinc-400 (border-strong is
+          // zinc-300).
+          className="mt-1.5 h-2.5 w-2.5 rounded-full border border-zinc-400 bg-surface"
         />
-        <span className="font-medium text-zinc-900">
+        <span className="font-medium text-foreground-strong">
           {terms.next_payment_at ? shortDate(terms.next_payment_at) : "Renewal"}
         </span>
-        <span className="leading-relaxed text-zinc-600">
+        <span className="leading-relaxed text-foreground-secondary">
           {nextPaymentDescription(terms)}
         </span>
       </li>
