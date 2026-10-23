@@ -15,8 +15,11 @@ const handoff =
   "yourself. If something only the user can provide is missing, ask " +
   "them.]";
 
+const namedDelegation = delegation.replace("this user's", "Priya's");
+const namedHandoff = handoff.replace("this user's", "Priya's");
+
 describe("getVisibleUserMessageParts", () => {
-  it.each([delegation, handoff])(
+  it.each([delegation, handoff, namedDelegation, namedHandoff])(
     "removes the generated preamble while preserving task content: %s",
     (preamble) => {
       const text = `${preamble}\n\n[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer`;

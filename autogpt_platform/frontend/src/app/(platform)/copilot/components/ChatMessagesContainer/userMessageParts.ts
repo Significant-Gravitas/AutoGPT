@@ -1,14 +1,22 @@
 import type { UIMessage } from "ai";
 
+// New rows name the user ("Priya's team"); rows stored before that, and users
+// with no name on file, say "this user's team".
+const TEAM_OWNER = "[^\\[\\]\\r\\n]+'s team";
+
 const DELEGATION_PREAMBLE = new RegExp(
-  "^\\[Delegated task from [^\\[\\]\\r\\n]+, a teammate on this user's team — not " +
+  "^\\[Delegated task from [^\\[\\]\\r\\n]+, a teammate on " +
+    TEAM_OWNER +
+    " — not " +
     "the user\\. They cannot see your thread, so report the outcome in your " +
     "final message\\. If the task needs something only the user can " +
     "provide, say what is missing instead of guessing\\.\\]\\r?\\n\\r?\\n",
 );
 
 const HANDOFF_PREAMBLE = new RegExp(
-  "^\\[Task handed to you by [^\\[\\]\\r\\n]+, a teammate on this user's team\\. It " +
+  "^\\[Task handed to you by [^\\[\\]\\r\\n]+, a teammate on " +
+    TEAM_OWNER +
+    "\\. It " +
     "is yours now: they are not waiting on a report and cannot answer " +
     "follow-ups\\. Take it to completion and tell the user the outcome " +
     "yourself\\. If something only the user can provide is missing, ask " +

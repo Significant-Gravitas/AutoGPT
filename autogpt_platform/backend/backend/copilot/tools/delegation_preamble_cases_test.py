@@ -26,8 +26,19 @@ _BUILDERS = {"delegation": _handoff_message, "handoff": _transfer_message}
 @pytest.mark.parametrize("case", _CASES, ids=[c["kind"] for c in _CASES])
 def test_preamble_matches_the_shared_frontend_contract(case: dict[str, str]):
     build = _BUILDERS[case["kind"]]
-    assert build(case["caller"], case["context"], case["prompt"]) == case["message"]
+    message = build(
+        case["caller"], case["context"], case["prompt"], case["user"] or None
+    )
+    assert message == case["message"]
 
 
 def test_every_builder_has_a_case():
     assert {c["kind"] for c in _CASES} == set(_BUILDERS)
+
+
+def test_every_builder_has_a_case_with_and_without_a_user_name():
+    """Both wordings must stay in the contract: the named one is what new
+    rows carry, the "this user's" one is every stored row and the fallback."""
+    assert {(c["kind"], bool(c["user"])) for c in _CASES} == {
+        (kind, named) for kind in _BUILDERS for named in (True, False)
+    }

@@ -53,7 +53,9 @@ from .expert_delegation import (
     resolve_target_expert,
     safe_caller_name,
     sent_from_metadata,
+    team_owner,
     unknown_target_message,
+    user_first_name,
 )
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
 from .run_sub_session import (
@@ -199,7 +201,9 @@ class DelegateToExpertTool(BaseTool):
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
             user_id=user_id,
-            message=_handoff_message(caller, system_context, prompt),
+            message=_handoff_message(
+                caller, system_context, prompt, await user_first_name(user_id)
+            ),
             timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
             permissions=get_current_permissions(),
             tool_call_id=(
@@ -355,16 +359,19 @@ class DelegateToExpertTool(BaseTool):
         return caller.name if caller else "a teammate"
 
 
-def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
+def _handoff_message(
+    caller: str, system_context: str, prompt: str, user_name: str | None = None
+) -> str:
     """Frame the task so the teammate knows a colleague — not the user — asked.
 
     Without this the delegated prompt reads as the user speaking, and the
     teammate would address them directly and ask follow-up questions nobody
-    is there to answer.
+    is there to answer. ``user_name`` is the user's first name, if known.
     """
     name = safe_caller_name(caller)
+    team = team_owner(user_name)
     preamble = (
-        f"[Delegated task from {name}, a teammate on this user's team — not "
+        f"[Delegated task from {name}, a teammate on {team} team — not "
         "the user. They cannot see your thread, so report the outcome in your "
         "final message. If the task needs something only the user can "
         "provide, say what is missing instead of guessing.]"

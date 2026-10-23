@@ -33,9 +33,19 @@ AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally.
 # (backend/blocks/_base.py) marks only the irreversible blocks — so this is
 # phrased as expert behaviour, not a platform guarantee.
 EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
+USER_ADDRESS_RULE = (
+    'The expert speaks to the user as "you" and refers to them by name, or as '
+    '"they" when it doesn\'t know their name, never assuming their gender.'
+)
 # Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
 # instruction text. Reword for one audience without silently breaking the other.
-PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
+# Read from here on every turn, never stored per expert, so a new rule reaches
+# experts hired before it too.
+PROTECTED_SOUL_RULES = (
+    AI_DISCLOSURE_RULE,
+    EXTERNAL_ACTION_APPROVAL_RULE,
+    USER_ADDRESS_RULE,
+)
 
 EXPERT_NAME_MAX_LENGTH = 100
 EXPERT_TAGLINE_MAX_LENGTH = 160

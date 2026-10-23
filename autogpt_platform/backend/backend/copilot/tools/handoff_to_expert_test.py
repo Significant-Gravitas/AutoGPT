@@ -528,6 +528,42 @@ class TestTransfer:
         # block of its own — which is what the length cap alone does not stop.
         assert "[" not in name_span and "]" not in name_span
 
+    @pytest.mark.asyncio
+    async def test_the_preamble_names_the_users_team(
+        self, roster, mock_turn, mock_sessions, user_understanding
+    ):
+        """The receiver now talks to the user itself, so it gets their name
+        instead of "this user" and a pronoun it would have to guess."""
+        user_understanding.get_business_understanding.return_value = MagicMock(
+            user_name="Priya Raman"
+        )
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the launch plan",
+        )
+        message = mock_turn.await_args.kwargs["message"]
+        assert "a teammate on Priya's team" in message
+        assert "this user's" not in message
+
+    @pytest.mark.asyncio
+    async def test_a_user_without_a_name_keeps_the_neutral_wording(
+        self, roster, mock_turn, mock_sessions, user_understanding
+    ):
+        user_understanding.get_business_understanding.return_value = MagicMock(
+            user_name=None
+        )
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the launch plan",
+        )
+        assert "a teammate on this user's team" in (
+            mock_turn.await_args.kwargs["message"]
+        )
+
 
 class TestHandedOffSessionMode:
     """A receiving thread is never looser than the chat that handed it the
