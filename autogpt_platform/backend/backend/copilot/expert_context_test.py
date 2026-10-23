@@ -33,6 +33,7 @@ from backend.copilot.expert_context import (
     render_expert_identity_suffix,
 )
 from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
 
 _EC = "backend.copilot.expert_context"
 
@@ -730,16 +731,12 @@ class TestInjectUserContextExpertWiring:
     @pytest.mark.asyncio
     async def test_cacheable_system_prompt_is_byte_identical(self):
         """The prompt-cache contract: _CACHEABLE_SYSTEM_PROMPT must not change."""
-        from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
-
         digest = hashlib.sha256(_CACHEABLE_SYSTEM_PROMPT.encode()).hexdigest()
         assert digest == _PRE_CHANGE_PROMPT_SHA256
 
     def test_otto_is_told_how_to_refer_to_the_user(self):
         """SECRT-3161: Otto wrote "he wants you to run the launch planning for
         him" into a delegated task for a user whose gender it never learned."""
-        from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
-
         talking = _CACHEABLE_SYSTEM_PROMPT.split("# Talking to the user", 1)[1]
         talking = talking.split("\n# ", 1)[0]
         assert 'Speak to the user as "you"' in talking

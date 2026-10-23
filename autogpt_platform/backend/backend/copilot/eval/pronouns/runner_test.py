@@ -9,10 +9,11 @@ import pytest
 from openai.types.chat import ChatCompletion
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.eval.style.generation import Turn, delegated_task, generate_turn
+from backend.copilot.eval.style.generation import Turn, generate_turn
 from backend.copilot.eval.style.models import Usage
 
 from .cases import expand_cases, first_message, load_case_file, teammate_expert
+from .delegation import delegated_task
 from .runner import _positive_int, exit_code, score, summarize
 
 CASE_FILE = load_case_file()
@@ -78,7 +79,10 @@ def _turn(text: str = "", delegated: list[str] | None = None) -> Turn:
         truncated=False,
         usage=Usage(model="m", cost_usd=0.0),
         tool_calls=[],
-        delegated_tasks=delegated or [],
+        calls=[
+            ("delegate_to_expert", json.dumps({"prompt": task}))
+            for task in delegated or []
+        ],
     )
 
 
@@ -122,6 +126,7 @@ def test_the_delegated_text_is_read_through_the_capability_wrapper():
     assert delegated_task("run_capability", json.dumps(args)) == "c\n\np"
     assert delegated_task("delegate_to_expert", '{"prompt": "p"}') == "p"
     assert delegated_task("memory_search", '{"query": "q"}') is None
+    assert delegated_task("delegate_to_expert", "not json") is None
 
 
 def test_the_summary_counts_every_outcome():

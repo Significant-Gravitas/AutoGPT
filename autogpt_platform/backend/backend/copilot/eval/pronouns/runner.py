@@ -42,6 +42,7 @@ from .cases import (
     load_case_file,
     teammate_expert,
 )
+from .delegation import delegated_tasks
 
 Outcome = Literal["pass", "fail", "no_delegation", "error"]
 
@@ -58,7 +59,7 @@ class CaseResult(BaseModel):
 
 def score(case: PronounCase, turn: Turn, repeat: int = 1) -> CaseResult:
     """Pass, fail or inconclusive for one generated turn."""
-    checked = turn.delegated_tasks if case.kind == "otto_brief" else [turn.text]
+    checked = delegated_tasks(turn) if case.kind == "otto_brief" else [turn.text]
     checked = [text for text in checked if text.strip()]
     if not checked:
         outcome: Outcome = "no_delegation" if case.kind == "otto_brief" else "error"
