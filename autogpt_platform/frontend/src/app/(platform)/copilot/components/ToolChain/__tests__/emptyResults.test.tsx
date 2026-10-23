@@ -96,6 +96,21 @@ describe("the shared result fallback", () => {
     expect(document.body.textContent).not.toMatch(/\[\]|\{\}/);
   });
 
+  it("keeps what a change said when it leaves a list empty", () => {
+    // revoke_expert_credential after taking away the last credential.
+    const revoked = {
+      type: "expert_credentials",
+      message:
+        "Revoked credential c-1 for expert e-1. It now has 0 granted credential(s).",
+      expert_id: "e-1",
+      granted: [],
+    };
+    render(<ToolResult row={row(revoked, "revoke_expert_credential")} />);
+
+    expect(screen.getByText(revoked.message)).toBeDefined();
+    expect(screen.queryByText("Nothing found.")).toBeNull();
+  });
+
   it("never leaves an opened row blank when every field is empty", () => {
     render(<ToolResult row={row({ owner: null }, "some_new_tool")} />);
 
