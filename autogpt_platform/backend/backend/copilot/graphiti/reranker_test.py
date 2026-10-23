@@ -144,12 +144,16 @@ async def test_rank_scores_every_candidate_at_once_up_to_the_cap(candidates, pea
     the rest wait for a free slot."""
     in_flight = 0
     most_in_flight = 0
+    full_wave = asyncio.Event()
+    release_scores = asyncio.Event()
 
     async def fake_create(**_kwargs):
         nonlocal in_flight, most_in_flight
         in_flight += 1
         most_in_flight = max(most_in_flight, in_flight)
-        await asyncio.sleep(0.01)
+        if in_flight == peak:
+            full_wave.set()
+        await release_scores.wait()
         in_flight -= 1
         return _logprob_response("True", -0.1)
 
@@ -159,7 +163,15 @@ async def test_rank_scores_every_candidate_at_once_up_to_the_cap(candidates, pea
         config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
     )
 
-    ranked = await reranker.rank("query", [f"passage {n}" for n in range(candidates)])
+    ranking = asyncio.create_task(
+        reranker.rank("query", [f"passage {n}" for n in range(candidates)])
+    )
+    try:
+        await asyncio.wait_for(full_wave.wait(), timeout=5)
+        await asyncio.sleep(0)
+    finally:
+        release_scores.set()
+        ranked = await ranking
 
     assert len(ranked) == candidates
     assert most_in_flight == peak
