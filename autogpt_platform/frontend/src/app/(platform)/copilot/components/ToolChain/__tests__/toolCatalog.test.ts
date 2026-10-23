@@ -2,6 +2,65 @@ import { describe, expect, it } from "vitest";
 import { getCatalogLabel } from "../toolCatalog";
 
 describe("getCatalogLabel", () => {
+  describe("bash_exec", () => {
+    const purpose = "Updating your launch brief";
+    const command = "cd ~/workspace/dewleaf && sed -i 's/TBD/25 Nov/' brief.md";
+
+    it("labels the step with its plain-language purpose, never the command", () => {
+      expect(
+        getCatalogLabel("bash_exec", { purpose, command }, "running"),
+      ).toEqual({ category: "bash", text: "Updating your launch brief…" });
+      expect(
+        getCatalogLabel("bash_exec", { purpose, command }, "done"),
+      ).toEqual({
+        category: "bash",
+        text: "Updating your launch brief",
+      });
+      expect(
+        getCatalogLabel("bash_exec", { purpose, command }, "error")?.text,
+      ).toBe("Failed while updating your launch brief");
+    });
+
+    it("tidies a purpose the model wrote as a sentence", () => {
+      expect(
+        getCatalogLabel(
+          "bash_exec",
+          { purpose: "  Updating   your launch brief.  ", command },
+          "done",
+        )?.text,
+      ).toBe("Updating your launch brief");
+    });
+
+    it("caps a long purpose", () => {
+      const text =
+        getCatalogLabel(
+          "bash_exec",
+          { purpose: "Checking ".repeat(20), command },
+          "done",
+        )?.text ?? "";
+      expect(text.length).toBeLessThanOrEqual(80);
+      expect(text.endsWith("…")).toBe(true);
+    });
+
+    it("falls back to a generic label for calls saved without a purpose", () => {
+      for (const input of [
+        { command },
+        { command, purpose: "  " },
+        undefined,
+      ]) {
+        expect(getCatalogLabel("bash_exec", input, "running")?.text).toBe(
+          "Running a command…",
+        );
+        expect(getCatalogLabel("bash_exec", input, "done")?.text).toBe(
+          "Ran a command",
+        );
+      }
+      expect(getCatalogLabel("bash_exec", { command }, "error")?.text).toBe(
+        "Failed while running a command",
+      );
+    });
+  });
+
   it("returns null for tools missing from the catalog", () => {
     expect(getCatalogLabel("totally_unknown_tool", {}, "running")).toBeNull();
   });
@@ -42,7 +101,6 @@ describe("getCatalogLabel", () => {
   });
 
   it.each([
-    ["bash_exec", { command: "ls -la" }, "done", 'Ran command "ls -la"'],
     [
       "browser_navigate",
       { url: "https://agpt.co" },

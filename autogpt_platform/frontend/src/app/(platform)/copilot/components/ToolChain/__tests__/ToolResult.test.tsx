@@ -1,5 +1,6 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import type { ChainRow } from "../helpers";
@@ -770,7 +771,8 @@ describe("ToolResult", () => {
   });
 
   describe("terminal, todos and file routing", () => {
-    it("renders bash executions as a terminal", () => {
+    it("keeps a bash step's command and output behind technical details", async () => {
+      const user = userEvent.setup();
       render(
         <ToolResult
           row={row({ stdout: "file.txt", exit_code: 2 }, "bash_exec", {
@@ -779,9 +781,74 @@ describe("ToolResult", () => {
         />,
       );
 
+      expect(screen.queryByText("ls")).toBeNull();
+      expect(screen.queryByText("file.txt")).toBeNull();
+      const toggle = screen.getByRole("button", {
+        name: "Show technical details",
+      });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+      await user.click(toggle);
+
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
       expect(screen.getByText("ls")).toBeDefined();
       expect(screen.getByText("file.txt")).toBeDefined();
       expect(screen.getByText("exit 2")).toBeDefined();
+    });
+
+    it("says plainly that a bash step failed", () => {
+      render(
+        <ToolResult
+          row={row({ stdout: "", stderr: "boom", exit_code: 1 }, "bash_exec", {
+            command: "false",
+          })}
+        />,
+      );
+
+      expect(screen.getByText("This step didn't work")).toBeDefined();
+      expect(screen.queryByText("boom")).toBeNull();
+    });
+
+    it("shows CSV printed by a bash step as a table chip, not a dump", async () => {
+      const user = userEvent.setup();
+      const csv = [
+        "date,channel,post",
+        "2026-11-10,Instagram,Teaser",
+        "2026-11-13,Instagram,Ingredient spotlight",
+        "2026-11-25,Shopify,Launch day",
+      ].join("\n");
+      render(
+        <ToolResult
+          row={row({ stdout: csv, exit_code: 0 }, "bash_exec", {
+            command: "cat calendar.csv",
+          })}
+        />,
+      );
+
+      expect(screen.getByText("Table")).toBeDefined();
+      expect(screen.getByText("3 rows · date, channel, post")).toBeDefined();
+      expect(screen.queryByText(/Ingredient spotlight/)).toBeNull();
+
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText(/Ingredient spotlight/)).toBeDefined();
+    });
+
+    it("shows JSON printed by a bash step as a data chip", () => {
+      render(
+        <ToolResult
+          row={row(
+            { stdout: '{"launch": "2026-11-25", "price": 899}', exit_code: 0 },
+            "bash_exec",
+            { command: "cat brief.json" },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("Data")).toBeDefined();
+      expect(screen.getByText("2 fields · launch, price")).toBeDefined();
+      expect(screen.queryByText(/2026-11-25/)).toBeNull();
     });
 
     it("renders TodoWrite rows as a todo list", () => {

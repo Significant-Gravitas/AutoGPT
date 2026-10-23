@@ -374,9 +374,12 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
     },
     "Paris is the capital",
   ),
-  card("bash_exec", { stdout: "file.txt", exit_code: 0 }, "file.txt", {
-    command: "ls",
-  }),
+  card(
+    "bash_exec",
+    { stdout: "name,size\nnotes.md,12", exit_code: 0 },
+    "1 row · name, size",
+    { purpose: "Listing your files", command: "ls" },
+  ),
   card("start_desktop", DESKTOP, "Desktop"),
   card("TodoWrite", { ok: true }, "Task A", {
     todos: [
