@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderHost,
   resetChatRuntimes,
+  typeAndSend,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
 } from "./sse-helpers";
@@ -128,6 +129,41 @@ describe("a follow-up the last turn ended without reading", () => {
       expect(screen.queryByText("Didn't go through")).toBeNull(),
     );
     expect(screen.getAllByText(FOLLOW_UP)).toHaveLength(1);
+  }, 15_000);
+});
+
+describe("a send the server queued behind a turn this tab did not see", () => {
+  it("shows once, as a Queued chip, not also as a sent bubble no row backs", async () => {
+    buffer.messages = [];
+    renderHost({ sessionOverride: { messages: stored.messages } });
+    server.use(
+      http.post(STREAM_URL, ({ request }) => {
+        // Another turn is running: the server buffers the send and says so.
+        buffer.messages = [FOLLOW_UP];
+        return streamSseResponse(
+          [
+            { type: "start", messageId: "queued-follow-up" },
+            { type: "start-step" },
+            { type: "data-follow-up-queued", data: {} },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+          { abortSignal: request.signal },
+        );
+      }),
+      http.get(PENDING_URL, () =>
+        HttpResponse.json({
+          messages: buffer.messages,
+          count: buffer.messages.length,
+          held_reason: null,
+        }),
+      ),
+    );
+
+    await typeAndSend(FOLLOW_UP);
+
+    await screen.findByText("Queued", undefined, { timeout: 5000 });
+    await waitFor(() => expect(screen.getAllByText(FOLLOW_UP)).toHaveLength(1));
   }, 15_000);
 });
 

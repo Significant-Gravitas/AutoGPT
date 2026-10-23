@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { dropQueuedSendBubbles } from "./helpers/dropQueuedSendBubbles";
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
 import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
@@ -96,6 +97,16 @@ export function useCopilotPendingChips({
   const [heldReason, setHeldReason] = useState<HeldReason | null>(null);
   const isActive = status === "streaming" || status === "submitted";
 
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  // The stream runtime drops these itself when its send is answered queued.
+  function dropQueuedSends(texts: readonly string[]) {
+    const current = messagesRef.current;
+    if (!setMessages || dropQueuedSendBubbles(current, texts) === current)
+      return;
+    setMessages((prev) => dropQueuedSendBubbles(prev, texts));
+  }
+
   usePeekOnBoundary({
     sessionId,
     status,
@@ -103,6 +114,7 @@ export function useCopilotPendingChips({
     promote,
     setQueue,
     setHeldReason,
+    dropQueuedSends,
   });
 
   useAutoContinuePromotion({
@@ -173,6 +185,7 @@ function usePeekOnBoundary({
   promote,
   setQueue,
   setHeldReason,
+  dropQueuedSends,
 }: {
   sessionId: string | null;
   status: ChatStatus;
@@ -180,9 +193,12 @@ function usePeekOnBoundary({
   promote: Promote;
   setQueue: (updater: QueueUpdater) => void;
   setHeldReason: (reason: HeldReason | null) => void;
+  dropQueuedSends: (texts: readonly string[]) => void;
 }) {
   const promoteRef = useRef(promote);
   promoteRef.current = promote;
+  const dropQueuedSendsRef = useRef(dropQueuedSends);
+  dropQueuedSendsRef.current = dropQueuedSends;
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
   // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
@@ -284,6 +300,8 @@ function usePeekOnBoundary({
       // an "idle" transition but before the peek resolves silently
       // disappears.
       setHeldReason(res.data.held_reason ?? null);
+      // A send the server queued rather than stored is drawn by its chip.
+      dropQueuedSendsRef.current(res.data.messages);
       setQueue((current) => {
         const fromServer = res.data.messages.map((text) => ({
           id: uuidv4({}),
