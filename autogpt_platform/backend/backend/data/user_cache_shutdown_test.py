@@ -1,6 +1,7 @@
 """Cache invalidation failures remain visible after a request loop closes."""
 
 import asyncio
+import contextvars
 import threading
 from unittest.mock import patch
 
@@ -16,6 +17,8 @@ def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
     worker_finished = threading.Event()
     error_logged = threading.Event()
     log_exception = user_db.logger.exception
+    request_label = contextvars.ContextVar("request_label", default="missing")
+    logged_labels: list[str] = []
 
     def clear() -> None:
         loop.call_soon_threadsafe(started.set)
@@ -26,10 +29,12 @@ def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
             worker_finished.set()
 
     def record_error(message: str) -> None:
+        logged_labels.append(request_label.get())
         log_exception(message)
         error_logged.set()
 
     async def cancel_request() -> None:
+        token = request_label.set("request-17")
         request = asyncio.create_task(user_db._invalidate_user_caches("user-1", None))
         try:
             await asyncio.wait_for(started.wait(), timeout=5)
@@ -43,6 +48,7 @@ def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
                 release.set()
                 request.cancel()
                 await asyncio.gather(request, return_exceptions=True)
+            request_label.reset(token)
 
     with (
         patch.object(user_db.get_or_create_user, "cache_clear", clear),
@@ -66,3 +72,4 @@ def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
     ]
     assert record.exc_info is not None
     assert str(record.exc_info[1]) == "late Redis failure after loop close"
+    assert logged_labels == ["request-17"]

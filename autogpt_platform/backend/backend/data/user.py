@@ -1188,7 +1188,9 @@ async def _clear_get_or_create_user_cache() -> None:
         awaiting_clear.add_done_callback(
             lambda done: None if done.cancelled() else done.exception()
         )
-        clear.add_done_callback(_log_cancelled_cache_clear_error)
+        clear.add_done_callback(
+            lambda done: context.run(_log_cancelled_cache_clear_error, done)
+        )
         raise
 
 
