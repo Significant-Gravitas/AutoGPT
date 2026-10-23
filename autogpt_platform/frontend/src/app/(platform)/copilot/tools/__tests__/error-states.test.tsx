@@ -1,8 +1,12 @@
 import type { ToolUIPart } from "ai";
+import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { AskQuestionTool } from "../AskQuestion/AskQuestion";
+import { CreateAgentTool } from "../CreateAgent/CreateAgent";
+import { ToolIcon as DecomposeGoalToolIcon } from "../DecomposeGoal/helpers";
+import { EditAgentTool } from "../EditAgent/EditAgent";
 import {
   CreateFeatureRequestTool,
   SearchFeatureRequestsTool,
@@ -14,6 +18,7 @@ import { FolderTool } from "../FolderTool/FolderTool";
 import { GenericTool } from "../GenericTool/GenericTool";
 import { RunAgentTool } from "../RunAgent/RunAgent";
 import { getAccordionMeta, type RunBlockToolOutput } from "../RunBlock/helpers";
+import { RunBlockTool } from "../RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../SetupTrigger/SetupTrigger";
@@ -27,6 +32,14 @@ function failedPart(type: string) {
     input: {},
     errorText: "Something went wrong",
   };
+}
+
+function withChatActions(node: ReactNode) {
+  return (
+    <CopilotChatActionsProvider onSend={() => {}}>
+      {node}
+    </CopilotChatActionsProvider>
+  );
 }
 
 // Each failed tool call shows its status line and icon in the error colour.
@@ -115,6 +128,25 @@ const failedTools = [
       <SetupTriggerTool part={failedPart("tool-setup_agent_webhook_trigger")} />
     ),
   },
+  {
+    name: "CreateAgent",
+    status: "Error creating workflow",
+    view: withChatActions(
+      <CreateAgentTool part={failedPart("tool-create_agent")} />,
+    ),
+  },
+  {
+    name: "EditAgent",
+    status: "Error editing workflow",
+    view: withChatActions(
+      <EditAgentTool part={failedPart("tool-edit_agent")} />,
+    ),
+  },
+  {
+    name: "RunBlock",
+    status: "Action failed",
+    view: <RunBlockTool part={failedPart("tool-run_block")} />,
+  },
 ];
 
 describe("failed tool calls", () => {
@@ -154,5 +186,15 @@ describe("FindCapabilities connection badge", () => {
     });
     expect(badge?.label).toBe("sign in");
     expect(badge?.className).toBe("bg-surface-hover text-foreground-tertiary");
+  });
+});
+
+describe("DecomposeGoal tool icon", () => {
+  // The card shows ToolErrorCard when the call fails, so check the icon alone.
+  it("uses the error colour for a failed call", () => {
+    const { container } = render(
+      <DecomposeGoalToolIcon isStreaming={false} isError />,
+    );
+    expect(container.querySelector("svg.text-error")).not.toBeNull();
   });
 });
