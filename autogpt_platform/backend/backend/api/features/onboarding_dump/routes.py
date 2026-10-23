@@ -315,6 +315,15 @@ async def discard_brain_dump(
     moved the row on: the caller would clear a buffer that is still being
     filled. Callers know their own id, so they send it.
     """
+    # Before the buffer goes, so a storage error cannot leave the take holding the row.
+    if recording_id:
+        await db.claim_transition(
+            user_id,
+            recording_id,
+            expected=BrainDumpStatus.recording_uploaded,
+            new=BrainDumpStatus.failed,
+            errorCode="discarded",
+        )
     dump = await db.get_dump(user_id)
     target = recording_id or (dump.recordingId if dump else None)
     if target and not (
@@ -323,14 +332,6 @@ async def discard_brain_dump(
         and dump.status == BrainDumpStatus.completed
     ):
         await storage.discard_parts(user_id, target)
-    if recording_id and await db.claim_transition(
-        user_id,
-        recording_id,
-        expected=BrainDumpStatus.recording_uploaded,
-        new=BrainDumpStatus.failed,
-        errorCode="discarded",
-    ):
-        dump = await db.get_dump(user_id)
     return DumpStatusResponse(
         status=dump.status if dump else None,
         input_mode=dump.inputMode if dump else None,

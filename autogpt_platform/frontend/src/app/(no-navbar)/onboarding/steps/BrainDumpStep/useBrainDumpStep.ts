@@ -24,6 +24,11 @@ import {
 } from "./recordingStore";
 import { useBrainDumpRecorder } from "./useBrainDumpRecorder";
 
+// A skip whose discard and record are still on the wire. Module scope, so the
+// remount that Back from Hire causes waits for it before sending a new take,
+// which the late skip would otherwise replace.
+let pendingSkip: Promise<void> = Promise.resolve();
+
 export type ScreenState =
   | "rest"
   | "recording"
@@ -210,6 +215,7 @@ export function useBrainDumpStep() {
       return;
     }
 
+    await pendingSkip;
     const startedAt = performance.now();
     let finalizeLatencyMs: number;
     try {
@@ -324,6 +330,7 @@ export function useBrainDumpStep() {
     setSubmittedMode("typed");
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
+    await pendingSkip;
     try {
       const response = await finalizeBrainDump({
         recording_id: recordingId,
@@ -373,6 +380,12 @@ export function useBrainDumpStep() {
     // Nothing below can change where a skip goes, so the user is not kept
     // waiting on it.
     nextStep();
+    const skip = recordSkip(recordedId);
+    pendingSkip = skip;
+    await skip;
+  }
+
+  async function recordSkip(recordedId: string | undefined) {
     // The recording stays in the browser, so Back offers it again until
     // onboarding finishes, and the skip is its own take on the server: under
     // the recording's id, a later send of it would read as already done.
@@ -433,6 +446,7 @@ export function useBrainDumpStep() {
     if (!recoverable) return;
     trackBrainDump("brain_dump_recovery_used");
     setScreen("processing");
+    await pendingSkip;
     await recorder.adoptRecovered(
       recoverable.recordingId,
       recoverable.mimeType,

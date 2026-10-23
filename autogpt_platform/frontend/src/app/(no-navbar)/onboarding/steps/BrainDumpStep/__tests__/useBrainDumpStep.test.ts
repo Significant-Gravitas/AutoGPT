@@ -1171,6 +1171,51 @@ describe("useBrainDumpStep — skip", () => {
     expect((createObjectURL.mock.calls[0][0] as Blob).type).toBe("audio/mp4");
   });
 
+  // Back from Hire is a click away while the skip's discard is still on the
+  // wire. Landing after the recovered take is resent, it would drop the
+  // take's buffer and close it.
+  it("holds a recovered take until the skip before it has been recorded", async () => {
+    const discard = deferred<{ status: number }>();
+    discardBrainDump.mockReturnValueOnce(discard.promise);
+    recorderState.recordingId = "rec-skipped";
+    const first = await renderStep();
+    await act(async () => {
+      void first.result.current.handleSkip();
+      await Promise.resolve();
+    });
+    first.unmount();
+
+    recorderState.recordingId = null;
+    recorderState.findRecoverable.mockResolvedValue({
+      recordingId: "rec-skipped",
+      mimeType: "audio/webm",
+      durationSecs: 30,
+    });
+    getParts.mockResolvedValue([part(0, "rec-skipped")]);
+    const back = await renderStep();
+    await waitFor(() => expect(back.result.current.screen).toBe("recovery"));
+    await act(async () => {
+      void back.result.current.handleResumeRecovered();
+      await Promise.resolve();
+    });
+    expect(recorderState.adoptRecovered).not.toHaveBeenCalled();
+
+    await act(async () => {
+      discard.resolve({ status: 200 });
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(recorderState.adoptRecovered).toHaveBeenCalledWith(
+        "rec-skipped",
+        "audio/webm",
+      ),
+    );
+    expect(discardBrainDump.mock.invocationCallOrder[0]).toBeLessThan(
+      recorderState.adoptRecovered.mock.invocationCallOrder[0],
+    );
+  });
+
   // Being unable to say "no thanks" because the network is down would be
   // absurd — path B is the safe default anyway.
   it("lets the user through even when the skip call fails", async () => {

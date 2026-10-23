@@ -101,17 +101,41 @@ async def test_a_skip_after_an_abandoned_upload_lets_the_next_take_through(
     assert response.status == BrainDumpStatus.transcribed
 
 
-async def test_a_new_take_cannot_displace_one_still_being_processed(user_id: str):
+async def test_an_abandoned_upload_is_closed_even_when_its_buffer_cannot_be_dropped(
+    user_id: str, mocker: MockerFixture
+):
+    mocker.patch.object(
+        routes.storage, "discard_parts", new=AsyncMock(side_effect=OSError("redis"))
+    )
+    await db.start_dump(user_id, "rec-voice", BrainDumpInputMode.voice)
+
+    with pytest.raises(OSError):
+        await routes.discard_brain_dump(user_id=user_id, recording_id="rec-voice")
+
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.status, dump.errorCode) == (BrainDumpStatus.failed, "discarded")
+
+
+# Another tab's take may be the one running, so neither kind of new take
+# can reset it.
+@pytest.mark.parametrize("second", ["typed", "skipped"])
+async def test_a_new_take_cannot_displace_one_still_being_processed(
+    user_id: str, second: str
+):
     await service.finalize_typed_dump(
         user_id, "rec-first", TYPED_TEXT, BackgroundTasks()
     )
     tasks = BackgroundTasks()
 
-    response = await service.finalize_typed_dump(
-        user_id, "rec-second", "Something else entirely.", tasks
-    )
+    if second == "typed":
+        response = await service.finalize_typed_dump(
+            user_id, "rec-second", "Something else entirely.", tasks
+        )
+        assert response.error_code == "superseded"
+    else:
+        await service.finalize_skipped_dump(user_id, "rec-second")
 
-    assert response.error_code == "superseded"
     assert tasks.tasks == []
     dump = await db.get_dump(user_id)
     assert dump is not None
