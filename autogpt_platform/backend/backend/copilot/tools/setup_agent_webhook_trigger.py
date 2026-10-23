@@ -33,6 +33,7 @@ from backend.util.exceptions import (
 
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants, require_installed_workflow
+from .external_scope import external_tenancy
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -237,7 +238,9 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if card:
             return card
 
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         try:
             preset = await triggers_db().setup_triggered_preset(
                 user_id=user_id,

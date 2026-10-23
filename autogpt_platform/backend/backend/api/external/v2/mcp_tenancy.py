@@ -27,11 +27,13 @@ class IdKind(Enum):
     LIBRARY_AGENT = "Library agent"
     FOLDER = "Folder"
     RUN = "Run"
+    PRESET = "Preset"
 
 
 AGENT = IdKind.LIBRARY_AGENT
 FOLDER = IdKind.FOLDER
 RUN = IdKind.RUN
+PRESET = IdKind.PRESET
 
 # Per tool, the arguments that name an organization's row. An agent id may be
 # a library agent id or a graph id, as the tools accept either.
@@ -49,6 +51,11 @@ TENANTED_ARGS: dict[str, dict[str, IdKind]] = {
     "delete_folder": {"folder_id": FOLDER},
     "move_folder": {"folder_id": FOLDER, "target_parent_id": FOLDER},
     "move_agents_to_folder": {"agent_ids": AGENT, "folder_id": FOLDER},
+    "list_presets": {"library_agent_id": AGENT, "graph_id": AGENT},
+    "update_preset": {"preset_id": PRESET},
+    "delete_preset": {"preset_id": PRESET},
+    "list_agent_triggers": {"library_agent_id": AGENT},
+    "setup_agent_webhook_trigger": {"library_agent_id": AGENT, "graph_id": AGENT},
 }
 
 # Arguments that look like ids but name no organization's row, with the reason.
@@ -104,6 +111,9 @@ async def _in_tenant(
                 user_id=user_id, execution_id=value
             )
             organizations = [run.organization_id] if run else []
+        case IdKind.PRESET:
+            preset = await library_db().get_preset(user_id=user_id, preset_id=value)
+            organizations = [preset.organization_id] if preset else []
     return all(in_tenant(org, organization_id) for org in organizations)
 
 

@@ -1,24 +1,34 @@
 """
 V2 External API - Library Preset Endpoints
 
-Provides endpoints for managing agent presets (saved run configurations).
+Provides endpoints for managing agent presets (saved run configurations) and
+the webhook triggers built on them.
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, Query, Response, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.features.library import db as library_db
-from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.api.features.library import triggers
 from backend.api.features.library.model import (
-    TriggeredPresetSetupRequest as _TriggeredPresetSetupRequest,
+    LibraryAgentPreset,
+    LibraryAgentPresetCreatable,
 )
-from backend.data.credit import get_credit_model
+from backend.data import graph as graph_db
 from backend.executor import utils as execution_utils
+from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 
+from ..errors import ErrorResponse
+from ..idempotency import (
+    idempotency_key,
+    idempotent_run,
+    replayed_run,
+    request_fingerprint,
+)
 from ..models import (
     AgentGraphRun,
     AgentPreset,
@@ -28,8 +38,14 @@ from ..models import (
     AgentTriggerSetupRequest,
 )
 from ..pagination import Page, PageRequest, page_request
-from ..rate_limit import graph_exec_limiter
-from ..tenancy import TenantContext, in_tenant, require_permission
+from ..rate_limit import enforce, graph_exec_limiter
+from ..tenancy import (
+    TenantContext,
+    in_tenant,
+    require_paid_permission,
+    require_permission,
+)
+from .helpers import assert_can_pay, assert_inputs_match
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +87,7 @@ async def get_preset(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> AgentPreset:
     """Get details of a specific preset."""
-    preset = in_tenant(
-        await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
-        auth,
-        f"Preset #{preset_id}",
-    )
-
-    return AgentPreset.from_internal(preset)
+    return AgentPreset.from_internal(await _preset_in_tenant(preset_id, auth))
 
 
 @presets_router.post(
@@ -88,22 +98,28 @@ async def get_preset(
 )
 async def create_preset(
     request: AgentPresetCreateRequest,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+    ),
 ) -> AgentPreset:
-    """Create a new preset with saved inputs and credentials for an agent."""
-    creatable = LibraryAgentPresetCreatable(
-        graph_id=request.graph_id,
-        graph_version=request.graph_version,
-        name=request.name,
-        description=request.description,
-        inputs=request.inputs,
-        credentials=request.credentials,
-        is_active=request.is_active,
-    )
+    """Create a new preset with saved inputs and credentials for an agent.
+
+    The inputs may leave out required ones, which a run then supplies.
+    """
+    graph = await _graph_in_tenant(request.graph_id, request.graph_version, auth)
+    assert_inputs_match(graph.input_schema, request.inputs, partial=True)
 
     preset = await library_db.create_preset(
         user_id=auth.user_id,
-        preset=creatable,
+        preset=LibraryAgentPresetCreatable(
+            graph_id=request.graph_id,
+            graph_version=request.graph_version,
+            name=request.name,
+            description=request.description,
+            inputs=request.inputs,
+            credentials=request.credentials_inputs,
+            is_active=request.is_active,
+        ),
     )
     return AgentPreset.from_internal(preset)
 
@@ -117,7 +133,9 @@ async def create_preset(
 async def setup_trigger(
     request: AgentTriggerSetupRequest,
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT)
+        require_paid_permission(
+            APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT
+        )
     ),
 ) -> AgentPreset:
     """
@@ -125,25 +143,19 @@ async def setup_trigger(
 
     The agent's `trigger_setup_info` describes the required trigger configuration
     schema and credentials. Use it to populate `trigger_config` and
-    `agent_credentials`.
+    `credentials_inputs`. For a trigger you set up by hand in the other service,
+    the response's `webhook_url` is where that service must send its events.
     """
-    # Use internal trigger setup endpoint to avoid logic duplication:
-    from backend.api.features.library.routes.presets import (
-        setup_trigger as _internal_setup_trigger,
-    )
+    await _graph_in_tenant(request.graph_id, request.graph_version, auth)
 
-    internal_request = _TriggeredPresetSetupRequest(
-        name=request.name,
-        description=request.description,
+    preset = await triggers.setup_triggered_preset(
+        user_id=auth.user_id,
         graph_id=request.graph_id,
         graph_version=request.graph_version,
+        name=request.name,
+        description=request.description,
         trigger_config=request.trigger_config,
-        agent_credentials=request.agent_credentials,
-    )
-
-    preset = await _internal_setup_trigger(
-        params=internal_request,
-        user_id=auth.user_id,
+        agent_credentials=request.credentials_inputs,
     )
     return AgentPreset.from_internal(preset)
 
@@ -156,18 +168,29 @@ async def setup_trigger(
 async def update_preset(
     request: AgentPresetUpdateRequest,
     preset_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+    ),
 ) -> AgentPreset:
-    """Update properties of a preset. Only provided fields will be updated."""
-    await _assert_preset_in_tenant(preset_id, auth)
+    """Update properties of a preset. Only provided fields will be updated.
 
-    preset = await library_db.update_preset(
+    New `inputs` on a webhook trigger re-register its webhook, with the saved
+    credentials unless the request brings new ones.
+    """
+    current = await _preset_in_tenant(preset_id, auth)
+
+    credentials = request.credentials_inputs
+    if request.inputs is not None and credentials is None:
+        # Without credentials the trigger's webhook would keep the old config.
+        credentials = current.credentials
+
+    preset = await triggers.update_triggered_preset(
         user_id=auth.user_id,
         preset_id=preset_id,
+        inputs=request.inputs,
+        credentials=credentials,
         name=request.name,
         description=request.description,
-        inputs=request.inputs,
-        credentials=request.credentials,
         is_active=request.is_active,
     )
     return AgentPreset.from_internal(preset)
@@ -183,12 +206,11 @@ async def delete_preset(
     preset_id: str,
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> None:
-    """Delete a preset."""
-    await _assert_preset_in_tenant(preset_id, auth)
+    """Delete a preset. A webhook trigger's webhook is deregistered with it."""
+    await _preset_in_tenant(preset_id, auth)
 
-    await library_db.delete_preset(
-        user_id=auth.user_id,
-        preset_id=preset_id,
+    await triggers.delete_preset_with_webhook_cleanup(
+        user_id=auth.user_id, preset_id=preset_id
     )
 
 
@@ -197,56 +219,106 @@ async def delete_preset(
     summary="Execute agent preset",
     operation_id="executeAgentRunPreset",
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        status.HTTP_402_PAYMENT_REQUIRED: {
+            "model": ErrorResponse,
+            "description": "No active plan, or a credit balance of zero",
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponse,
+            "description": "The `Idempotency-Key`'s run has not been recorded yet, "
+            "or the expert this preset runs for is paused",
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "model": ErrorResponse,
+            "description": "Invalid inputs, or an `Idempotency-Key` already used "
+            "for a different request",
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": ErrorResponse,
+            "description": "The `Idempotency-Key` cannot be checked right now",
+        },
+    },
 )
 async def execute_preset(
+    response: Response,
     preset_id: str,
     request: AgentPresetRunRequest = AgentPresetRunRequest(),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
+    idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
+    auth: TenantContext = Security(require_paid_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
     Execute a preset, optionally overriding saved inputs and credentials.
 
-    **Rate limit:** 60 requests per minute per user.
+    Send an `Idempotency-Key` to make a retry safe, as with
+    `POST /library/agents/{agent_id}/runs`.
+
+    **Rate limit:** 60 requests per minute per user, shared with that endpoint.
     """
-    await graph_exec_limiter.check(auth.user_id)
+    await enforce(graph_exec_limiter, auth.user_id, response)
 
-    # Check credit balance
-    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
-    current_balance = await user_credit_model.get_credits(auth.user_id)
-    if current_balance <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Insufficient balance to execute the agent. Please top up your account.",
+    fingerprint = request_fingerprint(
+        preset_id=preset_id, request=request.model_dump(mode="json")
+    )
+    async with idempotent_run(idempotency, auth, fingerprint) as claim:
+        if claim.existing_run_id:
+            return await replayed_run(claim, auth)
+
+        await assert_can_pay(auth)
+
+        preset = await _preset_in_tenant(preset_id, auth)
+        merged_inputs = {**preset.inputs, **request.inputs}
+        merged_credentials = {**preset.credentials, **request.credentials_inputs}
+        if not preset.webhook_id:
+            # A trigger's inputs are its block's config, not the graph's inputs.
+            graph = await _graph_in_tenant(preset.graph_id, preset.graph_version, auth)
+            assert_inputs_match(graph.input_schema, merged_inputs)
+
+        # The run belongs where the preset does, as on the internal API.
+        organization_id, team_id = (
+            (preset.organization_id, preset.team_id)
+            if preset.organization_id
+            else (auth.organization_id, auth.team_id)
         )
+        try:
+            result = await execution_utils.add_graph_execution(
+                graph_id=preset.graph_id,
+                user_id=auth.user_id,
+                inputs=merged_inputs,
+                graph_version=preset.graph_version,
+                graph_credentials_inputs=merged_credentials,
+                preset_id=preset_id,
+                expert_id=preset.expert_id,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
+        except ExpertRunPausedError as e:
+            # A ValueError, which the global handlers would answer with a 400.
+            raise ConflictError(str(e)) from e
+        await claim.record(result.id)
+        return AgentGraphRun.from_internal(result)
 
-    # Fetch preset
-    preset = in_tenant(
+
+async def _preset_in_tenant(preset_id: str, auth: TenantContext) -> LibraryAgentPreset:
+    """The caller's preset, or 404 if it is missing or in another organization."""
+    return in_tenant(
         await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
         auth,
         f"Preset #{preset_id}",
     )
 
-    # Merge preset inputs with overrides
-    merged_inputs = {**preset.inputs, **request.inputs}
-    merged_credentials = {**preset.credentials, **request.credentials_inputs}
 
-    result = await execution_utils.add_graph_execution(
-        graph_id=preset.graph_id,
+async def _graph_in_tenant(
+    graph_id: str, graph_version: int, auth: TenantContext
+) -> graph_db.GraphModel:
+    """404 for a graph the credentials' organization can't see: a preset takes
+    its graph's organization, so this keeps it from landing in another one."""
+    graph = await graph_db.get_graph(
+        graph_id=graph_id,
+        version=graph_version,
         user_id=auth.user_id,
-        inputs=merged_inputs,
-        graph_version=preset.graph_version,
-        graph_credentials_inputs=merged_credentials,
-        preset_id=preset_id,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
-    return AgentGraphRun.from_internal(result)
-
-
-async def _assert_preset_in_tenant(preset_id: str, auth: TenantContext) -> None:
-    """404 before mutating a preset the credentials cannot reach."""
-    in_tenant(
-        await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
-        auth,
-        f"Preset #{preset_id}",
-    )
+    if not graph:
+        raise NotFoundError(f"Graph #{graph_id} v{graph_version} not found")
+    return graph

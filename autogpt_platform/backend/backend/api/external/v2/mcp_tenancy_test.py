@@ -104,6 +104,17 @@ async def test_a_folder_in_the_organization_or_untagged_passes(
     await check_ids_in_tenant("delete_folder", {"folder_id": "folder-1"}, USER, ORG)
 
 
+@pytest.mark.parametrize("tool", ["update_preset", "delete_preset"])
+async def test_a_preset_in_another_organization_is_not_found(
+    library: MagicMock, tool: str
+):
+    library.get_preset = AsyncMock(return_value=_row("org-2"))
+
+    with pytest.raises(ToolError, match="Preset 'preset-1' not found"):
+        await check_ids_in_tenant(tool, {"preset_id": "preset-1"}, USER, ORG)
+    library.get_preset.assert_awaited_once_with(user_id=USER, preset_id="preset-1")
+
+
 async def test_an_id_naming_nothing_is_left_to_the_tool(
     library: MagicMock, graphs: MagicMock, runs: MagicMock
 ):

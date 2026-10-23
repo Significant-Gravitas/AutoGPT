@@ -29,7 +29,9 @@ from backend.copilot.tools.external_scope import (
     in_tenant,
 )
 from backend.copilot.tools.helpers import require_guide_read, require_library_check
+from backend.copilot.tools.list_agent_triggers import ListAgentTriggersTool
 from backend.copilot.tools.manage_folders import CreateFolderTool, ListFoldersTool
+from backend.copilot.tools.manage_presets import ListPresetsTool
 from backend.copilot.tools.manage_schedules import _is_in_session_scope
 from backend.copilot.tools.models import ErrorResponse
 from backend.util.exceptions import NotAuthorizedError
@@ -373,3 +375,51 @@ async def test_an_external_caller_gets_no_internal_error_detail():
 
     assert "query engine" not in str(external.output)
     assert "query engine" in str(chat.output)
+
+
+@pytest.mark.parametrize("session, tenant", [(_external(), "org-1"), (_chat(), None)])
+async def test_presets_are_listed_in_the_external_call_s_organization(
+    session: ChatSession, tenant: str | None
+):
+    library = MagicMock()
+    library.list_presets = AsyncMock(
+        return_value=SimpleNamespace(
+            presets=[], pagination=SimpleNamespace(total_items=0)
+        )
+    )
+
+    with patch("backend.copilot.tools.manage_presets.library_db", return_value=library):
+        await ListPresetsTool()._execute(user_id=USER, session=session)
+
+    assert library.list_presets.await_args.kwargs["organization_id"] == tenant
+
+
+async def test_an_external_call_lists_only_its_organization_s_triggers():
+    library = MagicMock()
+    library.get_library_agent = AsyncMock(return_value=SimpleNamespace(graph_id="g"))
+    library.list_trigger_agents = AsyncMock(
+        return_value=[_trigger_agent("mine", "org-1"), _trigger_agent("other", "org-2")]
+    )
+    library.list_presets = AsyncMock(return_value=SimpleNamespace(presets=[]))
+
+    with patch(
+        "backend.copilot.tools.list_agent_triggers.library_db", return_value=library
+    ):
+        result = await ListAgentTriggersTool()._execute(
+            user_id=USER, session=_external(), library_agent_id="lib-1"
+        )
+
+    assert [t.id for t in result.triggers] == ["mine"]
+    assert library.list_presets.await_args.kwargs["organization_id"] == "org-1"
+
+
+def _trigger_agent(agent_id: str, organization_id: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=agent_id,
+        name=agent_id,
+        description="",
+        graph_id="g-" + agent_id,
+        is_scheduled=False,
+        next_scheduled_run=None,
+        organization_id=organization_id,
+    )

@@ -32,10 +32,13 @@ async def assert_can_pay(auth: TenantContext) -> None:
 
 
 def assert_inputs_match(
-    input_schema: dict[str, Any], inputs: Mapping[str, Any]
+    input_schema: dict[str, Any], inputs: Mapping[str, Any], *, partial: bool = False
 ) -> None:
     """422 on an input the graph does not have, or a required one omitted or null:
-    the executor runs either and finishes with no outputs and no error."""
+    the executor runs either and finishes with no outputs and no error.
+
+    `partial` allows omissions, for inputs a later request completes."""
+    missing = [] if partial else missing_inputs(input_schema, inputs)
     errors = [
         {
             "type": "extra_forbidden",
@@ -45,7 +48,7 @@ def assert_inputs_match(
         for name in unknown_inputs(input_schema, inputs)
     ] + [
         {"type": "missing", "loc": ["body", "inputs", name], "msg": "Input required"}
-        for name in missing_inputs(input_schema, inputs)
+        for name in missing
     ]
     if errors:
         raise RequestValidationError(errors)

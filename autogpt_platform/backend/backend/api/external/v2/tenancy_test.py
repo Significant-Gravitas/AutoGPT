@@ -428,7 +428,7 @@ async def test_org_a_key_cannot_execute_an_org_b_preset(
     from .library.presets import execute_preset
 
     mocker.patch(
-        "backend.api.external.v2.library.presets.get_credit_model",
+        "backend.api.external.v2.library.helpers.get_credit_model",
         new_callable=AsyncMock,
         return_value=Mock(get_credits=AsyncMock(return_value=100)),
     )
@@ -444,8 +444,87 @@ async def test_org_a_key_cannot_execute_an_org_b_preset(
     )
 
     with pytest.raises(NotFoundError):
-        await execute_preset(preset_id="p-1", auth=_key_for(ORG_A))
+        await execute_preset(response=Response(), preset_id="p-1", auth=_key_for(ORG_A))
     add_execution.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call, write",
+    [
+        ("get", None),
+        ("update", "update_triggered_preset"),
+        ("delete", "delete_preset_with_webhook_cleanup"),
+    ],
+)
+async def test_org_a_key_cannot_reach_an_org_b_preset(
+    mocker: pytest_mock.MockFixture, call: str, write: str | None
+) -> None:
+    from .library import presets
+    from .models import AgentPresetUpdateRequest
+
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=ORG_B),
+    )
+    writes = {
+        name: mocker.patch(
+            f"backend.api.features.library.triggers.{name}", new_callable=AsyncMock
+        )
+        for name in ("update_triggered_preset", "delete_preset_with_webhook_cleanup")
+    }
+    handler = {
+        "get": lambda: presets.get_preset(preset_id="p-1", auth=_key_for(ORG_A)),
+        "update": lambda: presets.update_preset(
+            request=AgentPresetUpdateRequest(is_active=True),
+            preset_id="p-1",
+            auth=_key_for(ORG_A),
+        ),
+        "delete": lambda: presets.delete_preset(preset_id="p-1", auth=_key_for(ORG_A)),
+    }[call]
+
+    with pytest.raises(NotFoundError):
+        await handler()
+    for mock in writes.values():
+        mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call", ["create", "setup_trigger"])
+async def test_org_a_key_cannot_put_a_preset_on_an_org_b_graph(
+    mocker: pytest_mock.MockFixture, call: str
+) -> None:
+    """A preset takes its graph's organization, so the graph must be in the key's."""
+    from .library import presets
+    from .models import AgentPresetCreateRequest, AgentTriggerSetupRequest
+
+    get_graph = mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=None
+    )
+    create = mocker.patch(
+        "backend.api.features.library.db.create_preset", new_callable=AsyncMock
+    )
+    setup = mocker.patch(
+        "backend.api.features.library.triggers.setup_triggered_preset",
+        new_callable=AsyncMock,
+    )
+    fields = {"name": "p", "graph_id": "graph-b", "graph_version": 1}
+    handler = {
+        "create": lambda: presets.create_preset(
+            request=AgentPresetCreateRequest(**fields), auth=_key_for(ORG_A)
+        ),
+        "setup_trigger": lambda: presets.setup_trigger(
+            request=AgentTriggerSetupRequest(**fields, trigger_config={}),
+            auth=_key_for(ORG_A),
+        ),
+    }[call]
+
+    with pytest.raises(NotFoundError):
+        await handler()
+    assert get_graph.await_args.kwargs["organization_id"] == ORG_A
+    create.assert_not_awaited()
+    setup.assert_not_awaited()
 
 
 @pytest.mark.asyncio

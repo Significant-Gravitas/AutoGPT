@@ -12,6 +12,7 @@ from backend.data.db_accessors import library_db
 from backend.util.exceptions import NotFoundError
 
 from .base import BaseTool
+from .external_scope import external_tenant, in_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,7 @@ class ListAgentTriggersTool(BaseTool):
                 graph_id=parent.graph_id,
                 expert_id=session.expert_id if session else None,
                 filter_by_expert=True,
+                organization_id=external_tenant(session),
             ),
         )
         webhook_presets = [
@@ -165,6 +167,7 @@ class ListAgentTriggersTool(BaseTool):
                 next_scheduled_run=ta.next_scheduled_run,
             )
             for ta in trigger_agents
+            if in_tenant(ta.organization_id, external_tenant(session))
         ] + [
             AgentTriggerInfo(
                 kind="webhook",

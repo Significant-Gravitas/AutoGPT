@@ -677,6 +677,11 @@ class AgentPreset(TenantedResource):
         default=None,
         description="Webhook ID if this preset is triggered by a webhook",
     )
+    webhook_url: Optional[str] = Field(
+        default=None,
+        description="Where the webhook's events are delivered. For a trigger you "
+        "set up by hand in the other service, paste this URL there",
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -691,6 +696,7 @@ class AgentPreset(TenantedResource):
             is_active=p.is_active,
             inputs=p.inputs,
             webhook_id=p.webhook_id,
+            webhook_url=p.webhook.url if p.webhook else None,
             created_at=p.created_at,
             updated_at=p.updated_at,
             organization_id=p.organization_id,
@@ -706,8 +712,10 @@ class AgentPresetCreateRequest(BaseModel):
     name: str = Field(description="Preset name")
     description: str = Field(default="", description="Preset description")
     inputs: dict[str, Any] = Field(default_factory=dict, description="Input values")
-    credentials: dict[str, Any] = Field(
-        default_factory=dict, description="Credential references"
+    credentials_inputs: dict[str, CredentialsMetaInput] = Field(
+        default_factory=dict,
+        description="Credentials, keyed by the `field_name` of each of the agent's "
+        "credential requirements",
     )
     is_active: bool = Field(default=True, description="Whether the preset is active")
 
@@ -717,8 +725,14 @@ class AgentPresetUpdateRequest(BaseModel):
 
     name: Optional[str] = None
     description: Optional[str] = None
-    inputs: Optional[dict[str, Any]] = None
-    credentials: Optional[dict[str, Any]] = None
+    inputs: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Replaces the saved inputs. For a webhook trigger, its "
+        "configuration; changing it re-registers the webhook",
+    )
+    credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = Field(
+        default=None, description="Replaces the saved credentials"
+    )
     is_active: Optional[bool] = None
 
 
@@ -730,8 +744,10 @@ class AgentTriggerSetupRequest(BaseModel):
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
     trigger_config: dict[str, Any] = Field(description="Trigger block configuration")
-    agent_credentials: dict[str, Any] = Field(
-        default_factory=dict, description="Credential references"
+    credentials_inputs: dict[str, CredentialsMetaInput] = Field(
+        default_factory=dict,
+        description="Credentials, keyed by the `field_name` of each of the agent's "
+        "credential requirements",
     )
 
 
@@ -739,7 +755,7 @@ class AgentPresetRunRequest(BaseModel):
     """Request to run an agent preset with optional overrides."""
 
     inputs: dict[str, Any] = Field(default_factory=dict, description="Input overrides")
-    credentials_inputs: dict[str, Any] = Field(
+    credentials_inputs: dict[str, CredentialsMetaInput] = Field(
         default_factory=dict, description="Credential overrides"
     )
 

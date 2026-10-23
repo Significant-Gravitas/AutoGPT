@@ -24,6 +24,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
+from .external_scope import external_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ async def _list_scoped_presets(
         graph_id=graph_id,
         expert_id=session.expert_id,
         filter_by_expert=True,
+        organization_id=external_tenant(session),
     )
     scoped = [
         preset for preset in response.presets if _is_in_session_scope(preset, session)

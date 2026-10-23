@@ -124,9 +124,9 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 | `READ_BLOCK` | `GET /blocks`: list blocks with their input and output schemas and costs. |
 | `READ_GRAPH` | `GET /graphs`, `GET /graphs/{graph_id}`, its versions and the blocks it uses. |
 | `WRITE_GRAPH` | `POST /graphs`, `PUT /graphs/{graph_id}` (new version), set the active version, change graph settings. |
-| `READ_LIBRARY` | List and get library agents and folders; `GET /graphs/{graph_id}/library-agent`. |
-| `WRITE_LIBRARY` | Update, fork and remove library agents; add marketplace agents to the library; create, move and delete folders. |
-| `RUN_AGENT` | `POST /library/agents/{agent_id}/runs`: start a run. |
+| `READ_LIBRARY` | List and get library agents, folders and presets; `GET /graphs/{graph_id}/library-agent`. |
+| `WRITE_LIBRARY` | Update, fork and remove library agents; add marketplace agents to the library; create, move and delete folders; create, update and delete presets. |
+| `RUN_AGENT` | `POST /library/agents/{agent_id}/runs` and `POST /library/presets/{preset_id}/execute`: start a run. |
 | `READ_RUN` | `GET /runs`, `GET /runs/{run_id}`: list runs and read their status and outputs. |
 | `WRITE_RUN` | `POST /runs/{run_id}/stop`, `DELETE /runs/{run_id}`. |
 | `SHARE_RUN` | Turn a run's public share link on and off (also needs `READ_RUN`). |
@@ -144,7 +144,7 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 | `READ_CREDITS` | Read the credit balance, transactions, invoices, subscription and cost summary. |
 | `USE_TOOLS` | MCP tools that act from platform infrastructure: web search (which counts against your AutoPilot usage allowance), web fetch and searching feature requests. |
 
-Two endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, and sharing a run needs `READ_RUN` and `SHARE_RUN`.
+Three endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, `POST /library/presets/setup-trigger` needs `WRITE_LIBRARY` and `RUN_AGENT`, because a webhook trigger starts runs, and sharing a run needs `READ_RUN` and `SHARE_RUN`.
 
 Activating a version, with `PUT /graphs/{graph_id}` or by setting the active version, moves the agent's webhook triggers onto it only if the credential also has `RUN_AGENT`: a trigger runs the version it is attached to, so moving it decides what its next event runs. Without `RUN_AGENT` the triggers keep running the version they were on.
 
