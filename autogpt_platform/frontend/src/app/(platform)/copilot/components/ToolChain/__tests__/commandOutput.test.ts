@@ -54,6 +54,18 @@ describe("describeData", () => {
     ).toEqual({ title: "Table", detail: "1 row · a, b, c, d, …" });
   });
 
+  it("never previews a path or other technical name, only counts it", () => {
+    expect(
+      describeData({
+        kind: "json",
+        fields: ["~/workspace/dewleaf/brief.md", "launch"],
+      }),
+    ).toEqual({ title: "Data", detail: "2 fields · launch" });
+    expect(
+      describeData({ kind: "table", rows: 3, columns: ["src/a.py", "b.json"] }),
+    ).toEqual({ title: "Table", detail: "3 rows · 2 columns" });
+  });
+
   it("names JSON by its fields or items", () => {
     expect(describeData({ kind: "json", fields: ["launch"] })).toEqual({
       title: "Data",

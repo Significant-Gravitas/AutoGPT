@@ -1,4 +1,5 @@
 import { type ToolCategory, truncate } from "../../tools/GenericTool/helpers";
+import { looksTechnical } from "./plainText";
 
 export type ChainCategory =
   | ToolCategory
@@ -56,7 +57,8 @@ export function quoted(
 const PHRASE_MAX_LEN = 80;
 
 /** A step description the model wrote, tidied into a row label: one line,
- *  no closing full stop, capped. */
+ *  no closing full stop, capped. One that names a path, command or tool is
+ *  dropped, so the row falls back to its generic label. */
 export function phraseField(input: ToolInput, key: string): string | null {
   const value = strField(input, key);
   if (!value) return null;
@@ -64,7 +66,8 @@ export function phraseField(input: ToolInput, key: string): string | null {
     .replace(/\s+/g, " ")
     .replace(/[.!]+$/, "")
     .trim();
-  return phrase ? truncate(phrase, PHRASE_MAX_LEN - 1) : null;
+  if (!phrase || looksTechnical(phrase)) return null;
+  return truncate(phrase, PHRASE_MAX_LEN - 1);
 }
 
 export function quotedName(value: string | null, maxLen = 50): string | null {

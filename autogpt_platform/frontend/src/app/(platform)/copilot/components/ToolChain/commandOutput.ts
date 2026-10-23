@@ -1,3 +1,5 @@
+import { looksTechnical } from "./plainText";
+
 export type DataSummary =
   | { kind: "table"; rows: number; columns: string[] }
   | { kind: "json"; fields: string[] }
@@ -20,7 +22,7 @@ export function describeData(summary: DataSummary): {
   if (summary.kind === "table") {
     return {
       title: "Table",
-      detail: `${plural(summary.rows, "row")} · ${listPreview(summary.columns)}`,
+      detail: `${plural(summary.rows, "row")} · ${listPreview(summary.columns, "column")}`,
     };
   }
   if (summary.kind === "json") {
@@ -28,7 +30,7 @@ export function describeData(summary: DataSummary): {
       title: "Data",
       detail:
         summary.fields.length > 0
-          ? `${plural(summary.fields.length, "field")} · ${listPreview(summary.fields)}`
+          ? `${plural(summary.fields.length, "field")} · ${listPreview(summary.fields, "field")}`
           : "No fields",
     };
   }
@@ -86,7 +88,11 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-function listPreview(names: string[]): string {
-  const shown = names.slice(0, 4).join(", ");
-  return names.length > 4 ? `${shown}, …` : shown;
+/** The first few names, leaving out any that look like a path or code:
+ *  those stay behind technical details. With nothing plain left, a count. */
+function listPreview(names: string[], noun: string): string {
+  const plain = names.filter((name) => !looksTechnical(name));
+  if (plain.length === 0) return plural(names.length, noun);
+  const shown = plain.slice(0, 4).join(", ");
+  return plain.length > 4 ? `${shown}, …` : shown;
 }

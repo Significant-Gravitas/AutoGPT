@@ -31,6 +31,18 @@ describe("getCatalogLabel", () => {
       ).toBe("Failed while Shopify sync for the launch");
     });
 
+    it("falls back to the generic label when the purpose is itself technical", () => {
+      for (const purpose of [
+        "Patching brief.md with sed",
+        "Running cd ~/workspace/dewleaf",
+        "Calling run_capability",
+      ]) {
+        expect(
+          getCatalogLabel("bash_exec", { purpose, command }, "done")?.text,
+        ).toBe("Ran a command");
+      }
+    });
+
     it("tidies a purpose the model wrote as a sentence", () => {
       expect(
         getCatalogLabel(
