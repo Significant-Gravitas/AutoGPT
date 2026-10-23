@@ -6,6 +6,7 @@ describe("looksTechnical", () => {
     "Patching brief.md with sed",
     "Editing ~/workspace/dewleaf/brief",
     "Reading workspace/dewleaf/notes",
+    "Checking reports/brief",
     "Running `npm install`",
     "Calling run_capability",
     "Saving 2616d1f1-16bb-43c0-9f0e-6a7c2a9d0b11",
@@ -18,6 +19,7 @@ describe("looksTechnical", () => {
     "Updating your launch brief",
     "Checking the content calendar dates",
     "Planning the 24/7 support rota",
+    "Posting on Instagram/Shopify and/or email",
     "Pricing at Rs 899 for 30ml",
     "Drafting Instagram posts",
   ])("passes %j", (text) => {

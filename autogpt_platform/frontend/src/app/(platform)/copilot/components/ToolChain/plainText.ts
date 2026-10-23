@@ -1,8 +1,11 @@
 const TECHNICAL_PATTERNS = [
-  // Paths: "~/x", "./x", "/x", or any token with two slashes in it. One slash
-  // alone ("24/7") is ordinary writing.
+  // Paths: "~/x", "./x", "/x", or any token with two slashes in it.
   /(?:^|\s)[~.]?\/\w/,
   /\S+\/\S*\//,
+  // "reports/brief": two lowercase words joined by a slash, unless the pair
+  // is ordinary writing ("and/or", "his/her"). "24/7" and "Instagram/Shopify"
+  // never match.
+  /\b(?!(?:and|or|he|she|his|her|him|them)\/)[a-z][\w-]+\/(?!(?:and|or|he|she|his|her|him|them)\b)[a-z][\w-]+/,
   /\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|js|ts|log|xlsx)\b/i,
   /`/,
   /&&|\|\||\s\|\s|\$\(/,
