@@ -21,7 +21,7 @@ export function DreamWriteRow({ item }: Props) {
         ) : null}
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
-        <code className="font-mono text-[10px]">
+        <code className="font-mono text-tiny leading-inherit">
           edge: {shortenUuid(item.edge_uuid)}
         </code>
         {item.scope ? (

@@ -15,7 +15,7 @@ export function DreamUsageSummary({ usage }: Props) {
   if (!usage) {
     return (
       <div
-        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-gray-500"
+        className="rounded-md border border-dashed bg-surface p-4 text-center text-sm text-gray-500"
         data-testid="dream-usage-empty"
       >
         No token usage was recorded for this dream pass.
@@ -28,7 +28,7 @@ export function DreamUsageSummary({ usage }: Props) {
 
   return (
     <div
-      className="rounded-md border bg-white p-3"
+      className="rounded-md border bg-surface p-3"
       data-testid="dream-usage-summary"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -80,7 +80,7 @@ export function DreamUsageSummary({ usage }: Props) {
                   <td className="px-2 py-1 font-medium text-gray-800">
                     {p.phase}
                   </td>
-                  <td className="px-2 py-1 font-mono text-[10px] text-gray-600">
+                  <td className="px-2 py-1 font-mono text-tiny leading-inherit text-gray-600">
                     {p.model}
                   </td>
                   <td className="px-2 py-1 text-right tabular-nums">

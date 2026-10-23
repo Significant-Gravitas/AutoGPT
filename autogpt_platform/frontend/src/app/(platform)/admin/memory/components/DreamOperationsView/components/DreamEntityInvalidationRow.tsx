@@ -14,7 +14,7 @@ export function DreamEntityInvalidationRow({ item }: Props) {
         {item.reason}
       </Text>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
-        <code className="font-mono text-[10px]">
+        <code className="font-mono text-tiny leading-inherit">
           entity: {shortenUuid(item.entity_uuid)}
         </code>
         <Text variant="small" className="text-gray-500" as="span">
@@ -26,7 +26,7 @@ export function DreamEntityInvalidationRow({ item }: Props) {
           {touched.slice(0, 6).map((u) => (
             <code
               key={u}
-              className="rounded bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
+              className="rounded bg-gray-50 px-1.5 py-0.5 font-mono text-tiny leading-inherit text-gray-600"
             >
               {shortenUuid(u)}
             </code>

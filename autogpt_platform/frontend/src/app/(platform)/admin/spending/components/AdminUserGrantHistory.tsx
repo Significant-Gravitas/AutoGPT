@@ -36,9 +36,9 @@ export async function AdminUserGrantHistory({
     const isPositive = type === CreditTransactionType.GRANT;
     const isNeutral = type === CreditTransactionType.TOP_UP;
     const color = isPositive
-      ? "text-green-600"
+      ? "text-success"
       : isNeutral
-        ? "text-blue-600"
+        ? "text-info-foreground"
         : "text-red-600";
     return <span className={color}>${Math.abs(amount / 100)}</span>;
   };
@@ -83,7 +83,7 @@ export async function AdminUserGrantHistory({
     <div className="space-y-4">
       <SearchAndFilterAdminSpending initialSearch={initialSearch} />
 
-      <div className="rounded-md border bg-white">
+      <div className="rounded-md border bg-surface">
         <Table>
           <TableHeader className="bg-gray-50">
             <TableRow>
@@ -129,7 +129,7 @@ export async function AdminUserGrantHistory({
                   <TableCell className="text-gray-600">
                     {transaction.admin_email}
                   </TableCell>
-                  <TableCell className="font-medium text-green-600">
+                  <TableCell className="font-medium text-success">
                     $
                     {((transaction.running_balance ?? 0) +
                       -transaction.amount) /
@@ -141,10 +141,10 @@ export async function AdminUserGrantHistory({
                       transaction.transaction_type,
                     )}
                   </TableCell>
-                  <TableCell className="font-medium text-green-600">
+                  <TableCell className="font-medium text-success">
                     ${(transaction.running_balance ?? 0) / 100}
                   </TableCell>
-                  {/* <TableCell className="font-medium text-green-600">
+                  {/* <TableCell className="font-medium text-success">
                     ${transaction.current_balance / 100}
                   </TableCell> */}
                   <TableCell className="text-right">

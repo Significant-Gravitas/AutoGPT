@@ -16,12 +16,12 @@ const TIERS = [
 type Tier = (typeof TIERS)[number];
 
 const TIER_COLORS: Record<Tier, string> = {
-  NO_TIER: "bg-red-100 text-red-700",
+  NO_TIER: "bg-red-100 text-error-foreground",
   BASIC: "bg-gray-100 text-gray-700",
   PRO: "bg-blue-100 text-blue-700",
   MAX: "bg-indigo-100 text-indigo-700",
   BUSINESS: "bg-purple-100 text-purple-700",
-  ENTERPRISE: "bg-amber-100 text-amber-700",
+  ENTERPRISE: "bg-amber-100 text-warning-foreground",
 };
 
 function tierLabel(tier: Tier): string {
@@ -63,7 +63,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
     : data.daily_cost_used_microdollars === 0;
 
   return (
-    <div className={className ?? "rounded-md border bg-white p-6"}>
+    <div className={className ?? "rounded-md border bg-surface p-6"}>
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h2 className="mb-1 text-lg font-semibold">
@@ -87,7 +87,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
         <select
           aria-label="Subscription tier"
           value={currentTier}
-          className="rounded-md border bg-white px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
           disabled
         >
           {TIERS.map((tier) => (
@@ -120,7 +120,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
           aria-label="Reset scope"
           value={resetWeekly ? "both" : "daily"}
           onChange={(e) => setResetWeekly(e.target.value === "both")}
-          className="rounded-md border bg-white px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
           disabled={isResetting}
         >
           <option value="daily">Reset daily only</option>

@@ -551,7 +551,7 @@ export function ExecutionsTable({
                       size="small"
                       onClick={() => confirmStop("all", "requeue")}
                       disabled={isStopping}
-                      className="border-blue-500 text-blue-700 hover:bg-blue-50"
+                      className="border-blue-500 text-blue-700 hover:bg-info-surface"
                     >
                       <Icon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
                       Requeue All ({total})
@@ -872,7 +872,7 @@ export function ExecutionsTable({
                                         )
                                       }
                                       disabled={isStopping}
-                                      className="text-blue-600 hover:bg-blue-50"
+                                      className="text-info-foreground hover:bg-info-surface"
                                       title="Requeue (send to RabbitMQ)"
                                     >
                                       <Icon
@@ -1079,7 +1079,7 @@ export function ExecutionsTable({
                   ? "bg-orange-600 hover:bg-orange-700"
                   : stopMode === "requeue"
                     ? "bg-blue-600 hover:bg-blue-700"
-                    : "bg-red-600 hover:bg-red-700"
+                    : "bg-error-hover hover:bg-red-700"
               }
             >
               {stopMode === "cleanup"

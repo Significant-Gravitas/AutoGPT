@@ -24,11 +24,11 @@ import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 const getStatusBadge = (status: SubmissionStatus) => {
   switch (status) {
     case SubmissionStatus.PENDING:
-      return <Badge className="bg-amber-500">Pending</Badge>;
+      return <Badge className="bg-warning">Pending</Badge>;
     case SubmissionStatus.APPROVED:
       return <Badge className="bg-green-500">Approved</Badge>;
     case SubmissionStatus.REJECTED:
-      return <Badge className="bg-red-500">Rejected</Badge>;
+      return <Badge className="bg-error">Rejected</Badge>;
     default:
       return <Badge className="bg-gray-500">Draft</Badge>;
   }
@@ -136,7 +136,7 @@ export function ExpandableRow({
                           v{version.listing_version || "?"}
                           {version.listing_version_id ===
                             listing.active_listing_version_id && (
-                            <Badge className="ml-2 bg-blue-500">Active</Badge>
+                            <Badge className="ml-2 bg-info">Active</Badge>
                           )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>

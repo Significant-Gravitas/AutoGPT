@@ -455,7 +455,7 @@ export function SchedulesTable({
             <Button
               variant="destructive"
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-error-hover hover:bg-red-700"
             >
               Delete Schedules
             </Button>

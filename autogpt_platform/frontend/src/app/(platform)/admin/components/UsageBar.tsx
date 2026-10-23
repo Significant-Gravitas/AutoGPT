@@ -8,7 +8,7 @@ export function UsageBar({ used, limit }: { used: number; limit: number }) {
   }
   const pct = Math.min(Math.max(0, (used / limit) * 100), 100);
   const color =
-    pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-yellow-500" : "bg-green-500";
+    pct >= 90 ? "bg-error" : pct >= 70 ? "bg-yellow-500" : "bg-green-500";
 
   return (
     <div className="space-y-1">

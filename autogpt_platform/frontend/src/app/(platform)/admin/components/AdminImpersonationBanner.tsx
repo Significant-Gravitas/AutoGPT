@@ -11,7 +11,7 @@ export function AdminImpersonationBanner() {
   }
 
   return (
-    <div className="mb-4 rounded-md border border-amber-500 bg-amber-50 p-4 text-amber-900">
+    <div className="mb-4 rounded-md border border-amber-500 bg-warning-surface p-4 text-amber-900">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <strong className="font-semibold">

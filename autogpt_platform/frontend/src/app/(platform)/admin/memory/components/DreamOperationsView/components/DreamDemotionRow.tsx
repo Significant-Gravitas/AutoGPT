@@ -9,7 +9,7 @@ interface Props {
 
 export function DreamDemotionRow({ item }: Props) {
   return (
-    <li className="border-l-2 border-amber-200 py-1.5 pl-3">
+    <li className="border-l-2 border-warning-border py-1.5 pl-3">
       <div className="flex items-start justify-between gap-2">
         <Text variant="small-medium" className="break-words">
           {item.reason}
@@ -23,7 +23,7 @@ export function DreamDemotionRow({ item }: Props) {
         </Badge>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
-        <code className="font-mono text-[10px]">
+        <code className="font-mono text-tiny leading-inherit">
           edge: {shortenUuid(item.edge_uuid)}
         </code>
         <Text variant="small" className="text-gray-500" as="span">

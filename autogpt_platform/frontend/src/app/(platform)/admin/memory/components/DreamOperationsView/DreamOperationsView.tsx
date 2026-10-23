@@ -28,7 +28,7 @@ export function DreamOperationsView({ operations }: Props) {
   if (!operations) {
     return (
       <div
-        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-gray-500"
+        className="rounded-md border border-dashed bg-surface p-4 text-center text-sm text-gray-500"
         data-testid="dream-operations-empty"
       >
         No per-edge operations were returned for this dream pass.
@@ -44,7 +44,7 @@ export function DreamOperationsView({ operations }: Props) {
 
   return (
     <div
-      className="rounded-md border bg-white p-3"
+      className="rounded-md border bg-surface p-3"
       data-testid="dream-operations-view"
     >
       <Text variant="small-medium" className="mb-2 uppercase text-gray-500">

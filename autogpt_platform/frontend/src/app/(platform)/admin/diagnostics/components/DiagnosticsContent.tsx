@@ -118,7 +118,7 @@ export function DiagnosticsContent() {
                 className="cursor-pointer transition-all hover:scale-105"
                 onClick={() => setActiveTab("failed")}
               >
-                <Card className="border-red-300 bg-red-50">
+                <Card className="border-red-300 bg-error-surface">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-red-800">
                       Failed Executions (24h)
@@ -128,7 +128,7 @@ export function DiagnosticsContent() {
                     <p className="text-3xl font-bold text-red-900">
                       {executionData.failed_count_24h}
                     </p>
-                    <p className="text-sm text-red-700">
+                    <p className="text-sm text-error-foreground">
                       {executionData.failed_count_1h} in last hour (
                       {executionData.failure_rate_24h.toFixed(1)}/hr rate)
                     </p>
@@ -273,7 +273,7 @@ export function DiagnosticsContent() {
                     )}
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
@@ -284,7 +284,7 @@ export function DiagnosticsContent() {
                     </p>
                     <p className="text-3xl font-bold">
                       {executionData.queued_executions_rabbitmq === -1 ? (
-                        <span className="text-xl text-red-500">Error</span>
+                        <span className="text-xl text-error">Error</span>
                       ) : (
                         executionData.queued_executions_rabbitmq
                       )}
@@ -300,7 +300,7 @@ export function DiagnosticsContent() {
                     <div
                       className={`h-6 w-6 rounded-full ${
                         executionData.queued_executions_rabbitmq === -1
-                          ? "bg-red-500"
+                          ? "bg-error"
                           : "bg-yellow-500"
                       }`}
                     ></div>
@@ -358,7 +358,7 @@ export function DiagnosticsContent() {
                     </p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
@@ -369,14 +369,14 @@ export function DiagnosticsContent() {
                     </p>
                     <p className="text-3xl font-bold">
                       {executionData.cancel_queue_depth === -1 ? (
-                        <span className="text-xl text-red-500">Error</span>
+                        <span className="text-xl text-error">Error</span>
                       ) : (
                         executionData.cancel_queue_depth
                       )}
                     </p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-brand"></div>
                   </div>
                 </div>
 
@@ -416,7 +416,7 @@ export function DiagnosticsContent() {
                     )}
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-brand"></div>
                   </div>
                 </div>
 
@@ -434,7 +434,7 @@ export function DiagnosticsContent() {
                     </p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
@@ -507,7 +507,7 @@ export function DiagnosticsContent() {
               </p>
             </div>
             <div>
-              <p className="font-semibold text-red-700">
+              <p className="font-semibold text-error-foreground">
                 🔴 Failed Executions:
               </p>
               <p className="text-gray-600">
