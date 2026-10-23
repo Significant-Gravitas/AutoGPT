@@ -2268,6 +2268,10 @@ async def stream_chat_completion_baseline(
     #
     # Order matters: persist must run after inject so inject targets
     # the routes.py-saved row, not a pending row.
+    turn_text = message or next(
+        (m.content or "" for m in reversed(session.messages) if m.role == "user"),
+        "",
+    )
     if drained_at_start_pending:
         # Persist FIRST.  Only fold pending into the model's prompt
         # (``message`` for transcript fallback + ``openai_messages`` for
@@ -2289,14 +2293,15 @@ async def stream_chat_completion_baseline(
                 message,
                 request_arrival_at=request_arrival_at,
             )
+            turn_text = combine_pending_with_current(
+                drained_at_start_pending,
+                turn_text,
+                request_arrival_at=request_arrival_at,
+            )
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
 
     if is_user_message:
-        turn_text = message or next(
-            (m.content or "" for m in reversed(session.messages) if m.role == "user"),
-            "",
-        )
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
                 matched_skills_notice = await build_matched_skills_notice(

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import pending_message_helpers
 from backend.copilot.baseline import service
 from backend.copilot.baseline import service_cancellation_test as baseline_fixtures
 from backend.copilot.model import ChatMessage, ChatSession
@@ -103,12 +104,16 @@ async def test_sdk_matching_survives_resume_disabled_and_context_retry(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("provided_message", [True, False])
-@pytest.mark.parametrize("pending_image", [True, False])
+@pytest.mark.parametrize(
+    "pending_kind,pending_image",
+    [("none", False), ("task", False), ("task", True), ("note", False), ("note", True)],
+)
 async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
     monkeypatch: pytest.MonkeyPatch,
     baseline_io: list[ChatSession],
     available_skills: AsyncMock,
     provided_message: bool,
+    pending_kind: str,
     pending_image: bool,
 ) -> None:
     session = ChatSession.new("user-1", dry_run=False, expert_id="expert-a")
@@ -130,20 +135,39 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
         service, "build_skills_update_notice", AsyncMock(return_value="")
     )
     monkeypatch.setattr(service, "clear_pending_question", AsyncMock())
+    monkeypatch.setattr(service, "start_refresh", MagicMock(return_value=None))
+    matcher = AsyncMock(wraps=service.build_matched_skills_notice)
+    monkeypatch.setattr(service, "build_matched_skills_notice", matcher)
 
     task = (
         "Add Northwind to my partner list in Airtable and go find me a partner contact"
     )
-    starting_message = "Use this approved image" if pending_image else task
+    note = "Use this approved image"
+    starting_message = note if pending_kind == "task" else task
+    expected_request = starting_message
     image = ToolImage(mime_type="image/png", data_base64="aW1hZ2U=")
-    if pending_image:
-        pending = PendingMessage(content=task, model_image=image)
+    pending = None
+    if pending_kind != "none":
+        pending = PendingMessage(
+            content=task if pending_kind == "task" else note,
+            model_image=image if pending_image else None,
+            enqueued_at=50 if pending_kind == "task" else 150,
+        )
         monkeypatch.setattr(
             service, "drain_pending_safe", AsyncMock(return_value=[pending])
         )
+
+        async def save_pending(session: ChatSession) -> ChatSession:
+            for sequence, row in enumerate(session.messages):
+                row.sequence = sequence
+            return session
+
         monkeypatch.setattr(
-            service, "persist_pending_as_user_rows", AsyncMock(return_value=True)
+            pending_message_helpers,
+            "upsert_chat_session",
+            AsyncMock(side_effect=save_pending),
         )
+        expected_request = f"{task}\n\n{note}"
     if not provided_message:
         session.messages.append(ChatMessage(role="user", content=starting_message))
     async with asyncio.timeout(10):
@@ -152,16 +176,28 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
             message=starting_message if provided_message else None,
             user_id="user-1",
             session=session,
+            request_arrival_at=100,
         ):
             pass
 
     provider.assert_awaited_once()
     assert provider.await_args is not None
-    current = provider.await_args.kwargs["messages"][-1]["content"]
+    sent = provider.await_args.kwargs["messages"]
+    current = sent[-1]["content"]
     if pending_image:
         assert image.openai() in current
         current = "".join(part["text"] for part in current if part["type"] == "text")
     assert "<matched_skills>" in current
     assert "partner-first-touch-outreach" in current
-    assert current.index(task) < current.index("<matched_skills>")
+    text = "\n".join(
+        [m["content"] for m in sent[:-1] if m["role"] == "user"] + [current]
+    )
+    assert text.index(task) < text.index("<matched_skills>")
+    matcher.assert_awaited_once()
+    assert matcher.await_args is not None
+    assert matcher.await_args.args[2] == expected_request
+    if pending is not None:
+        saved = [m for m in session.messages if m.content == pending.content]
+        assert len(saved) == 1
+        assert saved[0].sequence is not None
     assert all("<matched_skills>" not in (m.content or "") for m in session.messages)

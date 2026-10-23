@@ -246,7 +246,11 @@ async def test_index_failure_does_not_block_the_turn(
     available_skills: AsyncMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     search = MagicMock(side_effect=RuntimeError("index unavailable"))
-    monkeypatch.setattr(CapabilityIndex, "search", search)
+    monkeypatch.setattr(
+        skill_matching,
+        "layered_index",
+        MagicMock(return_value=MagicMock(search=search)),
+    )
 
     assert not await skill_matching.build_matched_skills_notice(
         "user-1", expert_session(), "Find a partner contact"
