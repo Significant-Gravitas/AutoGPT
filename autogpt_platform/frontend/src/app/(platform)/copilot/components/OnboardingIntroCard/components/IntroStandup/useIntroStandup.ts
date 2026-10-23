@@ -100,6 +100,17 @@ export function useIntroStandup({
       })
     : null;
 
+  // From an install finishing until its setup gaps arrive, keep showing what
+  // was there, so a job ask or a Ready row never flashes up only to change.
+  const isRereadingSetup =
+    (lastInstalling.current !== null &&
+      lastInstalling.current !== installing) ||
+    (setupQuery.isFetched && setupQuery.isFetching);
+  const lastView = useRef<{ team: typeof team; ask: typeof ask } | null>(null);
+  const view =
+    isRereadingSetup && lastView.current ? lastView.current : { team, ask };
+  if (!isRereadingSetup) lastView.current = view;
+
   async function handleConnected(credential: CredentialsMetaResponse) {
     setIsConnectOpen(false);
     if (ask?.kind !== "connect") return;
@@ -139,8 +150,8 @@ export function useIntroStandup({
   }
 
   return {
-    team,
-    ask,
+    team: view.team,
+    ask: view.ask,
     isConnectOpen,
     openConnect: () => setIsConnectOpen(true),
     closeConnect: () => setIsConnectOpen(false),

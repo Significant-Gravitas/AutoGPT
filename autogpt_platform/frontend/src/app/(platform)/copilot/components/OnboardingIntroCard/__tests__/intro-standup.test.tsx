@@ -129,6 +129,7 @@ function serve(args: {
   setup?: ExpertSetupItem[] | ((rosterReads: number) => ExpertSetupItem[]);
   path?: "A" | "B";
   templatesDelayMs?: number;
+  setupDelayMs?: number;
 }) {
   let reads = 0;
   server.use(
@@ -153,9 +154,13 @@ function serve(args: {
       if (args.templatesDelayMs) await delay(args.templatesDelayMs);
       return TEMPLATES;
     }),
-    getListExpertSetupItemsMockHandler(() =>
-      typeof args.setup === "function" ? args.setup(reads) : (args.setup ?? []),
-    ),
+    getListExpertSetupItemsMockHandler(async () => {
+      const rosterReads = reads;
+      if (args.setupDelayMs) await delay(args.setupDelayMs);
+      return typeof args.setup === "function"
+        ? args.setup(rosterReads)
+        : (args.setup ?? []);
+    }),
     getGetV1ListProvidersMockHandler([
       { name: "notion", supported_auth_types: ["api_key"] },
     ]),
@@ -315,6 +320,44 @@ describe("Otto's first turn on Home — the one ask", () => {
         { timeout: 5_000 },
       ),
     ).toBeDefined();
+  }, 10_000);
+
+  it("holds the ask while a finished install's setup gaps are re-read", async () => {
+    // No day-one job, so only the workflows the install brings give a choice.
+    const max = makeExpert({
+      id: "max",
+      name: "Max",
+      source_template_id: "tpl-unknown",
+    });
+    serve({
+      hires: (read) => [
+        read === 1
+          ? { ...max, setup_status: "installing" }
+          : {
+              ...max,
+              workflows: [{ graph_id: "g", name: "Lead list" } as never],
+            },
+      ],
+      setup: (rosterReads) => (rosterReads > 1 ? [makeSetupItem("max")] : []),
+      setupDelayMs: 400,
+    });
+    const asked: string[] = [];
+    const observer = new MutationObserver(() => {
+      const ask = screen.queryByRole("region", {
+        name: "One thing I need from you",
+      });
+      if (ask?.textContent) asked.push(ask.textContent);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    renderHome();
+
+    await screen.findByRole(
+      "button",
+      { name: "Connect Notion" },
+      { timeout: 6_000 },
+    );
+    observer.disconnect();
+    expect(asked.some((text) => text.includes("Lead list"))).toBe(false);
   }, 10_000);
 
   it("waits for the day-one jobs before asking, so the choices never change under the cursor", async () => {
