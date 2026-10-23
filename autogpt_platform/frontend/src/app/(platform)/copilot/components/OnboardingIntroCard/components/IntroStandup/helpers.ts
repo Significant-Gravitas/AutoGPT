@@ -6,6 +6,7 @@ import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 
 export type MemberStatus =
   | "installing"
+  | "unchecked"
   | "failed"
   | "needs_connection"
   | "working"
@@ -43,6 +44,8 @@ export function buildTeam(args: {
   hires: Expert[];
   templates: ExpertTemplate[];
   setupItems: ExpertSetupItem[];
+  /** Hires whose setup gaps are not known yet; `failed` once reading them has. */
+  unchecked?: { ids: string[]; failed: boolean };
 }): TeamMember[] {
   const dayOneByTemplate = new Map(
     args.templates.map((template) => [template.id, template.day_one ?? []]),
@@ -59,7 +62,11 @@ export function buildTeam(args: {
       expert,
       dayOneByTemplate.get(expert.source_template_id ?? "") ?? [],
     ),
-    status: getMemberStatus(expert, needsConnection.has(expert.id)),
+    status: args.unchecked?.ids.includes(expert.id)
+      ? args.unchecked.failed
+        ? "unchecked"
+        : "installing"
+      : getMemberStatus(expert, needsConnection.has(expert.id)),
   }));
 }
 
@@ -78,6 +85,7 @@ export function getMemberStatus(
 export function getMemberStatusLabel(status: MemberStatus) {
   return {
     installing: "Setting up",
+    unchecked: "Couldn't check setup",
     failed: "Setup didn't finish",
     needs_connection: "Needs a connection",
     working: "Working",
@@ -106,6 +114,7 @@ export function getTeamSummary(team: TeamMember[]) {
     "working",
     "installing",
     "needs_connection",
+    "unchecked",
     "failed",
     "ready",
   ];

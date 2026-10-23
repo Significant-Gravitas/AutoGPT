@@ -19,10 +19,11 @@ import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-expe
 import { requestComposerVoice } from "@/services/onboarding/composer-voice-request";
 import { toastSendFailure } from "../../../../helpers/sendFailureToast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import { buildTeam, chooseAsk, joinNames } from "./helpers";
+import { useEffect, useState } from "react";
+import { buildTeam, chooseAsk, type IntroAsk, joinNames } from "./helpers";
 
 const COMPOSER_INPUT_ID = "chat-input-empty";
+const SETUP_RETRIES = 3;
 
 export function useIntroStandup({
   path,
@@ -49,7 +50,13 @@ export function useIntroStandup({
     query: { select: (res) => okData(res) ?? [] },
   });
   const setupQuery = useListExpertSetupItems({
-    query: { select: (res) => okData(res) ?? [] },
+    query: {
+      select: (res) => okData(res) ?? [],
+      // The re-read after an install is the only way to learn that hire's
+      // gaps, so a flaky one gets a few tries before it is given up on.
+      retry: SETUP_RETRIES,
+      retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 4_000),
+    },
   });
   const providersQuery = useGetV1ListProviders({
     query: { select: (res) => (res.status === 200 ? res.data : []) },
@@ -59,57 +66,40 @@ export function useIntroStandup({
   );
   const { mutateAsync: grant } = useGrantExpertCredentials();
 
-  // A hire's schedules, and so its setup gaps, exist only once its install
-  // has finished; re-read them whenever the set of installing hires changes.
-  const installing = (hiresQuery.data ?? [])
-    .filter((expert) => expert.setup_status === "installing")
-    .map((expert) => expert.id)
-    .join(",");
-  const lastInstalling = useRef<string | null>(null);
-  const refetchSetup = setupQuery.refetch;
-  useEffect(() => {
-    if (!hiresQuery.isFetched) return;
-    if (
-      lastInstalling.current !== null &&
-      lastInstalling.current !== installing
-    )
-      void refetchSetup();
-    lastInstalling.current = installing;
-  }, [installing, hiresQuery.isFetched, refetchSetup]);
-
+  const unchecked = useUncheckedHires({
+    hires: hiresQuery.data,
+    hiresUpdatedAt: hiresQuery.dataUpdatedAt,
+    setupUpdatedAt: setupQuery.dataUpdatedAt,
+    setupFailed: setupQuery.isError && !setupQuery.isFetching,
+    refetchSetup: setupQuery.refetch,
+  });
   const setupItems = setupQuery.data ?? [];
   const team = buildTeam({
     hires: hiresQuery.data ?? [],
     templates: templatesQuery.data ?? [],
     setupItems,
+    unchecked,
   });
-  // Nothing is asked until every source has answered, so the ask never
-  // switches shape under the user's cursor.
+  // Nothing is asked until every source has answered, and nothing at all
+  // once a finished install's setup gaps could not be read.
   const isSettled =
     hiresQuery.isFetched &&
     setupQuery.isFetched &&
     templatesQuery.isFetched &&
-    !providersQuery.isPending;
-  const ask = isSettled
-    ? chooseAsk({
-        path,
-        team,
-        setupItems,
-        isConnectable: (provider) => connectable.has(provider),
-        connectDismissed,
-      })
-    : null;
-
-  // From an install finishing until its setup gaps arrive, keep showing what
-  // was there, so a job ask or a Ready row never flashes up only to change.
-  const isRereadingSetup =
-    (lastInstalling.current !== null &&
-      lastInstalling.current !== installing) ||
-    (setupQuery.isFetched && setupQuery.isFetching);
-  const lastView = useRef<{ team: typeof team; ask: typeof ask } | null>(null);
-  const view =
-    isRereadingSetup && lastView.current ? lastView.current : { team, ask };
-  if (!isRereadingSetup) lastView.current = view;
+    !providersQuery.isPending &&
+    !unchecked.failed;
+  const ask = useHeldAsk(
+    isSettled
+      ? chooseAsk({
+          path,
+          team,
+          setupItems,
+          isConnectable: (provider) => connectable.has(provider),
+          connectDismissed,
+        })
+      : null,
+    unchecked.holding,
+  );
 
   async function handleConnected(credential: CredentialsMetaResponse) {
     setIsConnectOpen(false);
@@ -150,8 +140,8 @@ export function useIntroStandup({
   }
 
   return {
-    team: view.team,
-    ask: view.ask,
+    team,
+    ask,
     isConnectOpen,
     openConnect: () => setIsConnectOpen(true),
     closeConnect: () => setIsConnectOpen(false),
@@ -165,4 +155,51 @@ export function useIntroStandup({
       typeof navigator !== "undefined" &&
       !!navigator.mediaDevices?.getUserMedia,
   };
+}
+
+// A hire's schedules, and so its setup gaps, exist only once its install has
+// finished. The hires that finished after the last setup read are unchecked
+// until a re-read lands; `failed` once every retry of it has.
+function useUncheckedHires(args: {
+  hires: Expert[] | undefined;
+  hiresUpdatedAt: number;
+  setupUpdatedAt: number;
+  setupFailed: boolean;
+  refetchSetup: () => unknown;
+}) {
+  const installing = (args.hires ?? [])
+    .filter((expert) => expert.setup_status === "installing")
+    .map((expert) => expert.id);
+  const installingKey = installing.join(",");
+  const [seenKey, setSeenKey] = useState<string | null>(null);
+  const [finished, setFinished] = useState({ ids: [] as string[], at: 0 });
+
+  let current = finished;
+  if (args.hires && installingKey !== seenKey) {
+    const left = (seenKey ?? "")
+      .split(",")
+      .filter((id) => id && !installing.includes(id));
+    setSeenKey(installingKey);
+    if (left.length > 0) {
+      current = { ids: [...finished.ids, ...left], at: args.hiresUpdatedAt };
+      setFinished(current);
+    }
+  }
+
+  const { refetchSetup } = args;
+  useEffect(() => {
+    if (finished.at > 0) void refetchSetup();
+  }, [finished.at, refetchSetup]);
+
+  const ids = args.setupUpdatedAt >= current.at ? [] : current.ids;
+  const failed = ids.length > 0 && args.setupFailed;
+  return { ids, failed, holding: ids.length > 0 && !failed };
+}
+
+// While a re-read is in flight the ask on screen stays as it was, so a job
+// choice never flashes up only to be replaced by a connect ask.
+function useHeldAsk(live: IntroAsk, holding: boolean) {
+  const [held, setHeld] = useState(live);
+  if (!holding && JSON.stringify(held) !== JSON.stringify(live)) setHeld(live);
+  return holding ? held : live;
 }

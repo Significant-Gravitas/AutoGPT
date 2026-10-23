@@ -12,6 +12,7 @@ import {
 
 const STATUS_DOTS: Record<MemberStatus, string> = {
   installing: "bg-sky-500 animate-pulse",
+  unchecked: "bg-amber-500",
   failed: "bg-red-500",
   needs_connection: "bg-amber-500",
   working: "bg-primary animate-pulse",

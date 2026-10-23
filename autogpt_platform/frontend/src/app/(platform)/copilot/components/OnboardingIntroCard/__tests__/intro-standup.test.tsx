@@ -360,6 +360,62 @@ describe("Otto's first turn on Home — the one ask", () => {
     expect(asked.some((text) => text.includes("Lead list"))).toBe(false);
   }, 10_000);
 
+  it("shows no stale Ready and no job choice when the re-read keeps failing", async () => {
+    const max = makeExpert({
+      id: "max",
+      name: "Max",
+      source_template_id: "tpl-unknown",
+    });
+    serve({
+      hires: (read) => [
+        read === 1
+          ? { ...max, setup_status: "installing" }
+          : {
+              ...max,
+              workflows: [{ graph_id: "g", name: "Lead list" } as never],
+            },
+      ],
+    });
+    let setupReads = 0;
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => {
+        setupReads += 1;
+        return setupReads === 1
+          ? HttpResponse.json([])
+          : HttpResponse.json({ detail: "down" }, { status: 500 });
+      }),
+    );
+    const painted: string[] = [];
+    const observer = new MutationObserver(() => {
+      const team = screen.queryByRole("region", { name: "Your team" });
+      const ask = screen.queryByRole("region", {
+        name: "One thing I need from you",
+      });
+      const status = team
+        ? within(team).queryByRole("status")?.textContent
+        : undefined;
+      painted.push(`${status ?? ""}|${ask?.textContent ?? ""}`);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    renderHome();
+
+    const team = await findTeam();
+    await waitFor(
+      () =>
+        expect(within(team).getByRole("status").textContent).toBe(
+          "Couldn't check setup",
+        ),
+      { timeout: 12_000 },
+    );
+    observer.disconnect();
+    expect(setupReads).toBeGreaterThan(2);
+    expect(
+      screen.queryByRole("region", { name: "One thing I need from you" }),
+    ).toBeNull();
+    expect(painted.some((text) => text.startsWith("Ready|"))).toBe(false);
+    expect(painted.some((text) => text.includes("Lead list"))).toBe(false);
+  }, 20_000);
+
   it("waits for the day-one jobs before asking, so the choices never change under the cursor", async () => {
     serve({
       hires: [
