@@ -4,6 +4,7 @@ import {
   getGetBrainDumpStatusMockHandler200,
   getUploadBrainDumpPartMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import openapi from "@/app/api/openapi.json";
 import { server } from "@/mocks/mock-server";
 import {
   cleanup,
@@ -347,6 +348,32 @@ function finalizeReturns(response: {
   return bodies;
 }
 
+// A voice take is judged too thin, and the skip's record goes unanswered
+// until `release()`, so any step change that waits on it never happens.
+function holdSkipRecord() {
+  const skipBodies: unknown[] = [];
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    getFinalizeBrainDumpMockHandler200(async (info) => {
+      const body = (await info.request.json()) as { input_mode: string };
+      if (body.input_mode !== "skipped") {
+        return {
+          status: "failed" as const,
+          error_code: "insufficient_content",
+          input_mode: "voice" as const,
+        };
+      }
+      skipBodies.push(body);
+      await held;
+      return { status: "completed" as const, input_mode: "skipped" as const };
+    }),
+  );
+  return { skipBodies, release };
+}
+
 // Lands the wizard on the step the pillboxes / the brain dump share.
 function landOnPainPointsStep() {
   window.sessionStorage.setItem(
@@ -476,6 +503,83 @@ describe("onboarding brain dump — typed fallback", () => {
     ).toBeDefined();
     expect(getUserMedia).not.toHaveBeenCalled();
   });
+
+  it("caps a long paste at the backend's limit and says how much is left", async () => {
+    const backendLimit = finalizeTextMaxLength();
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    const box = await screen.findByPlaceholderText<HTMLTextAreaElement>(
+      "What repeats every week? What would you hand off first?",
+    );
+
+    await userEvent.click(box);
+    await userEvent.paste("a".repeat(backendLimit + 50));
+
+    expect(box.value).toHaveLength(backendLimit);
+    expect(screen.getByText("0 characters left")).toBeDefined();
+  });
+
+  it("returns to the text with the limit spelled out when finalize refuses it as too long", async () => {
+    server.use(
+      http.post(
+        "http://localhost:3000/api/proxy/api/onboarding/brain-dump/finalize",
+        () =>
+          HttpResponse.json(
+            {
+              detail: [
+                {
+                  type: "string_too_long",
+                  loc: ["body", "text"],
+                  msg: "String should have at most 20000 characters",
+                  ctx: { max_length: 20000 },
+                },
+              ],
+            },
+            { status: 422 },
+          ),
+      ),
+    );
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await userEvent.type(
+      await screen.findByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "Invoices every Monday",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(
+      await screen.findByText(
+        "That's over the 20,000-character limit; trim it and try again.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByPlaceholderText<HTMLTextAreaElement>(
+        "What repeats every week? What would you hand off first?",
+      ).value,
+    ).toBe("Invoices every Monday");
+    expect(screen.queryByText("Your recording is safe. Try again.")).toBeNull();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "{Backspace}",
+    );
+
+    expect(
+      screen.queryByText(
+        "That's over the 20,000-character limit; trim it and try again.",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("onboarding brain dump — skip", () => {
@@ -496,6 +600,30 @@ describe("onboarding brain dump — skip", () => {
 
     expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+  });
+
+  // SECRT-2982: while the first skip waited on its record the button stayed
+  // up, the second click recorded a second skip, and both advanced past Hire.
+  it("moves to Hire on the click, once, however often it is clicked", async () => {
+    const skip = holdSkipRecord();
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+
+    await userEvent.dblClick(
+      screen.getByRole("button", { name: "Skip for now" }),
+    );
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
+    skip.release();
+    // Room for a second skip's advance to land, had one been sent.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(skip.skipBodies).toHaveLength(1);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(
+      NO_PAYWALL_STEPS.hire,
+    );
   });
 });
 
@@ -779,6 +907,64 @@ describe("onboarding brain dump — failure", () => {
     // The wizard must not advance on failure.
     expect(screen.queryByTestId("step-hire")).toBeNull();
   });
+
+  it("retries a typed take with its text and sends no recording", async () => {
+    const partUploads: string[] = [];
+    server.use(
+      getUploadBrainDumpPartMockHandler200(() => {
+        partUploads.push("part");
+        return {
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        };
+      }),
+    );
+    const responses = [
+      { status: "failed" as const, error_code: "quality_check_unavailable" },
+      { status: "completed" as const },
+    ];
+    const finalizeBodies: unknown[] = [];
+    server.use(
+      getFinalizeBrainDumpMockHandler200(async (info) => {
+        finalizeBodies.push(await info.request.json());
+        return {
+          ...responses[finalizeBodies.length - 1],
+          input_mode: "typed" as const,
+        };
+      }),
+    );
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await userEvent.type(
+      await screen.findByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "I run a bakery",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(
+      await screen.findByText("Your text is safe. Try again."),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Download recording" }),
+    ).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(finalizeBodies).toHaveLength(2);
+    expect(finalizeBodies[1]).toMatchObject({
+      input_mode: "typed",
+      text: "I run a bakery",
+    });
+    expect(partUploads).toHaveLength(0);
+  });
 });
 
 describe("onboarding brain dump — insufficient content", () => {
@@ -828,6 +1014,38 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(recordingStoreState.parts).toHaveLength(1);
   });
 
+  it("offers a retry of the same take when the quality check was unavailable", async () => {
+    finalizeReturns({
+      status: "failed",
+      error_code: "quality_check_unavailable",
+    });
+
+    await recordAndSend();
+
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+    expect(screen.queryByText("We didn't catch enough of that.")).toBeNull();
+    expect(recordingStoreState.parts).toHaveLength(1);
+  });
+
+  it("moves on from 'Continue without it' before the skip is recorded", async () => {
+    const skip = holdSkipRecord();
+
+    await recordAndSend();
+    await screen.findByText("We didn't catch enough of that.");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continue without it" }),
+    );
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+    await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
+    // Already gone while the record is unanswered, so Back to the step
+    // cannot offer the abandoned take again.
+    expect(recordingStoreState.parts).toHaveLength(0);
+    skip.release();
+  });
+
   it("opens the typed composer from the recovery screen", async () => {
     finalizeReturns({ status: "failed", error_code: "no_usable_speech" });
 
@@ -865,3 +1083,12 @@ describe("onboarding step map integrity", () => {
     });
   });
 });
+
+function finalizeTextMaxLength() {
+  const limit =
+    openapi.components.schemas.FinalizeRequest.properties.text.anyOf.find(
+      (branch) => branch.type === "string",
+    )?.maxLength;
+  expect(limit).toBeTypeOf("number");
+  return limit!;
+}

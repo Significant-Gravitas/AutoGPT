@@ -42,7 +42,11 @@ from backend.api.features.library.triggers import (
     update_triggered_preset,
 )
 from backend.api.features.onboarding_dump import db as onboarding_dump_db
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.orgs.db import (
+    get_user_default_team,
+    resolve_default_tenancy,
+    resolve_member_tenancy,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     delete_content_embedding,
@@ -594,6 +598,7 @@ class DatabaseManager(AppService):
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
     resolve_default_tenancy = _(resolve_default_tenancy)
+    resolve_member_tenancy = _(resolve_member_tenancy)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -879,6 +884,9 @@ class DatabaseManagerClient(AppServiceClient):
     get_org_credits = _(d.get_org_credits)
     get_personal_org_owner = _(d.get_personal_org_owner)
 
+    # Orgs
+    resolve_member_tenancy = _(d.resolve_member_tenancy)
+
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
     # Execution accuracy monitoring
@@ -1156,6 +1164,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
+    resolve_member_tenancy = d.resolve_member_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link

@@ -12,11 +12,13 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
+from backend.api.features.experts.models import CheckedExpert
 from backend.copilot import stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.baseline import stream_chat_completion_baseline
@@ -32,6 +34,7 @@ from backend.copilot.credit_billing import (
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_check import (
     checked_expert,
+    forget_expert_checks,
     remember_expert_check,
     sharing_expert_checks,
 )
@@ -44,6 +47,7 @@ from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trac
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
+    StreamBaseResponse,
     StreamError,
     StreamStart,
     StreamStatus,
@@ -55,8 +59,13 @@ from backend.copilot.sdk.launch_env import inherited_env
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
+from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
 from backend.copilot.turn_pause import TurnPause
-from backend.copilot.turn_tracing import TurnTrace, turn_transaction
+from backend.copilot.turn_tracing import (
+    MODEL_OUTPUT_CHUNKS,
+    TurnTrace,
+    turn_transaction,
+)
 from backend.data.model import OAuth2Credentials
 from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
@@ -235,16 +244,8 @@ async def _normalize_private_expert_session_tenancy(
         return session
 
     from backend.copilot.model import upsert_chat_session
-    from backend.data.db_accessors import experts_db
 
-    try:
-        check = await experts_db().check_private_expert(
-            session.user_id, session.expert_id
-        )
-    except ExpertNotFoundError as e:
-        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
-    except ExpertPrivateTenancyNotFoundError as e:
-        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
+    check = await _read_private_expert_check(session.user_id, session.expert_id)
     remember_expert_check(session.user_id, session.expert_id, check)
     organization_id, team_id = check.organization_id, check.team_id
     if (session.organization_id, session.team_id) == (organization_id, team_id):
@@ -256,18 +257,21 @@ async def _normalize_private_expert_session_tenancy(
     return await upsert_chat_session(session, persist_tenancy=True)
 
 
-async def _wait_for_expert_setup(session: "ChatSession") -> None:
+async def _wait_for_expert_setup(session: "ChatSession") -> bool:
     """Hold a fresh hire's turn until its skills and workflows are installed,
-    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them."""
+    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them.
+
+    Returns whether the turn waited."""
     if session.expert_id is None:
-        return
+        return False
     # The turn's expert check read the setup status a moment ago.
     check = checked_expert(session.user_id, session.expert_id)
     if check is not None and check.expert.setup_status != "installing":
-        return
+        return False
     from backend.data.db_accessors import experts_db
 
     deadline = time.monotonic() + EXPERT_SETUP_WAIT_SECONDS
+    waited = False
     while (
         await experts_db().expert_setup_status(session.user_id, session.expert_id)
         == "installing"
@@ -277,8 +281,56 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
                 f"Expert #{session.expert_id} still setting up after "
                 f"{EXPERT_SETUP_WAIT_SECONDS}s; running the turn without waiting"
             )
-            return
+            return True
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
+        waited = True
+    return waited
+
+
+async def _reauthorize_private_expert_after_setup_wait(
+    session: "ChatSession",
+) -> None:
+    expert_id = session.expert_id
+    if expert_id is None:
+        return
+    intended_scope = session.organization_id, session.team_id
+    forget_expert_checks()
+    check = await _read_private_expert_check(session.user_id, expert_id)
+    if (check.organization_id, check.team_id) != intended_scope:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE)
+    remember_expert_check(session.user_id, expert_id, check)
+
+
+async def _read_private_expert_check(user_id: str, expert_id: str) -> CheckedExpert:
+    from backend.data.db_accessors import experts_db
+
+    try:
+        return await experts_db().check_private_expert(user_id, expert_id)
+    except ExpertNotFoundError as error:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from error
+    except ExpertPrivateTenancyNotFoundError as error:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from error
+
+
+async def _closing_at_model_output(
+    stream: AsyncGenerator[StreamBaseResponse, None], trial_reads: SharedTrialReads
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    """Pass the engine's stream through, closing ``trial_reads`` at its first
+    model output.
+
+    The close happens here, inside the engine's stream, because the heartbeat
+    drains that stream ahead of the turn loop: closed from the loop, the
+    engine could already be running a tool that reads the trial.
+    """
+    try:
+        async for chunk in stream:
+            if isinstance(chunk, MODEL_OUTPUT_CHUNKS):
+                trial_reads.close()
+            yield chunk
+    finally:
+        # ``async for`` doesn't close the engine's stream on cancel or
+        # GeneratorExit; its cleanup (the SDK stream lock) must still run.
+        await stream.aclose()
 
 
 async def _refuse_turn(
@@ -676,6 +728,10 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            # The allowance, budget and tier checks that set up the turn share
+            # one read of the trial and one of the usage state; closed at the
+            # model's first output, so tools running after it read afresh.
+            trial_reads = cost_context_stack.enter_context(trial_reads_shared())
             if entry.llm_auth_provider == "platform":
                 # Every platform-billed turn passes the allowance here, from
                 # whichever path queued it (see backend.copilot.budget_gate).
@@ -709,16 +765,21 @@ class CoPilotProcessor:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause, scheduled_watch)
                     return
-                if credit_turn is not None:
-                    log.info(
-                        f"The {credit_turn.refusal.reason} limit is used up: "
-                        f"billing this block turn to credits, up to "
-                        f"{credit_turn.cap_credits} credits"
-                    )
-                    await cost_context_stack.enter_async_context(
-                        credit_billing(credit_turn)
-                    )
-            await _wait_for_expert_setup(session)
+            if await _wait_for_expert_setup(session):
+                # Up to a minute: long enough for the user to convert or end
+                # their trial, so the rest of the setup reads both again.
+                trial_reads.forget()
+                await _reauthorize_private_expert_after_setup_wait(session)
+
+            if credit_turn is not None:
+                log.info(
+                    f"The {credit_turn.refusal.reason} limit is used up: "
+                    f"billing this block turn to credits, up to "
+                    f"{credit_turn.cap_credits} credits"
+                )
+                await cost_context_stack.enter_async_context(
+                    credit_billing(credit_turn)
+                )
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -902,7 +963,9 @@ class CoPilotProcessor:
             # FE shows escalating ``StreamStatus`` messages during long
             # silent gaps (deep thinking, slow tool execution, inter-tool
             # gaps) instead of looping the generic "Thinking…" phrases.
-            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
+            heartbeat_stream = wrap_stream_with_heartbeat(
+                _closing_at_model_output(raw_stream, trial_reads)
+            )
             published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
