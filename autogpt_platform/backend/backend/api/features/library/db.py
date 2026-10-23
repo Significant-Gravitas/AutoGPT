@@ -17,6 +17,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
@@ -2118,8 +2119,9 @@ async def create_preset(
     )
     # A preset may only reference a graph the caller can access (owned, or in
     # their library and submitted); get_graph() enforces that, None if not.
-    # The preset then inherits the graph's org/team (resource-follows-parent),
-    # resolved here so callers can't forget it.
+    # The preset then inherits the graph's org/team (resource-follows-parent)
+    # where the caller belongs to it, and their own otherwise, resolved here
+    # so callers can't forget it.
     graph = await graph_db.get_graph(
         preset.graph_id, preset.graph_version, user_id=user_id
     )
@@ -2148,7 +2150,9 @@ async def create_preset(
         ) != (organization_id, team_id):
             raise NotFoundError(f"Webhook #{webhook_id} not found")
     else:
-        organization_id, team_id = graph.organization_id, graph.team_id
+        organization_id, team_id = await resolve_member_tenancy(
+            user_id, graph.organization_id, graph.team_id
+        )
 
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,

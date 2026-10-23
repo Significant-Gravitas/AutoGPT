@@ -10,6 +10,7 @@ import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BRAIN_DUMP_HEADLINE,
   isInsufficientDump,
+  isTypedTextTooLong,
   SILENCE_NUDGE_SECONDS,
 } from "./helpers";
 import {
@@ -63,6 +64,7 @@ export function useBrainDumpStep() {
     mimeType: string;
     durationSecs: number;
   } | null>(null);
+  const [isTypedTooLong, setIsTypedTooLong] = useState(false);
   const retryCountRef = useRef(0);
   // A submit in flight owns the screen: "Skip for now" must not race
   // `completeAndAdvance` to `nextStep()`, or the wizard advances twice and
@@ -299,10 +301,16 @@ export function useBrainDumpStep() {
     setScreen("rest");
   }
 
+  function handleTypedTextChange(text: string) {
+    setTypedText(text);
+    setIsTypedTooLong(false);
+  }
+
   async function handleSubmitTyped() {
     const text = typedText.trim();
     if (!text) return;
     isSubmittingRef.current = true;
+    setIsTypedTooLong(false);
     try {
       await submitTyped(text);
     } finally {
@@ -333,8 +341,12 @@ export function useBrainDumpStep() {
         setScreen(rejected ? "insufficient" : "failed");
         return;
       }
-    } catch {
-      setScreen("failed");
+    } catch (error) {
+      // Retrying the same text would fail the same way, so the user goes
+      // back to it with the limit spelled out.
+      const tooLong = isTypedTextTooLong(error);
+      setIsTypedTooLong(tooLong);
+      setScreen(tooLong ? "typing" : "failed");
       return;
     }
     trackBrainDump("brain_dump_completed", {
@@ -485,7 +497,7 @@ export function useBrainDumpStep() {
     insufficientMode,
     submittedMode,
     typedText,
-    setTypedText,
+    setTypedText: handleTypedTextChange,
     elapsedSeconds: recorder.elapsedSeconds,
     isOffline: recorder.isOffline,
     isSavedLocally: recorder.isSavedLocally,
@@ -500,6 +512,7 @@ export function useBrainDumpStep() {
     handleRetry,
     handleSkip,
     handleSubmitTyped,
+    isTypedTooLong,
     handleResumeRecovered,
     handleDiscardRecovered,
     handleTypeInsteadOfRecovered,
