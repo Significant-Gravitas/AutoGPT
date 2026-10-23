@@ -50,7 +50,10 @@ from backend.copilot.expert_kickoff import (
     expert_kickoff_metadata,
     scoped_client_message_id,
 )
-from backend.copilot.gate.card_approval import record_card_decisions
+from backend.copilot.gate.card_approval import (
+    card_decision_metadata,
+    record_card_decisions,
+)
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -1933,15 +1936,16 @@ async def stream_chat_post(
         await enforce_codex_access_http(user_id)
 
     message = request.message
+    message_metadata: dict[str, Any] | None = None
     if request.is_user_message:
         # The only writer of card approvals: a model can add chat rows, not requests.
         await record_card_decisions(user_id, session_id, message)
+        message_metadata = card_decision_metadata(message)
     message_id = (
         scoped_client_message_id(user_id, session_id, request.message_id)
         if request.message_id
         else None
     )
-    message_metadata: dict[str, Any] | None = None
     persisted_kickoff_has_reply: bool | None = None
     resume_persisted_kickoff = False
     if request.expert_kickoff:

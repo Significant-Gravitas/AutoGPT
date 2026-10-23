@@ -605,6 +605,75 @@ def test_stream_chat_records_card_decisions_only_from_the_users_message(
         record.assert_not_awaited()
 
 
+def test_stream_chat_tags_a_message_made_only_of_card_decisions(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The chat shows such a row as a note of what was decided, not the line."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    message = (
+        "Approved: hire Maya (confirmation_id: c-1).\n"
+        "Not approved: do not create Ada, discard that proposal "
+        "(confirmation_id: c-2)."
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": message})
+
+    assert response.status_code == 200
+    call = mocks.enqueue.await_args.kwargs
+    # The model and the gate still read the line itself.
+    assert call["message"] == message
+    assert call["message_metadata"] == {
+        "kind": "card_decision",
+        "decisions": [
+            {
+                "verdict": "approved",
+                "confirmation_id": "c-1",
+                "verb": "hire",
+                "name": "Maya",
+            },
+            {
+                "verdict": "declined",
+                "confirmation_id": "c-2",
+                "verb": "create",
+                "name": "Ada",
+            },
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "message": "Approved: hire Maya (confirmation_id: c-1).\nStart today.",
+        },
+        {"message": "Approved: hire Maya, she looks great."},
+        {
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "is_user_message": False,
+        },
+    ],
+    ids=["with-the-users-own-words", "no-decision-line", "not-a-user-message"],
+)
+def test_stream_chat_leaves_other_messages_untagged(
+    mocker: pytest_mock.MockerFixture, payload: dict
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json=payload)
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
+
+
 # ─── A sent message cancels the pending resume at the budget reset ────
 
 
