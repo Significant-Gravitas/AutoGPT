@@ -3,10 +3,11 @@
 The layering is the contract under test: unmistakable garbage and clearly
 substantial dumps must be decided without a model call, only the ambiguous
 middle may pay for one, and every judge failure resolves to a recoverable
-rejection rather than a silent pass.
+rejection rather than a silent pass, recorded as an outage and not a verdict.
 """
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -30,6 +31,13 @@ SPANISH_DUMP = (
     "envío a los dueños por correo. Me encantaría automatizar los informes "
     "y las respuestas más repetitivas para dedicar ese tiempo a las "
     "campañas nuevas."
+)
+
+DETERMINISTIC = quality.QualityRejection(
+    error_code=quality.NO_USABLE_SPEECH, reason="deterministic"
+)
+JUDGED_UNUSABLE = quality.QualityRejection(
+    error_code=quality.INSUFFICIENT_CONTENT, reason="judge_unusable"
 )
 
 
@@ -68,9 +76,7 @@ async def test_empty_and_symbol_only_transcripts_reject_without_llm(
     llm, transcript: str
 ):
     client_factory = llm(_llm_client('{"usable": true}'))
-    assert (
-        await quality.check_transcript_quality(transcript) == quality.NO_USABLE_SPEECH
-    )
+    assert await quality.check_transcript_quality(transcript) == DETERMINISTIC
     client_factory.assert_not_called()
 
 
@@ -78,7 +84,7 @@ async def test_empty_and_symbol_only_transcripts_reject_without_llm(
 async def test_repeated_word_loop_rejects_without_llm(llm):
     client_factory = llm(_llm_client('{"usable": true}'))
     looped = "you " * 30
-    assert await quality.check_transcript_quality(looped) == quality.NO_USABLE_SPEECH
+    assert await quality.check_transcript_quality(looped) == DETERMINISTIC
     client_factory.assert_not_called()
 
 
@@ -86,7 +92,7 @@ async def test_repeated_word_loop_rejects_without_llm(llm):
 async def test_repeated_phrase_loop_rejects_without_llm(llm):
     client_factory = llm(_llm_client('{"usable": true}'))
     looped = "thank you for watching " * 12
-    assert await quality.check_transcript_quality(looped) == quality.NO_USABLE_SPEECH
+    assert await quality.check_transcript_quality(looped) == DETERMINISTIC
     client_factory.assert_not_called()
 
 
@@ -96,7 +102,7 @@ async def test_compressible_character_garbage_rejects_without_llm(llm):
     # compression check is what catches a decoder stuck on a character.
     client_factory = llm(_llm_client('{"usable": true}'))
     garbage = "a" * 200
-    assert await quality.check_transcript_quality(garbage) == quality.NO_USABLE_SPEECH
+    assert await quality.check_transcript_quality(garbage) == DETERMINISTIC
     client_factory.assert_not_called()
 
 
@@ -161,7 +167,7 @@ async def test_exactly_clear_pass_words_passes_without_llm(llm):
 async def test_one_word_below_clear_pass_still_asks_the_llm(llm):
     llm(_llm_client('{"usable": false}'))
     text = " ".join(_DISTINCT_WORDS[: quality.CLEAR_PASS_WORDS - 1])
-    assert await quality.check_transcript_quality(text) == quality.INSUFFICIENT_CONTENT
+    assert await quality.check_transcript_quality(text) == JUDGED_UNUSABLE
 
 
 @pytest.mark.asyncio
@@ -169,7 +175,7 @@ async def test_unique_ratio_just_below_threshold_rejects(llm):
     client_factory = llm(_llm_client('{"usable": true}'))
     # 20 words, 5 unique → 0.25, just under MIN_UNIQUE_WORD_RATIO.
     text = " ".join(["ab", "cd", "ef", "gh", "ij"] * 4)
-    assert await quality.check_transcript_quality(text) == quality.NO_USABLE_SPEECH
+    assert await quality.check_transcript_quality(text) == DETERMINISTIC
     client_factory.assert_not_called()
 
 
@@ -193,8 +199,8 @@ async def test_compression_seam_separates_looping_from_prose(llm):
     # Self-check the fixtures actually straddle the threshold.
     assert quality._compression_ratio(looping) > quality.MAX_COMPRESSION_RATIO
     assert quality._compression_ratio(prose) <= quality.MAX_COMPRESSION_RATIO
-    assert await quality.check_transcript_quality(looping) == quality.NO_USABLE_SPEECH
-    assert await quality.check_transcript_quality(prose) == quality.INSUFFICIENT_CONTENT
+    assert await quality.check_transcript_quality(looping) == DETERMINISTIC
+    assert await quality.check_transcript_quality(prose) == JUDGED_UNUSABLE
 
 
 # --- the ambiguous middle: one LLM call decides ---------------------------
@@ -211,9 +217,7 @@ async def test_short_meaningful_request_passes_via_llm(llm):
 async def test_short_filler_rejects_via_llm(llm):
     llm(_llm_client('{"usable": false}'))
     filler = "Uh hello hello, testing, can you hear me?"
-    assert (
-        await quality.check_transcript_quality(filler) == quality.INSUFFICIENT_CONTENT
-    )
+    assert await quality.check_transcript_quality(filler) == JUDGED_UNUSABLE
 
 
 @pytest.mark.asyncio
@@ -221,7 +225,7 @@ async def test_hallucinated_outro_rejects_via_llm(llm):
     llm(_llm_client('{"usable": false}'))
     assert (
         await quality.check_transcript_quality("Thank you for watching.")
-        == quality.INSUFFICIENT_CONTENT
+        == JUDGED_UNUSABLE
     )
 
 
@@ -231,64 +235,69 @@ async def test_llm_verdict_tolerates_markdown_fence(llm):
     assert await quality.check_transcript_quality("Automate my invoices.") is None
 
 
-# --- judge failures: never a silent pass ----------------------------------
+def test_count_words_skips_tokens_without_a_letter_or_digit():
+    assert quality.count_words("  Uh... -- I run 2 shops !!! ") == 5
+
+
+# --- judge failures: an outage, never a verdict or a silent pass ----------
+
+
+def _hanging_client() -> MagicMock:
+    async def hang(**_kwargs):
+        await asyncio.Event().wait()
+
+    client = MagicMock()
+    client.chat.completions.create = hang
+    return client
+
+
+def _raising_client() -> MagicMock:
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=RuntimeError("boom"))
+    return client
+
+
+def _no_choices_client() -> MagicMock:
+    response = MagicMock()
+    response.choices = []
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=response)
+    return client
 
 
 @pytest.mark.asyncio
-async def test_no_llm_client_rejects_ambiguous_input(llm):
-    llm(None)
-    assert (
-        await quality.check_transcript_quality("Automate my invoices.")
-        == quality.INSUFFICIENT_CONTENT
+@pytest.mark.parametrize(
+    "make_client,reason",
+    [
+        (lambda: None, "judge_unconfigured"),
+        (_hanging_client, "judge_timeout"),
+        (_raising_client, "judge_failed:RuntimeError"),
+        (lambda: _llm_client("not json at all"), "judge_malformed"),
+        (lambda: _llm_client('{"usable": "yes"}'), "judge_malformed"),
+        (lambda: _llm_client("{}"), "judge_malformed"),
+        (_no_choices_client, "judge_malformed"),
+    ],
+)
+async def test_a_judge_failure_rejects_as_unavailable_and_logs_an_error(
+    llm, caplog, monkeypatch, make_client, reason: str
+):
+    """The user must not be told they said too little, and the outage must
+    be seen: only an ERROR record becomes a Sentry event."""
+    llm(make_client())
+    monkeypatch.setattr(quality, "_TIMEOUT_SECONDS", 0.05)
+
+    with caplog.at_level(logging.WARNING, logger=quality.logger.name):
+        rejection = await asyncio.wait_for(
+            quality.check_transcript_quality("Automate my invoices."), timeout=5
+        )
+
+    assert rejection == quality.QualityRejection(
+        error_code=quality.QUALITY_CHECK_UNAVAILABLE, reason=reason
     )
+    assert [record.levelno for record in caplog.records] == [logging.ERROR]
 
 
 @pytest.mark.asyncio
 async def test_no_llm_client_still_passes_clear_input(llm):
     llm(None)
     assert await quality.check_transcript_quality(SUBSTANTIAL_DUMP) is None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("content", ["not json at all", '{"usable": "yes"}', "{}"])
-async def test_malformed_llm_verdict_rejects(llm, content: str):
-    llm(_llm_client(content))
-    assert (
-        await quality.check_transcript_quality("Automate my invoices.")
-        == quality.INSUFFICIENT_CONTENT
-    )
-
-
-@pytest.mark.asyncio
-async def test_empty_choices_rejects(llm):
-    response = MagicMock()
-    response.choices = []
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=response)
-    llm(client)
-    assert (
-        await quality.check_transcript_quality("Automate my invoices.")
-        == quality.INSUFFICIENT_CONTENT
-    )
-
-
-@pytest.mark.asyncio
-async def test_llm_timeout_rejects(llm):
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(side_effect=asyncio.TimeoutError())
-    llm(client)
-    assert (
-        await quality.check_transcript_quality("Automate my invoices.")
-        == quality.INSUFFICIENT_CONTENT
-    )
-
-
-@pytest.mark.asyncio
-async def test_llm_error_rejects(llm):
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(side_effect=RuntimeError("boom"))
-    llm(client)
-    assert (
-        await quality.check_transcript_quality("Automate my invoices.")
-        == quality.INSUFFICIENT_CONTENT
-    )

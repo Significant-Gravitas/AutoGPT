@@ -119,7 +119,7 @@ from ..constants import (
     is_transient_assistant_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
-from ..context import encode_cwd_for_cli, get_workspace_manager
+from ..context import encode_cwd_for_cli, get_workspace_manager, is_unattended_turn
 from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
@@ -5419,7 +5419,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         auto_mode_supplement = approval_mode_supplement(
-            await active_mode(user_id, session)
+            await active_mode(user_id, session),
+            interactive=not is_unattended_turn(),
         )
         experts_enabled = bool(user_id)
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
