@@ -42,8 +42,7 @@ export function SearchBar({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}
-        // TODO(tokens): no exact role: placeholder:text-zinc-400
-        className="flex-grow border-none bg-transparent text-base font-normal text-foreground-base placeholder:text-base placeholder:font-normal placeholder:text-zinc-400 focus:outline-none md:text-lg md:placeholder:text-lg"
+        className="flex-grow border-none bg-transparent text-base font-normal text-foreground-base placeholder:text-base placeholder:font-normal placeholder:text-foreground-subtle focus:outline-none md:text-lg md:placeholder:text-lg"
         data-testid="store-search-input"
       />
     </form>

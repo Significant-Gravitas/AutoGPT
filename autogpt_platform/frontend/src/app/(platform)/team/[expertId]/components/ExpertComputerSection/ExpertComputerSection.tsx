@@ -114,7 +114,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
           </div>
         ) : (
           <div
-            // TODO(tokens): no exact role: from-zinc-800, via-zinc-900
+            // TODO(tokens): from-zinc-800/via-zinc-900 equal action/action-hover, the primary button roles; a screen backdrop needs its own role
             className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0"
           >
             <div

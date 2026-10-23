@@ -40,8 +40,8 @@ const ACCENTS: Record<string, ExpertAccent> = {
     // TODO(tokens): no exact role: ring-violet-600/10
     pill: "bg-accent-surface text-accent-strong ring-1 ring-inset ring-violet-600/10",
     band: "bg-accent-surface/60",
-    // TODO(tokens): no exact role: to-violet-50, text-violet-800, ring-violet-500/20, shadow-[…]
-    chip: "bg-gradient-to-b from-white to-violet-50 text-violet-800 ring-1 ring-inset ring-violet-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
+    // TODO(tokens): no exact role: text-violet-800, ring-violet-500/20, shadow-[…]
+    chip: "bg-gradient-to-b from-white to-accent-surface text-violet-800 ring-1 ring-inset ring-violet-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
     // TODO(tokens): no exact role: text-violet-500
     icon: "text-violet-500",
     roleIcon: Megaphone01Icon,
@@ -55,8 +55,8 @@ const ACCENTS: Record<string, ExpertAccent> = {
     // TODO(tokens): no exact role: ring-amber-600/10
     pill: "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-amber-600/10",
     band: "bg-warning-surface/60",
-    // TODO(tokens): no exact role: to-amber-50, text-amber-800, ring-amber-500/20, shadow-[…]
-    chip: "bg-gradient-to-b from-white to-amber-50 text-amber-800 ring-1 ring-inset ring-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
+    // TODO(tokens): no exact role: text-amber-800, ring-amber-500/20, shadow-[…]
+    chip: "bg-gradient-to-b from-white to-warning-surface text-amber-800 ring-1 ring-inset ring-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
     icon: "text-warning",
     roleIcon: ChartIncreaseIcon,
   },
