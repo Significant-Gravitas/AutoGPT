@@ -417,6 +417,8 @@ function withTableComponent(components: StreamdownComponents | undefined) {
   return components ? mergeTableComponent(components) : TABLE_COMPONENT;
 }
 
+// memo-boundary: one per text part of every transcript row, and also
+// rendered from folders the compiler does not cover (the work output sheet).
 export const MessageResponse = memo(function MessageResponse({
   className,
   children,

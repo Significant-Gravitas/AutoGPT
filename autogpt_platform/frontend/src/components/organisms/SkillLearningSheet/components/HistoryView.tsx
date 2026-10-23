@@ -33,7 +33,7 @@ export function HistoryView({
           return (
             <li
               key={version.id}
-              className="flex flex-col gap-1 rounded-lg bg-zinc-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-1 rounded-lg bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
                 <Text variant="small-medium" tone="primary">

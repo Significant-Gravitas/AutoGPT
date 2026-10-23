@@ -314,14 +314,14 @@ export function ChatMessagesContainer({
   // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
   // was drained mid-stream renders as chain → follow-up bubble → chain, while
   // the underlying message stays whole. See `splitMessagesAtDrainHints`.
+  // These lists stay memos with the compiler on: the transcript rows reach
+  // the windowed transcript's hooks, which the compiler skips and which key
+  // their row measurements on the rows' identity.
   const renderRows = useMemo(
     () => splitMessagesAtDrainHints(messages),
     [messages],
   );
-  const messageIndexById = useMemo(
-    () => buildMessageIndexById(messages),
-    [messages],
-  );
+  const messageIndexById = buildMessageIndexById(messages);
   const transcriptRows = useMemo(
     () => toTranscriptRows(renderRows),
     [renderRows],
@@ -340,7 +340,7 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const reviewTarget = useMemo(() => extractReviewTarget(messages), [messages]);
+  const reviewTarget = extractReviewTarget(messages);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
   // yields a ``StreamError`` SSE event on final-failure paths. Both surface
@@ -348,20 +348,7 @@ export function ChatMessagesContainer({
   // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
   // the same error twice. Suppress the trailing banner whenever the last
   // assistant message already carries the marker.
-  const lastAssistantHasErrorMarker = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg.role !== "assistant") continue;
-      for (let j = msg.parts.length - 1; j >= 0; j--) {
-        const part = msg.parts[j];
-        if (part.type !== "text") continue;
-        const { markerType } = parseSpecialMarkers(part.text);
-        return markerType === "error" || markerType === "retryable_error";
-      }
-      return false;
-    }
-    return false;
-  }, [messages]);
+  const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -691,4 +678,23 @@ function toTranscriptRows(renderRows: ChatMessage[]): TranscriptRow[] {
     }
   });
   return rows;
+}
+
+/** Whether the last assistant message's last text part is a persisted error
+ *  marker (the in-line ErrorCard bubble). */
+function hasTrailingErrorMarker(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    for (let j = msg.parts.length - 1; j >= 0; j--) {
+      const part = msg.parts[j];
+      if (part.type !== "text") continue;
+      const { markerType } = parseSpecialMarkers(part.text);
+      return markerType === "error" || markerType === "retryable_error";
+    }
+    return false;
+  }
+  return false;
 }

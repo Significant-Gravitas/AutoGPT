@@ -103,6 +103,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const [actionEntries, setActionEntries] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
+  // Kept as memos with the compiler on: the cards' register effects depend on
+  // this context value, and re-running them would re-register every card.
   const register = useCallback((entry: ChainActionEntry) => {
     setActionEntries((prev) => {
       const next = new Map(prev);
@@ -213,6 +215,10 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   useCredentialFailureCounters({ entries: actionEntries });
 
+  // Kept as a memo: the compiler folds this into the scope of everything
+  // rendered below the early return, so without it the rows would be rebuilt
+  // whenever the chain expands, starts or stops streaming, or a card
+  // registers.
   const rows = useMemo(
     () =>
       markSupersededSubSessionRows(

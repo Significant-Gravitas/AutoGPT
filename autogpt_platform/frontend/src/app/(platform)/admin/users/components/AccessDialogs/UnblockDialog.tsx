@@ -53,13 +53,13 @@ export function UnblockDialog({ block, triggerVariant }: Props) {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-2">
-          <Text variant="body" className="text-zinc-600">
+          <Text variant="body" className="text-foreground-secondary">
             {block.kind === "IP"
               ? "Sign-ups and sign-ins from it are accepted again right away."
               : "Sign-ups on it are accepted again right away."}{" "}
             Accounts banned at the same time stay banned.
           </Text>
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" className="text-foreground-tertiary">
             Blocked by {block.created_by_email ?? "unknown"} on{" "}
             {formatDate(block.created_at)}: &ldquo;{block.reason}&rdquo;.
           </Text>
