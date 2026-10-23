@@ -62,7 +62,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
               className="px-4 py-3 text-right"
               title="Per-session only"
             >
-              Rate{" "}
+              {"Rate "}
               <span className="text-tiny font-normal leading-inherit">
                 (unsaved)
               </span>
