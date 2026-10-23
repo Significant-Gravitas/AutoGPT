@@ -31,15 +31,15 @@ describe("TurnStatsBar", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("prefers live elapsedSeconds over the persisted durationMs", () => {
+  it("reads the saved durationMs over the live count once the server has it", () => {
     render(
       <TurnStatsBar
         turnMessages={EMPTY}
-        elapsedSeconds={7}
-        stats={{ durationMs: 99_000 }}
+        elapsedSeconds={67}
+        stats={{ durationMs: 30_000 }}
       />,
     );
-    expect(screen.getByText(/Thought for 7s/)).toBeDefined();
+    expect(screen.getByText("Thought for 30s")).toBeDefined();
   });
 
   it("uses durationMs when the turn is finalized", () => {

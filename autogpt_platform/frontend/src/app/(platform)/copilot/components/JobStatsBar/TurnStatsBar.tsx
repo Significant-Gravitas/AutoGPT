@@ -20,17 +20,17 @@ function formatLocalDate(iso: string): string {
 }
 
 /**
- * Prefer live elapsedSeconds while streaming; fall back to the persisted
- * whole-turn durationMs afterwards.
+ * The saved whole-turn durationMs once present, so a reload reads the same;
+ * the live count, which runs long while a background tab types, until then.
  */
 function resolveDisplaySeconds(
   elapsedSeconds: number | undefined,
   stats: TurnStats | undefined,
 ): number | undefined {
-  if (elapsedSeconds !== undefined && elapsedSeconds > 0) return elapsedSeconds;
   if (stats?.durationMs && stats.durationMs > 0) {
     return Math.round(stats.durationMs / 1000);
   }
+  if (elapsedSeconds !== undefined && elapsedSeconds > 0) return elapsedSeconds;
   return undefined;
 }
 
