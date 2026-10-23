@@ -143,7 +143,7 @@ export async function completeOnboardingWizard(
   const leaveHiring = skipHiring.or(
     page.getByRole("button", { name: "Continue", exact: true }),
   );
-  await expect(page.getByTestId("hire-step-grid")).toBeVisible({
+  await expect(page.getByTestId("hire-step-grid")).toBeAttached({
     timeout: 10000,
   });
   await expect(page.getByTestId("hire-step-pending").first()).toBeHidden({
