@@ -12,7 +12,7 @@ from backend.copilot.eval.style.generation import Turn, delegated_task, generate
 from backend.copilot.eval.style.models import Usage
 
 from .cases import expand_cases, first_message, load_case_file, teammate_expert
-from .runner import score, summarize
+from .runner import exit_code, score, summarize
 
 CASE_FILE = load_case_file()
 CASES = expand_cases(CASE_FILE)
@@ -128,3 +128,16 @@ def test_the_summary_counts_every_outcome():
     assert summarize(results).splitlines()[-1] == (
         "2 runs: 1 pass, 1 fail, 0 no_delegation, 0 error"
     )
+
+
+def test_the_run_fails_unless_something_was_scored_and_nothing_broke():
+    passed = score(EXPERT_CASE, _turn("Priya, can you send it?"))
+    failed = score(EXPERT_CASE, _turn("Can he send it?"))
+    errored = score(EXPERT_CASE, _turn(""))
+    undelegated = score(OTTO_CASE, _turn("I'll do it myself."))
+    assert errored.outcome == "error" and undelegated.outcome == "no_delegation"
+    assert exit_code([passed, undelegated]) == 0
+    assert exit_code([passed, failed]) == 1
+    assert exit_code([passed, errored]) == 1
+    assert exit_code([undelegated, undelegated]) == 1
+    assert exit_code([]) == 1

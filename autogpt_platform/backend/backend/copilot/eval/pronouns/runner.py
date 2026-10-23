@@ -11,7 +11,8 @@ which the user is the only third person:
   turn that delegates nothing is ``no_delegation``: inconclusive, not a pass.
 - ``expert_task``: the expert's report back to Otto.
 
-Any he/she/him/her/his/hers there fails the case, and the run exits 1.
+Any he/she/him/her/his/hers there fails the case. The run exits 1 on any
+failed or errored case, or when no case was scored at all.
 """
 
 import argparse
@@ -131,7 +132,15 @@ def main() -> None:
             encoding="utf-8",
         )
     print(summarize(results))
-    sys.exit(1 if any(r.outcome == "fail" for r in results) else 0)
+    sys.exit(exit_code(results))
+
+
+def exit_code(results: list[CaseResult]) -> int:
+    """1 when any case failed or errored, or when nothing was scored at all:
+    a run of errors or of turns that never delegated has proved nothing."""
+    if any(r.outcome in ("fail", "error") for r in results):
+        return 1
+    return 0 if any(r.outcome == "pass" for r in results) else 1
 
 
 if __name__ == "__main__":
