@@ -12,12 +12,14 @@ from itertools import takewhile
 
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.model import (
+    ChatMessage,
     ChatSession,
     get_chat_session,
     get_chat_session_metadata,
 )
 from backend.copilot.pending_messages import PendingMessage, push_pending_message
 from backend.copilot.tools.expert_delegation import sent_from_metadata
+from backend.copilot.turn_pause import pause_of
 from backend.data.db_accessors import experts_db, review_db
 from backend.data.redis_client import get_redis_async
 
@@ -79,14 +81,18 @@ async def _note(user_id: str, session: ChatSession, name: str, *, failed: bool) 
         session.session_id, user_id
     )
     question = session.metadata.pending_question
+    this_turn = _this_turn(session)
+    pause = next(filter(None, map(pause_of, this_turn)), None)
     if reviews:
         headline = f"{name} is waiting on your approval."
     elif failed:
         headline = f"{name} stopped on an error before finishing."
     elif question is not None:
         headline = f"{name} is waiting on your answer: {_clip(question.text)}"
+    elif pause is not None:
+        headline = f"{name} paused. {pause.summary}"
     else:
-        summary = _clip(_closing_text(session))
+        summary = _clip(_closing_text(this_turn))
         headline = f"{name} finished: {summary}" if summary else f"{name} finished."
     return (
         f"{headline}\n"
@@ -95,9 +101,13 @@ async def _note(user_id: str, session: ChatSession, name: str, *, failed: bool) 
     )
 
 
-def _closing_text(session: ChatSession) -> str:
+def _this_turn(session: ChatSession) -> list[ChatMessage]:
+    """The rows after the message that started the turn, newest first."""
+    return list(takewhile(lambda m: m.role != "user", reversed(session.messages)))
+
+
+def _closing_text(this_turn: list[ChatMessage]) -> str:
     # This turn's only: an earlier turn's reply would be reported as this one's.
-    this_turn = takewhile(lambda m: m.role != "user", reversed(session.messages))
     return next(
         (
             m.content

@@ -30,6 +30,7 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.result_waiters import awaiting_result, is_result_awaited
 from backend.copilot.sdk.session_waiter import wait_for_session_result
+from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.data import redis_client
 from backend.data.redis_client import get_redis_async
 from backend.util.testing import is_tcp_port_reachable
@@ -241,6 +242,31 @@ async def test_a_note_drained_mid_turn_is_not_shown_as_the_users_words(world, id
     assert "Also check the docs." in users_words
     assert "Bit finished" not in users_words
     assert "Bit finished" in rest and "not the user's words" in rest
+
+
+@pytest.mark.parametrize(
+    "started, headline",
+    [
+        (True, "Bit paused. Paused: this task is out of today's budget."),
+        (False, "Bit paused. Not started: out of today's budget."),
+    ],
+    ids=["ran-then-paused", "refused-before-it-ran"],
+)
+async def test_a_turn_that_ended_on_a_budget_pause_says_it_paused(
+    world, ids, started, headline
+):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+    session = world.sessions[ids.bit]
+    if not started:
+        session.messages.append(ChatMessage(role="user", content="Now the docs."))
+    append_pause_marker(
+        session, TurnPause(reason="daily", started=started, checkpoint_saved=started)
+    )
+
+    await end_turn(ids.bit, ids.turn)
+
+    (note,) = await drain_pending_safe(ids.otto)
+    assert note.content.split("\n")[0] == headline
 
 
 async def test_a_turn_without_closing_text_does_not_borrow_an_earlier_reply(world, ids):
