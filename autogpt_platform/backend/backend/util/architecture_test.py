@@ -10,6 +10,7 @@ import ast
 import collections
 import functools
 import pathlib
+import sys
 from collections.abc import Iterable
 
 import pytest
@@ -295,8 +296,8 @@ def test_global_clock_patch_offenders_are_not_stale():
     "source, expected",
     [
         ('patch("asyncio.sleep")', ["asyncio.sleep"]),
-        ('patch("backend.blocks.exa.research.asyncio.sleep")', ["asyncio.sleep"]),
-        ('patch("backend.copilot.sdk.trace_export.sleep")', []),
+        ('patch("backend.fake.shares.asyncio.sleep")', ["asyncio.sleep"]),
+        ('patch("backend.fake.binds.sleep")', []),
         ('import time\npatch.object(time, "sleep")', ["time.sleep"]),
         (
             "import time\npatch.multiple(time, sleep=1, monotonic=2)",
@@ -309,14 +310,28 @@ def test_global_clock_patch_offenders_are_not_stale():
             ["time.sleep"],
         ),
         (
-            '_M = "backend.blocks.exa.research"\npatch(f"{_M}.asyncio.sleep")',
+            '_M = "backend.fake.shares"\npatch(f"{_M}.asyncio.sleep")',
             ["asyncio.sleep"],
         ),
         ('_T = "time.sleep"\npatch(_T)', ["time.sleep"]),
         ('patch(f"{unknown()}.asyncio.sleep")', []),
     ],
 )
-def test_clock_patch_resolver_reads_each_form(source: str, expected: list[str]):
+def test_clock_patch_resolver_reads_each_form(
+    source: str, expected: list[str], monkeypatch: pytest.MonkeyPatch
+):
+    # Synthetic modules, so an import change in real code cannot move this test.
+    fake = {
+        "backend.fake.shares": "import asyncio\n",
+        "backend.fake.binds": "from time import sleep\n",
+    }
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_module_tree",
+        lambda module: (
+            (ast.parse(fake[module]), "backend.fake") if module in fake else None
+        ),
+    )
     tree = ast.parse(source)
     names = _import_bindings(tree.body, "backend.util")
     consts = _string_constants(tree)
@@ -328,7 +343,8 @@ def test_clock_patch_resolver_reads_each_form(source: str, expected: list[str]):
     assert found == expected
 
 
-def _global_clock_patches() -> list[tuple[str, str, int]]:
+@functools.cache
+def _global_clock_patches() -> tuple[tuple[str, str, int], ...]:
     found: list[tuple[str, str, int]] = []
     for py in _iter_backend_py_files():
         try:
@@ -342,7 +358,7 @@ def _global_clock_patches() -> list[tuple[str, str, int]]:
         for call, scope in _calls_in_scope(tree, names, package):
             for target in _patched_clock_targets(call, scope, consts):
                 found.append((rel, target, call.lineno))
-    return found
+    return tuple(found)
 
 
 def _calls_in_scope(node: ast.AST, names: dict[str, str], package: str):
