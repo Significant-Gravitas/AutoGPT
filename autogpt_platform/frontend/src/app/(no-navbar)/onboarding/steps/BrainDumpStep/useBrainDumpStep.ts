@@ -89,7 +89,6 @@ export function useBrainDumpStep() {
     void checkForRecovery();
     // Recovery is a mount-time question only — re-asking mid-recording
     // would fight the user for control of the screen.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Permission denial is never a dead end: the typing composer takes over
@@ -121,7 +120,6 @@ export function useBrainDumpStep() {
     setReachedTimeLimit(true);
     setScreen("processing");
     void submitRecording(recorder.recordingId, recorder.getElapsedSeconds());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, recorder.hitTimeLimit]);
 
   async function handleStart() {

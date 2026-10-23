@@ -32,7 +32,6 @@ export function useLibraryAgents() {
   // Use agents.length as dependency to avoid recreating map unnecessarily
   const agentInfoMap = useMemo(
     () => buildAgentInfoMap(agents),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [agents.length, agents.map((a) => a.id).join(",")],
   );
 
