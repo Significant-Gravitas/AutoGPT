@@ -165,6 +165,7 @@ export function BrainDumpStep() {
         {dump.screen === "failed" && (
           <RevealItem>
             <FailureState
+              mode={dump.submittedMode}
               onDownload={dump.handleDownloadRecording}
               onSkip={dump.handleSkip}
             />
@@ -195,7 +196,9 @@ export function BrainDumpStep() {
                     onClick={dump.showTyping}
                     className="underline underline-offset-4"
                   >
-                    type instead
+                    {dump.submittedMode === "typed"
+                      ? "edit your text"
+                      : "type instead"}
                   </Button>
                 )}
                 {isTyping && !dump.isMicBlocked && (

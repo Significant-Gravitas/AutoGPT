@@ -50,7 +50,11 @@ from backend.copilot.builder_context import (
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.constants import BUDGET_EXHAUSTED_NOTICE, EMPTY_FINISH_NOTICE
-from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.context import (
+    get_workspace_manager,
+    is_unattended_turn,
+    set_execution_context,
+)
 from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
@@ -2094,7 +2098,10 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = bool(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    auto_mode_supplement = approval_mode_supplement(await active_mode(user_id, session))
+    auto_mode_supplement = approval_mode_supplement(
+        await active_mode(user_id, session),
+        interactive=not is_unattended_turn(),
+    )
     experts_enabled = bool(user_id)
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     oversight_supplement = get_expert_oversight_supplement(

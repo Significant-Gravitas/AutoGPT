@@ -168,7 +168,13 @@ async def test_retrying_the_same_take_keeps_what_that_take_produced(
     update = upsert.await_args.kwargs["data"]["update"]
     assert create["recommendedProviders"] == Json(None)
     assert create["recommendedExperts"] == Json(None)
-    assert set(update) == {"recordingId", "status", "inputMode", "errorCode"}
+    assert set(update) == {
+        "recordingId",
+        "status",
+        "inputMode",
+        "errorCode",
+        "errorReason",
+    }
 
 
 @pytest.mark.asyncio
