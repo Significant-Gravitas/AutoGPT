@@ -17,7 +17,6 @@ import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
-import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
@@ -38,6 +37,7 @@ import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { useOpenPendingOnboarding } from "./useOpenPendingOnboarding";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
 import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
 import { useVoiceMode } from "../../voice/useVoiceMode";
@@ -226,6 +226,17 @@ export const ChatContainer = ({
     ? expertIdentity
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
+  useOpenPendingOnboarding({
+    expertId: expertIdentity?.id ?? null,
+    sessionId,
+    enabled:
+      messages.length === 0 &&
+      !isInputDisabled &&
+      !isLimitReached &&
+      !isStreaming &&
+      !isCreatingSession &&
+      !isExpertArchived,
+  });
   const chatExpert =
     !isResolvingExpertIdentity && expertIdentity && !expertIdentity.isArchived
       ? { id: expertIdentity.id, name: expertIdentity.name }
@@ -496,41 +507,29 @@ export const ChatContainer = ({
                   hideIntegrationsOnMobile={floatingControls === "newLayout"}
                 />
               </div>
-              <NewChatOnboarding
-                expertId={expertIdentity?.id ?? null}
-                enabled={
-                  messages.length === 0 &&
-                  !isInputDisabled &&
-                  !isLimitReached &&
-                  !isStreaming &&
-                  !isCreatingSession &&
-                  !isExpertArchived
-                }
-              >
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={isLoadingSession}
-                  isRestoringActiveSession={isRestoringActiveSession}
-                  restoreStatusMessage={restoreStatusMessage}
-                  activeStreamStartedAt={activeStreamStartedAt}
-                  sessionID={sessionId}
-                  sessionChatStatus={sessionChatStatus}
-                  sessionSentFrom={sessionSentFrom}
-                  hasMoreMessages={hasMoreMessages}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={onLoadMore}
-                  onRetry={handleRetry}
-                  turnStats={turnStats}
-                  queuedMessages={queuedMessages}
-                  pendingSend={pendingSend}
-                  bottomContentPadding={usageCardHeight + composerTabInset}
-                  expertIdentity={expertIdentity}
-                  isResolvingExpertIdentity={isResolvingExpertIdentity}
-                  floatingControls={floatingControls}
-                />
-              </NewChatOnboarding>
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
+                isLoading={isLoadingSession}
+                isRestoringActiveSession={isRestoringActiveSession}
+                restoreStatusMessage={restoreStatusMessage}
+                activeStreamStartedAt={activeStreamStartedAt}
+                sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
+                sessionSentFrom={sessionSentFrom}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
+                onRetry={handleRetry}
+                turnStats={turnStats}
+                queuedMessages={queuedMessages}
+                pendingSend={pendingSend}
+                bottomContentPadding={usageCardHeight + composerTabInset}
+                expertIdentity={expertIdentity}
+                isResolvingExpertIdentity={isResolvingExpertIdentity}
+                floatingControls={floatingControls}
+              />
               {archivedExpertIdentity ? (
                 <>
                   {hasComposerTab && (

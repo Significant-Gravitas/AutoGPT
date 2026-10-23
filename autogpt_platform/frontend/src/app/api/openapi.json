@@ -8347,7 +8347,7 @@
               "application/json": {
                 "schema": {
                   "anyOf": [
-                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "$ref": "#/components/schemas/PendingExpertOnboarding" },
                     { "type": "null" }
                   ],
                   "title": "Response Get Expert Onboarding"
@@ -30866,6 +30866,14 @@
         "required": ["messages", "count"],
         "title": "PeekPendingMessagesResponse",
         "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
+      },
+      "PendingExpertOnboarding": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "PendingExpertOnboarding"
       },
       "PendingHumanReviewModel": {
         "properties": {
