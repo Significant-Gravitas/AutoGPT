@@ -101,6 +101,7 @@ export function ExpertWorkflowCardMenu({
           {libraryHref && expertId ? <DropdownMenuSeparator /> : null}
           {expertId ? (
             <DropdownMenuItem
+              // TODO(tokens): no exact role: text-red-600, focus:text-red-600
               className="flex items-center gap-2 text-red-600 focus:text-red-600"
               onSelect={() => setIsRemoveOpen(true)}
             >

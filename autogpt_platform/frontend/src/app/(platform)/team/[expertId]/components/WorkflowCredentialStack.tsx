@@ -54,7 +54,7 @@ export function WorkflowCredentialStack({ providers }: Props) {
           key={provider}
           role="listitem"
           className={cn(
-            "flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-white ring-2 ring-white",
+            "flex size-7 items-center justify-center rounded-full border border-border-base bg-surface ring-2 ring-white",
             index > 0 && "-ml-2",
             ["z-30", "z-20", "z-10"][index],
           )}
@@ -72,7 +72,7 @@ export function WorkflowCredentialStack({ providers }: Props) {
           as="span"
           tone="secondary"
           role="listitem"
-          className="-ml-2 flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 ring-2 ring-white"
+          className="-ml-2 flex size-7 items-center justify-center rounded-full border border-border-base bg-surface-hover ring-2 ring-white"
           aria-label={`${hidden} more`}
         >
           +{hidden}

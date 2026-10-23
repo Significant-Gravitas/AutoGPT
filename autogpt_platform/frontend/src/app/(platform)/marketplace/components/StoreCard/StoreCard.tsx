@@ -50,7 +50,8 @@ export function StoreCard({
 
   return (
     <div
-      className="group relative flex h-[26rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+      // TODO(tokens): no exact role: shadow-[…], hover:shadow-[…]
+      className="group relative flex h-[26rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-border-base/80 bg-surface p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -80,13 +81,16 @@ export function StoreCard({
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-100" />
+          <div
+            // TODO(tokens): no exact role: bg-violet-100
+            className="absolute inset-0 rounded-xl bg-violet-100"
+          />
         )}
       </div>
 
       <div className="mt-4 flex w-full flex-1 flex-col">
         <h3
-          className="line-clamp-1 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+          className="line-clamp-1 font-sans text-lg font-semibold tracking-title text-foreground-strong"
           title={agentName}
         >
           {agentName}
@@ -102,18 +106,18 @@ export function StoreCard({
               )}
               <AvatarFallback size={20}>{creatorName}</AvatarFallback>
             </Avatar>
-            <span className="truncate text-[13px] text-zinc-500">
+            <span className="truncate text-body-sm leading-inherit text-foreground-tertiary">
               by {creatorName}
             </span>
           </div>
         )}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
           {description}
         </p>
       </div>
 
       <div className="mt-auto flex w-full items-center pt-3">
-        <span className="flex items-center gap-2 text-xs text-zinc-500">
+        <span className="flex items-center gap-2 text-xs text-foreground-tertiary">
           {runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
           {rating >= 1 && (
             <span
@@ -121,7 +125,7 @@ export function StoreCard({
               role="img"
               aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
             >
-              <span className="font-medium text-zinc-700">
+              <span className="font-medium text-foreground-body">
                 {rating.toFixed(1)}
               </span>
               {StarRatingIcons(rating)}

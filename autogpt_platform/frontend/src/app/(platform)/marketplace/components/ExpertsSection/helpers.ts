@@ -32,43 +32,62 @@ export interface ExpertAccent {
 
 const ACCENTS: Record<string, ExpertAccent> = {
   violet: {
+    // TODO(tokens): no exact role: bg-[…]
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
     washWide:
+      // TODO(tokens): no exact role: bg-[…]
       "bg-[linear-gradient(180deg,rgba(139,92,246,0.10),rgba(139,92,246,0.03)_60%,transparent)]",
-    pill: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-600/10",
-    band: "bg-violet-50/60",
+    // TODO(tokens): no exact role: ring-violet-600/10
+    pill: "bg-accent-surface text-accent-strong ring-1 ring-inset ring-violet-600/10",
+    band: "bg-accent-surface/60",
+    // TODO(tokens): no exact role: to-violet-50, text-violet-800, ring-violet-500/20, shadow-[…]
     chip: "bg-gradient-to-b from-white to-violet-50 text-violet-800 ring-1 ring-inset ring-violet-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
+    // TODO(tokens): no exact role: text-violet-500
     icon: "text-violet-500",
     roleIcon: Megaphone01Icon,
   },
   amber: {
+    // TODO(tokens): no exact role: bg-[…]
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(245,158,11,0.10),transparent_70%)]",
     washWide:
+      // TODO(tokens): no exact role: bg-[…]
       "bg-[linear-gradient(180deg,rgba(245,158,11,0.10),rgba(245,158,11,0.03)_60%,transparent)]",
-    pill: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10",
-    band: "bg-amber-50/60",
+    // TODO(tokens): no exact role: ring-amber-600/10
+    pill: "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-amber-600/10",
+    band: "bg-warning-surface/60",
+    // TODO(tokens): no exact role: to-amber-50, text-amber-800, ring-amber-500/20, shadow-[…]
     chip: "bg-gradient-to-b from-white to-amber-50 text-amber-800 ring-1 ring-inset ring-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
-    icon: "text-amber-500",
+    icon: "text-warning",
     roleIcon: ChartIncreaseIcon,
   },
   sky: {
+    // TODO(tokens): no exact role: bg-[…]
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(14,165,233,0.10),transparent_70%)]",
     washWide:
+      // TODO(tokens): no exact role: bg-[…]
       "bg-[linear-gradient(180deg,rgba(14,165,233,0.10),rgba(14,165,233,0.03)_60%,transparent)]",
+    // TODO(tokens): no exact role: bg-sky-50, text-sky-700, ring-sky-600/10
     pill: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/10",
+    // TODO(tokens): no exact role: bg-sky-50/60
     band: "bg-sky-50/60",
+    // TODO(tokens): no exact role: to-sky-50, text-sky-800, ring-sky-500/20, shadow-[…]
     chip: "bg-gradient-to-b from-white to-sky-50 text-sky-800 ring-1 ring-inset ring-sky-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
+    // TODO(tokens): no exact role: text-sky-500
     icon: "text-sky-500",
     roleIcon: Settings01Icon,
   },
   zinc: {
+    // TODO(tokens): no exact role: bg-[…]
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(113,113,122,0.08),transparent_70%)]",
     washWide:
+      // TODO(tokens): no exact role: bg-[…]
       "bg-[linear-gradient(180deg,rgba(113,113,122,0.08),rgba(113,113,122,0.02)_60%,transparent)]",
-    pill: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/10",
-    band: "bg-zinc-100/60",
-    chip: "bg-gradient-to-b from-white to-zinc-50 text-zinc-700 ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
-    icon: "text-zinc-500",
+    // TODO(tokens): no exact role: ring-zinc-500/10
+    pill: "bg-surface-hover text-foreground-secondary ring-1 ring-inset ring-zinc-500/10",
+    band: "bg-surface-hover/60",
+    // TODO(tokens): no exact role: ring-zinc-500/20, shadow-[…]
+    chip: "bg-gradient-to-b from-white to-surface-muted text-foreground-body ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
+    icon: "text-foreground-tertiary",
     roleIcon: Briefcase01Icon,
   },
 };

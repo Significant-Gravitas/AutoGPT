@@ -18,6 +18,7 @@ export function WorkflowTile({ agent }: Props) {
     <ShelfTile
       testId="workflow-tile"
       href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
+      // TODO(tokens): no exact role: bg-violet-100
       mediaClassName="bg-violet-100 ring-1 ring-black/5"
       media={
         agent.agent_image && !imageError ? (

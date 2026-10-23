@@ -105,12 +105,16 @@ export const AgentInfo = ({
           <div className="flex items-center gap-2">
             <Text
               variant="body"
-              className="font-semibold text-neutral-900 dark:text-neutral-100"
+              // TODO(tokens): no exact role: text-neutral-900
+              className="font-semibold text-neutral-900"
             >
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              <span
+                // TODO(tokens): no exact role: bg-blue-100, text-blue-800
+                className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800"
+              >
                 Current
               </span>
             )}
@@ -118,7 +122,8 @@ export const AgentInfo = ({
           {changelogEntry && (
             <Text
               variant="small"
-              className="text-neutral-500 dark:text-neutral-400"
+              // TODO(tokens): no exact role: text-neutral-500
+              className="text-neutral-500"
             >
               {new Date(changelogEntry.date).toLocaleDateString("en-US", {
                 year: "numeric",
@@ -134,7 +139,8 @@ export const AgentInfo = ({
           <div className="space-y-2">
             <Text
               variant="body"
-              className="text-neutral-700 dark:text-neutral-300"
+              // TODO(tokens): no exact role: text-neutral-700
+              className="text-neutral-700"
             >
               {changelogEntry.changes_summary}
             </Text>
@@ -146,8 +152,14 @@ export const AgentInfo = ({
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-0">
-      <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]">
-        <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+      <div
+        // TODO(tokens): no exact role: from-blue-200, to-indigo-200
+        className="mb-8 rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]"
+      >
+        <div
+          // TODO(tokens): no exact role: bg-gray-50
+          className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4"
+        >
           {/* Title */}
           <Text variant="h2" data-testid="agent-title" className="mb-3 w-full">
             {name}
@@ -176,7 +188,10 @@ export const AgentInfo = ({
           </div>
 
           {/* Short Description */}
-          <div className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+          <div
+            // TODO(tokens): no exact role: text-neutral-600
+            className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7"
+          >
             {shortDescription}
           </div>
 
@@ -185,6 +200,7 @@ export const AgentInfo = ({
             {user && (
               <Button
                 variant="primary"
+                // TODO(tokens): no exact role: border-violet-600, bg-violet-600, hover:border-violet-500, hover:bg-violet-500, hover:shadow-[…]
                 className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
                 data-testid="agent-add-library-button"
                 disabled={isAddingAgentToLibrary}
@@ -219,7 +235,11 @@ export const AgentInfo = ({
           {/* Download */}
           <div className="mt-3 flex w-full items-center justify-between gap-2">
             <div className="flex items-center gap-0">
-              <Text variant="body" className="text-neutral-500">
+              <Text
+                // TODO(tokens): no exact role: text-neutral-500
+                variant="body"
+                className="text-neutral-500"
+              >
                 Want to use this workflow locally?
               </Text>
               <Button
@@ -246,12 +266,17 @@ export const AgentInfo = ({
         <div className="flex w-full flex-col gap-4 lg:gap-6">
           {/* Description Section */}
           <div className="mb-4 w-full">
-            <Text variant="h5" className="mb-1.5 text-[1.3rem]">
+            <Text
+              // TODO(tokens): SECRT-3152 rare size: text-[1.3rem]
+              variant="h5"
+              className="mb-1.5 text-[1.3rem]"
+            >
               Description
             </Text>
             <Text
               variant="body"
               data-testid={"agent-description"}
+              // TODO(tokens): no exact role: text-neutral-600
               className="text-md whitespace-pre-line text-neutral-600"
             >
               {longDescription}
@@ -260,7 +285,11 @@ export const AgentInfo = ({
 
           {/* Categories */}
           <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 md:px-2">
-            <Text variant="h5" className="mb-1.5 text-[1.3rem]">
+            <Text
+              // TODO(tokens): SECRT-3152 rare size: text-[1.3rem]
+              variant="h5"
+              className="mb-1.5 text-[1.3rem]"
+            >
               Categories
             </Text>
             {categories.filter((c) => c.trim()).length > 0 ? (
@@ -271,6 +300,7 @@ export const AgentInfo = ({
                     <Badge
                       variant="info"
                       key={index}
+                      // TODO(tokens): no exact role: border-purple-100, bg-purple-50, text-purple-800
                       className="border border-purple-100 bg-purple-50 text-purple-800"
                     >
                       {category}
@@ -278,7 +308,11 @@ export const AgentInfo = ({
                   ))}
               </div>
             ) : (
-              <Text variant="body" className="text-neutral-400">
+              <Text
+                // TODO(tokens): no exact role: text-neutral-400
+                variant="body"
+                className="text-neutral-400"
+              >
                 None
               </Text>
             )}
@@ -287,7 +321,11 @@ export const AgentInfo = ({
           {/* Version history */}
           <div className="flex w-full flex-col gap-1.5 sm:gap-2 md:px-2">
             <div className="flex items-baseline justify-start">
-              <Text variant="h5" className="text-[1.3rem]">
+              <Text
+                // TODO(tokens): SECRT-3152 rare size: text-[1.3rem]
+                variant="h5"
+                className="text-[1.3rem]"
+              >
                 Version
               </Text>
               {allVersions.length > 0 && (
@@ -301,6 +339,7 @@ export const AgentInfo = ({
                     <Button
                       variant="ghost"
                       size="small"
+                      // TODO(tokens): no exact role: text-violet-600, hover:text-violet-500
                       className="text-violet-600 hover:text-violet-500"
                     >
                       (Changelog)
@@ -315,10 +354,18 @@ export const AgentInfo = ({
               )}
             </div>
             <div className="flex w-full items-center justify-start gap-8">
-              <Text variant="body" className="text-neutral-600">
+              <Text
+                // TODO(tokens): no exact role: text-neutral-600
+                variant="body"
+                className="text-neutral-600"
+              >
                 {version}.0
               </Text>
-              <Text variant="body" className="text-neutral-600">
+              <Text
+                // TODO(tokens): no exact role: text-neutral-600
+                variant="body"
+                className="text-neutral-600"
+              >
                 Last updated {formatTimeAgo(lastUpdated)}
               </Text>
             </div>

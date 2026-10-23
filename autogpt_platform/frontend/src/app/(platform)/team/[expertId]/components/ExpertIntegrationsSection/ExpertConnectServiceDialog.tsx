@@ -195,11 +195,11 @@ export function ExpertConnectServiceDialog({
                           ))}
                         </div>
                         {providers.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-8 text-center">
+                          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-base py-8 text-center">
                             <Icon
                               icon={Plug01Icon}
                               size={24}
-                              className="text-[#83838C]"
+                              className="text-foreground-tertiary"
                             />
                             <Text variant="body" tone="secondary">
                               {query.trim()

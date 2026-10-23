@@ -27,7 +27,8 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
       aria-label={`${expert.name} budget`}
       style={
         color
-          ? { color: `color-mix(in srgb, ${color} 55%, #18181b)` }
+          ? // TODO(tokens): #18181b equals --color-primary, a button role, not an ink to tint with; needs an ink role
+            { color: `color-mix(in srgb, ${color} 55%, #18181b)` }
           : undefined
       }
       className={cn("flex w-full shrink-0 flex-col gap-1.5", className)}
@@ -47,7 +48,7 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
             size="icon-xs"
             leadingIcon={PencilEdit02Icon}
             aria-label="Edit budget"
-            className={cn(color && "text-inherit hover:bg-white/50")}
+            className={cn(color && "text-inherit hover:bg-surface/50")}
             onClick={() => setIsEditOpen(true)}
           />
         </div>

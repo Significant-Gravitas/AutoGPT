@@ -95,18 +95,21 @@ export function ExpertSchedulesSection({
               key="clock"
               icon={Clock01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500
               className="text-sky-500"
             />,
             <Icon
               key="repeat"
               icon={RepeatIcon}
               size={22}
+              // TODO(tokens): no exact role: text-emerald-500
               className="text-emerald-500"
             />,
             <Icon
               key="calendar"
               icon={Calendar03Icon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500
               className="text-violet-500"
             />,
           ]}

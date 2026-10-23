@@ -125,7 +125,7 @@ export function UseExistingCredentialsDialog({
               <button
                 type="button"
                 onClick={() => setSelectedProvider(null)}
-                className="flex w-fit items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+                className="flex w-fit items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-emphasis"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
@@ -146,6 +146,7 @@ export function UseExistingCredentialsDialog({
                   return (
                     <li
                       key={credential.id}
+                      // TODO(tokens): no exact role: bg-neutral-100
                       className="flex items-center gap-3 rounded-xl bg-neutral-100 px-3 py-2.5"
                     >
                       <IntegrationLogo

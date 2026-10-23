@@ -34,7 +34,7 @@ export function ActivityChart({ days }: Props) {
               className="size-2.5 rounded-sm"
               style={{ backgroundColor: SERIES_COLORS[series.key] }}
             />
-            <Text variant="small" className="!text-zinc-600">
+            <Text variant="small" className="!text-foreground-secondary">
               {series.label}
             </Text>
           </li>
@@ -46,12 +46,17 @@ export function ActivityChart({ days }: Props) {
             data={days}
             margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
           >
-            <CartesianGrid vertical={false} stroke="#f0f0ef" />
+            <CartesianGrid
+              // TODO(tokens): no exact role: #f0f0ef
+              vertical={false}
+              stroke="#f0f0ef"
+            />
             <XAxis
               dataKey="label"
               tickLine={false}
               axisLine={false}
               interval={6}
+              // TODO(tokens): #71717a equals muted-foreground and fontSize 11 equals caption-sm, but recharts takes literals
               tick={{ fontSize: 11, fill: "#71717a" }}
             />
             <YAxis
@@ -59,14 +64,20 @@ export function ActivityChart({ days }: Props) {
               tickLine={false}
               axisLine={false}
               width={48}
+              // TODO(tokens): #71717a equals muted-foreground and fontSize 11 equals caption-sm, but recharts takes literals
               tick={{ fontSize: 11, fill: "#71717a" }}
             />
-            <Tooltip cursor={{ fill: "#f4f4f5" }} content={<ChartTooltip />} />
+            <Tooltip
+              // TODO(tokens): #f4f4f5 equals muted, but recharts takes a literal fill
+              cursor={{ fill: "#f4f4f5" }}
+              content={<ChartTooltip />}
+            />
             <Bar
               dataKey="sessions"
               name="Conversations"
               stackId="activity"
               fill={SERIES_COLORS.sessions}
+              // TODO(tokens): no exact role: #ffffff
               stroke="#ffffff"
               strokeWidth={2}
               maxBarSize={16}
@@ -76,6 +87,7 @@ export function ActivityChart({ days }: Props) {
               name="Workflow runs"
               stackId="activity"
               fill={SERIES_COLORS.runs}
+              // TODO(tokens): no exact role: #ffffff
               stroke="#ffffff"
               strokeWidth={2}
               radius={[4, 4, 0, 0]}
@@ -98,7 +110,10 @@ function ChartTooltip({ active, payload }: TooltipProps) {
   if (!day) return null;
 
   return (
-    <div className="rounded-md bg-zinc-900 px-3 py-2 text-xs text-zinc-50 shadow-sm">
+    <div
+      // TODO(tokens): no exact role: text-zinc-50
+      className="rounded-md bg-action-hover px-3 py-2 text-xs text-zinc-50 shadow-sm"
+    >
       <p className="mb-1 font-medium">{day.label}</p>
       {SERIES.map((series) => (
         <p key={series.key} className="flex items-center gap-1.5 tabular-nums">
