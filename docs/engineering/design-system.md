@@ -2,7 +2,7 @@
 
 The rules for frontend styling in `autogpt_platform/frontend`, and the lint rule that enforces each one. Every `@shadcn/lint` message ends with "See docs/engineering/design-system.md." (`settings.shadcn.note` in `.oxlintrc.json`), which is this page.
 
-`pnpm lint` runs ESLint (`.eslintrc.json`) and oxlint with `@shadcn/lint` (`.oxlintrc.json`). Directories that are not migrated yet get the `shadcn/*` rules at `warn` through the `overrides` in `.oxlintrc.json`, and some get the ESLint import rules at `warn` in `.eslintrc.json`; those lists are the migration checklist. On a pull request, CI also runs `.oxlintrc.strict.json` on every `.tsx` file the PR adds or changes, so a file you touch must pass the `shadcn/*` rules at `error` even in a directory that is still at `warn`.
+`pnpm lint` runs ESLint (`.eslintrc.json`) and oxlint with `@shadcn/lint` (`.oxlintrc.json`). Directories that are not migrated yet get the `shadcn/*` rules at `warn` through the `overrides` in `.oxlintrc.json`, and some get the ESLint import rules at `warn` in `.eslintrc.json`; those lists are the migration checklist. On a pull request, CI also runs `.oxlintrc.strict.json`, which has no `warn` list, on every `.tsx` file the PR adds or changes. Until the migration lands that step is report-only: it lists the violations in the files you touched (job summary and warning annotations) and does not fail CI (SECRT-3153 makes it blocking). Fix what you touch.
 
 ## Tokens
 
@@ -32,9 +32,11 @@ No `style={{}}` or `<style>` for static values; pass a value known only at runti
 
 ## Typography
 
-Size, line-height and letter-spacing come from the text tokens in `tailwind.config.ts` or from a `Text` variant. The named tokens match the `Text` variants: `text-h1` … `text-h5`, `text-lead`, `text-large`, `text-body`, `text-small`, `text-label`, `text-eyebrow`, each with a `leading-*` of the same name, plus `tracking-h1`, `tracking-h2`, `tracking-h3`, `tracking-label` and `tracking-eyebrow`. Numeric sizes are px at a 16px root and carry no line-height: `text-5`, `text-9` to `text-16`, `text-20`, `text-22`, `text-23`, `text-26`, `text-28`. Extra line-heights are `leading-4.5`, `leading-5.5`, `leading-6.5` and `leading-14`; extra tracking is `tracking-display`, `tracking-heading`, `tracking-title`, `tracking-caps` and `tracking-caps-wide`. Weights use Tailwind's scale (`font-medium`, `font-semibold`).
+Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`) and `tone` for the colour. The variants are `h1` to `h5`, `lead`, `large`, `body` and `small` (with `-medium` weights, plus `-semibold` on `lead` and `large`), `label` and `eyebrow`. Rule: `shadcn/no-restyle` (the `Text` contract: `<Text>` owns its typography and colour, and `className` takes layout, truncation, wrapping and alignment only).
 
-No `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. Rules: `shadcn/no-arbitrary-values`, `shadcn/no-restyle` (the `Text` contract: `<Text>` owns its typography and colour), `shadcn/no-inline-styles`.
+Use a role class only where `Text` can't render the element identically (same tag, display and margins), and inside primitives. Each role bundles its line-height: `text-tiny` (10/14px), `text-caption-sm` (11/16), `text-caption` (12/18), `text-body-sm` (13/20), `text-body` (14/22), `text-body-md` (15/24), `text-body-lg` (16/26), `text-lead` (20/28), `text-heading-sm` (22/24), `text-heading` (28/40), `text-title` (32/40) and `text-display` (44/56). Override the line-height only with `leading-inherit`, `leading-4.5`, `leading-5.5`, `leading-6.5` or a Tailwind step. Letter-spacing is `tracking-display`, `tracking-heading`, `tracking-title`, `tracking-caps` or `tracking-eyebrow` (all in em), and weights use Tailwind's scale (`font-medium`, `font-semibold`). When you swap a raw element for `Text`, it must render identically; if it can't, keep the role classes. Choosing `Text` over role classes is a review check, not a lint rule.
+
+Never use raw sizes: `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. The rare sizes that are still raw (5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px, fractional rems, the `Text` `label` size and the rem-based `Text` tracking) carry `// TODO(tokens): SECRT-3152` until they are snapped; never round one to the nearest role. Rules: `shadcn/no-arbitrary-values`, `shadcn/no-inline-styles`.
 
 ## Dark mode
 
