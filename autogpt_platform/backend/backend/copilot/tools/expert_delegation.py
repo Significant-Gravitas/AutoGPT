@@ -37,6 +37,11 @@ MAX_DELEGATION_DEPTH = MAX_DEPTH
 # can close the framing early and open a block of its own.
 _FRAMING_DELIMITERS = str.maketrans("", "", "[]")
 
+# Titles people put in front of their name, skipped when picking a first name.
+_NAME_TITLES = frozenset(
+    {"mr", "mrs", "ms", "miss", "mx", "dr", "prof", "sir", "dame", "lord", "lady"}
+)
+
 
 def sent_from_metadata(
     session: ChatSession, expert_name: str | None = None
@@ -83,8 +88,13 @@ async def user_first_name(user_id: str) -> str | None:
 
 
 def first_name(name: str | None) -> str | None:
-    """The first word of a stored name, bracket-free and capped, or ``None``."""
+    """The first word of a stored name after any leading title, bracket-free
+    and capped, or ``None``. "Dr. Priya Shah" is Priya, not "Dr.", and a
+    "Mr." or "Mrs." must not put back the gender this name is meant to avoid.
+    """
     words = (name or "").translate(_FRAMING_DELIMITERS).split()
+    while words and words[0].rstrip(".").lower() in _NAME_TITLES:
+        words = words[1:]
     return words[0][:USER_NAME_LIMIT] if words else None
 
 

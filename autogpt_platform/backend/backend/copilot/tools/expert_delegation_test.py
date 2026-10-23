@@ -23,6 +23,11 @@ from .expert_delegation import USER_NAME_LIMIT, team_owner, user_first_name
         ("", None),
         (None, None),
         ("A" * 200, "A" * USER_NAME_LIMIT),
+        ("Dr. Priya Shah", "Priya"),
+        ("Mrs Sam Okafor", "Sam"),
+        ("mr. dr. Alex", "Alex"),
+        ("Mx.", None),
+        ("Drew Barry", "Drew"),
     ],
 )
 @pytest.mark.asyncio
