@@ -386,8 +386,13 @@ class TestProgressTheUserSees:
     def test_every_shell_step_carries_a_purpose(self):
         assert "Give every `bash_exec` call a `purpose`" in _progress_section()
 
-    def test_tables_and_data_are_shared_as_files_not_pasted(self):
-        assert "Never paste a table, CSV or JSON" in _progress_section()
+    def test_raw_data_is_shared_as_a_file_unless_the_user_asked_for_it(self):
+        section = _progress_section()
+        assert (
+            "Never paste raw CSV or JSON, or a whole data file, into a reply "
+            "unless the user asked for it." in section
+        )
+        assert "Never paste a table" not in section
 
     def test_the_reply_style_no_longer_says_raw_tool_calls_are_seen(self):
         assert "The user already sees the tool calls." not in (
