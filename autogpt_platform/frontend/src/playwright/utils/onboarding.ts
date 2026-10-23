@@ -138,11 +138,20 @@ export async function completeOnboardingWizard(
   const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
-  await expect(skipHiring).toBeVisible({
+  // A role no seeded template covers gets no cards, so the step's only way
+  // on is "Continue"; wait for the team so the label has stopped changing.
+  const leaveHiring = skipHiring.or(
+    page.getByRole("button", { name: "Continue", exact: true }),
+  );
+  await expect(page.getByTestId("hire-step-grid")).toBeAttached({
     timeout: 10000,
   });
-  await skipHiring.click();
-  await expect(skipHiring).toBeHidden();
+  await expect(page.getByTestId("hire-step-pending").first()).toBeHidden({
+    timeout: 30000,
+  });
+  await expect(leaveHiring).toBeVisible({ timeout: 10000 });
+  await leaveHiring.click();
+  await expect(leaveHiring).toBeHidden();
   await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
   if (await connect.isVisible()) {
     await page.getByRole("button", { name: "Next", exact: true }).click();
