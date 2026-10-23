@@ -17,9 +17,7 @@ export function getPaidMilestones({
   cadence,
   now = new Date(),
 }: Args): Milestone[] {
-  const renews = new Date(now);
-  if (cadence === "year") renews.setFullYear(now.getFullYear() + 1);
-  else renews.setMonth(now.getMonth() + 1);
+  const renews = getRenewalDate(now, cadence);
   return [
     {
       key: "today",
@@ -44,4 +42,19 @@ export function getPaidMilestones({
       detail: "You keep access until the end of the period you've paid for.",
     },
   ];
+}
+
+// Stripe renews on the same day of the next period, or on its last day when
+// that month is shorter (31 Jan renews on 28 Feb, 29 Feb on 28 Feb).
+export function getRenewalDate(now: Date, cadence: "month" | "year") {
+  const months = cadence === "year" ? 12 : 1;
+  const target = new Date(now.getFullYear(), now.getMonth() + months, 1);
+  const lastDay = new Date(
+    target.getFullYear(),
+    target.getMonth() + 1,
+    0,
+  ).getDate();
+  target.setDate(Math.min(now.getDate(), lastDay));
+  target.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+  return target;
 }
