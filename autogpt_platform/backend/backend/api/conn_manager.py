@@ -12,6 +12,7 @@ from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
 from backend.data import redis_client as redis
+from backend.data.db import retry_on_dead_engine
 from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import (
     ExecutionEventType,
@@ -250,7 +251,9 @@ class ConnectionManager:
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str:
         # Hash-tagged channel needs graph_id; resolve once per subscribe.
-        meta = await get_graph_execution_meta(user_id, graph_exec_id)
+        meta = await retry_on_dead_engine(
+            lambda: get_graph_execution_meta(user_id, graph_exec_id)
+        )
         if meta is None:
             raise ValueError(
                 f"graph_exec #{graph_exec_id} not found for user #{user_id}"
