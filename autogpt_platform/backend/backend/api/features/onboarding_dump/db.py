@@ -102,6 +102,7 @@ async def start_dump(
         "status": BrainDumpStatus.recording_uploaded,
         "inputMode": input_mode,
         "errorCode": None,
+        "errorReason": None,
         **(_TAKE_OWNED_RESET if is_new_take else {}),
     }
     return await OnboardingBrainDump.prisma().upsert(
@@ -161,10 +162,20 @@ async def claim_transition(
     return updated == 1
 
 
-async def mark_failed(user_id: str, recording_id: str, error_code: str) -> None:
-    """Record a terminal failure without ever dropping the stored audio."""
+async def mark_failed(
+    user_id: str, recording_id: str, error_code: str, reason: str | None = None
+) -> None:
+    """Record a terminal failure without ever dropping the stored audio.
+
+    ``reason`` says what decided a quality-gate rejection; any other failure
+    clears the one an earlier attempt left.
+    """
     await update_dump(
-        user_id, recording_id, status=BrainDumpStatus.failed, errorCode=error_code
+        user_id,
+        recording_id,
+        status=BrainDumpStatus.failed,
+        errorCode=error_code,
+        errorReason=reason,
     )
 
 

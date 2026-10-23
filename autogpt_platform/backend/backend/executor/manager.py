@@ -32,6 +32,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
     GraphExecutionEntry,
+    GraphExecutionMeta,
     NodeExecutionEntry,
     NodeExecutionResult,
     NodesInputMasks,
@@ -141,6 +142,74 @@ def _get_execution_credit_balance(
     if organization_id:
         return db_client.get_org_credits(org_id=organization_id)
     return db_client.get_credits(graph_exec.user_id)
+
+
+RUN_OUTSIDE_ITS_ORG_ERROR = (
+    "This run was stopped because it was queued in an organization or team "
+    "you aren't a member of. New runs go to your own."
+)
+
+
+def _in_the_runners_org(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> bool:
+    """Whether the run is queued in an org (and team) its user belongs to.
+
+    ``add_graph_execution`` makes sure of that when it creates a run, so this
+    only fails for a run queued before it did, or one whose user has left the
+    org or team since it was created, resumed runs included. Such a run is
+    stopped rather than moved, since it may already have started there.
+    Expert runs keep their own tenancy.
+    """
+    context = graph_exec.execution_context
+    if context.expert_id or not context.organization_id:
+        return True
+    organization_id, team_id = db_client.resolve_member_tenancy(
+        graph_exec.user_id, context.organization_id, context.team_id
+    )
+    return (organization_id, team_id) == (context.organization_id, context.team_id)
+
+
+def _stop_outside_its_org(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    exec_meta: GraphExecutionMeta,
+    exec_stats: GraphExecutionStats,
+    log_metadata: LogMetadata,
+) -> None:
+    """Fail a run that failed ``_in_the_runners_org`` before it runs any
+    further, keeping the record of what it has already done.
+
+    The run's FAILED write fails its running nodes too
+    (``update_graph_execution_stats`` cascades). The ones still waiting are
+    failed here first, so a stop cut short in between leaves the run running,
+    to be picked up and stopped again. Once the run has failed, it's recorded
+    in the user's activity and analytics like any other failed run."""
+    log_metadata.warning(
+        f"Stopped graph execution #{graph_exec.graph_exec_id}: it was queued "
+        "in an org or team its user doesn't belong to."
+    )
+    for node_exec in db_client.get_node_executions(
+        graph_exec.graph_exec_id,
+        statuses=[ExecutionStatus.QUEUED, ExecutionStatus.REVIEW],
+    ):
+        update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec.node_exec_id,
+            status=ExecutionStatus.FAILED,
+        )
+    exec_stats.error = RUN_OUTSIDE_ITS_ORG_ERROR
+    if not update_graph_execution_state(
+        db_client=db_client,
+        graph_exec_id=graph_exec.graph_exec_id,
+        status=ExecutionStatus.FAILED,
+        stats=exec_stats,
+    ):
+        return
+    exec_meta.status = ExecutionStatus.FAILED
+    activity_events.handle_run_completed(db_client, graph_exec, exec_meta, exec_stats)
+    product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
 
 def _record_execution_failure(
@@ -1090,6 +1159,12 @@ class ExecutionProcessor:
         exec_stats.failure_reason = None
         exec_stats.activity_status = None
         exec_stats.correctness_score = None
+
+        if not _in_the_runners_org(db_client, graph_exec):
+            _stop_outside_its_org(
+                db_client, graph_exec, exec_meta, exec_stats, log_metadata
+            )
+            return
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,

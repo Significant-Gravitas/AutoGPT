@@ -386,10 +386,15 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     (``increment_execution_count``). Nested tool executions are sub-steps
     of a single block run from the user's perspective and should not push
     them into higher per-execution cost tiers.
+
+    Pins ``node_exec.pre_flight_charge`` to the block cost actually spent,
+    so the post-flight reconciliation settles against what the wallet paid
+    (as the main queue does), not against a re-derived catalogue estimate.
     """
 
     def _run():
-        total_cost, remaining, _ = charge_usage(node_exec, 0)
+        total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
+        node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
             handle_low_balance(
                 get_db_client(), node_exec.user_id, remaining, total_cost
@@ -468,7 +473,7 @@ def handle_insufficient_funds_notif(
         data=ZeroBalanceCause(
             cta_path="/settings/billing",
             agent=agent_name,
-            shortfall_display=f"{shortfall / 100:,.2f}",
+            shortfall_display=f"${shortfall / 100:,.2f}",
         ).model_dump(mode="json"),
     )
 
@@ -555,7 +560,7 @@ def _low_balance_cause(
     the alert says the balance is low without naming a date.
     """
     daily_rate = db_client.get_recent_daily_spend(user_id)
-    balance_display = f"{current_balance / 100:,.2f} credits"
+    balance_display = f"${current_balance / 100:,.2f}"
     scheduled_agents = db_client.count_scheduled_agents(user_id)
 
     if daily_rate <= 0:
@@ -570,7 +575,7 @@ def _low_balance_cause(
     return LowBalanceCause(
         cta_path="/settings/billing",
         days_left=days_left,
-        daily_rate_display=f"{daily_rate / 100:,.2f} credits",
+        daily_rate_display=f"${daily_rate / 100:,.2f}",
         balance_display=balance_display,
         runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
         scheduled_agents=scheduled_agents,
