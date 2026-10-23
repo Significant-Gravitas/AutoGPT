@@ -14,16 +14,20 @@ from backend.copilot.tools import TOOL_REGISTRY
 # SDK built-ins with compound names; "Read" or "Write" alone are English words.
 TOOL_NAMES = frozenset(TOOL_REGISTRY) | {"TodoWrite", "WebFetch", "WebSearch"}
 
-# A file the reply shares as a link renders as a card, not as a path.
-_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
 _CAPABILITY_ID = re.compile(r"\btool:[a-z_]+")
-_PATH = re.compile(r"(?:(?<=\s)|^)(?:~|\.{1,2})?/[\w.-]+(?:/[\w.-]+)+", re.MULTILINE)
+# Starts a line, or follows a space, quote, bracket or inline-code backtick.
+_PATH = re.compile(
+    r"(?:(?<=[\s`'\"(])|^)(?:~|\.{1,2})?/[\w.-]+(?:/[\w.-]+)+", re.MULTILINE
+)
 _FILE_NAME = re.compile(
     r"\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|js|ts|log|xlsx)\b"
 )
 _COMMAND = re.compile(
-    r"\b(?:sed|awk|grep|cat|cd|ls|mkdir|rm|cp|mv|curl|chmod|pip3?|npm|python3?|git)"
+    r"\b(?:(?:sed|awk|grep|cat|cd|ls|mkdir|rm|cp|mv|curl|chmod|pip3?|npm|python3?|git)"
     r"\s+(?:-{1,2}[\w-]+|[~./]\S*)"
+    r"|git\s+(?:status|add|commit|push|pull|clone|checkout|diff|log|init)\b"
+    r"|(?:pip3?|npm|pnpm|yarn)\s+(?:install|run)\b)"
 )
 _UUID = re.compile(
     r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE
@@ -32,13 +36,19 @@ _UUID = re.compile(
 
 def technical_terms(text: str, tool_names: Iterable[str]) -> list[str]:
     """Every technical token in ``text``, in the order the checks run, once each."""
-    remaining = _LINK.sub(" ", text)
+    remaining = _LINK.sub(_link_label, text)
     found: list[str] = []
     for pattern in (_CAPABILITY_ID, _tool_pattern(tool_names), _PATH, _FILE_NAME):
         found += pattern.findall(remaining)
         remaining = pattern.sub(" ", remaining)
     found += _COMMAND.findall(remaining) + _UUID.findall(remaining)
     return list(dict.fromkeys(found))
+
+
+def _link_label(link: re.Match[str]) -> str:
+    """A shared workspace file renders as a card, so it shows nothing; any
+    other link shows its label, which is read like the rest of the reply."""
+    return " " if link[2].startswith("workspace://") else f" {link[1]} "
 
 
 def _tool_pattern(tool_names: Iterable[str]) -> re.Pattern[str]:

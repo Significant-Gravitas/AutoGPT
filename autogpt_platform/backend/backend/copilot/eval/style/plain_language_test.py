@@ -47,6 +47,22 @@ def test_a_shared_file_link_is_not_a_leak():
     assert technical_terms(reply, _TOOLS) == []
 
 
+def test_a_link_label_is_still_read():
+    reply = "Done with [bash_exec](https://example.com/docs)."
+    assert technical_terms(reply, _TOOLS) == ["bash_exec"]
+
+
+def test_paths_in_inline_code_are_caught():
+    assert technical_terms("Saved it to `~/workspace/drafts`.", _TOOLS) == [
+        "~/workspace/drafts"
+    ]
+
+
+def test_common_subcommands_are_caught():
+    reply = "I ran git status, then npm install."
+    assert technical_terms(reply, _TOOLS) == ["git status", "npm install"]
+
+
 def test_the_registry_names_are_the_ones_checked():
     assert "bash_exec" in TOOL_NAMES and "run_capability" in TOOL_NAMES
 
