@@ -35,6 +35,9 @@ class FakeProvider:
         self.generation_lookups_fail = False
         self.faults: list[PlannedFault] = []
         self.faults_served: list[PlannedFault] = []
+        # The name the model calls its tool by on the Messages API. The SDK
+        # engine serves the copilot's tools over MCP, as mcp__copilot__<name>.
+        self.tool_name = wire.TOOL_NAME
         self.url = ""
         self._runner: web.AppRunner | None = None
         self._requests_per_turn: dict[int, int] = {}
@@ -95,6 +98,7 @@ class FakeProvider:
             reply=anthropic_reply(body["messages"]),
             usage=usage,
             ttl=ttl,
+            tool_name=self.tool_name,
         )
         return await _stream(request, sse)
 
