@@ -34,6 +34,7 @@ from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from tenacity import RetryCallState
 
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
@@ -42,7 +43,12 @@ from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
-from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
+from backend.util.retry import (
+    conn_retry,
+    create_deadline_retry_decorator,
+    create_retry_decorator,
+    stop_retry_loops,
+)
 from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
 
@@ -60,6 +66,9 @@ api_comm_max_wait = config.pyro_client_max_wait
 # call written into a connection as the server closes it fails with httpx.ReadError.
 rpc_server_keepalive_seconds = 60
 rpc_client_keepalive_expiry_seconds = rpc_server_keepalive_seconds / 2
+# How long a call waits out a server from the previous release, mid-rollout, that
+# lacks its route; longer than that, the method is more likely misnamed.
+rpc_client_missing_route_wait_seconds = 300
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -253,6 +262,13 @@ class HTTPClientError(Exception):
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
         super().__init__(f"HTTP {status_code}: {message}")
+
+
+class MissingRouteError(HTTPClientError):
+    """The server has no route for the method, e.g. it is on an older release."""
+
+    def __init__(self, method_name: str, base_url: str):
+        super().__init__(404, f"{base_url} has no RPC route '{method_name}'")
 
 
 class HTTPServerError(Exception):
@@ -680,6 +696,12 @@ def get_service_client(
         if not request_retry:
             return fn
 
+        missing_route_retry = create_deadline_retry_decorator(
+            MissingRouteError,
+            max_delay=rpc_client_missing_route_wait_seconds,
+            max_wait=10,
+            before_sleep=_warn_missing_route,
+        )
         # Use preconfigured retry decorator for service communication. It keeps
         # fn's sync/async shape, which its overloads can't express.
         return cast(
@@ -700,7 +722,7 @@ def get_service_client(
                     concurrent.futures.CancelledError,  # Future was cancelled
                     HTTPClientError,  # HTTP 4xx client errors - don't retry
                 ),
-            )(fn),
+            )(missing_route_retry(fn)),
         )
 
     class DynamicClient:
@@ -848,7 +870,10 @@ def get_service_client(
 
                     raise exception_class(*args)
 
-                # Otherwise categorize by HTTP status code
+                # Otherwise categorize by HTTP status code. An unmapped 404 is
+                # FastAPI's own: the server has no such route.
+                if status_code == 404:
+                    raise MissingRouteError(method_name, self.base_url)
                 if 400 <= status_code < 500:
                     # Client errors (4xx) - wrap to prevent retries
                     raise HTTPClientError(status_code, str(e))
@@ -996,6 +1021,15 @@ def get_service_client(
     client = cast(ASC, DynamicClient())
 
     return client
+
+
+def _warn_missing_route(retry_state: RetryCallState) -> None:
+    if retry_state.attempt_number == 1 and retry_state.outcome:
+        logger.warning(
+            f"{retry_state.outcome.exception()}; retrying for up to "
+            f"{rpc_client_missing_route_wait_seconds}s in case that server is on "
+            "an older release mid-rollout"
+        )
 
 
 def endpoint_to_sync(

@@ -4,13 +4,17 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from functools import wraps
 from uuid import uuid4
 
 from tenacity import (
+    RetryCallState,
     retry,
+    retry_if_exception_type,
     retry_if_not_exception_type,
     stop_after_attempt,
+    stop_after_delay,
     wait_exponential_jitter,
 )
 from tenacity.stop import stop_base
@@ -195,6 +199,31 @@ def create_retry_decorator(
             wait=wait,
             before_sleep=before_sleep,
             reraise=reraise,
+        )(func)
+
+    return decorator
+
+
+def create_deadline_retry_decorator(
+    retry_on: type[BaseException],
+    max_delay: float,
+    max_wait: float,
+    before_sleep: Callable[[RetryCallState], None],
+):
+    """Retry only *retry_on*, until *max_delay* seconds after the first attempt."""
+
+    def decorator(func):
+        return retry(
+            retry=retry_if_exception_type(retry_on),
+            stop=stop_after_delay(max_delay) | _StopOnShutdown(),
+            wait=wait_exponential_jitter(max=max_wait),
+            before_sleep=before_sleep,
+            reraise=True,
+            sleep=(
+                _interruptible_async_sleep
+                if inspect.iscoroutinefunction(func)
+                else _interruptible_sleep
+            ),
         )(func)
 
     return decorator

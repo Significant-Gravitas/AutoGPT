@@ -19,12 +19,14 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     GraphValidationError,
+    NotFoundError,
 )
 from backend.util.service import (
     AppService,
@@ -1343,3 +1345,117 @@ class _StartupRecordingService(AppService):
         async with super().lifespan(app):
             self.order.append("subclass startup")
             yield
+
+
+# ============================================================================
+# A client that meets a server from the previous release, during a rollout
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_path", ["sync", "async"])
+async def test_a_call_to_a_route_the_old_server_lacks_waits_for_the_new_one(
+    previous_release, call_path, caplog
+):
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+    if call_path == "sync":
+        call = asyncio.create_task(asyncio.to_thread(client.added_in_release))
+    else:
+        call = asyncio.create_task(client.added_in_release_async())
+    # Long enough for two retries against the previous release.
+    await asyncio.sleep(4)
+    assert not call.done()
+
+    previous_release.stop()
+    with RolloutServiceNewRelease():
+        assert await asyncio.wait_for(call, timeout=60) == 2
+
+    warnings = [r for r in caplog.records if "added_in_release" in r.getMessage()]
+    assert len(warnings) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_route_that_never_appears_fails_once_its_wait_runs_out(
+    previous_release, monkeypatch
+):
+    monkeypatch.setattr(service_module, "rpc_client_missing_route_wait_seconds", 2)
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+
+    started = time.monotonic()
+    with pytest.raises(HTTPClientError) as exc_info:
+        await asyncio.wait_for(client.added_in_release_async(), timeout=30)
+
+    assert exc_info.value.status_code == 404
+    assert "added_in_release" in str(exc_info.value)
+    assert time.monotonic() - started >= 2
+
+
+@pytest.mark.asyncio
+async def test_a_not_found_raised_by_the_method_is_not_retried(
+    previous_release, monkeypatch
+):
+    monkeypatch.setattr(service_module, "rpc_client_missing_route_wait_seconds", 2)
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+
+    with pytest.raises(NotFoundError, match="record-1"):
+        await asyncio.wait_for(client.lookup(), timeout=30)
+
+    assert await client.lookup_calls() == 1
+
+
+@pytest.fixture
+async def previous_release():
+    service = RolloutServicePreviousRelease()
+    service.start(background=True)
+    try:
+        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
+        yield service
+    finally:
+        service.stop()
+
+
+class RolloutServicePreviousRelease(AppService):
+    def __init__(self):
+        super().__init__()
+        self.lookups = 0
+
+    @classmethod
+    def get_port(cls) -> int:
+        return 18996
+
+    @expose
+    def lookup(self) -> int:
+        self.lookups += 1
+        raise NotFoundError("record-1 not found")
+
+    @expose
+    def lookup_calls(self) -> int:
+        return self.lookups
+
+
+class RolloutServiceNewRelease(RolloutServicePreviousRelease):
+    # Only the class's own exposed methods are served.
+    lookup = RolloutServicePreviousRelease.lookup
+    lookup_calls = RolloutServicePreviousRelease.lookup_calls
+
+    @expose
+    def added_in_release(self) -> int:
+        return 2
+
+    def __enter__(self):
+        super().__enter__()
+        get_service_client(RolloutServiceClient, request_retry=True).health_check()
+        return self
+
+
+class RolloutServiceClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return RolloutServiceNewRelease
+
+    added_in_release = RolloutServiceNewRelease.added_in_release
+    added_in_release_async = endpoint_to_async(
+        RolloutServiceNewRelease.added_in_release
+    )
+    lookup = endpoint_to_async(RolloutServicePreviousRelease.lookup)
+    lookup_calls = endpoint_to_async(RolloutServicePreviousRelease.lookup_calls)
