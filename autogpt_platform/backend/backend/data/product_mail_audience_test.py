@@ -41,8 +41,8 @@ async def _account(
     trial_ended_days_ago: int | None = None,
     plan_ended_days_ago: int | None = None,
 ) -> str:
-    """A user with the weekly briefing on, in a time zone of the test's own so
-    the briefing pass sees no one else."""
+    """A user with the weekly briefing on. The time zone must be a real one: a
+    check constraint on User.timezone rejects anything Postgres can't read."""
     user_id = str(uuid4())
     now = datetime.now(UTC)
     await User.prisma().create(
@@ -77,7 +77,9 @@ async def _account(
 async def test_the_briefing_pass_and_the_consumer_pick_the_same_accounts(
     server: SpinTestServer, subscribers: None
 ):
-    zone = f"Test/{uuid4()}"
+    # A quiet zone, but other accounts in a shared test database may be in it
+    # too: the pass is walked in full and only these accounts are compared.
+    zone = "Antarctica/Troll"
     ids: dict[str, str] = {}
     try:
         ids["free"] = await _account(zone)
@@ -94,7 +96,11 @@ async def test_the_briefing_pass_and_the_consumer_pick_the_same_accounts(
             "plan_ended_3_days_ago",
         }
 
-        candidates = await get_briefing_candidates([zone], None, 100)
+        candidate_ids: set[str] = set()
+        after_id = None
+        while page := await get_briefing_candidates([zone], after_id, 100):
+            candidate_ids.update(c.id for c in page)
+            after_id = page[-1].id
         now = datetime.now(UTC)
         consumer = set()
         for name, user_id in ids.items():
@@ -104,7 +110,7 @@ async def test_the_briefing_pass_and_the_consumer_pick_the_same_accounts(
                 consumer.add(name)
 
         by_id = {user_id: name for name, user_id in ids.items()}
-        assert {by_id[c.id] for c in candidates} == expected
+        assert {by_id[i] for i in candidate_ids if i in by_id} == expected
         assert consumer == expected
     finally:
         await User.prisma().delete_many(where={"id": {"in": list(ids.values())}})
@@ -114,7 +120,7 @@ async def test_the_briefing_pass_and_the_consumer_pick_the_same_accounts(
 async def test_a_plan_ending_starts_the_window_and_a_new_one_clears_it(
     server: SpinTestServer,
 ):
-    user_id = await _account(f"Test/{uuid4()}", SubscriptionTier.PRO)
+    user_id = await _account("UTC", SubscriptionTier.PRO)
     try:
         await set_subscription_tier(user_id, SubscriptionTier.NO_TIER)
         ended = await User.prisma().find_unique_or_raise(where={"id": user_id})

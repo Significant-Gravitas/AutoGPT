@@ -178,7 +178,8 @@ async def test_sync_subscription_from_stripe_active(billing_boundaries, tier):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": tier}
+            where={"id": "user-1"},
+            data={"subscriptionTier": tier, "subscriptionEndedAt": None},
         )
 
 

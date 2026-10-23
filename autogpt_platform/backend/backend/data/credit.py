@@ -1628,7 +1628,8 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
         "subscriptionTier": tier,
     }
     if tier == SubscriptionTier.NO_TIER:
-        # Conditional, so a repeated NO_TIER write doesn't restart the window.
+        # One conditional write, so the tier and the stamp change together and
+        # a repeated NO_TIER write doesn't restart the window.
         await User.prisma().update_many(
             where={
                 "id": user_id,
@@ -1638,7 +1639,7 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
         )
     else:
         data["subscriptionEndedAt"] = None
-    await User.prisma().update(where={"id": user_id}, data=data)
+        await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
 
 
