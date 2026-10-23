@@ -314,9 +314,7 @@ class TelegramAdapter(WebhookAdapter):
             channel_name=None if is_private else chat.get("title"),
             public_channel_id=None if is_private else chat_id,
             public_thread_id=None if is_private else topic_id,
-            post_channel_id=(
-                None if is_private else _encode_target(chat_id, _int_or_none(topic_id))
-            ),
+            post_channel_id=None if is_private else target_id,
             mentionable_users=_collect_mentionable_users(message),
             attachments=attachments,
             skipped_attachments=skipped,
@@ -739,9 +737,7 @@ def _context_from_callback_query(
         channel_name=None if is_private else chat.get("title"),
         public_channel_id=None if is_private else chat_id,
         public_thread_id=None if is_private else topic_id,
-        post_channel_id=(
-            None if is_private else _encode_target(chat_id, _int_or_none(topic_id))
-        ),
+        post_channel_id=None if is_private else target_id,
     )
 
 
@@ -755,10 +751,6 @@ def _topic_id(message: dict[str, Any]) -> str | None:
     if not message.get("is_topic_message") or thread_id is None:
         return None
     return str(thread_id)
-
-
-def _int_or_none(value: str | None) -> int | None:
-    return int(value) if value is not None else None
 
 
 def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str], ...]:

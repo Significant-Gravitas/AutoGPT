@@ -130,7 +130,15 @@ class TestDispatch:
         a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
         await a._dispatch_update(_group("@OurBot hi", message_thread_id=7))
         assert seen[0].public_thread_id is None
-        assert seen[0].post_channel_id == "-100555"
+        assert seen[0].post_channel_id == seen[0].channel_id == "-100555|7"
+
+    def test_a_button_click_in_a_reply_thread_posts_back_into_it(self):
+        message = _group("pick one", message_thread_id=7)
+        query = {"message": message["message"], "from": {"id": 42}}
+        ctx = _context_from_callback_query(query, "")
+        assert ctx is not None
+        assert ctx.public_thread_id is None
+        assert ctx.post_channel_id == ctx.channel_id == "-100555|7"
 
     @pytest.mark.asyncio
     async def test_reply_to_the_bot_is_flagged(self):

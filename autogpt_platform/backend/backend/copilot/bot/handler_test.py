@@ -615,9 +615,9 @@ class TestBatching:
             if len(contexts) == 1:
                 await handler._enqueue_and_process(thread_ctx, adapter, "target-1")
 
-        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
         first_ctx = _ctx(text="first")
-        await handler._enqueue_and_process(first_ctx, adapter, "target-1")
+        with patch.object(handler, "_stream_batch", new=fake_stream_batch):
+            await handler._enqueue_and_process(first_ctx, adapter, "target-1")
 
         assert contexts == [first_ctx, thread_ctx]
 
@@ -1474,8 +1474,8 @@ class TestAttachments:
         async def fake_stream_batch(batch, ctx, ad, tid, **_):
             streamed.append(ctx.platform)
 
-        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
-        await handler._enqueue_and_process(telegram, _adapter(), "42")
+        with patch.object(handler, "_stream_batch", new=fake_stream_batch):
+            await handler._enqueue_and_process(telegram, _adapter(), "42")
 
         assert streamed == ["telegram"]
         assert handler._targets[("discord", "42")].pending == []
