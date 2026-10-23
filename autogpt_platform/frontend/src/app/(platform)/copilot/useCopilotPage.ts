@@ -11,7 +11,13 @@ import {
 } from "@/services/onboarding/brain-dump-handoff";
 import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   buildKickoffMessage,
@@ -60,6 +66,12 @@ function hasAssistantTail(messages: UIMessage[]) {
   return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
 }
 
+function readCachedSessionMessages(sessionId: string | null) {
+  return sessionId
+    ? useCopilotStreamStore.getState().getMessageSnapshot(sessionId)
+    : [];
+}
+
 function getLatestKickoffAttemptToken(messages: UIMessage[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const attemptToken = getKickoffAttemptToken(messages[index]);
@@ -68,9 +80,7 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
   return null;
 }
 
-export function useCopilotPage({
-  isStreamRuntime = false,
-}: { isStreamRuntime?: boolean } = {}) {
+function useCopilotPageSession() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
 
   const [expertIdParam] = useQueryState("expertId", parseAsString);
@@ -182,11 +192,86 @@ export function useCopilotPage({
     // user had not chosen. Entitlement is the server's call, not the flag's.
     copilotModel: copilotLlmModel,
   };
-  // The host keys its mount by the flag, so this never changes within one.
-  const useStream = isStreamRuntime
-    ? useCopilotRuntimeStream
-    : useCopilotStream;
-  const stream = useStream(streamArgs);
+  return {
+    user,
+    isUserLoading,
+    isLoggedIn,
+    kickoffParam,
+    setKickoffParam,
+    kickoffExpertId,
+    isKickoffResolving,
+    setInitialPrompt,
+    completeGreeting,
+    sessionId,
+    setSessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
+    hydratedMessages,
+    rawSessionMessages,
+    historicalTurnStats,
+    activeStreamStartedAt,
+    hasMoreMessages,
+    oldestSequence,
+    isLoadingSession,
+    isSessionError,
+    isSessionNotFound,
+    createSession,
+    isCreatingSession,
+    sessionDryRun,
+    sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
+    chatLlmAuthProvider,
+    expertIdentity,
+    isResolvingExpertIdentity,
+    isExpertSendLocked,
+    streamArgs,
+  };
+}
+
+type CopilotPageSession = ReturnType<typeof useCopilotPageSession>;
+type CopilotPageStream =
+  | ReturnType<typeof useCopilotStream>
+  | ReturnType<typeof useCopilotRuntimeStream>;
+
+function useCopilotPageChat(
+  session: CopilotPageSession,
+  stream: CopilotPageStream,
+) {
+  const {
+    user,
+    isUserLoading,
+    isLoggedIn,
+    kickoffParam,
+    setKickoffParam,
+    kickoffExpertId,
+    isKickoffResolving,
+    setInitialPrompt,
+    completeGreeting,
+    sessionId,
+    setSessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
+    hydratedMessages,
+    rawSessionMessages,
+    historicalTurnStats,
+    activeStreamStartedAt,
+    hasMoreMessages,
+    oldestSequence,
+    isLoadingSession,
+    isSessionError,
+    isSessionNotFound,
+    createSession,
+    isCreatingSession,
+    sessionDryRun,
+    sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
+    chatLlmAuthProvider,
+    expertIdentity,
+    isResolvingExpertIdentity,
+    isExpertSendLocked,
+  } = session;
   const runtimeStream = "appendLocalUserRows" in stream ? stream : null;
   const {
     followBackendTurn,
@@ -230,15 +315,18 @@ export function useCopilotPage({
   }, [pagedTurnStats, currentTurnStats]);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
-  // Updated synchronously on every render so it always reflects the latest
-  // status — unlike reading `status` inside onSend (which captures the
-  // closure's render-cycle value and can be stale for a frame).
+  // Updated on every commit, before any effect or handler runs, so it always
+  // reflects the latest status — unlike reading `status` inside onSend (which
+  // captures the closure's render-cycle value and can be stale for a frame).
   // Setting it to true *before* calling sendMessage prevents rapid
   // double-presses from both routing to /stream before React can re-render
   // with status="submitted".
-  const isInflightRef = useRef(false);
-  isInflightRef.current =
+  const isInflight =
     !isUserStopping && (status === "streaming" || status === "submitted");
+  const isInflightRef = useRef(isInflight);
+  useInsertionEffect(() => {
+    isInflightRef.current = isInflight;
+  });
 
   // Whether this tab has finished drawing the previous turn. The server's
   // turn can end well before the screen does: the smoothing transform paces
@@ -247,7 +335,7 @@ export function useCopilotPage({
   // to queue (409, no active turn) waits here before going out as a new
   // turn — see onSend.
   const isLocalStreamSettled =
-    !isInflightRef.current && !isFinishProbing && !isReconnecting;
+    !isInflight && !isFinishProbing && !isReconnecting;
   // A held follow-up learns whether the stream settled (send now) or the
   // hook went away first (the chat host unmounts on a chat switch and on
   // reload; the follow-up then stays in sessionStorage, see below).
@@ -294,10 +382,7 @@ export function useCopilotPage({
     [pagedMessages, currentMessages],
   );
   const cachedSessionMessages = useMemo(
-    () =>
-      sessionId
-        ? useCopilotStreamStore.getState().getMessageSnapshot(sessionId)
-        : [],
+    () => readCachedSessionMessages(sessionId),
     [sessionId],
   );
   const cachedRawMessages = useMemo(
@@ -454,8 +539,6 @@ export function useCopilotPage({
   );
 
   useWorkflowImportAutoSubmit({
-    // This render's function on purpose: its effect lists `onSend` as a
-    // dependency and re-checks the URL for a prompt every time it changes.
     onSend: sendOrQueue,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
@@ -543,4 +626,18 @@ export function useCopilotPage({
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
     followBackendTurn,
   };
+}
+
+// One entry point per stream hook: the compiler cannot memoise a hook picked
+// at runtime. The host mounts one or the other, keyed by the stream flag.
+export function useCopilotPage() {
+  const session = useCopilotPageSession();
+  const stream = useCopilotStream(session.streamArgs);
+  return useCopilotPageChat(session, stream);
+}
+
+export function useCopilotRuntimePage() {
+  const session = useCopilotPageSession();
+  const stream = useCopilotRuntimeStream(session.streamArgs);
+  return useCopilotPageChat(session, stream);
 }
