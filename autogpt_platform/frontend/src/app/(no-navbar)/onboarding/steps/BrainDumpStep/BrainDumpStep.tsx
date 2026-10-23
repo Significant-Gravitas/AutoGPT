@@ -70,7 +70,7 @@ export function BrainDumpStep() {
               variant="ghost"
               size="xs"
               onClick={dump.handleSkip}
-              className="text-zinc-400 hover:text-zinc-700"
+              className="text-foreground-subtle hover:text-foreground-body"
             >
               Skip for now
             </Button>

@@ -21,7 +21,8 @@ export function MarketingFooter({ footerText }: Props) {
     <div className="flex flex-col gap-3">
       <Text
         variant="small-medium"
-        className="uppercase tracking-[0.14em] !text-zinc-500"
+        // TODO(tokens): no exact text token for tracking-[0.14em]
+        className="uppercase tracking-[0.14em] !text-foreground-tertiary"
       >
         {footerText}
       </Text>
@@ -29,7 +30,7 @@ export function MarketingFooter({ footerText }: Props) {
         {INTEGRATIONS.map(({ id, name }) => (
           <li
             key={id}
-            className="flex size-11 items-center justify-center rounded-xl bg-white smooth-shadow-ring-sm"
+            className="flex size-11 items-center justify-center rounded-xl bg-surface smooth-shadow-ring-sm"
           >
             <Image
               src={`/integrations/${id}.png`}

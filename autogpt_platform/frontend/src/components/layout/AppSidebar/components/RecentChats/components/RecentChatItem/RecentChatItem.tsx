@@ -69,7 +69,7 @@ function ChatLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-zinc-500"
+      className="ml-auto !size-4 shrink-0 text-foreground-tertiary"
     />
   );
 }
@@ -131,7 +131,7 @@ export const RecentChatItem = memo(function RecentChatItem({
             }
             onSubmitRename(session.id);
           }}
-          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 max-md:py-2 max-md:text-base"
+          className="w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-sm text-foreground-emphasis outline-none focus:border-brand focus:ring-1 focus:ring-brand max-md:py-2 max-md:text-base"
         />
       </SidebarMenuItem>
     );
@@ -143,12 +143,13 @@ export const RecentChatItem = memo(function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100 max-md:h-11 max-md:!pr-11 max-md:text-[15px]"
+        className="font-normal data-[active=true]:!bg-surface-hover data-[active=true]:font-normal hover:!bg-surface-hover max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-inherit"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
+              // TODO(tokens): no exact role for text-purple-600 (#6C2EDF)
               className="size-4 shrink-0 text-purple-600"
             />
           ) : hasPlatformLogo ? (
@@ -219,7 +220,8 @@ export const RecentChatItem = memo(function RecentChatItem({
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            className="text-red-600 focus:bg-red-50 focus:text-red-600"
+            // TODO(tokens): no exact role for text-red-600 (#D93636), focus:text-red-600 (#D93636)
+            className="text-red-600 focus:bg-error-surface focus:text-red-600"
           >
             <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat

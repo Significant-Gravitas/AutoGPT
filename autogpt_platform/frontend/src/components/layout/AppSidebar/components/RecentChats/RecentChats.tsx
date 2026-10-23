@@ -48,14 +48,23 @@ export function RecentChats() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <LoadingSpinner size="small" className="text-neutral-500" />
+        <LoadingSpinner
+          size="small"
+          // TODO(tokens): no exact role for text-neutral-500 (#737373)
+          className="text-neutral-500"
+        />
       </div>
     );
   }
 
   if (!sessions.length) {
     return (
-      <p className="px-2 py-2 text-sm text-neutral-500">No conversations yet</p>
+      <p
+        // TODO(tokens): no exact role for text-neutral-500 (#737373)
+        className="px-2 py-2 text-sm text-neutral-500"
+      >
+        No conversations yet
+      </p>
     );
   }
 
@@ -98,7 +107,7 @@ export function RecentChats() {
       <div className="mt-2 flex flex-col gap-4">
         {pinnedSessions.length > 0 && (
           <div>
-            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
+            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-foreground-tertiary">
               <Icon icon={PinIcon} className="size-3.5" />
               <span className="truncate">Pinned</span>
             </div>
@@ -134,10 +143,14 @@ export function RecentChats() {
           type="button"
           onClick={() => loadMore()}
           disabled={isLoadingMore}
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base"
+          // TODO(tokens): no exact role for hover:bg-zinc-300 (#C5C5C9)
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-surface-active px-2 py-1.5 text-sm text-foreground-emphasis hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base"
         >
           {isLoadingMore && (
-            <LoadingSpinner size="small" className="size-4 text-zinc-500" />
+            <LoadingSpinner
+              size="small"
+              className="size-4 text-foreground-tertiary"
+            />
           )}
           {isLoadingMore ? "Loading…" : "Load more"}
         </button>
