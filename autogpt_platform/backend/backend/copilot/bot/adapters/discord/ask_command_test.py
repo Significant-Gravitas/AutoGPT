@@ -222,7 +222,8 @@ class TestDispatchCommand:
         starter = MagicMock(id=999)
         starter.channel = thread
 
-        await adapter._dispatch_command(interaction, starter, "hi", TurnOptions())
+        with patch.object(adapter, "_thread_history", new=AsyncMock(return_value=())):
+            await adapter._dispatch_command(interaction, starter, "hi", TurnOptions())
 
         ctx = callback.await_args.args[0]
         assert ctx.server_name == "SG"
