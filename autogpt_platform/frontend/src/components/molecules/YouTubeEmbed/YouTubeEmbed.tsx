@@ -53,11 +53,11 @@ export function YouTubeEmbed({
       role="group"
       aria-label={title}
       className={cn(
-        "flex h-full w-full flex-col items-center justify-center gap-3 overflow-auto bg-zinc-100 p-4 text-center",
+        "flex h-full w-full flex-col items-center justify-center gap-3 overflow-auto bg-surface-hover p-4 text-center",
         className,
       )}
     >
-      <Icon icon={YoutubeIcon} size={28} className="text-zinc-400" />
+      <Icon icon={YoutubeIcon} size={28} className="text-foreground-subtle" />
       <Text variant="body" tone="secondary" className="max-w-sm">
         {getNoticeText({ hasVideoId: videoId !== null, canAllowHere })}
       </Text>

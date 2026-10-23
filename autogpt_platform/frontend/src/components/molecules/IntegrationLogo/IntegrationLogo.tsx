@@ -39,7 +39,7 @@ export function IntegrationLogo({
         size={size}
         role="img"
         aria-label={alt ?? provider}
-        className={cn("text-zinc-400", className)}
+        className={cn("text-foreground-subtle", className)}
       />
     );
   }

@@ -192,8 +192,10 @@ const TreeIndicator = forwardRef<
     <div
       dir={direction}
       ref={ref}
+      // TODO(tokens): no role for neutral-400 (#A3A3A3) or neutral-600
+      // (#525252), nor for the neutral-100 (#F5F5F5) selected rows below.
       className={cn(
-        "absolute left-1.5 h-full w-px rounded-md bg-neutral-400 py-3 duration-300 ease-in-out hover:bg-neutral-600 dark:bg-neutral-500 rtl:right-1.5",
+        "absolute left-1.5 h-full w-px rounded-md bg-neutral-400 py-3 duration-300 ease-in-out hover:bg-neutral-600 rtl:right-1.5",
         className,
       )}
       {...props}
@@ -244,11 +246,10 @@ const Folder = forwardRef<
       >
         <AccordionPrimitive.Trigger
           className={cn(
-            `flex items-center gap-1 rounded-md text-sm`,
+            `flex items-center gap-1 rounded-md text-body leading-5`,
             className,
             {
-              "rounded-md bg-neutral-100 dark:bg-neutral-800":
-                isSelect && isSelectable,
+              "rounded-md bg-neutral-100": isSelect && isSelectable,
               "cursor-pointer": isSelectable,
               "cursor-not-allowed opacity-50": !isSelectable,
             },
@@ -261,7 +262,7 @@ const Folder = forwardRef<
             : (closeIcon ?? <Icon icon={Folder01Icon} className="size-4" />)}
           <span>{element}</span>
         </AccordionPrimitive.Trigger>
-        <AccordionPrimitive.Content className="relative h-full overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+        <AccordionPrimitive.Content className="relative h-full overflow-hidden text-body leading-5 data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
           {element && indicator && <TreeIndicator aria-hidden="true" />}
           <AccordionPrimitive.Root
             dir={direction}
@@ -314,9 +315,9 @@ const File = forwardRef<
         type="button"
         disabled={!isSelectable}
         className={cn(
-          "flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pl-1 rtl:pr-0",
+          "flex w-fit items-center gap-1 rounded-md pr-1 text-body leading-5 duration-200 ease-in-out rtl:pl-1 rtl:pr-0",
           {
-            "bg-neutral-100 dark:bg-neutral-800": isSelected && isSelectable,
+            "bg-neutral-100": isSelected && isSelectable,
           },
           isSelectable ? "cursor-pointer" : "cursor-not-allowed opacity-50",
           direction === "rtl" ? "rtl" : "ltr",
