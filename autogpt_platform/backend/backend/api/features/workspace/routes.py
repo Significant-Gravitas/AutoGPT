@@ -31,7 +31,7 @@ from backend.data.workspace import (
     get_or_create_workspace,
     get_workspace,
     get_workspace_file,
-    get_workspace_internal_size,
+    get_workspace_size_breakdown,
     get_workspace_total_size,
     rename_workspace_file,
 )
@@ -460,9 +460,8 @@ async def get_storage_usage(
     """
     workspace = await get_or_create_workspace(user_id)
 
-    used_bytes, internal_bytes, file_count, limit_bytes = await asyncio.gather(
-        get_workspace_total_size(workspace.id),
-        get_workspace_internal_size(workspace.id),
+    (used_bytes, internal_bytes), file_count, limit_bytes = await asyncio.gather(
+        get_workspace_size_breakdown(workspace.id),
         # Bytes count every file, since all of them use the quota, and name
         # the share the user cannot see in Files; the count is of the files
         # the user can see.

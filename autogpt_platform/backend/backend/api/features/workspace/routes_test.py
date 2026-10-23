@@ -972,16 +972,13 @@ def test_get_storage_usage_returns_tier_based_limit(mocker):
         return_value=_make_workspace(),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=100 * 1024 * 1024,  # 100 MB used
+        "backend.api.features.workspace.routes.get_workspace_size_breakdown",
+        # 100 MB used, 3 MB of it skills and working files
+        return_value=(100 * 1024 * 1024, 3 * 1024 * 1024),
     )
     count = mocker.patch(
         "backend.api.features.workspace.routes.count_workspace_files",
         return_value=5,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_internal_size",
-        return_value=3 * 1024 * 1024,  # 3 MB of skills and working files
     )
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",

@@ -12,7 +12,8 @@ WHERE NOT "isInternal"
   AND ("path" LIKE '/skills/%' OR "path" ~ '^/experts/[^/]+/skills/');
 
 -- Their search entries go too, as for Otto's working files: writes no longer
--- index skill files, and global search reads the index directly.
+-- index skill files, and global search reads the index directly. This covers
+-- every internal file, not only skills; it is idempotent with #16028's.
 DELETE FROM "UnifiedContentEmbedding" uce
 USING "UserWorkspaceFile" uwf
 WHERE uce."contentType" = 'WORKSPACE_FILE'

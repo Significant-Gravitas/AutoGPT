@@ -60,7 +60,11 @@ export function StorageUsage() {
         of {formatFileSize(data.limit_bytes)}
       </Text>
       {internalBytes > 0 ? (
-        <Text variant="small" as="span" className="text-zinc-400">
+        <Text
+          variant="small"
+          as="span"
+          className="hidden text-zinc-400 lg:inline"
+        >
           {`${formatFileSize(internalBytes)} is your team's skills and working files`}
         </Text>
       ) : null}
