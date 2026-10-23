@@ -3,6 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { IconSvgElement } from "@hugeicons/react";
 import { motion, useReducedMotion } from "framer-motion";
+import { OTTO_TINT } from "./ottoTint";
 
 export interface Milestone {
   key: string;
@@ -42,16 +43,17 @@ export function Timeline({ label, milestones }: Props) {
             {isLast ? null : (
               <span
                 aria-hidden
-                className="absolute bottom-0 left-[1.125rem] top-10 w-px -translate-x-1/2 bg-zinc-200"
+                className="absolute bottom-0 left-[1.125rem] top-10 w-px -translate-x-1/2 bg-border-base"
               />
             )}
             <span
               aria-hidden
+              style={isFirst ? { backgroundColor: OTTO_TINT } : undefined}
               className={cn(
                 "relative flex size-9 items-center justify-center rounded-full",
                 isFirst
-                  ? "bg-[#B6A4C8]/[0.24] text-zinc-900"
-                  : "border border-zinc-200 bg-white text-zinc-500",
+                  ? "text-foreground-strong"
+                  : "border border-border-base bg-surface text-foreground-tertiary",
               )}
             >
               <Icon icon={milestone.icon} size={16} />

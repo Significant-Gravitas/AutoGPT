@@ -1,5 +1,6 @@
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { OTTO_TINT } from "./ottoTint";
 import { formatReadyLine } from "./TrialWelcome/helpers";
 import type { ReadyExpert } from "./useReadyExperts";
 
@@ -13,17 +14,25 @@ interface Props {
 // The welcome comes before the billing: the user's own setup, by name.
 export function ReadyLine({ experts }: Props) {
   return (
-    <p className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#B6A4C8]/[0.24] py-1 pl-1 pr-3 font-sans text-xs font-medium text-zinc-800 sm:rounded-full">
+    <p
+      style={{ backgroundColor: OTTO_TINT }}
+      className="inline-flex max-w-full items-center gap-2 rounded-2xl py-1 pl-1 pr-3 font-sans text-caption font-medium text-foreground-emphasis sm:rounded-full"
+    >
       <span aria-hidden className="flex shrink-0 -space-x-1">
         <AutopilotAvatar size={AVATAR_SIZE} className="rounded-full" />
         {experts.slice(0, MAX_AVATARS).map((expert) => (
-          <ExpertAvatar
+          <span
             key={expert.id}
-            name={expert.name}
-            avatarUrl={expert.avatarUrl}
-            size={AVATAR_SIZE}
-            className="rounded-full ring-2 ring-[#EDE8F1]"
-          />
+            className="rounded-full"
+            style={{ boxShadow: `0 0 0 2px ${OTTO_TINT}` }}
+          >
+            <ExpertAvatar
+              name={expert.name}
+              avatarUrl={expert.avatarUrl}
+              size={AVATAR_SIZE}
+              className="rounded-full"
+            />
+          </span>
         ))}
       </span>
       <span className="min-w-0">
