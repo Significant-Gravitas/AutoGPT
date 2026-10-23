@@ -15,7 +15,15 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import OnboardingPage from "../page";
 import { NO_PAYWALL_STEPS, PAYWALL_LAST_STEPS } from "../store";
 import { useOnboardingWizardStore } from "../store";
@@ -83,6 +91,10 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
       ? recordingStoreState.meta
       : null,
   clearRecording: async () => {
+    recordingStoreState.parts = [];
+    recordingStoreState.meta = null;
+  },
+  clearAllRecordings: async () => {
     recordingStoreState.parts = [];
     recordingStoreState.meta = null;
   },
@@ -1040,10 +1052,53 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
-    // Already gone while the record is unanswered, so Back to the step
-    // cannot offer the abandoned take again.
-    expect(recordingStoreState.parts).toHaveLength(0);
+    // The take stays for Back, and the skip is recorded as a take of its
+    // own, so sending the recording later is not read as already done.
+    expect(recordingStoreState.parts).toHaveLength(1);
+    expect(skip.skipBodies[0]).not.toMatchObject({
+      recording_id: recordingStoreState.parts[0].recordingId,
+    });
     skip.release();
+  });
+
+  it("says why a take failed, and still offers the recording after skipping and going Back", async () => {
+    finalizeReturns({ status: "failed", error_code: "storage_failed" });
+    const objectURLs = [
+      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:dump"),
+      vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined),
+    ];
+    const downloads: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
+    onTestFinished(() => {
+      click.mockRestore();
+      objectURLs.forEach((spy) => spy.mockRestore());
+    });
+
+    await recordAndSend();
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(
+      screen.getByText("We couldn't store your recording on our side."),
+    ).toBeDefined();
+    const recordingID = recordingStoreState.parts[0].recordingId;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continue without it" }),
+    );
+    await screen.findByTestId("step-hire");
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(
+      await screen.findByText("Pick up where you left off?"),
+    ).toBeDefined();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Download recording" }),
+    );
+    await waitFor(() =>
+      expect(downloads).toEqual([`brain-dump-${recordingID}.webm`]),
+    );
   });
 
   it("opens the typed composer from the recovery screen", async () => {

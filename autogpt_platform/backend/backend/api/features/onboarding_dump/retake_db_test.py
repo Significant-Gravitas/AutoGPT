@@ -1,0 +1,112 @@
+"""A new take after a finished one, against Postgres.
+
+``service_test.py`` runs the service on an in-memory copy of ``start_dump``'s
+rules, so only the database shows which takes the real claim lets through.
+"""
+
+import uuid
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock
+
+import pytest
+import pytest_asyncio
+from fastapi import BackgroundTasks
+from prisma import Json
+from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from prisma.models import User
+from pytest_mock import MockerFixture
+
+from backend.api.features.onboarding_dump import db, service
+
+TYPED_TEXT = "I run a bakery and spend Mondays reconciling supplier invoices."
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def user_id(server) -> AsyncGenerator[str, None]:
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(data={"id": user_id, "email": f"{user_id}@example.com"})
+    yield user_id
+    await User.prisma().delete(where={"id": user_id})
+
+
+@pytest.fixture(autouse=True)
+def admitted(mocker: MockerFixture) -> None:
+    mocker.patch.object(service, "enforce_personalization_budget", new=AsyncMock())
+    mocker.patch(
+        "backend.api.features.onboarding_dump.quality.check_transcript_quality",
+        new=AsyncMock(return_value=None),
+    )
+
+
+async def test_a_typed_take_after_a_skip_is_processed(user_id: str):
+    await service.finalize_skipped_dump(user_id, "rec-skip")
+    tasks = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        user_id, "rec-typed", TYPED_TEXT, tasks
+    )
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert len(tasks.tasks) == 1
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.recordingId, dump.inputMode, dump.transcript) == (
+        "rec-typed",
+        BrainDumpInputMode.typed,
+        TYPED_TEXT,
+    )
+
+    repeat = BackgroundTasks()
+    again = await service.finalize_typed_dump(user_id, "rec-typed", TYPED_TEXT, repeat)
+    assert again.status == BrainDumpStatus.transcribed
+    assert repeat.tasks == []
+
+
+async def test_a_skip_after_a_completed_take_replaces_it(user_id: str):
+    await _completed_typed_take(user_id, "rec-typed")
+
+    await service.finalize_skipped_dump(user_id, "rec-skip")
+
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.recordingId, dump.status, dump.inputMode) == (
+        "rec-skip",
+        BrainDumpStatus.completed,
+        BrainDumpInputMode.skipped,
+    )
+    assert dump.transcript is None
+    assert dump.greeting is None
+    assert dump.recommendedExperts is None
+
+
+async def test_a_new_take_cannot_displace_one_still_being_processed(user_id: str):
+    await service.finalize_typed_dump(
+        user_id, "rec-first", TYPED_TEXT, BackgroundTasks()
+    )
+    tasks = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        user_id, "rec-second", "Something else entirely.", tasks
+    )
+
+    assert response.error_code == "superseded"
+    assert tasks.tasks == []
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.recordingId, dump.status, dump.transcript) == (
+        "rec-first",
+        BrainDumpStatus.transcribed,
+        TYPED_TEXT,
+    )
+
+
+async def _completed_typed_take(user_id: str, recording_id: str) -> None:
+    await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
+    await db.update_dump(
+        user_id,
+        recording_id,
+        status=BrainDumpStatus.completed,
+        transcript=TYPED_TEXT,
+        greeting="You run a bakery.",
+        recommendedExperts=Json({"experts": []}),
+    )

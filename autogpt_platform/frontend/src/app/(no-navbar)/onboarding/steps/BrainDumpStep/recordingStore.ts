@@ -192,6 +192,13 @@ export async function clearRecording(recordingId: string) {
   );
 }
 
+// Once onboarding is finished, nothing can offer a take back, and a skipped
+// one is otherwise kept for Back.
+export async function clearAllRecordings() {
+  await runTransaction(PARTS_STORE, "readwrite", (store) => store.clear());
+  await runTransaction(META_STORE, "readwrite", (store) => store.clear());
+}
+
 export function partId(recordingId: string, partIndex: number) {
   return `${recordingId}:${partIndex}`;
 }

@@ -78,20 +78,21 @@ class DumpStore:
     ) -> OnboardingBrainDump:
         # Mirrors the real `start_dump`: a take already moving through
         # the pipeline is returned untouched, so a replayed part 0 or a
-        # repeated finalize cannot reset it.
-        if (
-            self.row is not None
-            and self.row.status
-            in (
-                BrainDumpStatus.recording_uploaded,
-                BrainDumpStatus.transcribing,
-                BrainDumpStatus.transcribed,
-                BrainDumpStatus.extracting,
-                BrainDumpStatus.completed,
-            )
-            and (
+        # repeated finalize cannot reset it, and a typed or skipped take
+        # cannot displace one still being processed.
+        processing = (
+            BrainDumpStatus.recording_uploaded,
+            BrainDumpStatus.transcribing,
+            BrainDumpStatus.transcribed,
+            BrainDumpStatus.extracting,
+        )
+        if self.row is not None and (
+            (
                 self.row.recordingId == recording_id
-                or input_mode != BrainDumpInputMode.voice
+                and self.row.status in (*processing, BrainDumpStatus.completed)
+            )
+            or (
+                input_mode != BrainDumpInputMode.voice and self.row.status in processing
             )
         ):
             return self.row
@@ -447,27 +448,26 @@ async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_a_stale_typed_finalize_cannot_replace_a_completed_take(
+async def test_a_typed_take_after_a_completed_one_replaces_it(
     dumps: DumpStore,
 ):
-    newer_tasks = BackgroundTasks()
+    """Back from Hire, then typing again, is a re-take, not a stale request."""
+    first_tasks = BackgroundTasks()
     await service.finalize_typed_dump(
-        USER_ID, "rec-newer", "This is the newer transcript.", newer_tasks
+        USER_ID, "rec-first", "This is the first transcript.", first_tasks
     )
-    await newer_tasks()
-    assert dumps.row is not None
-    newer_transcript = dumps.row.transcript
-    stale_tasks = BackgroundTasks()
+    await first_tasks()
+    retake_tasks = BackgroundTasks()
 
     response = await service.finalize_typed_dump(
-        USER_ID, "rec-stale", "This stale request arrived late.", stale_tasks
+        USER_ID, "rec-retake", "This is what I meant to say.", retake_tasks
     )
 
-    assert response.status == BrainDumpStatus.failed
-    assert response.error_code == "superseded"
-    assert dumps.row.recordingId == "rec-newer"
-    assert dumps.row.transcript == newer_transcript
-    assert stale_tasks.tasks == []
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.recordingId == "rec-retake"
+    assert dumps.row.transcript == "This is what I meant to say."
+    assert len(retake_tasks.tasks) == 1
 
 
 @pytest.mark.asyncio
