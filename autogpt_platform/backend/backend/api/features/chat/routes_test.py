@@ -24,7 +24,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
-from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.pending_messages import PendingMessage, PendingMessageContext
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -935,6 +935,39 @@ def test_stream_chat_resend_of_a_held_follow_up_takes_its_waiting_copy(
     mocks.take_held.assert_awaited_once_with("sess-1", "Status?")
     mocks.enqueue.assert_awaited_once()
     mocks.restore_held.assert_not_awaited()
+
+
+def test_stream_chat_resend_keeps_the_held_follow_ups_files_and_page(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Retry sends only the text; the files and page the follow-up was sent
+    with stay with it."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.take_held.return_value = PendingMessage(
+        content="Summarise this",
+        file_ids=["file-1"],
+        context=PendingMessageContext(url="https://example.org/report"),
+    )
+    resolve = mocker.patch(
+        "backend.api.features.chat.routes.resolve_attachments_for_http",
+        new_callable=AsyncMock,
+        return_value=[MagicMock(id="file-1")],
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.build_files_block",
+        return_value="\n\n[files: report.pdf]",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream", json={"message": "Summarise this"}
+    )
+
+    assert response.status_code == 200
+    resolve.assert_awaited_once()
+    scheduled = mocks.enqueue.await_args.kwargs
+    assert scheduled["file_ids"] == ["file-1"]
+    assert scheduled["context"] == {"url": "https://example.org/report"}
+    assert scheduled["message"] == "Summarise this\n\n[files: report.pdf]"
 
 
 def test_stream_chat_refused_resend_puts_the_held_follow_up_back(

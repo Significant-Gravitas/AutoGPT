@@ -92,6 +92,7 @@ from backend.copilot.pending_message_helpers import (
     resolve_attachments_for_http,
 )
 from backend.copilot.pending_messages import (
+    PendingMessage,
     accept_client_message,
     claim_client_message,
     clear_pending_messages_unsafe,
@@ -1820,6 +1821,29 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+async def _carry_resent_payload(
+    resent: PendingMessage,
+    *,
+    user_id: str,
+    session_id: str,
+    expert_id: str | None,
+    message: str,
+    file_ids: list[str] | None,
+    context: dict[str, str] | None,
+) -> tuple[str, list[str] | None, dict[str, str] | None]:
+    """A resend carries only the follow-up's text; the held copy it replaces
+    keeps the files and page context sent with it the first time."""
+    if resent.file_ids and not file_ids:
+        files = await resolve_attachments_for_http(
+            user_id, resent.file_ids, session_id=session_id, expert_id=expert_id
+        )
+        file_ids = [wf.id for wf in files] or None
+        message += build_files_block(files, [])
+    if resent.context and not context:
+        context = resent.context.model_dump(exclude_none=True)
+    return message, file_ids, context
+
+
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -2122,7 +2146,18 @@ async def stream_chat_post(
         else None
     )
 
+    turn_context = request.context
     try:
+        if resent is not None:
+            message, sanitized_file_ids, turn_context = await _carry_resent_payload(
+                resent,
+                user_id=user_id,
+                session_id=session_id,
+                expert_id=session.expert_id,
+                message=message,
+                file_ids=sanitized_file_ids,
+                context=turn_context,
+            )
         if claim == "accepted":
             turn_id = None
         else:
@@ -2140,7 +2175,7 @@ async def stream_chat_post(
                 expert_id=session.expert_id,
                 session_origin=session.metadata.origin,
                 session_source_platform=session.metadata.source_platform,
-                context=request.context,
+                context=turn_context,
                 voice=request.voice,
                 file_ids=sanitized_file_ids,
                 organization_id=turn_org_id,
@@ -2171,7 +2206,7 @@ async def stream_chat_post(
                 message_id=message_id,
                 message_metadata=message_metadata,
                 is_user_message=request.is_user_message,
-                context=request.context,
+                context=turn_context,
                 file_ids=sanitized_file_ids,
                 model=request.model,
                 llm_auth_provider=session.metadata.llm_auth_provider,
