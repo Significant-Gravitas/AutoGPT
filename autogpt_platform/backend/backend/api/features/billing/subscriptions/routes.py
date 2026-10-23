@@ -37,7 +37,6 @@ from backend.data.credit import (
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_billing_cycle,
-    handle_subscription_payment_failure,
     handle_subscription_payment_success,
     modify_stripe_subscription_for_tier,
     release_pending_subscription_schedule,
@@ -53,6 +52,10 @@ from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_activation_events import recover_claimed_billing_event
 from backend.data.subscription_checkout import AnotherPlanLive
+from backend.data.subscription_payment_failure import (
+    PaymentFailureOutcome,
+    handle_subscription_payment_failure,
+)
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
@@ -73,6 +76,9 @@ from backend.data.subscription_upgrade_models import (
     SubscriptionUpgradePreview,
     SubscriptionUpgradePreviewRequest,
     UpgradePreviewUnavailable,
+)
+from backend.data.subscription_wallet_payment import (
+    reconcile_wallet_payment_on_paid_invoice,
 )
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
@@ -1001,6 +1007,7 @@ async def stripe_webhook(request: Request):
             await sync_subscription_schedule_from_stripe(data_object)
 
         if event_type in ("invoice.payment_succeeded", "invoice.paid"):
+            await reconcile_wallet_payment_on_paid_invoice(data_object)
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
 
@@ -1009,9 +1016,12 @@ async def stripe_webhook(request: Request):
             await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
-            await handle_subscription_payment_failure(data_object)
-            if not await on_trial_invoice(data_object, paid=False):
-                await lifecycle.on_payment_failed(data_object)
+            outcome = await handle_subscription_payment_failure(data_object)
+            if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                if not await on_trial_invoice(data_object, paid=False):
+                    await lifecycle.on_payment_failed(
+                        data_object, attempted_at=event.get("created")
+                    )
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1026,12 +1036,16 @@ async def stripe_webhook(request: Request):
                 invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
+                    await reconcile_wallet_payment_on_paid_invoice(invoice_payload)
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
                 else:
-                    await handle_subscription_payment_failure(invoice_payload)
-                    if not await on_trial_invoice(invoice_payload, paid=False):
-                        await lifecycle.on_payment_failed(invoice_payload)
+                    outcome = await handle_subscription_payment_failure(invoice_payload)
+                    if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                        if not await on_trial_invoice(invoice_payload, paid=False):
+                            await lifecycle.on_payment_failed(
+                                invoice_payload, attempted_at=event.get("created")
+                            )
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a

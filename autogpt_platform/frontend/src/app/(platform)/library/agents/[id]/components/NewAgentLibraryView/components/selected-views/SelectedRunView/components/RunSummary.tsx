@@ -1,6 +1,7 @@
 "use client";
 
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
 import {
   Tooltip,
@@ -10,7 +11,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
 interface Props {
-  run: GetV1GetExecutionDetails200;
+  run: GraphExecution | GraphExecutionWithNodes;
 }
 
 export function RunSummary({ run }: Props) {

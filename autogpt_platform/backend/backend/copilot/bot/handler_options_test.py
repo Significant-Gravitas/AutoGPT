@@ -189,7 +189,7 @@ class TestBatchedOptions:
         handler = MessageHandler(_api())
         calls = _capture(handler)
         state = TargetState(processing=True)
-        handler._targets["t"] = state
+        handler._targets[("discord", "t")] = state
         first = _ctx("one").with_changes(
             options=TurnOptions(expert_id="e1", model="advanced")
         )
@@ -201,16 +201,16 @@ class TestBatchedOptions:
         await handler._process(_ctx("x"), _adapter(), "t", state)
 
         assert len(calls) == 1
-        assert [m[2] for m in calls[0]["batch"]] == ["one", "two"]
+        assert [m.text for m in calls[0]["batch"]] == ["one", "two"]
         assert calls[0]["options"] == TurnOptions(expert_id="e1", model="advanced")
-        assert "t" not in handler._targets
+        assert ("discord", "t") not in handler._targets
 
     @pytest.mark.asyncio
     async def test_a_new_expert_mid_reply_starts_its_own_batch(self):
         handler = MessageHandler(_api())
         calls = _capture(handler)
         state = TargetState(processing=True)
-        handler._targets["t"] = state
+        handler._targets[("discord", "t")] = state
         bolt = TurnOptions(expert_id="e1")
         sage = TurnOptions(expert_id="e3")
         await handler._enqueue_and_process(
@@ -229,15 +229,15 @@ class TestBatchedOptions:
         await handler._process(_ctx("x"), _adapter(), "t", state)
 
         assert len(calls) == 2
-        assert [m[2] for m in calls[0]["batch"]] == ["file"]
+        assert [m.text for m in calls[0]["batch"]] == ["file"]
         assert calls[0]["file_ids"] == ["f1"]
         assert calls[0]["session_id"] == "bolt-session"
         assert calls[0]["options"].expert_id == "e1"
-        assert [m[2] for m in calls[1]["batch"]] == ["two", "three"]
+        assert [m.text for m in calls[1]["batch"]] == ["two", "three"]
         assert calls[1]["file_ids"] == []
         assert calls[1]["session_id"] is None
         assert calls[1]["options"].expert_id == "e3"
-        assert "t" not in handler._targets
+        assert ("discord", "t") not in handler._targets
 
 
 class TestOptionsOnly:
@@ -292,7 +292,7 @@ class TestBatchSplitting:
         handler = MessageHandler(_api())
         calls = _capture(handler)
         state = TargetState(processing=True)
-        handler._targets["t"] = state
+        handler._targets[("discord", "t")] = state
         await handler._enqueue_and_process(
             _ctx("one").with_changes(options=TurnOptions(expert_id="e1")),
             _adapter(),

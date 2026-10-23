@@ -1308,15 +1308,18 @@ class TestGetOrCreateUserStatus:
             )
 
             result = await user_module.get_or_create_user_with_status(
-                {"sub": "user-hooked", "email": "hook@example.com"}
+                {"sub": "user-hooked", "email": "hook@example.com", "role": "admin"}
             )
 
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
         track.assert_called_once_with(user_id="user-hooked", signup_method="email")
-        # The email type and sign-in method MailerLite segments on.
-        person.assert_called_once_with("user-hooked", "hook@example.com", "email")
+        # The email type and sign-in method MailerLite segments on, and the
+        # token's role, which flags our own team.
+        person.assert_called_once_with(
+            "user-hooked", "hook@example.com", "email", "admin"
+        )
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):
@@ -1998,3 +2001,29 @@ async def test_unsubscribe_error_does_not_repeat_the_token():
         await user_module.unsubscribe_user_by_token(token)
 
     assert token not in str(exc.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("zero_daily_limit", [False, True])
+async def test_disabling_notifications_zeroes_the_daily_limit_only_when_asked(
+    zero_daily_limit: bool,
+):
+    with (
+        patch.object(user_module, "PrismaUser") as mock_prisma_user,
+        patch.object(user_module.get_user_by_id, "cache_delete") as cache_delete,
+    ):
+        mock_prisma_user.prisma.return_value.update = AsyncMock()
+
+        await user_module.disable_all_user_notifications(
+            "user-1", zero_daily_limit=zero_daily_limit
+        )
+
+    written = mock_prisma_user.prisma.return_value.update.await_args.kwargs
+    assert written["where"] == {"id": "user-1"}
+    assert written["data"]["briefingFrequency"] == "OFF"
+    assert written["data"]["alertsEnabled"] is False
+    assert written["data"]["notifyOnStoreVerdict"] is False
+    assert ("maxEmailsPerDay" in written["data"]) is zero_daily_limit
+    if zero_daily_limit:
+        assert written["data"]["maxEmailsPerDay"] == 0
+    cache_delete.assert_called_once_with("user-1")

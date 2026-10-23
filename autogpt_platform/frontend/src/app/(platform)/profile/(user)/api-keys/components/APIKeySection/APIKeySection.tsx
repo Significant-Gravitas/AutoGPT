@@ -16,7 +16,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/__legacy__/ui/dropdown-menu";
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useAPISection } from "./useAPISection";
 
 export function APIKeysSection() {

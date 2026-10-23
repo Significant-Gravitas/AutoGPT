@@ -4,9 +4,6 @@ import {
   type PlanDef,
 } from "@/components/molecules/PlanCard/plans";
 
-export const SUBSCRIPTION_PRICING_EXPERIMENT_FLAG =
-  "subscription-pricing-page-initial-state";
-
 const HIGHLIGHT_BADGE = "Best value";
 
 export type BillingCycle = "monthly" | "yearly";

@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
@@ -41,7 +42,11 @@ from backend.api.features.library.triggers import (
     update_triggered_preset,
 )
 from backend.api.features.onboarding_dump import db as onboarding_dump_db
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.orgs.db import (
+    get_user_default_team,
+    resolve_default_tenancy,
+    resolve_member_tenancy,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     delete_content_embedding,
@@ -59,6 +64,7 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.blocks import get_blocks
 from backend.copilot import db as chat_db
 from backend.copilot.scheduled_chats.forget import forget_scheduled_chat
 from backend.copilot.scheduled_chats.service import record_scheduled_run
@@ -91,6 +97,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth_ip_events import delete_expired_ip_events
 from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
@@ -328,6 +335,15 @@ class DatabaseManager(AppService):
             logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
             await db.connect()
 
+            # Load the block registry before serving. The first RPC that needs a
+            # block loads it otherwise, on this event loop, and every RPC waits.
+            load_started = time.monotonic()
+            block_count = len(get_blocks())
+            logger.info(
+                f"[{self.service_name}] Loaded {block_count} blocks in "
+                f"{time.monotonic() - load_started:.1f}s"
+            )
+
             logger.info(f"[{self.service_name}] ✅ Ready")
             yield
 
@@ -487,6 +503,9 @@ class DatabaseManager(AppService):
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
 
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = _(delete_expired_ip_events)
+
     # ============ Store ============ #
     get_store_agents = _(get_store_agents)
     get_store_agent_details = _(get_store_agent_details)
@@ -579,6 +598,7 @@ class DatabaseManager(AppService):
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
     resolve_default_tenancy = _(resolve_default_tenancy)
+    resolve_member_tenancy = _(resolve_member_tenancy)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -865,6 +885,9 @@ class DatabaseManagerClient(AppServiceClient):
     get_org_credits = _(d.get_org_credits)
     get_personal_org_owner = _(d.get_personal_org_owner)
 
+    # Orgs
+    resolve_member_tenancy = _(d.resolve_member_tenancy)
+
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
     # Execution accuracy monitoring
@@ -1068,6 +1091,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
 
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = d.delete_expired_ip_events
+
     # ============ Store ============ #
     get_store_agents = d.get_store_agents
     get_store_agent_details = d.get_store_agent_details
@@ -1139,6 +1165,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
+    resolve_member_tenancy = d.resolve_member_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link

@@ -4,26 +4,21 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
 import { cn } from "@/lib/utils";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { notFound } from "next/navigation";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertChatDrawer } from "./components/ExpertChatDrawer/ExpertChatDrawer";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
-import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
 import { SetupNeeded } from "./components/SetupNeeded/SetupNeeded";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamPageHeader } from "./components/TeamPageHeader/TeamPageHeader";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
 import { TeamRosterToolbar } from "./components/TeamRoster/TeamRosterToolbar";
 import { useTeamRosterView } from "./components/TeamRoster/useTeamRosterView";
-import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
   "mx-auto min-h-screen w-full max-w-[1180px] space-y-5 px-4 pb-16 pt-6 duration-500 sm:px-8 md:px-12 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
 export default function TeamPage() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     hiredExperts,
     schedulesForExpert,
@@ -41,27 +36,11 @@ export default function TeamPage() {
     chatDrawerKey,
     openChat,
     closeChat,
-  } = useTeamPage({ enabled: Boolean(enabled) && ready });
+  } = useTeamPage();
   const roster = useTeamRosterView({
     experts: hiredExperts,
     schedulesForExpert,
   });
-
-  if (!ready) {
-    return (
-      <main className={MAIN_CLASS}>
-        <div className={TEAM_GRID_CLASS}>
-          {[0, 1, 2].map((i) => (
-            <ExpertTeamCardSkeleton key={i} />
-          ))}
-        </div>
-      </main>
-    );
-  }
-
-  if (!enabled) {
-    notFound();
-  }
 
   function renderCard(expert: Expert) {
     return (
@@ -97,7 +76,7 @@ export default function TeamPage() {
         />
 
         <div className="space-y-6">
-          <SetupNeeded enabled={Boolean(enabled) && ready} />
+          <SetupNeeded />
           <TeamRoster
             isLoading={isLoading}
             experts={hiredExperts}

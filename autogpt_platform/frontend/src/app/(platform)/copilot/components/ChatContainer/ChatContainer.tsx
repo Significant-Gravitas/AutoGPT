@@ -107,6 +107,8 @@ export interface ChatContainerProps {
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
   ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -167,6 +169,7 @@ export const ChatContainer = ({
   isUserStopping,
   onCreateSession,
   onSend,
+  onStartTask,
   onStop,
   onEnqueue,
   queuedMessages,
@@ -267,16 +270,29 @@ export const ChatContainer = ({
     : (expertIdentity?.autopilotMode ?? null);
   // ChatInput is memoised, and this container renders on every streamed
   // flush: each element and callback it gets keeps its identity until its
-  // own inputs change, so a flush leaves the composer alone.
+  // own inputs change, so a flush leaves the composer alone. Approvals
+  // stay locked until the chat knows its session and its expert: the mode
+  // shown is the session's, and the Unsupervised confirm names the expert.
+  // A background roster refetch keeps the expert it already knows.
   const modeSelector = useMemo(
     () =>
       isAutoModeEnabled ? (
         <AutopilotModeSelector
           sessionId={sessionId}
           persistedMode={initialMode}
+          disabled={
+            isLoadingSession || (!!isResolvingExpertIdentity && !expertIdentity)
+          }
         />
       ) : undefined,
-    [isAutoModeEnabled, sessionId, initialMode],
+    [
+      isAutoModeEnabled,
+      sessionId,
+      initialMode,
+      isLoadingSession,
+      isResolvingExpertIdentity,
+      expertIdentity,
+    ],
   );
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
@@ -617,6 +633,7 @@ export const ChatContainer = ({
               isCreatingSession={isCreatingSession}
               onCreateSession={onCreateSession}
               onSend={guardedOnSend}
+              onStartTask={isTurnLocked ? undefined : onStartTask}
               modeSelector={modeSelector}
               voiceMode={
                 isVoiceModeEnabled

@@ -206,3 +206,27 @@ class TestDispatchCommand:
         assert ctx.text == "hi" and ctx.options == options
         assert ctx.bot_mentioned is True
         assert ctx.user_id == "456" and ctx.username == "Bently"
+
+    @pytest.mark.asyncio
+    async def test_a_command_in_a_thread_keeps_the_location(self):
+        adapter, callback = self._adapter()
+        interaction = _interaction(guild=True, thread=True)
+        interaction.guild.name = "SG"
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 789
+        thread.name = "Bug triage"
+        thread.parent_id = 222
+        thread.parent = MagicMock(spec=discord.TextChannel)
+        thread.parent.name = "eng-general"
+        starter = MagicMock(id=999)
+        starter.channel = thread
+
+        await adapter._dispatch_command(interaction, starter, "hi", TurnOptions())
+
+        ctx = callback.await_args.args[0]
+        assert ctx.server_name == "SG"
+        assert ctx.channel_name == "eng-general"
+        assert ctx.public_channel_id == "222"
+        assert ctx.thread_name == "Bug triage"
+        assert ctx.public_thread_id == "789"
+        assert ctx.post_channel_id == "789"
