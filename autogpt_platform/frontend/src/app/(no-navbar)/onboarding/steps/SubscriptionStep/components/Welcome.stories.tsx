@@ -93,6 +93,7 @@ export const Paid: Story = {
         price="$50"
         cadence="month"
         isProcessing={false}
+        isBlocked={false}
         onContinue={noop}
       />
     </OnboardingFrame>

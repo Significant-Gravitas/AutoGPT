@@ -42,7 +42,7 @@ export function SubscriptionStep() {
   if (trial.isLoading)
     return (
       <div className="w-full px-4">
-        <Skeleton className="mx-auto h-[34rem] w-full max-w-[58rem] rounded-[1.75rem]" />
+        <Skeleton className="mx-auto h-[34rem] w-full max-w-[60rem] rounded-[1.75rem]" />
       </div>
     );
 
@@ -75,7 +75,8 @@ export function SubscriptionStep() {
         subscription.country.currencyCode,
       )}
       cadence={subscription.isYearly ? "year" : "month"}
-      isProcessing={subscription.isUpdatingTier}
+      isProcessing={subscription.selectedPlan === PLAN_KEYS.PRO}
+      isBlocked={subscription.isUpdatingTier}
       onContinue={() => subscription.handlePlanSelect(PLAN_KEYS.PRO)}
       notice={
         <TrialCardContent

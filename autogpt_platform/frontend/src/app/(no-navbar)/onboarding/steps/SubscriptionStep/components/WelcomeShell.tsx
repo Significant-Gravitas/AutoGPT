@@ -9,7 +9,7 @@ interface Props {
 
 export function WelcomeShell({ art, children }: Props) {
   return (
-    <FadeIn className="w-full px-4">
+    <FadeIn className="w-full px-4 pt-12 lg:pt-0">
       <section
         aria-labelledby="welcome-title"
         className="mx-auto grid w-full max-w-[60rem] overflow-hidden rounded-[1.75rem] border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(24,24,27,0.04),0_32px_64px_-32px_rgba(24,24,27,0.18)] lg:grid-cols-2"

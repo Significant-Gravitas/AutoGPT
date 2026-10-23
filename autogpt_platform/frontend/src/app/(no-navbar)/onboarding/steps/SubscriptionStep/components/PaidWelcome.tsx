@@ -14,6 +14,7 @@ interface Props {
   price: string;
   cadence: "month" | "year";
   isProcessing: boolean;
+  isBlocked: boolean;
   onContinue: () => void;
   notice?: ReactNode;
 }
@@ -23,6 +24,7 @@ export function PaidWelcome({
   price,
   cadence,
   isProcessing,
+  isBlocked,
   onContinue,
   notice,
 }: Props) {
@@ -51,7 +53,7 @@ export function PaidWelcome({
           size="large"
           onClick={onContinue}
           loading={isProcessing}
-          disabled={isProcessing}
+          disabled={isProcessing || isBlocked}
           className="h-12 w-full text-base"
         >
           Continue to checkout

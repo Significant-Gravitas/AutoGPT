@@ -13,7 +13,7 @@ interface Props {
 // The welcome comes before the billing: the user's own setup, by name.
 export function ReadyLine({ experts }: Props) {
   return (
-    <p className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#B6A4C8]/[0.24] py-1 sm:rounded-full pl-1 pr-3 font-sans text-xs font-medium text-zinc-800">
+    <p className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#B6A4C8]/[0.24] py-1 pl-1 pr-3 font-sans text-xs font-medium text-zinc-800 sm:rounded-full">
       <span aria-hidden className="flex shrink-0 -space-x-1">
         <AutopilotAvatar size={AVATAR_SIZE} className="rounded-full" />
         {experts.slice(0, MAX_AVATARS).map((expert) => (

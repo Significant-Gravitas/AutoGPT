@@ -7,14 +7,16 @@ const COVER_ART = {
   letter: {
     src: "/onboarding/otto-welcome.webp",
     alt: "Otto, your personal Head of AI, beside a sealed envelope",
-    width: 1196,
-    height: 782,
+    width: 960,
+    height: 628,
+    sizes: "(min-width: 1024px) 26rem, (min-width: 640px) 20rem, 13rem",
   },
   hello: {
     src: "/autogpt-characters/v1.1/otto/neutral-transparent/1024.png",
     alt: "Otto, your personal Head of AI",
     width: 1024,
     height: 1024,
+    sizes: "(min-width: 1024px) 22rem, (min-width: 640px) 16rem, 10rem",
   },
 } as const;
 
@@ -34,7 +36,7 @@ export function OttoCover({ art }: Props) {
         width={image.width}
         height={image.height}
         priority
-        sizes="(min-width: 1024px) 26rem, 14rem"
+        sizes={image.sizes}
         className={cn(
           "h-auto select-none",
           art === "letter"
