@@ -11,6 +11,7 @@ from .bot_backend import ResolveResult
 from .expert_choice import SERVER_EXPERTS_REPLY
 from .handler import MessageHandler, TargetState, with_typed_options
 from .options import TurnOptions
+from .prompt import PendingMessage
 
 BOLT = BotExpert(id="e1", name="Bolt", role="Builder")
 BOLTZ = BotExpert(id="e2", name="Boltzmann", role="Physicist")
@@ -69,7 +70,9 @@ class TestTypedOptions:
         await handler.handle(_ctx("expert=bolt mode=smart fix it"), _adapter())
 
         assert len(calls) == 1
-        assert calls[0]["batch"] == [("Bently", "user-1", "fix it")]
+        assert calls[0]["batch"] == [
+            PendingMessage(username="Bently", user_id="user-1", text="fix it")
+        ]
         assert calls[0]["options"] == TurnOptions(
             expert_name="Bolt", expert_id="e1", model="advanced"
         )
