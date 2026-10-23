@@ -91,7 +91,9 @@ export function tickScale(index: number, hovered: number | null): number {
 }
 
 export function tickColor(distance: number | null): string {
-  if (distance === 0) return "bg-zinc-800";
+  if (distance === 0) return "bg-action";
+  // TODO(tokens): no exact role for bg-zinc-500
   if (distance === 1) return "bg-zinc-500";
+  // TODO(tokens): no exact role for bg-zinc-400
   return "bg-zinc-400";
 }

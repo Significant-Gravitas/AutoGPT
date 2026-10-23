@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import styles from "./OrbitLoader.module.css";
 
 interface Props {
   size?: number;
@@ -13,7 +12,19 @@ export function OrbitLoader({ size = 24, className }: Props) {
 
   return (
     <div
-      className={cn(styles.loader, className)}
+      // TODO(tokens): no exact role for #A1A1AA, Tailwind's default zinc-400
+      // (the app palette's zinc-400 is #ADADB3). #18181B is `primary`; the box
+      // shadows keep both hex values to match the keyframes in globals.css.
+      className={cn(
+        "relative animate-[orbit-loader-rotate_1s_infinite]",
+        "before:block before:h-[40%] before:w-[40%] before:rounded-[50%] before:content-['']",
+        "after:block after:h-[40%] after:w-[40%] after:rounded-[50%] after:content-['']",
+        // TODO(tokens): no exact role for before:bg-[#a1a1aa], before:[box-shadow:calc(var(--spacing))_0_0_#18181b]
+        "before:mb-[calc(var(--gap))] before:animate-[orbit-loader-ball1_1s_infinite] before:bg-[#a1a1aa] before:[box-shadow:calc(var(--spacing))_0_0_#18181b]",
+        // TODO(tokens): no exact role for after:[box-shadow:calc(var(--spacing))_0_0_#a1a1aa]
+        "after:animate-[orbit-loader-ball2_1s_infinite] after:bg-primary after:[box-shadow:calc(var(--spacing))_0_0_#a1a1aa]",
+        className,
+      )}
       style={
         {
           width: size,

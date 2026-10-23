@@ -14,8 +14,12 @@ export function isOverAutocompact(context: number): boolean {
 }
 
 export const BREAKDOWN_COLORS = {
+  // TODO(tokens): no exact role for bg-zinc-400
   system: "bg-zinc-400",
+  // TODO(tokens): no exact role for bg-sky-400
   user: "bg-sky-400",
+  // TODO(tokens): no exact role for bg-violet-400
   assistant: "bg-violet-400",
+  // TODO(tokens): no exact role for bg-emerald-400
   tools: "bg-emerald-400",
 };

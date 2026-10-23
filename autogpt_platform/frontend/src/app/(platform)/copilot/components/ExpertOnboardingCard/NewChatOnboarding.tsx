@@ -40,7 +40,10 @@ export function NewChatOnboarding({
     <div className="mx-auto min-h-0 w-full max-w-3xl flex-1 overflow-y-auto px-3 py-6 text-left max-md:pt-20">
       {/* The card stands in for the thread, whose header carries the phone's
           sidebar button, so it brings its own. */}
-      <AppSidebarTrigger className="absolute left-4 top-5 z-20 rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6] md:hidden" />
+      <AppSidebarTrigger
+        // TODO(tokens): no exact role for hover:bg-[#F5F5F6]
+        className="absolute left-4 top-5 z-20 rounded-full border border-border-base bg-surface shadow-md hover:bg-[#F5F5F6] md:hidden"
+      />
       <PendingOnboardingContext.Provider value={callId}>
         <ExpertOnboardingCard
           key={callId}
