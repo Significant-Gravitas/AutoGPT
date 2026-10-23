@@ -1,5 +1,11 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-amber-100 #FEF3C7, bg-gray-100 #F3F4F6, border-gray-200 #E5E7EB,
+// border-gray-300 #D1D5DB, border-gray-700 #374151, border-red-200 #FAC5C5,
+// text-amber-800 #92400E, text-gray-400 #9CA3AF, text-gray-500 #6B7280,
+// text-gray-600 #4B5563, text-gray-700 #374151.
+
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -166,13 +172,13 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
           hiddenEdgeTypes={hiddenEdgeTypes}
           setHiddenEdgeTypes={setHiddenEdgeTypes}
         />
-        <div className="col-span-12 rounded-md border bg-white md:col-span-7">
+        <div className="col-span-12 rounded-md border bg-surface md:col-span-7">
           {graph.isLoading ? (
             <div className="flex h-[70vh] items-center justify-center text-sm text-gray-500">
               Loading graph…
             </div>
           ) : graph.error || scopeMismatchError ? (
-            <div className="p-6 text-sm text-red-700">
+            <div className="p-6 text-sm text-error-foreground">
               Failed to load graph: {String(graph.error ?? scopeMismatchError)}
             </div>
           ) : nodes.length === 0 ? (
@@ -221,14 +227,14 @@ interface OverviewStripProps {
 function OverviewStrip({ loading, error, data }: OverviewStripProps) {
   if (loading) {
     return (
-      <div className="rounded-md border bg-white p-3 text-sm text-gray-500">
+      <div className="rounded-md border bg-surface p-3 text-sm text-gray-500">
         Loading overview…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <div className="rounded-md border border-red-200 bg-error-surface p-3 text-sm text-error-foreground">
         Failed to load overview: {String(error)}
       </div>
     );
@@ -245,7 +251,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
       ].map((stat) => (
         <div
           key={stat.label}
-          className="rounded-md border bg-white p-3 text-center"
+          className="rounded-md border bg-surface p-3 text-center"
         >
           <div className="text-xl font-bold">{stat.value}</div>
           <div className="text-xs uppercase tracking-wide text-gray-500">
@@ -308,7 +314,7 @@ function ControlBar({
   const dreamActive = !!dreamActiveJobId;
   const nightlyActive = !!nightlyActiveJobId;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-white p-3 text-sm">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-surface p-3 text-sm">
       {readOnly ? (
         <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">
           Read-only
@@ -408,7 +414,7 @@ function Sidebar({
   }
   return (
     <div className="col-span-12 space-y-3 md:col-span-3">
-      <div className="rounded-md border bg-white p-3">
+      <div className="rounded-md border bg-surface p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
           Labels
         </h3>
@@ -436,7 +442,7 @@ function Sidebar({
             })}
         </div>
       </div>
-      <div className="rounded-md border bg-white p-3">
+      <div className="rounded-md border bg-surface p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
           Relationships
         </h3>
@@ -518,7 +524,7 @@ function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
 function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
   return (
     <div className="col-span-12 md:col-span-2">
-      <div className="rounded-md border bg-white p-3 text-sm">
+      <div className="rounded-md border bg-surface p-3 text-sm">
         {!node ? (
           <div className="text-gray-500">Click a node to inspect.</div>
         ) : (
@@ -541,7 +547,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                 ✕
               </button>
             </div>
-            <div className="mt-2 font-mono text-[10px] text-gray-400">
+            <div className="mt-2 font-mono text-tiny leading-inherit text-gray-400">
               {node.uuid}
             </div>
             {node.summary && (
@@ -564,7 +570,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                   {edge.fact && (
                     <div className="text-gray-600">{edge.fact}</div>
                   )}
-                  <div className="font-mono text-[10px] text-gray-400">
+                  <div className="font-mono text-tiny leading-inherit text-gray-400">
                     → {otherUuid.slice(0, 12)}
                   </div>
                 </li>

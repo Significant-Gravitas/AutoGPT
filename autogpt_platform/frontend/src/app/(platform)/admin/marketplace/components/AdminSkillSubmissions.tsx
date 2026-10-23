@@ -21,7 +21,7 @@ export function AdminSkillSubmissions() {
 
   if (isUnavailable) {
     return (
-      <Text variant="body" className="!text-zinc-500">
+      <Text variant="body" className="!text-foreground-tertiary">
         Skill submissions are unavailable right now.
       </Text>
     );
@@ -29,7 +29,7 @@ export function AdminSkillSubmissions() {
 
   if (submissions.length === 0) {
     return (
-      <Text variant="body" className="!text-zinc-500">
+      <Text variant="body" className="!text-foreground-tertiary">
         No skill submissions are waiting for review.
       </Text>
     );
@@ -40,17 +40,19 @@ export function AdminSkillSubmissions() {
       {submissions.map((submission) => (
         <li
           key={submission.skill_listing_version_id}
-          className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-4"
+          className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border-base bg-surface p-4"
         >
           <div className="min-w-0">
             <Text variant="body-medium">
               {submission.name}{" "}
-              <span className="text-zinc-400">v{submission.version}</span>
+              <span className="text-foreground-subtle">
+                v{submission.version}
+              </span>
             </Text>
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" className="!text-foreground-tertiary">
               {submission.description}
             </Text>
-            <Text variant="small" className="!mt-1 !text-zinc-400">
+            <Text variant="small" className="!mt-1 !text-foreground-subtle">
               /{submission.slug} · {submission.categories.join(", ")}
               {submission.required_providers.length > 0
                 ? ` · works with ${submission.required_providers.join(", ")}`
