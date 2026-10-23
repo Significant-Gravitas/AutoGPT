@@ -12,6 +12,8 @@ import functools
 import pathlib
 from collections.abc import Iterable
 
+import pytest
+
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
@@ -208,19 +210,24 @@ _GLOBAL_CLOCK_PATCH_TARGETS = frozenset(
 _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "api/features/onboarding_dump/transcription_test.py asyncio.sleep": 2,
     "api/features/orgs/routes_test.py asyncio.sleep": 1,
+    "blocks/desktop/desktop_api_test.py asyncio.sleep": 1,
     "blocks/exa/cost_tracking_test.py asyncio.sleep": 4,
     "blocks/rss_test.py asyncio.sleep": 2,
     "blocks/time_blocks_test.py asyncio.sleep": 2,
     "copilot/baseline/reasoning_test.py time.monotonic": 1,
     "copilot/bot/handler_test.py asyncio.sleep": 3,
+    "copilot/bot/turn_stream_test.py time.monotonic": 6,
     "copilot/executor/manager_block_warmup_test.py time.sleep": 1,
+    "copilot/expert_context_test.py asyncio.sleep": 2,
     "copilot/graphiti/falkordb_driver_test.py asyncio.sleep": 4,
     "copilot/optimize_blocks_test.py asyncio.sleep": 3,
     "copilot/sdk/openrouter_cost_test.py asyncio.sleep": 1,
     "copilot/sdk/p0_guardrails_test.py asyncio.sleep": 7,
     "copilot/sdk/provider_out_of_credits_test.py asyncio.sleep": 1,
+    "copilot/sdk/retry_scenarios_test.py asyncio.sleep": 3,
     "copilot/tools/e2b_sandbox_test.py asyncio.sleep": 11,
     "copilot/tools/e2b_sandbox_test.py time.time": 1,
+    "copilot/tools/graphiti_forget_retry_test.py asyncio.sleep": 3,
     "copilot/tools/skills_learning_test.py asyncio.sleep": 1,
     "data/credential_refresh_test.py time.time": 1,
     "data/subscription_upgrade_fixtures.py time.time": 1,
@@ -240,6 +247,7 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "notifications/role_backfill_test.py asyncio.sleep": 1,
     "notifications/subscriber_fields_test.py asyncio.sleep": 1,
     "notifications/trial_shared_delivery_test.py asyncio.sleep": 1,
+    "util/e2b_template_test.py asyncio.sleep": 6,
     "util/retry_test.py time.time": 1,
 }
 
@@ -283,6 +291,43 @@ def test_global_clock_patch_offenders_are_not_stale():
     )
 
 
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ('patch("asyncio.sleep")', ["asyncio.sleep"]),
+        ('patch("backend.blocks.exa.research.asyncio.sleep")', ["asyncio.sleep"]),
+        ('patch("backend.copilot.sdk.trace_export.sleep")', []),
+        ('import time\npatch.object(time, "sleep")', ["time.sleep"]),
+        (
+            "import time\npatch.multiple(time, sleep=1, monotonic=2)",
+            ["time.sleep", "time.monotonic"],
+        ),
+        ('from unittest.mock import patch as p\np("time.time")', ["time.time"]),
+        ('patch(target="time.sleep")', ["time.sleep"]),
+        (
+            'def t():\n    import time as clock\n    patch.object(clock, "sleep")',
+            ["time.sleep"],
+        ),
+        (
+            '_M = "backend.blocks.exa.research"\npatch(f"{_M}.asyncio.sleep")',
+            ["asyncio.sleep"],
+        ),
+        ('_T = "time.sleep"\npatch(_T)', ["time.sleep"]),
+        ('patch(f"{unknown()}.asyncio.sleep")', []),
+    ],
+)
+def test_clock_patch_resolver_reads_each_form(source: str, expected: list[str]):
+    tree = ast.parse(source)
+    names = _import_bindings(tree.body, "backend.util")
+    consts = _string_constants(tree)
+    found = [
+        target
+        for call, scope in _calls_in_scope(tree, names, "backend.util")
+        for target in _patched_clock_targets(call, scope, consts)
+    ]
+    assert found == expected
+
+
 def _global_clock_patches() -> list[tuple[str, str, int]]:
     found: list[tuple[str, str, int]] = []
     for py in _iter_backend_py_files():
@@ -293,8 +338,9 @@ def _global_clock_patches() -> list[tuple[str, str, int]]:
         rel = py.relative_to(BACKEND_ROOT).as_posix()
         package = _package_of(rel)
         names = _import_bindings(tree.body, package)
+        consts = _string_constants(tree)
         for call, scope in _calls_in_scope(tree, names, package):
-            for target in _patched_clock_targets(call, scope):
+            for target in _patched_clock_targets(call, scope, consts):
                 found.append((rel, target, call.lineno))
     return found
 
@@ -311,22 +357,25 @@ def _calls_in_scope(node: ast.AST, names: dict[str, str], package: str):
         yield from _calls_in_scope(child, scope, package)
 
 
-def _patched_clock_targets(call: ast.Call, names: dict[str, str]) -> list[str]:
+def _patched_clock_targets(
+    call: ast.Call, names: dict[str, str], consts: dict[str, str]
+) -> list[str]:
     """Shared-module clock targets of `patch(...)`, `patch.object(...)`,
-    `patch.multiple(...)` and `setattr(...)`, aliases included."""
+    `patch.multiple(...)` and `setattr(...)`, aliases included. A target built
+    from anything but literals and module-level string constants is skipped."""
     func = _qualified(call.func, names) or ""
     kind = func.rsplit(".", 2)[-2:]
     first = _argument(call, 0, "target")
     second = _argument(call, 1, "attribute", "name")
-    dotted = _str_value(first) if first else None
+    dotted = _str_value(first, consts) if first else None
     if kind[-1] in ("patch", "setattr") and dotted:
         owner, _, attr = dotted.rpartition(".")
         pairs = [(owner, attr)]
     elif (kind == ["patch", "object"] or kind[-1] == "setattr") and first and second:
-        owner, attr = _owner_path(first, names), _str_value(second)
+        owner, attr = _owner_path(first, names, consts), _str_value(second, consts)
         pairs = [(owner, attr)] if owner and attr else []
     elif kind == ["patch", "multiple"] and first:
-        owner = _owner_path(first, names)
+        owner = _owner_path(first, names, consts)
         keywords = [kw.arg for kw in call.keywords if kw.arg != "target"]
         pairs = [(owner, attr) for attr in keywords if owner and attr]
     else:
@@ -341,8 +390,10 @@ def _argument(call: ast.Call, index: int, *keywords: str) -> ast.expr | None:
     return next((kw.value for kw in call.keywords if kw.arg in keywords), None)
 
 
-def _owner_path(node: ast.expr, names: dict[str, str]) -> str | None:
-    return _str_value(node) or _qualified(node, names)
+def _owner_path(
+    node: ast.expr, names: dict[str, str], consts: dict[str, str]
+) -> str | None:
+    return _str_value(node, consts) or _qualified(node, names)
 
 
 def _qualified(node: ast.expr, names: dict[str, str]) -> str | None:
@@ -420,9 +471,41 @@ def _package_of(rel: str) -> str:
     return ".".join(["backend", *rel.split("/")[:-1]])
 
 
-def _str_value(node: ast.expr) -> str | None:
+def _string_constants(tree: ast.Module) -> dict[str, str]:
+    """Module-level `NAME = "..."` (or an f-string of such) assignments."""
+    consts: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            target, value = node.target, node.value
+        else:
+            continue
+        resolved = _str_value(value, consts)
+        if isinstance(target, ast.Name) and resolved is not None:
+            consts[target.id] = resolved
+    return consts
+
+
+def _str_value(node: ast.expr, consts: dict[str, str]) -> str | None:
+    """A literal, a module-level string constant, or an f-string of those."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
+    if isinstance(node, ast.Name):
+        return consts.get(node.id)
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for part in node.values:
+            expr = part
+            if isinstance(part, ast.FormattedValue):
+                if part.conversion != -1 or part.format_spec is not None:
+                    return None
+                expr = part.value
+            value = _str_value(expr, consts)
+            if value is None:
+                return None
+            parts.append(value)
+        return "".join(parts)
     return None
 
 
