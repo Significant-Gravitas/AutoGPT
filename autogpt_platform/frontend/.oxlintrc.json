@@ -3,7 +3,1510 @@
     "correctness": "off"
   },
   "jsPlugins": ["@shadcn/lint"],
+  "settings": {
+    "shadcn": {
+      "ui": "@/components/atoms",
+      "componentImports": ["^@/components/(molecules|organisms)(/|$)"],
+      "note": "See docs/engineering/design-system.md."
+    }
+  },
   "rules": {
-    "shadcn/require-static-classes": "warn"
-  }
+    "shadcn/no-raw-colors": "error",
+    "shadcn/require-static-classes": "error",
+    "shadcn/no-inline-styles": "error",
+    "shadcn/no-arbitrary-values": [
+      "error",
+      { "allow": ["layout", "transition"] }
+    ],
+    "shadcn/no-restyle": [
+      "error",
+      {
+        "allow": ["layout"],
+        "contracts": [
+          {
+            "pattern": "^Text$",
+            "allow": [
+              "layout",
+              "truncate",
+              "line-clamp-*",
+              "whitespace-*",
+              "text-balance",
+              "text-pretty",
+              "break-*",
+              "text-start",
+              "text-end",
+              "text-left",
+              "text-center",
+              "text-right"
+            ]
+          },
+          { "pattern": "^Icon$", "allow": ["layout"] },
+          { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+        ],
+        "message": {
+          "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+        }
+      }
+    ]
+  },
+  "overrides": [
+    // Not yet migrated: one override per directory, at warn, so `pnpm lint`
+    // passes while the existing violations are fixed. This list is the
+    // migration checklist: delete a directory's entry in the PR that brings
+    // `pnpm exec oxlint -c .oxlintrc.strict.json <dir> | wc -l` to 0. CI runs
+    // the strict config on every .tsx file a PR changes.
+    //
+    // Each entry repeats the rule options: an oxlint override that sets only
+    // a severity resets the rule to its default options.
+    {
+      "files": ["src/components/atoms/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/molecules/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/organisms/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/copilot/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/build/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/library/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/settings/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/admin/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/marketplace/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/team/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/artifacts/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/profile/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/home/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/raise/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/auth/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/dev/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/error/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/PaywallGate/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/PlatformChrome/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/components/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(platform)/*.tsx"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(no-navbar)/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/(public)/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/*.tsx"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/contextual/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/layout/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/renderers/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/auth/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/__legacy__/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/ai-elements/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/tokens/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/services/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/playwright/**"],
+      "rules": {
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/no-arbitrary-values": [
+          "warn",
+          { "allow": ["layout", "transition"] }
+        ],
+        "shadcn/no-restyle": [
+          "warn",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              { "pattern": "^Icon$", "allow": ["layout"] },
+              { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+            ],
+            "message": {
+              "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+            }
+          }
+        ]
+      }
+    },
+    // Permanent exceptions. Keep them last so they win over the entries above.
+    {
+      "files": [
+        "src/components/atoms/**",
+        "src/components/molecules/**",
+        "src/components/organisms/**"
+      ],
+      "rules": { "shadcn/no-restyle": "off" }
+    },
+    {
+      "files": [
+        "src/app/api/__generated__/**",
+        "**/*.stories.tsx",
+        "**/*.test.tsx"
+      ],
+      "rules": {
+        "shadcn/no-raw-colors": "off",
+        "shadcn/no-restyle": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/no-inline-styles": "off"
+      }
+    }
+  ]
 }

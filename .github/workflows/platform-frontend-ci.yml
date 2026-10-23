@@ -77,6 +77,12 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
+          # The changed-files step below diffs against the base branch, so it
+          # needs the history back to the merge base. `filter: blob:none`
+          # fetches commits and trees only; a name-only diff without rename
+          # detection reads no blobs.
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Test coverage report validator
         run: >-
@@ -111,6 +117,18 @@ jobs:
 
       - name: Run lint
         run: pnpm lint
+
+      # `pnpm lint` only warns in the directories .oxlintrc.json lists as not
+      # yet migrated. Every .tsx file a PR adds or changes must pass the strict
+      # config, which has no such list: touch a file, fix its violations.
+      - name: Lint changed files with the strict design-system config
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          git diff -z --name-only --relative --no-renames --diff-filter=ACMR
+          "origin/${BASE_REF}...HEAD" -- ':(glob)src/**/*.tsx'
+          | xargs -0 -r pnpm exec oxlint -c .oxlintrc.strict.json
 
   knip:
     runs-on: ubuntu-latest

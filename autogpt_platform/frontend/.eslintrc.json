@@ -51,6 +51,455 @@
         "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] > SwitchCase > :matches(Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], Identifier[name=/(^KEY_|_KEY$)/])",
         "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       }
+    ],
+    // Design-system imports. See AGENTS.md "Styling" and "Icons".
+    //
+    // - Icons come from Hugeicons and render through the Icon atom, which owns
+    //   the 2px stroke; HugeiconsIcon itself is only for that atom.
+    // - src/components/__legacy__ is being migrated away from.
+    // - @/components/ui holds the shadcn primitives the design system is built
+    //   from, so only src/components/** may import it.
+    // - extendedButtonVariants is internal to the Button atom.
+    //
+    // The exceptions are the overrides below that redefine this rule for
+    // src/components/**, atoms/Icon and atoms/Button. ESLint replaces the whole
+    // option list in an override, so each of them repeats the restrictions it
+    // keeps.
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "lucide-react",
+            "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+          },
+          {
+            "name": "@phosphor-icons/react",
+            "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+          },
+          {
+            "name": "react-icons",
+            "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+          },
+          {
+            "name": "@radix-ui/react-icons",
+            "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+          },
+          {
+            "name": "@hugeicons/react",
+            "importNames": ["HugeiconsIcon"],
+            "message": "Render icons with the Icon atom (@/components/atoms/Icon/Icon); it applies the design-system stroke width. Import only types such as IconSvgElement from @hugeicons/react."
+          }
+        ],
+        "patterns": [
+          {
+            "group": ["@/components/__legacy__", "@/components/__legacy__/*"],
+            "message": "Do not use src/components/__legacy__; use the design system in src/components (atoms, molecules, organisms)."
+          },
+          {
+            "group": ["@/components/ui", "@/components/ui/*"],
+            "message": "@/components/ui holds the shadcn primitives the design system is built from; outside src/components, import the atom, molecule or organism instead."
+          },
+          {
+            "group": [
+              "lucide-react/*",
+              "@phosphor-icons/react/*",
+              "react-icons/*",
+              "@radix-ui/react-icons/*"
+            ],
+            "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+          },
+          {
+            "group": [
+              "@/components/atoms/Button/helpers",
+              "**/atoms/Button/helpers"
+            ],
+            "importNames": ["extendedButtonVariants"],
+            "message": "extendedButtonVariants is internal to the Button atom; render <Button> with a variant and size instead."
+          }
+        ]
+      }
+    ],
+    // Use the Tooltip atom instead of a native title tooltip on DOM elements.
+    // This is react/forbid-dom-props rather than a no-restricted-syntax
+    // selector so the not-yet-migrated overrides below can lower it to warn
+    // without also lowering the keyboard selectors above.
+    "react/forbid-dom-props": [
+      "error",
+      {
+        "forbid": [
+          {
+            "propName": "title",
+            "message": "Do not use the title attribute for tooltips; use the Tooltip atom (@/components/atoms/Tooltip/BaseTooltip)."
+          }
+        ]
+      }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/components/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "lucide-react",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@phosphor-icons/react",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "react-icons",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@radix-ui/react-icons",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@hugeicons/react",
+                "importNames": ["HugeiconsIcon"],
+                "message": "Render icons with the Icon atom (@/components/atoms/Icon/Icon); it applies the design-system stroke width. Import only types such as IconSvgElement from @hugeicons/react."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "@/components/__legacy__",
+                  "@/components/__legacy__/*"
+                ],
+                "message": "Do not use src/components/__legacy__; use the design system in src/components (atoms, molecules, organisms)."
+              },
+              {
+                "group": [
+                  "lucide-react/*",
+                  "@phosphor-icons/react/*",
+                  "react-icons/*",
+                  "@radix-ui/react-icons/*"
+                ],
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "group": [
+                  "@/components/atoms/Button/helpers",
+                  "**/atoms/Button/helpers"
+                ],
+                "importNames": ["extendedButtonVariants"],
+                "message": "extendedButtonVariants is internal to the Button atom; render <Button> with a variant and size instead."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/atoms/Icon/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "lucide-react",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@phosphor-icons/react",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "react-icons",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@radix-ui/react-icons",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "@/components/__legacy__",
+                  "@/components/__legacy__/*"
+                ],
+                "message": "Do not use src/components/__legacy__; use the design system in src/components (atoms, molecules, organisms)."
+              },
+              {
+                "group": [
+                  "lucide-react/*",
+                  "@phosphor-icons/react/*",
+                  "react-icons/*",
+                  "@radix-ui/react-icons/*"
+                ],
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "group": [
+                  "@/components/atoms/Button/helpers",
+                  "**/atoms/Button/helpers"
+                ],
+                "importNames": ["extendedButtonVariants"],
+                "message": "extendedButtonVariants is internal to the Button atom; render <Button> with a variant and size instead."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/atoms/Button/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "lucide-react",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@phosphor-icons/react",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "react-icons",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@radix-ui/react-icons",
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              },
+              {
+                "name": "@hugeicons/react",
+                "importNames": ["HugeiconsIcon"],
+                "message": "Render icons with the Icon atom (@/components/atoms/Icon/Icon); it applies the design-system stroke width. Import only types such as IconSvgElement from @hugeicons/react."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "@/components/__legacy__",
+                  "@/components/__legacy__/*"
+                ],
+                "message": "Do not use src/components/__legacy__; use the design system in src/components (atoms, molecules, organisms)."
+              },
+              {
+                "group": [
+                  "lucide-react/*",
+                  "@phosphor-icons/react/*",
+                  "react-icons/*",
+                  "@radix-ui/react-icons/*"
+                ],
+                "message": "Use Hugeicons through the Icon atom (@/components/atoms/Icon/Icon). See AGENTS.md \"Icons\"."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // Not yet migrated: one override per directory, at warn, so `pnpm lint`
+    // passes while the existing violations are fixed. A severity-only entry
+    // keeps the options of the rule it lowers. Delete a directory's entry in
+    // the PR that brings its count to 0, same as in .oxlintrc.json.
+    {
+      "files": ["src/components/atoms/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/molecules/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/organisms/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/copilot/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/build/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/library/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/settings/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/admin/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/marketplace/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/team/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/artifacts/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/profile/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/home/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/PlatformChrome/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/reset-password/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/*.tsx"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(no-navbar)/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/(public)/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/app/*.tsx"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/contextual/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/layout/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/renderers/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/auth/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/__legacy__/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/ai-elements/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/components/tokens/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    },
+    {
+      "files": ["src/playwright/**"],
+      "rules": {
+        "no-restricted-imports": "warn",
+        "react/forbid-dom-props": "warn"
+      }
+    }
+  ]
 }
