@@ -12213,7 +12213,7 @@
       "get": {
         "tags": ["oauth"],
         "summary": "Get Oauth App Info",
-        "description": "Get public information about an OAuth application.\n\nThis endpoint is used by the consent screen to display application details\nto the user before they authorize access.\n\nReturns:\n- name: Application name\n- description: Application description (if provided)\n- scopes: List of scopes the application is allowed to request",
+        "description": "Get public information about an OAuth application.\n\nThis endpoint is used by the consent screen and the integration setup\nwizard to display application details to the user before they authorize\naccess. The setup wizard sends the `redirect_uri` it was given and sends\nthe user back there only once this endpoint accepts it, so it never\nredirects to an address the application did not register (RFC 6749\n4.1.2.1).\n\nReturns:\n- name: Application name\n- description: Application description (if provided)\n- scopes: List of scopes the application is allowed to request",
         "operationId": "getOauthGetOauthAppInfo",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -12222,6 +12222,17 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Client Id" }
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Where the page will send the user back to. When given, it must be one of the application's registered redirect URIs.",
+              "title": "Redirect Uri"
+            },
+            "description": "Where the page will send the user back to. When given, it must be one of the application's registered redirect URIs."
           }
         ],
         "responses": {
@@ -12234,6 +12245,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "redirect_uri is not registered for the application"
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -26237,6 +26251,14 @@
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Code"
+          },
+          "error_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Reason"
+          },
+          "transcript_words": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Transcript Words"
           }
         },
         "type": "object",

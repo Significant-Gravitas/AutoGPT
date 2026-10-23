@@ -11,10 +11,15 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { getTrustedClientIP } from "./client-ip";
-import { assertNotDisposableEmail } from "./disposable-email";
+import { DISABLED_AUTH_PATHS } from "./disabled-paths";
+import {
+  assertEmailHasMailServer,
+  assertNotDisposableEmail,
+} from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import { sharedLookups } from "./email-deliverability";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP } from "./ip-email-cap";
@@ -125,6 +130,7 @@ export const auth = betterAuth({
   secret: authSecret,
   database: authDbPool,
   telemetry: { enabled: false },
+  disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       // Before Better Auth looks the address up, so an address that already
@@ -467,5 +473,7 @@ async function assertEmailSignUpAllowed(
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
-  await assertNotDisposableEmail(email);
+  const dns = sharedLookups();
+  await assertNotDisposableEmail(email, { dns });
+  await assertEmailHasMailServer(email, { dns });
 }

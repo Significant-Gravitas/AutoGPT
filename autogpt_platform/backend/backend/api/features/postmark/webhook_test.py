@@ -13,6 +13,7 @@ from backend.util import posthog_client
 
 from . import postmark
 from .analytics import parse_postmark_time, safe_link
+from .models import PostmarkBounceEnum
 
 TOKEN = "test-webhook-token"
 USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
@@ -112,6 +113,73 @@ def test_a_soft_bounce_is_sent_but_keeps_the_address_verified(
         "SoftBounce"
     )
     unverify.assert_not_awaited()
+
+
+# Whether each bounce type unverifies the address, given Postmark's Inactive.
+_HARD = {"unverified": True, "unverified_if_inactive": True}
+_SOFT = {"unverified": False, "unverified_if_inactive": False}
+_NOT_A_FAILURE = {"unverified": False, "unverified_if_inactive": True}
+BOUNCE_OUTCOMES = {
+    PostmarkBounceEnum.HardBounce: _HARD,
+    PostmarkBounceEnum.Transient: _SOFT,
+    PostmarkBounceEnum.Unsubscribe: _NOT_A_FAILURE,
+    PostmarkBounceEnum.Subscribe: _NOT_A_FAILURE,
+    PostmarkBounceEnum.AutoResponder: _NOT_A_FAILURE,
+    PostmarkBounceEnum.AddressChange: _NOT_A_FAILURE,
+    PostmarkBounceEnum.DnsError: _SOFT,
+    PostmarkBounceEnum.SpamNotification: _NOT_A_FAILURE,
+    PostmarkBounceEnum.OpenRelayTest: _NOT_A_FAILURE,
+    PostmarkBounceEnum.Unknown: _NOT_A_FAILURE,
+    PostmarkBounceEnum.SoftBounce: _SOFT,
+    PostmarkBounceEnum.VirusNotification: _NOT_A_FAILURE,
+    PostmarkBounceEnum.ChallengeVerification: _NOT_A_FAILURE,
+    PostmarkBounceEnum.BadEmailAddress: _HARD,
+    PostmarkBounceEnum.SpamComplaint: _HARD,
+    PostmarkBounceEnum.ManuallyDeactivated: _HARD,
+    PostmarkBounceEnum.Unconfirmed: _NOT_A_FAILURE,
+    PostmarkBounceEnum.Blocked: _NOT_A_FAILURE,
+    PostmarkBounceEnum.SMTPApiError: _NOT_A_FAILURE,
+    PostmarkBounceEnum.InboundError: _NOT_A_FAILURE,
+    PostmarkBounceEnum.DMARCPolicy: _NOT_A_FAILURE,
+    PostmarkBounceEnum.TemplateRenderingFailed: _NOT_A_FAILURE,
+}
+
+
+def test_every_bounce_type_has_an_expected_outcome():
+    assert set(BOUNCE_OUTCOMES) == set(PostmarkBounceEnum)
+
+
+@pytest.mark.parametrize("inactive", [False, True], ids=["active", "inactive"])
+@pytest.mark.parametrize(
+    "bounce_type", list(BOUNCE_OUTCOMES), ids=lambda bounce_type: bounce_type.name
+)
+def test_only_a_failed_address_is_unverified(
+    bounce_type: PostmarkBounceEnum,
+    inactive: bool,
+    posthog: Mock,
+    lookup: AsyncMock,
+    unverify: AsyncMock,
+):
+    """A hard bounce always unverifies and a temporary one never does. Any
+    other type, such as an out-of-office reply, only does once Postmark has
+    deactivated the address."""
+    _post(
+        _bounce(
+            type_name=bounce_type.name,
+            type_code=bounce_type.value,
+            inactive=inactive,
+        )
+    )
+
+    outcome = BOUNCE_OUTCOMES[bounce_type]
+    expected = outcome["unverified_if_inactive" if inactive else "unverified"]
+    assert posthog.capture.call_args.kwargs["properties"]["bounce_type"] == (
+        bounce_type.name
+    )
+    if expected:
+        unverify.assert_awaited_once_with(USER_ID, False)
+    else:
+        unverify.assert_not_awaited()
 
 
 @pytest.mark.parametrize("record_type", ["Delivery", "Open", "Click", "Bounce"])
@@ -302,7 +370,7 @@ def _click(link: str) -> dict:
     }
 
 
-def _bounce(*, type_name: str, type_code: int) -> dict:
+def _bounce(*, type_name: str, type_code: int, inactive: bool = True) -> dict:
     return {
         "RecordType": "Bounce",
         "ID": 42,
@@ -314,7 +382,7 @@ def _bounce(*, type_name: str, type_code: int) -> dict:
         "Email": RECIPIENT,
         "From": "notify@agpt.co",
         "BouncedAt": "2019-11-05T16:33:54.9070259Z",
-        "Inactive": True,
+        "Inactive": inactive,
         "DumpAvailable": False,
         "CanActivate": True,
         "Subject": "Your trial",

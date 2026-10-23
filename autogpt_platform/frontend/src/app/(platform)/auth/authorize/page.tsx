@@ -53,7 +53,7 @@ export default function AuthorizePage() {
     isLoading,
     error,
     refetch,
-  } = useGetOauthGetOauthAppInfo(clientID || "", {
+  } = useGetOauthGetOauthAppInfo(clientID || "", undefined, {
     query: {
       enabled: !!clientID,
       staleTime: Infinity,
