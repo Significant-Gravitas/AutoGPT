@@ -6743,31 +6743,33 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         raise
     finally:
         turn_error = sys.exception()
-        tool_display_bridge.reset()
-        await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
-        # Pending messages are drained atomically at the start of each
-        # turn (see drain_pending_messages call above), so there's
-        # nothing to clean up here — any message pushed after that
-        # point belongs to the next turn.
+        try:
+            tool_display_bridge.reset()
+            await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
+            # Pending messages are drained atomically at the start of each
+            # turn (see drain_pending_messages call above), so there's
+            # nothing to clean up here — any message pushed after that
+            # point belongs to the next turn.
 
-        if codex_gateway is not None:
-            deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
-                codex_gateway,
-                log_prefix,
-            )
-
-            turn_cost_usd = None
-            codex_usage = _codex_gateway_usage(codex_gateway)
-            if codex_usage is not None:
-                turn_prompt_tokens = max(
-                    0, codex_usage.input_tokens - codex_usage.cached_input_tokens
+            if codex_gateway is not None:
+                deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
+                    codex_gateway,
+                    log_prefix,
                 )
-                turn_completion_tokens = codex_usage.output_tokens
-                turn_cache_read_tokens = codex_usage.cached_input_tokens
-                turn_cache_creation_tokens = 0
 
-        if _cli_prelaunch is not None:
-            await _cli_prelaunch.close()
+                turn_cost_usd = None
+                codex_usage = _codex_gateway_usage(codex_gateway)
+                if codex_usage is not None:
+                    turn_prompt_tokens = max(
+                        0,
+                        codex_usage.input_tokens - codex_usage.cached_input_tokens,
+                    )
+                    turn_completion_tokens = codex_usage.output_tokens
+                    turn_cache_read_tokens = codex_usage.cached_input_tokens
+                    turn_cache_creation_tokens = 0
+        finally:
+            if _cli_prelaunch is not None:
+                await _cli_prelaunch.close()
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
