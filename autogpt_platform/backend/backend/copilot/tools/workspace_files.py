@@ -320,6 +320,10 @@ class WorkspaceFileMetadataResponse(ToolResponseBase):
     preview: str | None = None  # First 500 chars for text files
 
 
+# What write_workspace_file stamps on every file it writes.
+AGENT_CREATED_METADATA = {"origin": "agent-created"}
+
+
 class WorkspaceWriteResponse(ToolResponseBase):
     """Response after writing a file to workspace."""
 
@@ -1062,7 +1066,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 path=path,
                 mime_type=mime_type,
                 overwrite=overwrite,
-                metadata={"origin": "agent-created"},
+                metadata=AGENT_CREATED_METADATA,
             )
 
             # Build informative source label and message.
