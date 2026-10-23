@@ -809,6 +809,30 @@ describe("ToolResult", () => {
       expect(screen.queryByText("boom")).toBeNull();
     });
 
+    it("shows both stdout and stderr, including a timeout note, under technical details", async () => {
+      const user = userEvent.setup();
+      render(
+        <ToolResult
+          row={row(
+            {
+              stdout: "partial rows",
+              stderr: "Timed out after 10s\nboom",
+              exit_code: -1,
+              timed_out: true,
+            },
+            "bash_exec",
+            { command: "slow-export" },
+          )}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("partial rows")).toBeDefined();
+      expect(screen.getByText(/Timed out after 10s/)).toBeDefined();
+    });
+
     it("does not call a quiet non-zero exit a failure (grep -q, test -f)", async () => {
       const user = userEvent.setup();
       render(

@@ -64,7 +64,7 @@ export function phraseField(input: ToolInput, key: string): string | null {
   if (!value) return null;
   const phrase = value
     .replace(/\s+/g, " ")
-    .replace(/[.!]+$/, "")
+    .replace(/[.!…]+$/, "")
     .trim();
   if (!phrase || looksTechnical(phrase)) return null;
   return truncate(phrase, PHRASE_MAX_LEN - 1);

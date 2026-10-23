@@ -38,7 +38,8 @@ export function getCatalogLabel(
 }
 
 function phraseLabel(phrase: string, state: "running" | "done" | "error") {
-  if (state === "running") return `${phrase}…`;
+  // A phrase cut to fit already ends in one.
+  if (state === "running") return phrase.endsWith("…") ? phrase : `${phrase}…`;
   if (state === "done") return phrase;
   // "Updating your brief" reads on after "Failed while"; a noun phrase
   // ("Shopify sync") does not, so it follows a colon with its capital kept.

@@ -43,6 +43,23 @@ describe("getCatalogLabel", () => {
       }
     });
 
+    it("never shows two ellipses on a running step", () => {
+      const long = getCatalogLabel(
+        "bash_exec",
+        { purpose: "Checking ".repeat(20), command },
+        "running",
+      )?.text;
+      expect(long?.endsWith("…")).toBe(true);
+      expect(long).not.toContain("……");
+      const trailing = { purpose: "Updating your brief…", command };
+      expect(getCatalogLabel("bash_exec", trailing, "running")?.text).toBe(
+        "Updating your brief…",
+      );
+      expect(getCatalogLabel("bash_exec", trailing, "done")?.text).toBe(
+        "Updating your brief",
+      );
+    });
+
     it("tidies a purpose the model wrote as a sentence", () => {
       expect(
         getCatalogLabel(
