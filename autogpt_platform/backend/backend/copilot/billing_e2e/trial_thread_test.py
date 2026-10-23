@@ -30,6 +30,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import NoResultsResponse, ToolResponseBase
 from backend.copilot.turn_budget import resolve_turn_budget
+from backend.data.subscription_trial import TrialState
 
 from .audit import audit_thread
 from .executor_turns import BaselineTurnsViaExecutor, Executor, SdkTurnsViaExecutor
@@ -140,6 +141,50 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
         assert first_turn.kwargs["budget_ctx"].startswith(
             f"Approximate remaining USD budget for this user: ${remaining_at_start[0]:.2f}."
         )
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("scenario", TRIAL_SCENARIOS, ids=lambda scenario: scenario.id)
+async def test_a_trial_turn_reads_the_trial_once_before_the_model_answers(
+    scenario: Scenario,
+    provider: FakeProvider,
+    ledger: PlatformLedger,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The allowance gate, the turn's cost attribution and the engine's budget
+    all look the trial up before the model's first request, and they share one
+    read. A trial this far spent leaves less than the task's cap, so the SDK
+    budget also works out which window limits the turn, from the usage status."""
+    if scenario.needs_cli and _resolve_cli_path() is None:
+        pytest.skip("No Claude Code CLI binary available")
+    session = _session(scenario)
+    account = TrialAccount(session.user_id, spent_before=SPENT_BEFORE)
+    account.install(monkeypatch, ledger)
+    store = rate_limit.credit_db()
+    read_trial = store.get_subscription_trial.side_effect
+    # Each read's turn, and how many model requests that turn had made by then.
+    reads: list[tuple[int, int]] = []
+
+    async def read_noting_when(user_id: str) -> TrialState | None:
+        reads.append((account.turn, len(provider.calls_in(account.turn))))
+        return await read_trial(user_id)
+
+    store.get_subscription_trial.side_effect = read_noting_when
+    run_turn, executor = _turn_runner(
+        scenario, provider, session, tmp_path, monkeypatch
+    )
+
+    for turn, prompt in enumerate(PROMPTS[:CONVERTED_TURN]):
+        provider.turn = ledger.turn = account.turn = turn
+        session.messages.append(ChatMessage(role="user", content=prompt))
+        await run_turn(session, prompt)
+        await ledger.settle()
+
+    assert executor.errors == [None] * CONVERTED_TURN
+    assert [turn for turn, requests in reads if requests == 0] == list(
+        range(CONVERTED_TURN)
+    )
 
 
 @pytest.mark.asyncio(loop_scope="function")

@@ -135,8 +135,10 @@ interface Props {
   atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
-// Memoised: the chat page re-renders on every streamed flush, and the
-// composer's props stay the same while the reply streams in.
+// memo-boundary: the chat page re-renders on every streamed flush, and the
+// composer's props stay the same while the reply streams in. The builder,
+// memory and team chats render it from folders the compiler does not cover,
+// so their parents do not cache its element.
 export const ChatInput = memo(function ChatInput({
   onSend,
   disabled = false,

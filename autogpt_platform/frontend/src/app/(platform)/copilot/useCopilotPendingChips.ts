@@ -2,14 +2,7 @@ import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/
 import type { PeekPendingMessagesResponseHeldReason } from "@/app/api/__generated__/models/peekPendingMessagesResponseHeldReason";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
-import {
-  useCallback,
-  useEffect,
-  useInsertionEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 import { dropQueuedSendBubbles } from "./helpers/dropQueuedSendBubbles";
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
@@ -87,12 +80,10 @@ export function useCopilotPendingChips({
       promoteChipsToTrailingBubbles(setMessages, drained, flavour);
   };
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
-  // Stable string view for consumers that only need the texts. Memoised so
-  // downstream components don't re-render on identity churn alone.
-  const queuedMessages = useMemo(
-    () => queue.map((entry) => entry.text),
-    [queue],
-  );
+  // Stable string view for consumers that only need the texts. The compiler
+  // caches it on `queue`, so downstream components don't re-render on
+  // identity churn alone.
+  const queuedMessages = queue.map((entry) => entry.text);
   // Live view of the strip for the peek effect, which needs the queue at the
   // moment it issues a GET without re-running on every enqueue.
   const queueRef = useRef(queue);
@@ -144,12 +135,12 @@ export function useCopilotPendingChips({
     setQueue,
   });
 
-  const queueMessage = useCallback((text: string) => {
+  function queueMessage(text: string) {
     // Options force uuid's getRandomValues path: crypto.randomUUID does not
     // exist on a plain-HTTP LAN origin, and this updater runs during render,
     // so there it took the whole chat page down instead of queueing.
     setQueue((prev) => adoptOrAppend(prev, { id: uuidv4({}), text }));
-  }, []);
+  }
 
   // The strip entry a resend replaces; its bubble comes from the send.
   function takeQueuedMessage(text: string) {

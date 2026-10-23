@@ -25,9 +25,9 @@ interface Props {
 }
 
 const sizeStyles = {
-  xsmall: "h-7 rounded-md pl-8 pr-7 text-xs leading-5",
-  small: "h-[36px] pl-10 pr-9 text-sm leading-[22px]",
-  medium: "h-[46px] pl-12 pr-10 text-sm leading-[22px]",
+  xsmall: "h-7 rounded-md pl-8 pr-7 text-caption leading-5",
+  small: "h-[36px] pl-10 pr-9 text-body leading-5.5",
+  medium: "h-[46px] pl-12 pr-10 text-body leading-5.5",
 } as const;
 
 const iconOffset = {
