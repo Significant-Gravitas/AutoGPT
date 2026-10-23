@@ -87,6 +87,18 @@ describe("RecentChats — the group of the chat on screen", () => {
     expect(screen.queryByText("maria-1 chat")).toBeNull();
   });
 
+  it("reopens a group the user closed when another of its chats comes on screen", async () => {
+    location.search = "sessionId=maria-1";
+    const { rerender } = render(sidebar());
+    expect(await screen.findByText("maria-2 chat")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Maria chats" }));
+    expect(screen.queryByText("maria-2 chat")).toBeNull();
+
+    location.search = "sessionId=maria-2";
+    rerender(sidebar());
+    expect(await screen.findByText("maria-1 chat")).toBeDefined();
+  });
+
   it("opens when one of the expert's chats is opened later", async () => {
     location.search = "sessionId=otto-1";
     const { rerender } = render(sidebar());

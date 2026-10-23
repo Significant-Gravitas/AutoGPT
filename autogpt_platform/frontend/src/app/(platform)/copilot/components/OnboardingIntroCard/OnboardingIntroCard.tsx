@@ -30,7 +30,7 @@ interface Props {
   disabled?: boolean;
   path: string;
   /** Sends the ask's answer to Otto as an ordinary message. */
-  onAnswer: (message: string) => void;
+  onAnswer: (message: string) => unknown;
 }
 
 // The orb travels into this card's heading from the loader, so the

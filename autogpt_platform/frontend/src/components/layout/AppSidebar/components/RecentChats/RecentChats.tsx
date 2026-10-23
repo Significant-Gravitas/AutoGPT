@@ -122,9 +122,11 @@ export function RecentChats() {
               color={expert?.color ?? null}
               newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
               isAutopilot={!group.expertId}
-              hasActiveSession={group.sessions.some(
-                (session) => session.id === activeSessionId,
-              )}
+              activeSessionId={
+                group.sessions.some((session) => session.id === activeSessionId)
+                  ? activeSessionId
+                  : null
+              }
               sessions={group.sessions}
               renderItem={renderItem}
             />

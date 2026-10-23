@@ -17,13 +17,20 @@ import { toConnectableProviders } from "@/components/contextual/IntegrationsPane
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-experts";
 import { requestComposerVoice } from "@/services/onboarding/composer-voice-request";
+import { toastSendFailure } from "../../../../helpers/sendFailureToast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { buildTeam, chooseAsk, joinNames } from "./helpers";
 
 const COMPOSER_INPUT_ID = "chat-input-empty";
 
-export function useIntroStandup({ path }: { path: string }) {
+export function useIntroStandup({
+  path,
+  onAnswer,
+}: {
+  path: string;
+  onAnswer: (message: string) => unknown;
+}) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [connectDismissed, setConnectDismissed] = useState(false);
@@ -103,11 +110,26 @@ export function useIntroStandup({ path }: { path: string }) {
         ),
       ),
     );
-    if (results.some((result) => result.status === "rejected")) {
+    const failed = ask.names.filter(
+      (_, index) => results[index].status === "rejected",
+    );
+    if (failed.length > 0) {
       toast({
-        title: `Couldn't give ${joinNames(ask.names)} access to ${ask.service}`,
+        title: `Couldn't give ${joinNames(failed)} access to ${ask.service}`,
         description: "You can finish it on the Team page.",
         variant: "destructive",
+      });
+    }
+  }
+
+  async function answer(message: string) {
+    try {
+      await onAnswer(message);
+    } catch (error) {
+      toastSendFailure({
+        title: "Could not send that to Otto",
+        error,
+        recovery: "you can pick it again",
       });
     }
   }
@@ -126,5 +148,6 @@ export function useIntroStandup({ path }: { path: string }) {
     dismissConnect: () => setConnectDismissed(true),
     startVoice: requestComposerVoice,
     focusComposer,
+    answer,
   };
 }

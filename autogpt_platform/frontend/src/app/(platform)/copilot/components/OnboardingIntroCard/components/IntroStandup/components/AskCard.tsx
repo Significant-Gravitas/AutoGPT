@@ -9,7 +9,7 @@ interface Props {
   disabled: boolean;
   onConnect: () => void;
   onDismissConnect: () => void;
-  onAnswer: (message: string) => void;
+  onAnswer: (message: string) => unknown;
   onStartVoice: () => void;
   onType: () => void;
 }

@@ -24,6 +24,19 @@ import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EmptySession } from "../../EmptySession/EmptySession";
 
+const toastSpy = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return {
+    ...actual,
+    toast: (...args: unknown[]) => toastSpy(...args),
+    useToast: () => ({ ...actual.useToast(), toast: toastSpy }),
+  };
+});
+
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "user-1", user_metadata: { preferred_name: "Alex" } },
@@ -177,6 +190,7 @@ function findAsk() {
 }
 
 beforeEach(() => {
+  toastSpy.mockReset();
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
@@ -386,6 +400,75 @@ describe("Otto's first turn on Home — the one ask", () => {
 
     expect(onStartTask).toHaveBeenCalledWith(
       "Let's start with Robin's day-one job: Triages the support inbox each morning.",
+    );
+  });
+
+  it("names only the hires whose grant failed", async () => {
+    serve({
+      hires: [nadia, robin, frankie],
+      setup: [makeSetupItem("nadia"), makeSetupItem("robin")],
+    });
+    server.use(
+      http.post("/api/proxy/api/integrations/notion/credentials", () =>
+        HttpResponse.json(
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "api_key",
+            title: "N",
+          },
+          { status: 201 },
+        ),
+      ),
+      http.post("/api/proxy/api/experts/:expertId/credentials", ({ params }) =>
+        params.expertId === "robin"
+          ? HttpResponse.json({ detail: "nope" }, { status: 500 })
+          : HttpResponse.json([]),
+      ),
+    );
+    renderHome();
+
+    fireEvent.click(
+      within(await findAsk()).getByRole("button", { name: "Connect Notion" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: /API Key/ }),
+    );
+    await userEvent.type(
+      await within(dialog).findByPlaceholderText("My Notion key"),
+      "N",
+    );
+    await userEvent.type(within(dialog).getByPlaceholderText("sk-..."), "x");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Continue" }),
+    );
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't give Robin access to Notion",
+        }),
+      ),
+    );
+  });
+
+  it("says so when the pick could not be sent to Otto", async () => {
+    serve({ hires: [nadia, robin] });
+    renderHome(
+      vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    );
+
+    await userEvent.click(
+      within(await findAsk()).getByRole("button", { name: /^Robin: Triages/ }),
+    );
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Could not send that to Otto" }),
+      ),
     );
   });
 
