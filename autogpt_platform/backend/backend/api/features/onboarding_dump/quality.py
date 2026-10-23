@@ -23,7 +23,6 @@ keeps the audio and transcript on the row, exactly like every other
 failure in this pipeline.
 """
 
-import asyncio
 import logging
 import os
 import zlib
@@ -31,7 +30,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.structured import request_json
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -183,13 +182,12 @@ async def _semantic_verdict(text: str) -> QualityRejection | None:
         return _judge_unavailable("judge_unconfigured")
 
     try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=_MODEL,
-                messages=[{"role": "user", "content": _PROMPT.format(transcript=text)}],
-                temperature=0,
-                max_tokens=100,
-            ),
+        reply = await request_json(
+            client,
+            model=_MODEL,
+            prompt=_PROMPT.format(transcript=text),
+            temperature=0,
+            max_tokens=100,
             timeout=_TIMEOUT_SECONDS,
         )
     except TimeoutError as e:
@@ -197,17 +195,21 @@ async def _semantic_verdict(text: str) -> QualityRejection | None:
     except Exception as e:
         return _judge_unavailable(f"judge_failed:{type(e).__name__}", e)
 
-    content = response.choices[0].message.content if response.choices else None
-    data = parse_response_json(content or "")
-    if not isinstance(data, dict) or not isinstance(data.get("usable"), bool):
-        return _judge_unavailable("judge_malformed")
+    data = reply.data
+    if data is None or not isinstance(data.get("usable"), bool):
+        return _judge_unavailable("judge_malformed", detail=reply.describe())
     if data["usable"]:
         return None
     return QualityRejection(error_code=INSUFFICIENT_CONTENT, reason="judge_unusable")
 
 
-def _judge_unavailable(reason: str, error: Exception | None = None) -> QualityRejection:
+def _judge_unavailable(
+    reason: str, error: Exception | None = None, *, detail: str = ""
+) -> QualityRejection:
     # ERROR, not WARNING: only ERROR raises a Sentry event, and an outage
     # rejects every ambiguous dump, so it has to be seen.
-    logger.error(f"Brain dump quality check unavailable: {reason}", exc_info=error)
+    suffix = f" ({detail})" if detail else ""
+    logger.error(
+        f"Brain dump quality check unavailable: {reason}{suffix}", exc_info=error
+    )
     return QualityRejection(error_code=QUALITY_CHECK_UNAVAILABLE, reason=reason)
