@@ -56,9 +56,9 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 
 Every rule and the lint rule that enforces it: [docs/engineering/design-system.md](../../docs/engineering/design-system.md).
 
-- **Tokens**: colour from role tokens (`bg-surface`, `text-foreground-secondary`, `border-border-base`), never the raw palette or hex; no `dark:` classes.
+- **Tokens**: colour from role tokens (`bg-surface`, `text-foreground-secondary`, `border-border-base`), never the raw palette or hex outside the `globals.css` token definitions; no `dark:` classes.
 - **Primitives**: on an atom, molecule or organism pick a `variant`, `size` or `tone`; `className` is for layout only. A repeated treatment becomes a variant.
-- **Styles**: Tailwind classes in the component that renders the element; no `style={{}}` for static values, no arbitrary values outside layout.
+- **Styles**: Tailwind classes in the component that renders the element; no `style={{}}` for static values, no arbitrary values outside layout and transitions.
 - **Typography**: text tokens (`text-body leading-body`, `text-13`) or a `Text` variant; no `text-[13px]`, `leading-[..]` or `font-[600]`.
 - **Imports**: Hugeicons through the `Icon` atom only; never `@/components/__legacy__` or `@/components/ui` in feature code.
 
