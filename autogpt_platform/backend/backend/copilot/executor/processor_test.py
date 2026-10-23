@@ -647,6 +647,14 @@ class TestExecuteAsyncAclose:
             # A first turn redelivered after the engine saved its message
             # behind the user's context block, before anything answered it.
             ([("user", format_user_context_prefix("ctx") + "hi")], "hi", True, "true"),
+            # The same, for a message that starts with a blank line: stripping
+            # the block also takes the whitespace after it.
+            (
+                [("user", format_user_context_prefix("ctx") + "\n  hi")],
+                "\n  hi",
+                True,
+                "true",
+            ),
             # Scheduled follow-ups the scheduler stores as the model's, like a
             # recurring routine sending its prompt into its chat again.
             ([("user", "brief me"), ("assistant", "done")], "brief me", False, "false"),

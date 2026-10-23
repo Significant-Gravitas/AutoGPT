@@ -71,11 +71,13 @@ def _is_platform_delta(chunk: StreamBaseResponse) -> bool:
 
 def _is_latest_user_message(messages: list["ChatMessage"], message: str) -> bool:
     """Whether *message* is already saved at the end of the chat, compared
-    without the server blocks a saved copy can carry."""
+    without the server blocks a saved copy can carry. Stripping a block also
+    takes the whitespace after it, so leading whitespace is ignored on both
+    sides."""
     for row in reversed(messages):
         if row.role != "user":
             return False
-        if strip_user_context_tags(row.content or "") == message:
+        if strip_user_context_tags(row.content or "").lstrip() == message.lstrip():
             return True
     return False
 
