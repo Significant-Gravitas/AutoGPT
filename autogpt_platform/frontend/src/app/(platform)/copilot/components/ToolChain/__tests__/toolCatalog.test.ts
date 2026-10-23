@@ -28,7 +28,7 @@ describe("getCatalogLabel", () => {
           { purpose: "Shopify sync for the launch", command },
           "error",
         )?.text,
-      ).toBe("Failed while Shopify sync for the launch");
+      ).toBe("Failed: Shopify sync for the launch");
     });
 
     it("falls back to the generic label when the purpose is itself technical", () => {

@@ -40,11 +40,10 @@ export function getCatalogLabel(
 function phraseLabel(phrase: string, state: "running" | "done" | "error") {
   if (state === "running") return `${phrase}…`;
   if (state === "done") return phrase;
-  // "Updating your brief" reads on after "Failed while"; a phrase that opens
-  // with a name ("Shopify sync") keeps its capital.
+  // "Updating your brief" reads on after "Failed while"; a noun phrase
+  // ("Shopify sync") does not, so it follows a colon with its capital kept.
   const [first] = phrase.split(" ");
-  const lead = /^[A-Z][a-z]*ing$/.test(first)
-    ? phrase.charAt(0).toLowerCase() + phrase.slice(1)
-    : phrase;
-  return `Failed while ${lead}`;
+  return /^[A-Z][a-z]*ing$/.test(first)
+    ? `Failed while ${phrase.charAt(0).toLowerCase()}${phrase.slice(1)}`
+    : `Failed: ${phrase}`;
 }

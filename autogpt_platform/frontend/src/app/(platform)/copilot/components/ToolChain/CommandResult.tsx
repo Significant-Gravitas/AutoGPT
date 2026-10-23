@@ -31,10 +31,13 @@ export function CommandResult({ row }: Props) {
   // The tool can refuse a call outright (no command, no sandbox): an error
   // payload with no exit code at all.
   const refusal = output?.type === "error" ? str(output, "message") : null;
+  // A non-zero exit alone is not a failure (`grep -q`, `test -f` and `diff`
+  // answer with one); it is when the command also complained on stderr.
+  const complained = !!(output && str(output, "stderr"));
   const failed =
     output?.type === "error" ||
     output?.timed_out === true ||
-    (typeof exitCode === "number" && exitCode !== 0);
+    (typeof exitCode === "number" && exitCode !== 0 && complained);
 
   return (
     <div className="flex flex-col items-start gap-1.5">

@@ -809,6 +809,37 @@ describe("ToolResult", () => {
       expect(screen.queryByText("boom")).toBeNull();
     });
 
+    it("does not call a quiet non-zero exit a failure (grep -q, test -f)", async () => {
+      const user = userEvent.setup();
+      render(
+        <ToolResult
+          row={row({ stdout: "", stderr: "", exit_code: 1 }, "bash_exec", {
+            command: "grep -q TBD brief.md",
+          })}
+        />,
+      );
+
+      expect(screen.queryByText("This step didn't work")).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("exit 1")).toBeDefined();
+    });
+
+    it("says plainly that a bash step that timed out failed", () => {
+      render(
+        <ToolResult
+          row={row(
+            { stdout: "", stderr: "", exit_code: -1, timed_out: true },
+            "bash_exec",
+            { command: "sleep 999" },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("This step didn't work")).toBeDefined();
+    });
+
     it("says plainly that a bash step the tool refused failed, with its message under details", async () => {
       const user = userEvent.setup();
       render(
