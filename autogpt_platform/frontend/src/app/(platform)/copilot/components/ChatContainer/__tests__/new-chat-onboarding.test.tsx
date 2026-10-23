@@ -73,6 +73,21 @@ describe("new full-page expert chats", () => {
     expect(urlUpdates).toEqual([]);
   });
 
+  test("stays in a new chat while its first message's files upload", async () => {
+    const request = mockOnboarding();
+    const urlUpdates = renderAt(
+      <ChatContainer
+        {...props}
+        isUploadingFiles
+        pendingSend={{ text: "Here's the brief", attachments: [] }}
+      />,
+      "empty-session",
+    );
+    expect(await screen.findByRole("textbox")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
+    expect(urlUpdates).toEqual([]);
+  });
+
   test("keeps the home hero when an expert is picked before a chat exists", async () => {
     const request = mockOnboarding();
     render(<ChatContainer {...props} sessionId={null} />);

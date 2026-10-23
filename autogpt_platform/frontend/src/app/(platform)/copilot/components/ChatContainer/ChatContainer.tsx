@@ -235,6 +235,8 @@ export const ChatContainer = ({
       !isLimitReached &&
       !isStreaming &&
       !isCreatingSession &&
+      !isUploadingFiles &&
+      !pendingSend &&
       !isExpertArchived,
   });
   const chatExpert =

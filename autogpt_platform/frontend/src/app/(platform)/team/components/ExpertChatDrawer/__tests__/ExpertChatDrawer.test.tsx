@@ -37,6 +37,7 @@ const FRESH_SESSION_ID = "session-zara-fresh";
 const RETRY_SESSION_ID = "session-zara-retry";
 const ERROR_SESSION_ID = "session-zara-error";
 const SETUP_SESSION_ID = "session-zara-setup";
+const NEW_TASK_SESSION_ID = "session-zara-new-task";
 const WAIT_MS = 3_000;
 
 function deferred() {
@@ -555,6 +556,65 @@ describe("ExpertChatDrawer", () => {
     );
     expect(await screen.findByText("What can I do for you?")).toBeDefined();
     expect(request).not.toHaveBeenCalled();
+  });
+
+  test("a new task after setup is answered stays in a new thread", async () => {
+    markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
+    let answered = false;
+    const onboardingRequests = vi.fn();
+    server.use(
+      // Answering settles setup; the slow refetch leaves the cached chat id
+      // in place while "New task" is already showing an empty thread.
+      http.get("/api/proxy/api/experts/:expertId/onboarding", async () => {
+        onboardingRequests();
+        if (!answered)
+          return HttpResponse.json({ session_id: NEW_TASK_SESSION_ID });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return HttpResponse.json(null);
+      }),
+      ...pendingSetupHandlers(NEW_TASK_SESSION_ID),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${NEW_TASK_SESSION_ID}/stream`,
+        async ({ request }) => {
+          answered = true;
+          return streamSseResponse(assistantTextChunks("Thanks!"), {
+            abortSignal: request.signal,
+          });
+        },
+      ),
+    );
+    render(
+      <ExpertChatDrawer
+        target={ZARA}
+        resumeLatest={false}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("radio", { name: "Pricing" }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: "Send answers" },
+        { timeout: WAIT_MS },
+      ),
+    );
+    expect(
+      await screen.findByText("Thanks!", {}, { timeout: WAIT_MS }),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "New task" }));
+    await waitFor(() => expect(onboardingRequests).toHaveBeenCalledTimes(2), {
+      timeout: WAIT_MS,
+    });
+    expect(
+      await screen.findByText(
+        "What can I do for you?",
+        {},
+        { timeout: WAIT_MS },
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Open in Chat" }).getAttribute("href"),
+    ).toBe(`/copilot?expertId=${EXPERT_ID}&new=1`);
   });
 
   test("opens the chat whose setup questions still wait", async () => {
