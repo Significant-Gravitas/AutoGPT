@@ -200,6 +200,42 @@ async def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
 
 
 @pytest.mark.asyncio
+async def test_positive_delta_survives_a_failing_low_balance_alert(
+    tmp_block_costs_override,
+):
+    """The delta has landed by the time the low-balance alert runs. If the
+    alert raises, the delta must still come back and reach the expert's meter:
+    the manager adds the returned delta to the run's cost, and (0, 0) would
+    drop money the wallet already paid."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.expert_id = "expert-1"
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    db_client = _async_db_client(spend_credits_return=42)
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch(
+            "backend.executor.billing.handle_low_balance",
+            side_effect=RuntimeError("alert store unavailable"),
+        ),
+        patch(
+            "backend.executor.billing.add_weekly_spend", new_callable=AsyncMock
+        ) as add_spend,
+    ):
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
+
+    assert (delta, remaining) == (5, 42)
+    add_spend.assert_awaited_once_with("expert-1", 5)
+
+
+@pytest.mark.asyncio
 async def test_positive_delta_passes_fail_insufficient_credits_false(
     tmp_block_costs_override,
 ):

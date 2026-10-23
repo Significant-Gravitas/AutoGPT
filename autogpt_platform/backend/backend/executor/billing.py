@@ -351,14 +351,21 @@ async def charge_reconciled_usage(
         if delta > 0 and user_ledger:
             # handle_low_balance is sync + does a blocking RPC; dispatch to
             # thread so we don't block the event loop. Rare path (threshold
-            # crossings only).
-            await asyncio.to_thread(
-                handle_low_balance,
-                get_db_client(),
-                node_exec.user_id,
-                remaining_balance,
-                delta,
-            )
+            # crossings only). The delta has landed, so a failed alert is
+            # logged here instead of dropping it via the handler below.
+            try:
+                await asyncio.to_thread(
+                    handle_low_balance,
+                    get_db_client(),
+                    node_exec.user_id,
+                    remaining_balance,
+                    delta,
+                )
+            except Exception:
+                logger.exception(
+                    f"Low-balance check failed after reconciling node "
+                    f"{node_exec.node_exec_id}"
+                )
         # Keep the expert's weekly meter honest for dynamic-cost blocks:
         # positive deltas add spend, refunds subtract.
         if node_exec.execution_context.expert_id:
