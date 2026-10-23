@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useRef } from "react";
 
 // The runtime chat reads a queued session at the same pace.
 const QUEUED_POLL_MS = 10_000;
@@ -23,9 +23,11 @@ export function useFollowQueuedTurn({
   followBackendTurn,
 }: Args) {
   const refetchRef = useRef(refetchSession);
-  refetchRef.current = refetchSession;
   const followRef = useRef(followBackendTurn);
-  followRef.current = followBackendTurn;
+  useInsertionEffect(() => {
+    refetchRef.current = refetchSession;
+    followRef.current = followBackendTurn;
+  });
   const wasQueuedRef = useRef(false);
 
   useEffect(() => {

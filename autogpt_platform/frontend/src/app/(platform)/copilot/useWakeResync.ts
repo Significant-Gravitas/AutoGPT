@@ -42,6 +42,12 @@ export function useWakeResync({
       if (elapsed < WAKE_RESYNC_THRESHOLD_MS) return;
 
       setIsSyncing(true);
+      await resync(sid).finally(() => {
+        if (isMountedRef.current) setIsSyncing(false);
+      });
+    }
+
+    async function resync(sid: string) {
       try {
         const result = await refetchSession();
         // Bail out if the session changed or the host unmounted while
@@ -55,8 +61,6 @@ export function useWakeResync({
         }
       } catch (err) {
         console.warn("[copilot] wake re-sync failed", err);
-      } finally {
-        if (isMountedRef.current) setIsSyncing(false);
       }
     }
 

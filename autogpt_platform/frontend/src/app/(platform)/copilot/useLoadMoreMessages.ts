@@ -1,4 +1,7 @@
-import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  getV2GetSession,
+  type getV2GetSessionResponse,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -106,47 +109,27 @@ export function useLoadMoreMessages({
     const requestEpoch = epochRef.current;
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
+    await fetchOlderPage(sessionId, oldestSequence, requestEpoch).finally(
+      () => {
+        if (epochRef.current === requestEpoch) {
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+        }
+      },
+    );
+  }
+
+  async function fetchOlderPage(
+    loadSessionId: string,
+    beforeSequence: number,
+    requestEpoch: number,
+  ) {
     try {
-      const response = await getV2GetSession(sessionId, {
+      const response = await getV2GetSession(loadSessionId, {
         limit: 50,
-        before_sequence: oldestSequence,
+        before_sequence: beforeSequence,
       });
-
-      // Discard response if session/pagination was reset while awaiting
-      if (epochRef.current !== requestEpoch) return;
-
-      if (response.status !== 200) {
-        consecutiveErrorsRef.current += 1;
-        console.warn(
-          `[loadMore] Failed to load messages (status=${response.status}, attempt=${consecutiveErrorsRef.current})`,
-        );
-        if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
-          setHasMore(false);
-        }
-        return;
-      }
-
-      consecutiveErrorsRef.current = 0;
-
-      const newRaw = (response.data.messages ?? []) as unknown[];
-      const estimatedTotal = pagedRawMessages.length + newRaw.length;
-      setPagedRawMessages((prev) => {
-        const merged = [...newRaw, ...prev];
-        if (merged.length > MAX_OLDER_MESSAGES) {
-          return merged.slice(merged.length - MAX_OLDER_MESSAGES);
-        }
-        return merged;
-      });
-
-      // Note: after truncation, oldest_sequence may reference a dropped
-      // message. This is safe because we also set hasMore=false below,
-      // preventing further loads with the stale cursor.
-      setOldestSequence(response.data.oldest_sequence ?? null);
-      if (estimatedTotal >= MAX_OLDER_MESSAGES) {
-        setHasMore(false);
-      } else {
-        setHasMore(!!response.data.has_more_messages);
-      }
+      applyOlderPage(response, requestEpoch);
     } catch (error) {
       if (epochRef.current !== requestEpoch) return;
       consecutiveErrorsRef.current += 1;
@@ -154,11 +137,47 @@ export function useLoadMoreMessages({
       if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
         setHasMore(false);
       }
-    } finally {
-      if (epochRef.current === requestEpoch) {
-        isLoadingMoreRef.current = false;
-        setIsLoadingMore(false);
+    }
+  }
+
+  function applyOlderPage(
+    response: getV2GetSessionResponse,
+    requestEpoch: number,
+  ) {
+    // Discard response if session/pagination was reset while awaiting
+    if (epochRef.current !== requestEpoch) return;
+
+    if (response.status !== 200) {
+      consecutiveErrorsRef.current += 1;
+      console.warn(
+        `[loadMore] Failed to load messages (status=${response.status}, attempt=${consecutiveErrorsRef.current})`,
+      );
+      if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+        setHasMore(false);
       }
+      return;
+    }
+
+    consecutiveErrorsRef.current = 0;
+
+    const newRaw = (response.data.messages ?? []) as unknown[];
+    const estimatedTotal = pagedRawMessages.length + newRaw.length;
+    setPagedRawMessages((prev) => {
+      const merged = [...newRaw, ...prev];
+      if (merged.length > MAX_OLDER_MESSAGES) {
+        return merged.slice(merged.length - MAX_OLDER_MESSAGES);
+      }
+      return merged;
+    });
+
+    // Note: after truncation, oldest_sequence may reference a dropped
+    // message. This is safe because we also set hasMore=false below,
+    // preventing further loads with the stale cursor.
+    setOldestSequence(response.data.oldest_sequence ?? null);
+    if (estimatedTotal >= MAX_OLDER_MESSAGES) {
+      setHasMore(false);
+    } else {
+      setHasMore(!!response.data.has_more_messages);
     }
   }
 

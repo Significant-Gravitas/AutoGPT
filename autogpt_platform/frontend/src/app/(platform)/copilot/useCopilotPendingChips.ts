@@ -2,7 +2,14 @@ import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/
 import type { PeekPendingMessagesResponseHeldReason } from "@/app/api/__generated__/models/peekPendingMessagesResponseHeldReason";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { dropQueuedSendBubbles } from "./helpers/dropQueuedSendBubbles";
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
@@ -98,7 +105,9 @@ export function useCopilotPendingChips({
   const isActive = status === "streaming" || status === "submitted";
 
   const messagesRef = useRef(messages);
-  messagesRef.current = messages;
+  useInsertionEffect(() => {
+    messagesRef.current = messages;
+  });
   // The stream runtime drops these itself when its send is answered queued.
   function dropQueuedSends(texts: readonly string[]) {
     const current = messagesRef.current;
@@ -196,9 +205,11 @@ function usePeekOnBoundary({
   dropQueuedSends: (texts: readonly string[]) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
   const dropQueuedSendsRef = useRef(dropQueuedSends);
-  dropQueuedSendsRef.current = dropQueuedSends;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+    dropQueuedSendsRef.current = dropQueuedSends;
+  });
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
   // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
@@ -358,7 +369,9 @@ function useAutoContinuePromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   const prevStatusRef = useRef(status);
   // The opener is the first assistant id observed after a turn starts.
   // Any LATER assistant id in the same chain is the auto-continue.
@@ -508,7 +521,9 @@ function useMidTurnDrainPromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   // Live ref tracks the latest sessionId so a poll captured at request
   // time can detect a session switch on resolve.  A cancellation flag
   // would also fire on enqueue (this effect re-runs on every queue
