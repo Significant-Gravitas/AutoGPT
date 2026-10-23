@@ -10,7 +10,7 @@ import type { ReadyExpert } from "./useReadyExperts";
 const OFFER: TrialOfferResponse = {
   token: "story",
   version: "1",
-  duration_days: 14,
+  duration_days: 7,
   tier: "PRO",
   billing_cycle: "monthly",
   unit_amount: 5000,
