@@ -142,7 +142,7 @@ export function SubscriptionTierSection() {
       {needsSubscription && (
         <div
           role="status"
-          // TODO(tokens): no exact role (border-violet-300 #C4B5FD, text-violet-900 #4C1D95, dark:border-violet-700, dark:bg-violet-900/20, dark:text-violet-200)
+          // TODO(tokens): no exact role (border-violet-300 #C4B5FD, text-violet-900 #4C1D95, dark:bg-violet-900/20, dark:text-violet-200); no fitting role for dark:border-violet-700 #6D28D9; #6D28D9 is accent-strong, a text colour
           className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-sm text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
         >
           <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
@@ -269,7 +269,7 @@ export function SubscriptionTierSection() {
           {!hasPendingChange && (
             <Button
               variant="ghost"
-              // TODO(tokens): no exact role (text-neutral-600 #525252, hover:text-red-600 #D93636, error-hover is a fill role, dark:text-neutral-400)
+              // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400); no fitting role for hover:text-red-600 #D93636; #D93636 is error-hover, a hover fill
               className="shrink-0 text-sm text-neutral-600 hover:text-red-600 dark:text-neutral-400"
               disabled={isPending}
               onClick={() => setConfirmDowngradeTo("NO_TIER")}

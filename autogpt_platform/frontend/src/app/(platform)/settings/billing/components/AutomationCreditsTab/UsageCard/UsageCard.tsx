@@ -162,7 +162,7 @@ function UsageBar({
               ? `${day.date}: $0.00, 0 runs`
               : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
           }
-          // TODO(tokens): no exact role (focus-visible:ring-zinc-400 #ADADB3, foreground-subtle is a text role)
+          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
           className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
         >
           {isEmpty ? (
@@ -182,8 +182,7 @@ function UsageBar({
                       delay: 0.15 + index * 0.015,
                     }
               }
-              // TODO(tokens): no exact role (border-purple-500 #7733F5, brand is a text and fill role)
-              className="w-full cursor-help rounded-t-[3px] border-t-2 border-purple-500 bg-brand/30 transition-colors group-hover:bg-brand/50"
+              className="w-full cursor-help rounded-t-[3px] border-t-2 border-brand bg-brand/30 transition-colors group-hover:bg-brand/50"
             />
           )}
         </button>
@@ -197,7 +196,7 @@ function UsageBar({
             {day.date}
           </span>
           <span
-            // TODO(tokens): no exact role (text-zinc-50 #F9F9FA, surface-muted is a fill role)
+            // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted, a fill
             className="text-sm font-medium tabular-nums text-zinc-50"
           >
             ${day.amount.toFixed(2)}

@@ -16,7 +16,7 @@ export function SubmissionLoadError() {
         >
           <Icon
             icon={InboxIcon}
-            // TODO(tokens): no exact role (text-red-600 #D93636, error-hover is a fill role, dark:text-red-400)
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill; no exact role (dark:text-red-400)
             className="h-8 w-8 text-red-600 dark:text-red-400"
           />
         </div>

@@ -228,7 +228,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
                 "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
                 "[&_li]:my-1 [&_li]:pl-1",
                 "[&_li>p]:my-0",
-                // TODO(tokens): no exact role ([&_a]:text-purple-600 #6C2EDF, brand-hover is a fill role, hover:[&_a]:text-purple-700 #5424AE)
+                // TODO(tokens): no fitting role for [&_a]:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill; no exact role (hover:[&_a]:text-purple-700 #5424AE)
                 "[&_a]:text-purple-600 [&_a]:underline hover:[&_a]:text-purple-700",
                 "[&_strong]:font-semibold",
                 "[&_em]:italic",
@@ -263,7 +263,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           value={formState.description}
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}
-          // TODO(tokens): no exact role (hover:scrollbar-thumb-zinc-300 #C5C5C9, no fill role)
+          // TODO(tokens): no fitting role for hover:scrollbar-thumb-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border) and foreground-disabled (a text colour)
           className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active hover:scrollbar-thumb-zinc-300"
         />
       )}

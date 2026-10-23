@@ -93,7 +93,7 @@ export function HeldCallRow({
           </div>
           {failed ? (
             <Text
-              // TODO(tokens): no exact role (!text-red-600 #D93636, error-hover is a fill role)
+              // TODO(tokens): no fitting role for !text-red-600 #D93636; #D93636 is error-hover, a hover fill
               variant="body"
               role="alert"
               className="!text-red-600"

@@ -127,7 +127,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               Managed by your AutoGPT account team.{" "}
               <a
                 href={ENTERPRISE_CONTACT_URL}
-                // TODO(tokens): no exact role (hover:text-purple-600 #6C2EDF, brand-hover is a fill role)
+                // TODO(tokens): no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
                 className="font-medium text-brand no-underline hover:text-purple-600"
               >
                 Contact us

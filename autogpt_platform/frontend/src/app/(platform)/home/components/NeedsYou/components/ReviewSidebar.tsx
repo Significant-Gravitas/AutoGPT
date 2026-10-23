@@ -87,7 +87,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                 </span>
                 {carousel.isNew(item.id) ? (
                   <span
-                    // TODO(tokens): no exact role (text-blue-700 #1D4ED8)
+                    // TODO(tokens): no fitting role for text-blue-700 #1D4ED8; #1D4ED8 is sidebar-primary, a dark-theme sidebar fill (light #18181B)
                     className="shrink-0 rounded bg-info-surface px-1.5 text-xs font-medium text-blue-700"
                   >
                     new
