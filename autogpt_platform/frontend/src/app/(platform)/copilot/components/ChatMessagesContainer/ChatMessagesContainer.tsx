@@ -11,7 +11,7 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
@@ -162,7 +162,9 @@ export function LoadMoreSentinel({
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
-  onLoadMoreRef.current = onLoadMore;
+  useInsertionEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  });
   // Pre-mutation scroll snapshot, written synchronously before onLoadMore
   const scrollSnapshotRef = useRef({ scrollHeight: 0, scrollTop: 0 });
   // Consecutive auto-triggered loads that left the container non-scrollable

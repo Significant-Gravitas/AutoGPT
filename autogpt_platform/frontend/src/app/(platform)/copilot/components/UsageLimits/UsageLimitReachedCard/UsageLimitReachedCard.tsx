@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -19,6 +20,10 @@ import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
 export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
   const state = useUsageLimitReachedCard(props);
+  // Relative to the clock, so read on every render rather than cached.
+  const resetSentence = useReadEveryRender(() =>
+    state.wait ? budgetResetSentence(state.wait) : null,
+  );
   if (state.isLoading || (!state.experience.blocked && !state.isError))
     return null;
   const copy = usagePresentation(state.experience, state.offer.usageMultiplier);
@@ -69,7 +74,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
           : state.isError
             ? "Your work is saved. Try again to check your allowance."
             : state.wait
-              ? budgetResetSentence(state.wait)
+              ? resetSentence
               : copy.description}
       </Text>
       {state.wait && (
