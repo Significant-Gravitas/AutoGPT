@@ -7,6 +7,8 @@ it so future maintainers know whether the rule still earns its keep.
 """
 
 import ast
+import collections
+import functools
 import pathlib
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -182,60 +184,100 @@ def test_backend_uses_pydantic_not_dataclasses():
 
 
 # ---------------------------------------------------------------------------
-# Rule: tests never patch the clock or sleep by its global name
+# Rule: tests never patch the shared clock or sleep
 # ---------------------------------------------------------------------------
 #
-# Motivation: ``patch("asyncio.sleep")`` or ``patch.object(time, "time")``
-# replaces the attribute on the shared module, so every coroutine and library
-# in the test's event loop sleeps or reads the clock through the stub. That
-# made the copilot dispatch-retry test flaky (OPEN-3475), stalled the desktop
-# opener test (#14633), and expired an ``ExpiringDict`` lock table under
-# ``creds_manager_lock_test.py``. Patch the name in the module under test
-# (``patch("backend.x.y.asyncio.sleep")``) or inject the clock instead.
+# Motivation: ``patch("asyncio.sleep")``, ``patch.object(time, "time")`` and
+# ``patch("backend.x.y.asyncio.sleep")`` (where ``y`` does ``import asyncio``)
+# all replace the attribute on the one shared module, so every coroutine and
+# library in the test's event loop sleeps or reads the clock through the stub.
+# That made the copilot dispatch-retry test flaky (OPEN-3475), stalled the
+# desktop opener test (#14633), and expired an ``ExpiringDict`` lock table
+# under ``creds_manager_lock_test.py``. Patch a name the module under test bound
+# itself (``from asyncio import sleep``, then ``patch("backend.x.y.sleep")``),
+# or inject the clock or sleep.
 
 _GLOBAL_CLOCK_PATCH_TARGETS = frozenset(
     {"time.sleep", "asyncio.sleep", "time.time", "time.monotonic"}
 )
 
-# Pre-existing offenders, as "<path> <target>". Burn this list down; do not
-# add to it. An entry that no longer matches fails the test, so a fixed file
-# must leave the list too.
-_GLOBAL_CLOCK_PATCH_OFFENDERS = frozenset(
-    {
-        "blocks/exa/cost_tracking_test.py asyncio.sleep",
-        "copilot/sdk/p0_guardrails_test.py asyncio.sleep",
-        "data/credential_refresh_test.py time.time",
-        "data/user_test.py time.time",
-        "integrations/creds_manager_lock_test.py time.time",
-        "integrations/creds_manager_test.py time.time",
-        "integrations/oauth/microsoft_365_copilot_test.py time.time",
-        "integrations/oauth/todoist_test.py time.time",
-    }
-)
+# Pre-existing offenders: "<path> <target>" -> how many such patches the file
+# makes. Burn this down; do not add to it. A count above it fails the rule, a
+# count below it fails the staleness check, so a fixed site lowers the number.
+_GLOBAL_CLOCK_PATCH_OFFENDERS = {
+    "api/features/onboarding_dump/transcription_test.py asyncio.sleep": 2,
+    "api/features/orgs/routes_test.py asyncio.sleep": 1,
+    "blocks/exa/cost_tracking_test.py asyncio.sleep": 4,
+    "blocks/rss_test.py asyncio.sleep": 2,
+    "blocks/time_blocks_test.py asyncio.sleep": 2,
+    "copilot/bot/handler_test.py asyncio.sleep": 3,
+    "copilot/executor/manager_block_warmup_test.py time.sleep": 1,
+    "copilot/graphiti/falkordb_driver_test.py asyncio.sleep": 4,
+    "copilot/optimize_blocks_test.py asyncio.sleep": 3,
+    "copilot/sdk/openrouter_cost_test.py asyncio.sleep": 1,
+    "copilot/sdk/p0_guardrails_test.py asyncio.sleep": 7,
+    "copilot/sdk/provider_out_of_credits_test.py asyncio.sleep": 1,
+    "copilot/tools/e2b_sandbox_test.py asyncio.sleep": 11,
+    "copilot/tools/e2b_sandbox_test.py time.time": 1,
+    "copilot/tools/skills_learning_test.py asyncio.sleep": 1,
+    "data/credential_refresh_test.py time.time": 1,
+    "data/subscription_upgrade_fixtures.py time.time": 1,
+    "data/subscription_upgrade_test.py time.time": 1,
+    "data/user_test.py time.time": 1,
+    "executor/manager_block_warmup_test.py time.sleep": 1,
+    "executor/scheduler_index_recovery_test.py time.sleep": 1,
+    "integrations/creds_manager_lock_test.py time.time": 1,
+    "integrations/creds_manager_test.py time.time": 2,
+    "integrations/oauth/microsoft_365_copilot_test.py time.time": 1,
+    "integrations/oauth/todoist_test.py time.time": 1,
+    "monitoring/auth_identity_monitor_test.py time.monotonic": 1,
+    "notifications/checkout_backfill_test.py asyncio.sleep": 6,
+    "notifications/consumer_test.py asyncio.sleep": 5,
+    "notifications/mailerlite_backfill_test.py asyncio.sleep": 1,
+    "notifications/mailerlite_field_backfill_test.py asyncio.sleep": 1,
+    "notifications/role_backfill_test.py asyncio.sleep": 1,
+    "notifications/subscriber_fields_test.py asyncio.sleep": 1,
+    "notifications/trial_shared_delivery_test.py asyncio.sleep": 1,
+    "util/retry_test.py time.time": 1,
+}
 
 
 def test_no_global_clock_or_sleep_patches():
     found = _global_clock_patches()
+    counts = collections.Counter((rel, target) for rel, target, _ in found)
+    over = {
+        key
+        for key, n in counts.items()
+        if n > _GLOBAL_CLOCK_PATCH_OFFENDERS.get(f"{key[0]} {key[1]}", 0)
+    }
     new = sorted(
         f"  backend/{rel}:{lineno} patches {target}"
         for rel, target, lineno in found
-        if f"{rel} {target}" not in _GLOBAL_CLOCK_PATCH_OFFENDERS
+        if (rel, target) in over
     )
     assert not new, (
         "Tests must not patch time.sleep, asyncio.sleep, time.time or "
-        "time.monotonic by their global names: the stub reaches every "
-        "coroutine and library in the process. Patch the name in the module "
-        'under test (e.g. patch("backend.x.y.asyncio.sleep")) or inject the '
-        "clock:\n" + "\n".join(new)
+        "time.monotonic on the shared module, by any path that reaches it: "
+        "the stub reaches every coroutine and library in the process. Patch "
+        "a name the module under test bound itself (`from asyncio import "
+        'sleep`, then patch("backend.x.y.sleep")) or inject the clock or '
+        "sleep. An allowlisted file over its count lists all its sites:\n"
+        + "\n".join(new)
     )
 
 
 def test_global_clock_patch_offenders_are_not_stale():
-    still_there = {f"{rel} {target}" for rel, target, _ in _global_clock_patches()}
-    stale = sorted(_GLOBAL_CLOCK_PATCH_OFFENDERS - still_there)
+    counts = collections.Counter(
+        f"{rel} {target}" for rel, target, _ in _global_clock_patches()
+    )
+    stale = sorted(
+        f"{key}: {allowed} allowed, {counts[key]} found"
+        for key, allowed in _GLOBAL_CLOCK_PATCH_OFFENDERS.items()
+        if counts[key] < allowed
+    )
     assert not stale, (
-        "These _GLOBAL_CLOCK_PATCH_OFFENDERS entries no longer patch the "
-        "global name; remove them from the list:\n  " + "\n  ".join(stale)
+        "These _GLOBAL_CLOCK_PATCH_OFFENDERS counts are above what the files "
+        "still patch; lower them (or drop the entry at 0):\n  " + "\n  ".join(stale)
     )
 
 
@@ -247,34 +289,118 @@ def _global_clock_patches() -> list[tuple[str, str, int]]:
         except SyntaxError:
             continue
         rel = py.relative_to(BACKEND_ROOT).as_posix()
+        names = _import_bindings(tree, _package_of(rel))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                target = _global_clock_patch_target(node)
-                if target:
+                for target in _patched_clock_targets(node, names):
                     found.append((rel, target, node.lineno))
     return found
 
 
-def _global_clock_patch_target(call: ast.Call) -> str | None:
-    """`patch("time.time")`, `monkeypatch.setattr("time.time", ...)`,
-    `patch.object(time, "time")` and `monkeypatch.setattr(time, "time", ...)`."""
-    name = _decorator_name(call.func)
+def _patched_clock_targets(call: ast.Call, names: dict[str, str]) -> list[str]:
+    """Shared-module clock targets of `patch(...)`, `patch.object(...)`,
+    `patch.multiple(...)` and `setattr(...)`, aliases included."""
+    func = _qualified(call.func, names) or ""
+    kind = func.rsplit(".", 2)[-2:]
     args = call.args
-    if (
-        name in ("patch", "setattr")
-        and args
-        and isinstance(args[0], ast.Constant)
-        and args[0].value in _GLOBAL_CLOCK_PATCH_TARGETS
+    dotted = _str_value(args[0]) if args else None
+    if kind[-1] in ("patch", "setattr") and dotted:
+        owner, _, attr = dotted.rpartition(".")
+        pairs = [(owner, attr)]
+    elif (kind == ["patch", "object"] or kind[-1] == "setattr") and len(args) >= 2:
+        owner, attr = _owner_path(args[0], names), _str_value(args[1])
+        pairs = [(owner, attr)] if owner and attr else []
+    elif kind == ["patch", "multiple"] and args:
+        owner = _owner_path(args[0], names)
+        pairs = [(owner, kw.arg) for kw in call.keywords if owner and kw.arg]
+    else:
+        return []
+    targets = [f"{_resolve(owner)}.{attr}" for owner, attr in pairs]
+    return [t for t in targets if t in _GLOBAL_CLOCK_PATCH_TARGETS]
+
+
+def _owner_path(node: ast.expr, names: dict[str, str]) -> str | None:
+    return _str_value(node) or _qualified(node, names)
+
+
+def _qualified(node: ast.expr, names: dict[str, str]) -> str | None:
+    if isinstance(node, ast.Name):
+        return names.get(node.id, node.id)
+    if isinstance(node, ast.Attribute):
+        base = _qualified(node.value, names)
+        return f"{base}.{node.attr}" if base else None
+    return None
+
+
+def _resolve(path: str, depth: int = 0) -> str:
+    """Follow module-level import bindings, so
+    "backend.blocks.exa.research.asyncio" -> "asyncio" when research.py
+    does `import asyncio`."""
+    parts = path.split(".")
+    for i in range(len(parts), 0, -1):
+        found = _module_tree(".".join(parts[:i]))
+        if found is None:
+            continue
+        if i == len(parts) or depth > 5:
+            return path
+        tree, package = found
+        binding = _import_bindings(tree, package).get(parts[i])
+        if binding is None:
+            return path
+        return _resolve(".".join([binding, *parts[i + 1 :]]), depth + 1)
+    return path
+
+
+@functools.cache
+def _module_tree(module: str) -> tuple[ast.Module, str] | None:
+    """The parsed backend module and the package its relative imports use."""
+    if module != "backend" and not module.startswith("backend."):
+        return None
+    base = BACKEND_ROOT.joinpath(*module.split(".")[1:])
+    for path, package in (
+        (base / "__init__.py", module),
+        (base.with_suffix(".py"), module.rpartition(".")[0]),
     ):
-        return args[0].value
-    if (
-        name in ("object", "setattr")
-        and len(args) >= 2
-        and isinstance(args[0], ast.Name)
-        and isinstance(args[1], ast.Constant)
-        and f"{args[0].id}.{args[1].value}" in _GLOBAL_CLOCK_PATCH_TARGETS
-    ):
-        return f"{args[0].id}.{args[1].value}"
+        if path.is_file():
+            try:
+                return ast.parse(path.read_text(encoding="utf-8")), package
+            except SyntaxError:
+                return None
+    return None
+
+
+def _import_bindings(tree: ast.Module, package: str) -> dict[str, str]:
+    """Module-level names bound by imports, mapped to their dotted origin."""
+    names: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    names[alias.asname] = alias.name
+                else:
+                    top = alias.name.split(".")[0]
+                    names[top] = top
+        elif isinstance(node, ast.ImportFrom):
+            origin = _absolute_module(node, package)
+            for alias in node.names:
+                names[alias.asname or alias.name] = f"{origin}.{alias.name}"
+    return names
+
+
+def _absolute_module(node: ast.ImportFrom, package: str) -> str:
+    if not node.level:
+        return node.module or ""
+    base = package.split(".")[: len(package.split(".")) - node.level + 1]
+    return ".".join([*base, *([node.module] if node.module else [])])
+
+
+def _package_of(rel: str) -> str:
+    return ".".join(["backend", *rel.split("/")[:-1]])
+
+
+def _str_value(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
     return None
 
 
@@ -286,7 +412,9 @@ def test_known_offenders_use_posix_separators():
     Ensure the key construction normalises to forward slashes.
     """
     for entry in (
-        _KNOWN_OFFENDERS | _DATACLASS_KNOWN_OFFENDERS | _GLOBAL_CLOCK_PATCH_OFFENDERS
+        _KNOWN_OFFENDERS
+        | _DATACLASS_KNOWN_OFFENDERS
+        | set(_GLOBAL_CLOCK_PATCH_OFFENDERS)
     ):
         path_part = entry.split()[0]
         assert "\\" not in path_part, (
