@@ -1035,9 +1035,12 @@ async def _call_openai_compat(
         raise ValueError(f"{base_url} returned empty choices in response")
 
     cache_read, cache_creation = _extract_openai_compat_cache_tokens(response)
+    finish_reason = response.choices[0].finish_reason
 
     return ProviderResponse(
         content=response.choices[0].message.content or "",
+        # Callers check Anthropic's "max_tokens"; OpenAI calls it "length".
+        stop_reason="max_tokens" if finish_reason == "length" else finish_reason,
         prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
         completion_tokens=(response.usage.completion_tokens if response.usage else 0),
         cache_read_tokens=cache_read,

@@ -226,6 +226,7 @@ class TestExecutionModeStubs:
                 msg.content = ""
                 choice = MagicMock()
                 choice.message = msg
+                choice.finish_reason = "stop"
                 resp = MagicMock()
                 resp.choices = [choice]
                 resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
@@ -670,7 +671,12 @@ class TestGroq:
 
 
 def _fake_openai_chat_response(
-    content: str, prompt: int, completion: int, *, cost: float | None = None
+    content: str,
+    prompt: int,
+    completion: int,
+    *,
+    cost: float | None = None,
+    finish_reason: str = "stop",
 ) -> SimpleNamespace:
     usage = SimpleNamespace(
         prompt_tokens=prompt,
@@ -678,7 +684,7 @@ def _fake_openai_chat_response(
         model_extra={"cost": cost} if cost is not None else None,
     )
     message = SimpleNamespace(content=content, tool_calls=None)
-    choice = SimpleNamespace(message=message)
+    choice = SimpleNamespace(message=message, finish_reason=finish_reason)
     return SimpleNamespace(choices=[choice], usage=usage)
 
 
@@ -788,6 +794,44 @@ class TestSmallCallReasoning:
             "usage": {"include": True},
             "reasoning": {"enabled": False},
         }
+
+    @pytest.mark.asyncio
+    async def test_an_answer_cut_off_at_the_cap_reports_max_tokens(self):
+        # ``structured_complete`` raises "truncated at max_tokens" on this; with
+        # no stop reason the cut-off JSON read as "non-JSON content" instead.
+        async_create = AsyncMock(
+            return_value=_fake_openai_chat_response(
+                '{"verdict": "ok", "rea',
+                prompt=1,
+                completion=400,
+                finish_reason="length",
+            )
+        )
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=_compat_client(async_create),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning", return_value=None
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost", return_value=None
+            ),
+        ):
+            result = await call_provider(
+                provider="open_router",
+                model="anthropic/claude-haiku-5.5",
+                api_key="sk-or-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=400,
+            )
+
+        assert result.stop_reason == "max_tokens"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
