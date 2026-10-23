@@ -53,6 +53,7 @@ function glossyChipStyle(color: string, isSelected: boolean): CSSProperties {
   return {
     // TODO(tokens): #18181b equals --color-primary, a button role, not an ink to tint with; needs an ink role
     color: `color-mix(in srgb, ${color} ${isSelected ? 45 : 55}%, #18181b)`,
+    // TODO(tokens): white #FFFFFF as a tint base has no role (surface is #FEFEFE)
     backgroundColor: `color-mix(in srgb, ${color} ${isSelected ? 30 : 12}%, white)`,
     borderColor: `color-mix(in srgb, ${color} ${isSelected ? 60 : 38}%, white)`,
     backgroundImage:

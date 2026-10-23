@@ -42,6 +42,7 @@ export function ExpertHeroBand({ expert }: BandProps) {
       style={{
         backgroundColor: expertPastel(topic),
         backgroundImage: [
+          // TODO(tokens): white #FFFFFF as a tint base has no role (surface is #FEFEFE)
           `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, white), transparent 55%)`,
           `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, white), transparent 50%)`,
         ].join(", "),

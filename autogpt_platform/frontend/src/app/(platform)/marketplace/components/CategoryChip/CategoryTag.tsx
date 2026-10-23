@@ -18,6 +18,7 @@ export function categoryTagStyle(color: string): CSSProperties {
   return {
     // TODO(tokens): #18181b equals --color-primary, a button role, not an ink to tint with; needs an ink role
     color: `color-mix(in srgb, ${color} 55%, #18181b)`,
+    // TODO(tokens): white #FFFFFF as a tint base has no role (surface is #FEFEFE)
     backgroundColor: `color-mix(in srgb, ${color} 12%, white)`,
     borderColor: `color-mix(in srgb, ${color} 35%, white)`,
   };

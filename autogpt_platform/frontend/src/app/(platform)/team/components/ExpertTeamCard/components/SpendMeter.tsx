@@ -32,6 +32,7 @@ export function SpendMeter({ spent, budget, muted, color }: Props) {
       style={
         color
           ? ({
+              // TODO(tokens): white #FFFFFF as a tint base has no role (surface is #FEFEFE)
               "--meter-track": `color-mix(in srgb, ${color} 45%, white)`,
               // TODO(tokens): #18181b equals --color-primary, a button role, not an ink to tint with; needs an ink role
               "--meter-fill": `color-mix(in srgb, ${color} 60%, #18181b)`,
