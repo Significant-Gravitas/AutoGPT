@@ -2,16 +2,27 @@
  * Swaps raw palette and arbitrary typography classes for the design tokens
  * in tailwind.config.ts / src/app/globals.css (SECRT-3099, DS1).
  *
- * Exact matches only: a class is rewritten when the mapping table below lists
- * it, and `scripts/check-token-equivalence.ts` proves every listed pair
- * resolves to the same computed value. Anything else is left alone and stays
- * at `warn` in the lint until someone defines a token for it.
+ * Exact matches only: a class is rewritten when the tables below list it, and
+ * `scripts/check-token-equivalence.ts` proves every rewrite renders the same
+ * computed value. Anything else is left alone and stays at `warn` in the lint
+ * until someone defines a token for it.
  *
  *   npx tsx scripts/codemod-tokens.ts <file|dir>...          # dry run
  *   npx tsx scripts/codemod-tokens.ts --write <file|dir>...  # rewrite files
  *
  * Variant prefixes (`hover:`, `md:`, `data-[state=open]:`), `!important` and
  * opacity modifiers (`/50`) are kept as they are.
+ *
+ * Size tokens bundle a line-height, while a raw size such as `text-[13px]`
+ * sets none. Within one class list, a size swap therefore:
+ * - keeps an explicit `leading-*` that follows it in the same variant scope
+ *   (it wins over the bundle in CSS and in cn());
+ * - otherwise appends `leading-inherit`, which renders exactly like the
+ *   line-height the raw size never set;
+ * - is skipped, and reported, when a `leading-*` comes before it or sits in
+ *   another variant scope, or when the size is `!important` next to any
+ *   `leading-*`: plain CSS and cn() resolve those differently, so no single
+ *   rewrite is exact.
  *
  * DS2 and DS5 tickets run this script; they do not edit it.
  */
@@ -23,12 +34,6 @@ export interface TokenMapping {
   token: string;
   /** Classes this token replaces in the codemod. Each class maps once. */
   replaces: string[];
-  /**
-   * Classes with the same computed value that the codemod leaves alone,
-   * because another token owns them (e.g. the Text atom's `text-[1rem]` is
-   * `text-large` there but `text-16` elsewhere). Checked for equivalence.
-   */
-  alsoEquals?: string[];
 }
 
 export interface TokenGroup {
@@ -37,6 +42,7 @@ export interface TokenGroup {
   mappings: TokenMapping[];
 }
 
+/** One-for-one swaps: colours, line-heights, letter-spacing, weights. */
 export const TOKEN_GROUPS: TokenGroup[] = [
   {
     group: "Surfaces",
@@ -142,78 +148,9 @@ export const TOKEN_GROUPS: TokenGroup[] = [
     ],
   },
   {
-    group: "Font size",
-    kind: "typography",
-    mappings: [
-      { token: "text-h1", replaces: ["text-[2.75rem]", "text-[44px]"] },
-      { token: "text-h2", replaces: ["text-[2rem]", "text-[32px]"] },
-      { token: "text-h3", replaces: [], alsoEquals: ["text-[1.75rem]"] },
-      { token: "text-h4", replaces: [], alsoEquals: ["text-[1.375rem]"] },
-      { token: "text-h5", replaces: [], alsoEquals: ["text-[1rem]"] },
-      { token: "text-lead", replaces: [], alsoEquals: ["text-[1.25rem]"] },
-      { token: "text-large", replaces: [], alsoEquals: ["text-[1rem]"] },
-      { token: "text-body", replaces: [], alsoEquals: ["text-[0.875rem]"] },
-      { token: "text-small", replaces: [], alsoEquals: ["text-[0.75rem]"] },
-      {
-        token: "text-label",
-        replaces: ["text-[0.6785rem]"],
-      },
-      { token: "text-eyebrow", replaces: [], alsoEquals: ["text-[0.75rem]"] },
-      { token: "text-5", replaces: ["text-[5px]", "text-[0.3125rem]"] },
-      { token: "text-9", replaces: ["text-[9px]", "text-[0.5625rem]"] },
-      { token: "text-10", replaces: ["text-[10px]", "text-[0.625rem]"] },
-      { token: "text-11", replaces: ["text-[11px]", "text-[0.6875rem]"] },
-      { token: "text-12", replaces: ["text-[12px]", "text-[0.75rem]"] },
-      { token: "text-13", replaces: ["text-[13px]", "text-[0.8125rem]"] },
-      { token: "text-14", replaces: ["text-[14px]", "text-[0.875rem]"] },
-      { token: "text-15", replaces: ["text-[15px]", "text-[0.9375rem]"] },
-      { token: "text-16", replaces: ["text-[16px]", "text-[1rem]"] },
-      { token: "text-20", replaces: ["text-[20px]", "text-[1.25rem]"] },
-      { token: "text-22", replaces: ["text-[22px]", "text-[1.375rem]"] },
-      { token: "text-23", replaces: ["text-[23px]", "text-[1.4375rem]"] },
-      { token: "text-26", replaces: ["text-[26px]", "text-[1.625rem]"] },
-      { token: "text-28", replaces: ["text-[28px]", "text-[1.75rem]"] },
-    ],
-  },
-  {
     group: "Line height",
     kind: "typography",
     mappings: [
-      { token: "leading-h1", replaces: [], alsoEquals: ["leading-[3.5rem]"] },
-      { token: "leading-h2", replaces: [], alsoEquals: ["leading-[2.5rem]"] },
-      { token: "leading-h3", replaces: [], alsoEquals: ["leading-[2.5rem]"] },
-      { token: "leading-h4", replaces: [], alsoEquals: ["leading-[1.5rem]"] },
-      { token: "leading-h5", replaces: [], alsoEquals: ["leading-[1.5rem]"] },
-      {
-        token: "leading-lead",
-        replaces: [],
-        alsoEquals: ["leading-[1.75rem]"],
-      },
-      {
-        token: "leading-large",
-        replaces: [],
-        alsoEquals: ["leading-[1.625rem]"],
-      },
-      {
-        token: "leading-body",
-        replaces: [],
-        alsoEquals: ["leading-[1.375rem]", "leading-[22px]"],
-      },
-      {
-        token: "leading-small",
-        replaces: [],
-        alsoEquals: ["leading-[1.125rem]"],
-      },
-      {
-        token: "leading-label",
-        replaces: [],
-        alsoEquals: ["leading-[1.25rem]"],
-      },
-      {
-        token: "leading-eyebrow",
-        replaces: [],
-        alsoEquals: ["leading-[1rem]"],
-      },
       { token: "leading-4", replaces: ["leading-[16px]", "leading-[1rem]"] },
       {
         token: "leading-4.5",
@@ -232,23 +169,17 @@ export const TOKEN_GROUPS: TokenGroup[] = [
       { token: "leading-7", replaces: ["leading-[28px]", "leading-[1.75rem]"] },
       { token: "leading-8", replaces: ["leading-[32px]", "leading-[2rem]"] },
       { token: "leading-10", replaces: ["leading-[40px]", "leading-[2.5rem]"] },
-      { token: "leading-14", replaces: ["leading-[56px]", "leading-[3.5rem]"] },
     ],
   },
   {
     group: "Letter spacing",
     kind: "typography",
     mappings: [
-      { token: "tracking-h1", replaces: ["tracking-[-0.033rem]"] },
-      { token: "tracking-h2", replaces: ["tracking-[-0.02rem]"] },
-      { token: "tracking-h3", replaces: ["tracking-[-0.01313rem]"] },
-      { token: "tracking-label", replaces: ["tracking-[0.06785rem]"] },
-      { token: "tracking-eyebrow", replaces: ["tracking-[0.06em]"] },
       { token: "tracking-display", replaces: ["tracking-[-0.04em]"] },
       { token: "tracking-heading", replaces: ["tracking-[-0.02em]"] },
       { token: "tracking-title", replaces: ["tracking-[-0.01em]"] },
       { token: "tracking-caps", replaces: ["tracking-[0.12em]"] },
-      { token: "tracking-caps-wide", replaces: ["tracking-[0.14em]"] },
+      { token: "tracking-eyebrow", replaces: ["tracking-[0.06em]"] },
     ],
   },
   {
@@ -262,35 +193,66 @@ export const TOKEN_GROUPS: TokenGroup[] = [
   },
 ];
 
-/** Every (old class, new class) pair the equivalence check must prove. */
-export function equivalencePairs() {
-  return TOKEN_GROUPS.flatMap((group) =>
-    group.mappings.flatMap((mapping) =>
-      [...mapping.replaces, ...(mapping.alsoEquals ?? [])].map((oldClass) => ({
-        group: group.group,
-        kind: group.kind,
-        oldClass,
-        newClass: mapping.token,
-      })),
-    ),
-  );
-}
+/** Size roles. Each bundles a line-height; see the header for the rules. */
+export const SIZE_TOKENS: TokenMapping[] = [
+  { token: "text-tiny", replaces: ["text-[10px]", "text-[0.625rem]"] },
+  { token: "text-caption-sm", replaces: ["text-[11px]", "text-[0.6875rem]"] },
+  { token: "text-caption", replaces: ["text-[12px]", "text-[0.75rem]"] },
+  { token: "text-body-sm", replaces: ["text-[13px]", "text-[0.8125rem]"] },
+  { token: "text-body", replaces: ["text-[14px]", "text-[0.875rem]"] },
+  { token: "text-body-md", replaces: ["text-[15px]", "text-[0.9375rem]"] },
+  { token: "text-body-lg", replaces: ["text-[16px]", "text-[1rem]"] },
+  { token: "text-lead", replaces: ["text-[20px]", "text-[1.25rem]"] },
+  { token: "text-heading-sm", replaces: ["text-[22px]", "text-[1.375rem]"] },
+  { token: "text-heading", replaces: ["text-[28px]", "text-[1.75rem]"] },
+  { token: "text-title", replaces: ["text-[32px]", "text-[2rem]"] },
+  { token: "text-display", replaces: ["text-[44px]", "text-[2.75rem]"] },
+];
+
+/**
+ * The Text atom's variants (atoms/Text/helpers.ts) on the size roles, for
+ * DS2a to apply by hand. `label` and the rem-based heading tracking stay raw:
+ * TODO(tokens): SECRT-3152.
+ */
+export const TEXT_ATOM_PAIRS = [
+  ["h1", "text-[2.75rem] leading-[3.5rem]", "text-display"],
+  ["h2", "text-[2rem] leading-[2.5rem]", "text-title"],
+  ["h3", "text-[1.75rem] leading-[2.5rem]", "text-heading"],
+  ["h4", "text-[1.375rem] leading-[1.5rem]", "text-heading-sm"],
+  ["h5", "text-[1rem] leading-[1.5rem]", "text-body-lg leading-6"],
+  ["lead", "text-[1.25rem] leading-[1.75rem]", "text-lead"],
+  ["large", "text-[1rem] leading-[1.625rem]", "text-body-lg"],
+  ["body", "text-[0.875rem] leading-[1.375rem]", "text-body"],
+  ["small", "text-[0.75rem] leading-[1.125rem]", "text-caption"],
+  [
+    "eyebrow",
+    "text-[0.75rem] leading-[1rem] tracking-[0.06em]",
+    "text-caption leading-4 tracking-eyebrow",
+  ],
+] as const;
 
 /** old class -> token class. Throws if a class is claimed twice. */
 export function buildReplacementMap() {
   const map = new Map<string, string>();
+  const claim = (oldClass: string, token: string) => {
+    const existing = map.get(oldClass);
+    if (existing && existing !== token) {
+      throw new Error(`${oldClass} maps to both ${existing} and ${token}`);
+    }
+    map.set(oldClass, token);
+  };
   for (const group of TOKEN_GROUPS) {
     for (const mapping of group.mappings) {
-      for (const oldClass of mapping.replaces) {
-        const existing = map.get(oldClass);
-        if (existing && existing !== mapping.token) {
-          throw new Error(
-            `${oldClass} maps to both ${existing} and ${mapping.token}`,
-          );
-        }
-        map.set(oldClass, mapping.token);
-      }
+      for (const oldClass of mapping.replaces) claim(oldClass, mapping.token);
     }
+  }
+  return map;
+}
+
+export function buildSizeMap() {
+  const map = new Map<string, string>();
+  for (const mapping of SIZE_TOKENS) {
+    for (const oldClass of mapping.replaces) map.set(oldClass, mapping.token);
   }
   return map;
 }
@@ -298,11 +260,11 @@ export function buildReplacementMap() {
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mdx"]);
 const SKIP_DIRS = new Set(["node_modules", ".next", "__generated__"]);
 
-// A class candidate is any run of characters that cannot end a Tailwind
-// class. Each candidate is then parsed in code (variants, optional `!`, the
-// utility, optional /opacity) rather than by one large regex, which keeps
-// matching linear on any input.
-const CANDIDATE = /[^\s"'`{}]+/g;
+// A class list is a run of text between quotes or braces; its classes are
+// the whitespace-separated words in it. Each word is parsed in code
+// (variants, optional `!`, the utility, optional /opacity) rather than by one
+// large regex, which keeps matching linear on any input.
+const CLASS_LIST = /[^"'`{}]+/g;
 const OPACITY = /^\/(?:[0-9.]+|\[[^\]]+\])$/;
 
 /** Index of the last `ch` outside square brackets, or -1. */
@@ -317,7 +279,7 @@ function lastTopLevel(text: string, ch: string) {
   return found;
 }
 
-function parseCandidate(candidate: string) {
+function parseClass(candidate: string) {
   const colon = lastTopLevel(candidate, ":");
   let variants = candidate.slice(0, colon + 1);
   let rest = candidate.slice(colon + 1);
@@ -338,18 +300,79 @@ function parseCandidate(candidate: string) {
   return { variants, keyed, bang, utility: rest, opacity };
 }
 
-export function rewriteSource(source: string, map: Map<string, string>) {
-  const changes: { from: string; to: string; line: number }[] = [];
-  const output = source.replace(CANDIDATE, (whole: string, offset: number) => {
-    const { variants, keyed, bang, utility, opacity } = parseCandidate(whole);
-    const target = map.get(`${keyed}${utility}`);
-    if (!target) return whole;
-    // `!` belongs on the utility, after a keyed `placeholder:` variant.
-    const utilityTarget = target.slice(keyed.length);
-    const next = `${variants}${keyed}${bang}${utilityTarget}${opacity}`;
-    const line = source.slice(0, offset).split("\n").length;
-    changes.push({ from: whole, to: next, line });
+function isLeading(utility: string) {
+  return utility.startsWith("leading-");
+}
+
+export interface Change {
+  from: string;
+  to: string;
+  skipped?: string;
+}
+
+/** Rewrites one whitespace-separated class list. */
+export function rewriteClassList(
+  list: string,
+  map: Map<string, string>,
+  sizeMap: Map<string, string>,
+) {
+  const changes: Change[] = [];
+  const words = list.split(/(\s+)/);
+  const parsed = words.map((word) =>
+    /^\s*$/.test(word) ? null : parseClass(word),
+  );
+  const leadings = parsed
+    .map((p, i) => (p && isLeading(p.utility) ? { ...p, index: i } : null))
+    .filter((p) => p !== null);
+
+  const out = words.map((word, i) => {
+    const p = parsed[i];
+    if (!p) return word;
+    const simple = map.get(`${p.keyed}${p.utility}`);
+    if (simple) {
+      const next = `${p.variants}${p.keyed}${p.bang}${simple.slice(p.keyed.length)}${p.opacity}`;
+      changes.push({ from: word, to: next });
+      return next;
+    }
+    const size = p.keyed || p.opacity ? undefined : sizeMap.get(p.utility);
+    if (!size) return word;
+    const sameScope = leadings.filter((l) => l.variants === p.variants);
+    const otherScope = leadings.filter((l) => l.variants !== p.variants);
+    const skip = (reason: string) => {
+      changes.push({ from: word, to: word, skipped: reason });
+      return word;
+    };
+    if (p.bang && leadings.length > 0) {
+      return skip("!important size next to a leading-*");
+    }
+    if (sameScope.some((l) => l.index < i)) {
+      return skip("a leading-* comes before the size");
+    }
+    if (p.variants && otherScope.length > 0) {
+      return skip("a leading-* in another variant scope");
+    }
+    const swapped = `${p.variants}${p.bang}${size}`;
+    const next = sameScope.length
+      ? swapped
+      : `${swapped} ${p.variants}${p.bang}leading-inherit`;
+    changes.push({ from: word, to: next });
     return next;
+  });
+  return { output: out.join(""), changes };
+}
+
+export function rewriteSource(
+  source: string,
+  map: Map<string, string>,
+  sizeMap: Map<string, string>,
+) {
+  const changes: (Change & { line: number })[] = [];
+  const output = source.replace(CLASS_LIST, (list: string, offset: number) => {
+    const result = rewriteClassList(list, map, sizeMap);
+    if (result.changes.length === 0) return list;
+    const line = source.slice(0, offset).split("\n").length;
+    for (const change of result.changes) changes.push({ ...change, line });
+    return result.output;
   });
   return { output, changes };
 }
@@ -376,24 +399,30 @@ function main(argv: string[]) {
     return 2;
   }
   const map = buildReplacementMap();
+  const sizeMap = buildSizeMap();
   const files: string[] = [];
   for (const target of targets) collectFiles(target, files);
 
   let total = 0;
+  let skipped = 0;
   for (const file of files) {
     const source = readFileSync(file, "utf8");
-    const { output, changes } = rewriteSource(source, map);
+    const { output, changes } = rewriteSource(source, map, sizeMap);
     if (changes.length === 0) continue;
-    total += changes.length;
     for (const change of changes) {
-      console.log(
-        `${relative(process.cwd(), file)}:${change.line}  ${change.from} -> ${change.to}`,
-      );
+      const where = `${relative(process.cwd(), file)}:${change.line}`;
+      if (change.skipped) {
+        skipped++;
+        console.log(`${where}  ${change.from} SKIPPED: ${change.skipped}`);
+      } else {
+        total++;
+        console.log(`${where}  ${change.from} -> ${change.to}`);
+      }
     }
     if (write) writeFileSync(file, output);
   }
   console.log(
-    `${total} replacement(s) in ${files.length} file(s)${write ? "" : " (dry run, pass --write to apply)"}`,
+    `${total} replacement(s), ${skipped} size class(es) skipped, in ${files.length} file(s)${write ? "" : " (dry run, pass --write to apply)"}`,
   );
   return 0;
 }

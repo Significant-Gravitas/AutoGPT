@@ -11,8 +11,9 @@ import {
 } from "@/lib/autogpt-server-api/types";
 
 // Teach tailwind-merge the text token names in tailwind.config.ts, so that
-// `text-13` is read as a font size rather than a colour and conflicting
-// sizes, line-heights and letter-spacings collapse to the last one.
+// `text-body` is read as a font size rather than a colour (and survives next
+// to `text-zinc-500`) and conflicting sizes, line-heights and letter-spacings
+// collapse to the last one.
 //
 // TODO(tokens): the custom radius names (rounded-xsmall … rounded-2xlarge)
 // are not registered yet. Registering them changes what renders wherever a
@@ -26,66 +27,24 @@ const twMerge = extendTailwindMerge({
       "font-size": [
         {
           text: [
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "lead",
-            "large",
+            "tiny",
+            "caption-sm",
+            "caption",
+            "body-sm",
             "body",
-            "small",
-            "label",
-            "eyebrow",
-            "5",
-            "9",
-            "10",
-            "11",
-            "12",
-            "13",
-            "14",
-            "15",
-            "16",
-            "20",
-            "22",
-            "23",
-            "26",
-            "28",
-          ],
-        },
-      ],
-      leading: [
-        {
-          leading: [
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
+            "body-md",
+            "body-lg",
             "lead",
-            "large",
-            "body",
-            "small",
-            "label",
-            "eyebrow",
-          ],
-        },
-      ],
-      tracking: [
-        {
-          tracking: [
-            "h1",
-            "h2",
-            "h3",
-            "label",
-            "eyebrow",
-            "display",
+            "heading-sm",
             "heading",
             "title",
-            "caps",
-            "caps-wide",
+            "display",
           ],
         },
+      ],
+      leading: [{ leading: ["inherit"] }],
+      tracking: [
+        { tracking: ["display", "heading", "title", "caps", "eyebrow"] },
       ],
     },
   },
