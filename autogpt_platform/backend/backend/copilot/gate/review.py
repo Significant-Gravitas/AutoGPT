@@ -115,9 +115,15 @@ _SPEND = "spend"
 DISPLAY_ONLY_ARGS: dict[str, frozenset[str]] = {"bash_exec": frozenset({"purpose"})}
 
 
+# A judged read is held under its own node id, ``read-<tool>``.
+READ_NODE_PREFIX = "read-"
+
+
 def call_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
-    """``args`` without the ones that only label the call."""
-    labels = DISPLAY_ONLY_ARGS.get(tool_name, frozenset())
+    """``args`` without the ones that only label the call, for an action or
+    for a read held under its prefixed name."""
+    base_tool = tool_name.removeprefix(READ_NODE_PREFIX)
+    labels = DISPLAY_ONLY_ARGS.get(base_tool, frozenset())
     return {key: value for key, value in args.items() if key not in labels}
 
 
