@@ -24,7 +24,7 @@ export function ReceiptEntries({ transaction }: Props) {
           <Button
             variant="ghost"
             size="small"
-            className="min-h-11 min-w-0 px-0 text-zinc-600"
+            className="min-h-11 min-w-0 px-0 text-foreground-secondary"
             onClick={() => setEntriesOpen(!entriesOpen)}
             aria-expanded={entriesOpen}
             aria-controls={entriesOpen ? entriesID : undefined}
@@ -42,7 +42,7 @@ export function ReceiptEntries({ transaction }: Props) {
           <Button
             variant="ghost"
             size="small"
-            className="min-h-11 min-w-0 px-0 text-zinc-600"
+            className="min-h-11 min-w-0 px-0 text-foreground-secondary"
             onClick={() => setReferenceOpen(!referenceOpen)}
             aria-expanded={referenceOpen}
             aria-controls={referenceOpen ? referenceID : undefined}
@@ -58,7 +58,7 @@ export function ReceiptEntries({ transaction }: Props) {
       )}
       {referenceOpen && (
         <div id={referenceID} className="mt-2">
-          <Text variant="small" className="text-zinc-600">
+          <Text variant="small" className="text-foreground-secondary">
             {referenceLabel(transaction)}
           </Text>
           <Text variant="small" as="code" className="break-all font-mono">
@@ -79,7 +79,7 @@ function referenceLabel(transaction: Transaction) {
 function ChargeEntries({ transaction }: Props) {
   const charges = transaction.charges ?? [];
   return (
-    <div className="mt-2 border-t border-zinc-200 pt-3">
+    <div className="mt-2 border-t border-border-base pt-3">
       <table className="w-full text-left" aria-label="Recorded charge entries">
         <thead className="sr-only">
           <tr>
@@ -97,7 +97,7 @@ function ChargeEntries({ transaction }: Props) {
                   <Text
                     variant="small"
                     title={posted.full}
-                    className="text-zinc-600"
+                    className="text-foreground-secondary"
                   >
                     {posted.date}
                     <br />
@@ -119,7 +119,7 @@ function ChargeEntries({ transaction }: Props) {
         </tbody>
       </table>
       {transaction.charges_truncated && (
-        <Text variant="small" className="mt-2 text-zinc-600">
+        <Text variant="small" className="mt-2 text-foreground-secondary">
           Showing {charges.length} of {transaction.charges_total_count} charge
           entries. The total includes every charge and adjustment.
         </Text>

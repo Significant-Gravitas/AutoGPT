@@ -44,14 +44,14 @@ export function PermissionsCheckboxGroup({ value, onChange }: Props) {
               role="checkbox"
               aria-checked={checked}
               onClick={() => toggle(option.value)}
-              className="flex items-center gap-2 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+              className="flex items-center gap-2 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
             >
               {checked ? (
                 <Icon icon={CheckmarkSquare02Icon} size={18} />
               ) : (
                 <Icon icon={SquareIcon} size={18} />
               )}
-              <Text variant="body" as="span" className="text-zinc-700">
+              <Text variant="body" as="span" className="text-foreground-body">
                 {option.label}
               </Text>
             </button>
