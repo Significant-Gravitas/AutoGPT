@@ -1155,13 +1155,11 @@ class TestCreateFileDownloadResponse:
         )
 
     @pytest.mark.asyncio
-    async def test_gcs_signed_url_carries_download_headers_for_markup(self, mocker):
+    async def test_gcs_markup_is_streamed_not_redirected(self, mocker):
         from backend.api.features.workspace.routes import create_file_download_response
 
         mock_storage = AsyncMock()
-        mock_storage.get_download_url.return_value = (
-            "https://storage.googleapis.com/signed-url"
-        )
+        mock_storage.retrieve.return_value = b"<h1>hi</h1>"
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1173,10 +1171,31 @@ class TestCreateFileDownloadResponse:
             mime_type="text/html",
         )
         response = await create_file_download_response(file, inline=True)
-        assert response.status_code == 302
-        kwargs = mock_storage.get_download_url.call_args.kwargs
-        assert kwargs["response_type"] == "application/octet-stream"
-        assert kwargs["response_disposition"] == 'attachment; filename="page.html"'
+        assert response.status_code == 200
+        mock_storage.get_download_url.assert_not_called()
+        assert response.headers["Content-Type"] == "application/octet-stream"
+        assert "attachment" in response.headers["Content-Disposition"]
+
+    @pytest.mark.asyncio
+    async def test_gcs_streams_when_stored_type_differs_from_mime_type(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.return_value = b"<h1>hi</h1>"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        # The blob name decides the Content-Type GCS stored on the object.
+        file = _make_file(
+            storage_path="gcs://bucket/ws/file/page.html",
+            name="photo.png",
+            mime_type="image/png",
+        )
+        response = await create_file_download_response(file, inline=True)
+        assert response.status_code == 200
+        mock_storage.get_download_url.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_gcs_signed_url_keeps_inline_for_renderable_types(self, mocker):

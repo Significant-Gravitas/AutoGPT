@@ -4,7 +4,9 @@ Workspace API routes for managing user file storage.
 
 import asyncio
 import logging
+import mimetypes
 import os
+import posixpath
 import re
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
@@ -99,10 +101,15 @@ INLINE_RENDERABLE_MIME_TYPES = frozenset(
 )
 
 
+def _is_renderable(mime_type: str | None) -> bool:
+    return (mime_type or "").split(";")[0].strip().lower() in (
+        INLINE_RENDERABLE_MIME_TYPES
+    )
+
+
 def _content_headers(file: WorkspaceFile, *, inline: bool) -> tuple[str, str]:
     """Return the (Content-Type, Content-Disposition) a file is served with."""
-    mime_type = (file.mime_type or "").split(";")[0].strip().lower()
-    renderable = mime_type in INLINE_RENDERABLE_MIME_TYPES
+    renderable = _is_renderable(file.mime_type)
     disposition = _sanitize_filename_for_header(
         file.name, disposition="inline" if inline and renderable else "attachment"
     )
@@ -177,9 +184,16 @@ async def create_file_download_response(
     """
     storage = await get_workspace_storage()
 
-    if not file.storage_path.startswith("local://"):
-        # GCS serves the object itself, so the signed URL has to carry the
-        # same content headers the streamed response would get.
+    # A signed URL lets GCS serve the object with the Content-Type stored on
+    # it, which upload inferred from the blob name and which may differ from
+    # file.mime_type. Only redirect when both are on the allowlist; anything
+    # else is streamed with the headers from _create_streaming_response.
+    stored_type, _ = mimetypes.guess_type(posixpath.basename(file.storage_path))
+    if (
+        not file.storage_path.startswith("local://")
+        and _is_renderable(file.mime_type)
+        and _is_renderable(stored_type)
+    ):
         media_type, disposition = _content_headers(file, inline=inline)
         try:
             url = await storage.get_download_url(
