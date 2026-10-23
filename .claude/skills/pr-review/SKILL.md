@@ -52,6 +52,8 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
 
 **Code quality:** apply rules from backend/frontend CLAUDE.md files and root `AGENTS.md`, including its "User-facing copy" section (text a person reads says workflow, never agent or graph).
 
+**Design system (frontend diffs):** when the diff touches `autogpt_platform/frontend`, read `docs/engineering/design-system.md` and check every changed class, `style` and import against it: role tokens, not raw palette or hex; `className` on a primitive for layout only; no arbitrary values, `dark:` classes or legacy imports; every suppression scoped to one rule with its reason on the same line.
+
 **Architecture:** DRY, single responsibility, modular functions. `Security()` vs `Depends()` for FastAPI auth. `data:` for SSE events, `: comment` for heartbeats. `transaction=True` for Redis pipelines.
 
 **Testing:** edge cases covered, colocated `*_test.py` (backend) / `__tests__/` (frontend), mocks target where symbol is **used** not defined, `AsyncMock` for async.

@@ -46,12 +46,21 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 
 - Fully capitalize acronyms in symbols, e.g. `graphID`, `useBackendAPI`
 - Use function declarations (not arrow functions) for components/handlers
-- No `dark:` Tailwind classes — the design system handles dark mode
 - Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
 - No `any` types unless the value genuinely can be anything
-- No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
+- No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue; the rare unavoidable one follows the [escape hatch](../../docs/engineering/design-system.md#escape-hatch)
 - **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
 - **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
+
+### Taste
+
+Every rule and the lint rule that enforces it: [docs/engineering/design-system.md](../../docs/engineering/design-system.md).
+
+- **Tokens**: colour from role tokens (`bg-surface`, `text-foreground-secondary`, `border-border-base`), never the raw palette or hex; no `dark:` classes.
+- **Primitives**: on an atom, molecule or organism pick a `variant`, `size` or `tone`; `className` is for layout only. A repeated treatment becomes a variant.
+- **Styles**: Tailwind classes in the component that renders the element; no `style={{}}` for static values, no arbitrary values outside layout.
+- **Typography**: text tokens (`text-body leading-body`, `text-13`) or a `Text` variant; no `text-[13px]`, `leading-[..]` or `font-[600]`.
+- **Imports**: Hugeicons through the `Icon` atom only; never `@/components/__legacy__` or `@/components/ui` in feature code.
 
 ## Architecture
 
@@ -81,14 +90,10 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Component props should be `type Props = { ... }` (not exported) unless it needs to be used outside the component
 2. **Components**: Structure as `ComponentName/ComponentName.tsx` + `useComponentName.ts` + `helpers.ts`
    - Use design system components from `src/components/` (atoms, molecules, organisms)
-   - Never use `src/components/__legacy__/*`
 3. **Data fetching**: Use generated API hooks from `@/app/api/__generated__/endpoints/`
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
-4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only
-   - Import icon data from `@hugeicons/core-free-icons` and render it with the `Icon` atom (`src/components/atoms/Icon/Icon.tsx`), e.g. `<Icon icon={Delete02Icon} size={16} />`.
-   - Never render `HugeiconsIcon` directly — the atom applies the 2px design-system stroke width.
-   - Type icon-carrying props with `IconSvgElement` from `@hugeicons/react`.
+4. **Styling**: Tailwind CSS only; follow [Taste](#taste)
 5. **Testing**: Integration tests are the default (~90%). See `TESTING.md` for full details.
    - **New pages/features**: Write integration tests in `__tests__/` next to `page.tsx` using Vitest + RTL + MSW
    - **API mocking**: Use Orval-generated MSW handlers from `@/app/api/__generated__/endpoints/{tag}/{tag}.msw.ts`
