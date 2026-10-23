@@ -149,5 +149,9 @@ export function useIntroStandup({
     startVoice: requestComposerVoice,
     focusComposer,
     answer,
+    // The same check the composer's mic makes; the card renders after mount.
+    canRecord:
+      typeof navigator !== "undefined" &&
+      !!navigator.mediaDevices?.getUserMedia,
   };
 }

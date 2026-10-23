@@ -177,6 +177,13 @@ function renderHome(onStartTask = vi.fn(async () => "session-1")) {
   return onStartTask;
 }
 
+function stubMicrophone(available: boolean) {
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: available ? { getUserMedia: vi.fn() } : undefined,
+  });
+}
+
 function findTeam() {
   return screen.findByRole("region", { name: "Your team" }, { timeout: 3000 });
 }
@@ -472,8 +479,23 @@ describe("Otto's first turn on Home — the one ask", () => {
     );
   });
 
+  it("offers only typing to a user whose browser cannot record", async () => {
+    serve({ hires: [], path: "B" });
+    stubMicrophone(false);
+    renderHome();
+
+    const ask = await findAsk();
+    expect(
+      within(ask).queryByRole("button", { name: "Talk me through your week" }),
+    ).toBeNull();
+    expect(
+      within(ask).getByRole("button", { name: "Type it instead" }),
+    ).toBeDefined();
+  });
+
   it("asks a user who skipped the dump to talk through their week", async () => {
     serve({ hires: [], path: "B" });
+    stubMicrophone(true);
     renderHome();
 
     const ask = await findAsk();

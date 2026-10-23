@@ -26,6 +26,7 @@ export function IntroStandup({ path, disabled, onAnswer }: Props) {
     startVoice,
     focusComposer,
     answer,
+    canRecord,
   } = useIntroStandup({ path, onAnswer });
 
   return (
@@ -40,6 +41,7 @@ export function IntroStandup({ path, disabled, onAnswer }: Props) {
           onAnswer={answer}
           onStartVoice={startVoice}
           onType={focusComposer}
+          canRecord={canRecord}
         />
       )}
       {ask?.kind === "connect" && isConnectOpen && (

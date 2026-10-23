@@ -12,6 +12,7 @@ interface Props {
   onAnswer: (message: string) => unknown;
   onStartVoice: () => void;
   onType: () => void;
+  canRecord: boolean;
 }
 
 export function AskCard({
@@ -22,6 +23,7 @@ export function AskCard({
   onAnswer,
   onStartVoice,
   onType,
+  canRecord,
 }: Props) {
   if (ask.kind === "connect") {
     const several = ask.names.length > 1;
@@ -66,6 +68,16 @@ export function AskCard({
             {choice.label}
           </Button>
         ))}
+      </AskFrame>
+    );
+  }
+
+  if (!canRecord) {
+    return (
+      <AskFrame body="Give me a couple of minutes on what a normal week looks like, and I'll work out who and what you need.">
+        <Button size="small" onClick={onType}>
+          Type it instead
+        </Button>
       </AskFrame>
     );
   }
