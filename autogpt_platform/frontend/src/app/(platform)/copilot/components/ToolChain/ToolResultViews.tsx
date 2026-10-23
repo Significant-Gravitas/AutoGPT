@@ -284,7 +284,7 @@ export function KeyValueList({ value }: ValueProps) {
   const entries = Object.entries(obj).filter(
     ([, entryValue]) => entryValue !== null && entryValue !== undefined,
   );
-  if (entries.length === 0) return null;
+  if (entries.length === 0) return <KeyValueList value="Nothing found." />;
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
       {entries.map(([key, entryValue]) => (

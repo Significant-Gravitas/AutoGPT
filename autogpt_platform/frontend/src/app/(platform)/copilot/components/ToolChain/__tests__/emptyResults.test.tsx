@@ -96,6 +96,12 @@ describe("the shared result fallback", () => {
     expect(document.body.textContent).not.toMatch(/\[\]|\{\}/);
   });
 
+  it("never leaves an opened row blank when every field is empty", () => {
+    render(<ToolResult row={row({ owner: null }, "some_new_tool")} />);
+
+    expect(screen.getByText("Nothing found.")).toBeDefined();
+  });
+
   it("writes empty values inside a result as None", () => {
     render(
       <ToolResult
