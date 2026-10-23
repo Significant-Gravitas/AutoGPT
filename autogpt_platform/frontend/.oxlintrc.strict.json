@@ -1,0 +1,75 @@
+{
+  "categories": {
+    "correctness": "off"
+  },
+  "jsPlugins": ["@shadcn/lint"],
+  "settings": {
+    "shadcn": {
+      "ui": "@/components/atoms",
+      "componentImports": ["^@/components/(molecules|organisms)(/|$)"],
+      "note": "See docs/engineering/design-system.md."
+    }
+  },
+  "rules": {
+    "shadcn/no-raw-colors": "error",
+    "shadcn/require-static-classes": "error",
+    "shadcn/no-inline-styles": "error",
+    "shadcn/no-arbitrary-values": [
+      "error",
+      { "allow": ["layout", "transition"] }
+    ],
+    "shadcn/no-restyle": [
+      "error",
+      {
+        "allow": ["layout"],
+        "contracts": [
+          {
+            "pattern": "^Text$",
+            "allow": [
+              "layout",
+              "truncate",
+              "line-clamp-*",
+              "whitespace-*",
+              "text-balance",
+              "text-pretty",
+              "break-*",
+              "text-start",
+              "text-end",
+              "text-left",
+              "text-center",
+              "text-right"
+            ]
+          },
+          { "pattern": "^Icon$", "allow": ["layout"] },
+          { "pattern": "^Skeleton$", "allow": ["layout", "shape"] }
+        ],
+        "message": {
+          "spacing": "Use a {{component}} size: {{sizes}}. Margin here or gap on the parent for space around it."
+        }
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/components/atoms/**",
+        "src/components/molecules/**",
+        "src/components/organisms/**"
+      ],
+      "rules": { "shadcn/no-restyle": "off" }
+    },
+    {
+      "files": [
+        "src/app/api/__generated__/**",
+        "**/*.stories.tsx",
+        "**/*.test.tsx"
+      ],
+      "rules": {
+        "shadcn/no-raw-colors": "off",
+        "shadcn/no-restyle": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/no-inline-styles": "off"
+      }
+    }
+  ]
+}
