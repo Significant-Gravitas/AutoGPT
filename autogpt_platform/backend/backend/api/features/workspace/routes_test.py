@@ -124,6 +124,7 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -148,6 +149,7 @@ def test_list_files_uploaded_origin_filters_on_metadata(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -172,6 +174,7 @@ def test_list_files_generated_origin_excludes_uploads(
         metadata_not_equals={"origin": "user-upload"},
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -201,6 +204,7 @@ def test_list_files_scopes_to_session_when_provided(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -624,6 +628,7 @@ def test_list_files_has_more_true_when_limit_exceeded(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -666,6 +671,7 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -691,6 +697,7 @@ def test_list_files_origin_ignored_when_session_id_set(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -714,6 +721,7 @@ def test_list_files_q_search_passed_through(mock_manager_cls, mock_get_workspace
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -737,6 +745,7 @@ def test_list_files_blank_q_becomes_none(mock_manager_cls, mock_get_workspace):
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -760,6 +769,7 @@ def test_list_files_q_and_origin_combine(mock_manager_cls, mock_get_workspace):
         metadata_not_equals={"origin": "user-upload"},
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -787,6 +797,7 @@ def test_list_files_empty_session_id_treated_as_omitted(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -816,6 +827,7 @@ def test_list_files_folder_id_passed_through(mock_manager_cls, mock_get_workspac
         metadata_not_equals=None,
         folder_id="fld-1",
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -839,6 +851,7 @@ def test_list_files_root_only_passed_through(mock_manager_cls, mock_get_workspac
         metadata_not_equals=None,
         folder_id=None,
         root_only=True,
+        include_internal=False,
     )
 
 
@@ -1305,6 +1318,7 @@ def test_list_files_filters_to_the_experts_own_conversations(
         root_only=False,
         allowed_path_prefixes=["/sessions/s1/", "/sessions/s2/"],
         include_user_files=False,
+        include_internal=False,
     )
 
 

@@ -69,6 +69,7 @@ class WorkspaceFile(pydantic.BaseModel):
     deleted_at: Optional[datetime] = None
     folder_id: Optional[str] = None
     metadata: dict = pydantic.Field(default_factory=dict)
+    is_internal: bool = False
 
     @staticmethod
     def from_db(file: "UserWorkspaceFile") -> "WorkspaceFile":
@@ -87,6 +88,7 @@ class WorkspaceFile(pydantic.BaseModel):
             deleted_at=file.deletedAt,
             folder_id=file.folderId,
             metadata=file.metadata if isinstance(file.metadata, dict) else {},
+            is_internal=file.isInternal,
         )
 
 
@@ -143,6 +145,7 @@ async def create_workspace_file(
     size_bytes: int,
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
+    is_internal: bool = False,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -164,6 +167,7 @@ async def create_workspace_file(
         size_bytes: File size in bytes
         checksum: Optional SHA256 checksum
         metadata: Optional additional metadata
+        is_internal: Otto's own working file, left out of the user's lists
 
     Returns:
         Created WorkspaceFile instance
@@ -183,6 +187,7 @@ async def create_workspace_file(
             "sizeBytes": size_bytes,
             "checksum": checksum,
             "metadata": SafeJson(metadata or {}),
+            "isInternal": is_internal,
         }
     )
 
@@ -261,6 +266,21 @@ async def get_workspace_file_by_path(
     return WorkspaceFile.from_db(file) if file else None
 
 
+async def list_internal_file_ids(user_id: str, file_ids: list[str]) -> set[str]:
+    """Which of these files, in the user's own workspace, are Otto's working
+    files (``isInternal``). Soft-deleted rows still answer."""
+    if not file_ids:
+        return set()
+    rows = await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": file_ids},
+            "isInternal": True,
+            "Workspace": {"is": {"userId": user_id}},
+        }
+    )
+    return {row.id for row in rows}
+
+
 async def list_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
@@ -276,6 +296,7 @@ async def list_workspace_files(
     root_only: bool = False,
     allowed_path_prefixes: Optional[list[str]] = None,
     include_user_files: bool = False,
+    include_internal: bool = True,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -312,6 +333,9 @@ async def list_workspace_files(
         include_user_files: Widen ``allowed_path_prefixes`` with the owner's
             own files (see :func:`_scope_branches`). Ignored when the caller
             passes no prefixes, which already reaches the whole workspace.
+        include_internal: Whether to return Otto's own working files
+            (``isInternal``). Otto's tools read them; the user's lists pass
+            ``False``.
 
     Returns:
         List of WorkspaceFile instances
@@ -323,6 +347,9 @@ async def list_workspace_files(
 
     if not include_deleted:
         where_clause["isDeleted"] = False
+
+    if not include_internal:
+        where_clause["isInternal"] = False
 
     if folder_id:
         where_clause["folderId"] = folder_id

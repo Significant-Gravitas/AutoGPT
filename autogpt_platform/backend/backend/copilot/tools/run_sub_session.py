@@ -345,7 +345,8 @@ async def list_sub_workspace_files(
     The ``origin=agent-created`` filter means only files the sub persisted via
     ``write_workspace_file`` are listed — transient working-directory artefacts
     (e.g. a ``git clone`` the sub inspects but never persists) are not workspace
-    files and never appear here. When the sub persists more than
+    files and never appear here, and neither do the sub's own working files
+    (its build scratchpad). When the sub persists more than
     ``_WORKSPACE_FILE_MANIFEST_LIMIT`` files, the most recently written ones win
     (the listing is ordered ``createdAt`` descending).
 
@@ -357,6 +358,7 @@ async def list_sub_workspace_files(
         files = await manager.list_files(
             limit=_WORKSPACE_FILE_MANIFEST_LIMIT,
             metadata_equals={"origin": "agent-created"},
+            include_internal=False,
         )
     except Exception:
         logger.warning(

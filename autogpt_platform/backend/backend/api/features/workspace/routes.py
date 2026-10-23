@@ -650,6 +650,9 @@ async def list_workspace_files(
         metadata_not_equals=metadata_not_equals,
         folder_id=folder_id,
         root_only=root_only,
+        # Otto's own working files (parked tool outputs, its build scratchpad)
+        # are not the user's; leaving them out here keeps paging correct.
+        include_internal=False,
     )
     if expert_id is not None:
         # Fails closed: an unowned or archived expert resolves to no sessions
