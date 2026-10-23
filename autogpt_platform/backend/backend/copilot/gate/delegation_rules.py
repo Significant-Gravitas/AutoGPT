@@ -17,13 +17,17 @@ from .policy import Effect, Verdict, verdict_for_effect
 
 logger = logging.getLogger(__name__)
 
+# Both leave the platform. The toggle stops either from running unchecked;
+# a cheap one Auto hands the supervisor stays with the supervisor.
+_OUTWARD = frozenset({Effect.EXTERNAL, Effect.EXTERNAL_JUDGED})
+
 
 async def verdict_for(
     mode: AutopilotMode, effect: Effect, user_id: str, session: ChatSession
 ) -> Verdict:
     """The mode's verdict, with the user's ask-before-external override."""
     verdict = verdict_for_effect(mode, effect)
-    if effect is not Effect.EXTERNAL or verdict is Verdict.ASK:
+    if effect not in _OUTWARD or verdict is not Verdict.RUN:
         return verdict
     if not _ottos(session):
         return verdict
