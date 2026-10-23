@@ -12,16 +12,20 @@
  *   SCREENSHOT_EMAIL=… SCREENSHOT_PASSWORD=… \
  *   npx tsx scripts/screenshot-pages.ts capture --out shots/before \
  *     [--base-url http://localhost:3000] [--routes /login,/library] \
- *     [--storybook-url http://localhost:6006] [--stories tokens-,atoms-button--]
+ *     [--storybook-url http://localhost:6006] [--stories tokens-,atoms-button--] \
+ *     [--dismiss "Got it"]   # buttons that close first-visit prompts
  *
  *   # 2. Compare two captures; writes a diff PNG per screenshot.
  *   npx tsx scripts/screenshot-pages.ts compare shots/before shots/after \
  *     --diff shots/diff
  *
  * Determinism: fixed viewports (1440x900, 390x844) at device scale 1,
+ * software rasterising on one thread (see DETERMINISTIC_CHROMIUM_ARGS),
  * `prefers-reduced-motion: reduce`, CSS animations disabled, the clock pinned
  * with `page.clock.setFixedTime`, UTC and en-US, and `document.fonts.ready`
  * awaited (Poppins loads from Google Fonts with `display=swap`).
+ * Each screenshot is retaken until three in a row are identical, so
+ * late-loading data and skeletons never land in the picture.
  * `--routes`/`--stories` without a value capture nothing of that kind.
  */
 import {
@@ -58,6 +62,21 @@ const SIGNED_IN_ROUTES = [
 ];
 
 const DEFAULT_STORIES = ["tokens-", "atoms-button--", "atoms-text--"];
+
+const DEFAULT_DISMISS = ["Got it"];
+
+// Software rasterising on one thread with a fixed colour profile, so the
+// anti-aliased edge of a rounded border is the same pixel on every run.
+const DETERMINISTIC_CHROMIUM_ARGS = [
+  "--disable-gpu",
+  "--disable-gpu-rasterization",
+  "--disable-partial-raster",
+  "--num-raster-threads=1",
+  "--disable-skia-runtime-opts",
+  "--force-color-profile=srgb",
+  "--font-render-hinting=none",
+  "--disable-lcd-text",
+];
 
 interface PngImage {
   width: number;
@@ -156,17 +175,20 @@ async function settle(page: Page) {
   await page.waitForLoadState("networkidle").catch(() => undefined);
   await page.evaluate(async () => {
     await document.fonts.ready;
-    await Promise.all(
-      Array.from(document.images)
-        .filter((img) => !img.complete)
-        .map(
-          (img) =>
-            new Promise((done) => {
-              img.addEventListener("load", done, { once: true });
-              img.addEventListener("error", done, { once: true });
-            }),
-        ),
-    );
+    // Lazy images below the fold never load, so wait at most 10s.
+    const pending = Array.from(document.images)
+      .filter((img) => !img.complete && img.loading !== "lazy")
+      .map(
+        (img) =>
+          new Promise((done) => {
+            img.addEventListener("load", done, { once: true });
+            img.addEventListener("error", done, { once: true });
+          }),
+      );
+    await Promise.race([
+      Promise.all(pending),
+      new Promise((done) => setTimeout(done, 10_000)),
+    ]);
   });
   // Two frames so layout driven by font metrics has painted.
   await page.evaluate(
@@ -175,6 +197,57 @@ async function settle(page: Page) {
         requestAnimationFrame(() => requestAnimationFrame(done)),
       ),
   );
+}
+
+// First-visit prompts (tab intros, tours) cover the page they introduce.
+// Close them the way a user would, then reload so the page renders without
+// the prompt or its closing fade. Returns whether anything was closed.
+async function dismissPrompts(page: Page, labels: string[]) {
+  let dismissed = false;
+  for (const label of labels) {
+    const button = page.getByRole("button", { name: label, exact: true });
+    if (
+      await button
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await button.first().click();
+      await button
+        .first()
+        .waitFor({ state: "hidden", timeout: 5_000 })
+        .catch(() => undefined);
+      dismissed = true;
+    }
+  }
+  return dismissed;
+}
+
+const STABLE_SHOTS = 3;
+const STABLE_INTERVAL_MS = 750;
+const STABLE_TIMEOUT_MS = 45_000;
+
+// A page is ready when consecutive screenshots stop changing: data has
+// arrived, skeletons are gone and late layout shifts have happened.
+async function stableScreenshot(page: Page) {
+  const options = {
+    fullPage: true,
+    animations: "disabled",
+    caret: "hide",
+    scale: "css",
+  } as const;
+  const deadline = Date.now() + STABLE_TIMEOUT_MS;
+  let previous = await page.screenshot(options);
+  let matches = 1;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(STABLE_INTERVAL_MS);
+    await settle(page);
+    const next = await page.screenshot(options);
+    matches = next.equals(previous) ? matches + 1 : 1;
+    previous = next;
+    if (matches >= STABLE_SHOTS) return { image: next, stable: true };
+  }
+  return { image: previous, stable: false };
 }
 
 async function newContext(
@@ -210,17 +283,23 @@ async function signIn(context: BrowserContext, baseUrl: string) {
   return true;
 }
 
-async function shoot(page: Page, url: string, file: string) {
+async function shoot(
+  page: Page,
+  url: string,
+  file: string,
+  dismiss: string[] = [],
+) {
   await page.clock.setFixedTime(FIXED_TIME);
   await page.goto(url, { waitUntil: "load", timeout: 60_000 });
   await settle(page);
-  await page.screenshot({
-    path: file,
-    fullPage: true,
-    animations: "disabled",
-    caret: "hide",
-    scale: "css",
-  });
+  if (await dismissPrompts(page, dismiss)) {
+    await page.reload({ waitUntil: "load", timeout: 60_000 });
+    await settle(page);
+  }
+  const { image, stable } = await stableScreenshot(page);
+  writeFileSync(file, image);
+  if (!stable) console.warn(`not stable after ${STABLE_TIMEOUT_MS}ms: ${url}`);
+  return stable;
 }
 
 async function storyIds(storybookUrl: string, prefixes: string[]) {
@@ -250,9 +329,10 @@ async function capture(argv: string[]) {
   const stories = storybookUrl
     ? await storyIds(storybookUrl, listFlag(argv, "--stories", DEFAULT_STORIES))
     : [];
+  const dismiss = listFlag(argv, "--dismiss", DEFAULT_DISMISS);
   mkdirSync(outDir, { recursive: true });
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: DETERMINISTIC_CHROMIUM_ARGS });
   const written: string[] = [];
   for (const viewport of VIEWPORTS) {
     const publicContext = await newContext(browser, viewport);
@@ -264,7 +344,7 @@ async function capture(argv: string[]) {
         : appContext;
       const page = await context.newPage();
       const file = join(outDir, fileNameFor("app", route, viewport.name));
-      await shoot(page, `${baseUrl}${route}`, file);
+      await shoot(page, `${baseUrl}${route}`, file, dismiss);
       written.push(file);
       await page.close();
     }
