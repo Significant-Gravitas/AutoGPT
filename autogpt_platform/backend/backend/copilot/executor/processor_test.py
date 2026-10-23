@@ -959,10 +959,9 @@ class TestExecuteAsyncAclose:
             update={"message": message, "is_user_message": is_user_message}
         )
         expert_store = MagicMock()
-        expert_store.resolve_private_expert_tenancy = AsyncMock(
-            return_value=("personal-org", "personal-team")
+        expert_store.check_private_expert = AsyncMock(
+            return_value=_checked_expert("personal-org", "personal-team")
         )
-        expert_store.expert_setup_status = AsyncMock(return_value="ready")
 
         patches = self._patches(_TrackedStream(events=[]))
         with (
