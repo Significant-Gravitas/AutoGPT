@@ -605,7 +605,7 @@ async def get_usage_status(
     trial_spent = False
     weekly_is_trial_allowance = False
     if tier == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
         trial_spent = _trial_spent(trial)
         if trial and _trial_uses_total_budget(
             trial, daily_cost_limit, weekly_cost_limit
