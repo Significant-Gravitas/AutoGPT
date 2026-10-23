@@ -330,6 +330,15 @@ async function capture(argv: string[]) {
     ...PUBLIC_ROUTES,
     ...(signedIn ? SIGNED_IN_ROUTES : []),
   ]);
+  const protectedRoutes = routes.filter((r) => !PUBLIC_ROUTES.includes(r));
+  if (!signedIn && protectedRoutes.length > 0) {
+    // Without a session these would capture the login redirect under the
+    // protected route's name.
+    console.error(
+      `set SCREENSHOT_EMAIL and SCREENSHOT_PASSWORD to capture ${protectedRoutes.join(", ")}`,
+    );
+    return 2;
+  }
   const skip = listFlag(argv, "--skip", DEFAULT_SKIP);
   const stories = (
     storybookUrl
@@ -344,6 +353,7 @@ async function capture(argv: string[]) {
 
   const browser = await chromium.launch({ args: DETERMINISTIC_CHROMIUM_ARGS });
   const written: string[] = [];
+  const unstable: string[] = [];
   // Close the browser even when sign-in or a capture throws.
   try {
     for (const viewport of VIEWPORTS) {
@@ -356,18 +366,21 @@ async function capture(argv: string[]) {
           : appContext;
         const page = await context.newPage();
         const file = join(outDir, fileNameFor("app", route, viewport.name));
-        await shoot(page, `${baseUrl}${route}`, file, dismiss);
+        if (!(await shoot(page, `${baseUrl}${route}`, file, dismiss))) {
+          unstable.push(file);
+        }
         written.push(file);
         await page.close();
       }
       for (const id of stories) {
         const page = await publicContext.newPage();
         const file = join(outDir, fileNameFor("story", id, viewport.name));
-        await shoot(
+        const stable = await shoot(
           page,
           `${storybookUrl}/iframe.html?id=${id}&viewMode=story`,
           file,
         );
+        if (!stable) unstable.push(file);
         written.push(file);
         await page.close();
       }
@@ -378,6 +391,13 @@ async function capture(argv: string[]) {
     await browser.close();
   }
   console.log(`${written.length} screenshot(s) written to ${outDir}`);
+  if (unstable.length > 0) {
+    // A picture that never held still cannot prove a pixel diff of 0.
+    console.error(
+      `${unstable.length} never stabilised:\n${unstable.join("\n")}`,
+    );
+    return 1;
+  }
   return 0;
 }
 
