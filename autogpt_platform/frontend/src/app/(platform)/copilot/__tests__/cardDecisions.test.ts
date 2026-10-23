@@ -103,6 +103,28 @@ describe("card decision lines", () => {
     expect(getCardDecisions(userRow(text))).toBeNull();
   });
 
+  it("leaves a decision sent with an attachment as the user's message", () => {
+    const withFile: Message = {
+      id: "u1",
+      role: "user",
+      metadata: {
+        kind: "card_decision",
+        decisions: [{ verdict: "approved", verb: "hire", name: "Maya" }],
+      },
+      parts: [
+        { type: "text", text: "Approved: hire Maya (confirmation_id: c-1)." },
+        {
+          type: "file",
+          mediaType: "application/pdf",
+          filename: "brief.pdf",
+          url: "/api/proxy/api/workspace/files/f-1/download",
+        },
+      ],
+    };
+
+    expect(getCardDecisions(withFile)).toBeNull();
+  });
+
   it("never reads Otto's own words as a decision", () => {
     const reply: Message = {
       id: "a1",

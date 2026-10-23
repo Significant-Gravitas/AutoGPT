@@ -48,11 +48,13 @@ const DECLINED_SUBJECT_RE =
 
 /** What a user row decided on proposal cards, or null when it says anything
  *  else. The server tags such a row; the text is read as well, for the bubble
- *  shown before the server's copy arrives and for rows saved before the tag. */
+ *  shown before the server's copy arrives and for rows saved before the tag.
+ *  A row with an attachment stays the user's message, so the file shows. */
 export function getCardDecisions(
   message: UIMessage<unknown, UIDataTypes, UITools>,
 ): CardDecision[] | null {
   if (message.role !== "user") return null;
+  if (message.parts.some((part) => part.type !== "text")) return null;
   return (
     decisionsFromMetadata(message.metadata) ??
     decisionsFromText(messageText(message))

@@ -674,6 +674,39 @@ def test_stream_chat_leaves_other_messages_untagged(
     assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
 
 
+@pytest.mark.parametrize("attachment", ["file_ids", "folder_ids"])
+def test_stream_chat_leaves_a_decision_with_attachments_untagged(
+    mocker: pytest_mock.MockerFixture, attachment: str
+) -> None:
+    """A note would hide what was attached, so the row stays the user's message."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.resolve_attachments_for_http",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.resolve_attachable_workspace_folders",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            attachment: ["00000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
+
+
 # ─── A sent message cancels the pending resume at the budget reset ────
 
 

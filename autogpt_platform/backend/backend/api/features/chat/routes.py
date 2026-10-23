@@ -1940,7 +1940,9 @@ async def stream_chat_post(
     if request.is_user_message:
         # The only writer of card approvals: a model can add chat rows, not requests.
         await record_card_decisions(user_id, session_id, message)
-        message_metadata = card_decision_metadata(message)
+        # A note in place of the row would hide what was attached to it.
+        if not (request.file_ids or request.folder_ids):
+            message_metadata = card_decision_metadata(message)
     message_id = (
         scoped_client_message_id(user_id, session_id, request.message_id)
         if request.message_id
