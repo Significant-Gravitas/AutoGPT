@@ -14,12 +14,12 @@ export function usePendingOnboardingSession(
       refetchOnMount: "always",
     },
   });
-  // Re-enabling refetches but keeps serving the cached answer meanwhile, and
-  // that can name a chat whose card was settled since.
+  // A refetch, and a failed one, keep serving the cached answer, which can name
+  // a chat whose card was settled since.
   const isSettled =
     (query.isFetchedAfterMount || query.isError) && !query.isFetching;
   const sessionId =
-    isEnabled && isSettled && query.data?.status === 200
+    isEnabled && isSettled && query.isSuccess && query.data?.status === 200
       ? (query.data.data?.session_id ?? null)
       : null;
   return { sessionId, isChecking: isEnabled && !isSettled };
