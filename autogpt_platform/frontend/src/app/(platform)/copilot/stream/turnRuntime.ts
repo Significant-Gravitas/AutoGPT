@@ -159,7 +159,7 @@ type Lost = Pick<
   Connection,
   "turnId" | "openedAt" | "syntheticError" | "prompt"
 > &
-  Partial<Pick<Connection, "followUp" | "turnQueued">>;
+  Partial<Pick<Connection, "followUp" | "turnQueued" | "frames">>;
 
 type ConnectionEnd =
   | { kind: "closed" }
@@ -825,9 +825,12 @@ export class TurnRuntime {
       .join("");
   }
 
+  // Only a stream the server answered and closed says so: a send this tab
+  // gave up on for silence may still be running there.
   private sendWentNowhere(lost: Lost, end: ConnectionEnd) {
     return (
       end.kind === "closed" &&
+      (lost.frames ?? 0) > 0 &&
       lost.prompt !== null &&
       !lost.followUp &&
       !lost.turnQueued &&

@@ -143,7 +143,7 @@ describe("a follow-up the last turn ended without reading", () => {
     expect(queued).toEqual([]);
   }, 15_000);
 
-  it("clears a held chip another turn has read since, without sending it again", async () => {
+  it("never resends a held chip another turn has read since, and gives its text back", async () => {
     const posts: string[] = [];
     server.use(
       http.post(STREAM_URL, async ({ request }) => {
@@ -166,6 +166,12 @@ describe("a follow-up the last turn ended without reading", () => {
       expect(screen.queryByText("Didn't go through")).toBeNull(),
     );
     expect(posts).toEqual([]);
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText(/chat message input/i) as HTMLTextAreaElement)
+          .value,
+      ).toBe(FOLLOW_UP),
+    );
   });
 
   it("goes out once on Retry and gets its answer", async () => {

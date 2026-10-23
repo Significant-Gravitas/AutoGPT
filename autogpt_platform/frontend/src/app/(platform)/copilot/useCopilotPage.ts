@@ -545,7 +545,17 @@ function useCopilotPageChat(
   async function resendHeldFollowUp(forSessionId: string, text: string) {
     const stillHeld = await isFollowUpStillHeld(forSessionId, text);
     takeQueuedMessage(text);
-    if (stillHeld) await sendOrQueue(text);
+    if (stillHeld) {
+      await sendOrQueue(text);
+      return;
+    }
+    // Read by another turn, or expired: never drop it without a word.
+    setInitialPrompt(text);
+    toast({
+      title: "This message is no longer waiting",
+      description:
+        "It may already have been answered. It's back in the message box in case you still want to send it.",
+    });
   }
 
   // One function for the host's lifetime that runs the latest `sendOrQueue`,

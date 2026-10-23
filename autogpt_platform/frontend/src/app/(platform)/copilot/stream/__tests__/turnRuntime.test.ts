@@ -575,6 +575,15 @@ describe("recovery", () => {
     expect(textsOf(render())).toEqual([]);
   });
 
+  it("a send this tab gave up on for silence is not reported as undelivered", async () => {
+    // No byte for the liveness window: the server may still be running it.
+    backend.respond(({ method }) => (method === "POST" ? "silent" : "stream"));
+    void runtime.send({ text: "What is my team working on?" }, undefined);
+    await advance(LIVENESS_MS + 15_000);
+
+    expect(snapshot().error).not.toBeInstanceOf(SendNotDeliveredError);
+  });
+
   it("a newer send made while a lost one is recovered keeps its bubble; the lost one is reported", async () => {
     const onError = vi.fn();
     runtime.bind({ onError }, null);
