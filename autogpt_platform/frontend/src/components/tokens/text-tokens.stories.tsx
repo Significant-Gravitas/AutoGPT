@@ -11,194 +11,46 @@ const meta: Meta = {
 
 export default meta;
 
-// Each class is written out in full so Tailwind generates it.
-const fontSizes = [
-  { className: "text-h1", value: "2.75rem · 44px", replaces: "text-[2.75rem]" },
-  { className: "text-h2", value: "2rem · 32px", replaces: "text-[2rem]" },
-  { className: "text-h3", value: "1.75rem · 28px", replaces: "text-[1.75rem]" },
-  {
-    className: "text-h4",
-    value: "1.375rem · 22px",
-    replaces: "text-[1.375rem]",
-  },
-  { className: "text-h5", value: "1rem · 16px", replaces: "text-[1rem]" },
-  {
-    className: "text-lead",
-    value: "1.25rem · 20px",
-    replaces: "text-[1.25rem]",
-  },
-  { className: "text-large", value: "1rem · 16px", replaces: "text-[1rem]" },
-  {
-    className: "text-body",
-    value: "0.875rem · 14px",
-    replaces: "text-[0.875rem]",
-  },
-  {
-    className: "text-small",
-    value: "0.75rem · 12px",
-    replaces: "text-[0.75rem]",
-  },
-  {
-    className: "text-label",
-    value: "0.6785rem · 10.856px",
-    replaces: "text-[0.6785rem]",
-  },
-  {
-    className: "text-eyebrow",
-    value: "0.75rem · 12px",
-    replaces: "text-[0.75rem]",
-  },
-  { className: "text-5", value: "0.3125rem · 5px", replaces: "text-[5px]" },
-  { className: "text-9", value: "0.5625rem · 9px", replaces: "text-[9px]" },
-  { className: "text-10", value: "0.625rem · 10px", replaces: "text-[10px]" },
-  { className: "text-11", value: "0.6875rem · 11px", replaces: "text-[11px]" },
-  { className: "text-12", value: "0.75rem · 12px", replaces: "text-[12px]" },
-  { className: "text-13", value: "0.8125rem · 13px", replaces: "text-[13px]" },
-  { className: "text-14", value: "0.875rem · 14px", replaces: "text-[14px]" },
-  { className: "text-15", value: "0.9375rem · 15px", replaces: "text-[15px]" },
-  { className: "text-16", value: "1rem · 16px", replaces: "text-[16px]" },
-  { className: "text-20", value: "1.25rem · 20px", replaces: "text-[20px]" },
-  { className: "text-22", value: "1.375rem · 22px", replaces: "text-[22px]" },
-  { className: "text-23", value: "1.4375rem · 23px", replaces: "text-[23px]" },
-  { className: "text-26", value: "1.625rem · 26px", replaces: "text-[26px]" },
-  { className: "text-28", value: "1.75rem · 28px", replaces: "text-[28px]" },
+// [class, value, classes it replaces]. Each class is written out in full so
+// Tailwind generates it.
+type Token = [string, string, string];
+
+const fontSizes: Token[] = [
+  ["text-tiny", "0.625rem / 0.875rem", "text-[10px]"],
+  ["text-caption-sm", "0.6875rem / 1rem", "text-[11px]"],
+  ["text-caption", "0.75rem / 1.125rem", "Text small, text-[12px]"],
+  ["text-body-sm", "0.8125rem / 1.25rem", "text-[13px]"],
+  ["text-body", "0.875rem / 1.375rem", "Text body, text-[14px]"],
+  ["text-body-md", "0.9375rem / 1.5rem", "text-[15px]"],
+  ["text-body-lg", "1rem / 1.625rem", "Text large, text-[16px]"],
+  ["text-lead", "1.25rem / 1.75rem", "Text lead"],
+  ["text-heading-sm", "1.375rem / 1.5rem", "Text h4"],
+  ["text-heading", "1.75rem / 2.5rem", "Text h3"],
+  ["text-title", "2rem / 2.5rem", "Text h2"],
+  ["text-display", "2.75rem / 3.5rem", "Text h1"],
 ];
 
-const lineHeights = [
-  {
-    className: "leading-h1",
-    value: "3.5rem · 56px",
-    replaces: "leading-[3.5rem]",
-  },
-  {
-    className: "leading-h2",
-    value: "2.5rem · 40px",
-    replaces: "leading-[2.5rem]",
-  },
-  {
-    className: "leading-h3",
-    value: "2.5rem · 40px",
-    replaces: "leading-[2.5rem]",
-  },
-  {
-    className: "leading-h4",
-    value: "1.5rem · 24px",
-    replaces: "leading-[1.5rem]",
-  },
-  {
-    className: "leading-h5",
-    value: "1.5rem · 24px",
-    replaces: "leading-[1.5rem]",
-  },
-  {
-    className: "leading-lead",
-    value: "1.75rem · 28px",
-    replaces: "leading-[1.75rem]",
-  },
-  {
-    className: "leading-large",
-    value: "1.625rem · 26px",
-    replaces: "leading-[1.625rem]",
-  },
-  {
-    className: "leading-body",
-    value: "1.375rem · 22px",
-    replaces: "leading-[1.375rem]",
-  },
-  {
-    className: "leading-small",
-    value: "1.125rem · 18px",
-    replaces: "leading-[1.125rem]",
-  },
-  {
-    className: "leading-label",
-    value: "1.25rem · 20px",
-    replaces: "leading-[1.25rem]",
-  },
-  {
-    className: "leading-eyebrow",
-    value: "1rem · 16px",
-    replaces: "leading-[1rem]",
-  },
-  {
-    className: "leading-4.5",
-    value: "1.125rem · 18px",
-    replaces: "leading-[18px]",
-  },
-  {
-    className: "leading-5.5",
-    value: "1.375rem · 22px",
-    replaces: "leading-[22px]",
-  },
-  {
-    className: "leading-6.5",
-    value: "1.625rem · 26px",
-    replaces: "leading-[26px]",
-  },
-  {
-    className: "leading-14",
-    value: "3.5rem · 56px",
-    replaces: "leading-[56px]",
-  },
+const lineHeights: Token[] = [
+  ["leading-inherit", "inherit", "a raw size that sets no line-height"],
+  ["leading-4.5", "1.125rem", "leading-[18px]"],
+  ["leading-5.5", "1.375rem", "leading-[22px]"],
+  ["leading-6.5", "1.625rem", "leading-[26px]"],
 ];
 
-const letterSpacings = [
-  {
-    className: "tracking-h1",
-    value: "-0.033rem",
-    replaces: "tracking-[-0.033rem]",
-  },
-  {
-    className: "tracking-h2",
-    value: "-0.02rem",
-    replaces: "tracking-[-0.02rem]",
-  },
-  {
-    className: "tracking-h3",
-    value: "-0.01313rem",
-    replaces: "tracking-[-0.01313rem]",
-  },
-  {
-    className: "tracking-label",
-    value: "0.06785rem",
-    replaces: "tracking-[0.06785rem]",
-  },
-  {
-    className: "tracking-eyebrow",
-    value: "0.06em",
-    replaces: "tracking-[0.06em]",
-  },
-  {
-    className: "tracking-display",
-    value: "-0.04em",
-    replaces: "tracking-[-0.04em]",
-  },
-  {
-    className: "tracking-heading",
-    value: "-0.02em",
-    replaces: "tracking-[-0.02em]",
-  },
-  {
-    className: "tracking-title",
-    value: "-0.01em",
-    replaces: "tracking-[-0.01em]",
-  },
-  {
-    className: "tracking-caps",
-    value: "0.12em",
-    replaces: "tracking-[0.12em]",
-  },
-  {
-    className: "tracking-caps-wide",
-    value: "0.14em",
-    replaces: "tracking-[0.14em]",
-  },
+const letterSpacings: Token[] = [
+  ["tracking-display", "-0.04em", "tracking-[-0.04em]"],
+  ["tracking-heading", "-0.02em", "tracking-[-0.02em]"],
+  ["tracking-title", "-0.01em", "tracking-[-0.01em]"],
+  ["tracking-caps", "0.12em", "tracking-[0.12em]"],
+  ["tracking-eyebrow", "0.06em", "tracking-[0.06em]"],
 ];
 
-interface Token {
-  className: string;
-  value: string;
-  replaces: string;
+// "0.8125rem / 1.25rem" -> "13px / 20px" at a 16px root.
+function describe(value: string) {
+  return value
+    .split(" / ")
+    .map((part) => (part.endsWith("rem") ? `${parseFloat(part) * 16}px` : part))
+    .join(" / ");
 }
 
 interface SectionProps {
@@ -223,18 +75,18 @@ function Section({
         </Text>
       </div>
       <div className="divide-y divide-zinc-200 rounded-lg border border-zinc-200">
-        {tokens.map((token) => (
+        {tokens.map(([className, value, replaces]) => (
           <div
-            key={token.className}
-            className="grid grid-cols-[12rem_14rem_1fr] items-center gap-4 px-4 py-3"
+            key={className}
+            className="grid grid-cols-1 gap-1 px-4 py-3 md:grid-cols-[12rem_14rem_1fr] md:items-center md:gap-4"
           >
             <Text variant="body-medium" className="font-mono">
-              {token.className}
+              {className}
             </Text>
             <Text variant="small" tone="muted" className="font-mono">
-              {token.value} · {token.replaces}
+              {describe(value)} · {replaces}
             </Text>
-            <div className={`${sampleClassName} ${token.className}`}>
+            <div className={`${sampleClassName} ${className}`}>
               The quick brown fox
             </div>
           </div>
@@ -246,25 +98,24 @@ function Section({
 
 export function AllTokens() {
   return (
-    <div className="space-y-10 p-8">
+    <div className="space-y-10 p-4 md:p-8">
       <div className="space-y-2">
         <Text variant="h1">Text tokens</Text>
         <Text variant="large" tone="secondary">
-          Font sizes, line heights and letter spacing at the exact values in use
-          today. A size never sets a line-height, so text-13 is a drop-in for
-          text-[13px]. Named sizes are the Text variants; numbered sizes are px
-          at a 16px root.
+          One size per role, each with its line-height, at the values in use
+          today. A raw size that sets no line-height becomes the role plus
+          leading-inherit, so nothing moves.
         </Text>
       </div>
       <Section
-        title="Font size"
-        description="font-size only"
+        title="Size roles"
+        description="font-size / bundled line-height"
         tokens={fontSizes}
         sampleClassName="font-sans text-zinc-900"
       />
       <Section
         title="Line height"
-        description="Shown on a two-line sample at 14px"
+        description="Overrides, shown on a two-line sample at 14px"
         tokens={lineHeights}
         sampleClassName="max-w-[8rem] bg-zinc-50 font-sans text-sm text-zinc-900"
       />

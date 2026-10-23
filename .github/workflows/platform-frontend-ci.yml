@@ -119,16 +119,57 @@ jobs:
         run: pnpm lint
 
       # `pnpm lint` only warns in the directories .oxlintrc.json lists as not
-      # yet migrated. Every .tsx file a PR adds or changes must pass the strict
-      # config, which has no such list: touch a file, fix its violations.
-      - name: Lint changed files with the strict design-system config
+      # yet migrated. This step runs the strict config, which has no such list,
+      # on every .tsx file a PR adds or changes.
+      #
+      # Report-only until the design-system migration lands: most existing
+      # files still have strict violations, so a one-line edit would otherwise
+      # fail the PR. The step exits non-zero when it finds violations, which
+      # marks the step but not the job (continue-on-error). It writes a
+      # summary and warning annotations. SECRT-3153 makes it blocking.
+      - name: Lint changed files with the strict design-system config (report-only)
         if: ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: >-
-          git diff -z --name-only --relative --no-renames --diff-filter=ACMR
-          "origin/${BASE_REF}...HEAD" -- ':(glob)src/**/*.tsx'
-          | xargs -0 -r pnpm exec oxlint -c .oxlintrc.strict.json
+        run: |
+          git diff -z --name-only --relative --no-renames --diff-filter=ACMR \
+            "origin/${BASE_REF}...HEAD" -- ':(glob)src/**/*.tsx' > "$RUNNER_TEMP/changed-tsx"
+          status=0
+          xargs -0 -r pnpm exec oxlint -c .oxlintrc.strict.json -f unix \
+            < "$RUNNER_TEMP/changed-tsx" > "$RUNNER_TEMP/strict-lint.txt" || status=$?
+          python3 - "$RUNNER_TEMP/changed-tsx" "$RUNNER_TEMP/strict-lint.txt" "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import collections, re, sys
+          changed, report, summary = sys.argv[1:]
+          files = [f for f in open(changed).read().split("\0") if f]
+          line_re = re.compile(r"^(.+?):(\d+):(\d+): (.*) \[(?:Error|Warning)/(.+)\]$")
+          per_file, per_rule = collections.Counter(), collections.Counter()
+          for line in open(report):
+              m = line_re.match(line.rstrip("\n"))
+              if not m:
+                  continue
+              path, row, col, message, rule = m.groups()
+              per_file[path] += 1
+              per_rule[rule] += 1
+              message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::warning file=autogpt_platform/frontend/{path},line={row},col={col},title={rule}::{message}")
+          total = sum(per_file.values())
+          out = [
+              "### Strict design-system lint on changed files (report-only)\n",
+              f"{len(files)} changed .tsx file(s) checked, {total} violation(s) in {len(per_file)} file(s). "
+              "This does not fail the PR until SECRT-3153; fix what you can in the files you touch.\n",
+          ]
+          if total:
+              out += ["| File | Violations |", "|---|--:|"]
+              out += [f"| `{path}` | {count} |" for path, count in per_file.most_common()]
+              out += ["", "| Rule | Violations |", "|---|--:|"]
+              out += [f"| `{rule}` | {count} |" for rule, count in per_rule.most_common(5)]
+          text = "\n".join(out) + "\n"
+          print(text)
+          with open(summary, "a") as handle:
+              handle.write(text)
+          EOF
+          exit "$status"
 
   knip:
     runs-on: ubuntu-latest
