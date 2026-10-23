@@ -11,7 +11,8 @@ const PROMOTED_ID_PREFIX = "promoted-";
  * bubble `useChat` drew for it, yet no row backs it: the pending strip shows
  * the same message as a chip, and a reload shows only the chip. A local user
  * bubble after the last stored row whose text the queue holds is that send,
- * so the chip stands in for it. Each queued message accounts for one bubble.
+ * so the chip stands in for it. Each queued message accounts for one bubble,
+ * the newest with its text.
  */
 export function dropQueuedSendBubbles(
   messages: UIMessage[],
@@ -23,13 +24,16 @@ export function dropQueuedSendBubbles(
   );
   const unclaimed = [...queuedTexts];
   const dropped = new Set<number>();
-  messages.forEach((message, index) => {
-    if (index <= lastStored || !isLocalUserBubble(message)) return;
+  // Newest first: the queued send is the latest bubble with its text, and an
+  // earlier one with the same words was already answered.
+  for (let index = messages.length - 1; index > lastStored; index--) {
+    const message = messages[index];
+    if (!isLocalUserBubble(message)) continue;
     const at = unclaimed.indexOf(textOf(message));
-    if (at === -1) return;
+    if (at === -1) continue;
     unclaimed.splice(at, 1);
     dropped.add(index);
-  });
+  }
   if (dropped.size === 0) return messages;
   return messages.filter((_, index) => !dropped.has(index));
 }
