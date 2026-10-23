@@ -13,6 +13,7 @@ import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
   isBlankOutput,
   isEmptyResult,
+  NOTHING_FOUND,
 } from "../../components/ToolChain/resultHelpers";
 import {
   globalRegistry,
@@ -480,8 +481,14 @@ function getFileAccordionData(
   if (!displayContent) {
     displayContent = extractMcpText(output);
   }
-  if (displayContent && isBlankOutput(displayContent)) {
-    displayContent = "Nothing found.";
+  // A search or listing that found nothing answers "[]"; a file read keeps
+  // its text, even when the file itself holds "[]".
+  if (
+    (category === "file-list" || category === "search") &&
+    displayContent &&
+    isBlankOutput(displayContent)
+  ) {
+    displayContent = NOTHING_FOUND;
   }
 
   // For edit: show old/new diff; for write: show written content if output is just a status
@@ -707,7 +714,7 @@ function getDefaultAccordionData(
   } else if (message) {
     displayContent = message;
   } else if (isEmptyResult(output)) {
-    displayContent = "Nothing found.";
+    displayContent = NOTHING_FOUND;
   } else {
     try {
       displayContent = JSON.stringify(output, null, 2);

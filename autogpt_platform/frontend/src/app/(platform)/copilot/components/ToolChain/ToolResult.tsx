@@ -59,6 +59,7 @@ import {
   isBlankOutput,
   isEmptyResult,
   isWebhookIngressUrl,
+  NOTHING_FOUND,
   str,
   stripBaseFields,
 } from "./resultHelpers";
@@ -607,7 +608,7 @@ function ToolOutput({ row, readOnly }: Required<Props>) {
   if (card) return card;
 
   if (isBlankOutput(row.output) || isEmptyResult(output))
-    return <KeyValueList value="Nothing found." />;
+    return <KeyValueList value={NOTHING_FOUND} />;
   if (!output) return <KeyValueList value={row.output} />;
 
   const data = stripBaseFields(output);

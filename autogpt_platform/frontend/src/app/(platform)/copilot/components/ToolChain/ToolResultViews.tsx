@@ -16,6 +16,8 @@ import {
   asObject,
   displayValue,
   formatBytes,
+  isBlankOutput,
+  NOTHING_FOUND,
   humanizeKey,
   inline,
   parseTruncatedOutput,
@@ -258,6 +260,7 @@ export function OutputList({ items }: ItemsProps) {
 }
 
 export function KeyValueList({ value }: ValueProps) {
+  if (isBlankOutput(value)) return <KeyValueList value={NOTHING_FOUND} />;
   const obj = asObject(value);
   if (!obj || Object.keys(obj).length === 0) {
     if (typeof value !== "string" || !value.trim()) return null;
@@ -284,7 +287,7 @@ export function KeyValueList({ value }: ValueProps) {
   const entries = Object.entries(obj).filter(
     ([, entryValue]) => entryValue !== null && entryValue !== undefined,
   );
-  if (entries.length === 0) return <KeyValueList value="Nothing found." />;
+  if (entries.length === 0) return <KeyValueList value={NOTHING_FOUND} />;
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
       {entries.map(([key, entryValue]) => (

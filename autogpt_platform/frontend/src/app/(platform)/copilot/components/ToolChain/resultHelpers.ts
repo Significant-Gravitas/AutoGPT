@@ -102,12 +102,17 @@ export function isEmptyResult(output: unknown): boolean {
   );
 }
 
-/** Output with nothing in it at all: `null`, an empty list or object, or that
- *  same JSON as text (an MCP tool's empty search answers "[]"). */
+/** How an empty result reads wherever one is shown. */
+export const NOTHING_FOUND = "Nothing found.";
+
+/** Output with nothing in it at all: `null`, an empty list or object, blank
+ *  text, or that same JSON as text (an MCP tool's empty search answers "[]").
+ *  `undefined` is a call still running, not an empty answer. */
 export function isBlankOutput(value: unknown): boolean {
   if (typeof value !== "string")
     return value === null || isEmptyCollection(value);
   const text = value.trim();
+  if (!text) return true;
   if (!/^(\[|\{|null$)/.test(text)) return false;
   try {
     const parsed: unknown = JSON.parse(text);

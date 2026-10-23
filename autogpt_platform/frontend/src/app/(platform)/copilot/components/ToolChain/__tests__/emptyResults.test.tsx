@@ -102,7 +102,7 @@ describe("the shared result fallback", () => {
     expect(screen.getByText("Nothing found.")).toBeDefined();
   });
 
-  it.each([[null], [[]], [{}], ["[]"], [" {} "]])(
+  it.each([[null], [[]], [{}], ["[]"], [" {} "], ["   "]])(
     "says nothing came back for a bare %j",
     (output) => {
       render(<ToolResult row={row(output, "glob")} />);
@@ -111,6 +111,12 @@ describe("the shared result fallback", () => {
       expect(document.body.textContent).not.toMatch(/\[\]|\{\}/);
     },
   );
+
+  it("says so when a card's own payload is empty", () => {
+    render(<ToolResult row={row({ result: [] }, "run_mcp_tool")} />);
+
+    expect(screen.getByText("Nothing found.")).toBeDefined();
+  });
 
   it("writes empty values inside a result as None", () => {
     render(

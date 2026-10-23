@@ -485,4 +485,21 @@ describe("GenericTool icons", () => {
     expect(screen.getByText("Nothing found.")).toBeDefined();
     expect(document.body.textContent).not.toContain("[]");
   });
+
+  it("shows a read file's own text even when it is []", () => {
+    render(
+      <GenericTool
+        part={makePart({
+          type: "tool-Read",
+          state: "output-available",
+          input: { file_path: "empty.json" },
+          output: { content: "[]" },
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(screen.queryByText("Nothing found.")).toBeNull();
+    expect(document.body.textContent).toContain("[]");
+  });
 });
