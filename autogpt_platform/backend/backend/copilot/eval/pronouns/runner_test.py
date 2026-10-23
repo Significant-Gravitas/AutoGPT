@@ -158,3 +158,22 @@ def test_concurrency_and_repeats_must_be_positive(value):
     with pytest.raises(argparse.ArgumentTypeError):
         _positive_int(value)
     assert _positive_int("3") == 3
+
+
+@pytest.mark.parametrize("limit", ["truncated", "hit_round_cap"])
+def test_an_unfinished_report_cannot_pass(limit):
+    clean = _turn("Priya, can you send the").model_copy(update={limit: True})
+    result = score(EXPERT_CASE, clean)
+    assert result.outcome == "error"
+    assert result.error
+    gendered = _turn("Can he send the").model_copy(update={limit: True})
+    assert score(EXPERT_CASE, gendered).outcome == "fail"
+
+
+def test_otto_delegations_still_score_at_the_round_cap_but_not_when_truncated():
+    capped = _turn(delegated=["Plan it for Priya."]).model_copy(
+        update={"hit_round_cap": True}
+    )
+    assert score(OTTO_CASE, capped).outcome == "pass"
+    truncated = capped.model_copy(update={"truncated": True})
+    assert score(OTTO_CASE, truncated).outcome == "error"

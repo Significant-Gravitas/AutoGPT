@@ -67,14 +67,31 @@ def score(case: PronounCase, turn: Turn, repeat: int = 1) -> CaseResult:
             case_id=case.id, kind=case.kind, repeat=repeat, outcome=outcome
         )
     pronouns = [p for text in checked for p in gendered_pronouns(text)]
+    incomplete = _incomplete(case, turn)
     return CaseResult(
         case_id=case.id,
         kind=case.kind,
         repeat=repeat,
-        outcome="fail" if pronouns else "pass",
+        outcome="fail" if pronouns else "error" if incomplete else "pass",
         pronouns=pronouns,
         checked=checked,
+        error=None if pronouns else incomplete,
     )
+
+
+def _incomplete(case: PronounCase, turn: Turn) -> str | None:
+    """Why the checked text may be partial, so a clean read can't pass it.
+
+    A pronoun already in partial text still fails the case. A truncated turn
+    may have cut a call's arguments short; an expert report stopped at the
+    round cap was never finished. Otto's delegations at the round cap were
+    whole calls when sent, so they still score.
+    """
+    if turn.truncated:
+        return "turn hit the token limit"
+    if case.kind == "expert_task" and turn.hit_round_cap:
+        return "report stopped at the tool round cap"
+    return None
 
 
 async def run(*, repeats: int, model: str | None, concurrency: int) -> list[CaseResult]:
