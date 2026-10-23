@@ -12,11 +12,22 @@ describe("summarizeData", () => {
   });
 
   it("reads TSV", () => {
-    expect(summarizeData("date\tpost\n2026-11-25\tLaunch")).toEqual({
+    expect(
+      summarizeData("date\tpost\n2026-11-25\tLaunch\n2026-11-28\tReviews"),
+    ).toEqual({
       kind: "table",
-      rows: 1,
+      rows: 2,
       columns: ["date", "post"],
     });
+  });
+
+  it("leaves two or three lines of prose with a comma each alone", () => {
+    expect(summarizeData("Hello there, friend\nSee you soon, bye")).toBeNull();
+    expect(
+      summarizeData(
+        "Updated the brief, as asked.\nChecked the dates, all fine.",
+      ),
+    ).toBeNull();
   });
 
   it("leaves prose, a single line and ragged rows alone", () => {
@@ -24,7 +35,7 @@ describe("summarizeData", () => {
       summarizeData("Done. Updated the brief, then the calendar.\nAll good."),
     ).toBeNull();
     expect(summarizeData("a,b,c")).toBeNull();
-    expect(summarizeData("a,b\n1,2,3")).toBeNull();
+    expect(summarizeData("a,b\n1,2\n1,2,3")).toBeNull();
     expect(summarizeData("   ")).toBeNull();
     expect(
       summarizeData(

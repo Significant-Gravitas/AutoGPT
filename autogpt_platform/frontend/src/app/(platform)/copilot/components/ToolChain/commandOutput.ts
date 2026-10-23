@@ -6,6 +6,7 @@ export type DataSummary =
   | { kind: "json-list"; items: number };
 
 const MAX_HEADER_CELL = 40;
+const MIN_TABLE_LINES = 3;
 
 /** What a command printed, when it is a table (CSV/TSV) or JSON rather than
  *  prose: enough to show it as a chip instead of dumping it into the chat. */
@@ -51,12 +52,14 @@ function summarizeJSON(text: string): DataSummary | null {
     : { kind: "json", fields: Object.keys(value as object) };
 }
 
-/** A header and at least one row, every line splitting into the same number
- *  (two or more) of cells. Prose with a stray comma per line does not pass
- *  the header check: its "column names" are long or sentence-like. */
+/** A header and at least two rows, every line splitting into the same number
+ *  (two or more) of cells. Prose with a stray comma per line fails one of the
+ *  checks: too few lines, every line ending like a sentence, or "column
+ *  names" that are long or sentence-like. */
 function summarizeTable(text: string): DataSummary | null {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) return null;
+  if (lines.length < MIN_TABLE_LINES) return null;
+  if (lines.every((line) => /[.!?]\s*$/.test(line))) return null;
   const delimiter = lines[0].includes("\t") ? "\t" : ",";
   const rows = lines.map((line) => splitRow(line, delimiter));
   const width = rows[0].length;

@@ -376,8 +376,8 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
   ),
   card(
     "bash_exec",
-    { stdout: "name,size\nnotes.md,12", exit_code: 0 },
-    "1 row · name, size",
+    { stdout: "name,size\nnotes,12\nplan,30", exit_code: 0 },
+    "2 rows · name, size",
     { purpose: "Listing your files", command: "ls" },
   ),
   card("start_desktop", DESKTOP, "Desktop"),

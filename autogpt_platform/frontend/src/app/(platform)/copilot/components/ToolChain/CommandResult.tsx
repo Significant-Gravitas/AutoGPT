@@ -23,7 +23,9 @@ interface Props {
  *  for whoever wants them, one click away. */
 export function CommandResult({ row }: Props) {
   // A call the user approved shows the command they approved without a click.
-  const [showDetails, setShowDetails] = useState(!!row.held);
+  const [showDetails, setShowDetails] = useState(
+    row.held?.state === "approved",
+  );
   const output = asObject(row.output);
   const stdout = output ? str(output, "stdout") : null;
   const data = stdout ? summarizeData(stdout) : null;
