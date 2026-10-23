@@ -33,7 +33,6 @@ from backend.copilot.inference.context import (
     InferenceUsage,
     RouteDecision,
 )
-from backend.copilot.inference.trace import TracedCall
 from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.data.dream_pass_models import DreamPassDraft
 from backend.data.pro_activation import UsageActivationState
@@ -1163,24 +1162,8 @@ async def test_partial_failure_still_charges_completed_phases(
     apply_mock.assert_not_awaited()
 
 
-def _tracing_failures(seen: list[InferenceUsage | None]):
-    """A stand-in for ``trace`` that keeps the usage the real one would write
-    on a span closing on an error (``call.usage or exc.usage``)."""
-
-    @asynccontextmanager
-    async def fake_trace(ctx):
-        call = TracedCall(ctx=ctx)
-        try:
-            yield call
-        except InferenceError as exc:
-            seen.append(call.usage or exc.usage)
-            raise
-
-    return fake_trace
-
-
 @pytest.mark.asyncio
-async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
+async def test_a_failed_phase_is_not_charged(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
@@ -1207,8 +1190,6 @@ async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
     persist = mocker.patch(
         "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
     )
-    traced: list[InferenceUsage | None] = []
-    mocker.patch.object(orchestrator_mod, "trace", _tracing_failures(traced))
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
     result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
@@ -1216,8 +1197,6 @@ async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
     assert result.error == "consolidate: schema_mismatch", "a code, never the answer"
     apply_mock.assert_not_awaited()
     persist.assert_not_awaited()
-    (seen,) = traced
-    assert seen == billed
     assert result.usage is not None
     assert result.usage.phases == []
     assert result.usage.total_cost_usd == 0

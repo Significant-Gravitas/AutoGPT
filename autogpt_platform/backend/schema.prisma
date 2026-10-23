@@ -1000,9 +1000,8 @@ model ChatMessage {
   llmCredentialId String?
 
   // Langfuse trace of the SDK turn that wrote this assistant or reasoning
-  // row, so a rating of the reply can be scored against that trace. Null on
-  // user/tool rows, on baseline turns (no turn-level trace) and on rows
-  // predating this column.
+  // row. No longer written since Langfuse tracing was removed (SECRT-2711);
+  // to be dropped with the rest of Langfuse (SECRT-3022).
   langfuseTraceId String?
 
   // PostHog trace of the turn that wrote this assistant or reasoning row:
@@ -1025,8 +1024,7 @@ model ChatMessage {
 
 // A user's rating of an AutoPilot reply: thumbs up/down from the message
 // actions, or a copy of the reply. One row per user, message and score name,
-// so voting again updates the rating in place. The row id is also the id of
-// the matching Langfuse score, which makes re-sending a rating idempotent.
+// so voting again updates the rating in place.
 model ChatMessageFeedback {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -1045,8 +1043,9 @@ model ChatMessageFeedback {
   scoreValue Int
   comment    String?
 
-  // The trace the Langfuse score was attached to. Null when the reply had
-  // none and the score went on the chat's Langfuse session instead.
+  // The trace the rating's Langfuse score was attached to. No longer written
+  // since Langfuse tracing was removed (SECRT-2711); to be dropped with the
+  // rest of Langfuse (SECRT-3022).
   langfuseTraceId String?
 
   @@unique([messageId, userId, scoreName])

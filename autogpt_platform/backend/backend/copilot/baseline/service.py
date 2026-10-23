@@ -21,12 +21,10 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import orjson
-from langfuse import propagate_attributes
 from openai import APIConnectionError
 from openai import omit as openai_omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
@@ -1025,8 +1023,8 @@ async def _baseline_llm_caller(
         # Route through the shared providers helper so future provider
         # work (streaming flex tier, new SDK upgrades) propagates here
         # without a parallel migration. The pre-built ``client`` is
-        # passed through so the module-level Langfuse-wrapped client
-        # keeps its HTTP connection pool warm across turns.
+        # passed through so the module-level client keeps its HTTP
+        # connection pool warm across turns.
         response = await call_provider_stream(
             client=client,
             model=state.model,
@@ -2583,20 +2581,6 @@ async def stream_chat_completion_baseline(
             format_pending_as_user_message(pm) for pm in held_results
         )
 
-    # Propagate user/session context to Langfuse so all LLM calls within
-    # this request are grouped under a single trace with proper attribution.
-    _trace_ctx: Any = None
-    try:
-        _trace_ctx = propagate_attributes(
-            user_id=user_id,
-            session_id=session_id,
-            trace_name="copilot-baseline",
-            tags=["baseline", "tool_surface:registry"],
-        )
-        _trace_ctx.__enter__()
-    except Exception:
-        logger.warning("[Baseline] Langfuse trace context setup failed")
-
     _stream_error = False  # Track whether an error occurred during streaming
     state = _BaselineStreamState(
         model=active_model,
@@ -3012,27 +2996,6 @@ async def stream_chat_completion_baseline(
         # between tool rounds, so there's nothing to clear in finally.
         # Any message pushed after the final drain window stays in the
         # buffer and gets picked up at the start of the next turn.
-
-        # Set cost attributes on OTEL span before closing
-        if _trace_ctx is not None:
-            try:
-                span = otel_trace.get_current_span()
-                if span and span.is_recording():
-                    span.set_attribute(
-                        "gen_ai.usage.prompt_tokens", state.turn_prompt_tokens
-                    )
-                    span.set_attribute(
-                        "gen_ai.usage.completion_tokens",
-                        state.turn_completion_tokens,
-                    )
-                    if state.cost_usd is not None:
-                        span.set_attribute("gen_ai.usage.cost_usd", state.cost_usd)
-            except Exception:
-                logger.debug("[Baseline] Failed to set OTEL cost attributes")
-            try:
-                _trace_ctx.__exit__(None, None, None)
-            except Exception:
-                logger.warning("[Baseline] Langfuse trace context teardown failed")
 
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.

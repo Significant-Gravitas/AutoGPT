@@ -4979,7 +4979,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Submit message feedback",
-        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and scores it in Langfuse on the trace of the turn that\nwrote the reply, or on the chat's Langfuse session when that trace is\nnot known. It also goes to PostHog LLM analytics as an ``$ai_metric``\nevent. Langfuse or PostHog being down does not fail the request; the\nresponse says where the Langfuse score went.",
+        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and sends it to PostHog LLM analytics as an\n``$ai_metric`` event. PostHog being down does not fail the request.",
         "operationId": "postV2Submit message feedback",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -29839,15 +29839,7 @@
           "id": {
             "type": "string",
             "title": "Id",
-            "description": "The rating's id, which its Langfuse score shares."
-          },
-          "langfuse_target": {
-            "anyOf": [
-              { "type": "string", "enum": ["trace", "session"] },
-              { "type": "null" }
-            ],
-            "title": "Langfuse Target",
-            "description": "Where the Langfuse score went: the trace of the turn that wrote the reply, or the chat's Langfuse session when that trace is not known. Null when Langfuse is not configured or did not take the score; the rating is saved either way."
+            "description": "The rating's id, which its PostHog event carries as ``feedback_id``."
           }
         },
         "type": "object",

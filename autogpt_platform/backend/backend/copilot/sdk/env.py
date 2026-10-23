@@ -120,7 +120,7 @@ def build_sdk_env(
        route through the proxy, with the headers and body fields OpenRouter
        Broadcast attributes generations by (user, chat session,
        environment). Only this mode reaches Broadcast, so only its
-       generations show in PostHog LLM analytics and Langfuse broadcast.
+       generations show in PostHog LLM analytics.
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt

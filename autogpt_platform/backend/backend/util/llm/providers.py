@@ -1089,13 +1089,9 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
 # (``extra_body``, ``extra_headers``, ``stream_options``, tools).
 #
 # Client factory injection:
-#   The chat layer instantiates ``openai.AsyncOpenAI`` via a
-#   Langfuse-wrapped subclass (``langfuse.openai.AsyncOpenAI``) to
-#   thread OTel-style spans through every chat turn. To preserve that
-#   tracing, callers pass ``client_factory=LangfuseAsyncOpenAI`` (or
-#   any subclass with the same constructor) and the helper builds the
-#   client from it. Defaults to ``openai.AsyncOpenAI`` so non-traced
-#   callers (eval scripts, integration tests) need no extra wiring.
+#   Callers that need an ``openai.AsyncOpenAI`` subclass pass it as
+#   ``client_factory`` (any subclass with the same constructor) and the
+#   helper builds the client from it. Defaults to ``openai.AsyncOpenAI``.
 
 
 # Wider than ``ProviderResponse`` because the caller picks up chunks
@@ -1130,12 +1126,11 @@ async def call_provider_stream(
     SSE tokens) belong here.
 
     Either pass a pre-built ``client`` (the chat layer caches its
-    Langfuse-wrapped client at module level) OR pass
+    client at module level) OR pass
     ``base_url`` + ``api_key`` and the helper builds one via
     ``client_factory``. The chat layer prefers the pre-built path so
     TCP connections stay pooled across turns; tests pass a mocked
-    client. Default factory is ``openai.AsyncOpenAI`` — callers
-    needing Langfuse spans pass the wrapped subclass.
+    client. Default factory is ``openai.AsyncOpenAI``.
 
     Does NOT wrap the call in ``asyncio.wait_for`` and defaults
     ``timeout`` to ``openai.omit`` so the SDK / client's own per-request
