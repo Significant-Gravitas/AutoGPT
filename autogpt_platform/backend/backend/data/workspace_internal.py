@@ -49,4 +49,4 @@ def is_internal_workspace_file(
         return purpose in _INTERNAL_PURPOSES
     if _SESSION_TOOL_OUTPUT_PATH.match(path):
         return True
-    return name.strip().lower() in _RESERVED_WORKING_FILE_NAMES
+    return name.lower() in _RESERVED_WORKING_FILE_NAMES

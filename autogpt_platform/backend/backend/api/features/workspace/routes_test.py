@@ -947,7 +947,7 @@ def test_get_storage_usage_returns_tier_based_limit(mocker):
         "backend.api.features.workspace.routes.get_workspace_total_size",
         return_value=100 * 1024 * 1024,  # 100 MB used
     )
-    mocker.patch(
+    count = mocker.patch(
         "backend.api.features.workspace.routes.count_workspace_files",
         return_value=5,
     )
@@ -962,6 +962,8 @@ def test_get_storage_usage_returns_tier_based_limit(mocker):
     assert data["limit_bytes"] == 1024 * 1024 * 1024
     assert data["used_bytes"] == 100 * 1024 * 1024
     assert data["file_count"] == 5
+    # The count is of the files the user sees, not Otto's working files.
+    assert count.call_args.kwargs == {"include_internal": False}
 
 
 # -- _sanitize_filename_for_header tests --

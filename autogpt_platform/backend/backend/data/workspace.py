@@ -334,8 +334,8 @@ async def list_workspace_files(
             own files (see :func:`_scope_branches`). Ignored when the caller
             passes no prefixes, which already reaches the whole workspace.
         include_internal: Whether to return Otto's own working files
-            (``isInternal``). Otto's tools read them; the user's lists pass
-            ``False``.
+            (``isInternal``). Otto's tools read them, so it defaults to
+            ``True``; every list a person sees must pass ``False``.
 
     Returns:
         List of WorkspaceFile instances
@@ -430,6 +430,7 @@ async def count_workspace_files(
     root_only: bool = False,
     allowed_path_prefixes: Optional[list[str]] = None,
     include_user_files: bool = False,
+    include_internal: bool = True,
 ) -> int:
     """
     Count files in a workspace.
@@ -443,6 +444,7 @@ async def count_workspace_files(
         root_only: See :func:`list_workspace_files`.
         allowed_path_prefixes: See :func:`list_workspace_files`.
         include_user_files: See :func:`list_workspace_files`.
+        include_internal: See :func:`list_workspace_files`.
 
     Returns:
         Number of files
@@ -453,6 +455,8 @@ async def count_workspace_files(
     where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
     if not include_deleted:
         where_clause["isDeleted"] = False
+    if not include_internal:
+        where_clause["isInternal"] = False
 
     if folder_id:
         where_clause["folderId"] = folder_id

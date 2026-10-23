@@ -19,7 +19,7 @@ WHERE COALESCE("metadata"->>'origin', '') <> 'user-upload'
       "metadata"->>'purpose' IS NULL
       AND (
         "path" ~* '^/sessions/[^/]+/tool-(outputs|results)/[^/]+$'
-        OR LOWER(BTRIM("name")) IN ('build_state.json', '._browser_state.json')
+        OR LOWER("name") IN ('build_state.json', '._browser_state.json')
       )
     )
   );
