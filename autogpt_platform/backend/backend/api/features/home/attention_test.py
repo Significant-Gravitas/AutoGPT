@@ -162,6 +162,57 @@ def test_positive_balance_raises_no_credits_item() -> None:
     assert items == []
 
 
+def test_paywalled_owner_with_schedules_is_told_to_resubscribe() -> None:
+    without_schedules = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=500,
+        is_paywalled=True,
+    )
+    with_schedules = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[_schedule()],
+        credits_balance=500,
+        is_paywalled=True,
+    )
+
+    assert without_schedules == []
+    assert [item.id for item in with_schedules] == ["paywalled-schedules"]
+    assert with_schedules[0].primary_action.href == "/settings/billing"
+
+
+def test_paywall_takes_precedence_over_the_credits_item() -> None:
+    # A paywalled owner at zero balance gets one item, not two, and it is the
+    # one that names the real blocker (no plan, not an empty wallet).
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[_schedule()],
+        credits_balance=0,
+        is_paywalled=True,
+    )
+
+    assert [item.id for item in items] == ["paywalled-schedules"]
+
+
+def test_no_paywall_item_for_an_entitled_owner() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[_schedule()],
+        credits_balance=500,
+        is_paywalled=False,
+    )
+
+    assert items == []
+
+
 def test_naive_timestamps_are_normalised_to_utc() -> None:
     naive_created = (NOW - timedelta(hours=30)).replace(tzinfo=None)
     paused_expert = _expert()
