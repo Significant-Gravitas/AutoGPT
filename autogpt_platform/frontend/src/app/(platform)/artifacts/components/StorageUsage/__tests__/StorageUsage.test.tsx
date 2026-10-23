@@ -42,4 +42,21 @@ describe("StorageUsage", () => {
     await screen.findByTestId("storage-usage");
     expect(screen.queryByText(/skills and working files/)).toBeNull();
   });
+
+  test("says nothing extra when the backend sends no internal share", async () => {
+    server.use(
+      getGetWorkspaceStorageUsageMockHandler({
+        used_bytes: 2048,
+        limit_bytes: 262_144_000,
+        used_percent: 0,
+        file_count: 1,
+      }),
+    );
+
+    render(<StorageUsage />);
+
+    const usage = await screen.findByTestId("storage-usage");
+    expect(usage.textContent).toContain("2.0 KB of 250.0 MB");
+    expect(screen.queryByText(/skills and working files/)).toBeNull();
+  });
 });
