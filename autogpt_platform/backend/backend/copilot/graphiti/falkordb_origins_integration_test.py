@@ -1,6 +1,7 @@
 """A graphiti BFS read whose origins repeat (``falkordb_origins.py``) against a
-live FalkorDB: walking each origin once returns the same facts in the same
-order as walking every repeat, under a limit that cuts the walk short too.
+live FalkorDB: walking each origin once empirically returns the same facts in
+the same order as walking every repeat, under a limit that cuts the walk short
+too. Cypher does not guarantee that order without ``ORDER BY``.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -19,6 +20,32 @@ from .recall_integration_fixtures import ALICE, BOB, Fact, ingest_facts
 
 _ALICE_LEADS: Fact = ("Alice", "Borealis", "Alice leads Borealis")
 _ALICE_OWNS: Fact = ("Alice", "Cygnus", "Alice owns Cygnus")
+
+_EDGE_BFS_WITH_AGGREGATE = """
+    UNWIND $bfs_origin_node_uuids AS origin_uuid
+    MATCH path = (origin {uuid: origin_uuid})-[:RELATES_TO|MENTIONS*1..3]->(:Entity)
+    UNWIND relationships(path) AS rel
+    WITH rel AS e, startNode(rel) AS n, endNode(rel) AS m
+    WHERE type(e) = 'RELATES_TO'
+    WITH e, n, m
+    WITH e, n, m, count(*) AS origin_hits
+    RETURN DISTINCT
+        origin_hits AS origin_hits,
+        e.uuid AS uuid,
+        startNode(e).uuid AS source_node_uuid,
+        endNode(e).uuid AS target_node_uuid,
+        e.group_id AS group_id,
+        e.created_at AS created_at,
+        e.name AS name,
+        e.fact AS fact,
+        e.episodes AS episodes,
+        e.expired_at AS expired_at,
+        e.valid_at AS valid_at,
+        e.invalid_at AS invalid_at,
+        e.reference_time AS reference_time,
+        properties(e) AS attributes
+    LIMIT $limit
+"""
 
 
 @pytest.mark.integration
@@ -44,6 +71,25 @@ async def test_literal_distinct_text_preserves_repeats_before_limit(
         "RETURN DISTINCT",
         "RETURN DISTINCT",
     ]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_changed_edge_bfs_aggregate_keeps_duplicate_origins(
+    scope_graph, stub_graphiti_client
+) -> None:
+    driver, scope = scope_graph
+    await ingest_facts(driver, scope, stub_graphiti_client, [ALICE])
+    alice = (await _entities(driver))["Alice"]
+
+    records, _, _ = await driver.execute_query(
+        _EDGE_BFS_WITH_AGGREGATE,
+        bfs_origin_node_uuids=[alice, alice],
+        limit=10,
+    )
+
+    assert len(records) == 1
+    assert records[0]["origin_hits"] == 2
 
 
 @pytest.mark.integration

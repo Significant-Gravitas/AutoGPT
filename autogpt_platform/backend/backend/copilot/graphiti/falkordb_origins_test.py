@@ -8,10 +8,14 @@ from graphiti_core.search.search_config import (
     EdgeSearchConfig,
     EdgeSearchMethod,
 )
-from graphiti_core.search.search_filters import SearchFilters
+from graphiti_core.search.search_filters import (
+    ComparisonOperator,
+    DateFilter,
+    SearchFilters,
+)
 from graphiti_core.search.search_utils import edge_bfs_search, node_bfs_search
 
-from .falkordb_driver import AutoGPTFalkorDriver, _strip_cypher_noise
+from .falkordb_driver import AutoGPTFalkorDriver
 from .falkordb_origins import BFS_ORIGINS, distinct_origins
 
 _GROUP = ["user_test"]
@@ -26,6 +30,14 @@ _DISTINCT_READ = """
         e.uuid AS uuid,
         startNode(e).uuid AS source_node_uuid,
         endNode(e).uuid AS target_node_uuid,
+        e.group_id AS group_id,
+        e.created_at AS created_at,
+        e.name AS name,
+        e.fact AS fact,
+        e.episodes AS episodes,
+        e.expired_at AS expired_at,
+        e.valid_at AS valid_at,
+        e.invalid_at AS invalid_at,
         e.reference_time AS reference_time,
         e {.*, fact_embedding: NULL} AS attributes
     LIMIT $limit
@@ -59,16 +71,26 @@ class _Result:
 
 
 def _distinct_origins(query: str, params: dict) -> dict:
-    return distinct_origins(_strip_cypher_noise(query), params)
+    return distinct_origins(query, params)
 
 
 def test_each_origin_is_kept_once_where_it_first_appears() -> None:
-    params = {BFS_ORIGINS: ["hub", "a", "hub", "b", "a", "hub"], "limit": 40}
+    marker = ["unchanged"]
+    params = {
+        BFS_ORIGINS: ["hub", "a", "hub", "b", "a", "hub"],
+        "limit": 40,
+        "marker": marker,
+    }
 
-    assert _distinct_origins(_DISTINCT_READ, params) == {
+    result = _distinct_origins(_DISTINCT_READ, params)
+
+    assert result == {
         BFS_ORIGINS: ["hub", "a", "b"],
         "limit": 40,
+        "marker": marker,
     }
+    assert result is not params
+    assert result["marker"] is marker
     assert params[BFS_ORIGINS] == ["hub", "a", "hub", "b", "a", "hub"]
 
 
@@ -78,6 +100,42 @@ def test_a_read_that_returns_every_row_keeps_its_repeats() -> None:
     params = {BFS_ORIGINS: ["hub", "a", "hub"], "limit": 4}
 
     assert _distinct_origins(_EVERY_ROW_READ, params) == params
+
+
+def test_an_edge_bfs_subquery_with_later_origin_reuse_keeps_repeats() -> None:
+    query = f"""
+        CALL {{
+            {_DISTINCT_READ}
+        }}
+        UNWIND $bfs_origin_node_uuids AS origin
+        RETURN origin
+    """
+    params = {BFS_ORIGINS: ["hub", "hub", "other"], "limit": 2}
+
+    assert _distinct_origins(query, params) is params
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        _DISTINCT_READ.replace(
+            "WITH e, n, m\n    RETURN DISTINCT",
+            "WITH e, n, m\n    WITH e, n, m, count(*) AS origin_hits\n"
+            "    RETURN DISTINCT",
+        ),
+        _DISTINCT_READ.replace(
+            "e.uuid AS uuid,", "count(*) AS origin_hits,\n        e.uuid AS uuid,"
+        ),
+        _DISTINCT_READ.replace("LIMIT $limit", "ORDER BY e.uuid LIMIT $limit"),
+        _DISTINCT_READ.replace("'RELATES_TO'", "'MENTIONS'"),
+        f"CALL {{{_DISTINCT_READ}}} RETURN 1",
+        f"{_DISTINCT_READ} RETURN 1",
+    ],
+)
+def test_changed_edge_bfs_shapes_keep_repeats(query: str) -> None:
+    params = {BFS_ORIGINS: ["hub", "hub", "other"], "limit": 2}
+
+    assert _distinct_origins(query, params) is params
 
 
 @pytest.mark.asyncio
@@ -146,6 +204,60 @@ async def test_a_bfs_read_reaches_falkordb_with_each_origin_once() -> None:
     params = ro_query.await_args.args[1]
     assert params[BFS_ORIGINS] == ["hub", "a"]
     assert params["limit"] == 40
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("depth", [1, 7])
+@pytest.mark.parametrize(
+    ("filters", "group_ids"),
+    [
+        (SearchFilters(), None),
+        (SearchFilters(), _GROUP),
+        (
+            SearchFilters(
+                expired_at=[
+                    [DateFilter(comparison_operator=ComparisonOperator.is_null)]
+                ]
+            ),
+            None,
+        ),
+        (
+            SearchFilters(
+                expired_at=[
+                    [DateFilter(comparison_operator=ComparisonOperator.is_null)]
+                ]
+            ),
+            _GROUP,
+        ),
+    ],
+    ids=("unscoped", "group", "live", "live-group"),
+)
+async def test_proven_graphiti_edge_bfs_variants_de_duplicate_origins(
+    depth: int, filters: SearchFilters, group_ids: list[str] | None
+) -> None:
+    driver, ro_query = _driver(lambda query: _Result([], []))
+
+    await edge_bfs_search(
+        driver, ["hub", "hub", "other"], depth, filters, group_ids, 40
+    )
+
+    assert ro_query.await_args.args[1][BFS_ORIGINS] == ["hub", "other"]
+
+
+@pytest.mark.asyncio
+async def test_unproven_graphiti_filter_keeps_repeated_origins() -> None:
+    driver, ro_query = _driver(lambda query: _Result([], []))
+
+    await edge_bfs_search(
+        driver,
+        ["hub", "hub", "other"],
+        3,
+        SearchFilters(edge_types=["RELATES_TO"]),
+        _GROUP,
+        40,
+    )
+
+    assert ro_query.await_args.args[1][BFS_ORIGINS] == ["hub", "hub", "other"]
 
 
 @pytest.mark.asyncio
