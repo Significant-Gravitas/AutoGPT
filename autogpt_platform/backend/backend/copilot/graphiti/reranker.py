@@ -28,6 +28,12 @@ MIN_COMPLETION_TOKENS = 16
 
 DEFAULT_MODEL = DEFAULT_LLM_MODEL
 
+# Every candidate is scored at once, up to this many. graphiti's own default
+# (``SEMAPHORE_LIMIT``, 20) splits a typical 40-candidate warm-context rerank
+# into two waves, the second adding a classifier round trip (~1 s) to the
+# chat's first turn.
+MAX_PARALLEL_SCORES = 64
+
 
 class CompatOpenAIRerankerClient(OpenAIRerankerClient):
     """Graphiti reranker with compatible request parameters per model."""
@@ -75,7 +81,8 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                         **options,
                     )
                     for openai_messages in openai_messages_list
-                ]
+                ],
+                max_coroutines=max(1, min(len(passages), MAX_PARALLEL_SCORES)),
             )
 
             responses_top_logprobs = [
