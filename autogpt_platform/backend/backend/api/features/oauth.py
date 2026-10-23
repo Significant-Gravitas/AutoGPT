@@ -37,6 +37,11 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
+from backend.api.features.workload_identity.token_exchange import (
+    TokenExchangeResponse,
+    TokenRequestByTokenExchange,
+    exchange_token,
+)
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.oauth import (
     InvalidClientError,
@@ -363,8 +368,10 @@ class TokenRequestByRefreshToken(BaseModel):
 
 @router.post("/token")
 async def token(
-    request: TokenRequestByCode | TokenRequestByRefreshToken = Body(),
-) -> TokenResponse:
+    request: (
+        TokenRequestByCode | TokenRequestByRefreshToken | TokenRequestByTokenExchange
+    ) = Body(),
+) -> TokenResponse | TokenExchangeResponse:
     """
     OAuth 2.0 Token Endpoint
 
@@ -378,6 +385,13 @@ async def token(
     2. refresh_token: Exchange refresh token for new access token
        - Required: grant_type, refresh_token, client_id, client_secret
 
+    3. urn:ietf:params:oauth:grant-type:token-exchange (RFC 8693): exchange a
+       workload's OIDC token for a short-lived access token, with no secret
+       - Required: grant_type, subject_token, subject_token_type, client_id
+         (the workload identity's ID)
+       - Optional: scope
+       - Returns an access token only; the workload exchanges again for more
+
     Returns:
     - access_token: Bearer token for API access (1 hour TTL)
     - token_type: "Bearer"
@@ -385,6 +399,9 @@ async def token(
     - refresh_token: Token for refreshing access (30 days TTL)
     - scopes: List of scopes
     """
+    if request.grant_type == "urn:ietf:params:oauth:grant-type:token-exchange":
+        return await exchange_token(request)
+
     # Validate client credentials
     try:
         app = await validate_client_credentials(

@@ -12550,7 +12550,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Token",
-        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
+        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\n3. urn:ietf:params:oauth:grant-type:token-exchange (RFC 8693): exchange a\n   workload's OIDC token for a short-lived access token, with no secret\n   - Required: grant_type, subject_token, subject_token_type, client_id\n     (the workload identity's ID)\n   - Optional: scope\n   - Returns an access token only; the workload exchanges again for more\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
         "operationId": "postOauthToken",
         "requestBody": {
           "content": {
@@ -12558,7 +12558,8 @@
               "schema": {
                 "anyOf": [
                   { "$ref": "#/components/schemas/TokenRequestByCode" },
-                  { "$ref": "#/components/schemas/TokenRequestByRefreshToken" }
+                  { "$ref": "#/components/schemas/TokenRequestByRefreshToken" },
+                  { "$ref": "#/components/schemas/TokenRequestByTokenExchange" }
                 ],
                 "title": "Request"
               }
@@ -12571,7 +12572,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/TokenResponse" }
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/TokenResponse" },
+                    { "$ref": "#/components/schemas/TokenExchangeResponse" }
+                  ],
+                  "title": "Response Postoauthtoken"
+                }
               }
             }
           },
@@ -18588,6 +18595,196 @@
         }
       }
     },
+    "/api/workload-identities": {
+      "get": {
+        "tags": ["v1", "workload-identity"],
+        "summary": "List workload identities",
+        "operationId": "getV1List workload identities",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkloadIdentityInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Getv1List Workload Identities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "workload-identity"],
+        "summary": "Trust a workload identity",
+        "description": "Let a workload act as you on the External API by exchanging the OIDC\ntokens its platform issues, with no API key to store or rotate.",
+        "operationId": "postV1Trust a workload identity",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WorkloadIdentitySpec" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadIdentityInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/workload-identities/{identity_id}": {
+      "delete": {
+        "tags": ["v1", "workload-identity"],
+        "summary": "Revoke a workload identity",
+        "description": "Revoke the identity and every token minted for it, permanently.",
+        "operationId": "deleteV1Revoke a workload identity",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Identity Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadIdentityInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v1", "workload-identity"],
+        "summary": "Get a workload identity",
+        "operationId": "getV1Get a workload identity",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Identity Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadIdentityInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v1", "workload-identity"],
+        "summary": "Enable or disable a workload identity",
+        "description": "A disabled identity can't exchange tokens, and the tokens it already\nholds stop working until it is enabled again.",
+        "operationId": "patchV1Enable or disable a workload identity",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Identity Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetWorkloadIdentityStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadIdentityInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files": {
       "get": {
         "tags": ["workspace"],
@@ -21789,6 +21986,26 @@
         "type": "object",
         "required": ["transports"],
         "title": "ChatTransportsResponse"
+      },
+      "ClaimCondition": {
+        "properties": {
+          "claim": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Claim"
+          },
+          "pattern": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Pattern",
+            "description": "Exact value, or a glob such as `repo:acme/api:ref:refs/heads/*`"
+          }
+        },
+        "type": "object",
+        "required": ["claim", "pattern"],
+        "title": "ClaimCondition"
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -33824,6 +34041,18 @@
         "required": ["user_id", "tier"],
         "title": "SetUserTierRequest"
       },
+      "SetWorkloadIdentityStatusRequest": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ACTIVE", "DISABLED"],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "SetWorkloadIdentityStatusRequest"
+      },
       "SetupInfo": {
         "properties": {
           "agent_id": { "type": "string", "title": "Agent Id" },
@@ -36522,6 +36751,38 @@
         "title": "TodoWriteResponse",
         "description": "Ack returned by ``TodoWrite``.\n\nThe tool is effectively stateless — the authoritative task list lives in\nthe assistant's latest tool-call arguments, which are replayed from the\ntranscript on each turn. The tool output only needs to confirm that the\nupdate was accepted so the model can proceed."
       },
+      "TokenExchangeResponse": {
+        "properties": {
+          "access_token": { "type": "string", "title": "Access Token" },
+          "issued_token_type": {
+            "type": "string",
+            "const": "urn:ietf:params:oauth:token-type:access_token",
+            "title": "Issued Token Type",
+            "default": "urn:ietf:params:oauth:token-type:access_token"
+          },
+          "token_type": {
+            "type": "string",
+            "const": "Bearer",
+            "title": "Token Type",
+            "default": "Bearer"
+          },
+          "expires_in": { "type": "integer", "title": "Expires In" },
+          "access_token_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Access Token Expires At"
+          },
+          "scope": { "type": "string", "title": "Scope" }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in",
+          "access_token_expires_at",
+          "scope"
+        ],
+        "title": "TokenExchangeResponse"
+      },
       "TokenIntrospectionResult": {
         "properties": {
           "active": { "type": "boolean", "title": "Active" },
@@ -36638,6 +36899,50 @@
           "client_secret"
         ],
         "title": "TokenRequestByRefreshToken"
+      },
+      "TokenRequestByTokenExchange": {
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "const": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "title": "Grant Type"
+          },
+          "subject_token": {
+            "type": "string",
+            "maxLength": 16384,
+            "title": "Subject Token",
+            "description": "OIDC token the workload's platform issued"
+          },
+          "subject_token_type": {
+            "type": "string",
+            "enum": [
+              "urn:ietf:params:oauth:token-type:id_token",
+              "urn:ietf:params:oauth:token-type:jwt"
+            ],
+            "title": "Subject Token Type"
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "ID of the workload identity to act as"
+          },
+          "scope": {
+            "anyOf": [
+              { "type": "string", "maxLength": 1024 },
+              { "type": "null" }
+            ],
+            "title": "Scope",
+            "description": "Space-separated subset of the identity's permissions (all of them if omitted)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "grant_type",
+          "subject_token",
+          "subject_token_type",
+          "client_id"
+        ],
+        "title": "TokenRequestByTokenExchange"
       },
       "TokenResponse": {
         "properties": {
@@ -38661,6 +38966,162 @@
         ],
         "title": "WebhookWithoutSecrets",
         "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
+      },
+      "WorkloadIdentityInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "issuer": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Issuer",
+            "description": "Exact `iss` of the workload's OIDC tokens"
+          },
+          "audience": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Audience",
+            "description": "Exact `aud` the workload requests its tokens for"
+          },
+          "claim_conditions": {
+            "items": { "$ref": "#/components/schemas/ClaimCondition" },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Claim Conditions"
+          },
+          "permissions": {
+            "items": { "$ref": "#/components/schemas/APIKeyPermission" },
+            "type": "array",
+            "minItems": 1,
+            "title": "Permissions"
+          },
+          "token_ttl_seconds": {
+            "type": "integer",
+            "maximum": 3600.0,
+            "minimum": 300.0,
+            "title": "Token Ttl Seconds",
+            "default": 900
+          },
+          "id": { "type": "string", "title": "Id" },
+          "status": { "$ref": "#/components/schemas/WorkloadIdentityStatus" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_used_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Revoked At"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "issuer",
+          "audience",
+          "claim_conditions",
+          "permissions",
+          "id",
+          "status",
+          "created_at",
+          "user_id"
+        ],
+        "title": "WorkloadIdentityInfo"
+      },
+      "WorkloadIdentitySpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "issuer": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Issuer",
+            "description": "Exact `iss` of the workload's OIDC tokens"
+          },
+          "audience": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Audience",
+            "description": "Exact `aud` the workload requests its tokens for"
+          },
+          "claim_conditions": {
+            "items": { "$ref": "#/components/schemas/ClaimCondition" },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Claim Conditions"
+          },
+          "permissions": {
+            "items": { "$ref": "#/components/schemas/APIKeyPermission" },
+            "type": "array",
+            "minItems": 1,
+            "title": "Permissions"
+          },
+          "token_ttl_seconds": {
+            "type": "integer",
+            "maximum": 3600.0,
+            "minimum": 300.0,
+            "title": "Token Ttl Seconds",
+            "default": 900
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "issuer",
+          "audience",
+          "claim_conditions",
+          "permissions"
+        ],
+        "title": "WorkloadIdentitySpec",
+        "description": "A new identity: its trust settings must pin tokens to one workload."
+      },
+      "WorkloadIdentityStatus": {
+        "type": "string",
+        "enum": ["ACTIVE", "DISABLED", "REVOKED"],
+        "title": "WorkloadIdentityStatus"
       },
       "WorkspaceFile": {
         "properties": {

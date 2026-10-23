@@ -255,6 +255,7 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+  WorkloadIdentities      WorkloadIdentity[]
 
   // Organization & Workspace relations
   OrgMemberships  OrgMember[]
@@ -3307,6 +3308,68 @@ model OAuthRefreshToken {
 
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
+  @@index([expiresAt]) // For cleanup
+}
+
+// A workload outside AutoGPT (a CI job, a deployed app, a cloud function) that
+// may act as its owner on the External API by exchanging an OIDC token its own
+// platform issued, instead of holding a long-lived API key.
+model WorkloadIdentity {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String
+  description String?
+
+  issuer          String // Exact `iss` of the tokens this identity accepts
+  audience        String // Exact `aud` the tokens must be minted for
+  claimConditions Json // [{"claim": "repository", "pattern": "acme/api"}]; all must match
+
+  permissions     APIKeyPermission[]
+  tokenTtlSeconds Int                @default(900)
+
+  status     WorkloadIdentityStatus @default(ACTIVE)
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+
+  AccessTokens WorkloadAccessToken[]
+
+  @@index([userId, status])
+  @@index([organizationId])
+}
+
+enum WorkloadIdentityStatus {
+  ACTIVE
+  DISABLED
+  REVOKED
+}
+
+// Short-lived bearer token minted for a WorkloadIdentity in exchange for an
+// OIDC token from its workload
+model WorkloadAccessToken {
+  id        String   @id @default(uuid())
+  token     String   @unique // SHA256 hash of plaintext token
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  workloadIdentityId String
+  WorkloadIdentity   WorkloadIdentity @relation(fields: [workloadIdentityId], references: [id], onDelete: Cascade)
+
+  scopes APIKeyPermission[]
+
+  // Who presented the exchanged token, for audit
+  subject    String
+  subjectJti String?
+
+  revokedAt DateTime?
+
+  @@index([workloadIdentityId])
   @@index([expiresAt]) // For cleanup
 }
 
