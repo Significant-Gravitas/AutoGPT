@@ -236,6 +236,44 @@ async def test_positive_delta_survives_a_failing_low_balance_alert(
 
 
 @pytest.mark.asyncio
+async def test_positive_delta_survives_a_failing_personal_org_lookup(
+    tmp_block_costs_override,
+):
+    """In an org run, the personal-org lookup only decides whether the user's
+    low-balance alert fires. It runs after the delta has landed, so a failed
+    lookup skips the alert and must not drop the delta from the run's cost or
+    the expert's meter."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.organization_id = "org-1"
+    exec_entry.execution_context.expert_id = "expert-1"
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    db_client = MagicMock()
+    db_client.spend_org_credits = AsyncMock(return_value=42)
+    db_client.get_personal_org_owner = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.handle_low_balance") as handle_lb,
+        patch(
+            "backend.executor.billing.add_weekly_spend", new_callable=AsyncMock
+        ) as add_spend,
+    ):
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
+
+    assert (delta, remaining) == (5, 42)
+    handle_lb.assert_not_called()
+    add_spend.assert_awaited_once_with("expert-1", 5)
+
+
+@pytest.mark.asyncio
 async def test_positive_delta_passes_fail_insufficient_credits_false(
     tmp_block_costs_override,
 ):
