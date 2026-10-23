@@ -187,6 +187,9 @@ async def test_channel_message_carries_team_as_server_id(app_id):
     assert ctx is not None
     assert ctx.channel_type == "channel"
     assert ctx.server_id == "19:team@thread.tacv2"
+    # post_to_chat_platform can't target Teams channels, so none is offered.
+    assert ctx.post_channel_id is None
+    assert ctx.public_channel_id is None
 
 
 @pytest.mark.asyncio

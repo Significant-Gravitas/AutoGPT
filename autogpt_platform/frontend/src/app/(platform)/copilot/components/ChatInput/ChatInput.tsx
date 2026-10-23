@@ -94,6 +94,8 @@ interface Props {
   className?: string;
   inputId?: string;
   draftKey?: string;
+  /** Off leaves keyboard focus where it is, on mount and when re-enabled. */
+  autoFocus?: boolean;
   /** Files dropped onto the chat window by the parent. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
@@ -135,8 +137,10 @@ interface Props {
   atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
-// Memoised: the chat page re-renders on every streamed flush, and the
-// composer's props stay the same while the reply streams in.
+// memo-boundary: the chat page re-renders on every streamed flush, and the
+// composer's props stay the same while the reply streams in. The builder,
+// memory and team chats render it from folders the compiler does not cover,
+// so their parents do not cache its element.
 export const ChatInput = memo(function ChatInput({
   onSend,
   disabled = false,
@@ -150,6 +154,7 @@ export const ChatInput = memo(function ChatInput({
   className,
   inputId = "chat-input",
   draftKey,
+  autoFocus = true,
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
@@ -192,6 +197,31 @@ export const ChatInput = memo(function ChatInput({
     });
   }
 
+  function addAttachments(incoming: Attachment[]) {
+    // Outside the updater: React re-invokes an updater (twice under
+    // StrictMode), which would toast the refusal more than once.
+    const { next, refused, refusedFolders } = appendWithinCap(
+      attachments,
+      incoming,
+    );
+    setAttachments(next);
+    setRefusedCount(refused);
+    if (refusedFolders > 0) {
+      toast({
+        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
+        description: `${refusedFolders} not added.`,
+      });
+    }
+  }
+
+  function handleFilesSelected(newFiles: File[]) {
+    addAttachments(newFiles.map(toLocalAttachment));
+  }
+
+  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
+    addAttachments([workspaceItemToAttachment(item)]);
+  }
+
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
     if (droppedFiles && droppedFiles.length > 0) {
@@ -219,12 +249,11 @@ export const ChatInput = memo(function ChatInput({
     const sent = attachments;
     setAttachments([]);
     setRefusedCount(0);
+    const files = localFiles.length > 0 ? localFiles : undefined;
+    const workspaceFiles =
+      workspaceAttachments.length > 0 ? workspaceAttachments : undefined;
     try {
-      await onSend(
-        message,
-        localFiles.length > 0 ? localFiles : undefined,
-        workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
-      );
+      await onSend(message, files, workspaceFiles);
     } catch (error) {
       setAttachments((prev) => (prev.length > 0 ? prev : sent));
       throw error;
@@ -242,6 +271,7 @@ export const ChatInput = memo(function ChatInput({
       canSendEmpty: hasAttachments && !atReset,
       inputId,
       draftKey,
+      autoFocus,
       failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
 
@@ -329,31 +359,6 @@ export const ChatInput = memo(function ChatInput({
     // Only discard untouched guided prompts — never a draft the user typed
     // or edited themselves.
     if (isGuidedPrompt(value)) setValue("");
-  }
-
-  function handleFilesSelected(newFiles: File[]) {
-    addAttachments(newFiles.map(toLocalAttachment));
-  }
-
-  function addAttachments(incoming: Attachment[]) {
-    // Outside the updater: React re-invokes an updater (twice under
-    // StrictMode), which would toast the refusal more than once.
-    const { next, refused, refusedFolders } = appendWithinCap(
-      attachments,
-      incoming,
-    );
-    setAttachments(next);
-    setRefusedCount(refused);
-    if (refusedFolders > 0) {
-      toast({
-        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
-        description: `${refusedFolders} not added.`,
-      });
-    }
-  }
-
-  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
-    addAttachments([workspaceItemToAttachment(item)]);
   }
 
   function handlePickerConfirmed(items: PickedItem[]) {

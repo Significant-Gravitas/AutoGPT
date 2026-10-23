@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { motion, useReducedMotion } from "framer-motion";
-import { memo, useMemo, useState } from "react";
+import { memo, useState } from "react";
 import {
   haveSameMinimapRows,
   tickColor,
@@ -28,13 +28,15 @@ interface Props {
  * one reveals that turn's opening line, and clicking scrolls the transcript to
  * it, so a long thread stays navigable without dragging the scrollbar.
  */
+// memo-boundary: `messages` is a new array on every streamed flush, and the
+// comparator below renders the rail again only when the user rows change.
 export const ChatMinimap = memo(function ChatMinimap({
   messages,
   onJumpToUnmounted,
 }: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const reducedMotion = useReducedMotion();
-  const entries = useMemo(() => toMinimapEntries(messages), [messages]);
+  const entries = toMinimapEntries(messages);
 
   if (entries.length < 3) return null;
 

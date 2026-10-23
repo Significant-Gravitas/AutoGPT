@@ -41,13 +41,15 @@ export function SearchCommandResultItem({
       onClick={onSelect}
       className={cn(
         "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        isHighlighted ? "bg-zinc-100 hover:bg-zinc-100" : "hover:bg-zinc-50",
+        isHighlighted
+          ? "bg-surface-hover hover:bg-surface-hover"
+          : "hover:bg-surface-muted",
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-zinc-900 transition-opacity duration-150",
+          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-action-hover transition-opacity duration-150",
           isHighlighted ? "opacity-100" : "opacity-0",
         )}
       />
@@ -57,7 +59,9 @@ export function SearchCommandResultItem({
             <Icon
               className={cn(
                 "h-4 w-4 shrink-0 transition-colors duration-150",
-                isHighlighted ? "text-zinc-900" : "text-zinc-500",
+                isHighlighted
+                  ? "text-foreground-strong"
+                  : "text-foreground-tertiary",
               )}
             />
           </span>
@@ -66,7 +70,7 @@ export function SearchCommandResultItem({
           <div
             className={cn(
               "truncate text-sm font-normal transition-colors duration-150",
-              isHighlighted ? "text-zinc-950" : "text-zinc-800",
+              isHighlighted ? "text-foreground" : "text-foreground-emphasis",
             )}
           >
             {highlightMatch(item.title, query).map((part, partIndex) => (
@@ -79,7 +83,7 @@ export function SearchCommandResultItem({
             ))}
           </div>
           {item.subtitle ? (
-            <div className="mt-0.5 truncate text-xs text-zinc-500">
+            <div className="mt-0.5 truncate text-xs text-foreground-tertiary">
               {item.subtitle}
             </div>
           ) : null}
@@ -88,13 +92,14 @@ export function SearchCommandResultItem({
           <LoadingSpinner
             size="small"
             aria-label="Opening"
-            className="shrink-0 text-zinc-500"
+            className="shrink-0 text-foreground-tertiary"
           />
         ) : (
           <span
             aria-hidden="true"
             className={cn(
-              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-600 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
+              // TODO(tokens): no shadow token for the key-cap shadow.
+              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-secondary shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
               isHighlighted ? "opacity-100" : "opacity-0",
             )}
           >

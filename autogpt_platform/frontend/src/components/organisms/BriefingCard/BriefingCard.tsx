@@ -46,21 +46,26 @@ export function BriefingCard({ briefing, className }: Props) {
   return (
     <section className={cn("text-left", className)}>
       <div className="mb-2 flex items-center gap-2 px-2">
-        <Icon icon={News01Icon} size={16} className="text-zinc-400" />
-        <Text variant="body" className="text-zinc-700">
+        <Icon icon={News01Icon} size={16} className="text-foreground-subtle" />
+        <Text variant="body" className="text-foreground-body">
           Recap
         </Text>
         {/* Both stops stay at or below purple-600 so the lightest painted
             pixel still clears WCAG AA (4.5:1) against the white card. */}
         <Text
           variant="body"
+          // TODO(tokens): no role for the purple-800 to purple-600 gradient
+          // stops.
           className="bg-gradient-to-r from-purple-800 to-purple-600 bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-3xl bg-white shadow-zinc-950 smooth-shadow-ring-sm">
+      <div
+        // TODO(tokens): no shadow-colour role for zinc-950 (#09090B).
+        className="overflow-hidden rounded-3xl bg-surface shadow-zinc-950 smooth-shadow-ring-sm"
+      >
         <motion.div
           // Real height, not a layout transform: the page below has to reflow
           // with the card, and a transform would scale the rows' text.
@@ -72,7 +77,7 @@ export function BriefingCard({ briefing, className }: Props) {
           <ul
             ref={listRef}
             className={cn(
-              "h-full divide-y divide-zinc-100",
+              "h-full divide-y divide-separator",
               isShowingAll
                 ? "overflow-y-auto scrollbar-none"
                 : "overflow-hidden",
@@ -106,7 +111,7 @@ export function BriefingCard({ briefing, className }: Props) {
           <button
             type="button"
             onClick={toggleShowAll}
-            className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-3 text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+            className="flex w-full items-center justify-center gap-1.5 border-t border-separator px-4 py-3 text-foreground-tertiary transition-colors hover:bg-surface-muted hover:text-foreground-strong"
           >
             <Text variant="small-medium" className="text-inherit">
               {isShowingAll
@@ -159,7 +164,8 @@ function ScrollArrow({
         aria-hidden={!isVisible}
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         className={cn(
-          "flex size-8 items-center justify-center rounded-full bg-white text-zinc-500 shadow-zinc-950 transition-colors smooth-shadow-ring-sm hover:text-zinc-900",
+          // TODO(tokens): no shadow-colour role for zinc-950 (#09090B).
+          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary shadow-zinc-950 transition-colors smooth-shadow-ring-sm hover:text-foreground-strong",
           isVisible && "pointer-events-auto",
         )}
       >

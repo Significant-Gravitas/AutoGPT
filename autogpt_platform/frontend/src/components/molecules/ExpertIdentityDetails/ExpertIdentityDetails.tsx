@@ -60,7 +60,8 @@ export function ExpertIdentityDetails({
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
-            compact && "leading-[1.125rem]",
+            compact && "leading-4.5",
+            // TODO(tokens): SECRT-3152, no text role for 24px.
             size === "page" && "text-2xl leading-8",
           )}
         >
@@ -74,7 +75,7 @@ export function ExpertIdentityDetails({
             className={cn(
               "min-w-0",
               size === "page" ? "max-w-full break-words" : "truncate",
-              size === "card" && "text-[13px]",
+              size === "card" && "text-body-sm leading-inherit",
               areaClassName,
             )}
             title={titleOnNameLine}
@@ -85,11 +86,12 @@ export function ExpertIdentityDetails({
                 <span
                   className={cn(
                     "bg-clip-text font-medium text-transparent",
-                    size === "card" && "text-[15px]",
+                    size === "card" && "text-body-md leading-inherit",
+                    // TODO(tokens): SECRT-3152, no text role for 18px.
                     size === "page" && "text-lg",
                   )}
                   style={{
-                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, #18181b), color-mix(in srgb, ${areaColor} 85%, #18181b))`,
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-primary))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-primary))))`,
                     filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
                   }}
                 >

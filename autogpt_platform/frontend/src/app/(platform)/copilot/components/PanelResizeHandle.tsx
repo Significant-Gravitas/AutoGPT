@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 import { PANEL_RESERVED_WIDTH } from "../store";
 
 interface Props {
@@ -57,14 +57,15 @@ export function PanelResizeHandle({
   const minWidthRef = useRef(minWidth);
   const maxWidthRef = useRef(maxWidth);
   const reservedWidthRef = useRef(reservedWidth);
-  onWidthChangeRef.current = onWidthChange;
-  minWidthRef.current = minWidth;
-  maxWidthRef.current = maxWidth;
-  reservedWidthRef.current = reservedWidth;
-
   const pointerIdRef = useRef<number | null>(null);
   const onResizingChangeRef = useRef(onResizingChange);
-  onResizingChangeRef.current = onResizingChange;
+  useInsertionEffect(() => {
+    onWidthChangeRef.current = onWidthChange;
+    minWidthRef.current = minWidth;
+    maxWidthRef.current = maxWidth;
+    reservedWidthRef.current = reservedWidth;
+    onResizingChangeRef.current = onResizingChange;
+  });
 
   const pendingRef = useRef<PendingWidth>({ width: null, frame: null });
 
