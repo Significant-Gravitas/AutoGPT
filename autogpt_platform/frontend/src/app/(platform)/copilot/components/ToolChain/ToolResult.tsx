@@ -56,6 +56,7 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isEmptyResult,
   isWebhookIngressUrl,
   str,
   stripBaseFields,
@@ -605,6 +606,7 @@ function ToolOutput({ row, readOnly }: Required<Props>) {
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;
+  if (isEmptyResult(output)) return <KeyValueList value="Nothing found." />;
 
   const data = stripBaseFields(output);
 

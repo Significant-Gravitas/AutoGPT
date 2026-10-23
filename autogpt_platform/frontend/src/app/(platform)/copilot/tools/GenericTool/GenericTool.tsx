@@ -10,6 +10,7 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { isEmptyResult } from "../../components/ToolChain/resultHelpers";
 import {
   globalRegistry,
   OutputItem,
@@ -699,6 +700,8 @@ function getDefaultAccordionData(
     displayContent = mcpText;
   } else if (message) {
     displayContent = message;
+  } else if (isEmptyResult(output)) {
+    displayContent = "Nothing found.";
   } else {
     try {
       displayContent = JSON.stringify(output, null, 2);

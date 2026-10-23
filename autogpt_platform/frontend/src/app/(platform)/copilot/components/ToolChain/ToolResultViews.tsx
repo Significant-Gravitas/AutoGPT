@@ -14,6 +14,7 @@ import { CARD, HALF } from "./ResultCards";
 import {
   asItems,
   asObject,
+  displayValue,
   formatBytes,
   humanizeKey,
   inline,
@@ -248,7 +249,7 @@ export function OutputList({ items }: ItemsProps) {
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
           </p>
           <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] text-zinc-800">
-            {inline(item.value ?? item)}
+            {displayValue(item.value ?? item)}
           </p>
         </div>
       ))}
@@ -280,16 +281,20 @@ export function KeyValueList({ value }: ValueProps) {
       </div>
     );
   }
+  const entries = Object.entries(obj).filter(
+    ([, entryValue]) => entryValue !== null && entryValue !== undefined,
+  );
+  if (entries.length === 0) return null;
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      {Object.entries(obj).map(([key, entryValue]) => (
+      {entries.map(([key, entryValue]) => (
         <div
           key={key}
           className="flex items-baseline gap-3 py-1 text-xs first:pt-0 last:pb-0"
         >
           <span className="shrink-0 text-zinc-400">{humanizeKey(key)}</span>
           <span className="ml-auto min-w-0 break-words text-right font-medium text-zinc-700">
-            {inline(entryValue)}
+            {displayValue(entryValue)}
           </span>
         </div>
       ))}

@@ -62,6 +62,42 @@ export function stripBaseFields(
   );
 }
 
+const ID_KEY = /(^|_)id$/;
+
+function isEmptyCollection(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.keys(value).length === 0
+  );
+}
+
+/** A lookup that came back with nothing: every list in it is empty, and the
+ *  rest is bookkeeping (ids, counts, paging). A result that names or states
+ *  anything (`name`, `ok`) is an answer, even next to an empty list. */
+export function isEmptyResult(output: unknown): boolean {
+  const obj = asObject(output);
+  if (!obj) return false;
+  const entries = Object.entries(stripBaseFields(obj)).filter(
+    ([, value]) => value !== null && value !== undefined,
+  );
+  if (!entries.some(([, value]) => Array.isArray(value))) return false;
+  return entries.every(
+    ([key, value]) =>
+      isEmptyCollection(value) ||
+      typeof value === "number" ||
+      value === "" ||
+      (typeof value === "string" && ID_KEY.test(key)),
+  );
+}
+
+/** A value as a result card shows it: empty lists and objects read "None"
+ *  instead of their JSON. */
+export function displayValue(value: unknown): string {
+  return isEmptyCollection(value) ? "None" : inline(value);
+}
+
 // Block/agent outputs arrive as {output_name: [values]}; flatten to
 // {name, value} entries for OutputList.
 export function dictToOutputItems(
