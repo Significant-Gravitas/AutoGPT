@@ -12,6 +12,7 @@ turn, so a bound that lives in only one of them is no bound at all — the model
 just passes the task on with the other tool.
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -27,6 +28,8 @@ logger = logging.getLogger(__name__)
 CALLER_NAME_LIMIT = 80
 # The same guard for the user's first name, which is one word.
 USER_NAME_LIMIT = 40
+# The name is cosmetic, so its lookup gets seconds, not the RPC client's retries.
+USER_NAME_LOOKUP_TIMEOUT_SECONDS = 2.0
 
 # How many hops a single task may travel between experts, whether delegated or
 # handed over. The turn envelope enforces the same bound for every spawn kind;
@@ -76,13 +79,17 @@ async def user_first_name(user_id: str) -> str | None:
     """The user's first name for a preamble, or ``None`` when it is unknown.
 
     Read from the profile the onboarding fills in, the same ``Name:`` Otto
-    sees in ``<user_context>``. Best-effort: a failed lookup only costs the
-    preamble its name, never the handoff.
+    sees in ``<user_context>``. Best-effort and time-boxed: a failed or slow
+    lookup only costs the preamble its name, never the handoff, whose own
+    retrying RPC client could otherwise hold the call for minutes.
     """
     try:
-        understanding = await understanding_db().get_business_understanding(user_id)
+        understanding = await asyncio.wait_for(
+            understanding_db().get_business_understanding(user_id),
+            USER_NAME_LOOKUP_TIMEOUT_SECONDS,
+        )
     except Exception as e:
-        logger.warning(f"User name lookup for a teammate preamble failed: {e}")
+        logger.warning(f"User name lookup for a teammate preamble failed: {e!r}")
         return None
     return first_name(understanding.user_name if understanding else None)
 

@@ -5,10 +5,12 @@ into server framing: it gets the same bracket and newline treatment as the
 caller's name, and anything unusable falls back to the neutral wording.
 """
 
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
 
+from . import expert_delegation
 from .expert_delegation import USER_NAME_LIMIT, team_owner, user_first_name
 
 
@@ -50,6 +52,18 @@ async def test_a_user_without_a_profile_has_no_name(user_understanding):
 async def test_a_failed_lookup_has_no_name(user_understanding):
     user_understanding.get_business_understanding.side_effect = RuntimeError("down")
     assert await user_first_name("alice") is None
+
+
+@pytest.mark.asyncio
+async def test_a_slow_lookup_gives_up_instead_of_holding_the_handoff(
+    user_understanding, monkeypatch
+):
+    async def never_answers(user_id: str):
+        await asyncio.Event().wait()
+
+    user_understanding.get_business_understanding = never_answers
+    monkeypatch.setattr(expert_delegation, "USER_NAME_LOOKUP_TIMEOUT_SECONDS", 0.01)
+    assert await asyncio.wait_for(user_first_name("alice"), 1) is None
 
 
 def test_the_team_belongs_to_the_named_user_or_to_this_user():
