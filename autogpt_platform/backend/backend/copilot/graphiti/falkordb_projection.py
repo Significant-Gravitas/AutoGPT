@@ -14,15 +14,42 @@ of its own (``e.fact_embedding AS fact_embedding``), which the rewrite leaves
 alone.
 """
 
-_PROJECTIONS = {
-    "properties(e) AS attributes": "e {.*, fact_embedding: NULL} AS attributes",
-    "properties(n) AS attributes": "n {.*, name_embedding: NULL} AS attributes",
-}
+from graphiti_core.driver.driver import GraphProvider
+from graphiti_core.models.edges.edge_db_queries import get_entity_edge_return_query
+from graphiti_core.models.nodes.node_db_queries import get_entity_node_return_query
+
+_RECORD_PROJECTIONS = (
+    (
+        get_entity_edge_return_query(GraphProvider.FALKORDB),
+        "properties(e) AS attributes",
+        "e {.*, fact_embedding: NULL} AS attributes",
+    ),
+    (
+        get_entity_node_return_query(GraphProvider.FALKORDB),
+        "properties(n) AS attributes",
+        "n {.*, name_embedding: NULL} AS attributes",
+    ),
+)
 
 
-def without_embeddings(cypher_query: str) -> str:
-    """``cypher_query`` with graphiti's all-properties projections replaced by
-    ones that return every property but the embedding."""
-    for projection, lean in _PROJECTIONS.items():
-        cypher_query = cypher_query.replace(projection, lean)
+def without_embeddings(cypher_query: str, cypher_code: str) -> str:
+    """Replace only graphiti's complete record-builder projections in code."""
+    if len(cypher_query) != len(cypher_code):
+        return cypher_query
+
+    replacements: list[tuple[int, int, str]] = []
+    for record, projection, lean in _RECORD_PROJECTIONS:
+        projection_offset = record.index(projection)
+        search_from = 0
+        while (record_start := cypher_code.find(record, search_from)) >= 0:
+            projection_start = record_start + projection_offset
+            replacements.append(
+                (projection_start, projection_start + len(projection), lean)
+            )
+            search_from = record_start + len(record)
+
+    for start, end, lean in sorted(
+        replacements, key=lambda replacement: replacement[0], reverse=True
+    ):
+        cypher_query = cypher_query[:start] + lean + cypher_query[end:]
     return cypher_query

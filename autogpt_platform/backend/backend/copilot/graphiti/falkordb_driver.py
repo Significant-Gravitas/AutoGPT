@@ -91,7 +91,9 @@ _WRITE_PROCEDURE_RE = re.compile(
 
 def _strip_cypher_noise(cypher_query_: str) -> str:
     """Blank out literals/comments so only real clause keywords remain."""
-    return _CYPHER_NOISE_RE.sub(" ", cypher_query_ or "")
+    return _CYPHER_NOISE_RE.sub(
+        lambda match: " " * len(match.group()), cypher_query_ or ""
+    )
 
 
 def _is_read_only_cypher(cypher_query_: str) -> bool:
@@ -258,7 +260,10 @@ class AutoGPTFalkorDriver(FalkorDriver):
         reads leave the embeddings out of what they return
         (``without_embeddings``).
         """
-        cypher_query_ = without_embeddings(merging_save(cypher_query_))
+        cypher_query_ = merging_save(cypher_query_)
+        cypher_query_ = without_embeddings(
+            cypher_query_, _strip_cypher_noise(cypher_query_)
+        )
         graph = self._get_graph(self._database)
         # falkordb's async ``Graph.query`` is typed as its sync counterpart in
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
