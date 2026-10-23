@@ -429,7 +429,7 @@ export const ChatContainer = ({
   const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
-    try {
+    async function resend() {
       const lastRow = [...messages].reverse().find((m) => m.role === "user");
       // A turn an answered card started failed after the call ran: resuming it
       // must not re-send the request that led to the call.
@@ -466,15 +466,18 @@ export const ChatContainer = ({
             : undefined,
         );
       }
-    } catch (error) {
-      toastSendFailure({
-        title: "Couldn't retry message",
-        error,
-        recovery: "your previous message is still in the chat",
-      });
-    } finally {
-      isRetryingRef.current = false;
     }
+    await resend()
+      .catch((error) => {
+        toastSendFailure({
+          title: "Couldn't retry message",
+          error,
+          recovery: "your previous message is still in the chat",
+        });
+      })
+      .finally(() => {
+        isRetryingRef.current = false;
+      });
   });
 
   return (

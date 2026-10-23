@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { SubscriptionTier } from "@/app/api/__generated__/models/subscriptionTier";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -83,6 +84,10 @@ export function RateLimitResetDialog({
   // leads instead.
   const waitTitle =
     wait && model.isTopTier ? budgetOutTitle(wait.window) : null;
+  // Relative to the clock, so read on every render rather than cached.
+  const resetSentence = useReadEveryRender(() =>
+    wait ? budgetResetSentence(wait) : null,
+  );
   const payment = formatPaymentDue(model.payment);
   const fallbackTitle =
     failureWindow === "trial"
@@ -151,7 +156,7 @@ export function RateLimitResetDialog({
               variant="body"
               className="mb-5 !text-sm !leading-6 !text-zinc-500"
             >
-              {waitTitle && wait ? budgetResetSentence(wait) : copy.description}
+              {waitTitle && wait ? resetSentence : copy.description}
             </Text>
             {copy.trialSpent && (
               <div className="mb-5">

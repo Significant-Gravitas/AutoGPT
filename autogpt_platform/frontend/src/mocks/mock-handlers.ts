@@ -22,6 +22,7 @@ import {
   getExecutionsMock,
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
 import {
   getExpertsMock,
   getGetExpertOnboardingMockHandler200,
@@ -85,6 +86,8 @@ export const mockHandlers = [
   // seed receipts into every chat's approval box.
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
   ...getExecutionsMock(),
+  // Nobody is enrolled by default, so every test sees the control experience.
+  getGetExperimentsGetExperimentAssignmentMockHandler(null),
   // No setup questions waiting unless a test sets some up; a random chat id
   // would pull every empty expert chat into that chat.
   getGetExpertOnboardingMockHandler200(null),
