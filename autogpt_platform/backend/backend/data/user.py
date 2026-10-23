@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import contextvars
 import hashlib
 import hmac
 import logging
@@ -1175,19 +1176,23 @@ async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
 
 
 async def _clear_get_or_create_user_cache() -> None:
-    """Run the serialized clear, deferring cancellation until it finishes."""
+    """Serialize whole-cache clears without retaining cancelled callers."""
+    context = contextvars.copy_context()
     clear = asyncio.get_running_loop().run_in_executor(
-        _USER_CACHE_CLEAR_EXECUTOR, get_or_create_user.cache_clear
+        _USER_CACHE_CLEAR_EXECUTOR, context.run, get_or_create_user.cache_clear
     )
-    cancelled = False
-    while not clear.done():
-        try:
-            await asyncio.shield(clear)
-        except asyncio.CancelledError:
-            cancelled = True
-    clear.result()
-    if cancelled:
-        raise asyncio.CancelledError
+    try:
+        await asyncio.shield(clear)
+    except asyncio.CancelledError:
+        clear.add_done_callback(_log_cancelled_cache_clear_error)
+        raise
+
+
+def _log_cancelled_cache_clear_error(clear: asyncio.Future[None]) -> None:
+    try:
+        clear.result()
+    except Exception:
+        logger.exception("User cache clear failed after request cancellation")
 
 
 class BriefingCandidate(BaseModel):

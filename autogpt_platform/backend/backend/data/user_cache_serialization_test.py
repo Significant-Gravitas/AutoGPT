@@ -1,23 +1,23 @@
 """Concurrency guarantees for the synchronous user-cache clear."""
 
 import asyncio
+import contextvars
 import threading
-from collections.abc import Awaitable
-from concurrent.futures import ThreadPoolExecutor
-from typing import TypeVar
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
 
 from backend.data import user as user_db
 
-T = TypeVar("T")
-
 
 class _BlockingClear:
-    def __init__(self) -> None:
+    def __init__(self, *, fail: bool = False) -> None:
         self.release = threading.Event()
-        self.started = threading.Event()
+        self.started = asyncio.Event()
+        self._loop = asyncio.get_running_loop()
+        self._fail = fail
         self._lock = threading.Lock()
         self._entered = 0
         self._active = 0
@@ -28,9 +28,11 @@ class _BlockingClear:
             self._entered += 1
             self._active += 1
             self._peak_active = max(self._peak_active, self._active)
-            self.started.set()
+        self._loop.call_soon_threadsafe(self.started.set)
         try:
-            assert self.release.wait(5)
+            assert self.release.wait(10), "test did not release the cache clear"
+            if self._fail:
+                raise RuntimeError("Redis SCAN failed")
         finally:
             with self._lock:
                 self._active -= 1
@@ -40,119 +42,146 @@ class _BlockingClear:
             return self._entered, self._peak_active
 
 
-def _run_in_private_loop(scenario: Awaitable[T]) -> T:
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(scenario)
-    finally:
-        loop.close()
+class _SubmittedClears:
+    def __init__(self, expected: int) -> None:
+        self.queued = asyncio.Event()
+        self.futures: list[Future[None]] = []
+        self._expected = expected
+        self._submit = user_db._USER_CACHE_CLEAR_EXECUTOR.submit
 
+    def __call__(self, fn: Callable[..., None], *args: object) -> Future[None]:
+        future = self._submit(fn, *args)
+        self.futures.append(future)
+        if len(self.futures) == self._expected:
+            self.queued.set()
+        return future
 
-async def _wait_until_set(event: threading.Event) -> None:
-    deadline = asyncio.get_running_loop().time() + 2
-    while not event.is_set():
-        assert asyncio.get_running_loop().time() < deadline
-        await asyncio.sleep(0.01)
+    async def drain(self) -> None:
+        await asyncio.gather(
+            *(asyncio.wrap_future(future) for future in self.futures),
+            return_exceptions=True,
+        )
+        await asyncio.sleep(0)
 
 
 def test_concurrent_invalidations_are_serial_and_leave_the_default_executor_free():
-    clear = _BlockingClear()
+    async def scenario() -> None:
+        asyncio.get_running_loop().set_default_executor(
+            ThreadPoolExecutor(max_workers=1)
+        )
+        clear = _BlockingClear()
+        submissions = _SubmittedClears(3)
+        with (
+            patch.object(user_db.get_or_create_user, "cache_clear", clear),
+            patch.object(user_db.get_user_by_id, "cache_delete"),
+            patch.object(user_db.get_user_by_email, "cache_delete"),
+            patch.object(
+                user_db._USER_CACHE_CLEAR_EXECUTOR,
+                "submit",
+                side_effect=submissions,
+            ),
+        ):
+            invalidations = [
+                asyncio.create_task(
+                    user_db._invalidate_user_caches(f"user-{i}", f"{i}@example.com")
+                )
+                for i in range(3)
+            ]
+            try:
+                await asyncio.wait_for(submissions.queued.wait(), timeout=5)
+                await asyncio.wait_for(clear.started.wait(), timeout=5)
+                assert (
+                    await asyncio.wait_for(
+                        asyncio.to_thread(lambda: "probe"), timeout=5
+                    )
+                    == "probe"
+                )
+                assert clear.snapshot() == (1, 1)
+                assert all(not task.done() for task in invalidations)
+            finally:
+                clear.release.set()
+                results = await asyncio.gather(*invalidations, return_exceptions=True)
+                await submissions.drain()
+            assert results == [None, None, None]
+            assert clear.snapshot() == (3, 1)
 
-    async def scenario() -> tuple[int, bool, int, str]:
-        loop = asyncio.get_running_loop()
-        loop.set_default_executor(ThreadPoolExecutor(max_workers=2))
-        ticks = 0
+    asyncio.run(scenario())
 
-        async def tick() -> None:
-            nonlocal ticks
-            while True:
-                await asyncio.sleep(0.01)
-                ticks += 1
 
-        invalidations = [
-            asyncio.create_task(
-                user_db._invalidate_user_caches(f"user-{i}", f"{i}@example.com")
-            )
-            for i in range(3)
-        ]
-        ticker = asyncio.create_task(tick())
-        probe: asyncio.Task[str] | None = None
+@pytest.mark.parametrize("queued", [False, True], ids=["running", "queued"])
+@pytest.mark.parametrize("worker_fails", [False, True], ids=["success", "worker-error"])
+@pytest.mark.asyncio
+async def test_cancellation_returns_while_the_submitted_clear_still_runs(
+    queued: bool, worker_fails: bool, caplog: pytest.LogCaptureFixture
+):
+    clear = _BlockingClear(fail=worker_fails)
+    count = 2 if queued else 1
+    submissions = _SubmittedClears(count)
+    with (
+        patch.object(user_db.get_or_create_user, "cache_clear", clear),
+        patch.object(user_db.get_user_by_id, "cache_delete"),
+        patch.object(user_db.get_user_by_email, "cache_delete"),
+        patch.object(
+            user_db._USER_CACHE_CLEAR_EXECUTOR, "submit", side_effect=submissions
+        ),
+    ):
+        tasks = [asyncio.create_task(user_db._invalidate_user_caches("user-1", None))]
         try:
-            await _wait_until_set(clear.started)
-            probe = asyncio.create_task(asyncio.to_thread(lambda: "probe"))
-            await asyncio.sleep(0.1)
-            observed_peak = clear.snapshot()[1]
-            probe_finished_before_release = probe.done()
-            observed_ticks = ticks
+            await asyncio.wait_for(clear.started.wait(), timeout=5)
+            if queued:
+                tasks.append(
+                    asyncio.create_task(user_db._invalidate_user_caches("user-2", None))
+                )
+            await asyncio.wait_for(submissions.queued.wait(), timeout=5)
+            cancelled = tasks[-1]
+            cancelled.cancel()
+            cancelled.cancel()
+            await asyncio.sleep(0)
+            cancelled.cancel()
+            await asyncio.sleep(0)
+            assert cancelled.done(), "cancellation waited for a blocked cache clear"
+            with pytest.raises(asyncio.CancelledError):
+                await cancelled
+            assert not clear.release.is_set()
         finally:
             clear.release.set()
-            ticker.cancel()
-            await asyncio.gather(*invalidations, ticker, return_exceptions=True)
-            probe_result = await probe if probe is not None else "missing"
-            await loop.shutdown_default_executor()
-        return (
-            observed_peak,
-            probe_finished_before_release,
-            observed_ticks,
-            probe_result,
-        )
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await submissions.drain()
+
+    assert clear.snapshot() == (count, 1)
+    errors = [
+        record
+        for record in caplog.records
+        if record.message == "User cache clear failed after request cancellation"
+    ]
+    assert len(errors) == int(worker_fails)
+    if worker_fails:
+        assert errors[0].exc_info is not None
+        assert str(errors[0].exc_info[1]) == "Redis SCAN failed"
+
+
+@pytest.mark.asyncio
+async def test_each_clear_preserves_its_request_context():
+    request_context = contextvars.ContextVar("cache-clear-request", default="missing")
+    observed: list[str] = []
+
+    def clear() -> None:
+        observed.append(request_context.get())
 
     with (
         patch.object(user_db.get_or_create_user, "cache_clear", clear),
         patch.object(user_db.get_user_by_id, "cache_delete"),
         patch.object(user_db.get_user_by_email, "cache_delete"),
     ):
-        observed = _run_in_private_loop(scenario())
+        for value in ("request-one", "request-two"):
+            token = request_context.set(value)
+            try:
+                await user_db._invalidate_user_caches(value, None)
+            finally:
+                request_context.reset(token)
 
-    peak_active, probe_finished, ticks, probe_result = observed
-    assert peak_active == 1
-    assert probe_finished
-    assert ticks >= 5
-    assert probe_result == "probe"
-    assert clear.snapshot()[0] == 3
-
-
-def test_cancellation_waits_for_the_submitted_invalidation_to_finish():
-    clear = _BlockingClear()
-
-    async def scenario() -> tuple[bool, list[object]]:
-        loop = asyncio.get_running_loop()
-        loop.set_default_executor(ThreadPoolExecutor(max_workers=1))
-        first = asyncio.create_task(
-            user_db._invalidate_user_caches("user-1", "1@example.com")
-        )
-        second: asyncio.Task[None] | None = None
-        try:
-            await _wait_until_set(clear.started)
-            second = asyncio.create_task(
-                user_db._invalidate_user_caches("user-2", "2@example.com")
-            )
-            await asyncio.sleep(0.02)
-            second.cancel()
-            await asyncio.sleep(0.02)
-            second.cancel()
-            await asyncio.sleep(0.03)
-            returned_before_clear = second.done()
-        finally:
-            clear.release.set()
-            tasks = [first]
-            if second is not None:
-                tasks.append(second)
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            await loop.shutdown_default_executor()
-        return returned_before_clear, results
-
-    with (
-        patch.object(user_db.get_or_create_user, "cache_clear", clear),
-        patch.object(user_db.get_user_by_id, "cache_delete"),
-        patch.object(user_db.get_user_by_email, "cache_delete"),
-    ):
-        returned_before_clear, results = _run_in_private_loop(scenario())
-
-    assert not returned_before_clear
-    assert clear.snapshot() == (2, 1)
-    assert results[0] is None
-    assert isinstance(results[1], asyncio.CancelledError)
+    assert observed == ["request-one", "request-two"]
+    assert request_context.get() == "missing"
 
 
 @pytest.mark.asyncio
