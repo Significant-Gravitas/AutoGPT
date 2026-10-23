@@ -288,9 +288,12 @@ from ._test_data import make_session
 #     + headroom                      +300        77,653
 # Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
 #     merged tree                                 77,464 (89 tools)
-# The higher value still covers it. On conflict keep the higher value: this
-# line must cover every in-flight PR.
-_CHAR_BUDGET = 77_653
+# Re-measured on #11220 merged with dev 36d5f2e8af, where dev's growth no
+# longer fits under it:
+#     merged tree                                 77,679 (89 tools)
+#     + headroom                       +300       77,979
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_CHAR_BUDGET = 77_979
 
 
 @pytest.fixture(scope="module")
