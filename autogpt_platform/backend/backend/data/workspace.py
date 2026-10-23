@@ -655,3 +655,13 @@ async def get_workspace_total_size(workspace_id: str) -> int:
         where={"workspaceId": workspace_id, "isDeleted": False},
     )
     return sum(f.sizeBytes for f in files)
+
+
+async def get_workspace_internal_size(workspace_id: str) -> int:
+    """The part of :func:`get_workspace_total_size` held by files the user's
+    lists leave out (``isInternal``): skill packages and Otto's working
+    files. They use the quota like any other file."""
+    files = await UserWorkspaceFile.prisma().find_many(
+        where={"workspaceId": workspace_id, "isDeleted": False, "isInternal": True},
+    )
+    return sum(f.sizeBytes for f in files)
