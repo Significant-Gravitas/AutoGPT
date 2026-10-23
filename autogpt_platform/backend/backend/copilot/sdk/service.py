@@ -72,6 +72,7 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
+from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
     gateway_for_lease,
@@ -1507,6 +1508,9 @@ class _RetryState:
     # keeps what earlier attempts spent, and so every rebuilt adapter can be
     # handed the same one (see ``_fresh_adapter``).
     governor: TurnGovernor | None = None
+    # The CLI process spawned while the query was still being built, for the
+    # first launch with the turn's original options (``CLIPrelaunch``).
+    prelaunch: CLIPrelaunch | None = None
 
 
 def _fresh_adapter(state: _RetryState, message_id: str, session_id: str) -> None:
@@ -4408,7 +4412,10 @@ async def _run_stream_attempt(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
         state.usage.start_cli_session(baseline)
-    sdk_client = ClaudeSDKClient(options=launch_options(state.options))
+    transport = state.prelaunch.claim(state.options) if state.prelaunch else None
+    sdk_client = ClaudeSDKClient(
+        options=launch_options(state.options), transport=transport
+    )
     client = await sdk_client.__aenter__()
     try:
         logger.info(
@@ -5246,6 +5253,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     # OTEL context manager — initialized inside the try and cleaned up in finally.
     _otel_ctx: Any = None
+    # The CLI spawned ahead of the query — stopped in finally if no launch used it.
+    _cli_prelaunch: CLIPrelaunch | None = None
     # Parent Langfuse span for the turn — created so that the
     # ``openrouter-cost-reconcile`` backfill event has a stable trace_id to
     # attach to even though it fires after the SDK-emitted spans end.
@@ -5636,6 +5645,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             allowed_tools=allowed,
         )
 
+        # Bound before ``CLIPrelaunch`` spawns the CLI: the SDK reads its stderr
+        # from the spawn on, so ``_on_stderr`` can run before the retry loop.
+        fallback_model_activated_per_attempt = False
+
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
             nonlocal fallback_model_activated_per_attempt
@@ -5792,6 +5805,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             metadata=_otel_metadata,
         )
         _otel_ctx.__enter__()
+
+        # The CLI's options are final and the query isn't built yet: spawn it
+        # now, under the turn's trace context, so it boots while the query is
+        # assembled instead of after (``CLIPrelaunch``).
+        _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
 
         current_message = message or ""
         if not current_message and session.messages:
@@ -6174,6 +6192,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             transcript_builder=transcript_builder,
             usage=_TokenUsage(),
             governor=governor,
+            prelaunch=_cli_prelaunch,
             # Subagent files are read only on a turn the reconcile bills.
             generations=TurnGenerations(
                 (
@@ -6747,6 +6766,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 turn_completion_tokens = codex_usage.output_tokens
                 turn_cache_read_tokens = codex_usage.cached_input_tokens
                 turn_cache_creation_tokens = 0
+
+        if _cli_prelaunch is not None:
+            await _cli_prelaunch.close()
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
