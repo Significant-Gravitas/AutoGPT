@@ -37,8 +37,7 @@ export function ConnectProviderRow({
       type="button"
       onClick={() => onSelect(provider.id)}
       className={cn(
-        // TODO(tokens): no exact role for focus-visible:ring-zinc-900
-        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-border-base bg-surface px-3 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 active:bg-surface-hover",
+        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-border-base bg-surface px-3 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-action-hover active:bg-surface-hover",
         className,
       )}
     >

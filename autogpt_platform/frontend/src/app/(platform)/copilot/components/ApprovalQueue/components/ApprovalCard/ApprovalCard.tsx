@@ -79,7 +79,7 @@ export function ApprovalCard({
       <div className="flex flex-col gap-3 sm:pl-[38px]">
         {failed && (
           <p
-            // TODO(tokens): no exact role for text-red-600
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
             role="alert"
             className="text-sm text-red-600"
           >

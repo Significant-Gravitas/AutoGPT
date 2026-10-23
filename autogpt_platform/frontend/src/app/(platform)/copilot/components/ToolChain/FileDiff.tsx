@@ -33,7 +33,7 @@ export function FileDiff({ file, diff }: Props) {
         <span className="ml-auto inline-flex items-center gap-2 text-xs leading-none">
           <span className="text-success">+{added}</span>
           <span
-            // TODO(tokens): no exact role for text-red-600
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
             className="text-red-600"
           >
             -{removed}
@@ -58,7 +58,7 @@ export function FileDiff({ file, diff }: Props) {
           >
             {row.type === "add" && (
               <span
-                // TODO(tokens): no exact role for bg-green-600
+                // TODO(tokens): no fitting role for bg-green-600 #149443; #149443 is success (a text colour)
                 className="absolute inset-y-0 left-0 w-[3px] bg-green-600"
               />
             )}
@@ -69,7 +69,7 @@ export function FileDiff({ file, diff }: Props) {
               className={
                 LN_CLASSES +
                 (row.type === "del"
-                  ? // TODO(tokens): no exact role for text-red-600
+                  ? // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
                     " text-red-600"
                   : " text-foreground-subtle")
               }
@@ -92,7 +92,7 @@ export function FileDiff({ file, diff }: Props) {
                 (row.type === "add"
                   ? "text-success"
                   : row.type === "del"
-                    ? // TODO(tokens): no exact role for text-red-600
+                    ? // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
                       "text-red-600"
                     : "text-foreground-subtle")
               }

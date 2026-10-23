@@ -129,7 +129,7 @@ export function MentionDropdown({
       })}
       {isError ? (
         <p
-          // TODO(tokens): no exact role for text-red-600
+          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
           className="flex items-center gap-2 px-3 py-2 text-sm text-red-600"
         >
           <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />

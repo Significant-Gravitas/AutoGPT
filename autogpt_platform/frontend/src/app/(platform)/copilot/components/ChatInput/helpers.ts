@@ -49,7 +49,7 @@ export function formatElapsedTime(ms: number): string {
 }
 
 export const CARD_ICON_BUTTON_CLASS =
-  // TODO(tokens): no exact role for bg-zinc-950/[0.06], hover:bg-zinc-950/10, aria-expanded:bg-zinc-950/[0.12]
+  // TODO(tokens): no fitting role for bg-zinc-950/[0.06] #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour); no fitting role for hover:bg-zinc-950/10 #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour); no fitting role for aria-expanded:bg-zinc-950/[0.12] #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour)
   "size-9 rounded-full border-transparent bg-zinc-950/[0.06] p-0 text-foreground-strong shadow-none transition-[background-color,transform] hover:border-transparent hover:bg-zinc-950/10 hover:text-foreground-strong active:scale-[0.98] aria-expanded:bg-zinc-950/[0.12]";
 
 export const COMPACT_ICON_BUTTON_CLASS =
@@ -59,7 +59,7 @@ export const COMPACT_SEND_BUTTON_CLASS =
   "size-8 rounded-lg border-action-hover bg-action-hover text-action-foreground hover:border-action hover:bg-action disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100";
 
 export const CARD_SEND_BUTTON_CLASS =
-  // TODO(tokens): no exact role for bg-zinc-950, disabled:bg-zinc-950/[0.06]
+  // TODO(tokens): no fitting role for bg-zinc-950 #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour); no fitting role for disabled:bg-zinc-950/[0.06] #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour)
   "size-9 rounded-full border-transparent bg-zinc-950 text-action-foreground transition-[background-color,transform] hover:border-transparent hover:bg-action active:scale-[0.98] disabled:border-transparent disabled:bg-zinc-950/[0.06] disabled:text-foreground-subtle";
 
 /** Shared by every path that sends a message. `recovery` is the lowercase

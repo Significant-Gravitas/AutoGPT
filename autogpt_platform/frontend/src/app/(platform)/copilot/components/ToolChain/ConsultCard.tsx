@@ -32,7 +32,7 @@ const VERDICTS: Record<string, VerdictStyle> = {
   block: {
     label: "Blocked",
     icon: Alert02Icon,
-    // TODO(tokens): no exact role for text-red-600
+    // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
     chip: "bg-error-surface text-red-600",
   },
   insufficient: {

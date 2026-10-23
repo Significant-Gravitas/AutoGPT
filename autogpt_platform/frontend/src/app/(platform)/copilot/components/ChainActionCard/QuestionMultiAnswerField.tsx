@@ -99,8 +99,7 @@ export const QuestionMultiAnswerField = forwardRef<
             onSubmit();
           }}
           placeholder="Add your own answer"
-          // TODO(tokens): no exact role for ring-zinc-100
-          className="resize-none rounded-2xl bg-surface-muted px-4 py-3 text-base leading-relaxed text-foreground-emphasis ring-1 ring-zinc-100 transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
+          className="resize-none rounded-2xl bg-surface-muted px-4 py-3 text-base leading-relaxed text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
         />
       ) : (
         <button

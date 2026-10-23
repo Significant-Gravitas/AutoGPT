@@ -35,7 +35,7 @@ export function MessageImageThumbnail({ artifact, readOnly }: Props) {
       aria-label={`Open ${artifact.title}`}
       className={cn(
         FRAME,
-        // TODO(tokens): no exact role for focus-visible:ring-zinc-400
+        // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
         "transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
       )}
     >
@@ -85,7 +85,7 @@ export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
       )}
       {attachment.isUploading && (
         <span
-          // TODO(tokens): no exact role for bg-black/20
+          // TODO(tokens): no fitting role for bg-black/20 #141414; #141414 is foreground-base (a text colour)
           className="absolute inset-0 flex items-center justify-center bg-black/20"
         >
           <Icon

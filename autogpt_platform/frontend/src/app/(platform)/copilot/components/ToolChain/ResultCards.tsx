@@ -41,13 +41,13 @@ interface LinkCardProps {
 export const CARD = "rounded-xl bg-surface ring-1 ring-border-base/70";
 export const HALF = "w-full sm:w-1/2";
 export const RESULT_GRID =
-  // TODO(tokens): no exact role for scrollbar-thumb-zinc-300
+  // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a line colour)
   "grid max-h-64 gap-1.5 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 sm:grid-cols-2";
 
 const STATUS_STYLES: Record<string, string> = {
   COMPLETED: "bg-success-surface text-success",
   FAILED: "bg-error-surface text-error",
-  // TODO(tokens): no exact role for bg-purple-50, text-purple-600
+  // TODO(tokens): no exact role for bg-purple-50; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
   RUNNING: "bg-purple-50 text-purple-600",
   // TODO(tokens): no exact role for text-amber-600
   QUEUED: "bg-warning-surface text-amber-600",

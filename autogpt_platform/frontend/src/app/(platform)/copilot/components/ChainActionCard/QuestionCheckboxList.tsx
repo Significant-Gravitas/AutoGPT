@@ -89,10 +89,8 @@ export const QuestionCheckboxList = forwardRef<
             className={
               "flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-base leading-snug transition-all " +
               (isSelected
-                ? // TODO(tokens): no exact role for ring-zinc-800
-                  "bg-surface text-foreground-strong ring-2 ring-zinc-800"
-                : // TODO(tokens): no exact role for ring-zinc-100
-                  "bg-surface-muted text-foreground-body ring-1 ring-zinc-100 hover:bg-surface-hover")
+                ? "bg-surface text-foreground-strong ring-2 ring-action"
+                : "bg-surface-muted text-foreground-body ring-1 ring-separator hover:bg-surface-hover")
             }
           >
             <span>{option}</span>

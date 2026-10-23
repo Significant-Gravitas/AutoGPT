@@ -61,7 +61,7 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
           {completed && !reduceMotion && (
             <motion.span
               aria-hidden
-              // TODO(tokens): no exact role for bg-zinc-400
+              // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
               className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-zinc-400"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}

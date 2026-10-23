@@ -32,7 +32,7 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
         <Icon
           icon={Clock01Icon}
           size={16}
-          // TODO(tokens): no exact role for text-purple-600
+          // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
           className="shrink-0 text-purple-600"
         />
         <Text

@@ -29,8 +29,8 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
             <button
               type="button"
               onClick={() => onEdit(index)}
-              // TODO(tokens): no exact role for ring-zinc-100, focus-visible:ring-zinc-400
-              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left outline-none ring-1 ring-zinc-100 transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
+              // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left outline-none ring-1 ring-separator transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="sr-only">Change your answer to </span>

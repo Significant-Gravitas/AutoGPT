@@ -143,7 +143,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
                   (i === current
                     ? "size-2.5 border-2 border-action"
                     : i < current
-                      ? // TODO(tokens): no exact role for bg-zinc-400
+                      ? // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
                         "size-2 bg-zinc-400"
                       : "size-2 border border-border-strong")
                 }

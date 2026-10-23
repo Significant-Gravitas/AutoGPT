@@ -65,7 +65,7 @@ export function ApproveSplitButton({
             disabled={disabled}
             aria-label="More ways to approve"
             withTooltip={false}
-            // TODO(tokens): no exact role for border-l-zinc-600
+            // TODO(tokens): no fitting role for border-l-zinc-600 #68686F; #68686F is foreground-secondary (a text colour)
             className="min-w-0 rounded-l-none border-l-zinc-600 px-2"
           >
             <Icon icon={ArrowDown01Icon} size={14} aria-hidden />

@@ -259,7 +259,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                                 className={
                                   index === cardIndex
                                     ? "h-1.5 w-4 rounded-full bg-action-hover transition-all"
-                                    : // TODO(tokens): no exact role for bg-zinc-300
+                                    : // TODO(tokens): no fitting role for bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a line colour)
                                       "size-1.5 rounded-full bg-zinc-300 transition-all"
                                 }
                               />

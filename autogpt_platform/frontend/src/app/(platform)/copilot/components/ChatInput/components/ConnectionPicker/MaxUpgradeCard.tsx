@@ -30,7 +30,7 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         className="flex items-start gap-3"
       >
         <span
-          // TODO(tokens): no exact role for border-purple-200/60, text-purple-600
+          // TODO(tokens): no exact role for border-purple-200/60; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
           className="flex size-8 flex-none items-center justify-center rounded-lg border border-purple-200/60 bg-surface text-purple-600"
         >
           <Icon icon={AiBrain01Icon} size={18} aria-hidden />
@@ -64,7 +64,7 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         href={href}
         variant="primary"
         size="small"
-        // TODO(tokens): no exact role for border-purple-600, hover:border-purple-700, hover:bg-purple-700
+        // TODO(tokens): no exact role for hover:border-purple-700, hover:bg-purple-700; no fitting role for border-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
         className="mt-5 h-11 w-full rounded-lg border-purple-600 bg-brand-hover text-action-foreground hover:border-purple-700 hover:bg-purple-700"
       >
         Upgrade to Max

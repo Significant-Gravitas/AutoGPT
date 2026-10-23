@@ -33,7 +33,7 @@ export function LivePausedCard({ onStop, ...args }: Props) {
     >
       <div className="flex items-start gap-3 px-5 py-4">
         <span
-          // TODO(tokens): no exact role for border-purple-200, bg-purple-50, text-purple-600
+          // TODO(tokens): no exact role for border-purple-200, bg-purple-50; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
           className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-purple-200 bg-purple-50 text-purple-600"
         >
           <Icon icon={PauseIcon} size={18} />

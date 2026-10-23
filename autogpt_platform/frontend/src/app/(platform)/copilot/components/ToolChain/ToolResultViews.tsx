@@ -83,10 +83,7 @@ function ClampedAnswer({ answer }: { answer: string }) {
         {answer}
       </p>
       {clamped && (
-        <div
-          // TODO(tokens): no exact role for from-white
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent"
-        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent" />
       )}
     </div>
   );
@@ -154,7 +151,7 @@ export function Terminal({ row }: RowProps) {
       )}
       {stdout && (
         <pre
-          // TODO(tokens): no exact role for text-zinc-100
+          // TODO(tokens): no fitting role for text-zinc-100 #EFEFF0; #EFEFF0 is surface-hover (a fill) and separator (a line colour)
           className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none"
         >
           {stdout}
@@ -285,17 +282,11 @@ export function KeyValueList({ value }: ValueProps) {
     return (
       <div className={`${CARD} w-full rounded-2xl p-3`}>
         <div className="relative">
-          <p
-            // TODO(tokens): no exact role for scrollbar-thumb-zinc-200
-            className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body-sm leading-relaxed text-foreground-secondary scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
-          >
+          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body-sm leading-relaxed text-foreground-secondary scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
             {truncated?.preview ?? value}
           </p>
           {truncated && (
-            <div
-              // TODO(tokens): no exact role for from-white
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent"
-            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
           )}
         </div>
         {truncated && (

@@ -50,7 +50,7 @@ export function AutopilotModeSelector({
             aria-label={`Approval mode: ${current.label}. Change mode`}
             title={`Approval mode: ${current.label}`}
             className={cn(
-              // TODO(tokens): no exact role for focus-visible:ring-zinc-400
+              // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
               "inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
               isDefault
                 ? "w-8 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"

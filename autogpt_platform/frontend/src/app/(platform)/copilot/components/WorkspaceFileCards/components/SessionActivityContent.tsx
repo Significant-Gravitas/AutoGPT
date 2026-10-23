@@ -27,7 +27,7 @@ const RUN_STATUS: Record<
     spin: false,
   },
   FAILED: { icon: CancelCircleIcon, className: "text-error", spin: false },
-  // TODO(tokens): no exact role for text-purple-600
+  // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
   RUNNING: { icon: Loading03Icon, className: "text-purple-600", spin: true },
   // TODO(tokens): no exact role for text-amber-600
   QUEUED: { icon: ClockIcon, className: "text-amber-600", spin: false },
@@ -40,8 +40,7 @@ const FALLBACK_STATUS = {
 };
 
 const LIST =
-  // TODO(tokens): no exact role for scrollbar-thumb-zinc-200
-  "-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200";
+  "-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active";
 
 /** Runs this chat triggered. Chrome-free (the section title lives outside the
  *  card) so the floating stack and the popover can each frame it. */

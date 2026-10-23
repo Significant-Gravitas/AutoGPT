@@ -131,10 +131,7 @@ function Body({
   return (
     <>
       {rowStyle === "detailed" ? (
-        <div
-          // TODO(tokens): no exact role for scrollbar-thumb-zinc-200
-          className="-mx-3 grid max-h-80 divide-y divide-border-base/70 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
-        >
+        <div className="-mx-3 grid max-h-80 divide-y divide-border-base/70 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
           {visibleFiles.map((file) => (
             <WorkspaceFileRow
               key={file.item.id}
@@ -148,10 +145,7 @@ function Body({
       ) : (
         // Rows bleed their hover highlight past the text with negative
         // margins, so the scroller widens to match — otherwise it clips them.
-        <div
-          // TODO(tokens): no exact role for scrollbar-thumb-zinc-200
-          className="-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
-        >
+        <div className="-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
           {visibleFiles.map((file) => (
             <WorkspaceFileCard
               key={file.item.id}

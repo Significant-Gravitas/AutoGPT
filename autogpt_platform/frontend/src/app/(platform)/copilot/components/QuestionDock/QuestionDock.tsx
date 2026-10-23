@@ -142,7 +142,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 placeholder={
                   q.example ? `e.g. ${q.example}` : "Type your answer"
                 }
-                // TODO(tokens): no exact role for focus:ring-zinc-400
+                // TODO(tokens): no fitting role for focus:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
                 className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-zinc-400"
               />
             </label>
@@ -155,7 +155,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             type="button"
             onClick={handleSubmit}
             aria-disabled={!allAnswered}
-            // TODO(tokens): no exact role for hover:bg-zinc-700
+            // TODO(tokens): no fitting role for hover:bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
             className="rounded-full bg-action-hover px-3.5 py-1.5 text-xs font-medium text-action-foreground transition-opacity aria-disabled:opacity-40 hover:bg-zinc-700"
           >
             Answer

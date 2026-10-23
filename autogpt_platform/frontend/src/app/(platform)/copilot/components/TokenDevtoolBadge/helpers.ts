@@ -14,7 +14,7 @@ export function isOverAutocompact(context: number): boolean {
 }
 
 export const BREAKDOWN_COLORS = {
-  // TODO(tokens): no exact role for bg-zinc-400
+  // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
   system: "bg-zinc-400",
   // TODO(tokens): no exact role for bg-sky-400
   user: "bg-sky-400",

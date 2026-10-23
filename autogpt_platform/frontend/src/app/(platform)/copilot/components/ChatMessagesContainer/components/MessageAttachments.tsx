@@ -164,7 +164,7 @@ export function MessageAttachments({
                   href={file.url}
                   download
                   aria-label="Download file"
-                  // TODO(tokens): no exact role for text-purple-400, hover:text-purple-600
+                  // TODO(tokens): no exact role for text-purple-400; no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
                   className="shrink-0 text-purple-400 hover:text-purple-600"
                 >
                   <Icon icon={Download04Icon} className="h-5 w-5" />

@@ -128,8 +128,7 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
               value={option.cron}
               checked={selected === option.cron}
               onChange={() => onSelect(option.cron)}
-              // TODO(tokens): no exact role for accent-zinc-900
-              className="size-4 accent-zinc-900"
+              className="size-4 accent-action-hover"
             />
             {option.label}
           </label>

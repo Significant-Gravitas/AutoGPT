@@ -113,7 +113,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
               isCompact
                 ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                 : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
-              // TODO(tokens): no exact role for group-[.is-user]:text-zinc-50
+              // TODO(tokens): no fitting role for group-[.is-user]:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill)
               "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
             )}
           >

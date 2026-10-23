@@ -48,7 +48,7 @@ export function ArtifactReactPreview({ source, title }: Props) {
     return (
       <div className="flex flex-col gap-2 p-4">
         <p
-          // TODO(tokens): no exact role for text-red-600
+          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
           className="text-sm font-medium text-red-600"
         >
           Failed to render React preview

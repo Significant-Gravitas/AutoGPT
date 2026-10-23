@@ -33,7 +33,7 @@ export function BudgetRing({ label, percent }: Props) {
           fill="none"
           stroke="currentColor"
           strokeWidth={STROKE}
-          // TODO(tokens): no exact role for text-zinc-200
+          // TODO(tokens): no fitting role for text-zinc-200 #DADADC; #DADADC is surface-active (a fill) and border-base (a line colour)
           className="text-zinc-200"
         />
         <circle

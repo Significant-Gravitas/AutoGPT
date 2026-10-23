@@ -464,7 +464,7 @@ export const ChatInput = memo(function ChatInput({
             // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)]
             "gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
-            // TODO(tokens): no exact role for has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400, shadow-[0_1px_2px_rgba(0,0,0,0.04)]
+            // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.04)]; no fitting role for has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
             "!rounded-xl border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
           isRecording &&
             // TODO(tokens): no exact role for border-red-400, ring-red-400, has-[[data-slot=input-group-control]:focus-visible]:border-red-400, has-[[data-slot=input-group-control]:focus-visible]:ring-red-400

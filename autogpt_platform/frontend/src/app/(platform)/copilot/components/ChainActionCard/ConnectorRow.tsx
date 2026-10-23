@@ -294,7 +294,7 @@ export function ConnectorRow({ row }: Props) {
         </span>
         {grantError && !isDialogOpen ? (
           <span
-            // TODO(tokens): no exact role for text-red-600
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
             className="truncate text-xs text-red-600"
           >
             {grantError}

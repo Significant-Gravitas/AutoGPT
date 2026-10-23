@@ -45,7 +45,7 @@ export function RecordingButton({
         isStreaming && "opacity-40",
         highlight &&
           !isRecording &&
-          // TODO(tokens): no exact role for border-purple-300, text-purple-600, ring-purple-100
+          // TODO(tokens): no exact role for border-purple-300, ring-purple-100; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
           "border-purple-300 text-purple-600 ring-4 ring-purple-100",
       )}
     >

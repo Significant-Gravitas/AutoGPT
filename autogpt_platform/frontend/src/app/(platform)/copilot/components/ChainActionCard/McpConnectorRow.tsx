@@ -121,8 +121,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             nameSuffix={request.service}
             className="grid gap-1"
             labelClassName="text-xs font-medium text-foreground-body"
-            // TODO(tokens): no exact role for ring-zinc-100
-            selectClassName="rounded-xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-zinc-100"
+            selectClassName="rounded-xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator"
           />
           <p id={hintId} className="text-xs text-foreground-tertiary">
             {mcpAuthTokenHint(authScheme)}
@@ -148,8 +147,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
                 token.trim() &&
                 submitCredential()
               }
-              // TODO(tokens): no exact role for ring-zinc-100
-              className="flex-1 rounded-2xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-zinc-100 transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
+              className="flex-1 rounded-2xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
             />
             <Button
               variant="secondary"

@@ -88,7 +88,7 @@ export function QueueBadge({ sessionID }: Props) {
               disabled={isCancelling}
               aria-label="Cancel queued task"
               data-testid="queue-cancel-button"
-              // TODO(tokens): no exact role for text-neutral-500, hover:text-red-600
+              // TODO(tokens): no exact role for text-neutral-500; no fitting role for hover:text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
               className="inline-flex h-4 w-4 items-center justify-center rounded-full text-neutral-500 transition-colors hover:text-red-600 disabled:opacity-50"
             >
               <Icon icon={CancelCircleIcon} size={14} />

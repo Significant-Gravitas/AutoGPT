@@ -247,7 +247,7 @@ export function SuggestedGoalCard({ output }: OutputProps) {
       {actions && (
         <button
           type="button"
-          // TODO(tokens): no exact role for hover:bg-zinc-700
+          // TODO(tokens): no fitting role for hover:bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
           className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-xs font-medium text-action-foreground transition-colors hover:bg-zinc-700"
           onClick={() =>
             actions.onSend(`Please create a workflow with this goal: ${goal}`)
