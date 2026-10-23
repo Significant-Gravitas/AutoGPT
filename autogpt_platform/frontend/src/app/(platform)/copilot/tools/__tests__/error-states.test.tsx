@@ -9,8 +9,14 @@ import {
 } from "../FeatureRequests/FeatureRequests";
 import { FindAgentsTool } from "../FindAgents/FindAgents";
 import { FindBlocksTool } from "../FindBlocks/FindBlocks";
+import { connectionBadge } from "../FindCapabilities/helpers";
+import { FolderTool } from "../FolderTool/FolderTool";
+import { GenericTool } from "../GenericTool/GenericTool";
+import { RunAgentTool } from "../RunAgent/RunAgent";
 import { getAccordionMeta, type RunBlockToolOutput } from "../RunBlock/helpers";
+import { RunMCPToolComponent } from "../RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../SearchDocs/SearchDocs";
+import { SetupTriggerTool } from "../SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../ViewAgentOutput/ViewAgentOutput";
 
 function failedPart(type: string) {
@@ -74,6 +80,41 @@ const failedTools = [
     status: "Error loading workflow output",
     view: <ViewAgentOutputTool part={failedPart("tool-view_agent_output")} />,
   },
+  {
+    name: "FolderTool",
+    status: "Folder operation failed",
+    view: (
+      <FolderTool
+        part={failedPart("tool-list_folders") as unknown as ToolUIPart}
+      />
+    ),
+  },
+  {
+    name: "GenericTool",
+    status: "Command failed",
+    view: (
+      <GenericTool
+        part={failedPart("tool-bash_exec") as unknown as ToolUIPart}
+      />
+    ),
+  },
+  {
+    name: "RunAgent",
+    status: "Something went wrong",
+    view: <RunAgentTool part={failedPart("tool-run_agent")} />,
+  },
+  {
+    name: "RunMCPTool",
+    status: "Connection error",
+    view: <RunMCPToolComponent part={failedPart("tool-run_mcp_tool")} />,
+  },
+  {
+    name: "SetupTrigger",
+    status: "Something went wrong",
+    view: (
+      <SetupTriggerTool part={failedPart("tool-setup_agent_webhook_trigger")} />
+    ),
+  },
 ];
 
 describe("failed tool calls", () => {
@@ -99,5 +140,19 @@ describe("RunBlock accordion for an error output", () => {
     expect(meta.titleClassName).toBe("text-error");
     const { container } = render(<>{meta.icon}</>);
     expect(container.querySelector("svg.text-error")).not.toBeNull();
+  });
+});
+
+describe("FindCapabilities connection badge", () => {
+  it("asks the user to sign in when the capability is not connected", () => {
+    const badge = connectionBadge({
+      id: "gmail",
+      name: "Gmail",
+      purpose: "Read mail",
+      kind: "block",
+      connected: false,
+    });
+    expect(badge?.label).toBe("sign in");
+    expect(badge?.className).toBe("bg-surface-hover text-foreground-tertiary");
   });
 });
