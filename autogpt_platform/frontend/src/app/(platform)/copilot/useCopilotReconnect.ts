@@ -10,16 +10,6 @@ const RECONNECT_MAX_DURATION_MS = 30_000;
 
 type UseChatStatus = "submitted" | "streaming" | "ready" | "error";
 
-/** Reconnecting gave up; shown until a stream comes back, not only as a toast. */
-export class ConnectionLostError extends Error {
-  constructor() {
-    super("Unable to reconnect to the chat.");
-    this.name = "ConnectionLostError";
-  }
-}
-
-const CONNECTION_LOST = new ConnectionLostError();
-
 interface UseCopilotReconnectArgs {
   sessionId: string | null;
   hasActiveStream: boolean;
@@ -179,7 +169,6 @@ export function useCopilotReconnect({
   return {
     isReconnectScheduled,
     reconnectExhausted,
-    connectionLostError: reconnectExhausted ? CONNECTION_LOST : undefined,
     reconnectScheduledRef,
     handleReconnect,
   };

@@ -525,7 +525,6 @@ export function useCopilotStream({
   const {
     isReconnectScheduled,
     reconnectExhausted,
-    connectionLostError,
     reconnectScheduledRef,
     handleReconnect,
   } = useCopilotReconnect({
@@ -933,10 +932,7 @@ export function useCopilotStream({
     sendMessage,
     stop,
     status,
-    error:
-      isReconnecting || isUserStoppingRef.current
-        ? undefined
-        : (error ?? connectionLostError),
+    error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
     isFinishProbing,
     isRestoringActiveSession,

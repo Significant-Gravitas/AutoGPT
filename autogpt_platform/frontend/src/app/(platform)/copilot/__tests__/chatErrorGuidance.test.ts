@@ -8,7 +8,6 @@ import {
   SendNotDeliveredError,
   SendRefusedError,
 } from "../stream/turnRuntime";
-import { ConnectionLostError } from "../useCopilotReconnect";
 
 const RESEND = /send (it|your message) again|try sending/i;
 
@@ -17,12 +16,6 @@ describe("describeChatError", () => {
     const { title, action } = describeChatError(new SendNotDeliveredError());
     expect(title).toMatch(/didn't go through/);
     expect(title).toMatch(RESEND);
-    expect(action).toBeNull();
-  });
-
-  it("a reconnect that gave up stays on screen and says to reload", () => {
-    const { title, action } = describeChatError(new ConnectionLostError());
-    expect(title).toMatch(/reload the page/i);
     expect(action).toBeNull();
   });
 
