@@ -124,6 +124,40 @@ describe("sendAuthEmail", () => {
     expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(args.to);
   });
 
+  it("reports success for an address the mail provider refuses", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "email_undeliverable" }), {
+        status: 422,
+      }),
+    );
+    const warnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+
+    await expect(sendAuthEmail(args)).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(args.to);
+  });
+
+  it.each([
+    [422, { detail: [{ loc: ["body", "to"], msg: "not an email" }] }],
+    [500, { detail: "email_undeliverable" }],
+  ])(
+    "still throws in production on a %i that isn't the refusal",
+    async (status, body) => {
+      vi.stubEnv("NODE_ENV", "production");
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify(body), { status }),
+      );
+
+      await expect(sendAuthEmail(args)).rejects.toThrow(
+        `Backend auth-email send failed (${status})`,
+      );
+    },
+  );
+
   it("still sends to a disposable domain", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 

@@ -3447,12 +3447,7 @@
             "description": "Service token is missing the required scope"
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
+            "description": "Invalid request, or detail `email_undeliverable`: the mail provider won't deliver to this address"
           },
           "503": {
             "description": "Service-token verification is not configured"

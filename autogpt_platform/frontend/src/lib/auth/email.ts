@@ -26,8 +26,9 @@ interface SendAuthEmailArgs {
  * about it; outside production the action link is logged to the server
  * console instead (local backends usually have no Postmark credential).
  * An address whose domain DNS says takes no mail is skipped silently, as if
- * sent, so it can't bounce. Disposable domains still get their email: older
- * accounts on one need it to reset a password or move to a real address.
+ * sent, so it can't bounce, and so is one the mail provider refuses to deliver
+ * to. Disposable domains still get their email: older accounts on one need it
+ * to reset a password or move to a real address.
  */
 export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
   // DNS errors still send.
@@ -51,6 +52,15 @@ export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
 
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
+      if (isUndeliverable(response.status, detail)) {
+        console.warn(
+          "[auth-email] Skipped an address the mail provider refuses",
+          {
+            type,
+          },
+        );
+        return;
+      }
       throw new Error(
         `Backend auth-email send failed (${response.status}) for "${type}"` +
           (detail ? `: ${detail.slice(0, 200)}` : ""),
@@ -64,5 +74,14 @@ export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
       `[auth-email] Send failed (${error}). ${type} link for ${to}:`,
     );
     console.info(`[auth-email] ${url}`);
+  }
+}
+
+function isUndeliverable(status: number, body: string) {
+  if (status !== 422) return false;
+  try {
+    return JSON.parse(body).detail === "email_undeliverable";
+  } catch {
+    return false;
   }
 }

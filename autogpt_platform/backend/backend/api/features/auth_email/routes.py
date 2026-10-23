@@ -23,6 +23,7 @@ from pydantic import BaseModel, EmailStr
 
 from backend.notifications.auth import AuthEmailType, render_auth_email
 from backend.util.clients import get_notification_manager_client
+from backend.util.exceptions import EmailUndeliverableError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,10 @@ class AuthEmailRequest(BaseModel):
     responses={
         400: {"description": "url does not point at a trusted frontend origin"},
         403: {"description": "Service token is missing the required scope"},
+        422: {
+            "description": "Invalid request, or detail `email_undeliverable`: "
+            "the mail provider won't deliver to this address"
+        },
         503: {"description": "Service-token verification is not configured"},
     },
     # The tag comes from the router include in rest_api.py; repeating it here
@@ -68,13 +73,21 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
     # loudly instead of dropping the auth email.
-    await asyncio.to_thread(
-        get_notification_manager_client().send_email_or_raise,
-        request.to,
-        email.subject,
-        email.html,
-        email.text,
-    )
+    try:
+        await asyncio.to_thread(
+            get_notification_manager_client().send_email_or_raise,
+            request.to,
+            email.subject,
+            email.html,
+            email.text,
+        )
+    except EmailUndeliverableError:
+        # The global ValueError handler would make this a 400 the frontend throws on.
+        logger.warning(f"Mail provider won't deliver {request.type} auth email")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="email_undeliverable",
+        )
     # Don't log the recipient address — auth emails go to arbitrary users and
     # the address is PII we don't want in application logs.
     logger.info(f"Sent {request.type} auth email")
