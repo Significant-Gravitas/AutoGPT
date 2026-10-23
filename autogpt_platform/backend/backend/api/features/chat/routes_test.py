@@ -384,6 +384,11 @@ def _mock_stream_internals(
         return_value=None,
     )
     # No follow-up is held unless a test says so.
+    mocker.patch(
+        "backend.api.features.chat.routes.holds_follow_up",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     mock_take_held = mocker.patch(
         "backend.api.features.chat.routes.take_held_follow_up",
         new_callable=AsyncMock,
@@ -968,6 +973,35 @@ def test_stream_chat_resend_keeps_the_held_follow_ups_files_and_page(
     assert scheduled["file_ids"] == ["file-1"]
     assert scheduled["context"] == {"url": "https://example.org/report"}
     assert scheduled["message"] == "Summarise this\n\n[files: report.pdf]"
+
+
+def test_stream_chat_resend_while_a_turn_starts_queues_no_second_copy(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Another tab's turn started between the client's held check and this
+    resend: that turn reads the waiting copy, so this send adds none."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.holds_follow_up",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    queue_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "Status?"})
+
+    assert response.status_code == 200
+    assert '"type": "data-follow-up-queued"' in response.text
+    queue_pending.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
 
 
 def test_stream_chat_refused_resend_puts_the_held_follow_up_back(

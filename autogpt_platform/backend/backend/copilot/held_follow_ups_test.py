@@ -8,6 +8,7 @@ from backend.copilot.held_follow_ups import (
     held_follow_up_reason,
     held_reason_for,
     hold_follow_ups_at_turn_end,
+    holds_follow_up,
     restore_held_follow_up,
     take_held_follow_up,
 )
@@ -77,6 +78,23 @@ async def test_a_resend_of_a_held_follow_up_takes_its_waiting_copy_out_once(
 
     assert taken is not None and taken.content == "status?"
     assert [m.content for m in await peek_pending_messages("sess-1")] == ["and Monday"]
+    assert await take_held_follow_up("sess-1", "status?") is None
+
+
+@pytest.mark.asyncio
+async def test_the_next_turns_read_of_the_queue_ends_the_hold(
+    fake_redis: _FakeRedis,
+) -> None:
+    await _queued("status?")
+    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+    assert await holds_follow_up("sess-1", "status?")
+
+    await drain_pending_messages("sess-1")
+    await _queued("status?")
+
+    # Typed again while that turn runs: queued, not held.
+    assert await held_follow_up_reason("sess-1") is None
+    assert not await holds_follow_up("sess-1", "status?")
     assert await take_held_follow_up("sess-1", "status?") is None
 
 

@@ -49,6 +49,7 @@ MAX_PENDING_MESSAGES = 10
 # Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
 _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
+_HELD_KEY_PREFIX = "copilot:pending:held:"
 PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 
 # Secondary queue: carries drained-but-awaiting-persist PendingMessages from
@@ -116,6 +117,12 @@ def _buffer_key(session_id: str) -> str:
     # on the same Redis Cluster slot, which the gated-rpush Lua script needs
     # (multi-key scripts return CROSSSLOT when KEYS hash to different slots).
     return f"{_PENDING_KEY_PREFIX}{{{session_id}}}"
+
+
+def held_marker_key(session_id: str) -> str:
+    """Set when a turn ended with follow-ups unread (see ``held_follow_ups``);
+    any drain that takes something clears it, as that turn reads them."""
+    return f"{_HELD_KEY_PREFIX}{{{session_id}}}"
 
 
 def _notify_channel(session_id: str) -> str:
@@ -402,6 +409,7 @@ async def drain_pending_messages(
         lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
     if not lpop_result:
         return []
+    await redis.delete(held_marker_key(session_id))
     raw_popped: list[Any] = list(lpop_result)
 
     # redis-py may return bytes or str depending on decode_responses.

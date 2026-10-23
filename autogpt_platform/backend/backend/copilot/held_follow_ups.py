@@ -16,7 +16,9 @@ from typing import get_args
 from backend.copilot.pending_messages import (
     PENDING_TTL_SECONDS,
     PendingMessage,
+    held_marker_key,
     peek_pending_count,
+    peek_pending_messages,
     push_pending_message,
     take_pending_message,
 )
@@ -25,13 +27,6 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import as_str
 
 logger = logging.getLogger(__name__)
-
-# Same slot and lifetime as the pending queue it describes.
-_HELD_KEY_PREFIX = "copilot:pending:held:"
-
-
-def _held_key(session_id: str) -> str:
-    return f"{_HELD_KEY_PREFIX}{{{session_id}}}"
 
 
 def held_reason_for(
@@ -59,9 +54,9 @@ async def hold_follow_ups_at_turn_end(
         count = await peek_pending_count(session_id)
         redis = await get_redis_async()
         if count == 0:
-            await redis.delete(_held_key(session_id))
+            await redis.delete(held_marker_key(session_id))
             return None
-        await redis.set(_held_key(session_id), reason, ex=PENDING_TTL_SECONDS)
+        await redis.set(held_marker_key(session_id), reason, ex=PENDING_TTL_SECONDS)
     except Exception:
         logger.warning(
             f"Could not check session {session_id} for unread follow-ups",
@@ -89,8 +84,23 @@ async def held_follow_up_reason(session_id: str) -> FollowUpHeldReason | None:
     Only meaningful while no turn runs: a running turn reads the queue.
     """
     redis = await get_redis_async()
-    stored = as_str(await redis.get(_held_key(session_id)))
+    stored = as_str(await redis.get(held_marker_key(session_id)))
     return next((r for r in get_args(FollowUpHeldReason) if r == stored), None)
+
+
+async def holds_follow_up(session_id: str, message: str) -> bool:
+    """Whether *message* waits in the queue as a held follow-up, unread yet."""
+    try:
+        if await held_follow_up_reason(session_id) is None:
+            return False
+        waiting = await peek_pending_messages(session_id)
+    except Exception:
+        logger.warning(
+            f"Could not check session {session_id} for a held follow-up",
+            exc_info=True,
+        )
+        return False
+    return any(pending.content == message for pending in waiting)
 
 
 async def take_held_follow_up(session_id: str, message: str) -> PendingMessage | None:

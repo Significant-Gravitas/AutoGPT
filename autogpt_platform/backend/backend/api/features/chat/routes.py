@@ -53,6 +53,7 @@ from backend.copilot.expert_kickoff import (
 from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.held_follow_ups import (
     held_follow_up_reason,
+    holds_follow_up,
     restore_held_follow_up,
     take_held_follow_up,
 )
@@ -2039,6 +2040,10 @@ async def stream_chat_post(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
             )
+        if request.is_user_message and await holds_follow_up(session_id, message):
+            # A held follow-up resent just as another turn starts: that turn
+            # reads the waiting copy, with its files, so a second is not queued.
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         try:
             await queue_pending_for_http(
                 session_id=session_id,
