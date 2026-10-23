@@ -640,9 +640,15 @@ class DiscordAdapter(SocketAdapter):
             return
         user = interaction.user
         location = location_of(interaction.guild, starter.channel)
+        channel_type = _interaction_channel_type(interaction)
+        # The starter is the bot's own post, so history before it is what the
+        # thread said before the command, as an @mention would see it.
+        thread_history = ()
+        if channel_type == "thread":
+            thread_history = await self._thread_history(starter)
         ctx = MessageContext(
             platform="discord",
-            channel_type=_interaction_channel_type(interaction),
+            channel_type=channel_type,
             server_id=str(interaction.guild.id) if interaction.guild else None,
             channel_id=str(starter.channel.id),
             message_id=str(starter.id),
@@ -657,6 +663,7 @@ class DiscordAdapter(SocketAdapter):
             thread_name=location.thread_name,
             public_thread_id=location.public_thread_id,
             post_channel_id=location.post_channel_id,
+            thread_history=thread_history,
             mentionable_users=((user.display_name, str(user.id)),),
             options=options,
         )

@@ -1,12 +1,13 @@
 """Tests for ``/autogpt``: autocomplete, starter message, hand-off."""
 
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 from discord import app_commands
 
+from backend.copilot.bot.adapters.base import MessageHistoryEntry
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.expert_choice import SERVER_EXPERTS_REPLY
 from backend.copilot.bot.options import TurnOptions
@@ -230,3 +231,23 @@ class TestDispatchCommand:
         assert ctx.thread_name == "Bug triage"
         assert ctx.public_thread_id == "789"
         assert ctx.post_channel_id == "789"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("thread", [True, False])
+    async def test_a_command_in_a_thread_carries_its_history(self, thread):
+        adapter, callback = self._adapter()
+        interaction = _interaction(guild=True, thread=thread)
+        starter = await interaction.channel.send("x")
+        earlier = (MessageHistoryEntry(username="Ana", user_id="1", text="the bug"),)
+        fetch = AsyncMock(return_value=earlier)
+
+        with patch.object(adapter, "_thread_history", new=fetch):
+            await adapter._dispatch_command(interaction, starter, "hi", TurnOptions())
+
+        ctx = callback.await_args.args[0]
+        if thread:
+            fetch.assert_awaited_once_with(starter)
+            assert ctx.thread_history == earlier
+        else:
+            fetch.assert_not_awaited()
+            assert ctx.thread_history == ()
