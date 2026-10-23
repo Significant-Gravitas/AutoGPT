@@ -381,16 +381,11 @@ async def upsert_business_understanding(
 
 
 async def clear_business_understanding(user_id: str) -> bool:
-    """Clear/delete business understanding for a user from both DB and cache."""
-    # Delete from cache first
+    """Delete the user's business understanding; True when there was one."""
+    deleted = await CoPilotUnderstanding.prisma().delete_many(where={"userId": user_id})
+    # After the row, so a read in between cannot cache it again.
     await _delete_cache(user_id)
-
-    try:
-        await CoPilotUnderstanding.prisma().delete(where={"userId": user_id})
-        return True
-    except Exception:
-        # Record might not exist
-        return False
+    return deleted > 0
 
 
 def format_understanding_for_prompt(understanding: BusinessUnderstanding) -> str:
