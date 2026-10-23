@@ -50,9 +50,11 @@ MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
 _unanswered_flags_reported: set[str] = set()
 
 
-# Flags that run a PostHog experiment. Only a read of one of these sends the
-# billed `$feature_flag_called` event, which is how an experiment counts exposure.
-EXPERIMENT_FLAGS = frozenset({"subscription-pricing-page-initial-state"})
+# Flags that run a PostHog experiment read only here. Only a read of one of these
+# sends the billed `$feature_flag_called` event, which is how an experiment counts
+# exposure. A server-assigned arm (`data/experiments.py`) is not listed: the
+# browser reports its exposure, consent-gated.
+EXPERIMENT_FLAGS: frozenset[str] = frozenset()
 
 
 class Flag(str, Enum):
@@ -439,6 +441,21 @@ async def get_feature_flag_value(
         flag_key, user_id, default, attributes=attributes
     )
     return value
+
+
+async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
+    """The arm PostHog buckets *user_id* into for an experiment, or None.
+
+    Experiments live in PostHog whichever vendor answers feature flags. None
+    too when the user lookup failed: the first arm is stored for good, and one
+    read without the user's properties can be the wrong one.
+    """
+    user_context, resolved = await _fetch_user_context_status(user_id)
+    if not resolved:
+        return None
+    return await posthog.evaluate_variant(
+        flag_key, user_id, _person_properties(user_context)
+    )
 
 
 def evaluate_flags_in_memory(flag_keys: list[str], key: str) -> dict[str, Any]:

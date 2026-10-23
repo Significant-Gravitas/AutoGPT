@@ -1,3 +1,6 @@
+import type { HTTPValidationError } from "@/app/api/__generated__/models/hTTPValidationError";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+
 // Pure helpers for the brain dump. Timings and copy live here so the hook
 // stays about behaviour and the component stays about pixels.
 
@@ -7,6 +10,12 @@
 // Recording keeps going far past the ring: 30 min is the hard stop, and
 // even then everything captured is kept.
 export const HARD_STOP_SECONDS = 1800;
+
+// The backend refuses longer typed text with a 422 (`MAX_TYPED_CHARS` in
+// `onboarding_dump/models.py`); a test pins the two together.
+export const MAX_TYPED_CHARS = 20_000;
+const TYPED_CHARS_LEFT_FROM = 2_000;
+export const TYPED_TOO_LONG_COPY = `That's over the ${formatCount(MAX_TYPED_CHARS)}-character limit; trim it and try again.`;
 
 // Every 3s the recorder hands us a chunk to persist. Small enough that a
 // crash costs almost nothing, large enough not to thrash IndexedDB.
@@ -98,6 +107,8 @@ export const BRAIN_DUMP_HEADLINE = "Talk to me about your work";
 // transcription succeeded but carried nothing to personalize from —
 // silence, filler, or an STT hallucination. Distinct from a transcription
 // failure: the take went through fine, it just didn't say enough.
+// `quality_check_unavailable` is left out on purpose: the judge never ruled,
+// so the take gets the failure screen, whose retry can still pass.
 const INSUFFICIENT_DUMP_ERROR_CODES = [
   "no_usable_speech",
   "insufficient_content",
@@ -108,4 +119,25 @@ export function isInsufficientDump(errorCode: unknown) {
     typeof errorCode === "string" &&
     INSUFFICIENT_DUMP_ERROR_CODES.some((code) => code === errorCode)
   );
+}
+
+export function typedCharsLeftHint(length: number) {
+  const left = Math.max(0, MAX_TYPED_CHARS - length);
+  if (left > TYPED_CHARS_LEFT_FROM) return null;
+  return `${formatCount(left)} ${left === 1 ? "character" : "characters"} left`;
+}
+
+export function isTypedTextTooLong(error: unknown) {
+  if (!(error instanceof ApiError) || error.status !== 422) return false;
+  const detail: HTTPValidationError["detail"] = error.response?.detail;
+  return (
+    Array.isArray(detail) &&
+    detail.some(
+      (issue) => issue.type === "string_too_long" && issue.loc.includes("text"),
+    )
+  );
+}
+
+function formatCount(count: number) {
+  return count.toLocaleString("en-US");
 }
