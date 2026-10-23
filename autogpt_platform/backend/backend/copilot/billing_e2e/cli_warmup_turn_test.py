@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.copilot import usage_activation
+from backend.copilot import rate_limit, usage_activation
 from backend.copilot.executor import cli_warmup, processor
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.model import ChatMessage
@@ -59,7 +59,19 @@ def _paying_user(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     )
     monkeypatch.setattr(usage_activation, "pro_activation_db", lambda: usage)
+    monkeypatch.setattr(
+        rate_limit,
+        "get_redis_async",
+        AsyncMock(return_value=MagicMock(get=AsyncMock(return_value=None))),
+    )
     monkeypatch.setattr(sdk_service, "get_user_tier", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        sdk_service,
+        "_fetch_graphiti_context",
+        AsyncMock(return_value=(False, "")),
+    )
+    monkeypatch.setattr(sdk_service, "_enqueue_graphiti_turn", AsyncMock())
+    monkeypatch.setattr(sdk_service, "capture_chat_turn", AsyncMock())
     monkeypatch.setattr(
         sdk_service,
         "resolve_turn_budget",

@@ -10,6 +10,7 @@ import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BRAIN_DUMP_HEADLINE,
   isInsufficientDump,
+  isTypedTextTooLong,
   SILENCE_NUDGE_SECONDS,
 } from "./helpers";
 import {
@@ -29,6 +30,10 @@ export type ScreenState =
   | "failed"
   | "insufficient";
 
+// Takes a skip left behind whose local cleanup is still running. Module scope,
+// so the remount that Back from Hire causes does not offer one back.
+const releasingTakeIDs = new Set<string>();
+
 export function useBrainDumpStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
@@ -38,6 +43,11 @@ export function useBrainDumpStep() {
   // Which submission the quality gate last rejected — the recovery
   // screen's copy and primary action adapt to how the user got there.
   const [insufficientMode, setInsufficientMode] = useState<"voice" | "typed">(
+    "voice",
+  );
+  // Which kind of take was last sent: the failure screen retries that one,
+  // and a typed take has no recording to resend.
+  const [submittedMode, setSubmittedMode] = useState<"voice" | "typed">(
     "voice",
   );
   const [typedText, setTypedText] = useState("");
@@ -54,10 +64,12 @@ export function useBrainDumpStep() {
     mimeType: string;
     durationSecs: number;
   } | null>(null);
+  const [isTypedTooLong, setIsTypedTooLong] = useState(false);
   const retryCountRef = useRef(0);
   // A submit in flight owns the screen: "Skip for now" must not race
   // `completeAndAdvance` to `nextStep()`, or the wizard advances twice and
-  // lands past the last step with nothing to render.
+  // lands past the last step with nothing to render. A skip takes it for
+  // good, since it leaves the step.
   const isSubmittingRef = useRef(false);
   const activeTakeActionRef = useRef<{
     action: "submit" | "discard";
@@ -67,7 +79,7 @@ export function useBrainDumpStep() {
   useEffect(() => {
     async function checkForRecovery() {
       const meta = await recorder.findRecoverable();
-      if (!meta) return;
+      if (!meta || releasingTakeIDs.has(meta.recordingId)) return;
       const parts = await getParts(meta.recordingId).catch(() => []);
       if (parts.length === 0) return;
       setRecoverable(meta);
@@ -118,6 +130,7 @@ export function useBrainDumpStep() {
   }
 
   async function handleDone() {
+    setSubmittedMode("voice");
     setScreen("processing");
     // Duration comes back from `stop()` for the same reason the id is
     // passed in below — `recorder.elapsedSeconds` here is this render's
@@ -163,6 +176,7 @@ export function useBrainDumpStep() {
     recordingId: string | null,
     durationSecs: number,
   ) {
+    setSubmittedMode("voice");
     const actionToken = recordingId
       ? claimTakeAction(recordingId, "submit")
       : null;
@@ -266,6 +280,10 @@ export function useBrainDumpStep() {
   async function handleRetry() {
     retryCountRef.current += 1;
     trackBrainDump("brain_dump_retry", { attempt: retryCountRef.current });
+    if (submittedMode === "typed") {
+      await handleSubmitTyped();
+      return;
+    }
     setScreen("processing");
     const recordingId = recorder.recordingId;
     if (recordingId) await recorder.resendAllParts(recordingId);
@@ -283,10 +301,16 @@ export function useBrainDumpStep() {
     setScreen("rest");
   }
 
+  function handleTypedTextChange(text: string) {
+    setTypedText(text);
+    setIsTypedTooLong(false);
+  }
+
   async function handleSubmitTyped() {
     const text = typedText.trim();
     if (!text) return;
     isSubmittingRef.current = true;
+    setIsTypedTooLong(false);
     try {
       await submitTyped(text);
     } finally {
@@ -295,6 +319,7 @@ export function useBrainDumpStep() {
   }
 
   async function submitTyped(text: string) {
+    setSubmittedMode("typed");
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
     try {
@@ -316,8 +341,12 @@ export function useBrainDumpStep() {
         setScreen(rejected ? "insufficient" : "failed");
         return;
       }
-    } catch {
-      setScreen("failed");
+    } catch (error) {
+      // Retrying the same text would fail the same way, so the user goes
+      // back to it with the limit spelled out.
+      const tooLong = isTypedTextTooLong(error);
+      setIsTypedTooLong(tooLong);
+      setScreen(tooLong ? "typing" : "failed");
       return;
     }
     trackBrainDump("brain_dump_completed", {
@@ -328,13 +357,25 @@ export function useBrainDumpStep() {
   }
 
   async function handleSkip() {
-    // A skip that lands while the dump is being submitted would advance
-    // the wizard a second time behind `completeAndAdvance`.
+    // A skip that lands while the dump is being submitted, or behind
+    // another skip, would advance the wizard a second time, past Hire.
     if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     trackBrainDump("brain_dump_skipped");
     const recordedId = recorder.recordingId;
-    // Best effort: a failed skip-record still has to let the user
-    // through — being unable to say "no thanks" would be absurd.
+    recorder.resetQueue();
+    setIntroPath("B");
+    if (recordedId) releasingTakeIDs.add(recordedId);
+    // Nothing below can change where a skip goes, so the user is not kept
+    // waiting on it.
+    nextStep();
+    // Someone who talked for minutes and then skipped leaves multi-MB
+    // blobs behind, and an unfinalized meta row makes the next visit
+    // offer back a take they explicitly abandoned.
+    if (recordedId) {
+      await releaseTake(recordedId);
+      releasingTakeIDs.delete(recordedId);
+    }
     try {
       await finalizeBrainDump({
         recording_id: recordedId ?? crypto.randomUUID(),
@@ -343,18 +384,11 @@ export function useBrainDumpStep() {
     } catch {
       // Path B is the safe default anyway.
     }
-    // Someone who talked for minutes and then skipped leaves multi-MB
-    // blobs behind, and an unfinalized meta row makes the next visit
-    // offer back a take they explicitly abandoned.
     if (recordedId) {
-      await releaseTake(recordedId);
       await discardBrainDump({ recording_id: recordedId }).catch(
         () => undefined,
       );
     }
-    recorder.resetQueue();
-    setIntroPath("B");
-    nextStep();
   }
 
   // IndexedDB is only cleared once the server has confirmed the dump —
@@ -461,8 +495,9 @@ export function useBrainDumpStep() {
     headline: BRAIN_DUMP_HEADLINE,
     screen,
     insufficientMode,
+    submittedMode,
     typedText,
-    setTypedText,
+    setTypedText: handleTypedTextChange,
     elapsedSeconds: recorder.elapsedSeconds,
     isOffline: recorder.isOffline,
     isSavedLocally: recorder.isSavedLocally,
@@ -477,6 +512,7 @@ export function useBrainDumpStep() {
     handleRetry,
     handleSkip,
     handleSubmitTyped,
+    isTypedTooLong,
     handleResumeRecovered,
     handleDiscardRecovered,
     handleTypeInsteadOfRecovered,

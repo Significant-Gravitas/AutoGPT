@@ -1,7 +1,14 @@
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
@@ -137,7 +144,9 @@ function usePeekOnBoundary({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
   // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
@@ -291,7 +300,9 @@ function useAutoContinuePromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   const prevStatusRef = useRef(status);
   // The opener is the first assistant id observed after a turn starts.
   // Any LATER assistant id in the same chain is the auto-continue.
@@ -441,7 +452,9 @@ function useMidTurnDrainPromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   // Live ref tracks the latest sessionId so a poll captured at request
   // time can detect a session switch on resolve.  A cancellation flag
   // would also fire on enqueue (this effect re-runs on every queue

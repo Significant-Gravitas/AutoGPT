@@ -48,6 +48,7 @@ export function useVoiceRecording({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const isRecordingRef = useRef(false);
 
   const [isSupported, setIsSupported] = useState(false);
@@ -78,6 +79,7 @@ export function useVoiceRecording({
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+      setAudioStream(null);
     }
     mediaRecorderRef.current = null;
     chunksRef.current = [];
@@ -105,7 +107,7 @@ export function useVoiceRecording({
       // The previous failure stays on screen through a retry: clearing it here
       // would blink the row away and back, and take the Retry button with it.
 
-      try {
+      async function transcribe() {
         const formData = new FormData();
         formData.append("audio", audioBlob);
         const draft = valueRef.current.trim();
@@ -129,22 +131,26 @@ export function useVoiceRecording({
         }
         setTranscriptionError(null);
         setFailedRecording(null);
-      } catch (err) {
-        console.error("Transcription error:", err);
-        // Dismissed while this was in flight: the user is done with this
-        // recording, so the failure has nobody to tell. The success path is
-        // deliberately not gated the same way — if the words do arrive, the
-        // user gets what they dictated rather than losing it twice.
-        if (attempt !== attemptRef.current) return;
-        const message =
-          err instanceof Error && err.message
-            ? err.message
-            : "Transcription failed";
-        setTranscriptionError(message);
-        setFailedRecording(audioBlob);
-      } finally {
-        setIsTranscribing(false);
       }
+
+      await transcribe()
+        .catch((err) => {
+          console.error("Transcription error:", err);
+          // Dismissed while this was in flight: the user is done with this
+          // recording, so the failure has nobody to tell. The success path is
+          // deliberately not gated the same way — if the words do arrive, the
+          // user gets what they dictated rather than losing it twice.
+          if (attempt !== attemptRef.current) return;
+          const message =
+            err instanceof Error && err.message
+              ? err.message
+              : "Transcription failed";
+          setTranscriptionError(message);
+          setFailedRecording(audioBlob);
+        })
+        .finally(() => {
+          setIsTranscribing(false);
+        });
     },
     [handleTranscription, inputId],
   );
@@ -183,11 +189,10 @@ export function useVoiceRecording({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      setAudioStream(stream);
 
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/mp4",
+        mimeType: pickRecordingMimeType(),
       });
 
       mediaRecorderRef.current = mediaRecorder;
@@ -207,6 +212,7 @@ export function useVoiceRecording({
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
+          setAudioStream(null);
         }
 
         if (audioBlob.size > 0) {
@@ -332,6 +338,12 @@ export function useVoiceRecording({
     handleKeyDown,
     showMicButton,
     isInputDisabled,
-    audioStream: streamRef.current,
+    audioStream,
   };
+}
+
+function pickRecordingMimeType() {
+  return MediaRecorder.isTypeSupported("audio/webm")
+    ? "audio/webm"
+    : "audio/mp4";
 }

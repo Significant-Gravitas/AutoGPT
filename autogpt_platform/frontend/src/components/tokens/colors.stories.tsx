@@ -99,6 +99,138 @@ const specialColors = [
   },
 ];
 
+// Colour roles from src/app/globals.css. Swatches read the CSS variable
+// directly, so the story always shows what the token renders.
+const roleGroups = [
+  {
+    name: "Surfaces",
+    roles: [
+      ["canvas", "#F6F7F8", "body bg-[#F6F7F8]"],
+      ["surface", "#FEFEFE", "bg-white"],
+      ["surface-muted", "#F9F9FA", "bg-zinc-50"],
+      ["surface-hover", "#EFEFF0", "bg-zinc-100"],
+      ["surface-active", "#DADADC", "bg-zinc-200"],
+      ["overlay", "#78716C", "bg-stone-500 (used at /20)"],
+    ],
+  },
+  {
+    name: "Text",
+    roles: [
+      ["foreground-base", "#141414", "text-black"],
+      ["foreground-strong", "#2C2C30", "text-zinc-900"],
+      ["foreground-emphasis", "#3E3E43", "text-zinc-800"],
+      ["foreground-body", "#505057", "text-zinc-700"],
+      ["foreground-secondary", "#68686F", "text-zinc-600"],
+      ["foreground-tertiary", "#83838C", "text-zinc-500"],
+      ["foreground-subtle", "#ADADB3", "text-zinc-400"],
+      ["foreground-disabled", "#C5C5C9", "text-zinc-300"],
+      ["placeholder", "#83838C", "placeholder:text-zinc-500"],
+    ],
+  },
+  {
+    name: "Borders",
+    roles: [
+      ["separator", "#EFEFF0", "border-zinc-100"],
+      ["border-base", "#DADADC", "border-zinc-200"],
+      ["border-strong", "#C5C5C9", "border-zinc-300"],
+      ["focus", "#0A0A0A", "ring-neutral-950"],
+    ],
+  },
+  {
+    name: "Action",
+    roles: [
+      ["action", "#3E3E43", "bg-zinc-800"],
+      ["action-hover", "#2C2C30", "bg-zinc-900"],
+      ["action-foreground", "#FEFEFE", "text-white"],
+    ],
+  },
+  {
+    name: "Accent",
+    roles: [
+      ["brand", "#7733F5", "purple-500"],
+      ["brand-hover", "#6C2EDF", "bg-purple-600"],
+      ["accent-surface", "#F5F3FF", "bg-violet-50"],
+      ["accent-strong", "#6D28D9", "text-violet-700"],
+    ],
+  },
+  {
+    name: "Status",
+    roles: [
+      ["error", "#EF4444", "red-500"],
+      ["error-hover", "#D93636", "red-600"],
+      ["error-foreground", "#AA3030", "text-red-700"],
+      ["error-surface", "#FEF5F5", "bg-red-50"],
+      ["warning", "#F59E0B", "amber-500"],
+      ["warning-foreground", "#B45309", "text-amber-700"],
+      ["warning-surface", "#FFFBEB", "bg-amber-50"],
+      ["warning-border", "#FDE68A", "amber-200"],
+      ["success", "#149443", "text-green-600"],
+      ["success-foreground", "#107435", "text-green-700"],
+      ["success-surface", "#E8F6ED", "bg-green-50"],
+      ["info", "#3B82F6", "blue-500"],
+      ["info-foreground", "#2563EB", "text-blue-600"],
+      ["info-surface", "#EFF6FF", "bg-blue-50"],
+    ],
+  },
+  {
+    name: "shadcn names (values unchanged)",
+    roles: [
+      ["background", "#FAFAFA", "bg-background"],
+      ["foreground", "#09090B", "text-foreground"],
+      ["muted", "#F4F4F5", "bg-muted"],
+      ["muted-foreground", "#71717A", "text-muted-foreground"],
+      ["primary", "#18181B", "bg-primary"],
+      ["accent", "#7C3BED", "bg-accent"],
+      ["destructive", "#EF4444", "bg-destructive"],
+      ["border", "#E4E4E7", "every border"],
+      ["input", "#D6D6DB", "border-input"],
+      ["ring", "#18181B", "ring-ring"],
+    ],
+  },
+];
+
+export function Roles() {
+  return (
+    <div className="space-y-10 p-8">
+      <div className="space-y-2">
+        <Text variant="h1">Colour roles</Text>
+        <Text variant="large" tone="secondary">
+          Name a colour by its job. Each role is a CSS variable in globals.css
+          and a Tailwind colour, so it works with every utility and opacity
+          modifier: bg-surface, text-foreground-tertiary, border-border-base,
+          bg-overlay/20.
+        </Text>
+      </div>
+      {roleGroups.map((group) => (
+        <div key={group.name} className="space-y-4">
+          <Text variant="h3">{group.name}</Text>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {group.roles.map(([name, hex, replaces]) => (
+              <div
+                key={name}
+                className="flex items-center gap-4 rounded-lg border border-zinc-200 p-4"
+              >
+                <div
+                  className="h-12 w-12 flex-shrink-0 rounded border border-zinc-300"
+                  style={{ backgroundColor: `rgb(var(--color-${name}))` }}
+                />
+                <div className="min-w-0 space-y-1">
+                  <Text variant="body-medium" className="font-mono">
+                    {name}
+                  </Text>
+                  <Text variant="small" tone="muted" className="font-mono">
+                    {hex} · replaces {replaces}
+                  </Text>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AllVariants() {
   return (
     <div className="space-y-12">
