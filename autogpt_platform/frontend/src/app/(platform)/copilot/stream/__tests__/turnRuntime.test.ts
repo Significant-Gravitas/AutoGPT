@@ -17,6 +17,7 @@ import {
   LIVENESS_MS,
   MessageTooLongError,
   ROTATE_AFTER_MS,
+  SendNotDeliveredError,
   SendRefusedError,
   TurnRuntime,
   type RuntimeDeps,
@@ -551,6 +552,27 @@ describe("recovery", () => {
     expect(snapshot().ownedFrom).toBe(1);
     expect(textsOf(render())).toEqual([FIRST_TEXT]);
     expect(snapshot().error).toBeNull();
+  });
+
+  it("a send queued at the running cap keeps its prompt and is not reported", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+
+    expect(snapshot().error).toBeNull();
+  });
+
+  it("a send whose stream closed with nothing taking it says it didn't go through", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, null);
+    backend.respond(({ method }) => (method === "POST" ? "empty" : "stream"));
+    void runtime.send({ text: "What is my team working on?" }, undefined);
+    await advance(10_000);
+
+    // Never idle without a word, and never a sent bubble nothing stored.
+    expect(snapshot().error).toBeInstanceOf(SendNotDeliveredError);
+    expect(onError).toHaveBeenCalledWith(snapshot().error, null);
+    expect(textsOf(render())).toEqual([]);
   });
 
   it("stops reading the session once its queued turn is cancelled", async () => {

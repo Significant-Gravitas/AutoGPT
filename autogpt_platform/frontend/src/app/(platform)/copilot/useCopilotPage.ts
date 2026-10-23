@@ -36,6 +36,7 @@ import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
 import { useExpertKickoff } from "./useExpertKickoff";
+import { useFollowQueuedTurn } from "./useFollowQueuedTurn";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
@@ -323,17 +324,18 @@ export function useCopilotPage({
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
-    sessionId,
-    status,
-    messages,
-    ...("setMessages" in stream
-      ? { setMessages: stream.setMessages }
-      : {
-          appendLocalUserRows: stream.appendLocalUserRows,
-          drainedCount: stream.drainedCount,
-        }),
-  });
+  const { queuedMessages, queueMessage, takeQueuedMessage, heldReason } =
+    useCopilotPendingChips({
+      sessionId,
+      status,
+      messages,
+      ...("setMessages" in stream
+        ? { setMessages: stream.setMessages }
+        : {
+            appendLocalUserRows: stream.appendLocalUserRows,
+            drainedCount: stream.drainedCount,
+          }),
+    });
 
   useCopilotNotifications(sessionId);
 
@@ -441,6 +443,15 @@ export function useCopilotPage({
     }
     return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
+  // A follow-up the last turn ended without reading goes out as a new send;
+  // the server takes its waiting copy out, so Otto reads it once.
+  function retryQueuedMessage(text: string) {
+    takeQueuedMessage(text);
+    void sendOrQueue(text).catch((err: unknown) =>
+      recoverFailedDeferredSend(text, [], err),
+    );
+  }
+
   // One function for the host's lifetime that runs the latest `sendOrQueue`,
   // so the chat actions and the composer keep their props across flushes.
   const onSend = useStableCallback(
@@ -490,6 +501,14 @@ export function useCopilotPage({
 
   useSessionTitlePoll({ sessionId, status, isReconnecting });
 
+  // The runtime chat follows a queued turn itself.
+  useFollowQueuedTurn({
+    enabled: !runtimeStream && !!sessionId,
+    sessionChatStatus,
+    refetchSession,
+    followBackendTurn,
+  });
+
   return {
     sessionId,
     messages: displayMessages,
@@ -520,6 +539,9 @@ export function useCopilotPage({
       heldFollowUps.length > 0
         ? [...queuedMessages, ...heldFollowUps]
         : queuedMessages,
+    // Locally held follow-ups are still on their way, never held by the server.
+    queuedHeldReason: heldFollowUps.length > 0 ? null : heldReason,
+    retryQueuedMessage,
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,

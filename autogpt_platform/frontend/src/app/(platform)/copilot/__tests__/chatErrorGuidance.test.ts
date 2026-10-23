@@ -5,12 +5,27 @@ import { CopilotAuthError } from "../helpers";
 import {
   ChatUnavailableError,
   MessageTooLongError,
+  SendNotDeliveredError,
   SendRefusedError,
 } from "../stream/turnRuntime";
+import { ConnectionLostError } from "../useCopilotReconnect";
 
 const RESEND = /send (it|your message) again|try sending/i;
 
 describe("describeChatError", () => {
+  it("a send nothing took says it didn't go through and to send it again", () => {
+    const { title, action } = describeChatError(new SendNotDeliveredError());
+    expect(title).toMatch(/didn't go through/);
+    expect(title).toMatch(RESEND);
+    expect(action).toBeNull();
+  });
+
+  it("a reconnect that gave up stays on screen and says to reload", () => {
+    const { title, action } = describeChatError(new ConnectionLostError());
+    expect(title).toMatch(/reload the page/i);
+    expect(action).toBeNull();
+  });
+
   it("a message over the length limit says to shorten it", () => {
     const guidance = describeChatError(
       new MessageTooLongError('{"detail":[…]}', 422),

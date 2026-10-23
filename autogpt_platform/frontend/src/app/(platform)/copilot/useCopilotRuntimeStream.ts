@@ -39,6 +39,7 @@ import {
   type RuntimePhase,
   type RuntimeSnapshot,
   type SendInput,
+  SendNotDeliveredError,
   type SessionView,
   type TurnRuntime,
 } from "./stream/turnRuntime";
@@ -176,6 +177,11 @@ export function useCopilotRuntimeStream({
         clearRecovery();
       }
       runtime?.dropUnsentUserRow();
+    }
+    // The banner says it didn't go through; the text goes back to resend.
+    if (error instanceof SendNotDeliveredError) {
+      restoreUnsentSend();
+      return;
     }
     handleStreamError({
       error,

@@ -150,13 +150,16 @@ interface Connection {
   prompt: string | null;
   /** The backend queued this send behind the session's running turn. */
   followUp: boolean;
+  /** The backend stored this send's prompt; its turn waits for a free slot. */
+  turnQueued: boolean;
 }
 
 /** What the classification needs to know about a connection that is gone. */
 type Lost = Pick<
   Connection,
   "turnId" | "openedAt" | "syntheticError" | "prompt"
->;
+> &
+  Partial<Pick<Connection, "followUp" | "turnQueued">>;
 
 type ConnectionEnd =
   | { kind: "closed" }
@@ -474,6 +477,7 @@ export class TurnRuntime {
       syntheticError: null,
       prompt: init.prompt ?? null,
       followUp: false,
+      turnQueued: false,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -546,6 +550,11 @@ export class TurnRuntime {
       frame.chunk.type === "data-follow-up-queued"
     ) {
       conn.followUp = true;
+    } else if (
+      frame.kind === "synthetic" &&
+      frame.chunk.type === "data-turn-queued"
+    ) {
+      conn.turnQueued = true;
     }
     this.emit();
   }
@@ -785,8 +794,27 @@ export class TurnRuntime {
         end.kind === "failed" && end.error instanceof Error
           ? end.error
           : new Error(lost.syntheticError ?? "The connection closed early.");
+    } else if (this.sendWentNowhere(lost, end)) {
+      // The stream closed cleanly, yet no turn took the prompt and the
+      // backend neither queued it nor stored it: say so, never sit idle.
+      this.dropUnsentUserRow();
+      this.error = new SendNotDeliveredError();
+      this.emitNow();
+      this.handlers.onError?.(this.error, null);
+      return;
     }
     this.emitNow();
+  }
+
+  private sendWentNowhere(lost: Lost, end: ConnectionEnd) {
+    return (
+      end.kind === "closed" &&
+      lost.prompt !== null &&
+      !lost.followUp &&
+      !lost.turnQueued &&
+      !this.runningTurn() &&
+      !this.lostSendLanded(lost.prompt)
+    );
   }
 
   // The send arrived: its prompt took a row, or the turn after it is followed.
@@ -1554,6 +1582,14 @@ export class MessageTooLongError extends SendRefusedError {
   constructor(message: string, status: number) {
     super(message, status);
     this.name = "MessageTooLongError";
+  }
+}
+
+/** A send's stream closed without any turn, queue or row taking it. */
+export class SendNotDeliveredError extends Error {
+  constructor() {
+    super("The message was not delivered.");
+    this.name = "SendNotDeliveredError";
   }
 }
 

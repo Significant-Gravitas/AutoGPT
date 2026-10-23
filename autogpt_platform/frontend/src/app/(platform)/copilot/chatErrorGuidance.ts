@@ -3,7 +3,9 @@ import {
   ChatUnavailableError,
   isUnexpectedRefusal,
   MessageTooLongError,
+  SendNotDeliveredError,
 } from "./stream/turnRuntime";
+import { ConnectionLostError } from "./useCopilotReconnect";
 
 export type ChatErrorAction = "sign-in" | "new-chat" | "plans";
 
@@ -26,6 +28,18 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     return {
       title: "You're signed out. Sign in again to keep chatting.",
       action: "sign-in",
+    };
+  if (error instanceof ConnectionLostError)
+    return {
+      title:
+        "The connection dropped and couldn't be restored. Reload the page to see Otto's latest progress.",
+      action: null,
+    };
+  if (error instanceof SendNotDeliveredError)
+    return {
+      title:
+        "Your message didn't go through, so it's back in the message box. Send it again.",
+      action: null,
     };
   if (error instanceof ChatUnavailableError || status === 404)
     return {

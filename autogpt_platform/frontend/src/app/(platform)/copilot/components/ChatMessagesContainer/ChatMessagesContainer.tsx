@@ -1,5 +1,4 @@
 import { parseSpecialMarkers } from "../../helpers/messageMarkers";
-import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import {
@@ -54,8 +53,8 @@ import {
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
-import { Clock01Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import type { HeldReason } from "../../useCopilotPendingChips";
+import { QueuedMessages } from "./components/QueuedMessages/QueuedMessages";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
@@ -83,6 +82,10 @@ interface Props {
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
+  /** Set when the turn that should have read `queuedMessages` ended first,
+   *  so each shows as not sent, with a Retry. */
+  queuedHeldReason?: HeldReason | null;
+  onRetryQueuedMessage?: (text: string) => void;
   /** A just-sent message whose local attachments are still uploading. It is
    *  not in `messages` yet (the SDK only pushes it once `sendMessage` runs),
    *  so it renders as a placeholder bubble with an "Uploading files…"
@@ -275,6 +278,8 @@ export function ChatMessagesContainer({
   onRetry,
   turnStats,
   queuedMessages,
+  queuedHeldReason = null,
+  onRetryQueuedMessage,
   pendingSend,
   bottomContentPadding,
   readOnly = false,
@@ -627,27 +632,14 @@ export function ChatMessagesContainer({
               expert={expertIdentity ?? null}
             />
           )}
-          {!readOnly &&
-            queuedMessages?.map((msg, idx) => (
-              <Message key={idx} from="user">
-                <MessageContent
-                  className={cn(
-                    "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
-                    isCompact
-                      ? "rounded-xl text-sm leading-6"
-                      : "rounded-3xl text-[1rem] leading-relaxed",
-                  )}
-                >
-                  <span>
-                    <CredentialMentionText text={msg} />
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-slate-500">
-                    <Icon icon={Clock01Icon} className="size-3" />
-                    Queued
-                  </span>
-                </MessageContent>
-              </Message>
-            ))}
+          {!readOnly && queuedMessages && (
+            <QueuedMessages
+              messages={queuedMessages}
+              heldReason={queuedHeldReason}
+              onRetry={onRetryQueuedMessage}
+              isCompact={isCompact}
+            />
+          )}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
             <ChatErrorBanner error={error} />
           )}

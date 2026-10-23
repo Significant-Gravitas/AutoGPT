@@ -58,6 +58,8 @@ function ChatHostBody({
     onStartTask,
     onEnqueue,
     queuedMessages,
+    queuedHeldReason,
+    retryQueuedMessage,
     isLoadingSession,
     isSessionError,
     isSessionNotFound,
@@ -133,6 +135,8 @@ function ChatHostBody({
           onStop={stop}
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
+          queuedHeldReason={queuedHeldReason}
+          onRetryQueuedMessage={retryQueuedMessage}
           isUploadingFiles={isUploadingFiles}
           pendingSend={pendingSend}
           hasMoreMessages={hasMoreMessages}
