@@ -180,6 +180,7 @@ from backend.data.posthog_lifecycle_sync import (
     start_posthog_lifecycle_sweep,
 )
 from backend.data.pro_activation import get_usage_activation_state
+from backend.data.product_mail_audience import get_product_mail_standing
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -447,6 +448,7 @@ class DatabaseManager(AppService):
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
+    get_product_mail_standing = _(get_product_mail_standing)
     get_user_notification_preference = _(get_user_notification_preference)
 
     # ============ Human In The Loop ============ #
@@ -1019,6 +1021,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
     get_user_email_by_id = d.get_user_email_by_id
     get_user_email_verification = d.get_user_email_verification
+    get_product_mail_standing = d.get_product_mail_standing
     get_user_notification_preference = d.get_user_notification_preference
 
     # ============ Alerts ============ #

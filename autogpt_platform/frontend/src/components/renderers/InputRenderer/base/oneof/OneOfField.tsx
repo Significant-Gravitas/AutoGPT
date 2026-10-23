@@ -170,7 +170,6 @@ function DiscriminatedUnionField({
       // Unknown or cleared discriminator — full reset via same cleanup path
       handleVariantChange("0");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDiscValue]);
 
   // Auto-set discriminator on initial render if missing
@@ -184,7 +183,6 @@ function DiscriminatedUnionField({
         field_id,
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const Widget = getWidget({ type: "string" }, "select", registry.widgets);

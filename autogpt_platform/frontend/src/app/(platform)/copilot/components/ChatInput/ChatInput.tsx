@@ -192,6 +192,31 @@ export const ChatInput = memo(function ChatInput({
     });
   }
 
+  function addAttachments(incoming: Attachment[]) {
+    // Outside the updater: React re-invokes an updater (twice under
+    // StrictMode), which would toast the refusal more than once.
+    const { next, refused, refusedFolders } = appendWithinCap(
+      attachments,
+      incoming,
+    );
+    setAttachments(next);
+    setRefusedCount(refused);
+    if (refusedFolders > 0) {
+      toast({
+        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
+        description: `${refusedFolders} not added.`,
+      });
+    }
+  }
+
+  function handleFilesSelected(newFiles: File[]) {
+    addAttachments(newFiles.map(toLocalAttachment));
+  }
+
+  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
+    addAttachments([workspaceItemToAttachment(item)]);
+  }
+
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
     if (droppedFiles && droppedFiles.length > 0) {
@@ -219,12 +244,11 @@ export const ChatInput = memo(function ChatInput({
     const sent = attachments;
     setAttachments([]);
     setRefusedCount(0);
+    const files = localFiles.length > 0 ? localFiles : undefined;
+    const workspaceFiles =
+      workspaceAttachments.length > 0 ? workspaceAttachments : undefined;
     try {
-      await onSend(
-        message,
-        localFiles.length > 0 ? localFiles : undefined,
-        workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
-      );
+      await onSend(message, files, workspaceFiles);
     } catch (error) {
       setAttachments((prev) => (prev.length > 0 ? prev : sent));
       throw error;
@@ -329,31 +353,6 @@ export const ChatInput = memo(function ChatInput({
     // Only discard untouched guided prompts — never a draft the user typed
     // or edited themselves.
     if (isGuidedPrompt(value)) setValue("");
-  }
-
-  function handleFilesSelected(newFiles: File[]) {
-    addAttachments(newFiles.map(toLocalAttachment));
-  }
-
-  function addAttachments(incoming: Attachment[]) {
-    // Outside the updater: React re-invokes an updater (twice under
-    // StrictMode), which would toast the refusal more than once.
-    const { next, refused, refusedFolders } = appendWithinCap(
-      attachments,
-      incoming,
-    );
-    setAttachments(next);
-    setRefusedCount(refused);
-    if (refusedFolders > 0) {
-      toast({
-        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
-        description: `${refusedFolders} not added.`,
-      });
-    }
-  }
-
-  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
-    addAttachments([workspaceItemToAttachment(item)]);
   }
 
   function handlePickerConfirmed(items: PickedItem[]) {

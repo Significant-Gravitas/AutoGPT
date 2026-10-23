@@ -1,3 +1,4 @@
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatResetTime } from "../usageHelpers";
 
@@ -12,6 +13,8 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
   const isHigh = percent >= 80;
   const percentLabel =
     percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
+  // Relative to the clock, so read on every render rather than cached.
+  const resetLabel = useReadEveryRender(() => formatResetTime(resetsAt));
 
   return (
     <div className="flex flex-col gap-2">
@@ -37,7 +40,7 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
         />
       </div>
       <Text variant="small" className="text-neutral-500">
-        Resets {formatResetTime(resetsAt)}
+        Resets {resetLabel}
       </Text>
     </div>
   );
