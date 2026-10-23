@@ -2072,10 +2072,8 @@ async def stream_chat_completion_baseline(
 
     # NOTE: drained pending messages are folded into the current user
     # message's content (see the turn-start drain above), so the single
-    # ``transcript_builder.append_user`` call below (covered by the
-    # ``if message and is_user_message`` branch that appends
-    # ``user_message_for_transcript or message``) already records the
-    # combined text in the transcript. Do NOT also append drained items
+    # ``transcript_builder.append_user`` call below records the combined
+    # text in the transcript. Do NOT also append drained items
     # individually here — on the ``transcript_download is None`` path
     # that would produce N separate pending entries plus the combined
     # entry, duplicating the pending content in the JSONL uploaded for
@@ -2262,7 +2260,7 @@ async def stream_chat_completion_baseline(
     #  1. ``openai_messages`` (what the model sees this round) — append
     #     each pending as a separate user entry, matching the mid-turn
     #     drain pattern below.
-    #  2. ``message`` (used for transcript/title fallbacks) — combine.
+    #  2. ``message`` and ``user_message_for_transcript`` — combine.
     #  3. ``session.messages`` + DB — one raw row per pending via
     #     ``persist_pending_as_user_rows(transcript_builder=None)``.
     #
@@ -2272,6 +2270,7 @@ async def stream_chat_completion_baseline(
         (m.content or "" for m in reversed(session.messages) if m.role == "user"),
         "",
     )
+    user_message_for_transcript = user_message_for_transcript or turn_text
     if drained_at_start_pending:
         # Persist FIRST.  Only fold pending into the model's prompt
         # (``message`` for transcript fallback + ``openai_messages`` for
@@ -2288,6 +2287,11 @@ async def stream_chat_completion_baseline(
         )
         if persisted_ok:
             opening_entries.append(drained_rows_entry(drained_at_start_pending))
+            user_message_for_transcript = combine_pending_with_current(
+                drained_at_start_pending,
+                user_message_for_transcript,
+                request_arrival_at=request_arrival_at,
+            )
             message = combine_pending_with_current(
                 drained_at_start_pending,
                 message,
@@ -2403,8 +2407,8 @@ async def stream_chat_completion_baseline(
     # attempt stored this message), so skipping it would leave the
     # transcript without the user turn, creating a malformed
     # assistant-after-assistant structure when the LLM reply is added.
-    if message and is_user_message:
-        transcript_builder.append_user(content=user_message_for_transcript or message)
+    if user_message_for_transcript and is_user_message:
+        transcript_builder.append_user(content=user_message_for_transcript)
 
     working_dir: str | None = None
     if file_ids and user_id:

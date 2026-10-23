@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from openai.types.chat import ChatCompletionChunk
 
 from backend.copilot import pending_message_helpers
 from backend.copilot.baseline import service
@@ -20,6 +21,7 @@ from backend.copilot.sdk.retry_scenarios_test import (
 )
 from backend.copilot.tool_image import ToolImage
 from backend.copilot.tools import skill_matching_test as skill_fixtures
+from backend.util import json
 
 baseline_io = baseline_fixtures.baseline_io
 available_skills = skill_fixtures.available_skills
@@ -123,11 +125,29 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
         ChatMessage(role="assistant", content="Ready."),
     ]
     stream = MagicMock()
-    stream.__aiter__.return_value = []
+    stream.__aiter__.return_value = [
+        ChatCompletionChunk.model_validate(
+            {
+                "id": "reply",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "anthropic/claude-sonnet-4-6",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "delta": {"content": "I will follow the matching procedure."},
+                    }
+                ],
+            }
+        )
+    ]
     stream.close = AsyncMock()
     provider = AsyncMock(return_value=stream)
     monkeypatch.setattr(service, "call_provider_stream", provider)
     monkeypatch.setattr(service, "download_transcript", AsyncMock(return_value=None))
+    upload = AsyncMock()
+    monkeypatch.setattr(service, "upload_transcript", upload)
     monkeypatch.setattr(
         service, "build_expert_identity_suffix", AsyncMock(return_value="")
     )
@@ -201,3 +221,10 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
         assert len(saved) == 1
         assert saved[0].sequence is not None
     assert all("<matched_skills>" not in (m.content or "") for m in session.messages)
+    upload.assert_awaited_once()
+    assert upload.await_args is not None
+    transcript = upload.await_args.kwargs["content"].decode("utf-8")
+    rows = [json.loads(line) for line in transcript.splitlines()]
+    assert rows[-2]["type"] == "user"
+    assert rows[-2]["message"]["content"] == expected_request
+    assert "<matched_skills>" not in transcript
