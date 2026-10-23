@@ -238,8 +238,21 @@ def trial_checkout_params(trial: TrialState) -> dict:
             "metadata": metadata,
         },
         "allow_promotion_codes": False,
+        "custom_text": {
+            "after_submit": {"message": _no_charge_today(trial.offer.duration_days)}
+        },
         "automatic_tax": {"enabled": True},
         "billing_address_collection": "auto",
         "customer_update": {"address": "auto"},
         "metadata": metadata,
     }
+
+
+def _no_charge_today(duration_days: int) -> str:
+    # No date: an open session can be completed up to a day after it is
+    # created, and Stripe already prints the live first-charge date above.
+    return (
+        f"No charge today. You're charged when your {duration_days}-day trial "
+        "ends. Cancel before then in Settings > Billing and you won't pay "
+        "anything."
+    )

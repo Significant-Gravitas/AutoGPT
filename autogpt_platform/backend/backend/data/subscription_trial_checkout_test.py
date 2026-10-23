@@ -68,6 +68,18 @@ def test_card_required_and_cancel_if_card_disappears(trial):
     assert params["allow_promotion_codes"] is False
 
 
+def test_checkout_says_no_charge_today_for_the_offers_length(trial):
+    trial.offer = AcceptedTrialOffer.model_validate(
+        {**trial.offer.model_dump(), "duration_days": 14}
+    )
+    message = checkout.trial_checkout_params(trial)["custom_text"]["after_submit"][
+        "message"
+    ]
+    assert message.startswith("No charge today.")
+    assert "14-day trial" in message
+    assert "Settings > Billing" in message
+
+
 def test_uses_accepted_price_and_preserves_attribution(trial):
     params = checkout.trial_checkout_params(trial)
     assert params["line_items"] == [{"price": "price_pro", "quantity": 1}]
