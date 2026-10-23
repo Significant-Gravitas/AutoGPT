@@ -25,6 +25,13 @@ export function useMemoryFacts({ scopeExpertID, onForgotten }: Args) {
   // Hidden the moment Forget is clicked, and shown again only if the forget
   // fails, so a refetch that lands while it is pending can't bring it back.
   const [forgottenUUIDs, setForgottenUUIDs] = useState<string[]>([]);
+  // Another scope opens on its own recent memories.
+  const [stateScope, setStateScope] = useState(scopeExpertID);
+  if (stateScope !== scopeExpertID) {
+    setStateScope(scopeExpertID);
+    setIsExpanded(false);
+    setForgottenUUIDs([]);
+  }
 
   const accountFacts = useListMyMemoryFactsInfinite(
     { limit: FACTS_PAGE_SIZE },
@@ -121,6 +128,7 @@ export function useMemoryFacts({ scopeExpertID, onForgotten }: Args) {
       !isExpanded &&
       (visibleFacts.length > RECENT_FACTS_LIMIT || factsQuery.hasNextPage),
     hasMore: isExpanded && factsQuery.hasNextPage,
+    isAllLoaded: !factsQuery.hasNextPage,
     isLoadingMore: factsQuery.isFetchingNextPage,
     loadMore,
     showAll,

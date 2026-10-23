@@ -13,6 +13,7 @@ interface Props {
   isExpanded: boolean;
   canShowAll: boolean;
   hasMore: boolean;
+  isAllLoaded: boolean;
   isLoadingMore: boolean;
   onShowAll: () => void;
   onShowFewer: () => void;
@@ -29,6 +30,7 @@ export function RecentMemoriesCard({
   isExpanded,
   canShowAll,
   hasMore,
+  isAllLoaded,
   isLoadingMore,
   onShowAll,
   onShowFewer,
@@ -77,7 +79,7 @@ export function RecentMemoriesCard({
         <div className="flex flex-wrap gap-2 pt-1">
           {canShowAll ? (
             <Button variant="ghost" size="small" onClick={onShowAll}>
-              {total !== null ? `Show all ${total}` : "Show all"}
+              {total !== null && isAllLoaded ? `Show all ${total}` : "Show all"}
             </Button>
           ) : null}
           {hasMore ? (

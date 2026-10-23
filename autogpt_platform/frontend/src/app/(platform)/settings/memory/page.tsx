@@ -75,6 +75,7 @@ export default function SettingsMemoryPage() {
           isExpanded={memories.isExpanded}
           canShowAll={memories.canShowAll}
           hasMore={memories.hasMore}
+          isAllLoaded={memories.isAllLoaded}
           isLoadingMore={memories.isLoadingMore}
           onShowAll={memories.showAll}
           onShowFewer={memories.showFewer}

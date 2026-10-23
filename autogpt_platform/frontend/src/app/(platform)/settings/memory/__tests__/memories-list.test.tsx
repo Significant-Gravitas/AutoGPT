@@ -5,10 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
 import { TEST_BACKEND_BASE_URL } from "@/app/(platform)/copilot/__tests__/sse-helpers";
-import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getListExpertsMockHandler200,
+  getListExpertsResponseMock200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getForgetMyMemoryFactMockHandler200,
+  getGetMyExpertMemoryOverviewMockHandler200,
   getGetMyMemoryOverviewMockHandler200,
+  getListMyExpertMemoryFactsMockHandler200,
   getListMyMemoryFactsMockHandler200,
 } from "@/app/api/__generated__/endpoints/memory/memory.msw";
 import type { MemoryFact } from "@/app/api/__generated__/models/memoryFact";
@@ -105,6 +110,47 @@ describe("Settings memory page — the memories list", () => {
     expect(rows()).toHaveLength(6);
   });
 
+  it("opens another scope on its recent memories, not the expanded list", async () => {
+    const maria = {
+      ...getListExpertsResponseMock200()[0],
+      id: "expert-maria",
+      name: "Maria",
+      role: "Growth Marketer",
+      avatar_url: null,
+      is_archived: false,
+    };
+    mockFacts(makeFacts(8));
+    server.use(
+      getListExpertsMockHandler200([maria]),
+      getListMyExpertMemoryFactsMockHandler200({
+        expert_id: "expert-maria",
+        items: makeFacts(9, 100),
+        total: 9,
+      }),
+      getGetMyExpertMemoryOverviewMockHandler200({
+        expert_id: "expert-maria",
+        facts: 9,
+        entities: 3,
+        episodes: 1,
+      }),
+    );
+    render(<SettingsMemoryPage />);
+
+    expect(await screen.findByText("8 memories")).toBeDefined();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Show all 8" }));
+    expect(rows()).toHaveLength(8);
+
+    await user.click(screen.getByRole("button", { name: "Memory scope" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: /Growth Marketer/ }),
+    );
+
+    expect(await screen.findByText("9 memories")).toBeDefined();
+    expect(screen.getByText("Recent memories")).toBeDefined();
+    expect(rows()).toHaveLength(6);
+  });
+
   it("loads the next page with the cursor the last page handed out", async () => {
     const cursors: (string | null)[] = [];
     server.use(
@@ -125,7 +171,8 @@ describe("Settings memory page — the memories list", () => {
 
     expect(await screen.findByText("53 memories")).toBeDefined();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Show all 53" }));
+    expect(screen.queryByRole("button", { name: "Show all 53" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Show all" }));
     expect(rows()).toHaveLength(50);
 
     await user.click(screen.getByRole("button", { name: "Show more" }));
@@ -153,7 +200,7 @@ describe("Settings memory page — the memories list", () => {
 
     expect(await screen.findByText("53 memories")).toBeDefined();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Show all 53" }));
+    await user.click(screen.getByRole("button", { name: "Show all" }));
     await user.click(screen.getByRole("button", { name: "Show more" }));
 
     await waitFor(() =>
