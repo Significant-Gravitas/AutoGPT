@@ -85,6 +85,7 @@ export function useChatMentions({
   const query = active?.query ?? "";
   const debouncedQuery = useDebouncedValue(query, QUERY_DEBOUNCE_MS);
 
+  const expertKey = expertId ?? null;
   const search = useQuery({
     queryKey: [
       "chat-mention",
@@ -105,9 +106,7 @@ export function useChatMentions({
     // Keep results while the same expert's query refines; drop them when the
     // chat switches expert so no foreign file can be picked mid-request.
     placeholderData: (previousData, previousQuery) =>
-      previousQuery?.queryKey[3] === (expertId ?? null)
-        ? previousData
-        : undefined,
+      previousQuery?.queryKey[3] === expertKey ? previousData : undefined,
   });
 
   const files =

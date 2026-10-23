@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { AtResetTurn } from "@/app/api/__generated__/models/atResetTurn";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -18,6 +19,8 @@ interface Props {
 export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
   // Once due it may already have gone: editing it then could send it twice.
   const isDue = useScheduledSendDue(job.run_at);
+  // Its wording turns on the day, so read on every render rather than cached.
+  const label = useReadEveryRender(() => scheduledSendLabel(job.run_at));
   return (
     <div
       role="status"
@@ -31,7 +34,7 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
           className="shrink-0 text-purple-600"
         />
         <Text variant="small-medium" className="shrink-0 !text-purple-900">
-          {isDue ? "Sending…" : scheduledSendLabel(job.run_at)}
+          {isDue ? "Sending…" : label}
         </Text>
         {job.message && (
           <Text variant="small" className="min-w-0 truncate !text-zinc-500">

@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useInsertionEffect,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -42,7 +43,9 @@ export function useCredentialMentionEditor(
   // would otherwise stay in the DOM; bumping this re-runs the comparison.
   const [resyncCount, resync] = useReducer((count: number) => count + 1, 0);
   const onMultilineRef = useRef(onMultilineChange);
-  onMultilineRef.current = onMultilineChange;
+  useInsertionEffect(() => {
+    onMultilineRef.current = onMultilineChange;
+  });
 
   // Stable so React does not detach and re-attach it on every render. The
   // textarea that replaces the editor only reports wrapping it measures, so
