@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -184,6 +185,57 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
     assert "Grant button" in hint
     assert "Do not ask the user to sign in" in hint
     assert none == "" and personal == ""
+
+
+async def test_the_hint_reads_the_credentials_beside_the_grants(experts):
+    """Each read returns only once both are in flight, so reading the grants
+    after the credentials (or the other way round) times out."""
+    started: list[str] = []
+    both = asyncio.Event()
+
+    def in_flight(name: str, value: list):
+        async def read(*_args, **_kwargs):
+            started.append(name)
+            if len(started) == 2:
+                both.set()
+            await asyncio.wait_for(both.wait(), timeout=1)
+            return value
+
+        return read
+
+    spare = MagicMock(id="spare-cred", provider="github", title="GH spare")
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(side_effect=in_flight("credentials", [spare]))
+    experts.expert_allowed_credential_ids.side_effect = in_flight(
+        "grants", ["granted-cred"]
+    )
+    with patch(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        hint = await ungranted_credential_hint("user-1", "expert-a", {"github"})
+
+    assert sorted(started) == ["credentials", "grants"]
+    assert "spare-cred" in hint
+
+
+@pytest.mark.parametrize("failing", ["credentials", "grants"])
+async def test_a_failed_read_names_no_credential(experts, failing):
+    spare = MagicMock(id="spare-cred", provider="github", title="GH spare")
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        side_effect=RuntimeError("down") if failing == "credentials" else None,
+        return_value=[spare],
+    )
+    if failing == "grants":
+        experts.expert_allowed_credential_ids.side_effect = RuntimeError("down")
+    with patch(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        hint = await ungranted_credential_hint("user-1", "expert-a", {"github"})
+
+    assert hint == ""
 
 
 async def test_missing_credentials_are_annotated_with_expert_grants(experts):

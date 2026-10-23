@@ -12,8 +12,9 @@ stored per user) are never granted and never filtered: every expert may use them
 or no expert could run a single LLM block.
 """
 
+import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import prisma.models
@@ -31,6 +32,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _WORKFLOW_INCLUDE = {"Workflows": {"include": {"LibraryAgent": True}}}
+
+# How recent a seed stamp must be for the grants to be read again. Covers the
+# reads' own duration and clock drift between database-manager pods; a seed
+# happens once per expert, so the extra read is rare.
+_SEED_STAMP_MARGIN = timedelta(seconds=30)
 
 
 async def _owned_expert(user_id: str, expert_id: str) -> prisma.models.Expert:
@@ -298,10 +304,27 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
 
     Raises ``ExpertNotFoundError`` for an expert the user does not own, so a
     bad scope fails the run rather than falling through to unrestricted access.
+
+    The grants are read beside the ownership check, whose failure is the one
+    raised when both fail. They are read again after a seed: this call's, or
+    one stamped while these reads ran. A seed writes its grants before its
+    stamp, so a grants read that started before the stamp may have missed them.
     """
-    expert = await _owned_expert(user_id, expert_id)
-    await _seed_if_needed(user_id, expert)
-    return [grant.credentialId for grant in await _grants(expert_id)]
+    started = datetime.now(timezone.utc)
+    owned, granted = await asyncio.gather(
+        _owned_expert(user_id, expert_id), _grants(expert_id), return_exceptions=True
+    )
+    if isinstance(owned, BaseException):
+        raise owned
+    if isinstance(granted, BaseException):
+        raise granted
+    expert, grants = owned, granted
+    if expert.credentialsSeededAt is None:
+        await _seed_if_needed(user_id, expert)
+        grants = await _grants(expert_id)
+    elif expert.credentialsSeededAt >= started - _SEED_STAMP_MARGIN:
+        grants = await _grants(expert_id)
+    return [grant.credentialId for grant in grants]
 
 
 def filter_credentials_for_expert(
