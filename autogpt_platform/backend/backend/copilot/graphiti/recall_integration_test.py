@@ -90,7 +90,7 @@ def hit_tasks(mocker) -> list[asyncio.Task]:
 async def _settings_view(scope: MemoryScope) -> tuple[int, set[str]]:
     """The settings page's fact count and fact list for the scope."""
     overview = await memory_routes._get_overview_impl(scope.owner_user_id, None)
-    listing = await memory_routes._list_facts_impl(scope.owner_user_id, None, 50)
+    listing = await memory_routes._list_facts_impl(scope.owner_user_id, None, 50, None)
     return overview.facts, {item.uuid for item in listing.items}
 
 
