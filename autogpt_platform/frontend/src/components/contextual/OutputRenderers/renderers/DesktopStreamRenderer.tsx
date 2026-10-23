@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowExpandIcon,
   ArrowUpRight01Icon,
@@ -59,9 +59,22 @@ export function DesktopStreamPreview({
 }: PreviewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const ownerOnly = value.requires_auth === true && !ownerView;
+  // iPhone Safari has no element Fullscreen API, so only offer the button
+  // where it is supported. Checked after mount to keep SSR markup stable.
+  const [canFullscreen, setCanFullscreen] = useState(false);
 
-  function handleFullscreen() {
-    frameRef.current?.requestFullscreen();
+  useEffect(() => {
+    setCanFullscreen(!!document.fullscreenEnabled);
+  }, []);
+
+  async function handleFullscreen() {
+    const frame = frameRef.current;
+    if (!frame || typeof frame.requestFullscreen !== "function") return;
+    try {
+      await frame.requestFullscreen();
+    } catch {
+      // A denied request leaves the frame inline; nothing else to do.
+    }
   }
 
   return (
@@ -76,15 +89,17 @@ export function DesktopStreamPreview({
         </div>
         {!ownerOnly && (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleFullscreen}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
-              aria-label="Fullscreen"
-            >
-              <Icon icon={ArrowExpandIcon} size={14} />
-              Fullscreen
-            </button>
+            {canFullscreen && (
+              <button
+                type="button"
+                onClick={handleFullscreen}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
+                aria-label="Fullscreen"
+              >
+                <Icon icon={ArrowExpandIcon} size={14} />
+                Fullscreen
+              </button>
+            )}
             <a
               href={value.url}
               target="_blank"
