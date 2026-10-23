@@ -146,10 +146,12 @@ async def test_the_migration_marks_working_files_written_before_it(
         "notes.json": ("/my-pipeline/tool-outputs/notes.json", {}),
         "mine.json": ("/sessions/s1/tool-outputs/mine.json", {"origin": "user-upload"}),
     }
+    ids = {}
     for name, (path, metadata) in legacy.items():
+        ids[name] = str(uuid.uuid4())
         await create_workspace_file(
             workspace_id=workspace.id,
-            file_id=str(uuid.uuid4()),
+            file_id=ids[name],
             name=name,
             path=path,
             storage_path=f"{workspace.id}{path}",
@@ -157,6 +159,9 @@ async def test_the_migration_marks_working_files_written_before_it(
             size_bytes=2,
             metadata=metadata,
         )
+    # Both were indexed for search before the column existed.
+    await _embed(user_id, ids["build_state.json"])
+    await _embed(user_id, ids["sticker-01.png"])
 
     await _run_backfill(workspace.id)
 
@@ -169,6 +174,11 @@ async def test_the_migration_marks_working_files_written_before_it(
         "build_state.json",
         "._browser_state.json",
     }
+    # The scratchpad's search entry is gone; the sticker's stays.
+    embedded = await prisma.models.UnifiedContentEmbedding.prisma().find_many(
+        where={"contentType": "WORKSPACE_FILE", "userId": user_id}
+    )
+    assert {row.contentId for row in embedded} == {ids["sticker-01.png"]}
 
 
 async def _user() -> str:
@@ -218,9 +228,26 @@ async def _list_files(user_id: str, session_id: str | None = None):
 
 
 async def _run_backfill(workspace_id: str) -> None:
-    """The migration's own UPDATE, confined to this test's workspace."""
+    """The migration's own statements, confined to this test's workspace."""
     sql = _MIGRATION.read_text()
-    update = sql[sql.index('UPDATE "UserWorkspaceFile"') :].rstrip().rstrip(";")
+    update = sql[
+        sql.index('UPDATE "UserWorkspaceFile"') : sql.index(";", sql.index("UPDATE"))
+    ]
+    delete = (
+        sql[sql.index('DELETE FROM "UnifiedContentEmbedding"') :].rstrip().rstrip(";")
+    )
+    client = prisma.get_client()
+    await client.execute_raw(f'{update} AND "workspaceId" = $1', workspace_id)
+    await client.execute_raw(f'{delete} AND uwf."workspaceId" = $1', workspace_id)
+
+
+async def _embed(user_id: str, file_id: str) -> None:
     await prisma.get_client().execute_raw(
-        f'{update} AND "workspaceId" = $1', workspace_id
+        'INSERT INTO "UnifiedContentEmbedding" '
+        '(id, "updatedAt", "contentType", "contentId", "userId", embedding, "searchableText") '
+        "VALUES ($1, now(), 'WORKSPACE_FILE', $2, $3, array_fill(0, ARRAY[1536])::vector, $4)",
+        str(uuid.uuid4()),
+        file_id,
+        user_id,
+        "file",
     )

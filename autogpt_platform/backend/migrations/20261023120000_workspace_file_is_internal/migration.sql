@@ -23,3 +23,12 @@ WHERE COALESCE("metadata"->>'origin', '') <> 'user-upload'
       )
     )
   );
+
+-- Their search entries go too: writes no longer index internal files, and
+-- global search reads the index directly, so an entry left from before would
+-- still be found until the orphan cleanup came round.
+DELETE FROM "UnifiedContentEmbedding" uce
+USING "UserWorkspaceFile" uwf
+WHERE uce."contentType" = 'WORKSPACE_FILE'
+  AND uce."contentId" = uwf.id
+  AND uwf."isInternal" = true;
