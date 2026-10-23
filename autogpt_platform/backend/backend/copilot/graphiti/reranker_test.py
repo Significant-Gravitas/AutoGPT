@@ -10,6 +10,7 @@ hit hook runs after the search gather that raised).
 from __future__ import annotations
 
 import asyncio
+import gc
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -175,6 +176,119 @@ async def test_rank_scores_every_candidate_at_once_up_to_the_cap(candidates, pea
 
     assert len(ranked) == candidates
     assert most_in_flight == peak
+
+
+@pytest.mark.asyncio
+async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
+    started = 0
+    finished = 0
+    cancelled = 0
+    active_wave_ready = asyncio.Event()
+    fail_first = asyncio.Event()
+    release_siblings = asyncio.Event()
+
+    async def fake_create(**_kwargs):
+        nonlocal started, finished, cancelled
+        call_index = started
+        started += 1
+        if started == MAX_PARALLEL_SCORES:
+            active_wave_ready.set()
+        try:
+            if call_index == 0:
+                await fail_first.wait()
+                raise RuntimeError("provider failed")
+            await release_siblings.wait()
+            return _logprob_response("True", -0.1)
+        except asyncio.CancelledError:
+            cancelled += 1
+            raise
+        finally:
+            finished += 1
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=fake_create)
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
+    )
+    baseline_tasks = asyncio.all_tasks()
+    ranking = asyncio.create_task(
+        reranker.rank(
+            "query",
+            [f"passage {n}" for n in range(MAX_PARALLEL_SCORES + 1)],
+        )
+    )
+
+    await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
+    fail_first.set()
+    with pytest.raises(RuntimeError, match="provider failed"):
+        await asyncio.wait_for(ranking, timeout=5)
+
+    started_when_rank_returned = started
+    pending_when_rank_returned = asyncio.all_tasks() - baseline_tasks
+    release_siblings.set()
+    await asyncio.gather(*pending_when_rank_returned, return_exceptions=True)
+    gc.collect()
+
+    assert started_when_rank_returned == MAX_PARALLEL_SCORES
+    assert started == started_when_rank_returned
+    assert finished == started
+    assert cancelled == MAX_PARALLEL_SCORES - 1
+    assert not (asyncio.all_tasks() - baseline_tasks)
+    assert not [
+        warning for warning in recwarn if issubclass(warning.category, RuntimeWarning)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
+    started = 0
+    finished = 0
+    cancelled = 0
+    active_wave_ready = asyncio.Event()
+    release_scores = asyncio.Event()
+
+    async def fake_create(**_kwargs):
+        nonlocal started, finished, cancelled
+        started += 1
+        if started == MAX_PARALLEL_SCORES:
+            active_wave_ready.set()
+        try:
+            await release_scores.wait()
+            return _logprob_response("True", -0.1)
+        except asyncio.CancelledError:
+            cancelled += 1
+            raise
+        finally:
+            finished += 1
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=fake_create)
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
+    )
+    baseline_tasks = asyncio.all_tasks()
+    ranking = asyncio.create_task(
+        reranker.rank(
+            "query",
+            [f"passage {n}" for n in range(MAX_PARALLEL_SCORES + 36)],
+        )
+    )
+
+    await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
+    ranking.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(ranking, timeout=5)
+    del ranking
+    gc.collect()
+    release_scores.set()
+
+    assert started == MAX_PARALLEL_SCORES
+    assert finished == started
+    assert cancelled == started
+    assert not (asyncio.all_tasks() - baseline_tasks)
+    assert not [
+        warning for warning in recwarn if issubclass(warning.category, RuntimeWarning)
+    ]
 
 
 @pytest.mark.asyncio
