@@ -19,7 +19,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EmptySession } from "../../EmptySession/EmptySession";
@@ -112,8 +112,10 @@ const TEMPLATES = [
 
 function serve(args: {
   hires: Expert[] | ((read: number) => Expert[]);
-  setup?: ExpertSetupItem[];
+  /** Given how many times the roster has been read so far. */
+  setup?: ExpertSetupItem[] | ((rosterReads: number) => ExpertSetupItem[]);
   path?: "A" | "B";
+  templatesDelayMs?: number;
 }) {
   let reads = 0;
   server.use(
@@ -134,8 +136,13 @@ function serve(args: {
       reads += 1;
       return typeof args.hires === "function" ? args.hires(reads) : args.hires;
     }),
-    getListExpertTemplatesMockHandler(TEMPLATES),
-    getListExpertSetupItemsMockHandler(args.setup ?? []),
+    getListExpertTemplatesMockHandler(async () => {
+      if (args.templatesDelayMs) await delay(args.templatesDelayMs);
+      return TEMPLATES;
+    }),
+    getListExpertSetupItemsMockHandler(() =>
+      typeof args.setup === "function" ? args.setup(reads) : (args.setup ?? []),
+    ),
     getGetV1ListProvidersMockHandler([
       { name: "notion", supported_auth_types: ["api_key"] },
     ]),
@@ -265,6 +272,59 @@ describe("Otto's first turn on Home — the one ask", () => {
     expect(
       await screen.findByText("Which should the team start on first?"),
     ).toBeDefined();
+  });
+
+  it("asks for a connection a hire turns out to need once its install finishes", async () => {
+    // A hire's schedules exist only after its install, so the setup gaps do too.
+    serve({
+      hires: (read) => [
+        { ...nadia, setup_status: read === 1 ? "installing" : "ready" },
+      ],
+      setup: (rosterReads) => (rosterReads > 1 ? [makeSetupItem("nadia")] : []),
+    });
+    renderHome();
+
+    expect(
+      await screen.findByText("Want to start here?", {}, { timeout: 3000 }),
+    ).toBeDefined();
+    expect(
+      await screen.findByRole(
+        "button",
+        { name: "Connect Notion" },
+        { timeout: 5_000 },
+      ),
+    ).toBeDefined();
+  }, 10_000);
+
+  it("waits for the day-one jobs before asking, so the choices never change under the cursor", async () => {
+    serve({
+      hires: [
+        {
+          ...nadia,
+          workflows: [{ graph_id: "g", name: "Newsletter workflow" } as never],
+        },
+      ],
+      templatesDelayMs: 300,
+    });
+    const asked: string[] = [];
+    const observer = new MutationObserver(() => {
+      const ask = screen.queryByRole("region", {
+        name: "One thing I need from you",
+      });
+      if (ask?.textContent) asked.push(ask.textContent);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    renderHome();
+
+    await screen.findByRole(
+      "button",
+      { name: /^Nadia: Drafts Monday's newsletter/ },
+      { timeout: 3000 },
+    );
+    observer.disconnect();
+    expect(asked.some((text) => text.includes("Newsletter workflow"))).toBe(
+      false,
+    );
   });
 
   it("gives every waiting hire the connection once it is made", async () => {

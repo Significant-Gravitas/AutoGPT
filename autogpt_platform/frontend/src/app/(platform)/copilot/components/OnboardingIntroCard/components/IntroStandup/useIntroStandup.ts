@@ -18,7 +18,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-experts";
 import { requestComposerVoice } from "@/services/onboarding/composer-voice-request";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildTeam, chooseAsk, joinNames } from "./helpers";
 
 const COMPOSER_INPUT_ID = "chat-input-empty";
@@ -52,6 +52,24 @@ export function useIntroStandup({ path }: { path: string }) {
   );
   const { mutateAsync: grant } = useGrantExpertCredentials();
 
+  // A hire's schedules, and so its setup gaps, exist only once its install
+  // has finished; re-read them whenever the set of installing hires changes.
+  const installing = (hiresQuery.data ?? [])
+    .filter((expert) => expert.setup_status === "installing")
+    .map((expert) => expert.id)
+    .join(",");
+  const lastInstalling = useRef<string | null>(null);
+  const refetchSetup = setupQuery.refetch;
+  useEffect(() => {
+    if (!hiresQuery.isFetched) return;
+    if (
+      lastInstalling.current !== null &&
+      lastInstalling.current !== installing
+    )
+      void refetchSetup();
+    lastInstalling.current = installing;
+  }, [installing, hiresQuery.isFetched, refetchSetup]);
+
   const setupItems = setupQuery.data ?? [];
   const team = buildTeam({
     hires: hiresQuery.data ?? [],
@@ -61,7 +79,10 @@ export function useIntroStandup({ path }: { path: string }) {
   // Nothing is asked until every source has answered, so the ask never
   // switches shape under the user's cursor.
   const isSettled =
-    hiresQuery.isFetched && setupQuery.isFetched && !providersQuery.isPending;
+    hiresQuery.isFetched &&
+    setupQuery.isFetched &&
+    templatesQuery.isFetched &&
+    !providersQuery.isPending;
   const ask = isSettled
     ? chooseAsk({
         path,
