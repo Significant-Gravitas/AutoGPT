@@ -5,6 +5,7 @@ import {
   extractReviewTarget,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
+  findLinkedArtifact,
   getLatestCompactionPhase,
   getLatestCompactionStats,
   getMessageArtifacts,
@@ -541,5 +542,19 @@ describe("extractReviewTarget", () => {
         toolOutput({ execution_id: "exec-b", status: "QUEUED" }),
       ]),
     ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
+  });
+});
+
+describe("findLinkedArtifact", () => {
+  const A = "aaaaaaaa-1111-4a2b-9c3d-123456789abc";
+  const B = "bbbbbbbb-2222-4a2b-9c3d-123456789abc";
+
+  it("finds a link's file by its text and opens neither file two links share", () => {
+    const text = `[Report](workspace://${A}) then [Notes](workspace://${B}#text/plain), [Notes](workspace://${A})`;
+    const artifacts = extractWorkspaceArtifacts(text);
+
+    expect(findLinkedArtifact("Report", text, artifacts)?.id).toBe(A);
+    expect(findLinkedArtifact("Notes", text, artifacts)).toBeNull();
+    expect(findLinkedArtifact("Elsewhere", text, artifacts)).toBeNull();
   });
 });

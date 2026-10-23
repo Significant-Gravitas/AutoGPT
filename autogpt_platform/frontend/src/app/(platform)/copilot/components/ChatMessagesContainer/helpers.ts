@@ -137,6 +137,8 @@ export function getLastCompactionCallId(parts: MessagePart[]): string | null {
 export const WORKSPACE_FILE_PATTERN =
   /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
+const WORKSPACE_LINK_PATTERN =
+  /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g;
 
 export function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
@@ -230,6 +232,23 @@ export function extractWorkspaceArtifacts(
   }
 
   return artifacts;
+}
+
+/** The artifact an inline `[text](workspace://id)` link points at, found by
+ *  its visible text because Streamdown renders chat links as buttons with no
+ *  href. A text that links two different files matches neither. */
+export function findLinkedArtifact(
+  linkText: string,
+  markdown: string,
+  artifacts: ArtifactRef[],
+): ArtifactRef | null {
+  const ids = new Set<string>();
+  for (const match of markdown.matchAll(WORKSPACE_LINK_PATTERN)) {
+    if (match[1].trim() === linkText) ids.add(match[2]);
+  }
+  if (ids.size !== 1) return null;
+  const [id] = ids;
+  return artifacts.find((artifact) => artifact.id === id) ?? null;
 }
 
 export function getMessageArtifacts(
