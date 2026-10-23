@@ -56,7 +56,7 @@ export function ShowMore({
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "ml-1 inline-flex items-center gap-1 font-medium text-black",
+          "ml-1 inline-flex items-center gap-1 font-medium text-foreground-base",
           toggleClassName,
         )}
         type="button"

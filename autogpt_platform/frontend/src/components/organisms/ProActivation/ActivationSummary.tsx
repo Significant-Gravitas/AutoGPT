@@ -19,16 +19,18 @@ export function ActivationSummary({ terms }: Props) {
       ? `${plan}, ${shortDate(terms.period_starts_at)} to ${shortDate(terms.next_payment_at)}`
       : `${plan} subscription`;
   return (
-    <div className="overflow-hidden rounded-xlarge border border-zinc-200">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-zinc-200 bg-zinc-50 px-4 py-3.5">
-        <p className="text-sm text-zinc-500">
-          <span className="text-base font-semibold text-zinc-900">{plan}</span>{" "}
+    <div className="overflow-hidden rounded-xlarge border border-border-base">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border-base bg-surface-muted px-4 py-3.5">
+        <p className="text-sm text-foreground-tertiary">
+          <span className="text-base font-semibold text-foreground-strong">
+            {plan}
+          </span>{" "}
           ·{" "}
           <span className="capitalize">
             {cadence.charAt(0).toUpperCase() + cadence.slice(1)}
           </span>
         </p>
-        <p className="text-sm tabular-nums text-zinc-600">
+        <p className="text-sm tabular-nums text-foreground-secondary">
           {formatAmount(terms.renewal_unit_amount, terms.currency)} /{" "}
           {intervalLabel(
             terms.billing_interval,
@@ -36,7 +38,7 @@ export function ActivationSummary({ terms }: Props) {
           )}
         </p>
       </div>
-      <dl className="space-y-3.5 p-4 text-sm text-zinc-600">
+      <dl className="space-y-3.5 p-4 text-sm text-foreground-secondary">
         <div className="flex items-start justify-between gap-4">
           <dt>{period}</dt>
           <dd className="shrink-0 tabular-nums">
@@ -63,7 +65,7 @@ export function ActivationSummary({ terms }: Props) {
               : formatAmount(terms.tax_amount, terms.currency)}
           </dd>
         </div>
-        <div className="flex items-baseline justify-between gap-4 border-t border-zinc-200 pt-3.5 text-base font-semibold text-zinc-900">
+        <div className="flex items-baseline justify-between gap-4 border-t border-border-base pt-3.5 text-base font-semibold text-foreground-strong">
           <dt>Due today</dt>
           <dd className="tabular-nums">
             {formatAmount(terms.amount_due, terms.currency)}

@@ -37,7 +37,8 @@ function renderLink(
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 rounded-md text-sm text-blue-600 underline decoration-blue-300 underline-offset-2 transition-colors hover:text-blue-800 hover:decoration-blue-500"
+      // TODO(tokens): no exact role for decoration-blue-300 #93c5fd, hover:text-blue-800 #1e40af
+      className="inline-flex items-center gap-1.5 rounded-md text-sm text-info-foreground underline decoration-blue-300 underline-offset-2 transition-colors hover:text-blue-800 hover:decoration-info"
     >
       <span className="break-all">{displayText}</span>
       <Icon icon={LinkSquare01Icon} size={14} className="flex-shrink-0" />

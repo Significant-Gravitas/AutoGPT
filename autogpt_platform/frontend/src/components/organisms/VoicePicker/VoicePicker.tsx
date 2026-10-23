@@ -58,7 +58,7 @@ export function VoicePicker({
               "text-foreground",
               compact
                 ? "text-base font-medium"
-                : "text-2xl font-semibold tracking-[-0.02em]",
+                : "text-2xl font-semibold tracking-heading",
             )}
           >
             {name

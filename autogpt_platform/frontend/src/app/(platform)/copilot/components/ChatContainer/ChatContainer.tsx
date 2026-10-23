@@ -19,6 +19,7 @@ import type { FloatingControls } from "../ChatMessagesContainer/components/Threa
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { getPendingOnboardingCallId } from "../ExpertOnboardingCard/helpers";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
@@ -418,7 +419,7 @@ export const ChatContainer = ({
   const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
-    try {
+    async function resend() {
       const lastRow = [...messages].reverse().find((m) => m.role === "user");
       // A turn an answered card started failed after the call ran: resuming it
       // must not re-send the request that led to the call.
@@ -455,15 +456,18 @@ export const ChatContainer = ({
             : undefined,
         );
       }
-    } catch (error) {
-      toastSendFailure({
-        title: "Couldn't retry message",
-        error,
-        recovery: "your previous message is still in the chat",
-      });
-    } finally {
-      isRetryingRef.current = false;
     }
+    await resend()
+      .catch((error) => {
+        toastSendFailure({
+          title: "Couldn't retry message",
+          error,
+          recovery: "your previous message is still in the chat",
+        });
+      })
+      .finally(() => {
+        isRetryingRef.current = false;
+      });
   });
 
   return (
@@ -588,6 +592,10 @@ export const ChatContainer = ({
                         <ChatInput
                           inputId={SESSION_COMPOSER_ID}
                           draftKey={sessionDraftKey(sessionId)}
+                          // An unanswered card takes the keys for its shortcuts.
+                          autoFocus={
+                            getPendingOnboardingCallId(messages) === null
+                          }
                           onSend={guardedOnSend}
                           disabled={isInputDisabled}
                           sendDisabled={isLimitReached && !atReset}

@@ -11,6 +11,7 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getForgetMyMemoryFactMockHandler200,
+  getGetMyBusinessUnderstandingMockHandler200,
   getGetMyExpertMemoryOverviewMockHandler200,
   getGetMyMemoryOverviewMockHandler200,
   getListMyExpertMemoryFactsMockHandler200,
@@ -83,6 +84,7 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/settings/memory");
   server.use(
     getListExpertsMockHandler200([]),
+    getGetMyBusinessUnderstandingMockHandler200(),
     getGetMyMemoryOverviewMockHandler200({
       expert_id: null,
       facts: 19,
@@ -212,7 +214,8 @@ describe("Settings memory page — the memories list", () => {
       ),
     );
     expect(rows()).toHaveLength(50);
-    expect(screen.queryByText("Something went wrong")).toBeNull();
+    expect(screen.getByText("All memories")).toBeDefined();
+    expect(screen.queryByText(/when retrieving memory/)).toBeNull();
   });
 
   it("removes a forgotten memory at once, with no row left waiting on the server", async () => {

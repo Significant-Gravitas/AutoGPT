@@ -13,6 +13,7 @@ import { OpenDecisionsCard } from "./components/OpenDecisionsCard";
 import { RecentMemoriesCard } from "./components/RecentMemoriesCard";
 import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
+import { UnderstandingCard } from "./components/UnderstandingCard/UnderstandingCard";
 import { learningSheetScope } from "./helpers";
 import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
@@ -60,6 +61,8 @@ export default function SettingsMemoryPage() {
         scopeName={scopeName}
         onViewSummary={() => void chatPanel.openWithSeed("summary")}
       />
+
+      {scopeExpertID === null ? <UnderstandingCard /> : null}
 
       {memories.isError ? (
         <ErrorCard

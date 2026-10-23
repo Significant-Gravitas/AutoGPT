@@ -57,6 +57,9 @@ interface Props {
   onRetry?: () => void;
 }
 
+// memo-boundary: a transcript row. The transcript re-renders on every
+// streamed flush, and a settled row's props stay the same, so only the
+// streaming row renders again.
 export const MessageRow = memo(function MessageRow({
   message,
   isLastAssistant,
