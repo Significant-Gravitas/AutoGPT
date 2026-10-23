@@ -227,19 +227,6 @@ export const ChatContainer = ({
     ? expertIdentity
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
-  useOpenPendingOnboarding({
-    expertId: expertIdentity?.id ?? null,
-    sessionId,
-    enabled:
-      messages.length === 0 &&
-      !isInputDisabled &&
-      !isLimitReached &&
-      !isStreaming &&
-      !isCreatingSession &&
-      !isUploadingFiles &&
-      !pendingSend &&
-      !isExpertArchived,
-  });
   const chatExpert =
     !isResolvingExpertIdentity && expertIdentity && !expertIdentity.isArchived
       ? { id: expertIdentity.id, name: expertIdentity.name }
@@ -318,6 +305,21 @@ export const ChatContainer = ({
     sessionId,
     silenceTimeoutMs,
     onSend: guardedOnSend,
+  });
+  useOpenPendingOnboarding({
+    expertId: expertIdentity?.id ?? null,
+    sessionId,
+    enabled:
+      messages.length === 0 &&
+      !isInputDisabled &&
+      !isLimitReached &&
+      !isStreaming &&
+      !isCreatingSession &&
+      !isUploadingFiles &&
+      !pendingSend &&
+      !isExpertArchived &&
+      !voice.isActive &&
+      !voice.isStarting,
   });
   const toggleVoice = useStableCallback(voice.toggle);
   const retryVoiceUtterance = useStableCallback(voice.retryFailedUtterance);

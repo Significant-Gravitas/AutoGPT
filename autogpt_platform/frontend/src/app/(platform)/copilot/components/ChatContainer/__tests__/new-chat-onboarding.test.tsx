@@ -8,6 +8,22 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ChatContainer, type ChatContainerProps } from "../ChatContainer";
 
+const voice = vi.hoisted(() => ({ isActive: false }));
+
+vi.mock("../../../voice/useVoiceMode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../voice/useVoiceMode")>()),
+  useVoiceMode: () => ({
+    state: voice.isActive ? "listening" : "off",
+    isActive: voice.isActive,
+    isStarting: false,
+    statusLabel: "",
+    toggle: vi.fn(),
+    failure: null,
+    retryFailedUtterance: vi.fn(),
+    downloadFailedUtterance: vi.fn(),
+  }),
+}));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -39,6 +55,7 @@ const props: ChatContainerProps = {
 // The chat locks on the AutoPilot budget, and onboarding stays hidden while it
 // does: pin a budget with room left instead of faker's random usage and tier.
 beforeEach(() => {
+  voice.isActive = false;
   server.use(
     getGetV2GetCopilotUsageMockHandler200({
       tier: "PRO",
@@ -83,6 +100,15 @@ describe("new full-page expert chats", () => {
       />,
       "empty-session",
     );
+    expect(await screen.findByRole("textbox")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
+    expect(urlUpdates).toEqual([]);
+  });
+
+  test("stays in a new chat while voice mode runs in it", async () => {
+    voice.isActive = true;
+    const request = mockOnboarding();
+    const urlUpdates = renderAt(<ChatContainer {...props} />, "empty-session");
     expect(await screen.findByRole("textbox")).toBeDefined();
     expect(request).not.toHaveBeenCalled();
     expect(urlUpdates).toEqual([]);
