@@ -66,7 +66,7 @@ function BodyLink({ href, packagePaths, onOpenFile, children }: BodyLinkProps) {
 }
 
 const LINK_CLASS =
-  // TODO(tokens): no exact role: hover:text-violet-600
+  // TODO(tokens): no exact role: hover:text-violet-600 #7C3AED
   "rounded-sm text-foreground-strong underline underline-offset-2 transition-colors hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2";
 
 const components: Components = {

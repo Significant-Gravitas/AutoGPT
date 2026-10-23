@@ -12,7 +12,7 @@ interface Props {
 }
 
 const AVATAR_CLASS =
-  // TODO(tokens): no exact role: border-[#e3e3e3], ring-[#f9f9f9]
+  // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3, ring-[#f9f9f9] #F9F9F9
   "rounded-full border border-[#e3e3e3] ring-2 ring-[#f9f9f9]";
 
 // Same motion as the side panel's empty-state tiles: the outer two lean out

@@ -27,12 +27,11 @@ interface Props {
 // the two families read as one system. Body stays white.
 const WASHES: Record<string, string> = {
   violet:
-    // TODO(tokens): no exact role: bg-[…]
+    // TODO(tokens): no exact role: bg-[…] #8B5CF6
     "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
-  // TODO(tokens): no exact role: bg-[…]
-  blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(59,130,246,0.10),transparent_70%)]",
+  blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-info)/0.10),transparent_70%)]",
   green:
-    // TODO(tokens): no exact role: bg-[…]
+    // TODO(tokens): no exact role: bg-[…] #22C55E
     "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(34,197,94,0.10),transparent_70%)]",
 };
 
@@ -56,7 +55,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
 
   return (
     <div
-      // TODO(tokens): no exact role: shadow-[…], hover:shadow-[…]
+      // TODO(tokens): no exact role: shadow-[…] #101828, hover:shadow-[…] #101828
       className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       data-testid="featured-store-card"
     >
@@ -66,7 +65,10 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
           getWash(backgroundColor),
         )}
       />
-      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]">
+      <div
+        // TODO(tokens): no fitting role for ring-black/5 #141414; #141414 is foreground-base (a text colour)
+        className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]"
+      >
         {agent.agent_image && !imageError ? (
           <>
             {!imageLoaded && (
@@ -84,7 +86,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
           </>
         ) : (
           <div
-            // TODO(tokens): no exact role: bg-violet-100
+            // TODO(tokens): no exact role: bg-violet-100 #EDE9FE
             className="absolute inset-0 rounded-xl bg-violet-100"
           />
         )}

@@ -50,7 +50,7 @@ export function StoreCard({
 
   return (
     <div
-      // TODO(tokens): no exact role: shadow-[…], hover:shadow-[…]
+      // TODO(tokens): no exact role: shadow-[…] #101828, hover:shadow-[…] #101828
       className="group relative flex h-[26rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-border-base/80 bg-surface p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       onClick={handleClick}
       data-testid="store-card"
@@ -64,7 +64,10 @@ export function StoreCard({
         }
       }}
     >
-      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]">
+      <div
+        // TODO(tokens): no fitting role for ring-black/5 #141414; #141414 is foreground-base (a text colour)
+        className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]"
+      >
         {agentImage && !imageError ? (
           <>
             {!imageLoaded && (
@@ -82,7 +85,7 @@ export function StoreCard({
           </>
         ) : (
           <div
-            // TODO(tokens): no exact role: bg-violet-100
+            // TODO(tokens): no exact role: bg-violet-100 #EDE9FE
             className="absolute inset-0 rounded-xl bg-violet-100"
           />
         )}

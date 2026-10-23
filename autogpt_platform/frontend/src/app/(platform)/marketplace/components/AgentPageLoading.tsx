@@ -21,11 +21,11 @@ export function AgentPageLoading() {
           {/* Left: Agent info panel */}
           <div className="w-full lg:w-2/5">
             <div
-              // TODO(tokens): no exact role: from-blue-100/50, to-indigo-100/50
+              // TODO(tokens): no exact role: from-blue-100/50 #DBEAFE, to-indigo-100/50 #E0E7FF
               className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-indigo-100/50 p-[1px]"
             >
               <div
-                // TODO(tokens): no exact role: bg-gray-50
+                // TODO(tokens): no exact role: bg-gray-50 #F9FAFB
                 className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4"
               >
                 {/* Title */}

@@ -32,7 +32,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
     <Link
       href={`/marketplace/skills/${skill.slug}`}
       data-testid="skill-card"
-      // TODO(tokens): no exact role: focus-visible:ring-violet-600, shadow-[…], hover:shadow-[…]
+      // TODO(tokens): no exact role: focus-visible:ring-violet-600 #7C3AED, shadow-[…] #101828, hover:shadow-[…] #101828
       className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
     >
       <div
@@ -119,7 +119,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
           </span>
           {isInstalled ? (
             <span
-              // TODO(tokens): no exact role: text-emerald-600
+              // TODO(tokens): no exact role: text-emerald-600 #059669
               className="flex items-center gap-1.5 text-base font-medium text-emerald-600"
             >
               <Icon icon={CheckmarkCircle02Icon} size={18} aria-hidden />

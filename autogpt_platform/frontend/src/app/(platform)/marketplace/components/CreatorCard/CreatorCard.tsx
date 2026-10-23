@@ -29,7 +29,7 @@ export function CreatorCard({
   return (
     <button
       type="button"
-      // TODO(tokens): no exact role: shadow-[…], hover:shadow-[…]
+      // TODO(tokens): no exact role: shadow-[…] #101828, hover:shadow-[…] #101828
       className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] ${backgroundColor(index)}`}
       onClick={onClick}
       data-testid="creator-card"

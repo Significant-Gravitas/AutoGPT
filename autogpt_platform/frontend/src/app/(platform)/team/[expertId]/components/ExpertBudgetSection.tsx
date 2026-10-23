@@ -27,8 +27,9 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
       aria-label={`${expert.name} budget`}
       style={
         color
-          ? // TODO(tokens): #18181b equals --color-primary, a button role, not an ink to tint with; needs an ink role
-            { color: `color-mix(in srgb, ${color} 55%, #18181b)` }
+          ? {
+              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
+            }
           : undefined
       }
       className={cn("flex w-full shrink-0 flex-col gap-1.5", className)}

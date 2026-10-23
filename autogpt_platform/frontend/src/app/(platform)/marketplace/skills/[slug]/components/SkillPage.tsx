@@ -91,7 +91,10 @@ export function SkillPage({ slug }: Props) {
 
       <header>
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-          <span className="inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-surface shadow-sm ring-1 ring-black/5">
+          <span
+            // TODO(tokens): no fitting role for ring-black/5 #141414; #141414 is foreground-base (a text colour)
+            className="inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-surface shadow-sm ring-1 ring-black/5"
+          >
             <Icon
               icon={BookOpen01Icon}
               size={32}
@@ -169,7 +172,7 @@ export function SkillPage({ slug }: Props) {
                     href={skill.source_url}
                     target="_blank"
                     rel="noreferrer"
-                    // TODO(tokens): no exact role: decoration-zinc-300
+                    // TODO(tokens): no fitting role for decoration-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
                     className="underline decoration-zinc-300 underline-offset-2 hover:text-foreground-strong"
                   >
                     {skill.source_repo}

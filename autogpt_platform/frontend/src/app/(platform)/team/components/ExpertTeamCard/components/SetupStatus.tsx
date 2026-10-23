@@ -13,11 +13,11 @@ export function SetupStatus({ expert, isRetrying, onRetry }: Props) {
     return (
       <div
         role="status"
-        // TODO(tokens): no exact role: bg-sky-50, ring-sky-200
+        // TODO(tokens): no exact role: bg-sky-50 #F0F9FF, ring-sky-200 #BAE6FD
         className="mx-4 mb-3 rounded-lg bg-sky-50 px-3 py-2 ring-1 ring-inset ring-sky-200"
       >
         <Text
-          // TODO(tokens): no exact role: text-sky-800
+          // TODO(tokens): no exact role: text-sky-800 #075985
           variant="body"
           className="text-sky-800"
         >

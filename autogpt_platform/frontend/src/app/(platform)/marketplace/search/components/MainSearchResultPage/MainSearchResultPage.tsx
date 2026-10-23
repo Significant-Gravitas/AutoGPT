@@ -87,13 +87,13 @@ export const MainSearchResultPage = ({
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
             <h2
-              // TODO(tokens): no exact role: text-neutral-800
+              // TODO(tokens): no exact role: text-neutral-800 #262626
               className="text-base font-medium leading-normal text-neutral-800"
             >
               Showing results for:
             </h2>
             <h1
-              // TODO(tokens): no exact role: text-neutral-800
+              // TODO(tokens): no exact role: text-neutral-800 #262626
               className="font-poppins text-2xl font-semibold leading-8 text-neutral-800"
             >
               &quot;{searchTerm}&quot;
@@ -167,13 +167,13 @@ export const MainSearchResultPage = ({
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center">
             <h3
-              // TODO(tokens): no exact role: text-neutral-600
+              // TODO(tokens): no exact role: text-neutral-600 #525252
               className="mb-2 text-xl font-medium text-neutral-600"
             >
               No results found
             </h3>
             <p
-              // TODO(tokens): no exact role: text-neutral-500
+              // TODO(tokens): no exact role: text-neutral-500 #737373
               className="text-neutral-500"
             >
               Try adjusting your search terms or filters

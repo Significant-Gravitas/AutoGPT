@@ -16,10 +16,9 @@ const TAG_ICON_SIZE: Record<ChipSize, number> = {
  *  for the fill and edge, so the tag reads clearly on white. */
 export function categoryTagStyle(color: string): CSSProperties {
   return {
-    // TODO(tokens): #18181b equals --color-primary, a button role, not an ink to tint with; needs an ink role
-    color: `color-mix(in srgb, ${color} 55%, #18181b)`,
-    // TODO(tokens): white #FFFFFF as a tint base has no role (surface is #FEFEFE)
-    backgroundColor: `color-mix(in srgb, ${color} 12%, white)`,
+    color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
+    backgroundColor: `color-mix(in srgb, ${color} 12%, rgb(var(--color-card)))`,
+    // TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour)
     borderColor: `color-mix(in srgb, ${color} 35%, white)`,
   };
 }

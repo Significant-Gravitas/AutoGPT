@@ -23,7 +23,7 @@ export function ExpertAccess({ name, providers }: Props) {
           >
             <span
               aria-hidden="true"
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border-base bg-gradient-to-b from-white to-surface-muted"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border-base bg-gradient-to-b from-surface to-surface-muted"
             >
               <IntegrationLogo provider={provider} size={22} />
             </span>

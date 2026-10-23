@@ -114,7 +114,7 @@ export function ExpertTeamCard({
               color={expert.color}
               backgroundColor={cover.color}
               size={88}
-              // TODO(tokens): no exact role: border-[#e3e3e3]
+              // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
               className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
             />
           </span>

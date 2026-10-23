@@ -52,15 +52,15 @@ function ExpertModeOptions({ expert }: Props) {
             <label
               key={option.value}
               className={cn(
-                // TODO(tokens): no exact role: has-[:focus-visible]:outline-zinc-800
+                // TODO(tokens): no fitting role for has-[:focus-visible]:outline-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
                 "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-zinc-800",
                 isSelected
-                  ? // TODO(tokens): no exact role: ring-zinc-800
+                  ? // TODO(tokens): no fitting role for ring-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
                     "bg-surface ring-2 ring-inset ring-zinc-800"
                   : "bg-surface-muted ring-1 ring-inset ring-border-base hover:bg-surface-hover",
                 option.value === "unsupervised" &&
                   isSelected &&
-                  // TODO(tokens): no exact role: ring-amber-600
+                  // TODO(tokens): no exact role: ring-amber-600 #D97706
                   "bg-warning-surface ring-amber-600",
               )}
             >

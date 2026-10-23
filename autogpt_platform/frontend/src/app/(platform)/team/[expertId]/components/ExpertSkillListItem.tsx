@@ -135,7 +135,7 @@ export function ExpertSkillListItem({
             disabled={isSaving}
             onClick={() => onRemove(entry.name)}
             aria-label={`Remove ${entry.name}`}
-            // TODO(tokens): no exact role: hover:text-red-600
+            // TODO(tokens): no fitting role for hover:text-red-600 #D93636; #D93636 is error-hover (a hover fill)
             className="text-foreground-tertiary hover:text-red-600"
           />
         ) : null}

@@ -17,7 +17,7 @@ import {
 const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
 
 const SECONDARY_CLASS =
-  // TODO(tokens): no exact role: shadow-[…]
+  // TODO(tokens): no exact role: shadow-[…] #101828
   "border-border-base bg-surface shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-border-strong hover:bg-surface-muted";
 
 interface Props {

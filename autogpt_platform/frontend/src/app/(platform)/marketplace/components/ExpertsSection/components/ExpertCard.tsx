@@ -55,7 +55,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
 
   return (
     <div
-      // TODO(tokens): no exact role: shadow-[…], hover:shadow-[…]
+      // TODO(tokens): no exact role: shadow-[…] #101828, hover:shadow-[…] #101828
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
     >
       <div
@@ -64,7 +64,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
       />
       <Link
         href={`/marketplace/experts/${expert.id}`}
-        // TODO(tokens): no exact role: focus-visible:ring-zinc-400
+        // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
         className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
       >
         <ExpertAvatar
@@ -72,7 +72,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
           avatarUrl={expert.avatar_url}
           size={88}
           backgroundColor={topicColor}
-          // TODO(tokens): no exact role: border-[#e3e3e3]
+          // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3; no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a surface fill), action-foreground (a text colour)
           className="rounded-full border border-[#e3e3e3] ring-4 ring-white"
         />
 
@@ -119,7 +119,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        // TODO(tokens): no exact role: focus-visible:ring-violet-600
+                        // TODO(tokens): no exact role: focus-visible:ring-violet-600 #7C3AED
                         "h-6 cursor-default border-transparent px-0 text-foreground-tertiary outline-none focus-visible:ring-2 focus-visible:ring-violet-600",
                       )}
                     >

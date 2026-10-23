@@ -114,19 +114,18 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
           </div>
         ) : (
           <div
-            // TODO(tokens): from-zinc-800/via-zinc-900 equal action/action-hover, the primary button roles; a screen backdrop needs its own role
-            className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0"
+            // TODO(tokens): no fitting role for to-black #141414; #141414 is foreground-base (a text colour)
+            className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-action via-action-hover to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0"
           >
             <div
               aria-hidden
-              // TODO(tokens): no exact role: bg-[…]
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_60%)]"
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(var(--color-card)/0.08),transparent_60%)]"
             />
             <span
               className={cn(
                 "relative flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
                 running
-                  ? // TODO(tokens): no exact role: bg-emerald-500/15, text-emerald-300
+                  ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981, text-emerald-300 #6EE7B7
                     "bg-emerald-500/15 text-emerald-300"
                   : "bg-surface/10 text-foreground-disabled",
               )}
@@ -135,7 +134,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                 aria-hidden
                 className={cn(
                   "size-1.5 rounded-full",
-                  // TODO(tokens): no exact role: bg-emerald-400, bg-zinc-400
+                  // TODO(tokens): no exact role: bg-emerald-400 #34D399; no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
                   running ? "bg-emerald-400" : "bg-zinc-400",
                 )}
               />

@@ -54,7 +54,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
             size={32}
-            // TODO(tokens): no exact role: border-[#e3e3e3]
+            // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
             className="rounded-full border border-[#e3e3e3]"
           />
         ) : (
@@ -78,7 +78,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
               <Text
                 variant="small-medium"
                 as="span"
-                // TODO(tokens): no exact role: ring-amber-600/10
+                // TODO(tokens): no exact role: ring-amber-600/10 #D97706
                 className="rounded bg-warning-surface px-1.5 py-px text-warning-foreground ring-1 ring-inset ring-amber-600/10"
               >
                 Waiting

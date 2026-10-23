@@ -33,7 +33,7 @@ export function SetupNeeded() {
         <Icon
           icon={Alert01Icon}
           size={14}
-          // TODO(tokens): no exact role: text-amber-600
+          // TODO(tokens): no exact role: text-amber-600 #D97706
           className="text-amber-600"
           aria-hidden
         />

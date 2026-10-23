@@ -31,6 +31,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
             <span
               aria-hidden="true"
               className={cn(
+                // TODO(tokens): no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a surface fill), action-foreground (a text colour)
                 "relative flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ring-4 ring-white",
                 accent.pill,
               )}
@@ -49,7 +50,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
                 ) : null}
               </div>
               {item.timing ? (
-                <span className="shrink-0 self-start whitespace-nowrap rounded-full border border-border-base bg-gradient-to-b from-white to-surface-muted px-2.5 py-0.5 text-xs font-medium leading-5 text-foreground-secondary">
+                <span className="shrink-0 self-start whitespace-nowrap rounded-full border border-border-base bg-gradient-to-b from-surface to-surface-muted px-2.5 py-0.5 text-xs font-medium leading-5 text-foreground-secondary">
                   {item.timing}
                 </span>
               ) : null}

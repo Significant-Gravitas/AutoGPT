@@ -16,21 +16,21 @@ const STATUS = {
     label: "Needs setup",
     className: "bg-warning-surface text-warning-foreground",
     icon: Alert01Icon,
-    // TODO(tokens): no exact role: text-amber-600
+    // TODO(tokens): no exact role: text-amber-600 #D97706
     iconClassName: "bg-warning-surface text-amber-600",
   },
   scheduled: {
     label: "Scheduled",
     className: "bg-surface text-foreground-body",
     icon: Calendar03Icon,
-    // TODO(tokens): no exact role: text-violet-600
+    // TODO(tokens): no exact role: text-violet-600 #7C3AED
     iconClassName: "bg-accent-surface text-violet-600",
   },
   trigger: {
     label: "Triggered",
     className: "bg-surface text-foreground-body",
     icon: FlashIcon,
-    // TODO(tokens): no exact role: bg-sky-50, text-sky-600
+    // TODO(tokens): no exact role: bg-sky-50 #F0F9FF, text-sky-600 #0284C7
     iconClassName: "bg-sky-50 text-sky-600",
   },
   manual: {

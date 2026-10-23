@@ -146,7 +146,7 @@ export function UseExistingCredentialsDialog({
                   return (
                     <li
                       key={credential.id}
-                      // TODO(tokens): no exact role: bg-neutral-100
+                      // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5
                       className="flex items-center gap-3 rounded-xl bg-neutral-100 px-3 py-2.5"
                     >
                       <IntegrationLogo
@@ -224,7 +224,7 @@ export function UseExistingCredentialsDialog({
                   <div
                     aria-hidden="true"
                     className={cn(
-                      "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent transition-opacity duration-200",
+                      "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-200",
 
                       hasMoreBelow ? "opacity-100" : "opacity-0",
                     )}

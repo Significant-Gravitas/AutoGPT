@@ -20,7 +20,7 @@ const STATUS_STYLES: Partial<
 > = {
   working: {
     label: "Working",
-    // TODO(tokens): no exact role: bg-emerald-50, text-emerald-700
+    // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
     className: "bg-emerald-50 text-emerald-700",
     icon: Activity01Icon,
   },

@@ -25,7 +25,7 @@ export function AutopilotHeader() {
         <AutopilotAvatar
           size={96}
           transparent={false}
-          // TODO(tokens): no exact role: border-[#e3e3e3]
+          // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
           className="relative z-10 -mt-12 ml-4 rounded-full border border-[#e3e3e3]"
         />
         <div className="min-w-0 flex-1">

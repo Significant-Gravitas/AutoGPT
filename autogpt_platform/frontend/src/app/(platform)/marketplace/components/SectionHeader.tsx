@@ -39,7 +39,7 @@ export function SectionHeader({
       <div>
         {eyebrow ? (
           <div
-            // TODO(tokens): no exact role: text-violet-600; no exact text token: tracking-[0.14em]
+            // TODO(tokens): no exact role: text-violet-600 #7C3AED; no exact text token: tracking-[0.14em]
             className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600"
           >
             {eyebrowIcon}

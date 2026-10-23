@@ -27,7 +27,7 @@ export function SkillTile({ skill, isInstalled, onSee }: Props) {
       trailing={
         isInstalled ? (
           <span
-            // TODO(tokens): no exact role: text-emerald-600
+            // TODO(tokens): no exact role: text-emerald-600 #059669
             className="flex shrink-0 items-center gap-1 pr-1 text-body-sm font-medium leading-inherit text-emerald-600"
           >
             <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />

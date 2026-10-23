@@ -112,7 +112,7 @@ function ActivityStatus({ isActive }: ActivityStatusProps) {
         aria-hidden
         className={cn(
           "size-2 rounded-full",
-          // TODO(tokens): no exact role: bg-emerald-500, bg-zinc-300
+          // TODO(tokens): no exact role: bg-emerald-500 #10B981; no fitting role for bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
           isActive ? "bg-emerald-500" : "bg-zinc-300",
         )}
       />

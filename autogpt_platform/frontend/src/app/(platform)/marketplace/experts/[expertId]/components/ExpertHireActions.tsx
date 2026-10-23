@@ -11,7 +11,7 @@ const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
 // A white, hairline-bordered secondary so the button sits quietly next to
 // the status badge instead of reading as a solid grey slab.
 const SECONDARY_CLASS =
-  // TODO(tokens): no exact role: shadow-[…]
+  // TODO(tokens): no exact role: shadow-[…] #101828
   "border-border-base bg-surface shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-border-strong hover:bg-surface-muted";
 
 interface Props {

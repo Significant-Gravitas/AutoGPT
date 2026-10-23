@@ -49,7 +49,7 @@ export function RecentConversations({
               key="a"
               icon={Comment01Icon}
               size={22}
-              // TODO(tokens): no exact role: text-sky-500
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
@@ -62,7 +62,7 @@ export function RecentConversations({
               key="c"
               icon={BubbleChatIcon}
               size={22}
-              // TODO(tokens): no exact role: text-violet-500
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}

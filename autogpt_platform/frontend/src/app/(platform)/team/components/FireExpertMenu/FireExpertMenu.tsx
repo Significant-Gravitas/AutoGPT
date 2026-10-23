@@ -32,7 +32,7 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
       <DropdownMenuContent align="end" sideOffset={6}>
         <DropdownMenuItem
           onSelect={onFire}
-          // TODO(tokens): no exact role: text-red-600
+          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill)
           className="flex cursor-pointer items-center gap-2 text-red-600 focus:bg-error-surface focus:text-error-foreground"
         >
           <Icon icon={Logout03Icon} size={14} />

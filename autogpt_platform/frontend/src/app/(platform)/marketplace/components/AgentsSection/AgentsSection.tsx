@@ -64,7 +64,7 @@ export function AgentsSection({
         {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
           <Text
-            // TODO(tokens): no exact role: text-gray-500
+            // TODO(tokens): no exact role: text-gray-500 #6B7280
             variant="body"
             className="ml-4 mt-8 text-gray-500"
           >

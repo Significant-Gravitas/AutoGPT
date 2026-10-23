@@ -104,15 +104,15 @@ export const AgentInfo = ({
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Text
+              // TODO(tokens): no exact role: text-neutral-900 #171717
               variant="body"
-              // TODO(tokens): no exact role: text-neutral-900
               className="font-semibold text-neutral-900"
             >
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
               <span
-                // TODO(tokens): no exact role: bg-blue-100, text-blue-800
+                // TODO(tokens): no exact role: bg-blue-100 #DBEAFE, text-blue-800 #1E40AF
                 className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800"
               >
                 Current
@@ -121,8 +121,8 @@ export const AgentInfo = ({
           </div>
           {changelogEntry && (
             <Text
+              // TODO(tokens): no exact role: text-neutral-500 #737373
               variant="small"
-              // TODO(tokens): no exact role: text-neutral-500
               className="text-neutral-500"
             >
               {new Date(changelogEntry.date).toLocaleDateString("en-US", {
@@ -138,8 +138,8 @@ export const AgentInfo = ({
         {changelogEntry && (
           <div className="space-y-2">
             <Text
+              // TODO(tokens): no exact role: text-neutral-700 #404040
               variant="body"
-              // TODO(tokens): no exact role: text-neutral-700
               className="text-neutral-700"
             >
               {changelogEntry.changes_summary}
@@ -153,11 +153,11 @@ export const AgentInfo = ({
   return (
     <div className="w-full px-4 sm:px-6 lg:px-0">
       <div
-        // TODO(tokens): no exact role: from-blue-200, to-indigo-200
+        // TODO(tokens): no exact role: from-blue-200 #BFDBFE, to-indigo-200 #C7D2FE
         className="mb-8 rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]"
       >
         <div
-          // TODO(tokens): no exact role: bg-gray-50
+          // TODO(tokens): no exact role: bg-gray-50 #F9FAFB
           className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4"
         >
           {/* Title */}
@@ -189,7 +189,7 @@ export const AgentInfo = ({
 
           {/* Short Description */}
           <div
-            // TODO(tokens): no exact role: text-neutral-600
+            // TODO(tokens): no exact role: text-neutral-600 #525252
             className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7"
           >
             {shortDescription}
@@ -200,7 +200,7 @@ export const AgentInfo = ({
             {user && (
               <Button
                 variant="primary"
-                // TODO(tokens): no exact role: border-violet-600, bg-violet-600, hover:border-violet-500, hover:bg-violet-500, hover:shadow-[…]
+                // TODO(tokens): no exact role: border-violet-600 #7C3AED, bg-violet-600 #7C3AED, hover:border-violet-500 #8B5CF6, hover:bg-violet-500 #8B5CF6, hover:shadow-[…] #8B5CF6
                 className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
                 data-testid="agent-add-library-button"
                 disabled={isAddingAgentToLibrary}
@@ -236,7 +236,7 @@ export const AgentInfo = ({
           <div className="mt-3 flex w-full items-center justify-between gap-2">
             <div className="flex items-center gap-0">
               <Text
-                // TODO(tokens): no exact role: text-neutral-500
+                // TODO(tokens): no exact role: text-neutral-500 #737373
                 variant="body"
                 className="text-neutral-500"
               >
@@ -276,7 +276,7 @@ export const AgentInfo = ({
             <Text
               variant="body"
               data-testid={"agent-description"}
-              // TODO(tokens): no exact role: text-neutral-600
+              // TODO(tokens): no exact role: text-neutral-600 #525252
               className="text-md whitespace-pre-line text-neutral-600"
             >
               {longDescription}
@@ -300,7 +300,7 @@ export const AgentInfo = ({
                     <Badge
                       variant="info"
                       key={index}
-                      // TODO(tokens): no exact role: border-purple-100, bg-purple-50, text-purple-800
+                      // TODO(tokens): no exact role: border-purple-100 #EFE8FE, bg-purple-50 #F1EBFE, text-purple-800 #411C87
                       className="border border-purple-100 bg-purple-50 text-purple-800"
                     >
                       {category}
@@ -309,7 +309,7 @@ export const AgentInfo = ({
               </div>
             ) : (
               <Text
-                // TODO(tokens): no exact role: text-neutral-400
+                // TODO(tokens): no exact role: text-neutral-400 #A3A3A3
                 variant="body"
                 className="text-neutral-400"
               >
@@ -339,7 +339,7 @@ export const AgentInfo = ({
                     <Button
                       variant="ghost"
                       size="small"
-                      // TODO(tokens): no exact role: text-violet-600, hover:text-violet-500
+                      // TODO(tokens): no exact role: text-violet-600 #7C3AED, hover:text-violet-500 #8B5CF6
                       className="text-violet-600 hover:text-violet-500"
                     >
                       (Changelog)
@@ -355,14 +355,14 @@ export const AgentInfo = ({
             </div>
             <div className="flex w-full items-center justify-start gap-8">
               <Text
-                // TODO(tokens): no exact role: text-neutral-600
+                // TODO(tokens): no exact role: text-neutral-600 #525252
                 variant="body"
                 className="text-neutral-600"
               >
                 {version}.0
               </Text>
               <Text
-                // TODO(tokens): no exact role: text-neutral-600
+                // TODO(tokens): no exact role: text-neutral-600 #525252
                 variant="body"
                 className="text-neutral-600"
               >

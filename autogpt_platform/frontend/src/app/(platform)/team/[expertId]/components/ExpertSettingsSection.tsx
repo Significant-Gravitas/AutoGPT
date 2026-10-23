@@ -49,11 +49,11 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
       className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
       <div
-        // TODO(tokens): no exact role: border-red-100
+        // TODO(tokens): no exact role: border-red-100 #FDECEC
         className="flex items-start gap-3 border-b border-red-100 bg-error-surface/60 px-5 py-4"
       >
         <span
-          // TODO(tokens): no exact role: bg-red-100, text-red-600
+          // TODO(tokens): no exact role: bg-red-100 #FDECEC; no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill)
           className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600"
         >
           <Icon icon={UserRemove01Icon} size={20} aria-hidden />
@@ -98,7 +98,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               {pauseNames.map((item) => (
                 <span
                   key={item.id}
-                  // TODO(tokens): no exact role: text-amber-800
+                  // TODO(tokens): no exact role: text-amber-800 #92400E
                   className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 text-xs text-amber-800"
                 >
                   {item.name}
@@ -177,7 +177,7 @@ function Consequence({
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-lg border",
           isWarn
-            ? // TODO(tokens): no exact role: text-amber-600
+            ? // TODO(tokens): no exact role: text-amber-600 #D97706
               "border-warning-border bg-warning-surface text-amber-600"
             : "border-border-base bg-surface-muted text-foreground-tertiary",
         )}
@@ -195,7 +195,7 @@ function Consequence({
                 "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
                 isWarn
                   ? "bg-warning-surface text-warning-foreground"
-                  : // TODO(tokens): no exact role: bg-emerald-50, text-emerald-700
+                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
                     "bg-emerald-50 text-emerald-700",
               )}
             >

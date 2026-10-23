@@ -182,7 +182,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
       </div>
       <div className="flex items-center gap-3">
         <Text
-          // TODO(tokens): no exact role: text-emerald-600
+          // TODO(tokens): no exact role: text-emerald-600 #059669
           variant="eyebrow"
           className="text-emerald-600"
         >
@@ -194,7 +194,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
           disabled={isRemoving}
           aria-busy={isRemoving}
           aria-label={`Remove ${name}`}
-          // TODO(tokens): no exact role: focus-visible:ring-zinc-400
+          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
           className="inline-flex size-7 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isRemoving ? (
