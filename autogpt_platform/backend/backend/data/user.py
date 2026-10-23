@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -56,6 +57,9 @@ settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
+_USER_CACHE_CLEAR_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="user-cache-clear"
+)
 _INVALID_UNSUBSCRIBE_TOKEN = "Invalid unsubscribe token"
 
 
@@ -1167,7 +1171,23 @@ async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
     get_user_by_id.cache_delete(user_id)
     if email:
         get_user_by_email.cache_delete(email)
-    await asyncio.to_thread(get_or_create_user.cache_clear)
+    await _clear_get_or_create_user_cache()
+
+
+async def _clear_get_or_create_user_cache() -> None:
+    """Run the serialized clear, deferring cancellation until it finishes."""
+    clear = asyncio.get_running_loop().run_in_executor(
+        _USER_CACHE_CLEAR_EXECUTOR, get_or_create_user.cache_clear
+    )
+    cancelled = False
+    while not clear.done():
+        try:
+            await asyncio.shield(clear)
+        except asyncio.CancelledError:
+            cancelled = True
+    clear.result()
+    if cancelled:
+        raise asyncio.CancelledError
 
 
 class BriefingCandidate(BaseModel):
