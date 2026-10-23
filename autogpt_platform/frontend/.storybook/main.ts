@@ -14,6 +14,7 @@ const config: StorybookConfig = {
     "../src/app/[(]platform[)]/copilot/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/components/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/marketplace/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]no-navbar[)]/onboarding/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],
   addons: [
     "@storybook/addon-a11y",
