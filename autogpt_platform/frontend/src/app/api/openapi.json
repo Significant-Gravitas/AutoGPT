@@ -12674,7 +12674,7 @@
       "delete": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Discard Brain Dump",
-        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nStored audio is left alone. A named take still uploading is also marked\nfailed, so it no longer holds the row against the user's next take.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
         "operationId": "discard_brain_dump",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

@@ -30,6 +30,10 @@ export interface RecordingMeta {
   startedAt: number;
   durationSecs: number;
   finalized: boolean;
+  // The account that recorded it: the store is shared by everyone using this browser.
+  userID?: string;
+  // Skipped past but kept for Back, until onboarding completes.
+  skipped?: boolean;
 }
 
 export function isIndexedDBAvailable(): boolean {
@@ -152,12 +156,12 @@ export async function saveMeta(meta: RecordingMeta) {
 // The take a returning user should be offered. Two tabs can each have a
 // recording in flight, so prefer the newest *unfinalized* one — a
 // finished take is not something to recover from.
-export async function getMeta() {
-  const all = await runTransaction<RecordingMeta[]>(
-    META_STORE,
-    "readonly",
-    (store) => store.getAll(),
-  );
+export async function getMeta(userID: string | undefined) {
+  const all = (
+    await runTransaction<RecordingMeta[]>(META_STORE, "readonly", (store) =>
+      store.getAll(),
+    )
+  ).filter((meta) => meta.userID === userID);
   const unfinalized = all.filter((meta) => !meta.finalized);
   const candidates = unfinalized.length > 0 ? unfinalized : all;
   return candidates.sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
@@ -192,11 +196,16 @@ export async function clearRecording(recordingId: string) {
   );
 }
 
-// Once onboarding is finished, nothing can offer a take back, and a skipped
-// one is otherwise kept for Back.
-export async function clearAllRecordings() {
-  await runTransaction(PARTS_STORE, "readwrite", (store) => store.clear());
-  await runTransaction(META_STORE, "readwrite", (store) => store.clear());
+// Once onboarding is finished, nothing can offer a skipped take back. Other
+// tabs' takes and other accounts' are left alone.
+export async function clearSkippedRecordings(userID: string) {
+  const all = await runTransaction<RecordingMeta[]>(
+    META_STORE,
+    "readonly",
+    (store) => store.getAll(),
+  );
+  const skipped = all.filter((meta) => meta.skipped && meta.userID === userID);
+  for (const meta of skipped) await clearRecording(meta.recordingId);
 }
 
 export function partId(recordingId: string, partIndex: number) {

@@ -652,6 +652,29 @@ describe("useBrainDumpStep — insufficient content", () => {
     },
   );
 
+  it.each([
+    {
+      isOffline: true,
+      reason: "We couldn't reach the server. Check your connection.",
+    },
+    { isOffline: false, reason: "Part of your recording didn't reach us." },
+  ])(
+    "says an upload failed without blaming the connection unless offline ($isOffline)",
+    async ({ isOffline, reason }) => {
+      recorderState.recordingId = "rec-1";
+      recorderState.isOffline = isOffline;
+      recorderState.flushUploads.mockResolvedValue(false);
+      const { result } = await renderStep();
+
+      await act(async () => {
+        await result.current.handleDone();
+      });
+
+      expect(result.current.failureReason).toBe(reason);
+      expect(finalizeBrainDump).not.toHaveBeenCalled();
+    },
+  );
+
   it("recovers into a fresh take when the user records again", async () => {
     recorderState.recordingId = "rec-1";
     finalizeBrainDump.mockResolvedValueOnce(insufficient());
@@ -1014,16 +1037,31 @@ describe("useBrainDumpStep — skip", () => {
   // under its own id: under the take's, a later send of it reads as done.
   it("keeps a recorded take it is skipping past", async () => {
     recorderState.recordingId = "rec-1";
+    const stored = {
+      recordingId: "rec-1",
+      mimeType: "audio/webm",
+      startedAt: 5,
+      durationSecs: 120,
+      finalized: false,
+      userID: "u1",
+    };
+    getMetaById.mockResolvedValue(stored);
     const { result } = await renderStep();
 
     await act(async () => {
       await result.current.handleSkip();
     });
 
-    expect(saveMeta).not.toHaveBeenCalled();
+    // Marked so onboarding's completion clears it, and nothing else does.
+    expect(saveMeta).toHaveBeenCalledWith({ ...stored, skipped: true });
     expect(clearRecording).not.toHaveBeenCalled();
     expect(finalizeBody().recording_id).not.toBe("rec-1");
     expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    // The discard closes a half-uploaded take, which would hold the row
+    // against the skip if the skip landed first.
+    expect(discardBrainDump.mock.invocationCallOrder[0]).toBeLessThan(
+      finalizeBrainDump.mock.invocationCallOrder[0],
+    );
     expect(recorderState.resetQueue).toHaveBeenCalled();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
   });

@@ -112,11 +112,11 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
 }));
-const { clearAllRecordings } = vi.hoisted(() => ({
-  clearAllRecordings: vi.fn(),
+const { clearSkippedRecordings } = vi.hoisted(() => ({
+  clearSkippedRecordings: vi.fn(),
 }));
 vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
-  clearAllRecordings,
+  clearSkippedRecordings,
 }));
 let tier = "NO_TIER";
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
@@ -199,7 +199,7 @@ beforeEach(() => {
   );
   completeStep.mockResolvedValue({ status: 200 });
   submitProfile.mockResolvedValue({ status: 200 });
-  clearAllRecordings.mockResolvedValue(undefined);
+  clearSkippedRecordings.mockResolvedValue(undefined);
 });
 afterEach(() => {
   cleanup();
@@ -316,7 +316,7 @@ describe("onboarding before payment", () => {
         step: "ONBOARDING_COMPLETE",
       });
       // A skipped brain-dump take is kept for Back only until here.
-      expect(clearAllRecordings).toHaveBeenCalled();
+      expect(clearSkippedRecordings).toHaveBeenCalledWith("u1");
     },
   );
 
@@ -409,7 +409,7 @@ describe("onboarding before payment", () => {
     expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
     expect(screen.queryByTestId("step-role")).toBeNull();
     expect(patchState).not.toHaveBeenCalled();
-    expect(clearAllRecordings).toHaveBeenCalled();
+    expect(clearSkippedRecordings).toHaveBeenCalledWith("u1");
   });
 
   it("does not drop progress or redirect when completion fails", async () => {
@@ -421,7 +421,7 @@ describe("onboarding before payment", () => {
     expect(await screen.findByText(/couldn't finish setting up/)).toBeDefined();
     expect(routerReplace).not.toHaveBeenCalledWith("/home");
     expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
-    expect(clearAllRecordings).not.toHaveBeenCalled();
+    expect(clearSkippedRecordings).not.toHaveBeenCalled();
   });
 });
 

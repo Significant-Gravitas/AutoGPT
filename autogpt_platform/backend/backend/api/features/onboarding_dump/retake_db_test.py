@@ -16,7 +16,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import User
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import db, service
+from backend.api.features.onboarding_dump import db, routes, service
 
 TYPED_TEXT = "I run a bakery and spend Mondays reconciling supplier invoices."
 
@@ -77,6 +77,28 @@ async def test_a_skip_after_a_completed_take_replaces_it(user_id: str):
     assert dump.transcript is None
     assert dump.greeting is None
     assert dump.recommendedExperts is None
+
+
+async def test_a_skip_after_an_abandoned_upload_lets_the_next_take_through(
+    user_id: str, mocker: MockerFixture
+):
+    """Part 0 claimed the row, a later part never arrived, and the user skipped."""
+    mocker.patch.object(routes.storage, "discard_parts", new=AsyncMock())
+    await db.start_dump(user_id, "rec-voice", BrainDumpInputMode.voice)
+
+    await routes.discard_brain_dump(user_id=user_id, recording_id="rec-voice")
+    await service.finalize_skipped_dump(user_id, "rec-skip")
+
+    skipped = await db.get_dump(user_id)
+    assert skipped is not None
+    assert (skipped.recordingId, skipped.inputMode) == (
+        "rec-skip",
+        BrainDumpInputMode.skipped,
+    )
+    response = await service.finalize_typed_dump(
+        user_id, "rec-typed", TYPED_TEXT, BackgroundTasks()
+    )
+    assert response.status == BrainDumpStatus.transcribed
 
 
 async def test_a_new_take_cannot_displace_one_still_being_processed(user_id: str):

@@ -128,6 +128,7 @@ export type FailureCause = string | number | null;
 const FAILURE_REASONS: Record<string, string> = {
   storage_failed: "We couldn't store your recording on our side.",
   no_audio_received: "Your recording didn't reach us.",
+  upload_failed: "Part of your recording didn't reach us.",
   transcription_failed: "We couldn't turn your recording into text.",
   transcription_unavailable: "Our speech-to-text service is unavailable.",
   quality_check_unavailable: "We couldn't check what you told us just now.",

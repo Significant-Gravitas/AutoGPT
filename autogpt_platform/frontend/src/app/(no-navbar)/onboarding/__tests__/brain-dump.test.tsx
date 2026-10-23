@@ -94,7 +94,7 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
     recordingStoreState.parts = [];
     recordingStoreState.meta = null;
   },
-  clearAllRecordings: async () => {
+  clearSkippedRecordings: async () => {
     recordingStoreState.parts = [];
     recordingStoreState.meta = null;
   },

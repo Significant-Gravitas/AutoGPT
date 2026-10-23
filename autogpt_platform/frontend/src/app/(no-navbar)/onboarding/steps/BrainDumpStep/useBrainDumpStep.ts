@@ -206,7 +206,7 @@ export function useBrainDumpStep() {
     }
     const allUploaded = await recorder.flushUploads();
     if (!allUploaded) {
-      fail("network");
+      fail(recorder.isOffline ? "network" : "upload_failed");
       return;
     }
 
@@ -367,7 +367,7 @@ export function useBrainDumpStep() {
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     trackBrainDump("brain_dump_skipped");
-    const recordedId = recorder.recordingId;
+    const recordedId = recorder.recordingId ?? recoverable?.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
     // Nothing below can change where a skip goes, so the user is not kept
@@ -376,6 +376,14 @@ export function useBrainDumpStep() {
     // The recording stays in the browser, so Back offers it again until
     // onboarding finishes, and the skip is its own take on the server: under
     // the recording's id, a later send of it would read as already done.
+    // The discard goes first, because it also closes a half-uploaded take
+    // that would otherwise hold the row against the skip.
+    if (recordedId) {
+      await markSkipped(recordedId);
+      await discardBrainDump({ recording_id: recordedId }).catch(
+        () => undefined,
+      );
+    }
     try {
       await finalizeBrainDump({
         recording_id: crypto.randomUUID(),
@@ -384,10 +392,14 @@ export function useBrainDumpStep() {
     } catch {
       // Path B is the safe default anyway.
     }
-    if (recordedId) {
-      await discardBrainDump({ recording_id: recordedId }).catch(
-        () => undefined,
-      );
+  }
+
+  async function markSkipped(recordingId: string) {
+    try {
+      const meta = await getMetaById(recordingId);
+      if (meta) await saveMeta({ ...meta, skipped: true });
+    } catch {
+      // Unmarked, it stays on offer until the user discards it.
     }
   }
 
