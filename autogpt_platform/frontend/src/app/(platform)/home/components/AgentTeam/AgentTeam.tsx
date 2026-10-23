@@ -59,7 +59,7 @@ export function AgentTeam({ dashboard, className }: Props) {
             tone="muted"
             className="transition-colors group-hover:text-zinc-900"
           >
-            View all {team.total} experts
+            View all {team.total} {team.total === 1 ? "expert" : "experts"}
           </Text>
           <Icon icon={ArrowRight01Icon} size={14} aria-hidden="true" />
         </Link>

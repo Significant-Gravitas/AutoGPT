@@ -12,7 +12,7 @@ interface SearchBarProps {
 }
 
 export function SearchBar({
-  placeholder = 'Search for tasks like "optimise SEO"',
+  placeholder = 'Search for tasks like "optimize SEO"',
   width = "w-full lg:w-[56.25rem]",
   height = "h-[3.8rem]",
   defaultValue,
