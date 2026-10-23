@@ -54,6 +54,6 @@ describe("Text tone and eyebrow", () => {
     const el = screen.getByText("Needs you");
     expect(el.tagName).toBe("SPAN");
     expect(el.className).toContain("uppercase");
-    expect(el.className).toContain("text-[0.75rem]");
+    expect(el.className).toContain("text-caption");
   });
 });
