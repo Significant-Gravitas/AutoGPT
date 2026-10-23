@@ -41,7 +41,7 @@ export function YearlyPicker({
       <div className="flex gap-2">
         <button
           type="button"
-          // TODO(tokens): no exact role for border-zinc-700 (#505057)
+          // TODO(tokens): no role for this use of border-zinc-700 (#505057); border-zinc-700 shares its hex with foreground-body (a text role)
           className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
           onClick={toggleAll}
         >

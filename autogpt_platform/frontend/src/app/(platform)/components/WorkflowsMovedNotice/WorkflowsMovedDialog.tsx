@@ -21,7 +21,7 @@ export function WorkflowsMovedDialog({ isOpen, onDismiss }: Props) {
     <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onDismiss()}>
       <Dialog.Portal>
         <Dialog.Overlay
-          // TODO(tokens): no exact role for bg-zinc-950/25 (#09090B)
+          // TODO(tokens): no role for this use of bg-zinc-950/25 (#09090B); bg-zinc-950/25 shares its hex with foreground (a shadcn text role that turns light under .dark)
           className="fixed inset-0 z-[100] bg-zinc-950/25 backdrop-blur-sm motion-safe:animate-fade-in"
         />
         <Dialog.Content

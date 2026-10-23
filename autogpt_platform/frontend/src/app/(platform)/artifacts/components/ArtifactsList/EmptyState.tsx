@@ -174,7 +174,7 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
   const cx = x + width / 2;
   const cy = y + height / 2;
 
-  // TODO(tokens): no exact role for the illustration colours #E4E4E7, #F4F4F5, white
+  // TODO(tokens): no exact role for the illustration colours #E4E4E7, #F4F4F5, white; #E4E4E7 and #F4F4F5 equal the shadcn border and muted roles, which turn dark under .dark
   return (
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path

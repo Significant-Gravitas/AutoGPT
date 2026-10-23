@@ -81,7 +81,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   : "—"}
               </Text>
               <span
-                // TODO(tokens): no exact role for text-zinc-200 (#DADADC)
+                // TODO(tokens): no role for this use of text-zinc-200 (#DADADC); text-zinc-200 shares its hex with surface-active and border-base (fill and border roles)
                 className="mx-1 inline-block text-zinc-200"
               >
                 |
@@ -92,7 +92,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
               {run.stats?.node_exec_count !== undefined && (
                 <>
                   <span
-                    // TODO(tokens): no exact role for text-zinc-200 (#DADADC)
+                    // TODO(tokens): no role for this use of text-zinc-200 (#DADADC); text-zinc-200 shares its hex with surface-active and border-base (fill and border roles)
                     className="mx-1 inline-block text-zinc-200"
                   >
                     |
@@ -105,7 +105,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
               {run.stats?.duration !== undefined && (
                 <>
                   <span
-                    // TODO(tokens): no exact role for text-zinc-200 (#DADADC)
+                    // TODO(tokens): no role for this use of text-zinc-200 (#DADADC); text-zinc-200 shares its hex with surface-active and border-base (fill and border roles)
                     className="mx-1 inline-block text-zinc-200"
                   >
                     |
@@ -119,7 +119,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
               {isBillingEnabled && run.stats?.cost !== undefined && (
                 <>
                   <span
-                    // TODO(tokens): no exact role for text-zinc-200 (#DADADC)
+                    // TODO(tokens): no role for this use of text-zinc-200 (#DADADC); text-zinc-200 shares its hex with surface-active and border-base (fill and border roles)
                     className="mx-1 inline-block text-zinc-200"
                   >
                     |

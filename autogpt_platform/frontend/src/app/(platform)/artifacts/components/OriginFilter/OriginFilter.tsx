@@ -73,7 +73,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        // TODO(tokens): no exact role for focus-visible:ring-zinc-400 (#ADADB3)
+        // TODO(tokens): no role for this use of focus-visible:ring-zinc-400 (#ADADB3); ring-zinc-400 shares its hex with foreground-subtle (a text role)
         "relative rounded-full px-4 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
         active
           ? "text-foreground-strong"

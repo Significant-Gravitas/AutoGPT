@@ -87,7 +87,7 @@ export function FileRow({
           type="button"
           aria-label={`Select ${file.name}`}
           aria-pressed={isSelected}
-          // TODO(tokens): no exact role for focus-visible:ring-zinc-400 (#ADADB3)
+          // TODO(tokens): no role for this use of focus-visible:ring-zinc-400 (#ADADB3); ring-zinc-400 shares its hex with foreground-subtle (a text role)
           className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
           onClick={(e) => {
             e.stopPropagation();

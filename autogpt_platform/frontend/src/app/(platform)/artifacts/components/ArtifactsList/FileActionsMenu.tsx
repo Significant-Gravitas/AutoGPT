@@ -108,7 +108,7 @@ export function FileActionsMenu({ file, className }: Props) {
           <DropdownMenuItem
             onSelect={handleDelete}
             disabled={isDeleting}
-            // TODO(tokens): no exact role for text-red-600 (#D93636)
+            // TODO(tokens): no role for this use of text-red-600 (#D93636); text-red-600 shares its hex with error-hover (a hover fill role)
             className="text-red-600 focus:bg-error-surface focus:text-error-foreground"
             data-testid="artifacts-delete"
           >

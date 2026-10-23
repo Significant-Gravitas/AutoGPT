@@ -61,7 +61,7 @@ export function ProgressBar() {
       aria-hidden
     >
       <div
-        // TODO(tokens): no exact role for bg-zinc-500 (#83838C)
+        // TODO(tokens): no role for this use of bg-zinc-500 (#83838C); bg-zinc-500 shares its hex with foreground-tertiary (a text role)
         className="h-full w-1/3 animate-progress-bar rounded-full bg-zinc-500"
       />
     </div>

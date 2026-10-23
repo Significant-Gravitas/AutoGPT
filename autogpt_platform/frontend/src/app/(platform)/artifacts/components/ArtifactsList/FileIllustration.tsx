@@ -208,7 +208,7 @@ function ImgContent() {
   return (
     <div className="relative h-16">
       <div
-        // TODO(tokens): no exact role for from-zinc-900/20 (#2C2C30)
+        // TODO(tokens): no role for this use of from-zinc-900/20 (#2C2C30); from-zinc-900/20 shares its hex with foreground-strong and action-hover (text and button roles)
         className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-zinc-900/20 to-transparent"
       />
       <div className="absolute bottom-1 left-1 h-3 w-5 rounded-t-full bg-action-hover/25" />
@@ -398,7 +398,7 @@ export function FileIllustration({
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
-          // TODO(tokens): no exact role for bg-zinc-700 (#505057)
+          // TODO(tokens): no role for this use of bg-zinc-700 (#505057); bg-zinc-700 shares its hex with foreground-body (a text role)
           "absolute rounded-md bg-zinc-700 px-2 py-1 text-caption-sm font-semibold uppercase leading-inherit tracking-wide text-action-foreground shadow-md shadow-black/10",
           config.badgePositionClass ?? DEFAULT_BADGE_POSITION,
           badgeClassName,

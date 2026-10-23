@@ -74,7 +74,7 @@ export function SelectionBar({
           size="xs"
           disabled={isDeleting}
           onClick={handleDelete}
-          // TODO(tokens): no exact role for text-red-600 (#D93636)
+          // TODO(tokens): no role for this use of text-red-600 (#D93636); text-red-600 shares its hex with error-hover (a hover fill role)
           className="text-red-600 hover:bg-error-surface hover:text-error-foreground"
           data-testid="artifacts-selection-delete"
         >

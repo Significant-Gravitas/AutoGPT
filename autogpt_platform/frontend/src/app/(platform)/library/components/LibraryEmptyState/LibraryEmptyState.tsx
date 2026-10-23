@@ -132,7 +132,7 @@ function Card({ x, y, width }: CardProps) {
   const padding = 16;
   const dotRadius = 8;
 
-  // TODO(tokens): no exact role for the illustration colours #E4E4E7, white
+  // TODO(tokens): no exact role for the illustration colours #E4E4E7, white; #E4E4E7 equals the shadcn border role, which turns dark under .dark
   return (
     <g>
       <rect

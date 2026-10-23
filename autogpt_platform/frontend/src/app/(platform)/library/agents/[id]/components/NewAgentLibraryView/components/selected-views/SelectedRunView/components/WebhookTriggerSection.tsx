@@ -57,7 +57,7 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
 
         {!preset.webhook_id ? (
           <Text
-            // TODO(tokens): no exact role for text-red-600 (#D93636)
+            // TODO(tokens): no role for this use of text-red-600 (#D93636); text-red-600 shares its hex with error-hover (a hover fill role)
             variant="body"
             className="text-red-600"
           >
