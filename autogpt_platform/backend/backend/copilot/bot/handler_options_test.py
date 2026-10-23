@@ -4,10 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.platform_linking.models import BotExpert, EnsureSessionResult
+from backend.platform_linking.models import (
+    BotExpert,
+    ChatTurnHandle,
+    EnsureSessionResult,
+)
 
-from .adapters.base import InboundAttachment, MessageContext
-from .bot_backend import ResolveResult
+from .adapters.base import InboundAttachment, MessageContext, PlatformAdapter
+from .bot_backend import BotBackend, ResolveResult
 from .expert_choice import SERVER_EXPERTS_REPLY
 from .handler import MessageHandler, TargetState, with_typed_options
 from .options import TurnOptions
@@ -51,22 +55,41 @@ def _adapter() -> MagicMock:
     return adapter
 
 
-def _capture(handler: MessageHandler) -> list[dict]:
-    calls: list[dict] = []
+class _CapturingHandler(MessageHandler):
+    """Records each batch it would stream instead of streaming it."""
 
-    async def fake_stream_batch(batch, ctx, ad, tid, **kwargs):
-        calls.append({"batch": list(batch), "target": tid, **kwargs})
+    def __init__(self, api: BotBackend):
+        super().__init__(api)
+        self.calls: list[dict] = []
 
-    handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
-    return calls
+    async def _stream_batch(
+        self,
+        batch: list[PendingMessage],
+        ctx: MessageContext,
+        adapter: PlatformAdapter,
+        target_id: str,
+        file_ids: list[str] | None = None,
+        session_id: str | None = None,
+        turn: ChatTurnHandle | None = None,
+        options: TurnOptions | None = None,
+    ) -> None:
+        self.calls.append(
+            {
+                "batch": list(batch),
+                "target": target_id,
+                "file_ids": file_ids,
+                "session_id": session_id,
+                "options": options,
+            }
+        )
 
 
 class TestTypedOptions:
     @pytest.mark.asyncio
     async def test_dm_expert_and_mode_route_the_turn(self):
         api = _api([BOLT, SAGE])
-        handler = MessageHandler(api)
-        calls = _capture(handler)
+        handler = _CapturingHandler(api)
+        calls = handler.calls
         await handler.handle(_ctx("expert=bolt mode=smart fix it"), _adapter())
 
         assert len(calls) == 1
@@ -81,8 +104,8 @@ class TestTypedOptions:
     @pytest.mark.asyncio
     async def test_mode_alone_needs_no_expert_lookup(self):
         api = _api()
-        handler = MessageHandler(api)
-        calls = _capture(handler)
+        handler = _CapturingHandler(api)
+        calls = handler.calls
         await handler.handle(_ctx("mode=fast hi"), _adapter())
 
         assert calls[0]["options"] == TurnOptions(model="standard")
@@ -91,8 +114,8 @@ class TestTypedOptions:
     @pytest.mark.asyncio
     async def test_server_expert_request_is_refused_in_place(self):
         api = _api([BOLT])
-        handler = MessageHandler(api)
-        calls = _capture(handler)
+        handler = _CapturingHandler(api)
+        calls = handler.calls
         adapter = _adapter()
         await handler.handle(_ctx("expert=Bolt hi", dm=False), adapter)
 
@@ -104,8 +127,8 @@ class TestTypedOptions:
 
     @pytest.mark.asyncio
     async def test_unknown_expert_lists_the_available_ones(self):
-        handler = MessageHandler(_api([BOLT, SAGE]))
-        calls = _capture(handler)
+        handler = _CapturingHandler(_api([BOLT, SAGE]))
+        calls = handler.calls
         adapter = _adapter()
         await handler.handle(_ctx("expert=Nova hi"), adapter)
 
@@ -116,8 +139,8 @@ class TestTypedOptions:
 
     @pytest.mark.asyncio
     async def test_ambiguous_prefix_lists_the_matches(self):
-        handler = MessageHandler(_api([BOLT, BOLTZ, SAGE]))
-        calls = _capture(handler)
+        handler = _CapturingHandler(_api([BOLT, BOLTZ, SAGE]))
+        calls = handler.calls
         adapter = _adapter()
         await handler.handle(_ctx("expert=bol hi"), adapter)
 
@@ -128,15 +151,14 @@ class TestTypedOptions:
 
     @pytest.mark.asyncio
     async def test_exact_name_beats_prefix(self):
-        handler = MessageHandler(_api([BOLT, BOLTZ]))
-        calls = _capture(handler)
+        handler = _CapturingHandler(_api([BOLT, BOLTZ]))
+        calls = handler.calls
         await handler.handle(_ctx("expert=Bolt hi"), _adapter())
         assert calls[0]["options"].expert_id == "e1"
 
     @pytest.mark.asyncio
     async def test_no_hires_says_so(self):
-        handler = MessageHandler(_api([]))
-        _capture(handler)
+        handler = _CapturingHandler(_api([]))
         adapter = _adapter()
         await handler.handle(_ctx("expert=Bolt hi"), adapter)
         assert "haven't hired" in adapter.send_message.await_args.args[1]
@@ -144,8 +166,7 @@ class TestTypedOptions:
     @pytest.mark.asyncio
     async def test_attachments_upload_into_the_expert_session(self):
         api = _api([BOLT])
-        handler = MessageHandler(api)
-        _capture(handler)
+        handler = _CapturingHandler(api)
         attachment = InboundAttachment(
             filename="a.txt", content=b"x", mime_type="text/plain"
         )
@@ -165,8 +186,8 @@ class TestCommandOptions:
     @pytest.mark.asyncio
     async def test_command_expert_id_skips_name_lookup(self):
         api = _api([BOLT])
-        handler = MessageHandler(api)
-        calls = _capture(handler)
+        handler = _CapturingHandler(api)
+        calls = handler.calls
         ctx = _ctx("hi", options=TurnOptions(expert_id="e1", expert_name="Bolt"))
         await handler.handle(ctx, _adapter())
 
@@ -189,8 +210,8 @@ class TestCommandOptions:
 class TestBatchedOptions:
     @pytest.mark.asyncio
     async def test_follow_ups_keep_the_batch_options(self):
-        handler = MessageHandler(_api())
-        calls = _capture(handler)
+        handler = _CapturingHandler(_api())
+        calls = handler.calls
         state = TargetState(processing=True)
         handler._targets[("discord", "t")] = state
         first = _ctx("one").with_changes(
@@ -210,8 +231,8 @@ class TestBatchedOptions:
 
     @pytest.mark.asyncio
     async def test_a_new_expert_mid_reply_starts_its_own_batch(self):
-        handler = MessageHandler(_api())
-        calls = _capture(handler)
+        handler = _CapturingHandler(_api())
+        calls = handler.calls
         state = TargetState(processing=True)
         handler._targets[("discord", "t")] = state
         bolt = TurnOptions(expert_id="e1")
@@ -247,8 +268,8 @@ class TestOptionsOnly:
     @pytest.mark.asyncio
     async def test_expert_alone_moves_the_conversation_to_that_expert(self):
         api = _api([BOLT])
-        handler = MessageHandler(api)
-        calls = _capture(handler)
+        handler = _CapturingHandler(api)
+        calls = handler.calls
         adapter = _adapter()
         set_session = AsyncMock()
         with pytest.MonkeyPatch.context() as mp:
@@ -280,8 +301,8 @@ class TestOptionsOnly:
     @pytest.mark.asyncio
     async def test_mode_alone_says_where_the_mode_goes(self):
         api = _api()
-        handler = MessageHandler(api)
-        calls = _capture(handler)
+        handler = _CapturingHandler(api)
+        calls = handler.calls
         adapter = _adapter()
         await handler.handle(_ctx("mode=smart"), adapter)
         assert calls == []
@@ -292,8 +313,8 @@ class TestOptionsOnly:
 class TestBatchSplitting:
     @pytest.mark.asyncio
     async def test_files_sent_without_the_batch_expert_get_their_own_batch(self):
-        handler = MessageHandler(_api())
-        calls = _capture(handler)
+        handler = _CapturingHandler(_api())
+        calls = handler.calls
         state = TargetState(processing=True)
         handler._targets[("discord", "t")] = state
         await handler._enqueue_and_process(
