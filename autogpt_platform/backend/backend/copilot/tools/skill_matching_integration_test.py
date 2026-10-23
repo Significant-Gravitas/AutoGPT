@@ -16,8 +16,8 @@ from backend.copilot.sdk.retry_scenarios_test import (
     _build_transcript,
     _make_sdk_patches,
 )
+from backend.copilot.tools import skill_matching_helpers_test as baseline
 from backend.copilot.tools import skill_matching_test as skill_fixtures
-from backend.copilot.tools import skill_matching_test_helpers as baseline
 from backend.util import json
 
 baseline_io = baseline_fixtures.baseline_io

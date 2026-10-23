@@ -9,8 +9,8 @@ from backend.copilot.baseline import service_cancellation_test as baseline_fixtu
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tools import skill_matching_helpers_test as baseline
 from backend.copilot.tools import skill_matching_test as skill_fixtures
-from backend.copilot.tools import skill_matching_test_helpers as baseline
 from backend.util import json
 
 baseline_io = baseline_fixtures.baseline_io
