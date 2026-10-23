@@ -15,6 +15,7 @@ from backend.copilot.tracking import track_library_check_outcome
 from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
+from .external_scope import in_tenant
 from .models import (
     AgentInfo,
     AgentsFoundResponse,
@@ -38,12 +39,17 @@ async def search_agents(
     session_id: str | None = None,
     user_id: str | None = None,
     include_graph: bool = False,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
-    """Search for agents in marketplace or user library."""
+    """Search for agents in marketplace or user library.
+
+    ``tenant`` confines library results to one organization (see
+    ``external_scope``); None searches the whole library.
+    """
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
-        return await _search_library(query, session_id, user_id, include_graph)
+        return await _search_library(query, session_id, user_id, include_graph, tenant)
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
@@ -113,6 +119,7 @@ async def _search_library(
     session_id: str | None,
     user_id: str | None,
     include_graph: bool = False,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
     """Search user's library agents by name/description.
 
@@ -138,7 +145,7 @@ async def _search_library(
         # is the tool's explicit agent_id → lookup_library_agent_by_id.
         if is_uuid(query):
             logger.info(f"Query looks like UUID, trying direct lookup: {query}")
-            agent = await _get_library_agent_by_id(user_id, query)
+            agent = await _get_library_agent_by_id(user_id, query, tenant)
             if agent:
                 agents.append(agent)
 
@@ -159,6 +166,7 @@ async def _search_library(
                 # populated — lets Otto recognise (and set up) webhook
                 # triggers from the listing without re-reading the full graph.
                 include_nodes=True,
+                organization_id=tenant,
             )
             for agent in results.agents:
                 agents.append(_library_agent_to_info(agent))
@@ -369,6 +377,7 @@ async def search_library_for_creation(
     goal_summary: str,
     session_id: str | None,
     user_id: str | None,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
     """Hybrid (semantic + lexical) library search used by the create-agent
     similarity gate.
@@ -460,7 +469,7 @@ async def search_library_for_creation(
             session_id=session_id,
         )
 
-    agents = await _load_and_format_matched_agents(matches, user_id)
+    agents = await _load_and_format_matched_agents(matches, user_id, tenant)
 
     if not agents:
         track_library_check_outcome(
@@ -508,7 +517,7 @@ async def search_library_for_creation(
 
 
 async def _load_and_format_matched_agents(
-    matches: list[dict[str, Any]], user_id: str
+    matches: list[dict[str, Any]], user_id: str, tenant: str | None = None
 ) -> list[AgentInfo]:
     """Resolve hybrid-search matches to ``AgentInfo`` rows with ``match_score``
     set from the search's ``combined_score`` (pre-BM25, always in [0, 1];
@@ -533,6 +542,8 @@ async def _load_and_format_matched_agents(
             )
             continue
 
+        if not in_tenant(library_agent.organization_id, tenant):
+            continue
         info = _library_agent_to_info(library_agent)
         info.match_score = match.get("combined_score") or 0.0
         agents.append(info)
@@ -544,6 +555,7 @@ async def lookup_library_agent_by_id(
     session_id: str | None,
     user_id: str | None,
     include_graph: bool = False,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
     """Strict direct resolution of one library agent by id.
 
@@ -558,7 +570,7 @@ async def lookup_library_agent_by_id(
         )
 
     try:
-        agent = await _get_library_agent_by_id(user_id, agent_id)
+        agent = await _get_library_agent_by_id(user_id, agent_id, tenant)
     except DatabaseError as e:
         logger.error(f"Error fetching library agent {agent_id}: {e}", exc_info=True)
         return ErrorResponse(
@@ -602,19 +614,27 @@ async def lookup_library_agent_by_id(
     )
 
 
-async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:
+async def _get_library_agent_by_id(
+    user_id: str, agent_id: str, tenant: str | None = None
+) -> AgentInfo | None:
     """Fetch a library agent by ID (library agent ID or graph_id).
 
     Tries multiple lookup strategies:
     1. First by graph_id (AgentGraph primary key)
     2. Then by library agent ID (LibraryAgent primary key)
+
+    An agent outside ``tenant`` counts as not found.
     """
     lib_db = library_db()
 
     try:
         agent = await lib_db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
-            return _library_agent_to_info(agent)
+            return (
+                _library_agent_to_info(agent)
+                if in_tenant(agent.organization_id, tenant)
+                else None
+            )
     except NotFoundError:
         pass
     except DatabaseError:
@@ -628,7 +648,11 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     try:
         agent = await lib_db.get_library_agent(agent_id, user_id)
         if agent:
-            return _library_agent_to_info(agent)
+            return (
+                _library_agent_to_info(agent)
+                if in_tenant(agent.organization_id, tenant)
+                else None
+            )
     except NotFoundError:
         pass
     except DatabaseError:

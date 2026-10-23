@@ -13,8 +13,9 @@ required permissions are satisfied by the caller's API key / OAuth token.
 """
 
 import logging
-from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Sequence
+from contextlib import AsyncExitStack, asynccontextmanager
+from contextvars import ContextVar
+from typing import Any, AsyncIterator, Optional, Sequence
 
 import pydantic
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -33,11 +34,21 @@ from starlette import status
 from starlette.applications import Starlette
 from starlette.types import Receive, Scope, Send
 
+from backend.api.external.middleware import VerifiedCredential, verified_credential
 from backend.api.external.v2.errors import error_response
+from backend.api.external.v2.mcp_calls import (
+    check_arguments,
+    check_plan,
+    check_spend_allowance,
+    check_tool_limits,
+    input_schema,
+    missing_scopes,
+)
+from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
+from backend.copilot.context import set_turn_unattended
 from backend.copilot.model import ChatSession
-from backend.copilot.rate_limit import enforce_payment_paywall
-from backend.copilot.sdk.tool_adapter import _build_input_schema, _execute_tool_sync
+from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.data.auth.api_key import validate_api_key
@@ -45,9 +56,10 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidTokenError,
+    is_access_token,
     validate_access_token,
 )
-from backend.util.exceptions import NotAuthorizedError, UserPaywalledError
+from backend.util.exceptions import NotAuthorizedError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -116,6 +128,8 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "post_to_chat_platform": "posts as the platform bot; no permission model yet",
     "edit_chat_platform_message": "posts as the platform bot; no permission model yet",
     "list_chat_platform_channels": "posts as the platform bot; no permission model yet",
+    "create_feature_request": "writes to the platform's own Linear workspace, on "
+    "the platform's key",
     # Security
     "bash_exec": "sandboxed shell on platform infrastructure",
     "start_desktop": "sandboxed desktop on platform infrastructure",
@@ -242,8 +256,19 @@ class MCPMount:
 
     @asynccontextmanager
     async def running(self) -> AsyncIterator[None]:
-        app = create_mcp_app()
-        async with app.router.lifespan_context(app):
+        """Serve the MCP app while the host runs; a failed start serves 503.
+
+        The REST API must not go down with its MCP endpoint, so a server that
+        fails to build or start is logged and the mount keeps answering 503.
+        """
+        async with AsyncExitStack() as stack:
+            try:
+                app = create_mcp_app()
+                await stack.enter_async_context(app.router.lifespan_context(app))
+            except Exception:
+                logger.exception("The MCP server failed to start; /mcp answers 503")
+                yield
+                return
             self._app = app
             try:
                 yield
@@ -257,10 +282,41 @@ class MCPMount:
             )
             await response(scope, receive, send)
             return
-        await self._app(scope, receive, send)
+        if _ambiguous_credentials(scope):
+            response = error_response(
+                status.HTTP_400_BAD_REQUEST,
+                "Send one credential, as a single `Authorization: Bearer` header",
+            )
+            await response(scope, receive, send)
+            return
+        # The v2 rate limiter in front of this mount has verified the
+        # credential already; FastMCP verifies it again by token alone.
+        verified = _request_credential.set(verified_credential(scope))
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            _request_credential.reset(verified)
+
+
+def _ambiguous_credentials(scope: Scope) -> bool:
+    """Whether the request names more than one credential.
+
+    FastMCP authenticates the first Authorization header, while the v2 rate
+    limiter reads X-API-Key first; with both, or two Authorization headers,
+    the limit would be charged to one credential and the call made as another.
+    """
+    names = [name.lower() for name, _ in scope.get("headers", [])]
+    authorizations = names.count(b"authorization")
+    return authorizations > 1 or (authorizations == 1 and b"x-api-key" in names)
 
 
 mcp_mount = MCPMount()
+
+# What the v2 middleware verified this request's credential as, so the MCP
+# token verifier doesn't verify (and for an API key, hash) the same token again.
+_request_credential: ContextVar[Optional[VerifiedCredential]] = ContextVar(
+    "mcp_request_credential", default=None
+)
 
 
 # ---------------------------------------------------------------------------
@@ -306,9 +362,14 @@ class ExternalAPITokenVerifier(TokenVerifier):
     """Validates API keys and OAuth tokens via external API auth."""
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        # Try API key first
-        api_key_info = await validate_api_key(token)
-        if api_key_info:
+        verified = _request_credential.get()
+        if verified is not None and verified.credential == token:
+            return await self._tenanted(token, verified.auth) if verified.auth else None
+
+        # Try API key first, unless it is in the OAuth token format
+        if not is_access_token(token) and (
+            api_key_info := await validate_api_key(token)
+        ):
             return await self._tenanted(token, api_key_info)
 
         # Try OAuth bearer token
@@ -346,38 +407,51 @@ def _create_tool_handler(
 ):
     """Create an async MCP tool handler that wraps a BaseTool subclass.
 
-    The handler checks that the caller's API key / OAuth token
-    has all ``required_scopes`` before executing the tool.
+    Before the tool runs, the call is held to the caller's credential: its
+    arguments to the advertised schema, its scopes to ``required_scopes`` plus
+    whatever the arguments add, the ids it names to the credential's
+    organization, the caller to an active plan, and a tool that spends platform
+    money to the caller's allowance.
     """
 
     async def handler(ctx: Context, **kwargs: Any) -> str:
         # Raised, not returned: a rejection returned as content is reported to
         # the client as a successful call whose text happens to say "denied".
         access_token = get_access_token()
-        if not access_token:
+        if not isinstance(access_token, TenantedAccessToken):
             raise ToolError("Authentication required")
 
-        if required_scopes:
-            missing = [s for s in required_scopes if s not in access_token.scopes]
-            if missing:
-                raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
+        check_arguments(tool, kwargs)
+        if missing := missing_scopes(
+            tool, required_scopes, kwargs, access_token.scopes
+        ):
+            raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
 
         user_id = access_token.client_id
-        try:
-            await enforce_payment_paywall(user_id)
-        except UserPaywalledError as e:
-            raise ToolError(str(e)) from e
-        organization_id, team_id = (
-            (access_token.organization_id, access_token.team_id)
-            if isinstance(access_token, TenantedAccessToken)
-            else (None, None)
+        await check_ids_in_tenant(
+            tool.name, kwargs, user_id, access_token.organization_id
         )
+        await check_tool_limits(tool, kwargs, user_id, access_token.organization_id)
+        await check_plan(user_id)
+        if tool.spends_platform_money:
+            await check_spend_allowance(user_id)
+
+        # An automation session: nobody is watching to answer an approval
+        # card, so the credential's scopes are the authorization, as in REST.
         session = ChatSession.new(
             user_id,
             dry_run=False,
-            organization_id=organization_id,
-            team_id=team_id,
+            origin="automation",
+            organization_id=access_token.organization_id,
+            team_id=access_token.team_id,
         )
+        session.external_caller = True
+        session.external_permissions = frozenset(
+            APIKeyPermission(scope) for scope in access_token.scopes
+        )
+        # Tools read the turn, not the origin: without this a missing credential
+        # comes back as a setup card, and an ambiguous one as a question.
+        set_turn_unattended(session, scheduled=False)
 
         result = await _execute_tool_sync(tool, user_id, session, kwargs)
 
@@ -407,7 +481,7 @@ def _mcp_tool(tool: BaseTool, required_perms: Sequence[APIKeyPermission]) -> MCP
         name=tool.name,
         title=None,
         description=tool.description,
-        parameters=_build_input_schema(tool),
+        parameters=input_schema(tool),
         fn_metadata=_PASSTHROUGH_META,
         is_async=True,
         context_kwarg="ctx",

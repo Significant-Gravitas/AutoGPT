@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Container, Mapping, Sequence
+from collections.abc import Collection, Container, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -46,6 +46,7 @@ from backend.util.exceptions import (
     GraphNotAccessibleError,
     GraphNotInLibraryError,
     GraphValidationError,
+    NotAuthorizedError,
 )
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
@@ -1815,6 +1816,37 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
             "isActive": True,
         },
     )
+
+
+async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str | None]]:
+    """The user and organization of each of a graph's versions, None standing
+    for an untagged one. Every owner's versions count."""
+    versions = await AgentGraph.prisma().find_many(where={"id": graph_id})
+    return {(version.userId, version.organizationId) for version in versions}
+
+
+async def assert_graph_within(
+    graph_id: str, user_id: str, organization_ids: Collection[str | None]
+) -> None:
+    """Refuse to change a graph unless every version of it is *user_id*'s and
+    in *organization_ids*.
+
+    A version saved or activated on it becomes the active one for all of its
+    versions, and moves the library entries and webhook presets that follow
+    the graph. On a graph that reaches another organization it would change
+    what that organization runs; on one a colleague has added a version to,
+    it would deactivate theirs with the caller's credentials.
+    """
+    owners = await get_graph_version_owners(graph_id)
+    if any(
+        owner != user_id or organization_id not in organization_ids
+        for owner, organization_id in owners
+    ):
+        raise NotAuthorizedError(
+            f"Graph #{graph_id} has versions by another user or in another "
+            "organization; change it as its owner, with a credential for the "
+            "organization it belongs to"
+        )
 
 
 async def get_graph_all_versions(

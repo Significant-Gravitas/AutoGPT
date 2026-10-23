@@ -56,7 +56,7 @@ from backend.util.timezone_utils import (
     validate_timezone,
 )
 
-from .base import GATE_APPROVED, GATE_DECIDED, BaseTool
+from .base import GATE_APPROVED, GATE_DECIDED, BaseTool, parameters_without
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -70,6 +70,7 @@ from .expert_scope import (
     require_installed_workflow,
     ungranted_credential_hint,
 )
+from .external_scope import external_tenancy
 from .helpers import (
     get_inputs_from_schema,
     get_picker_inputs_from_schema,
@@ -239,6 +240,29 @@ class RunAgentTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, [APIKeyPermission.RUN_AGENT]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # Presets aren't part of the v2 surface and have no API-key permission.
+        # An external caller polls view_agent_output rather than holding a
+        # request (and an event-bus connection) open while the run finishes.
+        # A dry run bills no credits but runs models on the platform's key, an
+        # orchestrator block for real, and the usage allowance doesn't see all
+        # of that spend.
+        return parameters_without(
+            self.parameters, "preset_id", "wait_for_result", "dry_run"
+        )
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        needed = []
+        # Either one switches to scheduling (`_execute`), which the REST
+        # schedule endpoint guards with WRITE_SCHEDULE on top of RUN_AGENT.
+        if args.get("schedule_name") or args.get("cron"):
+            needed.append(APIKeyPermission.WRITE_SCHEDULE)
+        # A marketplace agent not yet in the library is added to it to run.
+        if args.get("username_agent_slug"):
+            needed.append(APIKeyPermission.WRITE_LIBRARY)
+        return needed
 
     @property
     def description(self) -> str:
@@ -545,18 +569,10 @@ class RunAgentTool(BaseTool):
             ).from_outside()
         except DatabaseError as e:
             logger.error("Database error: %s", e, exc_info=True)
-            return ErrorResponse(
-                message=f"Failed to process request: {e!s}",
-                error=str(e),
-                session_id=session_id,
-            ).from_outside(str(e))
+            return _unexpected_error(e, session)
         except Exception as e:
             logger.error("Error processing agent request: %s", e, exc_info=True)
-            return ErrorResponse(
-                message=f"Failed to process request: {e!s}",
-                error=str(e),
-                session_id=session_id,
-            ).from_outside(str(e))
+            return _unexpected_error(e, session)
 
     def _get_execution_modes(self, graph: GraphModel) -> list[str]:
         """Get available execution modes for the graph."""
@@ -1018,7 +1034,9 @@ class RunAgentTool(BaseTool):
             ).from_outside()
 
         # Get or create library agent
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         emit_tool_display_name(library_agent.name)
 
         # Execute — ``add_graph_execution`` ultimately calls
@@ -1350,7 +1368,9 @@ class RunAgentTool(BaseTool):
             user_timezone = get_user_timezone_or_utc(user.timezone)
 
         # Get or create library agent
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         emit_tool_display_name(library_agent.name)
 
         # Create schedule — the scheduler re-validates credentials via
@@ -1433,6 +1453,23 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         ).from_outside()
+
+
+def _unexpected_error(error: Exception, session: ChatSession) -> ErrorResponse:
+    """The answer to a failure nobody anticipated.
+
+    AutoPilot's model reads the detail to recover; an External API client gets
+    none, as the v2 REST API's 500s carry none.
+    """
+    if session.external_caller:
+        return ErrorResponse(
+            message="Failed to process request", session_id=session.session_id
+        ).from_outside()
+    return ErrorResponse(
+        message=f"Failed to process request: {error!s}",
+        error=str(error),
+        session_id=session.session_id,
+    ).from_outside(str(error))
 
 
 # One lookup for the run and for the gate: were they two, a drift between

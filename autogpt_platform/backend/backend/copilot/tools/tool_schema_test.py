@@ -267,7 +267,14 @@ from ._test_data import make_session
 #     dev 583fc0bb4e                              76,975 (89 tools)
 #     + this PR's connect_integration  +200       77,175 (89 tools)
 # Plus one.
-_CHAR_BUDGET = 77_176
+# Bumped 77_176 -> 77_185 for read_workspace_file's `length` argument, which
+# now states its 1,000,000-character cap. No tool was added (89 either side).
+# Measured on fix/v2-api-security-review merged with the v2 root b010a937d8,
+# which contains dev 35412eb0ac:
+#     root b010a937d8                             77,175 (89 tools)
+#     + read_workspace_file's length      +9      77,184 (89 tools)
+# Plus one.
+_CHAR_BUDGET = 77_185
 
 
 @pytest.fixture(scope="module")

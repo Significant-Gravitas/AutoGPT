@@ -14,19 +14,21 @@ import {
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 // Human-readable scope descriptions
 const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
   IDENTITY: "View your user ID, e-mail, and timezone",
   EXECUTE_GRAPH: "Run your workflows",
   READ_GRAPH: "View your workflows and their configurations",
-  WRITE_GRAPH: "Create workflows",
-  WRITE_LIBRARY: "Add workflows to your library",
+  WRITE_GRAPH: "Create and edit your workflows, and choose which version runs",
+  WRITE_LIBRARY:
+    "Add, organize, fork and remove workflows in your library, including their schedules and triggers",
   EXECUTE_BLOCK: "Execute individual blocks",
   READ_BLOCK: "View available blocks",
   READ_STORE: "Access the Marketplace",
   WRITE_STORE: "Create, update, and delete marketplace submissions",
-  READ_LIBRARY: "View your library workflows and runs",
+  READ_LIBRARY: "View your library workflows and folders",
   RUN_AGENT: "Run workflows from your library",
   READ_RUN: "View run details and history",
   WRITE_RUN: "Stop and delete runs",
@@ -35,10 +37,12 @@ const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
   WRITE_RUN_REVIEW: "Submit human-in-the-loop review responses",
   READ_SCHEDULE: "View your schedules",
   WRITE_SCHEDULE: "Create and delete schedules",
-  READ_CREDITS: "View your credit balance and transactions",
+  READ_CREDITS:
+    "View your credit balance, transactions, invoices and subscription",
   READ_FILES: "List and download workspace files",
   WRITE_FILES: "Upload and delete workspace files",
-  USE_TOOLS: "Use tools on your behalf",
+  USE_TOOLS:
+    "Search and fetch web pages for you; web searches use your AutoPilot allowance",
   MANAGE_INTEGRATIONS: "Set up new integrations",
   READ_INTEGRATIONS: "View your connected integrations",
   DELETE_INTEGRATIONS: "Remove connected integrations",
@@ -66,15 +70,19 @@ export default function AuthorizePage() {
     isLoading,
     error,
     refetch,
-  } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: {
-      enabled: !!clientID,
-      staleTime: Infinity,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+  } = useGetOauthGetOauthAppInfo(
+    clientID || "",
+    { redirect_uri: redirectURI },
+    {
+      query: {
+        enabled: !!clientID && !!redirectURI,
+        staleTime: Infinity,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+      },
     },
-  });
+  );
 
   const appInfo = appInfoResponse?.status === 200 ? appInfoResponse.data : null;
 
@@ -122,7 +130,8 @@ export default function AuthorizePage() {
   }
 
   function handleDeny() {
-    // Redirect back to client with access_denied error
+    // appInfo loads only once the backend accepts redirectURI for this client
+    if (!appInfo) return;
     const params = new URLSearchParams({
       error: "access_denied",
       error_description: "User denied access",
@@ -165,11 +174,14 @@ export default function AuthorizePage() {
     );
   }
 
-  // Show error if app not found
+  // Unknown app or unregistered redirect_uri: never send the user to it
   if (error || !appInfo) {
+    const redirectRejected = error instanceof ApiError && error.status === 400;
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
-        <AuthCard title="Application Not Found">
+        <AuthCard
+          title={redirectRejected ? "Invalid Request" : "Application Not Found"}
+        >
           <ErrorCard
             context="application"
             responseError={
@@ -182,15 +194,6 @@ export default function AuthorizePage() {
             }
             onRetry={refetch}
           />
-          {redirectURI && (
-            <Button
-              variant="secondary"
-              onClick={handleDeny}
-              className="mt-4 w-full"
-            >
-              Return to Application
-            </Button>
-          )}
         </AuthCard>
       </div>
     );

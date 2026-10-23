@@ -8,6 +8,7 @@ from backend.copilot.model import ChatSession
 from backend.util.docs import get_docs_root, make_doc_url
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import DocPageResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,8 @@ class GetDocPageTool(BaseTool):
                 session_id=session_id,
             )
 
-        if not full_path.exists():
+        # A directory exists too, and reading one fails with its absolute path.
+        if not full_path.is_file():
             return ErrorResponse(
                 message=f"Documentation page not found: {path}",
                 error="not_found",
@@ -138,7 +140,7 @@ class GetDocPageTool(BaseTool):
         except Exception as e:
             logger.error(f"Failed to read documentation page {path}: {e}")
             return ErrorResponse(
-                message=f"Failed to read documentation page: {str(e)}",
+                message=f"Failed to read documentation page: {error_detail(e, session)}",
                 error="read_failed",
                 session_id=session_id,
             )

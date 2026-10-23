@@ -30,7 +30,8 @@ from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
-from .base import BaseTool
+from .base import BaseTool, parameters_without
+from .external_scope import error_detail
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -211,6 +212,28 @@ class WorkspaceFileContentResponse(ToolResponseBase):
 
 
 _MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+# The most characters one ranged read of a workspace file returns.
+_MAX_RANGE_CHARS = 1_000_000
+
+# How far into a file an External API caller's ranged reads reach. Reaching a
+# character means reading every byte before it, so without a bound a deep
+# offset loads a whole file for a one-character answer. The REST download
+# serves the whole file.
+_MAX_EXTERNAL_RANGE_END = 1_000_000
+
+# The most text one External API ranged read returns: its base64 has to fit in
+# the 100,000 characters a tool result keeps, or the slice would come back cut.
+_MAX_EXTERNAL_RANGE_BYTES = 60_000
+
+
+def _fit_utf8(text: str, max_bytes: int) -> str:
+    """The longest start of *text* whose UTF-8 is at most *max_bytes* long."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    # A character cut in two is dropped whole.
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
 def _read_local_tool_result(
@@ -510,8 +533,8 @@ class ListWorkspaceFilesTool(BaseTool):
         except Exception as e:
             logger.error(f"Error listing workspace files: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to list workspace files: {e}",
-                error=str(e),
+                message=f"Failed to list workspace files: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -570,6 +593,11 @@ class ReadWorkspaceFileTool(BaseTool):
         return True, [APIKeyPermission.READ_FILES]
 
     @property
+    def external_parameters(self) -> dict[str, Any]:
+        # The working directory is the chat's sandbox; an external caller has none.
+        return parameters_without(self.parameters, "save_to_path")
+
+    @property
     def description(self) -> str:
         return (
             "Read a file from persistent workspace. Specify file_id or path. "
@@ -608,7 +636,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 },
                 "length": {
                     "type": "integer",
-                    "description": "Max characters to return for paginated reads.",
+                    "description": "Max characters to return per read (at most 1,000,000).",
                 },
             },
             "required": [],  # At least one of file_id or path must be provided
@@ -699,17 +727,41 @@ class ReadWorkspaceFileTool(BaseTool):
                     return result
                 save_to_path = result
 
-            # Ranged read: return a character slice directly.
+            # Ranged read: return a character slice directly. A slice is at
+            # most _MAX_RANGE_CHARS long, and only the bytes it can reach are
+            # read (UTF-8 is at most four bytes a character), so a large file
+            # is neither loaded nor decoded whole.
             if char_offset > 0 or char_length is not None:
-                raw = cached_content or await manager.read_file_by_id(target_file_id)
-                text = raw.decode("utf-8", errors="replace")
-                total_chars = len(text)
-                end = (
-                    char_offset + char_length
-                    if char_length is not None
-                    else total_chars
+                end = char_offset + min(
+                    _MAX_RANGE_CHARS if char_length is None else max(0, char_length),
+                    _MAX_RANGE_CHARS,
                 )
+                if session.external_caller:
+                    if char_offset >= _MAX_EXTERNAL_RANGE_END:
+                        return ErrorResponse(
+                            message=(
+                                "Ranged reads reach the first "
+                                f"{_MAX_EXTERNAL_RANGE_END:,} characters of a "
+                                "file. Download the file for the rest."
+                            ),
+                            session_id=session_id,
+                        )
+                    # What fits in _MAX_EXTERNAL_RANGE_BYTES is at most that
+                    # many characters, so no byte past them is needed.
+                    end = min(
+                        end,
+                        _MAX_EXTERNAL_RANGE_END,
+                        char_offset + _MAX_EXTERNAL_RANGE_BYTES,
+                    )
+                raw = cached_content or await manager.read_file_head_by_id(
+                    target_file_id, 4 * end
+                )
+                text = raw[: 4 * end].decode("utf-8", errors="replace")
                 slice_text = text[char_offset:end]
+                per_read = f"{_MAX_RANGE_CHARS:,} chars"
+                if session.external_caller:
+                    slice_text = _fit_utf8(slice_text, _MAX_EXTERNAL_RANGE_BYTES)
+                    per_read = f"{_MAX_EXTERNAL_RANGE_BYTES:,} bytes"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
@@ -721,8 +773,8 @@ class ReadWorkspaceFileTool(BaseTool):
                     message=(
                         f"Read chars {char_offset}–"
                         f"{char_offset + len(slice_text)} "
-                        f"of {total_chars:,} total "
-                        f"from {file_info.name}"
+                        f"of {file_info.name} ({file_info.size_bytes:,} bytes); "
+                        f"at most {per_read} per read"
                     ),
                     session_id=session_id,
                 )
@@ -756,8 +808,8 @@ class ReadWorkspaceFileTool(BaseTool):
             preview: str | None = None
             if is_text:
                 try:
-                    raw = cached_content or await manager.read_file_by_id(
-                        target_file_id
+                    raw = cached_content or await manager.read_file_head_by_id(
+                        target_file_id, self.PREVIEW_SIZE + 1
                     )
                     preview = raw[: self.PREVIEW_SIZE].decode("utf-8", errors="replace")
                     if len(raw) > self.PREVIEW_SIZE:
@@ -795,8 +847,8 @@ class ReadWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error reading workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to read workspace file: {e}",
-                error=str(e),
+                message=f"Failed to read workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -849,6 +901,11 @@ class WriteWorkspaceFileTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, [APIKeyPermission.WRITE_FILES]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # The working directory is the chat's sandbox; an external caller has none.
+        return parameters_without(self.parameters, "source_path")
 
     @property
     def description(self) -> str:
@@ -1060,7 +1117,16 @@ class WriteWorkspaceFileTool(BaseTool):
             return ErrorResponse(message=str(e), session_id=session_id)
         except VirusScanError as e:
             logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
-            return ErrorResponse(message=str(e), session_id=session_id)
+            # "Virus scanning failed: " plus the scanner client's text, which
+            # can name its host.
+            return ErrorResponse(
+                message=(
+                    "Virus scanning failed: an internal error"
+                    if session.external_caller
+                    else str(e)
+                ),
+                session_id=session_id,
+            )
         except WorkspaceAccessDeniedError as e:
             return ErrorResponse(
                 message=str(e), error="access_denied", session_id=session_id
@@ -1077,8 +1143,8 @@ class WriteWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to write workspace file: {e}",
-                error=str(e),
+                message=f"Failed to write workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -1197,7 +1263,7 @@ class DeleteWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error deleting workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to delete workspace file: {e}",
-                error=str(e),
+                message=f"Failed to delete workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
