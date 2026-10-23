@@ -117,10 +117,19 @@ async def test_cancellation_returns_while_the_submitted_clear_still_runs(
     clear = _BlockingClear(fail=worker_fails)
     count = 2 if queued else 1
     submissions = _SubmittedClears(count)
+    error_logged = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    log_exception = user_db.logger.exception
+
+    def record_error(message: str) -> None:
+        log_exception(message)
+        loop.call_soon_threadsafe(error_logged.set)
+
     with (
         patch.object(user_db.get_or_create_user, "cache_clear", clear),
         patch.object(user_db.get_user_by_id, "cache_delete"),
         patch.object(user_db.get_user_by_email, "cache_delete"),
+        patch.object(user_db.logger, "exception", side_effect=record_error),
         patch.object(
             user_db._USER_CACHE_CLEAR_EXECUTOR, "submit", side_effect=submissions
         ),
@@ -147,6 +156,8 @@ async def test_cancellation_returns_while_the_submitted_clear_still_runs(
             clear.release.set()
             await asyncio.gather(*tasks, return_exceptions=True)
             await submissions.drain()
+            if worker_fails:
+                await asyncio.wait_for(error_logged.wait(), timeout=5)
 
     assert clear.snapshot() == (count, 1)
     errors = [

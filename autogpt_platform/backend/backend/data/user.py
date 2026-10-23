@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -1178,17 +1178,21 @@ async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
 async def _clear_get_or_create_user_cache() -> None:
     """Serialize whole-cache clears without retaining cancelled callers."""
     context = contextvars.copy_context()
-    clear = asyncio.get_running_loop().run_in_executor(
-        _USER_CACHE_CLEAR_EXECUTOR, context.run, get_or_create_user.cache_clear
+    clear = _USER_CACHE_CLEAR_EXECUTOR.submit(
+        context.run, get_or_create_user.cache_clear
     )
+    awaiting_clear = asyncio.wrap_future(clear)
     try:
-        await asyncio.shield(clear)
+        await asyncio.shield(awaiting_clear)
     except asyncio.CancelledError:
+        awaiting_clear.add_done_callback(
+            lambda done: None if done.cancelled() else done.exception()
+        )
         clear.add_done_callback(_log_cancelled_cache_clear_error)
         raise
 
 
-def _log_cancelled_cache_clear_error(clear: asyncio.Future[None]) -> None:
+def _log_cancelled_cache_clear_error(clear: Future[None]) -> None:
     try:
         clear.result()
     except Exception:
