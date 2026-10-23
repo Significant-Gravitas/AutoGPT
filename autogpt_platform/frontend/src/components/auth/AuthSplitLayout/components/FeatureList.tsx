@@ -12,7 +12,8 @@ export function FeatureList({ itemsTitle, items }: Props) {
       {itemsTitle ? (
         <Text
           variant="small-medium"
-          className="uppercase tracking-[0.14em] !text-zinc-500"
+          // TODO(tokens): no exact text token for tracking-[0.14em]
+          className="uppercase tracking-[0.14em] !text-foreground-tertiary"
         >
           {itemsTitle}
         </Text>
