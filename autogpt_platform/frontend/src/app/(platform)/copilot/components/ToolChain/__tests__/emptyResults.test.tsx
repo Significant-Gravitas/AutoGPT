@@ -119,6 +119,8 @@ describe("isEmptyResult", () => {
     [NO_SCHEDULES, true],
     [{ ...NO_ROUTINES, expert_id: "e-1" }, true],
     [{ presets: [], total_count: 0, page: 1, page_size: 20 }, true],
+    // A page past the end: the collection is not empty.
+    [{ presets: [], total_count: 5, page: 2, page_size: 20 }, false],
     [{ routines: [{ id: "r-1" }] }, false],
     [{ name: "scraper", triggers: [] }, false],
     [{ ok: true, failed: [] }, false],

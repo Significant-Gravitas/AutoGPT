@@ -63,6 +63,14 @@ export function stripBaseFields(
 }
 
 const ID_KEY = /(^|_)id$/;
+// Where a page starts and how long it is, not how much there is.
+const PAGING_KEYS = new Set([
+  "page",
+  "page_size",
+  "per_page",
+  "limit",
+  "offset",
+]);
 
 function isEmptyCollection(value: unknown): boolean {
   if (Array.isArray(value)) return value.length === 0;
@@ -74,8 +82,9 @@ function isEmptyCollection(value: unknown): boolean {
 }
 
 /** A lookup that came back with nothing: every list in it is empty, and the
- *  rest is bookkeeping (ids, counts, paging). A result that names or states
- *  anything (`name`, `ok`) is an answer, even next to an empty list. */
+ *  rest is bookkeeping (ids, zero counts, paging). A result that names or
+ *  states anything (`name`, `ok`), or counts more than it listed (a page past
+ *  the end, `total_count: 5`), is an answer, even next to an empty list. */
 export function isEmptyResult(output: unknown): boolean {
   const obj = asObject(output);
   if (!obj) return false;
@@ -86,7 +95,8 @@ export function isEmptyResult(output: unknown): boolean {
   return entries.every(
     ([key, value]) =>
       isEmptyCollection(value) ||
-      typeof value === "number" ||
+      value === 0 ||
+      (typeof value === "number" && PAGING_KEYS.has(key)) ||
       value === "" ||
       (typeof value === "string" && ID_KEY.test(key)),
   );
