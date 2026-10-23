@@ -446,6 +446,63 @@ async def test_mark_session_completed_republishes_the_error_code():
 
 
 @pytest.mark.asyncio
+async def test_mark_session_completed_passes_cancelled_flag_to_notifier():
+    """A user Stop (``error_message == CANCELLED_MESSAGE``) must reach the
+    notifier as ``cancelled=True`` so no OS notification fires; ordinary
+    completions and genuine failures pass ``cancelled=False``."""
+
+    async def _mark(error_message: str | None):
+        notify_mock = AsyncMock()
+        with (
+            patch.object(
+                stream_registry,
+                "get_redis_async",
+                new=AsyncMock(
+                    return_value=_FakeRedis(
+                        {"status": "running", "turn_id": "turn-1", "user_id": "u1"}
+                    )
+                ),
+            ),
+            patch.object(
+                stream_registry,
+                "hash_compare_and_set",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+            patch(
+                "backend.copilot.stream_registry.dispatch_next_for_user",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                stream_registry, "publish_copilot_completion", new=notify_mock
+            ),
+            # The held-calls wake also fires for non-cancel turns; it needs
+            # live redis and is unrelated to what this test asserts.
+            patch("backend.copilot.gate.held.wake", new=AsyncMock()),
+        ):
+            await stream_registry.mark_session_completed(
+                "sess-1", error_message=error_message
+            )
+        return notify_mock
+
+    cancelled = await _mark(error_message=stream_registry.CANCELLED_MESSAGE)
+    cancelled.assert_awaited_once_with("sess-1", "u1", "failed", cancelled=True)
+
+    completed = await _mark(error_message=None)
+    completed.assert_awaited_once_with("sess-1", "u1", "completed", cancelled=False)
+
+    failed = await _mark(error_message="boom")
+    failed.assert_awaited_once_with("sess-1", "u1", "failed", cancelled=False)
+
+
+@pytest.mark.asyncio
 async def test_mark_session_completed_skips_lock_release_when_already_completed():
     """CAS failure = someone else completed the session first; we must not
     delete their already-released lock, and we must NOT publish StreamFinish

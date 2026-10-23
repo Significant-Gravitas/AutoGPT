@@ -10,8 +10,10 @@ import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
 /**
- * Title/body/icon for the OS-level notification fired when a copilot session
- * completes. Kept in sync with the same copy hardcoded in `public/push-sw.js`
+ * Fallback title/body/icon for the OS-level notification fired when a copilot
+ * session completes. Used only when the websocket payload carries no rich
+ * display fields (older payloads, enrichment failures). Kept in sync with the
+ * same copy hardcoded in `public/push-sw.js`
  * (NOTIFICATION_MAP.copilot_completion.session_completed) — the SW file is
  * plain JS served from /public and can't import from this module, so the two
  * sources are matched by test rather than by reference.
@@ -21,6 +23,35 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
   body: "Task completed",
   icon: "/notification-icon-192.png",
 } as const;
+
+/**
+ * Resolve the OS notification content for a copilot completion, preferring
+ * the backend-composed display fields and falling back to the generic copy.
+ */
+export function resolveCompletionNotificationContent(notification: unknown): {
+  title: string;
+  body: string;
+  icon: string;
+} {
+  const record =
+    typeof notification === "object" && notification !== null
+      ? (notification as Record<string, unknown>)
+      : {};
+  return {
+    title:
+      typeof record.title === "string" && record.title
+        ? record.title
+        : COPILOT_COMPLETION_NOTIFICATION.title,
+    body:
+      typeof record.body === "string" && record.body
+        ? record.body
+        : COPILOT_COMPLETION_NOTIFICATION.body,
+    icon:
+      typeof record.icon === "string" && record.icon
+        ? record.icon
+        : COPILOT_COMPLETION_NOTIFICATION.icon,
+  };
+}
 
 /**
  * Returns HTTP headers required for direct backend requests from copilot:

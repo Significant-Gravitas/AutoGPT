@@ -1,5 +1,6 @@
 """Tests for fire-and-forget Web Push delivery."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -66,8 +67,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["type"] == "agent_run"
         assert parsed["event"] == "completed"
@@ -81,12 +80,34 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["execution_id"] == "exec-1"
         assert parsed["graph_id"] == "graph-1"
         assert parsed["status"] == "completed"
+
+    def test_forwards_rich_display_fields(self):
+        payload = _make_payload(
+            type="copilot_completion",
+            event="session_completed",
+            session_id="sess-1",
+            status="completed",
+            title="Maria",
+            body="Finished: Q3 revenue report",
+            icon="/avatars/maria.webp",
+            url="/copilot?sessionId=sess-1",
+            expert_name="Maria",
+            session_title="Q3 revenue report",
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        parsed = json.loads(result)
+        assert parsed["title"] == "Maria"
+        assert parsed["body"] == "Finished: Q3 revenue report"
+        assert parsed["icon"] == "/avatars/maria.webp"
+        assert parsed["url"] == "/copilot?sessionId=sess-1"
+        assert parsed["expert_name"] == "Maria"
+        assert parsed["session_title"] == "Q3 revenue report"
 
     def test_excludes_unknown_fields(self):
         payload = _make_payload(
@@ -94,8 +115,6 @@ class TestBuildPushPayload:
         )
 
         result = push_sender._build_push_payload(payload)
-
-        import json
 
         parsed = json.loads(result)
         assert "custom_field" not in parsed
@@ -106,15 +125,12 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert isinstance(parsed["type"], str)
         assert isinstance(parsed["event"], str)
 
     def test_includes_unique_id_per_call(self):
         """Each push gets a fresh UUID so repeats don't collapse under the same SW tag."""
-        import json
 
         payload = _make_payload(type="agent_run", event="completed")
 
@@ -123,6 +139,82 @@ class TestBuildPushPayload:
 
         assert "id" in first and "id" in second
         assert first["id"] != second["id"]
+
+    def test_uses_utf8_not_ascii_escapes(self):
+        """Escaped \\uXXXX sequences cost 6 bytes per CJK char and 12 per
+        emoji; raw UTF-8 costs 3 and 4. The SW parses either form."""
+        payload = _make_payload(body="完成 🎉")
+
+        result = push_sender._build_push_payload(payload)
+
+        assert "完成 🎉" in result
+        assert "\\u" not in result
+
+    def test_drops_session_title_first_until_fits(self):
+        payload = _make_payload(
+            title="Maria",
+            body="Finished: something",
+            icon="/a.webp",
+            expert_name="Maria",
+            session_title="t" * 4000,
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        parsed = json.loads(result)
+        assert "session_title" not in parsed
+        assert parsed["expert_name"] == "Maria"
+        assert parsed["icon"] == "/a.webp"
+        assert parsed["title"] == "Maria"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
+
+    def test_drops_all_optional_fields_for_oversized_payload(self):
+        payload = _make_payload(
+            title="Maria",
+            body="Finished: something",
+            icon="i" * 3900,
+            expert_name="e" * 500,
+            session_title="t" * 1000,
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        parsed = json.loads(result)
+        assert "session_title" not in parsed
+        assert "expert_name" not in parsed
+        assert "icon" not in parsed
+        assert parsed["title"] == "Maria"
+        assert parsed["body"] == "Finished: something"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
+
+    def test_caps_oversized_required_fields_to_fit(self):
+        """Completion payloads bound title/body, but the sender is generic:
+        a future unbounded required field is capped with an ellipsis so the
+        push still fits instead of failing delivery."""
+        payload = _make_payload(title="t" * 500, body="x" * 5000)
+
+        result = push_sender._build_push_payload(payload)
+
+        parsed = json.loads(result)
+        assert parsed["title"] == "t" * 79 + "…"
+        assert parsed["body"] == "x" * 159 + "…"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
+
+    def test_drops_url_last_for_oversized_click_target(self):
+        """An oversized `url` is shed after the other optional fields; the
+        service worker falls back to its static map for the click target."""
+        payload = _make_payload(
+            title="Maria",
+            body="Finished: something",
+            url="/copilot?" + "x" * 4000,
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        parsed = json.loads(result)
+        assert "url" not in parsed
+        assert parsed["title"] == "Maria"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
 
 
 class TestSendPushForUser:

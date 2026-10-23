@@ -25,8 +25,43 @@ DEBOUNCE_SECONDS = 5.0
 # multiple WS replicas; acceptable since debounce is a best-effort UX nicety.
 _user_last_push = TTLCache[str, float](maxsize=10_000, ttl=DEBOUNCE_SECONDS)
 
-# Fields to forward from the notification payload to the push message
-_FORWARDED_FIELDS = ("session_id", "step", "status", "graph_id", "execution_id")
+# Fields to forward from the notification payload to the push message.
+# Beyond the routing fields, the rich display fields (title/body/icon/url)
+# and their structured context let the service worker render who did what
+# without another fetch.
+_FORWARDED_FIELDS = (
+    "session_id",
+    "step",
+    "status",
+    "graph_id",
+    "execution_id",
+    "title",
+    "body",
+    "icon",
+    "url",
+    "expert_name",
+    "session_title",
+)
+
+# Byte budget for the encoded push payload. Web Push carries ~4 KB including
+# content-coding overhead (~100 bytes for aes128gcm), and an oversized
+# payload fails delivery — counting toward the failure janitor that deletes
+# the subscription. Measured in UTF-8 bytes, not characters.
+MAX_PUSH_BYTES = 3800
+
+# Display text is capped for any publisher, mirroring the caps
+# completion_notify composes with: unbounded input must never be what
+# overflows the byte budget.
+_TITLE_CHAR_CAP = 80
+_BODY_CHAR_CAP = 160
+
+# Optional fields, shed first (in order) when the payload would exceed the
+# byte budget. The notification still renders from title/body, degrading to
+# the default icon — and finally to the static click target — only if the
+# earlier drops don't bring it under budget. Dropping `url` is safe: the
+# service worker falls back to its static map (for copilot completions it
+# rebuilds the identical session URL from `session_id`).
+_DROPPABLE_FIELDS = ("session_title", "expert_name", "icon", "url")
 
 
 def _extract_status_code(e: WebPushException) -> int | None:
@@ -39,8 +74,36 @@ def _extract_status_code(e: WebPushException) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _encode_push_payload(compact: dict[str, object]) -> str:
+    # ensure_ascii=False: escaped \uXXXX sequences cost 6 bytes per CJK
+    # character and 12 per emoji, while the UTF-8 bytes webpush sends cost 3
+    # and 4. The service worker parses either form as JSON.
+    return json.dumps(compact, ensure_ascii=False)
+
+
+def _fit_push_payload(compact: dict[str, object]) -> str:
+    """Serialize under MAX_PUSH_BYTES, capping display text and shedding context.
+
+    Caps title/body first so no publisher's unbounded text can overflow the
+    budget, then drops session_title, expert_name, icon and url until the
+    UTF-8 encoded payload fits. The notification still renders from the
+    capped title/body; an oversized payload would fail delivery and count
+    toward the failure janitor that deletes the subscription.
+    """
+    for field, cap in (("title", _TITLE_CHAR_CAP), ("body", _BODY_CHAR_CAP)):
+        text = compact.get(field)
+        if isinstance(text, str) and len(text) > cap:
+            compact[field] = text[: cap - 1].rstrip() + "…"
+    for field in _DROPPABLE_FIELDS:
+        payload_json = _encode_push_payload(compact)
+        if len(payload_json.encode("utf-8")) <= MAX_PUSH_BYTES:
+            return payload_json
+        compact.pop(field, None)
+    return _encode_push_payload(compact)
+
+
 def _build_push_payload(payload: NotificationPayload) -> str:
-    """Build a compact JSON payload (<4KB) for the push message.
+    """Build a compact JSON payload for the push message.
 
     ``id`` is a per-push UUID used by the service worker to build a unique
     notification tag, so repeat pushes don't get coalesced by the OS.
@@ -54,7 +117,7 @@ def _build_push_payload(payload: NotificationPayload) -> str:
     for key in _FORWARDED_FIELDS:
         if key in data:
             compact[key] = data[key]
-    return json.dumps(compact)
+    return _fit_push_payload(compact)
 
 
 async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None:
