@@ -4,9 +4,11 @@ import { useSyncExternalStore } from "react";
 import {
   getConsent,
   getConsentManagerStatus,
+  isConsentAnswerPending,
   isSameConsent,
   NO_CONSENT,
   subscribeToConsent,
+  subscribeToConsentAnswerPending,
   subscribeToConsentManagerStatus,
   type ConsentManagerStatus,
   type ConsentState,
@@ -40,5 +42,14 @@ export function useConsentManagerStatus() {
     subscribeToConsentManagerStatus,
     getConsentManagerStatus,
     (): ConsentManagerStatus => "loading",
+  );
+}
+
+/** Whether the visitor's answer is still to come; see isConsentAnswerPending. */
+export function useConsentAnswerPending() {
+  return useSyncExternalStore(
+    subscribeToConsentAnswerPending,
+    isConsentAnswerPending,
+    () => true,
   );
 }

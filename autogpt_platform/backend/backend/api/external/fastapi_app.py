@@ -35,11 +35,6 @@ async def _graph_activation_error_handler(_request: Request, exc: GraphActivatio
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    external_api,
-    service_name="external-api",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=True,
-)
+# Add Prometheus instrumentation. The REST API process this app is mounted in
+# serves the metrics on their own port, never on this public app.
+instrument_fastapi(external_api, service_name="external-api", expose_endpoint=False)

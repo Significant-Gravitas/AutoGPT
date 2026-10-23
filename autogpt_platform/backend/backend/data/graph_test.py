@@ -16,10 +16,13 @@ import backend.api.features.library.db as library_db
 import backend.api.features.store.model as store
 from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
-from backend.blocks._base import BlockSchema, BlockSchemaInput
+from backend.blocks import _all_subclasses, load_all_blocks
+from backend.blocks._base import Block, BlockSchema, BlockSchemaInput
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
+from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.io import (
     AgentGoogleDriveFileInputBlock,
@@ -27,6 +30,7 @@ from backend.blocks.io import (
     AgentOutputBlock,
 )
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
     BaseGraph,
@@ -756,6 +760,140 @@ def test_picked_files_of_a_removed_block_are_still_found():
     assert stripped.input_default == {"file": None, "note": "plain"}
     assert [(n.id, field_name) for n, field_name, _ in cleared] == [("gone", "file")]
     assert graph.nodes[0].input_default == {"file": None, "note": "plain"}
+
+
+def _sub_agent_node(user_id: str) -> Node:
+    return Node(
+        id="sub-agent",
+        block_id=AgentExecutorBlock().id,
+        input_default={
+            "user_id": user_id,
+            "graph_id": "child-graph",
+            "graph_version": 1,
+            "inputs": {},
+            "input_schema": {},
+            "output_schema": {},
+        },
+    )
+
+
+def test_stripped_for_export_blanks_a_sub_agent_nodes_user_id():
+    """A sub-agent node holds the id of the account that saved the graph. An
+    export blanks it, and the copy still works: saving it stamps the id of
+    whoever saves it."""
+    graph = _graph_of(_sub_agent_node("owner-user"))
+
+    exported = graph.nodes[0].stripped_for_export()
+
+    assert exported.input_default["user_id"] == ""
+    assert exported.input_default["graph_id"] == "child-graph"
+    assert graph.nodes[0].input_default["user_id"] == "owner-user"
+
+    copy = _graph_of(
+        Node(
+            id="sub-agent",
+            block_id=exported.block_id,
+            input_default=exported.input_default,
+        )
+    )
+    copy.reassign_ids(user_id="importer", reassign_graph_id=True)
+    assert copy.nodes[0].input_default["user_id"] == "importer"
+
+
+def test_shared_copy_strips_every_node_and_names_no_owner():
+    """What someone who doesn't own a graph is shown: every node, sub-graphs'
+    included, stripped as an export strips it, and no owner. The graph it was
+    copied from is untouched, and the run form built from it is the same."""
+    trigger = Node(
+        id="trigger",
+        block_id=GenericWebhookTriggerBlock().id,
+        input_default={"secret_token": "owner-token", "constants": {"k": "v"}},
+    )
+    code = Node(
+        id="code",
+        block_id=ExecuteCodeBlock().id,
+        input_default={
+            "credentials": {"id": "owner-e2b", "provider": "e2b", "type": "api_key"},
+            "code": "print('hi')",
+        },
+    )
+    sql = Node(
+        id="sql",
+        block_id=SQLQueryBlock().id,
+        input_default={"host": "db.internal", "database": "app", "query": "select 1"},
+    )
+    graph = _graph_of(
+        trigger, code, _sub_agent_node("test-user"), sub_graph_nodes=[sql]
+    )
+    graph.organization_id, graph.team_id = "owner-org", "owner-team"
+    graph.nodes[0].webhook_id = "owner-webhook"
+
+    shared = graph.shared_copy()
+
+    assert (shared.user_id, shared.organization_id, shared.team_id) == ("", None, None)
+    assert [node.webhook_id for node in shared.nodes] == [None, None, None]
+    assert shared.nodes[0].input_default == {"constants": {"k": "v"}}
+    assert shared.nodes[1].input_default == {"code": "print('hi')"}
+    assert shared.nodes[2].input_default["user_id"] == ""
+    assert shared.sub_graphs[0].nodes[0].input_default == {
+        "database": "app",
+        "query": "select 1",
+    }
+
+    assert graph.user_id == "test-user"
+    assert graph.nodes[0].webhook_id == "owner-webhook"
+    assert graph.nodes[0].input_default["secret_token"] == "owner-token"
+    assert graph.sub_graphs[0].nodes[0].input_default["host"] == "db.internal"
+
+    assert shared.input_schema == graph.input_schema
+    assert shared.credentials_input_schema == graph.credentials_input_schema
+    assert shared.trigger_setup_info == graph.trigger_setup_info
+
+
+def test_only_known_block_fields_are_marked_secret():
+    """Guard on what `stripped_for_export` strips. It finds secret inputs by
+    the `secret` flag in the block's current schema, so a value saved under a
+    field (or block) that has since been renamed or removed is no longer
+    recognised, and exports and shared copies would carry it. Before removing
+    or renaming one of these, scrub the stored values with a data migration;
+    a newly added one only needs adding here.
+
+    Every block class counts, including those this environment leaves out of
+    `load_all_blocks()` because their provider isn't configured."""
+    load_all_blocks()  # imports every block module
+    block_classes = {
+        block_cls
+        for block_cls in _all_subclasses(Block)
+        if block_cls.__module__.startswith("backend.blocks.")
+        and not block_cls.__name__.endswith("Base")
+    }
+
+    secret_fields = set()
+    construction_failures: list[str] = []
+    for block_cls in block_classes:
+        try:
+            block = block_cls()
+        except Exception as e:
+            # Never skip silently: an excluded block is one this guard did not
+            # actually check.
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
+            continue
+        properties = block.input_schema.jsonschema().get("properties", {})
+        for name, field_schema in properties.items():
+            if isinstance(field_schema, dict) and field_schema.get("secret") is True:
+                secret_fields.add((block.name, name))
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
+    assert secret_fields == {
+        ("AllQuietIncidentTriggerBlock", "signing_secret"),
+        ("AutoPilotBlock", "codex_credentials"),
+        ("GenericWebhookTriggerBlock", "secret_token"),
+        ("PublishToMediumBlock", "author_id"),
+        ("SQLQueryBlock", "host"),
+    }
 
 
 def _sheets_graph_row(owner_id: str) -> AgentGraph:

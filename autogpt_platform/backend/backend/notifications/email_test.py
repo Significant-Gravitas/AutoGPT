@@ -48,6 +48,7 @@ async def test_reply_to_preserves_configured_sender_and_stream(
     assert envelope["MessageStream"] == "service"
     assert envelope["HtmlBody"] == message.html
     assert envelope["TextBody"] == message.text
+    assert envelope["Tag"] == notification_type.value.lower()
     if notification_type == NotificationType.PAYMENT_FAILED:
         assert not envelope["Headers"]
     else:
@@ -80,6 +81,44 @@ def test_auth_delivery_includes_text_without_unsubscribe(monkeypatch):
     assert envelope["TextBody"] == "Verify: https://example.org/verify?token=abc"
     assert not envelope.get("Headers")
     assert not envelope.get("ReplyTo")
+    assert envelope["Tag"] == "auth"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_notification_tracking_follows_the_setting(monkeypatch, enabled):
+    monkeypatch.setattr(
+        delivery.settings.config, "postmark_track_opens_and_clicks", enabled
+    )
+    sender = delivery.EmailSender.__new__(delivery.EmailSender)
+    sender.postmark = MagicMock()
+
+    await sender._deliver(
+        NotificationType.BRIEFING,
+        "user@example.org",
+        RenderedEmail(subject="Brief", preheader="Brief", html="<p>B</p>", text="B"),
+        build_urls("https://example.org/unsubscribe"),
+    )
+
+    envelope = sender.postmark.emails.send.call_args.kwargs
+    assert envelope["TrackOpens"] is enabled
+    assert envelope["TrackLinks"] == ("HtmlOnly" if enabled else "None")
+
+
+def test_auth_mail_is_never_tracked(monkeypatch):
+    """Its links carry sign-in tokens, which link tracking would hand to the
+    click webhook."""
+    monkeypatch.setattr(
+        delivery.settings.config, "postmark_track_opens_and_clicks", True
+    )
+    sender = delivery.EmailSender.__new__(delivery.EmailSender)
+    sender.postmark = MagicMock()
+
+    sender.send_email_or_raise("user@example.org", "Reset", "<p>Reset</p>")
+
+    envelope = sender.postmark.emails.send.call_args.kwargs
+    assert envelope["TrackOpens"] is False
+    assert envelope["TrackLinks"] == "None"
 
 
 @pytest.mark.asyncio

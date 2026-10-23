@@ -23,7 +23,6 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface AgentInfoProps {
   user: User | null;
-  agentId: string;
   name: string;
   creator: string;
   creatorAvatar?: string;
@@ -41,7 +40,6 @@ interface AgentInfoProps {
 
 export const AgentInfo = ({
   user,
-  agentId,
   name,
   creator,
   creatorAvatar,
@@ -228,7 +226,7 @@ export const AgentInfo = ({
                 variant="ghost"
                 size="small"
                 loading={isDownloadingAgent}
-                onClick={() => handleDownload(agentId, name)}
+                onClick={() => handleDownload(name)}
                 data-testid="agent-download-button"
                 className="underline"
               >

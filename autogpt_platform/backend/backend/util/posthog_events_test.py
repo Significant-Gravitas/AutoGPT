@@ -51,6 +51,10 @@ LIVE_EVENT_NAMES = {
     "subscription_ended",
     "listing_added_to_library",
     "listing_downloaded",
+    "email_delivered",
+    "email_opened",
+    "email_clicked",
+    "email_bounced",
 }
 
 PLANNED_EVENT_NAMES: set[str] = set()

@@ -11,7 +11,6 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -170,7 +169,7 @@ export function useAgentRunModal(
   // API mutations
   const executeGraphMutation = usePostV1ExecuteGraphAgent({
     mutation: {
-      onSuccess: (response, variables) => {
+      onSuccess: (response) => {
         if (response.status === 200) {
           toast({
             title: "Workflow execution started",
@@ -179,11 +178,6 @@ export function useAgentRunModal(
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
           });
           callbacks?.onRun?.(response.data);
-          // Simulate goes through the same mutation as Run; only a real run
-          // is an activation.
-          if (!variables.data.dry_run) {
-            trackAgentRunGoal(agent.graph_id, "library");
-          }
           setIsOpen(false);
         }
       },

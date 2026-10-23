@@ -69,8 +69,6 @@ export function SwitchCycleDialog({
             variant="primary"
             size="small"
             onClick={onConfirm}
-            data-fast-goal="subscription_cycle_confirm"
-            data-fast-goal-surface="settings_billing"
             disabled={isSaving}
             loading={isSaving}
           >

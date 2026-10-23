@@ -7,10 +7,6 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Response, Security
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 
-from backend.api.features.graph_executions.activity_gate import (
-    hide_activity_summaries_if_disabled,
-    hide_activity_summary_if_disabled,
-)
 from backend.api.features.graph_executions.model import (
     ExecutionShareRequest,
     ExecutionShareResponse,
@@ -99,11 +95,7 @@ async def list_graphs_executions(
         organization_id=ctx.org_id,
     )
 
-    # Apply feature flags to filter out disabled features
-    filtered_executions = await hide_activity_summaries_if_disabled(
-        paginated_result.executions, user_id
-    )
-    return filtered_executions
+    return paginated_result.executions
 
 
 @router.get(
@@ -166,21 +158,17 @@ async def list_graph_executions(
         organization_id=ctx.org_id,
     )
 
-    # Apply feature flags to filter out disabled features
-    filtered_executions = await hide_activity_summaries_if_disabled(
-        paginated_result.executions, user_id
-    )
     onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId
         and onboarding.onboardingAgentExecutionId
-        in [exec.id for exec in filtered_executions]
+        in [exec.id for exec in paginated_result.executions]
         and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
     ):
         await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return execution_db.GraphExecutionsPaginated(
-        executions=filtered_executions, pagination=paginated_result.pagination
+        executions=paginated_result.executions, pagination=paginated_result.pagination
     )
 
 
@@ -217,8 +205,6 @@ async def get_graph_execution(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
 
-    # Apply feature flags to filter out disabled features
-    result = await hide_activity_summary_if_disabled(result, user_id)
     onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId == graph_exec_id

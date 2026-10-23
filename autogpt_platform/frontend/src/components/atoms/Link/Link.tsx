@@ -7,6 +7,7 @@ interface LinkProps {
   children: React.ReactNode;
   className?: string;
   isExternal?: boolean;
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
   variant?: "primary" | "secondary";
 }
 
