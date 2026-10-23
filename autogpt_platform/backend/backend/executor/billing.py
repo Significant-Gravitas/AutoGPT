@@ -396,9 +396,17 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
         total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
         node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
-            handle_low_balance(
-                get_db_client(), node_exec.user_id, remaining, total_cost
-            )
+            try:
+                handle_low_balance(
+                    get_db_client(), node_exec.user_id, remaining, total_cost
+                )
+            except Exception:
+                # The spend has landed: a failed alert must not report it as a
+                # failed charge, or the caller drops it from the run's cost.
+                logger.exception(
+                    f"Low-balance check failed after charging node "
+                    f"{node_exec.node_exec_id}"
+                )
         return total_cost, remaining
 
     return await asyncio.to_thread(_run)

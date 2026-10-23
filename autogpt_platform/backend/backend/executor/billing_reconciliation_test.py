@@ -12,7 +12,11 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
-from backend.executor.billing import charge_reconciled_usage, charge_usage
+from backend.executor.billing import (
+    charge_node_usage,
+    charge_reconciled_usage,
+    charge_usage,
+)
 from backend.sdk.cost_integration import sync_all_provider_costs
 
 
@@ -449,6 +453,32 @@ async def test_charge_node_usage_pins_the_amount_actually_charged(
     assert (cost, remaining) == (7, 93)
     assert exec_entry.pre_flight_charge == 7
     assert db_client.spend_credits.call_args.kwargs["cost"] == 7
+
+
+@pytest.mark.asyncio
+async def test_charge_node_usage_still_returns_the_charge_when_the_alert_fails(
+    tmp_block_costs_override,
+):
+    """The low-balance alert runs after the spend has landed. If it raises, the
+    charge must still come back: the orchestrator adds the returned amount to
+    the run's cost, and reconciliation settles against the pinned baseline
+    either way."""
+    tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+
+    db_client = MagicMock()
+    db_client.spend_credits.return_value = 3
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.billing.handle_low_balance",
+            side_effect=RuntimeError("alert store unavailable"),
+        ),
+    ):
+        cost, remaining = await charge_node_usage(exec_entry)
+
+    assert (cost, remaining) == (7, 3)
+    assert exec_entry.pre_flight_charge == 7
 
 
 @pytest.mark.asyncio
