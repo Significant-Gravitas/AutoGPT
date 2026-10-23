@@ -27,16 +27,12 @@ export function Button(props: ButtonProps) {
     rightIcon,
     children,
     as = "button",
-    unmask = false,
     asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
-
-  const applyUnmask = (...classes: Array<string | false | null | undefined>) =>
-    cn(...classes, unmask && "sentry-unmask");
 
   // Extract aria-label for tooltip on icon variant
   const ariaLabel =
@@ -88,7 +84,7 @@ export function Button(props: ButtonProps) {
 
     const linkButton = (
       <button
-        className={applyUnmask(
+        className={cn(
           extendedButtonVariants({ variant: "link", className }),
           loading && "pointer-events-none opacity-60",
           isDisabled && "pointer-events-none opacity-50",
@@ -106,11 +102,11 @@ export function Button(props: ButtonProps) {
   if (loading) {
     const loadingClassName =
       variant === "ghost"
-        ? applyUnmask(
+        ? cn(
             extendedButtonVariants({ variant, size, className }),
             "pointer-events-none",
           )
-        : applyUnmask(
+        : cn(
             extendedButtonVariants({ variant: "primary", size, className }),
             "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
           );
@@ -148,7 +144,7 @@ export function Button(props: ButtonProps) {
     const nextLinkButton = (
       <NextLink
         {...(restProps as LinkProps)}
-        className={applyUnmask(
+        className={cn(
           extendedButtonVariants({ variant, size, className }),
           loading && "pointer-events-none",
           isDisabled && "pointer-events-none opacity-50",
@@ -164,7 +160,7 @@ export function Button(props: ButtonProps) {
 
   const regularButton = (
     <button
-      className={applyUnmask(
+      className={cn(
         extendedButtonVariants({ variant, size, className }),
         loading && "pointer-events-none",
       )}

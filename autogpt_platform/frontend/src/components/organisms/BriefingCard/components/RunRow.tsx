@@ -28,8 +28,6 @@ export function RunRow({ item, isHidden = false }: Props) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          {/* Agent names and run summaries are user data: never opt them into
-              unmasking in session replays. */}
           <Text variant="body-medium" className="truncate text-zinc-900">
             {item.agent_name}
           </Text>

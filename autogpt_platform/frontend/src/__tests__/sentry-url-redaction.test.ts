@@ -9,28 +9,11 @@ import {
   vi,
 } from "vitest";
 
-const { replayIntegration } = vi.hoisted(() => ({
-  replayIntegration: vi.fn((options: object) => ({ name: "Replay", options })),
-}));
-
-// The client bundle runs the browser SDK; Vitest would load the Node one. The
-// replay itself never records outside a browser, so only its options are kept.
+// The client bundle runs the browser SDK; Vitest would load the Node one.
 vi.mock("@sentry/nextjs", async () => {
-  const sdk = await import(
-    /* @vite-ignore */ await sentryPackageEntry("browser")
-  );
-  return {
-    ...sdk,
-    replayIntegration,
-    captureRouterTransitionStart: () => undefined,
-  };
+  const sdk = await import(/* @vite-ignore */ await browserSDKEntry());
+  return { ...sdk, captureRouterTransitionStart: () => undefined };
 });
-
-// With monitoring consent stored, the client installs session replay at init.
-vi.mock("@/services/consent/consent", () => ({
-  hasConsentFor: () => true,
-  subscribeToConsent: () => () => undefined,
-}));
 
 const R = "[REDACTED]";
 const RESET_MARKER = "marker-r-4f1c";
@@ -70,6 +53,14 @@ beforeEach(() => {
 afterAll(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+});
+
+describe("the browser client", () => {
+  it("records no session replay", () => {
+    const client = Sentry.getClient()!;
+    expect(client.getIntegrationByName("Replay")).toBeUndefined();
+    expect(Sentry.getReplay()).toBeUndefined();
+  });
 });
 
 describe("a browser error report", () => {
@@ -188,136 +179,13 @@ describe("a browser transaction", () => {
   });
 });
 
-describe("a session replay", () => {
-  it("masks the token in the replay event's pages and address", async () => {
-    history.replaceState({}, "", RESET_PAGE);
-    const client = Sentry.getClient()!;
-    const event: Sentry.Event & { urls: string[] } = {
-      type: "replay_event",
-      urls: [`${location.origin}${RESET_PAGE}`, `${location.origin}/library`],
-    };
-    const hint = { event_id: "a".repeat(32) };
-
-    // As the replay integration prepares its events (prepareReplayEvent).
-    client.emit("preprocessEvent", event, hint);
-    const { prepareEvent } = await import(
-      /* @vite-ignore */ await sentryPackageEntry("core")
-    );
-    const prepared = await prepareEvent(
-      client.getOptions(),
-      event,
-      hint,
-      Sentry.getCurrentScope(),
-      client,
-      Sentry.getIsolationScope(),
-    );
-
-    expect(prepared.urls).toEqual([
-      `${location.origin}/reset-password?token=${R}`,
-      `${location.origin}/library`,
-    ]);
-    expect(prepared.request.url).toBe(
-      `${location.origin}/reset-password?token=${R}`,
-    );
-    expect(JSON.stringify(prepared)).not.toContain(RESET_MARKER);
-  });
-
-  it("masks the token in the navigations, calls and breadcrumbs it records", () => {
-    const [[{ beforeAddRecordingEvent }]] = replayIntegration.mock.calls as [
-      [{ beforeAddRecordingEvent: (event: object) => object }],
-    ];
-    // As the replay records them (createPerformanceSpans, addBreadcrumbEvent).
-    const recorded = [
-      performanceSpan("navigation.navigate", `${location.origin}${RESET_PAGE}`),
-      performanceSpan("navigation.push", LINK_PAGE, { previous: RESET_PAGE }),
-      performanceSpan("resource.fetch", `${location.origin}${LINK_INFO_CALL}`),
-      breadcrumb({
-        category: "navigation",
-        data: { from: RESET_PAGE, to: LINK_PAGE },
-      }),
-      breadcrumb({
-        category: "ui.slowClickDetected",
-        data: { url: `${location.origin}${LINK_PAGE}`, clickCount: 1 },
-      }),
-    ].map(beforeAddRecordingEvent);
-
-    expect(recorded.map(recordedURLs)).toEqual([
-      [`${location.origin}/reset-password?token=${R}`],
-      [`/link/${R}?platform=${R}`, `/reset-password?token=${R}`],
-      [`${location.origin}/api/proxy/api/platform-linking/tokens/${R}/info`],
-      [`/reset-password?token=${R}`, `/link/${R}?platform=${R}`],
-      [`${location.origin}/link/${R}?platform=${R}`],
-    ]);
-  });
-
-  it("keeps the ordinary pages it records as they are", () => {
-    const [[{ beforeAddRecordingEvent }]] = replayIntegration.mock.calls as [
-      [{ beforeAddRecordingEvent: (event: object) => object }],
-    ];
-
-    const recorded = [
-      performanceSpan("navigation.push", "/marketplace", {
-        previous: "/library",
-      }),
-      breadcrumb({
-        category: "navigation",
-        data: { from: "/library", to: "/marketplace" },
-      }),
-    ].map(beforeAddRecordingEvent);
-
-    expect(recorded.map(recordedURLs)).toEqual([
-      ["/marketplace", "/library"],
-      ["/library", "/marketplace"],
-    ]);
-  });
-});
-
-function performanceSpan(op: string, description: string, data?: object) {
-  return {
-    type: 5,
-    timestamp: 1,
-    data: {
-      tag: "performanceSpan",
-      payload: { op, description, startTimestamp: 1, endTimestamp: 1, data },
-    },
-  };
-}
-
-function breadcrumb(crumb: { category: string; data: object }) {
-  return {
-    type: 5,
-    timestamp: 1,
-    data: {
-      tag: "breadcrumb",
-      payload: { timestamp: 1, type: "default", ...crumb },
-    },
-  };
-}
-
-function recordedURLs(event: object) {
-  const { payload } = (event as ReturnType<typeof performanceSpan>).data;
-  const data = (payload.data ?? {}) as Record<string, unknown>;
-  const urls = [
-    payload.description,
-    data.previous,
-    data.from,
-    data.to,
-    data.url,
-  ];
-  return urls.filter((url) => typeof url === "string");
-}
-
-// The browser SDK's build, and the core it imports, resolved as pnpm laid them out.
-async function sentryPackageEntry(name: "browser" | "core") {
+// The browser SDK's build, resolved as pnpm laid it out.
+async function browserSDKEntry() {
   const { createRequire } = await import("node:module");
   const nextjs = createRequire(import.meta.url).resolve(
     "@sentry/nextjs/package.json",
   );
   const react = createRequire(nextjs).resolve("@sentry/react/package.json");
   const browser = createRequire(react).resolve("@sentry/browser/package.json");
-  if (name === "browser") {
-    return browser.replace("package.json", "build/npm/esm/prod/index.js");
-  }
-  const core = createRequire(browser).resolve("@sentry/core/package.json");
-  return core.replace("package.json", "build/esm/index.js");
+  return browser.replace("package.json", "build/npm/esm/prod/index.js");
 }
