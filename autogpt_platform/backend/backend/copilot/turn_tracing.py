@@ -107,7 +107,8 @@ class TurnTrace:
         stripped. The chat route saves it before dispatch, sometimes behind a
         server block (a voice turn's instructions, a first turn's context); a
         sub-session doesn't, and the engine saves it when the turn starts.
-        Either way it counts once. A turn with no user message of its own (a
+        Either way it counts once, and so does a message of files with no
+        text, which nothing saves. A turn with no user message of its own (a
         kickoff, a scheduled follow-up the scheduler stores as the model's, a
         continuation) is the first only in a chat nobody has written to yet.
         A chat loaded without its oldest messages (a long one, past the load
@@ -117,7 +118,7 @@ class TurnTrace:
             if message is None:
                 first = users == 0
             else:
-                if message and not _is_latest_user_message(session.messages, message):
+                if not _is_latest_user_message(session.messages, message):
                     users += 1
                 first = users <= 1
             if session.messages and (session.messages[0].sequence or 0) > 0:

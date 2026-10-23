@@ -612,6 +612,9 @@ class TestExecuteAsyncAclose:
             ([], "do this", True, "true"),
             # A sub-session's follow-up, dispatched without saving its message.
             ([("user", "hi"), ("assistant", "hello")], "do this", True, "false"),
+            # Files sent with no text: an empty message, which nothing saves.
+            ([], "", True, "true"),
+            ([("user", "hi"), ("assistant", "hello")], "", True, "false"),
             # A first turn redelivered after it saved a tool call: the engine
             # saves its message again and resumes the chat.
             ([("user", "brief me"), ("assistant", "done")], "brief me", True, "false"),
