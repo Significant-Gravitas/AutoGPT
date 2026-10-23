@@ -69,8 +69,9 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
 
   await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 
+  // /profile redirects to /settings/profile in next.config.mjs, before auth runs.
   await page.goto("/profile");
-  await expect(page).toHaveURL(/\/login\?next=%2Fprofile/);
+  await expect(page).toHaveURL(/\/login\?next=%2Fsettings%2Fprofile/);
 });
 
 test("auth happy path: multi-tab logout clears shared builder sessions", async ({

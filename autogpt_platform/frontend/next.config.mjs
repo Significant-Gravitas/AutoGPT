@@ -43,6 +43,21 @@ const nextConfig = {
       },
     ];
   },
+  // These /profile pages have no page left for the layout's redirect to run on.
+  async redirects() {
+    return [
+      {
+        source: "/profile",
+        destination: "/settings/profile",
+        permanent: false,
+      },
+      {
+        source: "/profile/integrations",
+        destination: "/settings/integrations",
+        permanent: false,
+      },
+    ];
+  },
   productionBrowserSourceMaps: enableSourceMaps,
   eslint: { ignoreDuringBuilds: skipBuildChecks },
   typescript: { ignoreBuildErrors: skipBuildChecks },
