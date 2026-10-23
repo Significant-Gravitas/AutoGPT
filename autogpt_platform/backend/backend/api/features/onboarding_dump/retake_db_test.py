@@ -4,17 +4,19 @@
 rules, so only the database shows which takes the real claim lets through.
 """
 
+import io
 import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import User
 from pytest_mock import MockerFixture
+from starlette.datastructures import Headers
 
 from backend.api.features.onboarding_dump import db, routes, service
 
@@ -117,6 +119,38 @@ async def test_an_abandoned_upload_is_closed_even_when_its_buffer_cannot_be_drop
     assert (dump.status, dump.errorCode) == (BrainDumpStatus.failed, "discarded")
 
 
+async def test_a_late_first_part_of_a_skipped_take_cannot_reopen_it(user_id: str):
+    """Part 0 was still on the wire when the user skipped, and lands afterwards."""
+    await routes.discard_brain_dump(user_id=user_id, recording_id="rec-voice")
+    await service.finalize_skipped_dump(user_id, "rec-skip")
+
+    with pytest.raises(HTTPException) as refused:
+        await _upload_part_zero(user_id, "rec-voice")
+
+    assert refused.value.status_code == 409
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.recordingId, dump.inputMode) == (
+        "rec-skip",
+        BrainDumpInputMode.skipped,
+    )
+
+
+async def test_a_skipped_take_resent_from_the_browser_starts_again(user_id: str):
+    """Back from Hire, then "Use that recording", sends the discarded take on purpose."""
+    await routes.discard_brain_dump(user_id=user_id, recording_id="rec-voice")
+    await service.finalize_skipped_dump(user_id, "rec-skip")
+
+    await _upload_part_zero(user_id, "rec-voice", resent=True)
+
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.recordingId, dump.status) == (
+        "rec-voice",
+        BrainDumpStatus.recording_uploaded,
+    )
+
+
 # Another tab's take may be the one running, so neither kind of new take
 # can reset it.
 @pytest.mark.parametrize("second", ["typed", "skipped"])
@@ -155,4 +189,17 @@ async def _completed_typed_take(user_id: str, recording_id: str) -> None:
         transcript=TYPED_TEXT,
         greeting="You run a bakery.",
         recommendedExperts=Json({"experts": []}),
+    )
+
+
+async def _upload_part_zero(user_id: str, recording_id: str, resent: bool = False):
+    part = UploadFile(
+        file=io.BytesIO(b"opus"), headers=Headers({"content-type": "audio/webm"})
+    )
+    return await routes.upload_brain_dump_part(
+        user_id=user_id,
+        file=part,
+        recording_id=recording_id,
+        part_index=0,
+        resent=resent,
     )

@@ -89,6 +89,10 @@ def _sizes_key(user_id: str, recording_id: str) -> str:
     return _buffer_key(user_id, recording_id, "sizes")
 
 
+def _discarded_key(user_id: str, recording_id: str) -> str:
+    return _buffer_key(user_id, recording_id, "discarded")
+
+
 async def _read_parts(user_id: str, recording_id: str) -> dict[str, str]:
     redis = await redis_client.get_redis_async()
     # The shared client runs with ``decode_responses=True``, so values come
@@ -162,6 +166,19 @@ async def discard_parts(user_id: str, recording_id: str) -> None:
     await redis.delete(
         _parts_key(user_id, recording_id), _sizes_key(user_id, recording_id)
     )
+
+
+async def mark_discarded(user_id: str, recording_id: str) -> None:
+    """Remember a take the client threw away, while its parts could still arrive."""
+    redis = await redis_client.get_redis_async()
+    await redis.set(
+        _discarded_key(user_id, recording_id), "1", ex=PART_BUFFER_TTL_SECONDS
+    )
+
+
+async def was_discarded(user_id: str, recording_id: str) -> bool:
+    redis = await redis_client.get_redis_async()
+    return bool(await redis.exists(_discarded_key(user_id, recording_id)))
 
 
 async def store_audio(user_id: str, content: bytes, filename: str) -> str:

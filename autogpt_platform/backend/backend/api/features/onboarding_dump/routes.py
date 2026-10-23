@@ -47,18 +47,28 @@ async def upload_brain_dump_part(
     file: UploadFile,
     recording_id: Annotated[str, Form(pattern=RECORDING_ID_PATTERN)],
     part_index: Annotated[int, Form(ge=0)],
+    resent: Annotated[bool, Form()] = False,
 ) -> UploadPartResponse:
     """Accept one MediaRecorder timeslice blob.
 
     Parts arrive while the user is still talking, so this stays cheap:
     size checks, buffer, done. Validation that needs the whole stream
     (virus scan, transcription) happens on finalize.
+
+    A part of a take the client discarded is refused, unless ``resent`` says
+    the client is deliberately sending that take again from its local copy.
     """
     if file.content_type and file.content_type.split(";")[0] not in (
         ALLOWED_AUDIO_MIME_TYPES
     ):
         raise fastapi.HTTPException(
             status_code=415, detail=f"Unsupported audio type: {file.content_type}"
+        )
+    if not resent and await storage.was_discarded(user_id, recording_id):
+        # A part already on the wire when the user skipped; letting part 0
+        # through would reopen the take over the skip.
+        raise fastapi.HTTPException(
+            status_code=409, detail="This recording was discarded"
         )
 
     chunks: list[bytes] = []
@@ -308,7 +318,8 @@ async def discard_brain_dump(
     """Drop a half-uploaded take's server buffer when the user re-records.
 
     Stored audio is left alone. A named take still uploading is also marked
-    failed, so it no longer holds the row against the user's next take.
+    failed, so it no longer holds the row against the user's next take, and
+    a part of it that arrives later is refused.
 
     ``recording_id`` says *which* take to drop. Without it the row's
     current take is assumed, which is wrong as soon as a second tab has
@@ -324,6 +335,7 @@ async def discard_brain_dump(
             new=BrainDumpStatus.failed,
             errorCode="discarded",
         )
+        await storage.mark_discarded(user_id, recording_id)
     dump = await db.get_dump(user_id)
     target = recording_id or (dump.recordingId if dump else None)
     if target and not (

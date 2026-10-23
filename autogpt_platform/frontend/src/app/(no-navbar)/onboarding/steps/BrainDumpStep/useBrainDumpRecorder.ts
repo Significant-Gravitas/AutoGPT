@@ -307,7 +307,7 @@ export function useBrainDumpRecorder() {
   // bandwidth and nothing else. A whole dump is ~6 MB.
   async function resendAllParts(recordingId: string) {
     const parts = await getParts(recordingId).catch(() => []);
-    parts.forEach((part) => queue.enqueue(part));
+    parts.forEach((part) => queue.enqueue({ ...part, resent: true }));
     return parts;
   }
 
