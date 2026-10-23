@@ -1542,13 +1542,16 @@ async def test_a_malformed_stored_team_falls_back_rather_than_500s(
 
 @pytest.mark.asyncio
 async def test_a_team_written_while_the_flag_was_off_is_recomputed(
-    dumps: DumpStore, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock, extraction: dict[str, AsyncMock]
 ):
     """A flag flip must not strand the user with an empty section.
 
     ``source="disabled"`` records that the job declined to spend, not
     that this user has no team.
     """
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role="Marketing", pain_points=[])
+    )
     await start_voice_take(dumps)
     await dumps.update_dump(
         USER_ID,

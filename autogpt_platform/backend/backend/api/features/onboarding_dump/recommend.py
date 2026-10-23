@@ -82,6 +82,9 @@ async def generate_recommendations(transcript: str) -> list[RecommendedProvider]
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 max_tokens=1000,
+                # Haiku 5.5 thinks adaptively and can spend the whole output
+                # budget on it, leaving the JSON cut off.
+                extra_body={"reasoning": {"enabled": False}},
             ),
             timeout=_TIMEOUT_SECONDS,
         )
@@ -89,7 +92,14 @@ async def generate_recommendations(transcript: str) -> list[RecommendedProvider]
         logger.warning("Brain dump recommendation generation failed: %s", e)
         return []
 
-    data = parse_response_json(response.choices[0].message.content or "")
+    choice = response.choices[0]
+    content = choice.message.content or ""
+    data = parse_response_json(content)
+    if data is None:
+        logger.warning(
+            f"Brain dump recommendation: non-JSON output "
+            f"(finish_reason={choice.finish_reason}, {len(content)} chars)"
+        )
     return _parse_recommendations(data, set(known))
 
 
