@@ -10,6 +10,7 @@ import {
 interface Props {
   size?: number;
   transparent?: boolean;
+  priority?: boolean;
   className?: string;
   backgroundColor?: string;
 }
@@ -17,6 +18,7 @@ interface Props {
 export function AutopilotAvatar({
   size = 24,
   transparent = false,
+  priority = false,
   className,
   backgroundColor,
 }: Props) {
@@ -28,6 +30,7 @@ export function AutopilotAvatar({
         width={size}
         height={size}
         sizes={`${size}px`}
+        priority={priority}
         className={cn("shrink-0 object-contain", className)}
       />
     );
