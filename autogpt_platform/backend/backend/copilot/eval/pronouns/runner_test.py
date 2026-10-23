@@ -1,6 +1,7 @@
 """Scoring a generated turn, end to end through ``generate_turn`` with a
 scripted provider in place of the model."""
 
+import argparse
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +13,7 @@ from backend.copilot.eval.style.generation import Turn, delegated_task, generate
 from backend.copilot.eval.style.models import Usage
 
 from .cases import expand_cases, first_message, load_case_file, teammate_expert
-from .runner import exit_code, score, summarize
+from .runner import _positive_int, exit_code, score, summarize
 
 CASE_FILE = load_case_file()
 CASES = expand_cases(CASE_FILE)
@@ -130,14 +131,25 @@ def test_the_summary_counts_every_outcome():
     )
 
 
-def test_the_run_fails_unless_something_was_scored_and_nothing_broke():
-    passed = score(EXPERT_CASE, _turn("Priya, can you send it?"))
-    failed = score(EXPERT_CASE, _turn("Can he send it?"))
-    errored = score(EXPERT_CASE, _turn(""))
-    undelegated = score(OTTO_CASE, _turn("I'll do it myself."))
-    assert errored.outcome == "error" and undelegated.outcome == "no_delegation"
-    assert exit_code([passed, undelegated]) == 0
-    assert exit_code([passed, failed]) == 1
-    assert exit_code([passed, errored]) == 1
-    assert exit_code([undelegated, undelegated]) == 1
+def test_the_run_fails_unless_both_kinds_were_scored_and_nothing_broke():
+    otto_passed = score(OTTO_CASE, _turn(delegated=["Plan it for Priya."]))
+    otto_undelegated = score(OTTO_CASE, _turn("I'll do it myself."))
+    expert_passed = score(EXPERT_CASE, _turn("Priya, can you send it?"))
+    expert_failed = score(EXPERT_CASE, _turn("Can he send it?"))
+    expert_errored = score(EXPERT_CASE, _turn(""))
+    assert expert_errored.outcome == "error"
+    assert otto_undelegated.outcome == "no_delegation"
+    assert exit_code([otto_passed, otto_undelegated, expert_passed]) == 0
+    assert exit_code([otto_passed, expert_passed, expert_failed]) == 1
+    assert exit_code([otto_passed, expert_passed, expert_errored]) == 1
+    # Otto never delegated, so nothing Otto wrote about the user was checked.
+    assert exit_code([otto_undelegated, expert_passed]) == 1
+    assert exit_code([otto_passed]) == 1
     assert exit_code([]) == 1
+
+
+@pytest.mark.parametrize("value", ["0", "-2"])
+def test_concurrency_and_repeats_must_be_positive(value):
+    with pytest.raises(argparse.ArgumentTypeError):
+        _positive_int(value)
+    assert _positive_int("3") == 3
