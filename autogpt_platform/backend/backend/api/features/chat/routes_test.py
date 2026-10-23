@@ -3442,6 +3442,23 @@ def test_get_pending_messages_reports_follow_ups_a_finished_turn_left_unread(
     assert data["held_reason"] == "error"
 
 
+def test_get_pending_messages_still_answers_when_the_hold_cannot_be_read(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_pending_peek(mocker, turn_in_flight=False, held=None)
+    mocker.patch(
+        "backend.api.features.chat.routes.held_follow_up_reason",
+        new_callable=AsyncMock,
+        side_effect=ConnectionError("redis blip"),
+    )
+
+    response = client.get("/sessions/sess-1/messages/pending")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert response.json()["held_reason"] is None
+
+
 def test_get_pending_messages_reports_no_hold_while_a_turn_runs(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

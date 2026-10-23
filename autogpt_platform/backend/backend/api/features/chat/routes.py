@@ -2538,9 +2538,14 @@ async def _held_reason_while_idle(session_id: str) -> FollowUpHeldReason | None:
     try:
         if await is_turn_in_flight(session_id):
             return None
-    except StreamRegistryUnavailable:
+        return await held_follow_up_reason(session_id)
+    except Exception:
+        # The hold only labels the strip; the peek itself must still answer.
+        logger.warning(
+            f"Could not read the follow-up hold of session {session_id}",
+            exc_info=True,
+        )
         return None
-    return await held_follow_up_reason(session_id)
 
 
 class StreamResumeRefusal(BaseModel):
