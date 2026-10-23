@@ -410,7 +410,16 @@ async def drain_pending_messages(
         lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
     if not lpop_result:
         return []
-    await redis.delete(held_marker_key(session_id))
+    # Best effort: the messages are already popped, and losing them would be
+    # worse than a stale hold, which the next turn's end rewrites anyway.
+    try:
+        await redis.delete(held_marker_key(session_id))
+    except Exception as e:
+        logger.warning(
+            "pending_messages: could not clear the held marker for %s: %s",
+            session_id,
+            e,
+        )
     raw_popped: list[Any] = list(lpop_result)
 
     # redis-py may return bytes or str depending on decode_responses.

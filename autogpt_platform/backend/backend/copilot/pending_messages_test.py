@@ -566,6 +566,22 @@ async def test_peek_pending_messages_returns_all_without_consuming(
 
 
 @pytest.mark.asyncio
+async def test_drain_returns_what_it_popped_even_when_the_held_marker_cannot_be_cleared(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await push_pending_message("sess1", PendingMessage(content="status?"))
+
+    async def failing_delete(key: str) -> int:
+        raise ConnectionError("redis blip")
+
+    monkeypatch.setattr(fake_redis, "delete", failing_delete)
+
+    drained = await drain_pending_messages("sess1")
+
+    assert [m.content for m in drained] == ["status?"]
+
+
+@pytest.mark.asyncio
 async def test_take_pending_message_removes_only_the_oldest_copy_of_that_text(
     fake_redis: _FakeRedis,
 ) -> None:
