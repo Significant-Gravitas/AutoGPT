@@ -809,6 +809,53 @@ describe("ToolResult", () => {
       expect(screen.queryByText("boom")).toBeNull();
     });
 
+    it("says plainly that a bash step the tool refused failed, with its message under details", async () => {
+      const user = userEvent.setup();
+      render(
+        <ToolResult
+          row={row(
+            {
+              type: "error",
+              message: "No command provided.",
+              error: "empty_command",
+            },
+            "bash_exec",
+            { command: "" },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("This step didn't work")).toBeDefined();
+      expect(screen.queryByText("No command provided.")).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("No command provided.")).toBeDefined();
+    });
+
+    it("keeps an oversized bash result's preview under technical details", async () => {
+      const user = userEvent.setup();
+      const envelope = [
+        '<tool-output-truncated total_chars=90000 workspace_path="tool-outputs/x.json">',
+        '{"type":"bash_exec","stdout":"date,channel',
+        "Full output (90000 chars) saved to the workspace.",
+        "</tool-output-truncated>",
+      ].join("\n");
+      render(
+        <ToolResult
+          row={row(envelope, "bash_exec", { command: "cat big.csv" })}
+        />,
+      );
+
+      expect(screen.queryByText(/date,channel/)).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("cat big.csv")).toBeDefined();
+      expect(screen.getByText(/date,channel/)).toBeDefined();
+      expect(screen.getByText(/Preview of 90,000 characters/)).toBeDefined();
+    });
+
     it("shows CSV printed by a bash step as a table chip, not a dump", async () => {
       const user = userEvent.setup();
       const csv = [

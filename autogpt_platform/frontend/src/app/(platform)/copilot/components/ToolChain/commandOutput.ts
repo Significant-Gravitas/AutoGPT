@@ -43,10 +43,10 @@ function summarizeJSON(text: string): DataSummary | null {
   } catch {
     return null;
   }
-  if (Array.isArray(value)) return { kind: "json-list", items: value.length };
-  if (value && typeof value === "object")
-    return { kind: "json", fields: Object.keys(value) };
-  return null;
+  // Text opening with { or [ that parses is always an object or a list.
+  return Array.isArray(value)
+    ? { kind: "json-list", items: value.length }
+    : { kind: "json", fields: Object.keys(value as object) };
 }
 
 /** A header and at least one row, every line splitting into the same number

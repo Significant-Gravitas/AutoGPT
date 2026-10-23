@@ -21,6 +21,16 @@ describe("getCatalogLabel", () => {
       ).toBe("Failed while updating your launch brief");
     });
 
+    it("keeps the capital of a purpose that opens with a name", () => {
+      expect(
+        getCatalogLabel(
+          "bash_exec",
+          { purpose: "Shopify sync for the launch", command },
+          "error",
+        )?.text,
+      ).toBe("Failed while Shopify sync for the launch");
+    });
+
     it("tidies a purpose the model wrote as a sentence", () => {
       expect(
         getCatalogLabel(

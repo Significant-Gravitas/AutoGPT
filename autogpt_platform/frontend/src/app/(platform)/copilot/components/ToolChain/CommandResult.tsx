@@ -12,7 +12,7 @@ import { describeData, summarizeData } from "./commandOutput";
 import type { ChainRow } from "./helpers";
 import { CARD, HALF } from "./ResultCards";
 import { asObject, str } from "./resultHelpers";
-import { Terminal } from "./ToolResultViews";
+import { KeyValueList, Terminal } from "./ToolResultViews";
 
 interface Props {
   row: ChainRow;
@@ -28,7 +28,11 @@ export function CommandResult({ row }: Props) {
   const stdout = output ? str(output, "stdout") : null;
   const data = stdout ? summarizeData(stdout) : null;
   const exitCode = output?.exit_code;
+  // The tool can refuse a call outright (no command, no sandbox): an error
+  // payload with no exit code at all.
+  const refusal = output?.type === "error" ? str(output, "message") : null;
   const failed =
+    output?.type === "error" ||
     output?.timed_out === true ||
     (typeof exitCode === "number" && exitCode !== 0);
 
@@ -57,8 +61,13 @@ export function CommandResult({ row }: Props) {
         />
       </button>
       {showDetails && (
-        <div className="w-full">
+        <div className="flex w-full flex-col gap-1.5">
           <Terminal row={row} />
+          {refusal && <p className="text-xs text-red-400">{refusal}</p>}
+          {/* Output too large for the chat arrives as a preview envelope. */}
+          {typeof row.output === "string" && (
+            <KeyValueList value={row.output} />
+          )}
         </div>
       )}
     </div>
