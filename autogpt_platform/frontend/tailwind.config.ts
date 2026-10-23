@@ -114,67 +114,47 @@ const roleColors = Object.fromEntries(
   COLOR_ROLES.map((name) => [name, role(name)]),
 );
 
-// Text tokens carry exactly the values in use today. A size never bundles a
-// line-height, so swapping `text-[13px]` for `text-13` changes nothing.
-// Role names (h1 … eyebrow) are the Text atom's variants; numeric sizes are
-// px at a 16px root, numeric line-heights follow Tailwind's 0.25rem steps.
+// Text tokens: one size per role, each bundled with its line-height, so a
+// role is one decision instead of three. Values are what renders today: the
+// Text atom's variants and the raw sizes in wide use. A raw size that sets no
+// line-height today is swapped for `text-<role> leading-inherit`, so the
+// bundled line-height never changes what renders.
+//
+// TODO(tokens): SECRT-3152. Left raw on purpose, still lint warnings: the
+// rare sizes 5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px, fractional rems
+// (0.7, 0.8, 0.85em, 1.3rem, 12.5px), the Text `label` size 0.6785rem
+// (10.856px) and its tracking, and the rem-based Text heading tracking
+// (-0.033rem, -0.02rem, -0.01313rem, 0.06785rem).
 const fontSize = {
-  h1: "2.75rem",
-  h2: "2rem",
-  h3: "1.75rem",
-  h4: "1.375rem",
-  h5: "1rem",
-  lead: "1.25rem",
-  large: "1rem",
-  body: "0.875rem",
-  small: "0.75rem",
-  label: "0.6785rem",
-  eyebrow: "0.75rem",
-  "5": "0.3125rem",
-  "9": "0.5625rem",
-  "10": "0.625rem",
-  "11": "0.6875rem",
-  "12": "0.75rem",
-  "13": "0.8125rem",
-  "14": "0.875rem",
-  "15": "0.9375rem",
-  "16": "1rem",
-  "20": "1.25rem",
-  "22": "1.375rem",
-  "23": "1.4375rem",
-  "26": "1.625rem",
-  "28": "1.75rem",
-};
+  tiny: ["0.625rem", { lineHeight: "0.875rem" }],
+  "caption-sm": ["0.6875rem", { lineHeight: "1rem" }],
+  caption: ["0.75rem", { lineHeight: "1.125rem" }],
+  "body-sm": ["0.8125rem", { lineHeight: "1.25rem" }],
+  body: ["0.875rem", { lineHeight: "1.375rem" }],
+  "body-md": ["0.9375rem", { lineHeight: "1.5rem" }],
+  "body-lg": ["1rem", { lineHeight: "1.625rem" }],
+  lead: ["1.25rem", { lineHeight: "1.75rem" }],
+  "heading-sm": ["1.375rem", { lineHeight: "1.5rem" }],
+  heading: ["1.75rem", { lineHeight: "2.5rem" }],
+  title: ["2rem", { lineHeight: "2.5rem" }],
+  display: ["2.75rem", { lineHeight: "3.5rem" }],
+} satisfies Record<string, [string, { lineHeight: string }]>;
 
+// Explicit overrides only. `inherit` reproduces a size class that never set a
+// line-height; the 0.25rem steps cover raw values Tailwind's scale lacks.
 const lineHeight = {
-  h1: "3.5rem",
-  h2: "2.5rem",
-  h3: "2.5rem",
-  h4: "1.5rem",
-  h5: "1.5rem",
-  lead: "1.75rem",
-  large: "1.625rem",
-  body: "1.375rem",
-  small: "1.125rem",
-  label: "1.25rem",
-  eyebrow: "1rem",
+  inherit: "inherit",
   "4.5": "1.125rem",
   "5.5": "1.375rem",
   "6.5": "1.625rem",
-  "14": "3.5rem",
 };
 
 const letterSpacing = {
-  h1: "-0.033rem",
-  h2: "-0.02rem",
-  h3: "-0.01313rem",
-  label: "0.06785rem",
-  eyebrow: "0.06em",
   display: "-0.04em",
   heading: "-0.02em",
   title: "-0.01em",
   caps: "0.12em",
-  "caps-wide": "0.14em",
+  eyebrow: "0.06em",
 };
 
 const config = {

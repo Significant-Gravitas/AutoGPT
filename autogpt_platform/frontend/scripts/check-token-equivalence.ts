@@ -13,6 +13,16 @@
  * Colours are also compared as pixels at every 5% opacity step, which catches
  * an HSL triplet that rounds differently from its RGB replacement.
  *
+ * Text sizes are checked as class lists, because a size token bundles a
+ * line-height that a raw `text-[13px]` never set: each list the codemod
+ * rewrites is rendered inside parents at `leading-[1.5]`, `leading-[30px]`
+ * and `leading-normal`, at 1280px and 390px wide, both as written and after
+ * cn(). Every Text atom variant is compared as the base checkout's string
+ * against this checkout's, bare and through cn() with typical caller
+ * overrides, the way <Text> renders it. Font size, line-height, letter
+ * spacing, weight, family, transform and colour must match in every case.
+ * A few cn() checks prove tailwind-merge reads the size names as font sizes.
+ *
  * Prints `old class | new class | resolved value` and exits 1 on any
  * difference. DS2 and DS5 tickets run this script; they do not edit it.
  */
@@ -21,7 +31,14 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "@playwright/test";
 
-import { equivalencePairs } from "./codemod-tokens";
+import { cn } from "../src/lib/utils";
+import {
+  buildReplacementMap,
+  buildSizeMap,
+  rewriteClassList,
+  SIZE_TOKENS,
+  TOKEN_GROUPS,
+} from "./codemod-tokens";
 import { comparePngs } from "./screenshot-pages";
 
 const localRequire = createRequire(join(process.cwd(), "package.json"));
@@ -72,6 +89,17 @@ const UNCHANGED_NAMES = [
 // The body background, and the colour every bordered element gets from
 // `* { @apply border-border }` without a colour class of its own.
 const SPECIAL_PAIRS: Pair[] = [
+  // sidebar.tsx's `outline` variant read the deleted HSL variables.
+  {
+    group: "Sidebar",
+    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-border))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))]",
+  },
+  {
+    group: "Sidebar",
+    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
+  },
   { group: "Page", oldClass: "bg-[#F6F7F8]", newClass: "bg-canvas" },
   { group: "Page", oldClass: "border", newClass: "border" },
   { group: "Opacity", oldClass: "bg-white/50", newClass: "bg-surface/50" },
@@ -91,8 +119,17 @@ const SPECIAL_PAIRS: Pair[] = [
 ];
 
 function allPairs(): Pair[] {
+  const oneForOne = TOKEN_GROUPS.flatMap((group) =>
+    group.mappings.flatMap((mapping) =>
+      mapping.replaces.map((oldClass) => ({
+        group: group.group,
+        oldClass,
+        newClass: mapping.token,
+      })),
+    ),
+  );
   return [
-    ...equivalencePairs(),
+    ...oneForOne,
     ...UNCHANGED_NAMES.map((name) => ({
       group: "shadcn names",
       oldClass: name,
@@ -210,12 +247,133 @@ function swatchClass(cls: string, step: number) {
 function isColorPair(pair: Pair) {
   return (
     /^(bg|text|border|ring|divide)-/.test(baseClass(pair.oldClass)) &&
-    !pair.oldClass.includes("/") &&
-    !/^text-\[\d|^text-\d|^text-(h\d|lead|large|body|small|label|eyebrow)$/.test(
-      pair.newClass,
-    )
+    !pair.oldClass.includes("/")
   );
 }
+
+// Class lists the codemod produces for every raw size. Lists the codemod
+// skips are not swaps, so they are not checked.
+function codemodTextPairs(): Pair[] {
+  const map = buildReplacementMap();
+  const sizeMap = buildSizeMap();
+  const samples = SIZE_TOKENS.flatMap((mapping) =>
+    mapping.replaces.flatMap((raw) => [
+      raw,
+      `${raw} leading-5`,
+      `md:${raw}`,
+      `${raw} md:leading-6`,
+    ]),
+  );
+  return samples
+    .map((oldClass) => ({
+      group: "Font size (codemod)",
+      oldClass,
+      newClass: rewriteClassList(oldClass, map, sizeMap).output,
+    }))
+    .filter((pair) => pair.oldClass !== pair.newClass);
+}
+
+// What callers pass to <Text className> on top of a variant.
+const TEXT_OVERRIDES = [
+  "text-sm",
+  "text-[13px]",
+  "leading-6",
+  "tracking-tight",
+  "font-normal",
+  "text-zinc-500",
+];
+
+// Every Text variant, base string against head string, merged with cn() as
+// <Text> does: bare, and under each caller override.
+async function textAtomPairs(baseDir: string, headDir: string) {
+  const load = async (dir: string) =>
+    (
+      (await import(join(dir, "src/components/atoms/Text/helpers.ts"))) as {
+        variants: Record<string, string>;
+      }
+    ).variants;
+  const oldVariants = await load(baseDir);
+  const newVariants = await load(headDir);
+  const pairs: Pair[] = [];
+  for (const variant of Object.keys(oldVariants)) {
+    for (const override of ["", ...TEXT_OVERRIDES]) {
+      pairs.push({
+        group: override
+          ? `Text \`${variant}\` + \`${override}\``
+          : `Text \`${variant}\``,
+        oldClass: cn(oldVariants[variant], override),
+        newClass: cn(newVariants[variant], override),
+      });
+    }
+  }
+  return pairs;
+}
+
+const TEXT_PROPS = [
+  "font-size",
+  "line-height",
+  "letter-spacing",
+  "font-weight",
+  "font-family",
+  "text-transform",
+  "color",
+] as const;
+const PARENT_LINE_HEIGHTS = [
+  "leading-[1.5]",
+  "leading-[30px]",
+  "leading-normal",
+];
+const TEXT_VIEWPORTS = [1280, 390];
+
+// Every (viewport, parent line-height, as written | after cn()) value of the
+// text properties, for each class list.
+async function textValues(browser: Browser, css: string, lists: string[]) {
+  const results: Record<string, string>[][] = lists.map(() => []);
+  for (const width of TEXT_VIEWPORTS) {
+    const page = await browser.newPage({ viewport: { width, height: 800 } });
+    const cells = lists.flatMap((list, i) =>
+      PARENT_LINE_HEIGHTS.flatMap((parent) =>
+        [list, cn(list)].map(
+          (cls, mode) =>
+            `<div class="${parent}" style="font-size:16px"><span data-i="${i}" data-m="${mode}" class="${cls}" style="display:block">Ag</span></div>`,
+        ),
+      ),
+    );
+    await page.setContent(
+      `<html><head><style>${css}</style></head><body>${cells.join("")}</body></html>`,
+    );
+    const values = await page.evaluate(
+      (props) =>
+        Array.from(document.querySelectorAll("span[data-i]")).map((el) => {
+          const style = getComputedStyle(el);
+          return {
+            i: Number((el as HTMLElement).dataset.i),
+            values: Object.fromEntries(
+              props.map((prop) => [prop, style.getPropertyValue(prop)]),
+            ),
+          };
+        }),
+      [...TEXT_PROPS],
+    );
+    for (const { i, values: v } of values) results[i].push(v);
+    await page.close();
+  }
+  return results;
+}
+
+// tailwind-merge must read the size names as font sizes: a colour next to a
+// size survives, two sizes collapse to the last, and a later leading wins.
+const CN_CHECKS: [string, string][] = [
+  ["text-body text-zinc-500", "text-body text-zinc-500"],
+  [
+    "text-body-sm text-foreground-tertiary",
+    "text-body-sm text-foreground-tertiary",
+  ],
+  ["text-body text-body-sm", "text-body-sm"],
+  ["text-caption leading-inherit", "text-caption leading-inherit"],
+  ["text-body-sm leading-inherit leading-5", "text-body-sm leading-5"],
+  ["tracking-caps tracking-eyebrow", "tracking-eyebrow"],
+];
 
 // Renders each colour at every 5% opacity step on the page background and
 // on white, and returns a screenshot of the grid.
@@ -269,6 +427,13 @@ async function main(argv: string[]) {
   const outDir = outIndex >= 0 ? resolve(argv[outIndex + 1]) : null;
 
   const pairs = allPairs();
+  const codemodTexts = codemodTextPairs();
+  const atomTexts = await textAtomPairs(baseDir, headDir);
+  const texts = [...codemodTexts, ...atomTexts];
+  const textClasses = (side: "oldClass" | "newClass") =>
+    texts.flatMap((pair) =>
+      [pair[side], cn(pair[side])].join(" ").split(/\s+/),
+    );
   const oldClasses = pairs.map((p) => baseClass(p.oldClass));
   const newClasses = pairs.map((p) => baseClass(p.newClass));
   const swatchOld = pairs.filter(isColorPair).map((p) => p.oldClass);
@@ -282,11 +447,15 @@ async function main(argv: string[]) {
     ...oldClasses,
     ...swatchExtras(swatchOld),
     ...SWATCH_HELPERS,
+    ...textClasses("oldClass"),
+    ...PARENT_LINE_HEIGHTS,
   ]);
   const newCss = await compileCss(headDir, [
     ...newClasses,
     ...swatchExtras(swatchNew),
     ...SWATCH_HELPERS,
+    ...textClasses("newClass"),
+    ...PARENT_LINE_HEIGHTS,
   ]);
 
   const propsPerPair = pairs.map((_, i) => {
@@ -313,6 +482,16 @@ async function main(argv: string[]) {
   );
   const oldShot = await swatchShot(browser, oldCss, swatchOld);
   const newShot = await swatchShot(browser, newCss, swatchNew);
+  const oldText = await textValues(
+    browser,
+    oldCss,
+    texts.map((p) => p.oldClass),
+  );
+  const newText = await textValues(
+    browser,
+    newCss,
+    texts.map((p) => p.newClass),
+  );
   await browser.close();
 
   const lines = [
@@ -342,26 +521,69 @@ async function main(argv: string[]) {
     );
   });
 
+  const textLines = [
+    "| group | old classes | new classes | font-size | line-height in a parent at leading-[1.5] / leading-[30px] / leading-normal | result |",
+    "| --- | --- | --- | --- | --- | --- |",
+  ];
+  let textFailures = 0;
+  const cases = TEXT_VIEWPORTS.length * PARENT_LINE_HEIGHTS.length * 2;
+  texts.forEach((pair, i) => {
+    const problems = new Set<string>();
+    oldText[i].forEach((oldValue, c) => {
+      for (const prop of TEXT_PROPS) {
+        if (oldValue[prop] !== newText[i][c][prop]) {
+          problems.add(`${prop}: ${oldValue[prop]} != ${newText[i][c][prop]}`);
+        }
+      }
+    });
+    if (problems.size) textFailures++;
+    // Desktop, as written: one value per parent line-height.
+    const shown = PARENT_LINE_HEIGHTS.map((_, p) => newText[i][p * 2]);
+    textLines.push(
+      `| ${pair.group} | \`${pair.oldClass}\` | \`${pair.newClass}\` | ${shown[0]["font-size"]} | ${shown.map((v) => v["line-height"]).join(" / ")} | ${problems.size ? `FAIL: ${[...problems].join("; ")}` : `identical (${cases} cases)`} |`,
+    );
+  });
+  const cnFailures = CN_CHECKS.filter(([input, expected]) => {
+    const merged = cn(input);
+    if (merged !== expected) {
+      console.error(`cn("${input}") = "${merged}", expected "${expected}"`);
+    }
+    return merged !== expected;
+  }).length;
+
   const swatch = comparePngs(oldShot, newShot);
   const swatchCells = swatchOld.length * SWATCH_STEPS.length;
   console.log(lines.join("\n"));
+  console.log(`\n${textLines.join("\n")}`);
   console.log(
     `\nOpacity swatches: ${swatchOld.length} colour pairs x ${SWATCH_STEPS.length} steps (0-100%) = ${swatchCells} swatches, ${swatch.diffPixels} differing pixels`,
   );
   console.log(
     `${pairs.length} pairs checked against ${baseDir === headDir ? "this checkout" : baseDir}: ${failures} failing`,
   );
+  console.log(
+    `${texts.length} text class lists x ${cases} cases (viewport, parent line-height, as written | cn()): ${textFailures} failing`,
+  );
+  console.log(`${CN_CHECKS.length} cn() checks: ${cnFailures} failing`);
 
   if (outDir) {
     mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, "equivalence.md"), `${lines.join("\n")}\n`);
+    writeFileSync(
+      join(outDir, "equivalence.md"),
+      `${lines.join("\n")}\n\n${textLines.join("\n")}\n`,
+    );
     writeFileSync(join(outDir, "swatches-old.png"), oldShot);
     writeFileSync(join(outDir, "swatches-new.png"), newShot);
     if (swatch.diff)
       writeFileSync(join(outDir, "swatches-diff.png"), swatch.diff);
   }
 
-  return failures === 0 && swatch.diffPixels === 0 ? 0 : 1;
+  const clean =
+    failures === 0 &&
+    textFailures === 0 &&
+    cnFailures === 0 &&
+    swatch.diffPixels === 0;
+  return clean ? 0 : 1;
 }
 
 main(process.argv.slice(2)).then(
