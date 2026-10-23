@@ -297,3 +297,103 @@ async def test_task_and_pending_messages_reach_matching_and_transcript(
     if first_turn:
         assert session.messages[0].content == prefix + starting_message
         assert user_texts[0].startswith(prefix)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", [None, ""])
+@pytest.mark.parametrize(
+    "pending_text",
+    [None, "Use the approved image", "Find a partner contact for Contoso"],
+)
+async def test_empty_turn_does_not_reuse_an_answered_task(
+    monkeypatch: pytest.MonkeyPatch,
+    baseline_io: list[ChatSession],
+    available_skills: AsyncMock,
+    message: str | None,
+    pending_text: str | None,
+) -> None:
+    old_task = "Find a partner contact for Northwind"
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-a")
+    session.title = "Partner research"
+    session.messages = [
+        ChatMessage(role="user", content=old_task, sequence=0),
+        ChatMessage(role="assistant", content="Done", sequence=1),
+    ]
+    previous = _build_transcript([("user", old_task), ("assistant", "Done")])
+    monkeypatch.setattr(
+        service,
+        "download_transcript",
+        AsyncMock(
+            return_value=service.TranscriptDownload(
+                content=previous, message_count=2, mode="baseline"
+            )
+        ),
+    )
+    stream = MagicMock()
+    stream.__aiter__.return_value = [
+        ChatCompletionChunk.model_validate(
+            {
+                "id": "reply",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "anthropic/claude-sonnet-4-6",
+                "choices": [
+                    {"index": 0, "finish_reason": "stop", "delta": {"content": "Ready"}}
+                ],
+            }
+        )
+    ]
+    stream.close = AsyncMock()
+    provider = AsyncMock(return_value=stream)
+    monkeypatch.setattr(service, "call_provider_stream", provider)
+    upload = AsyncMock()
+    monkeypatch.setattr(service, "upload_transcript", upload)
+    for name in ("build_expert_identity_suffix", "build_skills_update_notice"):
+        monkeypatch.setattr(service, name, AsyncMock(return_value=""))
+    monkeypatch.setattr(service, "start_refresh", MagicMock(return_value=None))
+    matcher = AsyncMock(wraps=service.build_matched_skills_notice)
+    monkeypatch.setattr(service, "build_matched_skills_notice", matcher)
+    if pending_text is not None:
+        monkeypatch.setattr(
+            service,
+            "drain_pending_safe",
+            AsyncMock(return_value=[PendingMessage(content=pending_text)]),
+        )
+
+        async def save_pending(session: ChatSession) -> ChatSession:
+            for sequence, row in enumerate(session.messages):
+                row.sequence = sequence
+            return session
+
+        monkeypatch.setattr(
+            pending_message_helpers,
+            "upsert_chat_session",
+            AsyncMock(side_effect=save_pending),
+        )
+    async with asyncio.timeout(10):
+        async for _ in service.stream_chat_completion_baseline(
+            session.session_id, message=message, user_id="user-1", session=session
+        ):
+            pass
+
+    upload.assert_awaited_once()
+    assert upload.await_args is not None
+    transcript = upload.await_args.kwargs["content"].decode("utf-8")
+    rows = [json.loads(line) for line in transcript.splitlines()]
+    assert [row["message"]["content"] for row in rows if row["type"] == "user"] == [
+        old_task,
+        *([pending_text] if pending_text is not None else []),
+    ]
+    matcher.assert_awaited_once()
+    assert matcher.await_args is not None
+    assert matcher.await_args.args[2] == (pending_text or "")
+    provider.assert_awaited_once()
+    assert provider.await_args is not None
+    sent = provider.await_args.kwargs["messages"]
+    hinted = [
+        m
+        for m in sent
+        if m["role"] == "user" and "<matched_skills>" in str(m.get("content", ""))
+    ]
+    assert bool(hinted) == bool(pending_text and "partner" in pending_text)
+    assert "<matched_skills>" not in transcript

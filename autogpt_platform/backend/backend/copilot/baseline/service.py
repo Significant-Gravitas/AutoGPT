@@ -2196,10 +2196,9 @@ async def stream_chat_completion_baseline(
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
     # the very start of the message content.
-    turn_text = message or next(
-        (m.content or "" for m in reversed(session.messages) if m.role == "user"),
-        "",
-    )
+    turn_text = message or ""
+    if not turn_text and session.messages and session.messages[-1].role == "user":
+        turn_text = session.messages[-1].content or ""
     user_message_for_transcript = turn_text
     transcript_context_prefix = ""
     if should_inject_user_context:
