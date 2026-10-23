@@ -575,6 +575,27 @@ describe("recovery", () => {
     expect(textsOf(render())).toEqual([]);
   });
 
+  it("a newer send made while a lost one is recovered keeps its bubble; the lost one is reported", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, null);
+    let posts = 0;
+    backend.respond(({ method }) => {
+      if (method !== "POST") return "stream";
+      posts += 1;
+      // The first send goes nowhere; the second waits on its admission.
+      return posts === 1 ? "empty" : "silent";
+    });
+    void runtime.send({ text: "First, lost" }, undefined);
+    await advance(600);
+    void runtime.send({ text: "Second, still sending" }, undefined);
+    await advance(10_000);
+
+    const error = snapshot().error;
+    expect(error).toBeInstanceOf(SendNotDeliveredError);
+    expect((error as SendNotDeliveredError).text).toBe("First, lost");
+    expect(textsOf(render())).toEqual(["Second, still sending"]);
+  });
+
   it("stops reading the session once its queued turn is cancelled", async () => {
     backend.queueNextTurn();
     void runtime.send({ text: PROMPT }, undefined);

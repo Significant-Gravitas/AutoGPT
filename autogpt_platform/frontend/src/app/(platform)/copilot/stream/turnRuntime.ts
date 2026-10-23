@@ -797,13 +797,32 @@ export class TurnRuntime {
     } else if (this.sendWentNowhere(lost, end)) {
       // The stream closed cleanly, yet no turn took the prompt and the
       // backend neither queued it nor stored it: say so, never sit idle.
-      this.dropUnsentUserRow();
-      this.error = new SendNotDeliveredError();
+      this.error = new SendNotDeliveredError(
+        this.takeUnsentPrompt(lost.prompt),
+      );
       this.emitNow();
       this.handlers.onError?.(this.error, null);
       return;
     }
     this.emitNow();
+  }
+
+  // The lost send's own prompt, by key: a newer send may sit after it.
+  private takeUnsentPrompt(key: string | null) {
+    const index = this.segments.findIndex(
+      (s) =>
+        s.key === key &&
+        s.kind === "user" &&
+        s.origin === "sent" &&
+        s.sequence === null,
+    );
+    const prompt = this.segments[index];
+    if (prompt?.kind !== "user") return "";
+    this.segments.splice(index, 1);
+    if (this.segments.length === 0) this.ownedFrom = null;
+    return prompt.message.parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("");
   }
 
   private sendWentNowhere(lost: Lost, end: ConnectionEnd) {
@@ -1587,7 +1606,8 @@ export class MessageTooLongError extends SendRefusedError {
 
 /** A send's stream closed without any turn, queue or row taking it. */
 export class SendNotDeliveredError extends Error {
-  constructor() {
+  /** `text` is what was sent, for the composer to offer again. */
+  constructor(readonly text = "") {
     super("The message was not delivered.");
     this.name = "SendNotDeliveredError";
   }

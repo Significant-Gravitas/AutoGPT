@@ -142,9 +142,11 @@ export function useCopilotRuntimeStream({
       }
       runtime?.dropUnsentUserRow();
     }
-    // The banner says it didn't go through; the text goes back to resend.
+    // The banner says it didn't go through; that send's text goes back to
+    // resend, never a newer send's, and its bubble is already gone.
     if (error instanceof SendNotDeliveredError) {
-      restoreUnsentSend();
+      if (error.text && isComposerEmpty()) setInitialPrompt(error.text);
+      if (coord.lastSubmittedMessageText === error.text) clearRecovery();
       return;
     }
     handleStreamError({
