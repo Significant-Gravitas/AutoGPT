@@ -502,4 +502,21 @@ describe("GenericTool icons", () => {
     expect(screen.queryByText("Nothing found.")).toBeNull();
     expect(document.body.textContent).toContain("[]");
   });
+
+  it("says an unknown tool's empty MCP answer found nothing", () => {
+    render(
+      <GenericTool
+        part={makePart({
+          type: "tool-some_mcp_lookup",
+          state: "output-available",
+          input: {},
+          output: { content: [{ type: "text", text: " [] " }] },
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(screen.getAllByText("Nothing found.").length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain("[]");
+  });
 });

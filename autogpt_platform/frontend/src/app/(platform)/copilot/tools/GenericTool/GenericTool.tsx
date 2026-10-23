@@ -710,7 +710,7 @@ function getDefaultAccordionData(
   if (typeof raw === "string") {
     displayContent = raw;
   } else if (mcpText) {
-    displayContent = mcpText;
+    displayContent = isBlankOutput(mcpText) ? NOTHING_FOUND : mcpText;
   } else if (message) {
     displayContent = message;
   } else if (isEmptyResult(output)) {
