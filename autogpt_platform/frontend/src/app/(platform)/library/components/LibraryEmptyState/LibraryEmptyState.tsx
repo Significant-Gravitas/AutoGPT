@@ -34,12 +34,12 @@ export function LibraryEmptyState() {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-zinc-900">
+          <Text variant="h3" className="text-foreground-strong">
             Your library is empty
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-zinc-500">
+          <Text variant="body" className="text-foreground-tertiary">
             Build your own workflow from scratch, or grab one from the
             marketplace to get started.
           </Text>
@@ -132,6 +132,7 @@ function Card({ x, y, width }: CardProps) {
   const padding = 16;
   const dotRadius = 8;
 
+  // TODO(tokens): no exact role for the illustration colours #E4E4E7, white
   return (
     <g>
       <rect

@@ -26,7 +26,7 @@ export function EmptyState({ content, compact = false }: Props) {
     return (
       <Text
         variant="body"
-        className="px-2 py-6 text-zinc-500"
+        className="px-2 py-6 text-foreground-tertiary"
         data-testid="artifacts-empty"
       >
         {content.title}
@@ -62,12 +62,12 @@ export function EmptyState({ content, compact = false }: Props) {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-zinc-900">
+          <Text variant="h3" className="text-foreground-strong">
             {content.title}
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-zinc-500">
+          <Text variant="body" className="text-foreground-tertiary">
             {content.description}
           </Text>
         </motion.div>
@@ -174,6 +174,7 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
   const cx = x + width / 2;
   const cy = y + height / 2;
 
+  // TODO(tokens): no exact role for the illustration colours #E4E4E7, #F4F4F5, white
   return (
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path
