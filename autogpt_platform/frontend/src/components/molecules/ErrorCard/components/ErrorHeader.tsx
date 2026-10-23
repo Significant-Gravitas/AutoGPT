@@ -7,10 +7,11 @@ export function ErrorHeader() {
   return (
     <div className="flex items-center gap-3">
       <div className="flex-shrink-0">
+        {/* TODO(tokens): no role for red-400 (#F26969). */}
         <Icon icon={Alert01Icon} size={24} className="text-red-400" />
       </div>
       <div>
-        <Text variant="large-semibold" className="text-zinc-800">
+        <Text variant="large-semibold" className="text-foreground-emphasis">
           Something went wrong
         </Text>
       </div>
