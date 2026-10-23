@@ -300,6 +300,8 @@ def test_executor_start_does_not_wait_for_the_cli_warm_up(monkeypatch, tmp_path)
     monkeypatch.setattr(cli_warmup, "_resolve_cli_path", lambda: missing)
     monkeypatch.setattr(cli_warmup, "_read_through", stuck_read)
     monkeypatch.setattr(manager, "_load_catalog", lambda: None)
+    monkeypatch.setattr(manager, "get_blocks", dict)
+    monkeypatch.setattr(manager, "freeze_startup_heap", lambda: None)
     started = threading.Event()
 
     def worker_setup(_size: int) -> None:
