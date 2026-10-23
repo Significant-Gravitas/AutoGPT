@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { AskQuestionTool } from "../AskQuestion/AskQuestion";
+import { ConnectIntegrationTool } from "../ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../CreateAgent/CreateAgent";
 import { ToolIcon as DecomposeGoalToolIcon } from "../DecomposeGoal/helpers";
 import { EditAgentTool } from "../EditAgent/EditAgent";
@@ -147,17 +148,34 @@ const failedTools = [
     status: "Action failed",
     view: <RunBlockTool part={failedPart("tool-run_block")} />,
   },
+  {
+    name: "ConnectIntegration",
+    status: "Failed to connect Gmail",
+    icon: false,
+    view: (
+      <ConnectIntegrationTool
+        part={
+          {
+            ...failedPart("tool-connect_integration"),
+            input: { provider: "Gmail" },
+          } as unknown as ToolUIPart
+        }
+      />
+    ),
+  },
 ];
 
 describe("failed tool calls", () => {
   it.each(failedTools)(
     "$name shows its status in the error colour",
-    ({ view, status }) => {
+    ({ view, status, icon }) => {
       const { container } = render(view);
       expect(screen.getByText(status).classList.contains("text-error")).toBe(
         true,
       );
-      expect(container.querySelector("svg.text-error")).not.toBeNull();
+      if (icon !== false) {
+        expect(container.querySelector("svg.text-error")).not.toBeNull();
+      }
     },
   );
 });
