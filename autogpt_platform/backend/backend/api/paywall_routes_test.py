@@ -148,6 +148,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/onboarding/brain-dump/recommended-providers",
     "GET /api/onboarding/brain-dump/recording",
     "GET /api/onboarding/brain-dump/status",
+    "GET /api/onboarding/brain-dump/suggested-tasks",
+    "POST /api/onboarding/brain-dump/suggested-tasks",
     "GET /api/onboarding/completed",
     "POST /api/onboarding/profile",
     "POST /api/onboarding/reset",

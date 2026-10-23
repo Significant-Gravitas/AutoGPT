@@ -6,12 +6,14 @@ changelog are MailerLite's). Every message carries a plain-text MIME part built
 from the same data model. Product notifications carry one-click
 List-Unsubscribe headers; billing, auth and internal Ops mail do not.
 
-Each message is tagged with what it is (the notification type, or ``auth``).
+Each message is tagged with what it is (the notification type, ``auth`` or
+``owner_email``).
 Postmark echoes the tag in its delivery, open, click and bounce webhooks,
 which ``api/features/postmark`` turns into PostHog events. Every message also
 says whether Postmark tracks its opens and clicks, so the stream's own default
 never decides: notification mail follows ``postmark_track_opens_and_clicks``,
-and auth mail is never tracked, since its links carry sign-in tokens.
+and auth mail is never tracked, since its links carry sign-in tokens, nor is
+mail a user's run sends them, whose links are their own.
 """
 
 import asyncio
@@ -39,6 +41,8 @@ POSTMARK_TIMEOUT_SECONDS = 30
 
 # Postmark tag for Better Auth's emails, which are not notifications.
 AUTH_EMAIL_TAG = "auth"
+# Postmark tag for SendEmailToMeBlock's emails to the account owner.
+OWNER_EMAIL_TAG = "owner_email"
 
 
 class TypedPostmarkClient(PostmarkClient):
@@ -112,7 +116,10 @@ class EmailSender:
         """Send a one-off transactional email (e.g. Better Auth password-reset
         and verification links) with no notification templating or preference
         gating. Raises if the Postmark client is not configured so callers can
-        surface the failure instead of silently dropping an auth email."""
+        surface the failure instead of silently dropping an auth email.
+        Fake preview recipients are intentionally skipped."""
+        if _suppress_preview_email(user_email):
+            return
         if not self.postmark:
             raise RuntimeError("Postmark is not configured; cannot send email")
         self.postmark.emails.send(
@@ -128,6 +135,30 @@ class EmailSender:
             **_tracking(False),
         )
 
+    async def send_owner_email(
+        self,
+        user_email: str,
+        email: RenderedEmail,
+        attachments: list[dict[str, str]],
+    ) -> None:
+        """Raises when Postmark is not configured: the run that asked for this
+        reports a failure instead of a send that never happened."""
+        if not self.postmark:
+            raise RuntimeError("Email sending isn't set up on this server.")
+        await self._send(
+            user_email=user_email,
+            tag=OWNER_EMAIL_TAG,
+            sender=_sender_for(DeliveryStream.PRODUCT),
+            reply_to=_reply_to_for(DeliveryStream.PRODUCT),
+            subject=email.subject,
+            html_body=email.html,
+            text_body=email.text,
+            headers=None,
+            attachments=attachments,
+            # Its links are the user's own, and can carry their tokens.
+            tracked=False,
+        )
+
     async def _send(
         self,
         user_email: str,
@@ -138,7 +169,11 @@ class EmailSender:
         text_body: str,
         headers: dict[str, str] | None,
         reply_to: str | None = None,
+        attachments: list[dict[str, str]] | None = None,
+        tracked: bool = True,
     ) -> None:
+        if _suppress_preview_email(user_email):
+            return
         if not self.postmark:
             logger.warning("Email tried to send without Postmark configured")
             return
@@ -155,9 +190,18 @@ class EmailSender:
             TextBody=text_body,
             MessageStream=settings.config.postmark_transactional_stream,
             Headers=headers,
+            Attachments=attachments,
             Tag=tag,
-            **_tracking(settings.config.postmark_track_opens_and_clicks),
+            **_tracking(tracked and settings.config.postmark_track_opens_and_clicks),
         )
+
+
+def _suppress_preview_email(user_email: str) -> bool:
+    """Preview accounts have fake addresses that would damage sender reputation."""
+    if not user_email.strip().lower().endswith("@previews.agpt.co"):
+        return False
+    logger.info("Skipping transactional email to the preview recipient domain")
+    return True
 
 
 def _tracking(enabled: bool) -> dict[str, Any]:

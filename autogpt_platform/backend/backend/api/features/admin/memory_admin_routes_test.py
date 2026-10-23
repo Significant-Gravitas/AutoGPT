@@ -925,6 +925,7 @@ class TestDreamPassRecord:
         read.assert_awaited_once_with("p1", user_id="abc")
         body = resp.json()
         assert body["record"]["id"] == "p1"
+        assert "lease_token" not in body["record"]
         assert body["record"]["status"] == "COMPLETE"
         assert body["record"]["trigger"] == "EVAL"
         result = body["result"]
@@ -1033,6 +1034,7 @@ class TestCancelDreamPass:
             "CANCELLED",
             1,
         )
+        assert "lease_token" not in body["record"]
         assert body["result"]["error"] == "testing"
         assert body["result"]["skipped"] is False
 
@@ -1138,6 +1140,15 @@ class TestDreamPassList:
         passes = resp.json()["passes"]
         assert [p["id"] for p in passes] == ["p2", "p1"]
         assert passes[0]["status"] == "COMPLETE"
+
+    def test_list_omits_live_lease_tokens(self) -> None:
+        row = _dream_pass_row("abc")
+        with patch(
+            f"{_MOCK_MODULE}.read_user_passes", new=AsyncMock(return_value=[row])
+        ):
+            resp = client.get("/admin/memory/abc/dream/passes")
+        assert resp.status_code == 200
+        assert "lease_token" not in resp.json()["passes"][0]
 
     def test_the_open_ones_only_and_a_limit_reach_the_read(self) -> None:
         read = AsyncMock(return_value=[])

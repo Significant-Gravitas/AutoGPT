@@ -119,7 +119,7 @@ from ..constants import (
     is_transient_assistant_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
-from ..context import encode_cwd_for_cli, get_workspace_manager
+from ..context import encode_cwd_for_cli, get_workspace_manager, is_unattended_turn
 from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
@@ -230,16 +230,19 @@ from ..transcript import (
     cleanup_stale_project_dirs,
     cli_session_path,
     compact_transcript,
+    delete_transcript,
     download_transcript,
     extract_context_messages,
     next_uncovered_sequence,
     projects_base,
     read_compacted_entries,
+    reconnect_entry,
     strip_for_upload,
     upload_transcript,
     validate_transcript,
 )
 from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
+from .cli_version import require_verbatim_prompts_cli
 from .compaction import (
     CompactionStats,
     CompactionTracker,
@@ -247,8 +250,10 @@ from .compaction import (
     sdk_compaction_stats,
     transcript_stats,
 )
+from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text, cli_user_message
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .governor import TurnGovernor
+from .launch_env import launch_options
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
@@ -1072,9 +1077,33 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
             j -= 1
         if j >= 0 and _is_empty_assistant_entry(parsed[j][1]):
             drop.add(j)
-    return b"".join(
-        line for idx, (line, _entry) in enumerate(parsed) if idx not in drop
-    )
+    if not drop:
+        return content
+    # The CLI links each entry to the previous one by uuid; whatever pointed
+    # at a dropped entry moves to its nearest kept ancestor, so ``--resume``
+    # still walks back through the earlier turns.
+    dropped_uuids = {
+        entry["uuid"]
+        for idx, (_line, entry) in enumerate(parsed)
+        if idx in drop and entry and entry.get("uuid")
+    }
+    uuid_to_parent = {
+        entry["uuid"]: entry.get("parentUuid", "")
+        for _line, entry in parsed
+        if entry and entry.get("uuid")
+    }
+    kept: list[bytes] = []
+    for idx, (line, entry) in enumerate(parsed):
+        if idx in drop:
+            continue
+        if entry is not None and reconnect_entry(entry, dropped_uuids, uuid_to_parent):
+            ending = line[len(line.rstrip(b"\r\n")) :]
+            line = (
+                json.dumps(entry, separators=(",", ":"), ensure_ascii=False).encode()
+                + ending
+            )
+        kept.append(line)
+    return b"".join(kept)
 
 
 def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
@@ -2830,6 +2859,11 @@ def delete_stale_cli_session_file(
         return False
 
 
+class CliSessionScrubError(Exception):
+    """The CLI session file could not be scrubbed whole, so none of it may be
+    stored."""
+
+
 def read_cli_session_from_disk(
     sdk_cwd: str,
     session_id: str,
@@ -2838,7 +2872,8 @@ def read_cli_session_from_disk(
     """Read the CLI session JSONL file from disk after the SDK turn.
 
     Returns the file bytes, or None if the file is missing, outside the
-    projects base, or unreadable.
+    projects base, or unreadable. Raises ``CliSessionScrubError`` when the
+    file is not UTF-8 or ``strip_for_upload`` cannot scrub it.
     Path-traversal guard: rejects paths outside the CLI projects base.
     """
     session_file = cli_session_path(sdk_cwd, session_id)
@@ -2869,25 +2904,20 @@ def read_cli_session_from_disk(
         )
         return None
 
-    # Strip stale thinking blocks and metadata entries before uploading.
-    # Thinking blocks from non-last turns can be massive; keeping them causes
-    # the CLI to auto-compact its session when the context window fills up,
-    # silently losing conversation history.
+    # Strip stale thinking blocks, metadata and mention attachment entries
+    # before uploading. Thinking blocks from non-last turns can be massive;
+    # keeping them causes the CLI to auto-compact its session when the context
+    # window fills up, silently losing conversation history.
     try:
         raw_text = raw_bytes.decode("utf-8")
         stripped_text = strip_for_upload(raw_text)
         stripped_bytes = stripped_text.encode("utf-8")
-    except UnicodeDecodeError:
-        logger.warning("%s CLI session is not valid UTF-8, uploading raw", log_prefix)
-        return raw_bytes
     except (OSError, ValueError) as e:
-        # OSError: encode/decode I/O failure; ValueError: malformed JSONL in strip.
-        # Other unexpected exceptions are not silently swallowed here so they propagate
-        # to the outer OSError handler and are logged with exc_info.
-        logger.warning(
-            "%s Failed to strip CLI session, uploading raw: %s", log_prefix, e
-        )
-        return raw_bytes
+        # Invalid UTF-8 (a ValueError) or a line the strip cannot parse: the
+        # raw file may hold entries the strip drops, so none of it is stored.
+        raise CliSessionScrubError(
+            f"CLI session {os.path.basename(session_file)} could not be scrubbed"
+        ) from e
 
     if len(stripped_bytes) < len(raw_bytes):
         # Write back locally so same-pod turns also benefit.
@@ -2936,7 +2966,13 @@ def process_cli_restore(
         )
         return "", False
 
-    stripped = strip_for_upload(raw_str)
+    try:
+        stripped = strip_for_upload(raw_str)
+    except ValueError:
+        logger.warning(
+            "%s CLI session content could not be scrubbed, skipping", log_prefix
+        )
+        return "", False
     is_valid = validate_transcript(stripped)
     # Use len(raw_str) rather than len(cli_restore.content) so the unit is always
     # characters (raw_str is always str at this point regardless of input type).
@@ -4372,7 +4408,7 @@ async def _run_stream_attempt(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
         state.usage.start_cli_session(baseline)
-    sdk_client = ClaudeSDKClient(options=state.options)
+    sdk_client = ClaudeSDKClient(options=launch_options(state.options))
     client = await sdk_client.__aenter__()
     try:
         logger.info(
@@ -4395,17 +4431,13 @@ async def _run_stream_attempt(
         # with content immediately.
         yield StreamStatus(message="Reading your message\u2026")
 
+        cli_text = cli_prompt_text(state.query_message)
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
                 *ctx.attachments.image_blocks,
-                {"type": "text", "text": state.query_message},
+                {"type": "text", "text": cli_text},
             ]
-            user_msg = {
-                "type": "user",
-                "message": {"role": "user", "content": content_blocks},
-                "parent_tool_use_id": None,
-                "session_id": ctx.session_id,
-            }
+            user_msg = cli_user_message(content_blocks, ctx.session_id)
             if client._transport is None:  # noqa: SLF001
                 raise RuntimeError("ClaudeSDKClient transport is not initialized")
             await client._transport.write(json.dumps(user_msg) + "\n")  # noqa: SLF001
@@ -4416,7 +4448,7 @@ async def _run_stream_attempt(
                 ]
             )
         else:
-            await client.query(state.query_message, session_id=ctx.session_id)
+            await client.query(cli_text, session_id=ctx.session_id)
             state.transcript_builder.append_user(content=ctx.current_message)
 
         loop_state = _SDKLoopState(
@@ -5392,7 +5424,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         auto_mode_supplement = approval_mode_supplement(
-            await active_mode(user_id, session)
+            await active_mode(user_id, session),
+            interactive=not is_unattended_turn(),
         )
         experts_enabled = bool(user_id)
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
@@ -5651,7 +5684,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # compaction thrash on the very first turn.  Prod containers
             # have a clean HOME, so this is a no-op there.
             setting_sources=[],
-            extra_args={"strict-mcp-config": None},
+            extra_args={"strict-mcp-config": None, DISABLE_SLASH_COMMANDS_FLAG: None},
+            # The CLI hands every prompt to the model exactly as written.
+            verbatim_prompts=True,
             allowed_tools=allowed,
             disallowed_tools=disallowed,
             hooks=security_hooks,
@@ -5721,6 +5756,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # back to the bundled binary when unset.
         if config.claude_agent_cli_path:
             sdk_options.cli_path = config.claude_agent_cli_path
+        sdk_options.cli_path = await asyncio.to_thread(
+            require_verbatim_prompts_cli, sdk_options.cli_path
+        )
 
         adapter = SDKResponseAdapter(
             message_id=message_id,
@@ -6029,6 +6067,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         attachments = await _prepare_file_attachments(
             file_ids or [], user_id or "", session_id, sdk_cwd
         )
+        attachments.image_blocks.extend(
+            pm.model_image.anthropic()
+            for pm in continued_pending or []
+            if pm.model_image
+        )
+        if pending_messages and persisted_ok:
+            attachments.image_blocks.extend(
+                pm.model_image.anthropic() for pm in pending_messages if pm.model_image
+            )
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
@@ -7065,6 +7112,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                             mode="sdk",
                             log_prefix=log_prefix,
                         )
+                    )
+            except CliSessionScrubError as scrub_err:
+                # Nothing of it is stored, and the copy stored before it goes
+                # too: the next turn starts from the chat's messages instead.
+                logger.warning("%s %s; not uploading it", log_prefix, scrub_err)
+                try:
+                    await asyncio.shield(delete_transcript(user_id, session_id))
+                except Exception as delete_err:
+                    # The earlier copy stays with its watermark, like a missed
+                    # upload: the next turn resumes from it after the restore's
+                    # scrub, and its own upload replaces it.
+                    logger.error(
+                        "%s Failed to delete the stored CLI session: %s",
+                        log_prefix,
+                        delete_err,
                     )
             except Exception as cli_upload_err:
                 logger.warning(

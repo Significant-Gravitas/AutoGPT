@@ -1,4 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ErrorEvent } from "@sentry/nextjs";
+
+const mirrorEvent = vi.hoisted(() => vi.fn((event: ErrorEvent) => event));
+vi.mock("@/services/analytics/sentry-posthog", () => ({
+  createPostHogSentryProcessor: () => mirrorEvent,
+}));
 
 const { initMock, reportingObserverIntegrationMock, holdReplayBackForMock } =
   vi.hoisted(() => ({
@@ -120,8 +126,11 @@ describe("Sentry client instrumentation", () => {
     };
 
     expect(beforeSend).toBeTypeOf("function");
+    mirrorEvent.mockClear();
     expect(beforeSend(rscFallback, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(fetchError, {})).toBe(fetchError);
+    expect(mirrorEvent).toHaveBeenCalledExactlyOnceWith(fetchError);
   });
 
   it("sends errors whose trace context carries no IP address or email", async () => {
@@ -188,9 +197,12 @@ describe("Sentry client instrumentation", () => {
       },
     };
 
+    mirrorEvent.mockClear();
     expect(beforeSend(injectedProbe, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(blocked, {})).toBe(blocked);
     expect(beforeSend(ourWarning, {})).toBe(ourWarning);
+    expect(mirrorEvent).toHaveBeenCalledTimes(2);
   });
 
   it("traces every transaction but profiles one in ten", async () => {
