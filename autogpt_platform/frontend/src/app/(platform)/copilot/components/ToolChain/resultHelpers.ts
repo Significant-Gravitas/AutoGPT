@@ -62,7 +62,8 @@ export function stripBaseFields(
   );
 }
 
-const ID_KEY = /(^|_)id$/;
+// What a lookup was scoped to (an expert, a chat platform), echoed back.
+const SCOPE_KEY = /(^|_)id$|^platform$/;
 // Where a page starts and how long it is, not how much there is.
 const PAGING_KEYS = new Set([
   "page",
@@ -71,6 +72,8 @@ const PAGING_KEYS = new Set([
   "limit",
   "offset",
 ]);
+// Set when there is a further page; false says this one is all of it.
+const MORE_KEYS = new Set(["has_more", "has_next"]);
 
 function isEmptyCollection(value: unknown): boolean {
   if (Array.isArray(value)) return value.length === 0;
@@ -81,10 +84,18 @@ function isEmptyCollection(value: unknown): boolean {
   );
 }
 
+function isBookkeeping(key: string, value: unknown): boolean {
+  if (isEmptyCollection(value) || value === 0 || value === "") return true;
+  if (typeof value === "number") return PAGING_KEYS.has(key);
+  if (typeof value === "string") return SCOPE_KEY.test(key);
+  return value === false && MORE_KEYS.has(key);
+}
+
 /** A lookup that came back with nothing: every list in it is empty, and the
- *  rest is bookkeeping (ids, zero counts, paging). A result that names or
- *  states anything (`name`, `ok`), or counts more than it listed (a page past
- *  the end, `total_count: 5`), is an answer, even next to an empty list. */
+ *  rest is bookkeeping (what it was scoped to, zero counts, paging). A result
+ *  that names or states anything (`name`, `ok`), or holds more than it listed
+ *  (`total_count: 5`, `has_more: true`), is an answer, even next to an empty
+ *  list. */
 export function isEmptyResult(output: unknown): boolean {
   const obj = asObject(output);
   if (!obj) return false;
@@ -92,14 +103,7 @@ export function isEmptyResult(output: unknown): boolean {
     ([, value]) => value !== null && value !== undefined,
   );
   if (!entries.some(([, value]) => Array.isArray(value))) return false;
-  return entries.every(
-    ([key, value]) =>
-      isEmptyCollection(value) ||
-      value === 0 ||
-      (typeof value === "number" && PAGING_KEYS.has(key)) ||
-      value === "" ||
-      (typeof value === "string" && ID_KEY.test(key)),
-  );
+  return entries.every(([key, value]) => isBookkeeping(key, value));
 }
 
 /** How an empty result reads wherever one is shown. */

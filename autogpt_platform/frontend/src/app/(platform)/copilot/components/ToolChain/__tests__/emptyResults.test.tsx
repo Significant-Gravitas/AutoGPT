@@ -135,6 +135,80 @@ describe("the shared result fallback", () => {
   });
 });
 
+// Each list tool's answer on an account with nothing set up, as the real
+// tools returned it (session_id dropped).
+const REAL_EMPTY_ANSWERS: [string, Record<string, unknown>, string][] = [
+  [
+    "list_expert_chats",
+    {
+      type: "expert_chat_list",
+      message: "No chats with any expert yet.",
+      chats: [],
+      has_more: false,
+    },
+    "Looked through expert chats – none yet",
+  ],
+  [
+    "list_folders",
+    {
+      type: "folder_list",
+      message: "Found 0 folder(s) in your library.",
+      folders: [],
+      tree: [],
+      count: 0,
+    },
+    "Listed folders – none yet",
+  ],
+  [
+    "list_presets",
+    {
+      type: "preset_list",
+      message: "No presets found.",
+      presets: [],
+      total_count: 0,
+      page: 1,
+      page_size: 100,
+    },
+    "Listed presets – none yet",
+  ],
+  [
+    "list_team",
+    { type: "team_roster", message: "The team is empty.", experts: [] },
+    "Checked your team – no one yet",
+  ],
+  [
+    "list_workspace_files",
+    {
+      type: "workspace_file_list",
+      message: "Found 0 file(s) in workspace",
+      files: [],
+      total_count: 0,
+      folders: [],
+    },
+    "Listed workspace files – none yet",
+  ],
+  [
+    "list_chat_platform_channels",
+    {
+      type: "chat_platform_channel_list",
+      message: "No postable discord channels found.",
+      platform: "discord",
+      channels: [],
+      count: 0,
+    },
+    "Listed chat channels – none found",
+  ],
+];
+
+describe("real empty answers", () => {
+  it.each(REAL_EMPTY_ANSWERS)(
+    "%s reads as a sentence",
+    (tool, output, text) => {
+      expect(toChainRow(done(`tool-${tool}`, {}, output), 0)?.text).toBe(text);
+    },
+  );
+});
+
 describe("isEmptyResult", () => {
   it.each([
     [NO_ROUTINES, true],
@@ -143,6 +217,10 @@ describe("isEmptyResult", () => {
     [{ presets: [], total_count: 0, page: 1, page_size: 20 }, true],
     // A page past the end: the collection is not empty.
     [{ presets: [], total_count: 5, page: 2, page_size: 20 }, false],
+    // list_expert_chats and list_chat_platform_channels with nothing to show.
+    [{ chats: [], has_more: false, next_offset: null }, true],
+    [{ platform: "discord", channels: [], count: 0 }, true],
+    [{ chats: [], has_more: true, next_offset: 20 }, false],
     [{ routines: [{ id: "r-1" }] }, false],
     [{ name: "scraper", triggers: [] }, false],
     [{ ok: true, failed: [] }, false],
