@@ -10,6 +10,7 @@ import ast
 import collections
 import functools
 import pathlib
+from collections.abc import Iterable
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -210,6 +211,7 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "blocks/exa/cost_tracking_test.py asyncio.sleep": 4,
     "blocks/rss_test.py asyncio.sleep": 2,
     "blocks/time_blocks_test.py asyncio.sleep": 2,
+    "copilot/baseline/reasoning_test.py time.monotonic": 1,
     "copilot/bot/handler_test.py asyncio.sleep": 3,
     "copilot/executor/manager_block_warmup_test.py time.sleep": 1,
     "copilot/graphiti/falkordb_driver_test.py asyncio.sleep": 4,
@@ -289,12 +291,24 @@ def _global_clock_patches() -> list[tuple[str, str, int]]:
         except SyntaxError:
             continue
         rel = py.relative_to(BACKEND_ROOT).as_posix()
-        names = _import_bindings(tree, _package_of(rel))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                for target in _patched_clock_targets(node, names):
-                    found.append((rel, target, node.lineno))
+        package = _package_of(rel)
+        names = _import_bindings(tree.body, package)
+        for call, scope in _calls_in_scope(tree, names, package):
+            for target in _patched_clock_targets(call, scope):
+                found.append((rel, target, call.lineno))
     return found
+
+
+def _calls_in_scope(node: ast.AST, names: dict[str, str], package: str):
+    """Each call with the import bindings visible to it, so a test-local
+    `import time as clock` resolves inside that test."""
+    for child in ast.iter_child_nodes(node):
+        scope = names
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = names | _import_bindings(ast.walk(child), package)
+        elif isinstance(child, ast.Call):
+            yield child, names
+        yield from _calls_in_scope(child, scope, package)
 
 
 def _patched_clock_targets(call: ast.Call, names: dict[str, str]) -> list[str]:
@@ -302,21 +316,29 @@ def _patched_clock_targets(call: ast.Call, names: dict[str, str]) -> list[str]:
     `patch.multiple(...)` and `setattr(...)`, aliases included."""
     func = _qualified(call.func, names) or ""
     kind = func.rsplit(".", 2)[-2:]
-    args = call.args
-    dotted = _str_value(args[0]) if args else None
+    first = _argument(call, 0, "target")
+    second = _argument(call, 1, "attribute", "name")
+    dotted = _str_value(first) if first else None
     if kind[-1] in ("patch", "setattr") and dotted:
         owner, _, attr = dotted.rpartition(".")
         pairs = [(owner, attr)]
-    elif (kind == ["patch", "object"] or kind[-1] == "setattr") and len(args) >= 2:
-        owner, attr = _owner_path(args[0], names), _str_value(args[1])
+    elif (kind == ["patch", "object"] or kind[-1] == "setattr") and first and second:
+        owner, attr = _owner_path(first, names), _str_value(second)
         pairs = [(owner, attr)] if owner and attr else []
-    elif kind == ["patch", "multiple"] and args:
-        owner = _owner_path(args[0], names)
-        pairs = [(owner, kw.arg) for kw in call.keywords if owner and kw.arg]
+    elif kind == ["patch", "multiple"] and first:
+        owner = _owner_path(first, names)
+        keywords = [kw.arg for kw in call.keywords if kw.arg != "target"]
+        pairs = [(owner, attr) for attr in keywords if owner and attr]
     else:
         return []
     targets = [f"{_resolve(owner)}.{attr}" for owner, attr in pairs]
     return [t for t in targets if t in _GLOBAL_CLOCK_PATCH_TARGETS]
+
+
+def _argument(call: ast.Call, index: int, *keywords: str) -> ast.expr | None:
+    if len(call.args) > index:
+        return call.args[index]
+    return next((kw.value for kw in call.keywords if kw.arg in keywords), None)
 
 
 def _owner_path(node: ast.expr, names: dict[str, str]) -> str | None:
@@ -344,7 +366,7 @@ def _resolve(path: str, depth: int = 0) -> str:
         if i == len(parts) or depth > 5:
             return path
         tree, package = found
-        binding = _import_bindings(tree, package).get(parts[i])
+        binding = _import_bindings(tree.body, package).get(parts[i])
         if binding is None:
             return path
         return _resolve(".".join([binding, *parts[i + 1 :]]), depth + 1)
@@ -369,10 +391,10 @@ def _module_tree(module: str) -> tuple[ast.Module, str] | None:
     return None
 
 
-def _import_bindings(tree: ast.Module, package: str) -> dict[str, str]:
-    """Module-level names bound by imports, mapped to their dotted origin."""
+def _import_bindings(nodes: Iterable[ast.AST], package: str) -> dict[str, str]:
+    """Names the given import statements bind, mapped to their dotted origin."""
     names: dict[str, str] = {}
-    for node in tree.body:
+    for node in nodes:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.asname:
