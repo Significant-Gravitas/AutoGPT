@@ -23,7 +23,14 @@ _CASES = json.loads(
 _BUILDERS = {"delegation": _handoff_message, "handoff": _transfer_message}
 
 
-@pytest.mark.parametrize("case", _CASES, ids=[c["kind"] for c in _CASES])
+@pytest.mark.parametrize(
+    "case",
+    _CASES,
+    ids=[
+        f"{c['kind']}-{c['user'] or 'unnamed'}-{'context' if c['context'] else 'bare'}"
+        for c in _CASES
+    ],
+)
 def test_preamble_matches_the_shared_frontend_contract(case: dict[str, str]):
     build = _BUILDERS[case["kind"]]
     message = build(

@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 
-// New rows name the user ("Priya's team"); rows stored before that, and users
-// with no name on file, say "this user's team".
+// The preamble names the user ("Priya's team") when a name is on file and says
+// "this user's team" when it isn't; the matcher must hide both.
 const TEAM_OWNER = "[^\\[\\]\\r\\n]+'s team";
 
 const DELEGATION_PREAMBLE = new RegExp(
