@@ -218,15 +218,22 @@ async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
         )
     )
 
-    await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
-    fail_first.set()
-    with pytest.raises(RuntimeError, match="provider failed"):
-        await asyncio.wait_for(ranking, timeout=5)
+    try:
+        await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
+        fail_first.set()
+        with pytest.raises(RuntimeError, match="provider failed"):
+            await asyncio.wait_for(ranking, timeout=5)
 
-    started_when_rank_returned = started
-    pending_when_rank_returned = asyncio.all_tasks() - baseline_tasks
-    release_siblings.set()
-    await asyncio.gather(*pending_when_rank_returned, return_exceptions=True)
+        started_when_rank_returned = started
+        pending_when_rank_returned = asyncio.all_tasks() - baseline_tasks
+        release_siblings.set()
+        await asyncio.gather(*pending_when_rank_returned, return_exceptions=True)
+    finally:
+        fail_first.set()
+        release_siblings.set()
+        if not ranking.done():
+            ranking.cancel()
+        await asyncio.gather(ranking, return_exceptions=True)
     gc.collect()
 
     assert started_when_rank_returned == MAX_PARALLEL_SCORES
@@ -274,13 +281,18 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
         )
     )
 
-    await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
-    ranking.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(ranking, timeout=5)
+    try:
+        await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
+        ranking.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(ranking, timeout=5)
+    finally:
+        release_scores.set()
+        if not ranking.done():
+            ranking.cancel()
+        await asyncio.gather(ranking, return_exceptions=True)
     del ranking
     gc.collect()
-    release_scores.set()
 
     assert started == MAX_PARALLEL_SCORES
     assert finished == started
