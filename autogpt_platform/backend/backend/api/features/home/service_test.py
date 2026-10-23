@@ -494,3 +494,26 @@ async def test_recent_work_drops_files_marked_as_ottos_own(mocker: MockerFixture
 
     assert [event.title for event in events] == ["sticker-01.png"]
     internal.assert_awaited_once_with("user-1", ["file-sticker", "file-state"])
+
+
+@pytest.mark.asyncio
+async def test_recent_work_keeps_actions_when_the_file_check_fails(
+    mocker: MockerFixture,
+):
+    action = _file_event("e1", "Airtable Create Table", "block-1").model_copy(
+        update={"category": "INTEGRATION", "event_type": "integration.action"}
+    )
+    mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[action, _file_event("e2", "sticker-01.png", "f1")]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.workspace_db.list_internal_file_ids",
+        AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
+
+    events = await _get_work_events(
+        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
+    )
+
+    assert [event.title for event in events] == ["Airtable Create Table"]

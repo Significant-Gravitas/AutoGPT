@@ -277,12 +277,19 @@ async def _get_work_events(
             categories=["FILE", "INTEGRATION", "SCHEDULE"],
             limit=_WORK_EVENT_LIMIT,
         )
-        return await _without_working_files(user_id, events)
     except Exception:
         logger.warning(
             "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
         )
         return []
+    try:
+        return await _without_working_files(user_id, events)
+    except Exception:
+        logger.warning(
+            "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        # An unchecked file row may be one of Otto's own; the rest still show.
+        return [event for event in events if event.category != "FILE"]
 
 
 async def _without_working_files(
