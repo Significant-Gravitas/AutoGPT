@@ -2410,11 +2410,10 @@ async def stream_chat_completion_baseline(
     # transcript without the user turn, creating a malformed
     # assistant-after-assistant structure when the LLM reply is added.
     # Keep trusted context ahead of user text, including older pending messages.
-    user_message_for_transcript = (
-        transcript_context_prefix + user_message_for_transcript
-    )
     if user_message_for_transcript and is_user_message:
-        transcript_builder.append_user(content=user_message_for_transcript)
+        transcript_builder.append_user(
+            content=transcript_context_prefix + user_message_for_transcript
+        )
 
     working_dir: str | None = None
     if file_ids and user_id:
@@ -2828,6 +2827,18 @@ async def stream_chat_completion_baseline(
                         content_of=_formatted,
                         on_rollback=_trim_openai_on_rollback,
                     ):
+                        matched_skills_notice = await build_matched_skills_notice(
+                            user_id,
+                            current_session,
+                            "\n\n".join(pm.content for pm in pending),
+                            permissions=permissions,
+                        )
+                        if matched_skills_notice:
+                            _add_message_text(
+                                openai_messages[-1],
+                                matched_skills_notice,
+                                prepend=False,
+                            )
                         _emit(state, drained_rows_entry(pending, _formatted))
                     checkpoint = turn_checkpoint(current_session.messages, turn_start)
                     if checkpoint is not None:

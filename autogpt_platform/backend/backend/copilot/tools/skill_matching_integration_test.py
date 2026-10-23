@@ -18,6 +18,7 @@ from backend.copilot.sdk.retry_scenarios_test import (
 )
 from backend.copilot.tools import skill_matching_test as skill_fixtures
 from backend.copilot.tools import skill_matching_test_helpers as baseline
+from backend.util import json
 
 baseline_io = baseline_fixtures.baseline_io
 available_skills = skill_fixtures.available_skills
@@ -125,6 +126,35 @@ async def test_empty_turn_does_not_reuse_an_answered_task(
     )
     await baseline.run_turn(session, message)
     baseline.assert_empty_turn(provider, upload, matcher, old_task, pending_text)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", [None, ""])
+@pytest.mark.parametrize("pending_text", [None, baseline.NOTE, baseline.TASK])
+async def test_empty_first_turn_does_not_record_context_as_a_request(
+    monkeypatch: pytest.MonkeyPatch,
+    baseline_io: list[ChatSession],
+    available_skills: AsyncMock,
+    message: str | None,
+    pending_text: str | None,
+) -> None:
+    session = baseline.new_session(first_turn=True)
+    session.messages.append(ChatMessage(role="user", content="", sequence=0))
+    _, upload, _ = baseline.patch_provider(monkeypatch)
+    prefix = baseline.patch_first_turn_context(monkeypatch)
+    baseline.patch_pending(
+        monkeypatch,
+        PendingMessage(content=pending_text) if pending_text is not None else None,
+    )
+    await baseline.run_turn(session, message)
+    upload.assert_awaited_once()
+    assert upload.await_args is not None
+    transcript = upload.await_args.kwargs["content"].decode("utf-8")
+    rows = [json.loads(line) for line in transcript.splitlines()]
+    assert [row["message"]["content"] for row in rows if row["type"] == "user"] == (
+        [prefix + pending_text] if pending_text is not None else []
+    )
+    assert "<matched_skills>" not in transcript
 
 
 def _sdk_session() -> ChatSession:
