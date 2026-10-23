@@ -35,11 +35,14 @@ function ProviderConnectRow({
   const [broken, setBroken] = useState(false);
 
   return (
-    <div className="flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3">
+    <div
+      // TODO(tokens): no exact role for bg-neutral-100 #f5f5f5
+      className="flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3"
+    >
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white text-[12px] font-semibold uppercase text-zinc-600"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface text-caption font-semibold uppercase leading-inherit text-foreground-secondary"
         >
           {displayName.charAt(0)}
         </div>
@@ -55,7 +58,7 @@ function ProviderConnectRow({
           onError={() => setBroken(true)}
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-[14px] font-medium leading-[22px] text-zinc-800">
+      <span className="min-w-0 flex-1 truncate text-body font-medium leading-5.5 text-foreground-emphasis">
         {displayName}
       </span>
       <Button
@@ -118,13 +121,21 @@ export function CredentialsFlatView({
       {showTitle && (
         <div className="mb-2 flex items-center gap-2">
           <Text variant="small" className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-zinc-600">
+            <span className="inline-flex items-center gap-1 text-foreground-secondary">
               {displayName} credentials
               {isOptional && (
-                <span className="font-normal text-gray-500">(optional)</span>
+                <span
+                  // TODO(tokens): no exact role for text-gray-500 #6b7280
+                  className="font-normal text-gray-500"
+                >
+                  (optional)
+                </span>
               )}
               {!isOptional && !selectedCredential && (
-                <span className="inline-flex items-center gap-1 text-red-600">
+                <span
+                  // TODO(tokens): no exact role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
+                  className="inline-flex items-center gap-1 text-red-600"
+                >
                   <ExclamationTriangleIcon className="size-3.5" />
                   <span className="font-normal">required</span>
                 </span>
