@@ -86,16 +86,16 @@ export function ConnectIntegrationTool({ part }: Props) {
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <MorphingTextAnimation
           text={label}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {isError && errorMessage && (
-        <p className="mt-1 text-sm text-red-500">{errorMessage}</p>
+        <p className="mt-1 text-sm text-error">{errorMessage}</p>
       )}
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <p className="mt-1 text-sm text-error">
           The sign-in card data arrived corrupted and can&apos;t be shown. Ask
           your expert to retry connecting {providerName}.
         </p>
