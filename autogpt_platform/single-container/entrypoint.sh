@@ -152,6 +152,8 @@ configure_environment() {
   export NOTIFICATIONMANAGER_HOST=127.0.0.1 PLATFORMLINKINGMANAGER_HOST=127.0.0.1
   export COPILOTEXECUTOR_HOST=127.0.0.1 COPILOTCHATBRIDGE_HOST=127.0.0.1
   export AGENT_API_HOST=127.0.0.1 WEBSOCKET_SERVER_HOST=127.0.0.1
+  # nginx sends the REST server one X-Forwarded-For entry: the client.
+  export TRUSTED_PROXY_COUNT=1
   # The persistent backend JSON contains user-tunable product settings, but it
   # must not be able to move or expose appliance services. Environment values
   # have higher Pydantic priority, so pin the fixed internal topology here.
