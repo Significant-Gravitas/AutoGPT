@@ -49,6 +49,7 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.constants import BUDGET_EXHAUSTED_NOTICE, EMPTY_FINISH_NOTICE
 from backend.copilot.context import (
     get_workspace_manager,
     is_unattended_turn,
@@ -255,20 +256,14 @@ _LAST_ITERATION_HINT = (
 
 # Fallback surfaced when the tool-round budget is exhausted *and* the forced-
 # text last round left the user with zero visible response.
-_BUDGET_EXHAUSTED_FALLBACK_TEXT = (
-    "Reached the tool-call budget for this turn. "
-    "Send a follow-up message to continue from here."
-)
+_BUDGET_EXHAUSTED_FALLBACK_TEXT = BUDGET_EXHAUSTED_NOTICE
 
 # Fallback surfaced when the model finished naturally (under the budget) but
 # left the terminal round with zero visible text — the baseline equivalent
 # of the SDK's ``StreamError(code="empty_completion")``. Without this the FE
 # silently shows nothing after a long thinking-only turn on baseline-routed
 # sessions (e.g. some Kimi K2.6 cohorts).
-_NATURAL_FINISH_EMPTY_FALLBACK_TEXT = (
-    "The model returned no response for this turn. "
-    "Please try again or rephrase your request."
-)
+_NATURAL_FINISH_EMPTY_FALLBACK_TEXT = EMPTY_FINISH_NOTICE
 
 
 def _silent_finish_fallback_events(

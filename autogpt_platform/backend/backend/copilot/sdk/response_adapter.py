@@ -25,7 +25,11 @@ from claude_agent_sdk import (
 )
 
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
-from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG, is_transient_api_error
+from backend.copilot.constants import (
+    FRIENDLY_TRANSIENT_MSG,
+    NO_COMMENTARY_NOTICE,
+    is_transient_api_error,
+)
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -571,8 +575,7 @@ class SDKResponseAdapter:
                 # extended-thinking instead of emitting a TextBlock, the
                 # placeholder hides a real response that's already in hand.
                 fallback_text = (
-                    self._last_thinking_content.strip()
-                    or "(Done — no further commentary.)"
+                    self._last_thinking_content.strip() or NO_COMMENTARY_NOTICE
                 )
                 responses.append(
                     StreamTextDelta(

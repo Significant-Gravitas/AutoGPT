@@ -28,6 +28,7 @@ from backend.api.features.experts.models import (
 )
 from backend.copilot import budget_gate
 from backend.copilot.ai_spans import current_span_id
+from backend.copilot.constants import EMPTY_FINISH_NOTICE, STREAM_INCOMPLETE_MARKER
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -49,7 +50,8 @@ from backend.copilot.expert_context import (
     build_expert_identity_suffix,
 )
 from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.prompting import VOICE_TURN_PREFIX
 from backend.copilot.rate_limit import (
     SubscriptionTier,
     UserPaywalledError,
@@ -57,10 +59,13 @@ from backend.copilot.rate_limit import (
 )
 from backend.copilot.response_model import (
     StreamError,
+    StreamReasoningDelta,
     StreamStatus,
     StreamTextDelta,
     StreamToolInputAvailable,
+    StreamToolInputStart,
 )
+from backend.copilot.service import format_user_context_prefix
 from backend.copilot.tree import TurnEnvelope
 from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
@@ -709,17 +714,275 @@ class TestExecuteAsyncAclose:
             "copilot.llm_auth_provider": "platform",
             "copilot.model_tier": "default",
             "copilot.turn.origin": "chat",
+            "copilot.turn.first": "true",
+            "copilot.expert": "false",
             "copilot.engine": "dummy",
             "copilot.turn.outcome": "completed",
+            "copilot.turn.shape": "text_first",
         }
         data = trace["data"]
         assert data["copilot.session_id"] == "sess-1"
         assert data["copilot.turn_id"] == "turn-1"
         assert data["copilot.turn.queue_wait_ms"] >= 2000
         assert 0 <= data["copilot.turn.setup_ms"] <= data["copilot.turn.ttft_ms"]
-        assert data["copilot.turn.ttft_ms"] <= data["copilot.turn.duration_ms"]
+        assert data["copilot.turn.ttft_ms"] <= data["copilot.turn.first_text_ms"]
+        assert data["copilot.turn.first_text_ms"] <= data["copilot.turn.duration_ms"]
         assert data["copilot.turn.chunk_count"] == 3
         assert data["copilot.turn.tool_call_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_a_turn_times_its_first_token_and_text_from_the_request(
+        self, sentry_transactions
+    ) -> None:
+        entry = _make_entry().model_copy(update={"request_arrival_at": time.time() - 3})
+        published = _TrackedStream(
+            events=[
+                StreamReasoningDelta(id="r", delta="thinking"),
+                StreamTextDelta(id="t", delta="hi"),
+            ]
+        )
+
+        patches = self._patches(published)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        data = turn["contexts"]["trace"]["data"]
+        assert turn["tags"]["copilot.turn.waited"] == "false"
+        assert data["copilot.turn.first_text_ms"] < 3000
+        assert data["copilot.turn.request_to_ttft_ms"] >= 3000
+        assert (
+            data["copilot.turn.request_to_ttft_ms"]
+            <= data["copilot.turn.request_to_first_text_ms"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_waited_for_its_start_is_not_timed_from_the_request(
+        self, sentry_transactions
+    ) -> None:
+        """Queued behind another turn, held at a limit or redelivered: the
+        request is hours old, and timing from it would count the wait."""
+        entry = _make_entry().model_copy(
+            update={"request_arrival_at": time.time() - 2 * 3600}
+        )
+        published = _TrackedStream(events=[StreamTextDelta(id="t", delta="hi")])
+
+        patches = self._patches(published)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        data = turn["contexts"]["trace"]["data"]
+        assert turn["tags"]["copilot.turn.waited"] == "true"
+        assert "copilot.turn.first_text_ms" in data
+        assert "copilot.turn.request_to_ttft_ms" not in data
+        assert "copilot.turn.request_to_first_text_ms" not in data
+
+    @pytest.mark.asyncio
+    async def test_a_turn_dispatched_without_a_request_has_no_request_timings(
+        self, sentry_transactions
+    ) -> None:
+        published = _TrackedStream(events=[StreamTextDelta(id="t", delta="hi")])
+
+        patches = self._patches(published)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        data = turn["contexts"]["trace"]["data"]
+        assert "copilot.turn.first_text_ms" in data
+        assert "copilot.turn.request_to_ttft_ms" not in data
+        assert "copilot.turn.request_to_first_text_ms" not in data
+
+    @pytest.mark.parametrize(
+        "events, shape, answered",
+        [
+            (
+                [
+                    StreamToolInputStart(toolCallId="c", toolName="run_block"),
+                    StreamToolInputAvailable(toolCallId="c", toolName="run_block"),
+                    StreamTextDelta(id="t", delta="done"),
+                ],
+                "tool_first",
+                True,
+            ),
+            (
+                [
+                    StreamReasoningDelta(id="r", delta="thinking"),
+                    StreamToolInputStart(toolCallId="c", toolName="run_block"),
+                ],
+                "tool_first",
+                False,
+            ),
+            # Whitespace on its own shows nothing: the tool call came first,
+            # and the answer starts with the text after it.
+            (
+                [
+                    StreamTextDelta(id="t", delta="\n\n"),
+                    StreamToolInputStart(toolCallId="c", toolName="run_block"),
+                    StreamToolInputAvailable(toolCallId="c", toolName="run_block"),
+                    StreamTextDelta(id="t", delta="done"),
+                ],
+                "tool_first",
+                True,
+            ),
+            ([StreamTextDelta(id="t", delta=" \n")], "none", False),
+            ([StreamReasoningDelta(id="r", delta="thinking")], "none", False),
+            ([StreamStatus(message="Thinking…")], "none", False),
+            # A turn that ends without an answer streams a notice in its place.
+            (
+                [
+                    StreamReasoningDelta(id="r", delta="thinking"),
+                    StreamTextDelta(id="n", delta=EMPTY_FINISH_NOTICE),
+                ],
+                "none",
+                False,
+            ),
+            ([StreamTextDelta(id="n", delta=STREAM_INCOMPLETE_MARKER)], "none", False),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_a_turn_is_shaped_by_whether_text_or_a_tool_came_first(
+        self, sentry_transactions, events, shape, answered
+    ) -> None:
+        entry = _make_entry().model_copy(update={"request_arrival_at": time.time()})
+
+        patches = self._patches(_TrackedStream(events=events))
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        data = turn["contexts"]["trace"]["data"]
+        assert turn["tags"]["copilot.turn.shape"] == shape
+        assert ("copilot.turn.first_text_ms" in data) is answered
+        assert ("copilot.turn.request_to_first_text_ms" in data) is answered
+
+    @pytest.mark.parametrize(
+        "history, message, is_user_message, first",
+        [
+            # A follow-up the chat route saved before dispatching it.
+            (
+                [("user", "hi"), ("assistant", "hello"), ("user", "next")],
+                "next",
+                True,
+                "false",
+            ),
+            # The chat's first message, saved by the chat route.
+            ([("user", "hi")], "hi", True, "true"),
+            # An expert's greeting before the chat's first user message.
+            ([("assistant", "Welcome!"), ("user", "hi")], "hi", True, "true"),
+            # A sub-session's first turn: nothing saved yet, the engine saves
+            # the message when the turn starts.
+            ([], "do this", True, "true"),
+            # A sub-session's follow-up, dispatched without saving its message.
+            ([("user", "hi"), ("assistant", "hello")], "do this", True, "false"),
+            # Files sent with no text: an empty message, which nothing saves.
+            ([], "", True, "true"),
+            ([("user", "hi"), ("assistant", "hello")], "", True, "false"),
+            # A first turn redelivered after it saved a tool call: the engine
+            # saves its message again and resumes the chat.
+            ([("user", "brief me"), ("assistant", "done")], "brief me", True, "false"),
+            # A redelivered turn whose message the engine saved with its
+            # server tags stripped: the same message, not a second one.
+            (
+                [("user", "do this")],
+                "<user_context>x</user_context>do this",
+                True,
+                "true",
+            ),
+            # A voice chat's first message: the route saves and dispatches it
+            # behind the voice instructions, which the turn's copy drops.
+            (
+                [("user", VOICE_TURN_PREFIX + "hi")],
+                VOICE_TURN_PREFIX + "hi",
+                True,
+                "true",
+            ),
+            (
+                [
+                    ("user", VOICE_TURN_PREFIX + "hi"),
+                    ("assistant", "hello"),
+                    ("user", VOICE_TURN_PREFIX + "next"),
+                ],
+                VOICE_TURN_PREFIX + "next",
+                True,
+                "false",
+            ),
+            # A first turn redelivered after the engine saved its message
+            # behind the user's context block, before anything answered it.
+            ([("user", format_user_context_prefix("ctx") + "hi")], "hi", True, "true"),
+            # The same, for a message that starts with a blank line: stripping
+            # the block also takes the whitespace after it.
+            (
+                [("user", format_user_context_prefix("ctx") + "\n  hi")],
+                "\n  hi",
+                True,
+                "true",
+            ),
+            # Scheduled follow-ups the scheduler stores as the model's, like a
+            # recurring routine sending its prompt into its chat again.
+            ([("user", "brief me"), ("assistant", "done")], "brief me", False, "false"),
+            ([("user", "hi"), ("assistant", "hello")], "do this", False, "false"),
+            # Keep going on a chat's first turn.
+            ([("user", "hi"), ("assistant", "partly")], "continue", False, "false"),
+            # A scheduled turn into a chat nobody has written to yet.
+            ([], "do this", False, "true"),
+            # A kickoff the platform posts as the chat's first message.
+            ([("assistant", "kickoff")], "", False, "true"),
+        ],
+    )
+    @pytest.mark.parametrize("expert_id", [None, "expert-1"])
+    @pytest.mark.asyncio
+    async def test_a_turn_is_tagged_with_the_kind_of_chat_it_is_in(
+        self, sentry_transactions, history, message, is_user_message, first, expert_id
+    ) -> None:
+        session = ChatSession.new(
+            "user-1",
+            dry_run=False,
+            organization_id="personal-org",
+            team_id="personal-team",
+            expert_id=expert_id,
+        )
+        session.session_id = "sess-1"
+        session.messages = [
+            ChatMessage(role=role, content=content) for role, content in history
+        ]
+        entry = _make_entry().model_copy(
+            update={"message": message, "is_user_message": is_user_message}
+        )
+        expert_store = MagicMock()
+        expert_store.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("personal-org", "personal-team")
+        )
+        expert_store.expert_setup_status = AsyncMock(return_value="ready")
+
+        patches = self._patches(_TrackedStream(events=[]))
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch("backend.data.db_accessors.experts_db", return_value=expert_store),
+        ):
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        assert turn["tags"]["copilot.turn.first"] == first
+        assert turn["tags"]["copilot.expert"] == ("true" if expert_id else "false")
 
     @pytest.mark.asyncio
     async def test_a_turn_that_streams_an_error_is_failed(
