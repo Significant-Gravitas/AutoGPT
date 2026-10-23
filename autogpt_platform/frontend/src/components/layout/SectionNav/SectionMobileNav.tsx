@@ -44,7 +44,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
         <PopoverTrigger asChild>
           <button
             type="button"
-            // TODO(tokens): no exact role for focus-visible:ring-[#3E3E43] (#3E3E43)
+            // TODO(tokens): no fitting role for focus-visible:ring-[#3E3E43] #3E3E43; #3E3E43 is foreground-emphasis (a text colour) and action (the primary button's fill), not a focus ring
             className="flex w-fit items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#3E3E43]"
             aria-label={`${sectionName} navigation, current: ${current.label}`}
           >

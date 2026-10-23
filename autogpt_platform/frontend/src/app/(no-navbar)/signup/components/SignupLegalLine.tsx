@@ -48,7 +48,7 @@ export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
         className={cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
-          // TODO(tokens): no exact role for focus-visible:ring-blue-500 (#3B82F6)
+          // TODO(tokens): no fitting role for focus-visible:ring-blue-500 #3B82F6; #3B82F6 is info (a status colour) and sidebar-ring (a focus ring scoped to the shadcn sidebar), not this link's focus ring
           "rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50",
         )}

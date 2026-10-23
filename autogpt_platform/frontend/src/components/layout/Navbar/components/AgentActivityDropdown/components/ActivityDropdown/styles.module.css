@@ -8,8 +8,8 @@
 /* Target the scrollable div created by react-window */
 .scrollContainer div[style*="overflow"] {
   scrollbar-width: thin;
-  /* TODO(tokens): no exact role for gray-300 rgb(209, 213, 219) #D1D5DB or CSS white #FFFFFF */
-  scrollbar-color: rgb(209, 213, 219) white;
+  /* TODO(tokens): no exact role for gray-300 rgb(209, 213, 219) #D1D5DB */
+  scrollbar-color: rgb(209, 213, 219) rgb(var(--color-popover));
 }
 
 /* Webkit scrollbar styles */
@@ -18,8 +18,7 @@
 }
 
 .scrollContainer div[style*="overflow"]::-webkit-scrollbar-track {
-  /* TODO(tokens): no exact role for CSS white #FFFFFF (surface is #FEFEFE) */
-  background: white;
+  background: rgb(var(--color-popover));
   border-radius: 4px;
 }
 

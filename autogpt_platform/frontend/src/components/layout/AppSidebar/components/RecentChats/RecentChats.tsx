@@ -143,7 +143,7 @@ export function RecentChats() {
           type="button"
           onClick={() => loadMore()}
           disabled={isLoadingMore}
-          // TODO(tokens): no exact role for hover:bg-zinc-300 (#C5C5C9)
+          // TODO(tokens): no fitting role for hover:bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a border colour), not a fill
           className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-surface-active px-2 py-1.5 text-sm text-foreground-emphasis hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base"
         >
           {isLoadingMore && (

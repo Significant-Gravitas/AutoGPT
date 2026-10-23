@@ -18,7 +18,7 @@ export function ErrorView({ message }: Props) {
           <Icon
             icon={Unlink01Icon}
             size={40}
-            // TODO(tokens): no exact role for text-red-600 (#D93636)
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill), not a text colour
             className="text-red-600"
           />
         </div>

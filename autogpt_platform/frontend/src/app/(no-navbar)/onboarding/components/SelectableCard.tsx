@@ -28,7 +28,7 @@ export function SelectableCard({
       className={cn(
         "relative flex h-24 w-[10.375rem] shrink-0 flex-col items-center justify-center gap-2 rounded-lg border bg-surface p-4 transition-colors hover:bg-surface-muted md:shrink",
         className,
-        // TODO(tokens): no exact role for border-zinc-400 (#ADADB3)
+        // TODO(tokens): no fitting role for border-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a border
         selected ? "border-zinc-400 bg-surface-muted" : "border-separator",
       )}
     >

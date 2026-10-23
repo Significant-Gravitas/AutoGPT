@@ -93,7 +93,7 @@ export function AccountMenuRow({
   external = false,
 }: Props) {
   const colorClasses = destructive
-    ? // TODO(tokens): no exact role for text-neutral-700 (#404040), hover:text-red-600 (#D93636), focus-visible:text-red-600 (#D93636)
+    ? // TODO(tokens): no exact role for text-neutral-700 (#404040); no fitting role for hover:text-red-600, focus-visible:text-red-600 #D93636; #D93636 is error-hover (a hover fill), not a text colour
       "text-neutral-700 hover:bg-error-surface hover:text-red-600 focus-visible:bg-error-surface focus-visible:text-red-600"
     : // TODO(tokens): no exact role for text-neutral-700 (#404040), hover:bg-neutral-100 (#F5F5F5), focus-visible:bg-neutral-100 (#F5F5F5)
       "text-neutral-700 hover:bg-neutral-100 focus-visible:bg-neutral-100";

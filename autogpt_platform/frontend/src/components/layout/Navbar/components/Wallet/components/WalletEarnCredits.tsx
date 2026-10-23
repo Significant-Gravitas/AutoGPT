@@ -68,7 +68,7 @@ function EarnCreditsHeader({
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          // TODO(tokens): no exact role for focus-visible:ring-zinc-400 (#ADADB3)
+          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a focus ring
           className="flex w-full flex-col gap-1 px-5 py-3 text-left outline-none transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
         >
           <span className="flex w-full items-baseline justify-between gap-3">

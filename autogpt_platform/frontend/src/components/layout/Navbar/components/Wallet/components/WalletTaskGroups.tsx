@@ -241,7 +241,7 @@ export function TaskGroups({ groups }: Props) {
                         isTaskCompleted(task)
                           ? // TODO(tokens): no exact role for border-emerald-600 (#059669)
                             "border-emerald-600"
-                          : // TODO(tokens): no exact role for border-zinc-600 (#68686F)
+                          : // TODO(tokens): no fitting role for border-zinc-600 #68686F; #68686F is foreground-secondary (a text colour), not a border
                             "border-zinc-600",
                       )}
                     >
