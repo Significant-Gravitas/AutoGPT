@@ -37,10 +37,11 @@ _EC = "backend.copilot.expert_context"
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the say-each-rule-once rewrite (workflow wording, the
-# approval-card fallback and the one-thing greeting).
+# Last re-pinned for SECRT-3158: "Talking to the user" no longer says the user
+# cannot see tools (they see a label per step) and points at the progress rules
+# in SHARED_TOOL_NOTES. Langfuse "CoPilot Prompt" v39 is the previous text.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "85a26576ca6105b8f115174fc188b32e46b8b43c3b7cda1edf6d399796909897"
+    "af308687afc141f2faf84db39f8f2cc44893f4da9bedb23beb873abcf5f1c986"
 )
 
 

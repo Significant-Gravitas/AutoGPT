@@ -279,7 +279,14 @@ from ._test_data import make_session
 # re-measured on that merged tree (89 tools), with the stack's margin:
 #     merged tree                                 77,301 (89 tools)
 #     + headroom                       +300       77,601
-_CHAR_BUDGET = 77_601
+# Bumped 77_601 -> 77_670 for bash_exec's optional `purpose` (SECRT-3158):
+# the plain-language label the chat shows instead of the raw command, and the
+# sentence in its description asking for it. No tool was added (89 either side).
+# Measured on the branch, whose base is dev 51ee085fa2:
+#     dev 51ee085fa2                              77,501 (89 tools)
+#     + bash_exec purpose               +168      77,669 (89 tools)
+# Plus one.
+_CHAR_BUDGET = 77_670
 
 
 @pytest.fixture(scope="module")
