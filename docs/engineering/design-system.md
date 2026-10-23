@@ -68,7 +68,7 @@ Fix the code first. When a suppression is unavoidable, scope it to one line and 
 
 Chromatic is off, so every design-system PR puts four sections in its description:
 
-1. **Counts.** `pnpm exec oxlint -c .oxlintrc.strict.json <dir> | wc -l` on the PR's base and on its head, for each directory in scope. Remove a directory from the `warn` overrides in `.oxlintrc.json` only when its count is 0.
+1. **Counts.** From `autogpt_platform/frontend`, `pnpm exec oxlint -c .oxlintrc.strict.json src/components/atoms | wc -l` on the PR's base and on its head, with `src/components/atoms` replaced by each directory in scope (quote paths with parentheses, such as `"src/app/(platform)/library"`). Remove a directory from the `warn` overrides in `.oxlintrc.json` only when its count is 0.
 2. **Value equivalence.** The `old class | new class | resolved value` table that `scripts/check-token-equivalence.ts` prints for every class replaced; it exits 1 on any difference. A docs-only PR writes "0 classes replaced; no rows".
 3. **Screenshots.** `scripts/screenshot-pages.ts` against the running app on the base (a `git worktree`) and on the head, at 1440x900 and 390x844, with 0 changed pixels from its `compare`. Store the images outside the branch (an evidence-only branch on a fork, or PR attachments) and link them.
 4. **What improved.** Two lines the team can read.
