@@ -205,6 +205,7 @@ SKILLS_CONTEXT_TAG = "available_skills"
 # ``<skills_update>`` block to the current turn's model input (query-only,
 # never persisted) telling the model to re-list. Server-injected only.
 SKILLS_UPDATE_TAG = "skills_update"
+MATCHED_SKILLS_TAG = "matched_skills"
 
 # Tag name for the per-turn "already seen" notice. Lists the capability ids
 # this session already described or ran and the skills it already loaded
@@ -315,6 +316,7 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     SESSION_CONTEXT_TAG,
     SKILLS_CONTEXT_TAG,
     SKILLS_UPDATE_TAG,
+    MATCHED_SKILLS_TAG,
     SEEN_CAPABILITIES_TAG,
     VOICE_TURN_TAG,
     *_EXPERT_BLOCK_TAGS,
