@@ -14,6 +14,7 @@
  *     [--base-url http://localhost:3000] [--routes /login,/library] \
  *     [--storybook-url http://localhost:6006] [--stories tokens-,atoms-button--] \
  *     [--dismiss "Got it"]   # buttons that close first-visit prompts
+ *     [--skip atoms-progress--live]   # story ids that never hold still
  *
  *   # 2. Compare two captures; writes a diff PNG per screenshot.
  *   npx tsx scripts/screenshot-pages.ts compare shots/before shots/after \
@@ -64,6 +65,9 @@ const SIGNED_IN_ROUTES = [
 const DEFAULT_STORIES = ["tokens-", "atoms-button--", "atoms-text--"];
 
 const DEFAULT_DISMISS = ["Got it"];
+
+// Stories that animate on a timer by design and never hold still.
+const DEFAULT_SKIP = ["atoms-progress--live"];
 
 // Software rasterising on one thread with a fixed colour profile, so the
 // anti-aliased edge of a rounded border is the same pixel on every run.
@@ -326,9 +330,15 @@ async function capture(argv: string[]) {
     ...PUBLIC_ROUTES,
     ...(signedIn ? SIGNED_IN_ROUTES : []),
   ]);
-  const stories = storybookUrl
-    ? await storyIds(storybookUrl, listFlag(argv, "--stories", DEFAULT_STORIES))
-    : [];
+  const skip = listFlag(argv, "--skip", DEFAULT_SKIP);
+  const stories = (
+    storybookUrl
+      ? await storyIds(
+          storybookUrl,
+          listFlag(argv, "--stories", DEFAULT_STORIES),
+        )
+      : []
+  ).filter((id) => !skip.includes(id));
   const dismiss = listFlag(argv, "--dismiss", DEFAULT_DISMISS);
   mkdirSync(outDir, { recursive: true });
 
