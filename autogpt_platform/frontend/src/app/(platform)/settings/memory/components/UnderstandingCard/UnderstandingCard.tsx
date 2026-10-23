@@ -107,9 +107,13 @@ export function UnderstandingCard() {
 
 function UnderstandingValue({ value }: { value: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const isLong = value.length > LONG_VALUE_CHARS;
+  // By code point, so the cut never splits an emoji's surrogate pair.
+  const chars = Array.from(value);
+  const isLong = chars.length > LONG_VALUE_CHARS;
   const shown =
-    isLong && !isExpanded ? `${value.slice(0, LONG_VALUE_CHARS)}…` : value;
+    isLong && !isExpanded
+      ? `${chars.slice(0, LONG_VALUE_CHARS).join("")}…`
+      : value;
 
   return (
     <dd className="whitespace-pre-line text-sm text-zinc-800">

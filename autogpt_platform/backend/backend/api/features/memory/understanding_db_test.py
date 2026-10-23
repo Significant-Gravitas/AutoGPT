@@ -1,13 +1,21 @@
 """The Memory page's business-understanding routes against a real database row."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 import pytest_asyncio
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma.models import CoPilotUnderstanding
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.api.rest_api import app
+from backend.data import understanding as understanding_module
+from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
+    FORGOTTEN_MARKER,
     BusinessUnderstandingInput,
     clear_business_understanding,
     get_business_understanding,
@@ -19,8 +27,6 @@ from backend.data.understanding import (
 async def client(
     setup_test_user, mock_jwt_user
 ) -> AsyncGenerator[httpx.AsyncClient, None]:
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -95,3 +101,55 @@ async def test_account_erase_forgets_the_understanding(client, test_user_id):
 
     assert resp.status_code == 200
     assert await get_business_understanding(test_user_id) is None
+
+
+async def test_a_read_that_raced_the_forget_cannot_cache_the_row_again(
+    client, test_user_id, monkeypatch
+):
+    await _seed(test_user_id)
+    redis = await get_redis_async()
+    await redis.delete(understanding_module._cache_key(test_user_id))
+    read_done, release = asyncio.Event(), asyncio.Event()
+    real = CoPilotUnderstanding.prisma()
+
+    class _ReadPausesBeforeCaching:
+        async def find_unique(self, **kwargs):
+            row = await real.find_unique(**kwargs)
+            read_done.set()
+            await release.wait()
+            return row
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(
+        understanding_module.CoPilotUnderstanding,
+        "prisma",
+        lambda: _ReadPausesBeforeCaching(),
+    )
+    reader = asyncio.create_task(get_business_understanding(test_user_id))
+    await asyncio.wait_for(read_done.wait(), timeout=10)
+
+    resp = await client.delete("/api/memory/understanding")
+    release.set()
+    await reader
+
+    assert resp.json() == {"forgotten": True}
+    cached = await redis.get(understanding_module._cache_key(test_user_id))
+    assert cached == FORGOTTEN_MARKER
+    assert await get_business_understanding(test_user_id) is None
+
+
+async def test_forget_fails_when_the_cached_copy_cannot_be_replaced(test_user_id):
+    await _seed(test_user_id)
+    broken = AsyncMock()
+    broken.set.side_effect = RedisConnectionError("redis down")
+
+    with (
+        patch(
+            "backend.data.understanding.get_redis_async",
+            new=AsyncMock(return_value=broken),
+        ),
+        pytest.raises(RedisConnectionError),
+    ):
+        await clear_business_understanding(test_user_id)

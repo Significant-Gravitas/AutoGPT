@@ -114,6 +114,22 @@ describe("What Otto knows about your work", () => {
     ).toBeDefined();
   });
 
+  it("keeps an emoji whole where the preview is cut", async () => {
+    const note = `${"a".repeat(279)}😀 and more after the cut`;
+    mockAccountScope(() => ({ ...KEPT, additional_notes: note }));
+    render(<SettingsMemoryPage />);
+
+    await screen.findByRole("button", { name: "Show all" });
+
+    expect(
+      screen.getByText(
+        (_, node) =>
+          node?.tagName === "DD" &&
+          node.textContent === `${"a".repeat(279)}😀…Show all`,
+      ),
+    ).toBeDefined();
+  });
+
   it("shows no card when nothing is kept", async () => {
     let served = 0;
     mockAccountScope(() => {
