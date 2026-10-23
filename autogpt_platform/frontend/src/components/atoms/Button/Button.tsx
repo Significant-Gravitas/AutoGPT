@@ -112,7 +112,7 @@ export function Button(props: ButtonProps) {
           )
         : applyUnmask(
             extendedButtonVariants({ variant: "primary", size, className }),
-            "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
+            "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
           );
 
     if (as === "NextLink") {
