@@ -1,5 +1,9 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-500 #6B7280, bg-green-500 #16A34A, text-gray-400 #9CA3AF,
+// text-pink-600 #D7428B.
+
 import { useState } from "react";
 import {
   TableRow,

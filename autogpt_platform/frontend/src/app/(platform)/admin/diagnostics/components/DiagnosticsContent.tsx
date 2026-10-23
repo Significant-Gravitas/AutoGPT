@@ -1,5 +1,23 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-blue-100 #DBEAFE, bg-green-100 #B7E2C7, bg-green-500 #16A34A,
+// bg-orange-50 #FFF3E6, bg-pink-50 #FDEDF5, bg-purple-100 #EFE8FE,
+// bg-purple-50 #F1EBFE, bg-red-100 #FDECEC, bg-yellow-100 #FCEBB0,
+// bg-yellow-50 #FEF9E6, bg-yellow-500 #F5C000, border-orange-300 #FEAF54,
+// border-pink-300 #F284BB, border-purple-300 #A476F8, border-red-300 #F69999,
+// border-yellow-300 #F8D554, text-blue-700 #1D4ED8, text-gray-400 #9CA3AF,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-orange-600 #E77B00,
+// text-orange-700 #B46000, text-orange-800 #8C4A00, text-orange-900 #6B3900,
+// text-pink-600 #D7428B, text-pink-700 #A8336D, text-pink-800 #822854,
+// text-pink-900 #631E40, text-purple-600 #6C2EDF, text-purple-700 #5424AE,
+// text-purple-800 #411C87, text-purple-900 #321567, text-red-600 #D93636,
+// text-red-800 #832525, text-red-900 #641D1D, text-yellow-600 #DFAF00,
+// text-yellow-700 #AE8800, text-yellow-800 #876A00, text-yellow-900 #675100.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill),
+// text-purple-600 = brand-hover (a hover fill).
+
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";

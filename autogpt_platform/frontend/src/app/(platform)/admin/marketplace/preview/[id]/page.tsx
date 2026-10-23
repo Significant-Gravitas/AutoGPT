@@ -1,5 +1,8 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-amber-600 #D97706.
+
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";

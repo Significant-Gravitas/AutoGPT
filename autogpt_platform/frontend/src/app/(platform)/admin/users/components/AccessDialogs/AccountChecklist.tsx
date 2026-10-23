@@ -1,5 +1,8 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-emerald-700 #047857.
+
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";

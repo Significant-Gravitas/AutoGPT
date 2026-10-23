@@ -1,5 +1,11 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-amber-100 #FEF3C7, bg-gray-100 #F3F4F6, border-gray-200 #E5E7EB,
+// border-gray-300 #D1D5DB, border-gray-700 #374151, border-red-200 #FAC5C5,
+// text-amber-800 #92400E, text-gray-400 #9CA3AF, text-gray-500 #6B7280,
+// text-gray-600 #4B5563, text-gray-700 #374151.
+
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

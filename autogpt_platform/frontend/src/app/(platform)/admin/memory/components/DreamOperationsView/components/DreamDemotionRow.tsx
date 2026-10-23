@@ -1,3 +1,6 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-gray-500 #6B7280.
+
 import type { DemotionSummary } from "@/app/api/__generated__/models/demotionSummary";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";

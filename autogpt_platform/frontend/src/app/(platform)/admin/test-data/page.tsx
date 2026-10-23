@@ -1,3 +1,7 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-700 #374151.
+
 import { notFound } from "next/navigation";
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { GenerateTestDataButton } from "./components/GenerateTestDataButton";

@@ -1,5 +1,11 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-amber-100 #FEF3C7, bg-blue-100 #DBEAFE, bg-gray-100 #F3F4F6,
+// bg-indigo-100 #E0E7FF, bg-purple-100 #EFE8FE, bg-red-100 #FDECEC,
+// text-blue-700 #1D4ED8, text-gray-500 #6B7280, text-gray-700 #374151,
+// text-indigo-700 #4338CA, text-purple-700 #5424AE.
+
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";

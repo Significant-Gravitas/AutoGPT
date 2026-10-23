@@ -1,5 +1,18 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-blue-600 #2563EB, bg-blue-700 #1D4ED8, bg-green-100 #B7E2C7,
+// bg-orange-100 #FFDAB0, bg-orange-50 #FFF3E6, bg-orange-600 #E77B00,
+// bg-orange-700 #B46000, bg-pink-50 #FDEDF5, bg-red-700 #AA3030,
+// bg-yellow-100 #FCEBB0, border-orange-500 #FE8700, text-blue-700 #1D4ED8,
+// text-gray-400 #9CA3AF, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-700 #374151, text-green-800 #0C5A29, text-orange-200 #FFC88A,
+// text-orange-600 #E77B00, text-orange-700 #B46000, text-pink-700 #A8336D,
+// text-red-600 #D93636, text-yellow-800 #876A00.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill),
+// bg-blue-600 = info-foreground (a text colour).
+
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -551,7 +564,7 @@ export function ExecutionsTable({
                       size="small"
                       onClick={() => confirmStop("all", "requeue")}
                       disabled={isStopping}
-                      className="border-blue-500 text-blue-700 hover:bg-info-surface"
+                      className="border-info text-blue-700 hover:bg-info-surface"
                     >
                       <Icon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
                       Requeue All ({total})

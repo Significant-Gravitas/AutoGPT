@@ -1,5 +1,9 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, border-gray-100 #F3F4F6, border-gray-200 #E5E7EB,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-800 #1F2937.
+
 import type { DreamPassUsage } from "@/app/api/__generated__/models/dreamPassUsage";
 import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";

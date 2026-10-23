@@ -1,5 +1,9 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-100 #F3F4F6, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-800 #1F2937.
+
 import type { DreamOperationsSnapshot } from "@/app/api/__generated__/models/dreamOperationsSnapshot";
 import {
   Accordion,

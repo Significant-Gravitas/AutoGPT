@@ -1,3 +1,8 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-green-500 #16A34A, bg-orange-500 #FE8700, bg-pink-500 #EC4899,
+// text-blue-700 #1D4ED8, text-orange-700 #B46000, text-pink-700 #A8336D,
+// text-purple-700 #5424AE.
+
 function TrackingBadge({
   trackingType,
 }: {

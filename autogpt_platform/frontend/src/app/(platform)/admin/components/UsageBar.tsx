@@ -1,5 +1,9 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-200 #E5E7EB, bg-green-500 #16A34A, bg-yellow-500 #F5C000,
+// text-gray-500 #6B7280.
+
 import { formatMicrodollarsAsUsd } from "@/app/(platform)/copilot/components/usageHelpers";
 
 export function UsageBar({ used, limit }: { used: number; limit: number }) {

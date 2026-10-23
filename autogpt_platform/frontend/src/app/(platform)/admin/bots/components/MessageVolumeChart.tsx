@@ -1,3 +1,6 @@
+// TODO(tokens): chart and canvas colours, which have no tokens yet: #6366F1,
+// #10B981, #EF4444.
+
 import {
   CartesianGrid,
   Legend,

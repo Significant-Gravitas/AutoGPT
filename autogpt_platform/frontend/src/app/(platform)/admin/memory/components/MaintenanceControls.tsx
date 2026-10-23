@@ -1,5 +1,12 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-blue-600 #2563EB, bg-blue-700 #1D4ED8, bg-indigo-700 #4338CA,
+// bg-indigo-800 #3730A3, bg-purple-700 #5424AE, bg-teal-600 #0D9488,
+// bg-teal-700 #0F766E, border-gray-200 #E5E7EB, text-gray-700 #374151.
+// Same value as a role with another meaning, so not swapped:
+// bg-blue-600 = info-foreground (a text colour).
+
 import type { AnyJobStatus } from "./memoryJobStatus";
 
 interface Props {

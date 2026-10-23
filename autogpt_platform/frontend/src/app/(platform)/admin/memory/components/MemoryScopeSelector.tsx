@@ -1,5 +1,8 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-gray-500 #6B7280.
+
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { Select } from "@/components/atoms/Select/Select";
 import { AUTOPILOT_MEMORY_SCOPE } from "./useMemoryScope";

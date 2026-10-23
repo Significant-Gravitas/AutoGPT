@@ -1,3 +1,6 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-green-500 #16A34A, text-blue-700 #1D4ED8.
+
 function ExecutionPathBadge({
   executionPath,
 }: {

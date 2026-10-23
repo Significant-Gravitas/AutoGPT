@@ -1,3 +1,7 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, border-rose-200 #FECDD3, text-gray-500 #6B7280,
+// text-gray-600 #4B5563.
+
 import type { EntityInvalidationSummary } from "@/app/api/__generated__/models/entityInvalidationSummary";
 import { Text } from "@/components/atoms/Text/Text";
 import { shortenUuid } from "../helpers";

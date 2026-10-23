@@ -1,5 +1,12 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-100 #F3F4F6, bg-purple-50 #F1EBFE, bg-red-700 #AA3030,
+// text-gray-400 #9CA3AF, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-700 #374151, text-purple-600 #6C2EDF.
+// Same value as a role with another meaning, so not swapped:
+// text-purple-600 = brand-hover (a hover fill).
+
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import {

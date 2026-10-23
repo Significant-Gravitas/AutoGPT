@@ -1,3 +1,11 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-blue-100 #DBEAFE, bg-gray-50 #F9FAFB, bg-green-100 #B7E2C7,
+// bg-red-100 #FDECEC, text-blue-800 #1E40AF, text-gray-500 #6B7280,
+// text-gray-600 #4B5563, text-green-800 #0C5A29, text-red-600 #D93636,
+// text-red-800 #832525.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill).
+
 import {
   Table,
   TableBody,

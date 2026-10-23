@@ -1,3 +1,6 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// border-violet-200 #DDD6FE, text-gray-500 #6B7280.
+
 import type { WriteSummary } from "@/app/api/__generated__/models/writeSummary";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";

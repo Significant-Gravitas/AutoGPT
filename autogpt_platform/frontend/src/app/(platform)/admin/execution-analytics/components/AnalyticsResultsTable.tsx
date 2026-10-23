@@ -1,5 +1,12 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, border-gray-200 #E5E7EB, divide-gray-200 #E5E7EB,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-700 #374151,
+// text-orange-600 #E77B00, text-red-600 #D93636, text-yellow-600 #DFAF00.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill).
+
 import React, { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

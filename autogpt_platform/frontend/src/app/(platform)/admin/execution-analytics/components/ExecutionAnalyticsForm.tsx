@@ -1,5 +1,16 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-100 #F3F4F6, bg-red-100 #FDECEC, text-blue-700 #1D4ED8,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-700 #374151,
+// text-orange-600 #E77B00, text-purple-600 #6C2EDF, text-red-600 #D93636,
+// text-red-800 #832525.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill),
+// text-purple-600 = brand-hover (a hover fill).
+// TODO(tokens): chart and canvas colours, which have no tokens yet: #3B82F6,
+// #10B981, #F59E0B, #8B5CF6.
+
 import { useState, useEffect } from "react";
 import {
   LineChart,

@@ -1,3 +1,6 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-gray-500 #6B7280, text-gray-600 #4B5563.
+
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 import { ExecutionAnalyticsForm } from "./components/ExecutionAnalyticsForm";
