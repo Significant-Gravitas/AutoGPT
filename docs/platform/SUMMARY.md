@@ -49,6 +49,7 @@
 ## API & Integrations
 
 * [API Introduction](integrating/api-guide.md)
+* [Keyless API Access](integrating/keyless-access.md)
 * [OAuth & SSO](integrating/oauth-guide.md)
 
 ## Contributing
