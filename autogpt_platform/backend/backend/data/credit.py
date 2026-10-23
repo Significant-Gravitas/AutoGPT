@@ -1620,10 +1620,24 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Set the user's subscription tier. No lifecycle sync: the subscription
     status doesn't read the tier, and the Stripe change that comes with a
-    tier change syncs through its own webhook."""
+    tier change syncs through its own webhook.
+
+    A drop from a plan or trial to NO_TIER stamps ``subscriptionEndedAt``, which
+    keeps product mail going for the win-back window; any other tier clears it."""
     data: UserUpdateInput = {
         "subscriptionTier": tier,
     }
+    if tier == SubscriptionTier.NO_TIER:
+        # Conditional, so a repeated NO_TIER write doesn't restart the window.
+        await User.prisma().update_many(
+            where={
+                "id": user_id,
+                "subscriptionTier": {"not": SubscriptionTier.NO_TIER},
+            },
+            data={**data, "subscriptionEndedAt": datetime.now(timezone.utc)},
+        )
+    else:
+        data["subscriptionEndedAt"] = None
     await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
 
@@ -3157,7 +3171,8 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
                 return
             if locked_user.subscriptionTier != tier:
                 await tx.user.update(
-                    where={"id": user.id}, data={"subscriptionTier": tier}
+                    where={"id": user.id},
+                    data={"subscriptionTier": tier, "subscriptionEndedAt": None},
                 )
         invalidate_subscription_caches(user.id)
         if locked_user.subscriptionTier != tier:
