@@ -19,6 +19,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.api.features.experts.models import (
+    PROTECTED_SOUL_RULES,
+    CheckedExpert,
+    Expert,
+    ExpertSetupStatus,
+)
 from backend.copilot.ai_spans import current_span_id
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
@@ -37,6 +43,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
+    build_expert_identity_suffix,
 )
 from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatSession
@@ -206,6 +213,39 @@ class _TrackedStream:
 
     async def aclose(self) -> None:
         self.aclose_called = True
+
+
+def _expert(
+    *, name: str = "Maria", setup_status: ExpertSetupStatus = "ready"
+) -> Expert:
+    return Expert(
+        id="expert-1",
+        name=name,
+        avatar_url=None,
+        role="SEO Specialist",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity=f"You are {name}.",
+        voice_preferences="Direct.",
+        boundaries="Ask first.",
+        protected_soul_rules=list(PROTECTED_SOUL_RULES),
+        is_template=False,
+        source_template_id=None,
+        is_archived=False,
+        workflows=[],
+        setup_status=setup_status,
+    )
+
+
+def _checked_expert(
+    organization_id: str, team_id: str | None, *, expert: Expert | None = None
+) -> CheckedExpert:
+    return CheckedExpert(
+        expert=expert or _expert(),
+        organization_id=organization_id,
+        team_id=team_id,
+    )
 
 
 def _make_entry() -> CoPilotExecutionEntry:
@@ -502,8 +542,10 @@ class TestExecuteAsyncAclose:
         stream_fn = MagicMock(side_effect=stream)
 
         expert_store = MagicMock()
-        expert_store.resolve_private_expert_tenancy = AsyncMock(
-            return_value=("current-personal-org", "current-personal-team")
+        expert_store.check_private_expert = AsyncMock(
+            return_value=_checked_expert(
+                "current-personal-org", "current-personal-team"
+            )
         )
         expert_store.expert_setup_status = AsyncMock(return_value="ready")
 
@@ -554,9 +596,7 @@ class TestExecuteAsyncAclose:
             )
 
         get_session_mock.assert_awaited_once_with("sess-1", "user-1")
-        expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
-            "user-1", "expert-1"
-        )
+        expert_store.check_private_expert.assert_awaited_once_with("user-1", "expert-1")
         upsert.assert_awaited_once_with(session, persist_tenancy=True)
         assert lifecycle == ["persist", "stream"]
         assert stream_fn.call_args.kwargs["session"] is session
@@ -624,8 +664,8 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
 
     stream_fn = MagicMock(side_effect=stream)
     expert_store = MagicMock()
-    expert_store.resolve_private_expert_tenancy = AsyncMock(
-        return_value=("current-personal-org", "current-personal-team")
+    expert_store.check_private_expert = AsyncMock(
+        return_value=_checked_expert("current-personal-org", "current-personal-team")
     )
     expert_store.expert_setup_status = AsyncMock(return_value="ready")
     session_db = MagicMock()
@@ -700,8 +740,8 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
     )
     session.credentials = {"github": {"id": "current-credential"}}
     expert_store = MagicMock()
-    expert_store.resolve_private_expert_tenancy = AsyncMock(
-        return_value=("personal-org", "personal-team")
+    expert_store.check_private_expert = AsyncMock(
+        return_value=_checked_expert("personal-org", "personal-team")
     )
     upsert = AsyncMock()
 
@@ -716,9 +756,7 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
 
     assert result is session
     assert session.credentials == {"github": {"id": "current-credential"}}
-    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
-        "user-1", "expert-1"
-    )
+    expert_store.check_private_expert.assert_awaited_once_with("user-1", "expert-1")
     upsert.assert_not_awaited()
 
 
@@ -763,7 +801,7 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     session.session_id = "sess-1"
     session.credentials = {"github": {"id": "autopilot-credential"}}
     expert_store = MagicMock()
-    expert_store.resolve_private_expert_tenancy = AsyncMock()
+    expert_store.check_private_expert = AsyncMock()
     upsert = AsyncMock()
     stream_fn = MagicMock(return_value=MagicMock())
     entry = _make_entry().model_copy(
@@ -809,7 +847,7 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
         "session-team",
     )
     assert session.credentials == {"github": {"id": "autopilot-credential"}}
-    expert_store.resolve_private_expert_tenancy.assert_not_awaited()
+    expert_store.check_private_expert.assert_not_awaited()
     upsert.assert_not_awaited()
     assert stream_fn.call_args.kwargs["session"] is session
     assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
@@ -865,7 +903,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
     )
     session.session_id = "sess-1"
     expert_store = MagicMock()
-    expert_store.resolve_private_expert_tenancy = AsyncMock(
+    expert_store.check_private_expert = AsyncMock(
         side_effect=PermissionError("expert is not owned by user")
     )
     dummy_engine = MagicMock()
@@ -945,7 +983,7 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     )
     session.session_id = "sess-1"
     expert_store = MagicMock()
-    expert_store.resolve_private_expert_tenancy = AsyncMock(side_effect=domain_error)
+    expert_store.check_private_expert = AsyncMock(side_effect=domain_error)
     dummy_engine = MagicMock()
     baseline_engine = MagicMock()
     sdk_engine = MagicMock()
@@ -996,6 +1034,131 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
         error_code=None,
         turn_id="turn-1",
     )
+
+
+class TestExpertTurnsCheckTheirExpert:
+    """An expert's turn reads its expert once, before its engine runs; the
+    setup wait and the identity block the engine builds use that read. The
+    engine here builds the identity the way the real ones do, inside the turn
+    and behind the processor's heartbeat stream."""
+
+    @staticmethod
+    def _session() -> ChatSession:
+        session = ChatSession.new(
+            "user-1",
+            dry_run=False,
+            organization_id="personal-org",
+            team_id="personal-team",
+            expert_id="expert-1",
+        )
+        session.session_id = "sess-1"
+        return session
+
+    @staticmethod
+    def _store(check) -> MagicMock:
+        store = MagicMock()
+        store.check_private_expert = AsyncMock(side_effect=check)
+        store.expert_setup_status = AsyncMock(return_value="ready")
+        store.get_expert = AsyncMock(return_value=_expert(name="Someone else"))
+        store.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("personal-org", "personal-team")
+        )
+        return store
+
+    @staticmethod
+    async def _run_turn(session: ChatSession, store: MagicMock, identities: list[str]):
+        async def engine(*, session: ChatSession, **_kwargs):
+            identities.append(
+                await build_expert_identity_suffix(
+                    session.user_id,
+                    session.expert_id,
+                    organization_id=session.organization_id,
+                    team_id=session.team_id,
+                )
+            )
+            yield StreamTextDelta(id="t", delta="hi")
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                engine,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                side_effect=lambda **kwargs: kwargs["stream"],
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch("backend.data.db_accessors.experts_db", return_value=store),
+            patch("backend.copilot.expert_context.experts_db", return_value=store),
+            patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0),
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+    @pytest.mark.asyncio
+    async def test_an_expert_turn_reads_its_expert_once(self) -> None:
+        async def check(user_id: str, expert_id: str):
+            return _checked_expert("personal-org", "personal-team")
+
+        store = self._store(check)
+        identities: list[str] = []
+        await self._run_turn(self._session(), store, identities)
+
+        store.check_private_expert.assert_awaited_once_with("user-1", "expert-1")
+        store.expert_setup_status.assert_not_awaited()
+        store.get_expert.assert_not_awaited()
+        store.resolve_private_expert_tenancy.assert_not_awaited()
+        assert len(identities) == 1
+        assert "For this session you are Maria" in identities[0]
+
+    @pytest.mark.asyncio
+    async def test_the_turn_after_the_expert_went_away_is_refused(self) -> None:
+        session = self._session()
+        gone = False
+        identities: list[str] = []
+
+        async def check(user_id: str, expert_id: str):
+            if gone:
+                raise ExpertNotFoundError(expert_id)
+            return _checked_expert("personal-org", "personal-team")
+
+        store = self._store(check)
+        await self._run_turn(session, store, identities)
+        gone = True
+        with pytest.raises(ExpertSessionUnavailableError):
+            await self._run_turn(session, store, identities)
+
+        assert len(identities) == 1
+        assert "<expert_identity>" in identities[0]
+
+    @pytest.mark.asyncio
+    async def test_a_fresh_hire_still_waits_for_its_setup(self) -> None:
+        async def check(user_id: str, expert_id: str):
+            return _checked_expert(
+                "personal-org",
+                "personal-team",
+                expert=_expert(setup_status="installing"),
+            )
+
+        store = self._store(check)
+        store.expert_setup_status = AsyncMock(side_effect=["installing", "ready"])
+        identities: list[str] = []
+        await self._run_turn(self._session(), store, identities)
+
+        assert store.expert_setup_status.await_count == 2
+        assert len(identities) == 1
 
 
 def _codex_entry(
