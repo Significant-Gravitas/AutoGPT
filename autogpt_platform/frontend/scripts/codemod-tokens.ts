@@ -344,7 +344,9 @@ export function rewriteSource(source: string, map: Map<string, string>) {
     const { variants, keyed, bang, utility, opacity } = parseCandidate(whole);
     const target = map.get(`${keyed}${utility}`);
     if (!target) return whole;
-    const next = `${variants}${bang}${target}${opacity}`;
+    // `!` belongs on the utility, after a keyed `placeholder:` variant.
+    const utilityTarget = target.slice(keyed.length);
+    const next = `${variants}${keyed}${bang}${utilityTarget}${opacity}`;
     const line = source.slice(0, offset).split("\n").length;
     changes.push({ from: whole, to: next, line });
     return next;
