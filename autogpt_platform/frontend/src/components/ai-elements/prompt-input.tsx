@@ -32,10 +32,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Children, useCallback, useLayoutEffect, useRef } from "react";
+import {
+  Children,
+  useCallback,
+  useInsertionEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import { isKey } from "@/lib/keyboard";
+import { isTouchDevice } from "@/lib/platform";
 
 // ============================================================================
 // PromptInput — form wrapper
@@ -140,7 +147,9 @@ export function PromptInputTextarea({
   // Ref keeps autoResize stable inside the memoized change handler while
   // still reaching the latest callback.
   const onMultilineChangeRef = useRef(onMultilineChange);
-  onMultilineChangeRef.current = onMultilineChange;
+  useInsertionEffect(() => {
+    onMultilineChangeRef.current = onMultilineChange;
+  });
   // Wrapping is judged at the width the box has in the host's single row,
   // remembered from the last time it sat there. Judging it at whatever width
   // the box has right now lets the layout argue with itself: text that wraps
@@ -253,7 +262,7 @@ export function PromptInputTextarea({
         if (e.shiftKey) return;
         // On touch-first devices (phones/tablets) Enter inserts a newline;
         // users send with the submit button instead.
-        if (window.matchMedia?.("(pointer: coarse)")?.matches) return;
+        if (isTouchDevice()) return;
         e.preventDefault();
 
         e.currentTarget.form?.requestSubmit();

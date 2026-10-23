@@ -101,30 +101,10 @@ class GetPersonDetailBlock(Block):
             test_output=[
                 (
                     "contact",
-                    Contact(
-                        id="1",
-                        name="John Doe",
-                        first_name="John",
-                        last_name="Doe",
-                        email="john.doe@gmail.com",
-                        title="Software Engineer",
-                        organization_name="Google",
-                        linkedin_url="https://www.linkedin.com/in/johndoe",
-                    ),
+                    _sample_contact(),
                 ),
             ],
-            test_mock={
-                "enrich_person": lambda query, credentials: Contact(
-                    id="1",
-                    name="John Doe",
-                    first_name="John",
-                    last_name="Doe",
-                    email="john.doe@gmail.com",
-                    title="Software Engineer",
-                    organization_name="Google",
-                    linkedin_url="https://www.linkedin.com/in/johndoe",
-                )
-            },
+            test_mock={"enrich_person": lambda query, credentials: _sample_contact()},
             effect=BlockEffect.READ,
         )
 
@@ -144,3 +124,16 @@ class GetPersonDetailBlock(Block):
     ) -> BlockOutput:
         query = EnrichPersonRequest(**input_data.model_dump())
         yield "contact", await self.enrich_person(query, credentials)
+
+
+def _sample_contact() -> Contact:
+    return Contact(
+        id="1",
+        name="John Doe",
+        first_name="John",
+        last_name="Doe",
+        email="john.doe@gmail.com",
+        title="Software Engineer",
+        organization_name="Google",
+        linkedin_url="https://www.linkedin.com/in/johndoe",
+    )

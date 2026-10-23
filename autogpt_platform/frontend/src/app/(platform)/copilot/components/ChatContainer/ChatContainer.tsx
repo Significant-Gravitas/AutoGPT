@@ -107,6 +107,8 @@ export interface ChatContainerProps {
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
   ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -167,6 +169,7 @@ export const ChatContainer = ({
   isUserStopping,
   onCreateSession,
   onSend,
+  onStartTask,
   onStop,
   onEnqueue,
   queuedMessages,
@@ -267,16 +270,29 @@ export const ChatContainer = ({
     : (expertIdentity?.autopilotMode ?? null);
   // ChatInput is memoised, and this container renders on every streamed
   // flush: each element and callback it gets keeps its identity until its
-  // own inputs change, so a flush leaves the composer alone.
+  // own inputs change, so a flush leaves the composer alone. Approvals
+  // stay locked until the chat knows its session and its expert: the mode
+  // shown is the session's, and the Unsupervised confirm names the expert.
+  // A background roster refetch keeps the expert it already knows.
   const modeSelector = useMemo(
     () =>
       isAutoModeEnabled ? (
         <AutopilotModeSelector
           sessionId={sessionId}
           persistedMode={initialMode}
+          disabled={
+            isLoadingSession || (!!isResolvingExpertIdentity && !expertIdentity)
+          }
         />
       ) : undefined,
-    [isAutoModeEnabled, sessionId, initialMode],
+    [
+      isAutoModeEnabled,
+      sessionId,
+      initialMode,
+      isLoadingSession,
+      isResolvingExpertIdentity,
+      expertIdentity,
+    ],
   );
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
@@ -402,7 +418,7 @@ export const ChatContainer = ({
   const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
-    try {
+    async function resend() {
       const lastRow = [...messages].reverse().find((m) => m.role === "user");
       // A turn an answered card started failed after the call ran: resuming it
       // must not re-send the request that led to the call.
@@ -439,15 +455,18 @@ export const ChatContainer = ({
             : undefined,
         );
       }
-    } catch (error) {
-      toastSendFailure({
-        title: "Couldn't retry message",
-        error,
-        recovery: "your previous message is still in the chat",
-      });
-    } finally {
-      isRetryingRef.current = false;
     }
+    await resend()
+      .catch((error) => {
+        toastSendFailure({
+          title: "Couldn't retry message",
+          error,
+          recovery: "your previous message is still in the chat",
+        });
+      })
+      .finally(() => {
+        isRetryingRef.current = false;
+      });
   });
 
   return (
@@ -458,7 +477,14 @@ export const ChatContainer = ({
       assistantName={expertIdentity?.name ?? "Otto"}
     >
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
+        <div
+          className={cn(
+            "flex h-full min-h-0 w-full flex-col lg:px-0",
+            // An open chat runs edge to edge on a phone, like the rest of
+            // the thread; the new-chat screen keeps its margin.
+            sessionId ? "md:px-2" : "px-2",
+          )}
+        >
           {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
@@ -610,6 +636,7 @@ export const ChatContainer = ({
               isCreatingSession={isCreatingSession}
               onCreateSession={onCreateSession}
               onSend={guardedOnSend}
+              onStartTask={isTurnLocked ? undefined : onStartTask}
               modeSelector={modeSelector}
               voiceMode={
                 isVoiceModeEnabled

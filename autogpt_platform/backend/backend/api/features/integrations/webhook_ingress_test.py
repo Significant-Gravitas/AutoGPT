@@ -13,7 +13,8 @@ signature checks to each manager's `verify_signature`. This file pins:
 * Unsigned Compass and legacy Slant3D subscriptions pass through; Slant3D v2 verifies signatures.
 * A webhook registered under one provider can't be processed via a different
   provider's ingress path (the manager is selected from the URL provider).
-* `verify_signature` runs before `validate_payload` (call ordering).
+* `verify_signature` runs before `validate_payload` and before the owner's
+  credentials are loaded (call ordering).
 """
 
 import base64
@@ -30,6 +31,7 @@ import pytest
 from backend.api.features.integrations.router import router
 from backend.data.integrations import WebhookWithRelations
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import NotFoundError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -150,18 +152,28 @@ def _manager(provider: ProviderName):
 
 def _run(webhook, provider_path: str, **kwargs):
     """Boilerplate: patch the router's deps, set the right manager, fire request."""
-    patches = _patch_ingress(webhook) + [
-        patch(
-            "backend.api.features.integrations.router.get_webhook_manager",
-            return_value=_manager(webhook.provider),
-        )
-    ]
+    patches = _patch_ingress(webhook) + _stub_registry(_manager(webhook.provider))
     # ExitStack guarantees previously started patchers are stopped even if
     # a later one's __enter__ raises.
     with ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
         return _post(provider_path, **kwargs)
+
+
+def _stub_registry(manager):
+    # SDK providers register their managers only at app startup, which these
+    # tests skip; the real registry is also case-sensitive.
+    return [
+        patch(
+            "backend.api.features.integrations.router.supports_webhooks",
+            return_value=True,
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=manager,
+        ),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -497,12 +509,9 @@ class TestProviderPathConfusion:
         # Unlike `_run`, the manager comes from the URL path provider (what the
         # real router does) rather than the stored webhook's provider — that
         # divergence is the whole point of the attack being reproduced.
-        patches = _patch_ingress(webhook) + [
-            patch(
-                "backend.api.features.integrations.router.get_webhook_manager",
-                return_value=_manager(url_manager_provider),
-            )
-        ]
+        patches = _patch_ingress(webhook) + _stub_registry(
+            _manager(url_manager_provider)
+        )
         with ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
@@ -580,6 +589,65 @@ class TestVerificationOrder:
         assert resp.status_code == 403
         mock_manager.verify_signature.assert_awaited_once()
         mock_manager.validate_payload.assert_not_called()
+
+    @pytest.mark.parametrize("signature_ok", [False, True])
+    def test_credentials_load_only_after_the_signature_passes(self, signature_ok: bool):
+        """Loading can refresh the owner's OAuth token, so an unsigned delivery
+        must not get that far; a signed one still gets them for its payload."""
+        webhook = _make_webhook(ProviderName.GITHUB)
+        webhook.credentials_id = "creds-1"
+        credentials = MagicMock()
+
+        mock_manager = MagicMock()
+        mock_manager.verify_signature = AsyncMock(
+            side_effect=(
+                None
+                if signature_ok
+                else fastapi.HTTPException(status_code=403, detail="nope")
+            )
+        )
+        mock_manager.validate_payload = AsyncMock(return_value=({}, "evt"))
+
+        with ExitStack() as stack:
+            _, creds_manager, *_ = [
+                stack.enter_context(p) for p in _patch_ingress(webhook)
+            ]
+            creds_manager.get = AsyncMock(return_value=credentials)
+            stack.enter_context(
+                patch(
+                    "backend.api.features.integrations.router.get_webhook_manager",
+                    return_value=mock_manager,
+                )
+            )
+            resp = _post("github")
+
+        if not signature_ok:
+            assert resp.status_code == 403
+            creds_manager.get.assert_not_called()
+            return
+        assert resp.status_code == 200, resp.text
+        creds_manager.get.assert_awaited_once_with(USER_ID, "creds-1")
+        assert mock_manager.validate_payload.await_args.args[2] is credentials
+
+    def test_a_banned_owners_credentials_are_not_loaded(self):
+        webhook = _make_webhook(ProviderName.COMPASS)
+        webhook.credentials_id = "creds-1"
+        with ExitStack() as stack:
+            _, creds_manager, *_ = [
+                stack.enter_context(p) for p in _patch_ingress(webhook)
+            ]
+            creds_manager.get = AsyncMock(return_value=MagicMock())
+            for p in _stub_registry(_manager(ProviderName.COMPASS)) + [
+                patch(
+                    "backend.api.features.integrations.router.is_user_banned",
+                    AsyncMock(return_value=True),
+                )
+            ]:
+                stack.enter_context(p)
+            resp = _post("compass")
+
+        assert resp.status_code == 200
+        creds_manager.get.assert_not_called()
 
 
 async def test_preset_trigger_refuses_foreign_owner(mocker):
@@ -836,3 +904,20 @@ def test_a_banned_owners_delivery_is_acknowledged_and_dropped():
     publish.assert_not_awaited()
     onboarding.assert_not_awaited()
     node_trigger.assert_not_called()
+
+
+@pytest.mark.parametrize("provider", ["someotherprovider", "slack"])
+def test_a_provider_without_webhooks_is_answered_like_an_unknown_webhook(provider):
+    """Even if a row names that provider: no manager exists to verify it."""
+    with patch(
+        "backend.api.features.integrations.router.get_webhook",
+        AsyncMock(side_effect=NotFoundError(f"Webhook #{WEBHOOK_ID} not found")),
+    ):
+        unknown_webhook = _post("github")
+    with ExitStack() as stack:
+        for p in _patch_ingress(_make_webhook(ProviderName(provider))):
+            stack.enter_context(p)
+        no_webhooks = _post(provider)
+
+    assert unknown_webhook.status_code == no_webhooks.status_code == 404
+    assert no_webhooks.json() == unknown_webhook.json()

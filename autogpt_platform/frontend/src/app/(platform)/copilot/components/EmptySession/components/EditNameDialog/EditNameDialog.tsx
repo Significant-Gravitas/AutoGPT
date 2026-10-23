@@ -31,7 +31,7 @@ export function EditNameDialog({ currentName }: Props) {
     if (!trimmed) return;
 
     setIsSaving(true);
-    try {
+    async function save() {
       // preferred_name is also written by onboarding's "What should I call you?"
       const res = await fetch("/api/auth/user", {
         method: "PUT",
@@ -61,9 +61,10 @@ export function EditNameDialog({ currentName }: Props) {
       }
       setIsOpen(false);
       toast({ title: "Name updated" });
-    } finally {
-      setIsSaving(false);
     }
+    await save().finally(() => {
+      setIsSaving(false);
+    });
   }
 
   return (

@@ -112,7 +112,7 @@ def _expert_disabled_groups(expert: Expert | None) -> list[ToolGroup]:
 
 
 def expert_tools(expert: Expert | None) -> list[ChatCompletionToolParam]:
-    """Production's tool surface for the session (hire-experts on, memory on):
+    """Production's tool surface for an authenticated session:
     an expert loses the staffing tools, plain Otto the expert-only ones."""
     return get_available_tools(disabled_groups=_expert_disabled_groups(expert))
 

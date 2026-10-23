@@ -86,6 +86,14 @@ class PostHogEvent(StrEnum):
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
 
+    # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
+    # webhooks for the mail the platform sends itself.
+    EMAIL_DELIVERED = "email_delivered"
+    EMAIL_OPENED = "email_opened"
+    EMAIL_CLICKED = "email_clicked"
+    EMAIL_BOUNCED = "email_bounced"
+    EMAIL_COMPLAINED = "email_complained"
+
 
 class PlannedPostHogEvent(StrEnum):
     """Planned in the tracking plan and NOT emitted yet.

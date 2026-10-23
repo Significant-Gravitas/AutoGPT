@@ -4,7 +4,7 @@
 # be copied into the Debian appliance image. Browser-facing service URLs are
 # intentionally same-origin paths; the in-container reverse proxy decides
 # where they land at runtime.
-FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS frontend
+FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS frontend
 
 WORKDIR /app
 RUN corepack enable
@@ -23,7 +23,6 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_APP_ENV=local \
     NEXT_PUBLIC_BEHAVE_AS=LOCAL \
     NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
-    NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY=true \
     NEXT_PUBLIC_SOURCEMAPS=false \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
@@ -34,7 +33,7 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
-FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS node-runtime
+FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS node-runtime
 
 ARG NPM_VERSION=12.0.2
 RUN npm install --global "npm@${NPM_VERSION}" \
@@ -238,9 +237,6 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
     && rm -f /app/autogpt_platform/backend/config.json \
     && ln -s /data/config/backend.json /app/autogpt_platform/backend/config.json
 
-# FORCE_FLAG_GRAPHITI_MEMORY keeps memory on; the frontend stage's
-# NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY must match it, or users can't open
-# /settings/memory to see or erase what was remembered.
 ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresql/15/bin:/app/autogpt_platform/backend/.venv/bin:${PATH}" \
     ERLANG_INSTALL_PATH_PREFIX=/opt/erlang \
     OPENSSL_INSTALL_PATH_PREFIX=/opt/openssl \
@@ -259,7 +255,6 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     PRISMA_QUERY_ENGINE_BINARY=/opt/prisma-python/query-engine \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    FORCE_FLAG_GRAPHITI_MEMORY=true \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
 
 # These build arguments change on every build, so they are declared only after
@@ -268,7 +263,7 @@ ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
 
 LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
-      org.opencontainers.image.description="Experimental single-node AutoGPT Platform distribution" \
+      org.opencontainers.image.description="Single-node AutoGPT Platform distribution" \
       org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT" \
       org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0 AND SSPL-1.0" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \

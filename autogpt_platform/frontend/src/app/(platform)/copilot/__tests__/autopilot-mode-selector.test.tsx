@@ -4,25 +4,28 @@ import {
   getPostV2CreateSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { screen, waitFor } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutopilotModeStore } from "../autopilotModeStore";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
 import {
   renderHost,
+  sessionHandler,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
 } from "./sse-helpers";
 
-const flags = vi.hoisted(() => ({ autoMode: false, experts: false }));
+const flags = vi.hoisted(() => ({ autoMode: false }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -32,11 +35,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === actual.Flag.COPILOT_AUTO_MODE
-        ? flags.autoMode
-        : flag === actual.Flag.HIRE_EXPERTS
-          ? flags.experts
-          : false,
+      flag === actual.Flag.COPILOT_AUTO_MODE && flags.autoMode,
   };
 });
 
@@ -65,15 +64,21 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 beforeEach(() => {
   flags.autoMode = true;
-  flags.experts = false;
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+      HttpResponse.json(makeDashboard([])),
+    ),
+  );
 });
 
 afterEach(() => {
   resetCopilotChatRegistry();
   useAutopilotModeStore.setState({ choices: {} });
+  focusManager.setFocused(undefined);
 });
 
-describe("AutoPilot mode selector", () => {
+// These flows take 3-4.5 s on CI's slower runners, close to the 5 s default.
+describe("AutoPilot mode selector", { timeout: 15_000 }, () => {
   it("is absent with the flag off, and the request carries no mode", async () => {
     flags.autoMode = false;
     const bodies = captureStreamBodies();
@@ -128,6 +133,11 @@ describe("AutoPilot mode selector", () => {
     expect(
       screen.queryByRole("button", { name: /approval mode: unsupervised/i }),
     ).toBeNull();
+    expect(
+      await screen.findByText(
+        /^Otto will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
     await user.click(
       await screen.findByRole("button", { name: /run unsupervised/i }),
     );
@@ -184,7 +194,6 @@ describe("AutoPilot mode selector", () => {
     expect(bodies[0]).toMatchObject({ autopilot_mode: "ask_first" });
   });
   it("starts a new expert thread on the expert's default without sending it", async () => {
-    flags.experts = true;
     const bodies = captureStreamBodies();
     const createBodies: Record<string, unknown>[] = [];
     server.use(
@@ -224,7 +233,6 @@ describe("AutoPilot mode selector", () => {
   });
 
   it("drops a pick left over from an earlier new chat that was never sent", async () => {
-    flags.experts = true;
     const createBodies: Record<string, unknown>[] = [];
     server.use(
       getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
@@ -266,7 +274,6 @@ describe("AutoPilot mode selector", () => {
   });
 
   it("keeps a thread's stored mode over the expert's default", async () => {
-    flags.experts = true;
     server.use(
       getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
     );
@@ -279,6 +286,164 @@ describe("AutoPilot mode selector", () => {
     });
 
     expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
+  });
+
+  it("names the chat's expert in the Unsupervised confirm", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps approvals locked until an expert chat knows whose it is", async () => {
+    let settleRoster: () => void = () => {};
+    const roster = new Promise<void>((resolve) => {
+      settleRoster = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler(async () => {
+        await roster;
+        return [mariaIdentity("ask_first")];
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+
+    expect(await findModeButton(/approval mode: ask first/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /approval mode/i }),
+      ).toBeNull(),
+    );
+
+    settleRoster();
+    // The composer unlocks, and takes focus, once the roster is in.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps approvals locked until the chat's session has loaded", async () => {
+    let settleSession: () => void = () => {};
+    const sessionLoaded = new Promise<void>((resolve) => {
+      settleSession = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("auto")]),
+      sessionHandler({
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      }),
+    );
+    const user = userEvent.setup();
+
+    // Held until settled, then passed on to the session above.
+    renderHost({
+      sessionResponse: http.get(
+        "/api/proxy/api/chat/sessions/:sessionId",
+        async () => {
+          await sessionLoaded;
+        },
+      ),
+    });
+
+    expect(await findModeButton(/approval mode/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /approval mode/i }),
+      ).toBeNull(),
+    );
+
+    settleSession();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps approvals open while a known expert's roster refetches", async () => {
+    let rosterReads = 0;
+    let settleRefetch: () => void = () => {};
+    const refetched = new Promise<void>((resolve) => {
+      settleRefetch = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler(async () => {
+        rosterReads += 1;
+        if (rosterReads > 1) await refetched;
+        return [mariaIdentity("ask_first")];
+      }),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+
+    // Coming back to the tab refetches stale queries, the roster included.
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(rosterReads).toBe(2));
+
+    expect(await findModeButton(/approval mode: ask first/i)).toHaveProperty(
+      "disabled",
+      false,
+    );
+    settleRefetch();
   });
 });
 

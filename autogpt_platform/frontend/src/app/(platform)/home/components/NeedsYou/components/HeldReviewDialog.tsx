@@ -28,11 +28,13 @@ import { ReviewSidebar } from "./ReviewSidebar";
 
 interface Props {
   carousel: ReturnType<typeof useReviewCarousel>;
-  held: ReturnType<typeof useHeldReview>;
+  held: Pick<ReturnType<typeof useHeldReview>, "statusOf" | "hasFailed">;
+  // Off inside the chat the calls came from.
+  chatLink?: boolean;
 }
 
 // Every held call on the page, one at a time: the chat's card, a sidebar, and ‹ › to move.
-export function HeldReviewDialog({ carousel, held }: Props) {
+export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
   const { current } = carousel;
   const approval = current ? toApprovalItem(current.item.review!) : null;
 
@@ -169,12 +171,14 @@ export function HeldReviewDialog({ carousel, held }: Props) {
                   }
                   onReject={() => carousel.decide(current.item, false)}
                   aside={
-                    <Link
-                      href={current.item.primary_action.href}
-                      className="rounded-sm text-sm font-medium text-zinc-800 underline underline-offset-4 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
-                    >
-                      Open chat
-                    </Link>
+                    chatLink ? (
+                      <Link
+                        href={current.item.primary_action.href}
+                        className="rounded-sm text-sm font-medium text-zinc-800 underline underline-offset-4 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                      >
+                        Open chat
+                      </Link>
+                    ) : null
                   }
                 />
               </PaneFooter>

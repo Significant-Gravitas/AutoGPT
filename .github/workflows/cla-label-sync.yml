@@ -288,7 +288,7 @@ jobs:
                 console.log(`PR #${prNumber}: CLA ${claStatus.passed ? 'passed' : 'pending'} (${claStatus.state}), age: ${prAgeDays} days`);
                 
                 // Debounce demotion: if this PR was previously confirmed signed
-                // but the latest check no longer shows a pass, wait and re-check
+                // but CLA-assistant now reports a non-success state, wait and re-check
                 // before treating it as a real demotion. CLA-assistant
                 // re-verifies per commit SHA, so an already-signed contributor's
                 // status can transiently flip to pending/failure on repeated
@@ -297,7 +297,7 @@ jobs:
                 // A genuinely new unsigned commit (e.g. pushed under a different,
                 // unsigned git identity) still shows unsigned after the delay, so
                 // it's still demoted correctly below.
-                if (hasSigned && !claStatus.passed) {
+                if (hasSigned && claStatus.found && !claStatus.passed) {
                   console.log(`PR #${prNumber}: was signed but now shows ${claStatus.state} — debouncing ${DEMOTE_DEBOUNCE_SECONDS}s before demoting`);
                   await new Promise(resolve => setTimeout(resolve, DEMOTE_DEBOUNCE_MS));
 
@@ -321,6 +321,13 @@ jobs:
                   hasSigned = currentLabels.includes(LABEL_SIGNED);
                   claStatus = await getClaStatus(refreshedPr.head.sha);
                   console.log(`PR #${prNumber}: post-debounce CLA ${claStatus.passed ? 'passed' : 'still ' + claStatus.state}`);
+                }
+
+                // A push runs this before CLA-assistant reports on the new head;
+                // its status event re-runs this workflow and settles the labels.
+                if (hasSigned && !claStatus.found) {
+                  console.log(`PR #${prNumber}: signed, and no ${CLA_CHECK_NAME} result on ${pr.head.sha} yet — leaving labels for CLA-assistant's status event`);
+                  continue;
                 }
 
                 if (claStatus.passed) {

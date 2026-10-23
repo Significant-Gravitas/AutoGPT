@@ -4,26 +4,19 @@ This module provides security hooks that validate tool calls before execution,
 ensuring multi-user isolation and preventing unauthorized operations.
 """
 
-import json
 import logging
-import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterable
 from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
 
 from backend.copilot.ai_spans import ToolSpanTimer
-from backend.copilot.context import (
-    get_execution_context,
-    is_allowed_local_path,
-    is_sdk_tool_path,
-)
+from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
 from .governor import TurnGovernor
 from .tool_adapter import (
     BLOCKED_TOOLS,
-    DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
@@ -94,33 +87,11 @@ def _landing_refusal(governor: TurnGovernor | None) -> str | None:
 def _validate_workspace_path(
     tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None
 ) -> dict[str, Any]:
-    """Validate that a workspace-scoped tool only accesses allowed paths.
-
-    For ``Read``: only SDK artifact paths (tool-results/, tool-outputs/) are
-    permitted.  The workspace directory is served by the ``read_file`` MCP
-    tool which enforces per-session isolation.
-
-    For ``Glob`` / ``Grep``: the full workspace (sdk_cwd) is allowed in
-    addition to SDK artifact paths.
-    """
+    """Restrict Glob/Grep to the workspace and session's SDK artifact paths."""
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
         # Glob/Grep without a path default to cwd which is already sandboxed
         return {}
-
-    if tool_name == "Read":
-        # Narrow carve-out: only allow SDK artifact paths for the native Read tool.
-        # ``is_sdk_tool_path`` validates session membership via _current_project_dir,
-        # preventing cross-session access to another session's tool-results directory.
-        # All other file reads must go through the read_file MCP tool.
-        if is_sdk_tool_path(path):
-            return {}
-        logger.warning(f"Blocked Read outside SDK artifact paths: {path}")
-        return _deny(
-            "[SECURITY] The SDK 'Read' tool can only access tool-results/ or "
-            "tool-outputs/ paths. Use the 'read_file' MCP tool to read workspace files. "
-            "This is enforced by the platform and cannot be bypassed."
-        )
 
     if is_allowed_local_path(path, sdk_cwd):
         return {}
@@ -135,20 +106,20 @@ def _validate_workspace_path(
 
 
 def _validate_tool_access(
-    tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None = None
+    tool_name: str,
+    tool_input: dict[str, Any],
+    sdk_cwd: str | None = None,
+    allowed_tools: Collection[str] = frozenset(),
 ) -> dict[str, Any]:
     """Validate that a tool call is allowed.
+
+    A tool outside *allowed_tools* is denied: ``allowed_tools`` on
+    ``ClaudeAgentOptions`` only pre-approves, so a CLI built-in that needs no
+    permission runs unless this hook refuses it.
 
     Returns:
         Empty dict to allow, or dict with hookSpecificOutput to deny
     """
-    # Workspace-scoped tools: allowed only within the SDK workspace directory.
-    # Check this BEFORE the blocked-tools list because Read is blocked in
-    # general but must remain accessible for tool-results/tool-outputs paths
-    # that the SDK uses internally for oversized result handling.
-    if tool_name in WORKSPACE_SCOPED_TOOLS:
-        return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
-
     # Block forbidden tools
     if tool_name in BLOCKED_TOOLS:
         logger.warning(f"Blocked tool access attempt: {tool_name}")
@@ -158,21 +129,21 @@ def _validate_tool_access(
             "Use the CoPilot-specific MCP tools instead."
         )
 
-    # Check for dangerous patterns in tool input
-    # Use json.dumps for predictable format (str() produces Python repr)
-    input_str = json.dumps(tool_input) if tool_input else ""
+    if tool_name not in allowed_tools:
+        return _deny_unlisted(tool_name)
 
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, input_str, re.IGNORECASE):
-            logger.warning(
-                f"Blocked dangerous pattern in tool input: {pattern} in {tool_name}"
-            )
-            return _deny(
-                "[SECURITY] Input contains a blocked pattern. "
-                "This is enforced by the platform and cannot be bypassed."
-            )
+    if tool_name in WORKSPACE_SCOPED_TOOLS:
+        return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
 
     return {}
+
+
+def _deny_unlisted(tool_name: str) -> dict[str, Any]:
+    logger.warning(f"Blocked tool outside the session's allowed set: {tool_name}")
+    return _deny(
+        f"[SECURITY] Tool '{tool_name}' is not available in this session. "
+        "This is enforced by the platform and cannot be bypassed."
+    )
 
 
 def _validate_user_isolation(
@@ -214,6 +185,8 @@ def create_security_hooks(
     tool_display_bridge: SDKToolDisplayBridge | None = None,
     governor: TurnGovernor | None = None,
     builtin_tool_spans: bool = True,
+    *,
+    allowed_tools: Iterable[str],
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -236,10 +209,13 @@ def create_security_hooks(
             is refused with a reason that asks for a checkpoint.
         builtin_tool_spans: Send a PostHog span for each call of the CLI's
             built-in tools (``ChatConfig.posthog_builtin_tool_spans``).
+        allowed_tools: The ``allowed_tools`` passed to ``ClaudeAgentOptions``;
+            every other tool is denied.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
     """
+    allowed = frozenset(allowed_tools)
     try:
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
@@ -311,12 +287,16 @@ def create_security_hooks(
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
-            # Only block non-CoPilot tools; our MCP-registered tools
-            # (including Read for oversized results) are already sandboxed.
+            # Our MCP tools sandbox themselves, so they skip the path checks —
+            # but not the allowed set.
             if not is_copilot_tool:
-                result = _validate_tool_access(clean_name, tool_input, sdk_cwd)
+                result = _validate_tool_access(
+                    clean_name, tool_input, sdk_cwd, allowed_tools=allowed
+                )
                 if result:
                     return cast(SyncHookJSONOutput, result)
+            elif tool_name not in allowed:
+                return cast(SyncHookJSONOutput, _deny_unlisted(tool_name))
 
             # Validate user isolation
             result = _validate_user_isolation(clean_name, tool_input, user_id)

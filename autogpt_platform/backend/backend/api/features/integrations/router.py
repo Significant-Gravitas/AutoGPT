@@ -85,7 +85,7 @@ from backend.integrations.service_identity import (
     service_for_credential,
     service_for_provider,
 )
-from backend.integrations.webhooks import get_webhook_manager
+from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
@@ -1224,6 +1224,12 @@ async def webhook_ingress_generic(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
+    if not supports_webhooks(provider):
+        # Worded like the unknown-webhook 404 below, so the two can't be told apart.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Webhook #{webhook_id} not found",
+        )
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
@@ -1249,15 +1255,6 @@ async def webhook_ingress_generic(
         )
 
     user_id = webhook.user_id
-    try:
-        credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
-            else None
-        )
-    except NotFoundError as e:
-        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     # Run provider signature verification (no-op for providers whose protocol
     # has no signing scheme). 403 on failure; not 404 — that would leak
@@ -1279,6 +1276,17 @@ async def webhook_ingress_generic(
     if await is_user_banned(user_id):
         logger.info(f"Dropping webhook #{webhook_id} delivery: owner is banned")
         return
+
+    # Only after the signature: loading can refresh the owner's OAuth token.
+    try:
+        credentials = (
+            await creds_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials

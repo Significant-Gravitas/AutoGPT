@@ -2,21 +2,21 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import {
   TabsLine,
   TabsLineContent,
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
   Calendar03Icon,
   SparklesIcon,
   UserIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
-import { notFound } from "next/navigation";
 import { ExpertSchedulesSection } from "../[expertId]/components/ExpertSchedulesSection";
 import { ExpertWorkflowsSection } from "../[expertId]/components/ExpertWorkflowsSection";
 import { BackToTeamLink } from "../components/BackToTeamLink";
@@ -25,8 +25,6 @@ import {
   PROFILE_TABS_LIST_CLASS,
   PROFILE_TABS_TRIGGER_CLASS,
 } from "../helpers";
-import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
-import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
 import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
@@ -44,12 +42,11 @@ const TABS = [
 ] as const;
 
 export default function AutopilotPage() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const { activeTab, onTabChange } = useAutopilotTab();
   const { schedules, workflows, skills, isLoading, isError, refetch } =
-    useAutopilotPage({ enabled: Boolean(enabled) && ready });
+    useAutopilotPage();
 
-  if (!ready || isLoading) {
+  if (isLoading) {
     return (
       <main className={MAIN_CLASS}>
         <Skeleton className="h-20 w-full rounded-xl" />
@@ -57,10 +54,6 @@ export default function AutopilotPage() {
         <Skeleton className="h-48 w-full rounded-xl" />
       </main>
     );
-  }
-
-  if (!enabled) {
-    notFound();
   }
 
   if (isError) {

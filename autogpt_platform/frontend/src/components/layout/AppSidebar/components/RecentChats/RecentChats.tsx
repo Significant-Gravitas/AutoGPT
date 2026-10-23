@@ -2,26 +2,23 @@
 
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
-import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
+import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useLocalDay } from "@/hooks/useLocalDay";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
-import { getNewChatHref, groupSessionsByDate } from "./helpers";
+import { getNewChatHref } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+
+  const isLearningEnabled = useGetFlag(Flag.DREAM_SKILL_LEARNING_ENABLED);
   const { expertsById, activeExpertIds } = useExpertMap();
-  // Re-groups "Today" / "Yesterday" at midnight: list polls that return the
-  // same sessions no longer re-render this component.
-  useLocalDay();
   const {
     sessions,
     isLoading,
@@ -40,6 +37,7 @@ export function RecentChats() {
     exportChat,
     sharingSessionId,
     setSharingSessionId,
+    excludeFromLearning,
     sessionToDelete,
     isDeleting,
     requestDelete,
@@ -80,6 +78,8 @@ export function RecentChats() {
         onRename={startRename}
         onExport={exportChat}
         onShare={setSharingSessionId}
+        isLearningEnabled={isLearningEnabled}
+        onExcludeFromLearning={excludeFromLearning}
         onDelete={requestDelete}
       />
     );
@@ -105,39 +105,28 @@ export function RecentChats() {
             <SidebarMenu>{pinnedSessions.map(renderItem)}</SidebarMenu>
           </div>
         )}
-        {isExpertsEnabled
-          ? groupSessionsByExpert(unpinnedSessions).map((group) => {
-              const expert = group.expertId
-                ? expertsById.get(group.expertId)
-                : null;
-              return (
-                // Keyed by expert id so each group's collapse/reveal state
-                // survives the session list's periodic refetch.
-                <ExpertChatGroup
-                  key={group.expertId ?? "autopilot"}
-                  label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
-                  role={
-                    group.expertId
-                      ? expert?.jobTitle || expert?.role
-                      : "Head of AI"
-                  }
-                  avatarUrl={expert?.avatarUrl ?? null}
-                  color={expert?.color ?? null}
-                  newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
-                  isAutopilot={!group.expertId}
-                  sessions={group.sessions}
-                  renderItem={renderItem}
-                />
-              );
-            })
-          : groupSessionsByDate(unpinnedSessions).map((group) => (
-              <div key={group.label}>
-                <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
-                  <span className="truncate">{group.label}</span>
-                </div>
-                <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
-              </div>
-            ))}
+        {groupSessionsByExpert(unpinnedSessions).map((group) => {
+          const expert = group.expertId
+            ? expertsById.get(group.expertId)
+            : null;
+          return (
+            // Keyed by expert id so each group's collapse/reveal state
+            // survives the session list's periodic refetch.
+            <ExpertChatGroup
+              key={group.expertId ?? "autopilot"}
+              label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
+              role={
+                group.expertId ? expert?.jobTitle || expert?.role : "Head of AI"
+              }
+              avatarUrl={expert?.avatarUrl ?? null}
+              color={expert?.color ?? null}
+              newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
+              isAutopilot={!group.expertId}
+              sessions={group.sessions}
+              renderItem={renderItem}
+            />
+          );
+        })}
       </div>
 
       {hasMore && (

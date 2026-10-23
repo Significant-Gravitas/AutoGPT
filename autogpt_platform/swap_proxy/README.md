@@ -46,8 +46,17 @@ users at once.
    credential) for providers that need it, and arrives with the binding
    table (SECRT-2616); nothing sets it yet. The backend is asked for values
    per user, per host and per box, and refuses hosts a credential is not bound
-   to (see "What a box holds").
+   to (see "What a box holds"). It also holds the box to the run's ceiling on
+   connected accounts (`providers` in `CopilotPermissions`, recorded when the
+   box's egress is pinned): a provider outside it comes back with no host it
+   may be sent to, scrubbed but never swapped.
    (`swap_proxy/swap.py`, `swap_proxy/source.py`)
+   A request that gets a value swapped in counts against a quota per box and
+   per user, in a fixed window shared by every replica through Redis. Past
+   either limit, or if the count cannot be taken, the request is not sent:
+   the box gets a `429` (or `503`) whose body says why and when the limit
+   resets, and the audit says `refused-request` / `quota-exceeded` or
+   `quota-unavailable`. (`swap_proxy/quota.py`)
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
    from the server, is turned back into its placeholder before the box sees it,
    and so is the exact base64 of an HTTP Basic pair the proxy built, which a
@@ -174,10 +183,13 @@ poetry run swap-proxy
 | --- | --- | --- |
 | `SWAP_PROXY_LISTEN_HOST` / `SWAP_PROXY_LISTEN_PORT` | `0.0.0.0` / `1080` | SOCKS5 listener |
 | `SWAP_PROXY_BACKEND_URL` | `http://localhost:8012` | the backend's swap service (`SwapCredentialService`), which serves only the two calls the proxy makes |
+| `INTERNAL_API_KEY` | none: required | the key the backend's services require on every internal call, so the same value as the backend's own `INTERNAL_API_KEY`. The backend derives its key from `ENCRYPTION_KEY` when that is unset, and the proxy has no `ENCRYPTION_KEY`, so a deployment with the proxy sets one explicitly on both. The proxy does not start without it |
 | `SWAP_PROXY_CONFDIR` | `~/.mitmproxy` | directory the signing CA is mounted into; see below |
 | `SWAP_PROXY_GENERATE_CA` | `false` | local runs only: generate a CA if the directory has none |
 | `SWAP_PROXY_EGRESS_ALLOW` | empty | comma-separated private hosts or CIDRs boxes may reach anyway |
-| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_CLUSTER_HOST`, `REDIS_CLUSTER_PORT`, `REDIS_USE_ANNOUNCED_ADDRESS` | | same meaning as in the backend |
+| `SWAP_PROXY_QUOTA_PER_BOX` / `SWAP_PROXY_QUOTA_PER_USER` | `1000` / `3000` | credentialed requests per box (session or expert) and per user in each window; `0` turns one off |
+| `SWAP_PROXY_QUOTA_WINDOW_SECONDS` | `3600` | the quota's fixed window |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_CLUSTER_HOST`, `REDIS_CLUSTER_PORT`, `REDIS_USE_ANNOUNCED_ADDRESS` | | same meaning as in the backend. The quota runs one script, under the proxy's own Redis user: besides what the credential lookup needs, that user needs `+eval +get +incr +expire ~swap:quota:*`. Without them every count fails and every credentialed request gets a `503` |
 
 ### The signing CA
 
@@ -349,10 +361,25 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   the case, it does not close it.
 - A body in gzip or zstd may hold at most 64 members or frames; more is
   treated as undecodable.
+- A box's ceiling on connected accounts is per box, not per turn. On an
+  expert's box, a turn's pin keeps only what every live session's ceiling
+  allows, so turns sharing a box share the narrowest. Once a session's turn
+  ends, its ceiling stops holding, so a process it left running gets the next
+  turn's ceiling. A re-pin with no ceiling of its own (the desktop tool,
+  turning the screen on from the UI) keeps the one on record, and so does a
+  pause; with no record left (a box paused past its TTL) it keeps none until a
+  turn pins its own.
 - A connection stays open after its box's credential is rotated (every
   reconnect rotates it), but the backend no longer knows its box: from then on
   nothing is swapped into it, and its text responses from bound hosts are
   refused as while the backend is down, until the client opens a new one.
+- The quota counts requests that get a value swapped in, nothing else. A
+  request over it whose body turns out to stream (a large `git push`) cannot
+  be answered with the `429`: it goes out with its placeholder, no value in
+  it, and the provider refuses it; the audit still says why. A request with no
+  body to stream (an HTTP/2 `GET` has no length either) is answered. A body
+  swapped while it streams, and a websocket message a box sends after its
+  upgrade was counted, are not counted (`swap_anywhere` only, for both).
 - NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged
   by the IPv4 address they carry. Teredo and operator-chosen NAT64 prefixes are
   not recognised.

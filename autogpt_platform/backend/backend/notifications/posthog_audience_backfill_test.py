@@ -1,5 +1,5 @@
-"""The PostHog backfill gives every account its email type and sign-in method,
-and every checkout opener what the live checkout sends, by the same rules,
+"""The PostHog backfill gives every account its email type, sign-in method and
+whether it is our team's, and every checkout opener what the live checkout sends, by the same rules,
 except that Stripe's first open is set outright."""
 
 from collections.abc import Iterator
@@ -46,9 +46,17 @@ ACCOUNTS = [
         created_at=CREATED,
         timezone="Europe/Moscow",
     ),
+    Account(user_id="teammate", email="e@agpt.co", created_at=CREATED),
+    Account(
+        user_id="admin-opener",
+        email="f@acme.io",
+        created_at=CREATED,
+        stripe_customer_id="cus_4",
+        role="admin",
+    ),
 ]
 PROVIDERS = {"billed": ["google", "credential"], "opened-only": ["credential"]}
-FIRST_OPENS = {"cus_1": OPENED, "cus_2": OPENED + 60}
+FIRST_OPENS = {"cus_1": OPENED, "cus_2": OPENED + 60, "cus_4": OPENED}
 BILLING = {"cus_1": "US", "cus_3": "FR"}
 
 
@@ -59,8 +67,8 @@ def _plan():
 def test_every_account_is_planned_and_only_openers_get_the_checkout_fields():
     plan = _plan()
     updates = {change.user_id: change.update for change in plan.updates}
-    assert len(updates) == 4
-    assert plan.openers == 2
+    assert len(updates) == 6
+    assert plan.openers == 3
 
     billed = updates["billed"]
     assert billed.to_set["country_code"] == "US"
@@ -74,17 +82,32 @@ def test_every_account_is_planned_and_only_openers_get_the_checkout_fields():
     assert opened_only.to_set["exclude_de_at"] == "yes"
 
     # A Stripe customer is not an opener without a Checkout Session.
-    assert updates["customer-without-session"].to_set == {"email_type": "education"}
+    assert updates["customer-without-session"].to_set == {
+        "email_type": "education",
+        "is_internal": False,
+    }
     assert updates["customer-without-session"].to_set_once == {}
     # A signal in Russia keeps an account out of MailerLite, not PostHog.
-    assert updates["never-a-customer"].to_set == {"email_type": "business"}
+    assert updates["never-a-customer"].to_set == {
+        "email_type": "business",
+        "is_internal": False,
+    }
+
+
+def test_our_team_is_planned_as_internal_with_or_without_a_checkout():
+    plan = _plan()
+    updates = {change.user_id: change.update for change in plan.updates}
+    assert updates["teammate"].to_set["is_internal"] is True
+    assert updates["admin-opener"].to_set["is_internal"] is True
+    assert updates["billed"].to_set["is_internal"] is False
+    assert plan.internal == 2
 
 
 def test_the_plan_counts_what_the_accounts_end_up_with():
     plan = _plan()
-    assert plan.email_types == {"business": 2, "personal": 1, "education": 1}
-    assert plan.signin_methods == {"google": 1, "email": 1, "none": 2}
-    assert plan.country_sources == {"stripe": 1, "timezone": 1}
+    assert plan.email_types == {"business": 4, "personal": 1, "education": 1}
+    assert plan.signin_methods == {"google": 1, "email": 1, "none": 4}
+    assert plan.country_sources == {"stripe": 1, "timezone": 1, "none": 1}
     assert plan.exclude_de_at == 1
 
 
@@ -105,6 +128,7 @@ def test_an_opener_gets_what_the_live_checkout_sends():
     )
     planned = next(c.update for c in _plan().updates if c.user_id == "billed")
     assert planned.to_set.pop(CHECKOUT_OPENED_AT) == OPENED_ISO
+    assert planned.to_set.pop("is_internal") is False
     assert live.to_set_once.pop(CHECKOUT_OPENED_AT) == OPENED_ISO
     assert planned == live
 

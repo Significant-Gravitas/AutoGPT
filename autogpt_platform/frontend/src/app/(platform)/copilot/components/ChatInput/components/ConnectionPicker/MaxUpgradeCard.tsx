@@ -54,8 +54,6 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         variant="primary"
         size="small"
         className="mt-5 h-11 w-full rounded-lg border-purple-600 bg-purple-600 text-white hover:border-purple-700 hover:bg-purple-700"
-        data-fast-goal="subscription_upgrade_intent"
-        data-fast-goal-surface="model_picker"
       >
         Upgrade to Max
         <Icon icon={ArrowRight02Icon} size={16} aria-hidden />
