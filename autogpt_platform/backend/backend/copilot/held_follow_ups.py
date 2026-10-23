@@ -11,6 +11,8 @@ turn it starts reads the message once rather than twice.
 """
 
 import logging
+import math
+import time
 from typing import get_args
 
 from backend.copilot.pending_messages import (
@@ -27,6 +29,11 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import as_str
 
 logger = logging.getLogger(__name__)
+
+# The hold covers what was queued before the turn ended. The API pod stamps a
+# follow-up's enqueue time and the executor stamps the hold, so their clocks
+# may differ a little; a resend comes long after either.
+_CLOCK_SLACK_SECONDS = 2.0
 
 
 def held_reason_for(
@@ -56,7 +63,11 @@ async def hold_follow_ups_at_turn_end(
         if count == 0:
             await redis.delete(held_marker_key(session_id))
             return None
-        await redis.set(held_marker_key(session_id), reason, ex=PENDING_TTL_SECONDS)
+        await redis.set(
+            held_marker_key(session_id),
+            f"{reason}|{time.time()}",
+            ex=PENDING_TTL_SECONDS,
+        )
     except Exception:
         logger.warning(
             f"Could not check session {session_id} for unread follow-ups",
@@ -83,15 +94,31 @@ async def held_follow_up_reason(session_id: str) -> FollowUpHeldReason | None:
 
     Only meaningful while no turn runs: a running turn reads the queue.
     """
+    hold = await _read_hold(session_id)
+    return hold[0] if hold else None
+
+
+async def _read_hold(session_id: str) -> tuple[FollowUpHeldReason, float] | None:
+    """The hold's reason, and the latest enqueue time a message it covers has."""
     redis = await get_redis_async()
     stored = as_str(await redis.get(held_marker_key(session_id)))
-    return next((r for r in get_args(FollowUpHeldReason) if r == stored), None)
+    if stored is None:
+        return None
+    reason_text, _, held_at = stored.partition("|")
+    reason = next((r for r in get_args(FollowUpHeldReason) if r == reason_text), None)
+    if reason is None:
+        return None
+    try:
+        return reason, float(held_at) + _CLOCK_SLACK_SECONDS
+    except ValueError:
+        return reason, math.inf
 
 
 async def holds_follow_up(session_id: str, message: str) -> bool:
     """Whether *message* waits in the queue as a held follow-up, unread yet."""
     try:
-        if await held_follow_up_reason(session_id) is None:
+        hold = await _read_hold(session_id)
+        if hold is None:
             return False
         waiting = await peek_pending_messages(session_id)
     except Exception:
@@ -100,7 +127,11 @@ async def holds_follow_up(session_id: str, message: str) -> bool:
             exc_info=True,
         )
         return False
-    return any(pending.content == message for pending in waiting)
+    # Typed again after the turn ended, it is a new follow-up, not the held one.
+    return any(
+        pending.content == message and pending.enqueued_at <= hold[1]
+        for pending in waiting
+    )
 
 
 async def take_held_follow_up(session_id: str, message: str) -> PendingMessage | None:
@@ -111,9 +142,10 @@ async def take_held_follow_up(session_id: str, message: str) -> PendingMessage |
     that is refused can put it back; None when nothing was taken.
     """
     try:
-        if await held_follow_up_reason(session_id) is None:
+        hold = await _read_hold(session_id)
+        if hold is None:
             return None
-        taken = await take_pending_message(session_id, message)
+        taken = await take_pending_message(session_id, message, enqueued_by=hold[1])
     except Exception:
         logger.warning(
             f"Could not take a resent follow-up out of session {session_id}",

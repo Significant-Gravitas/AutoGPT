@@ -1,5 +1,7 @@
 """A follow-up the turn ended without reading is reported, never dropped."""
 
+import time
+
 import pytest
 
 from backend.copilot import held_follow_ups
@@ -96,6 +98,25 @@ async def test_the_next_turns_read_of_the_queue_ends_the_hold(
     assert await held_follow_up_reason("sess-1") is None
     assert not await holds_follow_up("sess-1", "status?")
     assert await take_held_follow_up("sess-1", "status?") is None
+
+
+@pytest.mark.asyncio
+async def test_a_message_typed_again_after_the_turn_ended_is_not_the_held_one(
+    fake_redis: _FakeRedis,
+) -> None:
+    await _queued("yes")
+    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "ended")
+    # Retried: the only held copy goes out, and its turn reads nothing more.
+    assert await take_held_follow_up("sess-1", "yes") is not None
+
+    # The user types the same word again while that turn runs.
+    await push_pending_message(
+        "sess-1", PendingMessage(content="yes", enqueued_at=time.time() + 60)
+    )
+
+    assert not await holds_follow_up("sess-1", "yes")
+    assert await take_held_follow_up("sess-1", "yes") is None
+    assert [m.content for m in await peek_pending_messages("sess-1")] == ["yes"]
 
 
 @pytest.mark.asyncio

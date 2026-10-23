@@ -24,6 +24,7 @@ buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
 import asyncio
 import json
 import logging
+import math
 import time
 import uuid
 from typing import Any, Literal, TypeVar, cast
@@ -478,9 +479,11 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     return messages
 
 
-async def take_pending_message(session_id: str, content: str) -> PendingMessage | None:
-    """Remove the oldest waiting message whose text is *content* and return it,
-    or None when no waiting message has that text.
+async def take_pending_message(
+    session_id: str, content: str, *, enqueued_by: float = math.inf
+) -> PendingMessage | None:
+    """Remove the oldest waiting message whose text is *content*, queued no
+    later than *enqueued_by*, and return it; None when there is none.
 
     Removes the exact stored payload (``LREM``), so a message pushed or
     drained meanwhile is never touched.
@@ -494,7 +497,7 @@ async def take_pending_message(session_id: str, content: str) -> PendingMessage 
             message = _from_buffer(json.loads(payload))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
             continue
-        if message.content != content:
+        if message.content != content or message.enqueued_at > enqueued_by:
             continue
         if await cast("Any", redis.lrem(key, 1, payload)):
             return message
