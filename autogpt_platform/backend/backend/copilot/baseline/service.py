@@ -2196,8 +2196,14 @@ async def stream_chat_completion_baseline(
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
     # the very start of the message content.
-    user_message_for_transcript = message
+    turn_text = message or next(
+        (m.content or "" for m in reversed(session.messages) if m.role == "user"),
+        "",
+    )
+    user_message_for_transcript = turn_text
+    transcript_context_prefix = ""
     if should_inject_user_context:
+        user_message_for_transcript = strip_user_context_tags(turn_text)
         # Mirror the SDK path's "model knows about budget" behaviour by
         # injecting a per-turn ``<budget_context>`` block — the baseline
         # path has no equivalent of the SDK CLI's native
@@ -2233,7 +2239,7 @@ async def stream_chat_completion_baseline(
             )
         prefixed = await inject_user_context(
             understanding,
-            message or "",
+            user_message_for_transcript,
             session_id,
             session.messages,
             budget_ctx=budget_ctx,
@@ -2249,7 +2255,9 @@ async def stream_chat_completion_baseline(
                 if msg["role"] == "user":
                     msg["content"] = prefixed
                     break
-            user_message_for_transcript = prefixed
+            transcript_context_prefix = prefixed.removesuffix(
+                user_message_for_transcript
+            )
         else:
             logger.warning("[Baseline] No user message found for context injection")
     # Now that ``inject_user_context`` has wrapped + persisted the
@@ -2266,11 +2274,6 @@ async def stream_chat_completion_baseline(
     #
     # Order matters: persist must run after inject so inject targets
     # the routes.py-saved row, not a pending row.
-    turn_text = message or next(
-        (m.content or "" for m in reversed(session.messages) if m.role == "user"),
-        "",
-    )
-    user_message_for_transcript = user_message_for_transcript or turn_text
     if drained_at_start_pending:
         # Persist FIRST.  Only fold pending into the model's prompt
         # (``message`` for transcript fallback + ``openai_messages`` for
@@ -2407,6 +2410,10 @@ async def stream_chat_completion_baseline(
     # attempt stored this message), so skipping it would leave the
     # transcript without the user turn, creating a malformed
     # assistant-after-assistant structure when the LLM reply is added.
+    # Keep trusted context ahead of user text, including older pending messages.
+    user_message_for_transcript = (
+        transcript_context_prefix + user_message_for_transcript
+    )
     if user_message_for_transcript and is_user_message:
         transcript_builder.append_user(content=user_message_for_transcript)
 

@@ -6,6 +6,7 @@ import pytest
 from openai.types.chat import ChatCompletionChunk
 
 from backend.copilot import pending_message_helpers
+from backend.copilot import service as shared_service
 from backend.copilot.baseline import service
 from backend.copilot.baseline import service_cancellation_test as baseline_fixtures
 from backend.copilot.model import ChatMessage, ChatSession
@@ -105,25 +106,30 @@ async def test_sdk_matching_survives_resume_disabled_and_context_retry(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("first_turn", [False, True])
+@pytest.mark.parametrize("request_arrival_at", [0, 100])
 @pytest.mark.parametrize("provided_message", [True, False])
 @pytest.mark.parametrize(
     "pending_kind,pending_image",
     [("none", False), ("task", False), ("task", True), ("note", False), ("note", True)],
 )
-async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
+async def test_task_and_pending_messages_reach_matching_and_transcript(
     monkeypatch: pytest.MonkeyPatch,
     baseline_io: list[ChatSession],
     available_skills: AsyncMock,
+    first_turn: bool,
+    request_arrival_at: float,
     provided_message: bool,
     pending_kind: str,
     pending_image: bool,
 ) -> None:
     session = ChatSession.new("user-1", dry_run=False, expert_id="expert-a")
     session.title = "Partner research"
-    session.messages = [
-        ChatMessage(role="user", content="Help me with partnerships"),
-        ChatMessage(role="assistant", content="Ready."),
-    ]
+    if not first_turn:
+        session.messages = [
+            ChatMessage(role="user", content="Help me with partnerships"),
+            ChatMessage(role="assistant", content="Ready."),
+        ]
     stream = MagicMock()
     stream.__aiter__.return_value = [
         ChatCompletionChunk.model_validate(
@@ -158,6 +164,45 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
     monkeypatch.setattr(service, "start_refresh", MagicMock(return_value=None))
     matcher = AsyncMock(wraps=service.build_matched_skills_notice)
     monkeypatch.setattr(service, "build_matched_skills_notice", matcher)
+    prefix = ""
+    if first_turn:
+        monkeypatch.setattr(
+            service,
+            "_build_system_prompt",
+            AsyncMock(return_value=("System", MagicMock())),
+        )
+        monkeypatch.setattr(
+            service, "build_budget_ctx", AsyncMock(return_value="Budget")
+        )
+        monkeypatch.setattr(
+            service, "build_session_context", AsyncMock(return_value="Session")
+        )
+        monkeypatch.setattr(
+            service, "build_skills_context", AsyncMock(return_value="Partner skills")
+        )
+        monkeypatch.setattr(
+            shared_service, "build_expert_context", AsyncMock(return_value="")
+        )
+        monkeypatch.setattr(
+            shared_service, "format_understanding_for_prompt", lambda _: "Business"
+        )
+        monkeypatch.setattr(
+            "backend.copilot.rate_limit.get_user_tier",
+            AsyncMock(return_value=MagicMock(value="free")),
+        )
+        monkeypatch.setattr(
+            shared_service,
+            "chat_db",
+            MagicMock(
+                return_value=MagicMock(update_message_content_by_sequence=AsyncMock())
+            ),
+        )
+        prefix = (
+            "<available_skills>\nPartner skills\n</available_skills>\n\n"
+            "<session_context>\nSession\n</session_context>\n\n"
+            "<budget_context>\nBudget\n</budget_context>\n\n"
+            "<user_context>\nBusiness\nPlan: free\n</user_context>\n\n"
+        )
 
     task = (
         "Add Northwind to my partner list in Airtable and go find me a partner contact"
@@ -188,6 +233,8 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
             AsyncMock(side_effect=save_pending),
         )
         expected_request = f"{task}\n\n{note}"
+        if request_arrival_at == 0 and pending_kind == "note":
+            expected_request = f"{note}\n\n{task}"
     if not provided_message:
         session.messages.append(ChatMessage(role="user", content=starting_message))
     async with asyncio.timeout(10):
@@ -196,7 +243,7 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
             message=starting_message if provided_message else None,
             user_id="user-1",
             session=session,
-            request_arrival_at=100,
+            request_arrival_at=request_arrival_at,
         ):
             pass
 
@@ -206,12 +253,21 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
     current = sent[-1]["content"]
     if pending_image:
         assert image.openai() in current
-        current = "".join(part["text"] for part in current if part["type"] == "text")
+    user_texts = [
+        (
+            m["content"]
+            if isinstance(m["content"], str)
+            else "".join(
+                part["text"] for part in m["content"] if part["type"] == "text"
+            )
+        )
+        for m in sent
+        if m["role"] == "user"
+    ]
+    current = user_texts[-1]
     assert "<matched_skills>" in current
     assert "partner-first-touch-outreach" in current
-    text = "\n".join(
-        [m["content"] for m in sent[:-1] if m["role"] == "user"] + [current]
-    )
+    text = "\n".join(user_texts)
     assert text.index(task) < text.index("<matched_skills>")
     matcher.assert_awaited_once()
     assert matcher.await_args is not None
@@ -226,5 +282,18 @@ async def test_followup_surfaces_matching_skills_without_the_first_turn_index(
     transcript = upload.await_args.kwargs["content"].decode("utf-8")
     rows = [json.loads(line) for line in transcript.splitlines()]
     assert rows[-2]["type"] == "user"
-    assert rows[-2]["message"]["content"] == expected_request
+    expected_transcript = prefix + expected_request
+    assert rows[-2]["message"]["content"] == expected_transcript
     assert "<matched_skills>" not in transcript
+    restored = await service.extract_context_messages(
+        service.TranscriptDownload(
+            content=transcript.encode("utf-8"),
+            message_count=len(session.messages),
+            mode="baseline",
+        ),
+        [*session.messages, ChatMessage(role="user", content="Continue")],
+    )
+    assert restored[-2].content == expected_transcript
+    if first_turn:
+        assert session.messages[0].content == prefix + starting_message
+        assert user_texts[0].startswith(prefix)
