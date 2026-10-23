@@ -47,6 +47,8 @@ type Responder = (request: { method: string; url: URL }) =>
   | "follow-up-queued"
   // The route closed the send's stream without taking it anywhere.
   | "empty"
+  // A heartbeat, then nothing: the route went quiet mid-send.
+  | "heartbeat-then-silent"
   | { status: number; body: unknown };
 
 /**
@@ -97,6 +99,15 @@ export function fakeBackend(turn: RecordedTurn) {
         status: 200,
         headers: { "content-type": "text/event-stream" },
       });
+    if (answer === "heartbeat-then-silent")
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(": heartbeat\n\n"));
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
     if (answer === "silent")
       return new Response(new ReadableStream<Uint8Array>(), {
         status: 200,

@@ -142,9 +142,21 @@ export function useCopilotRuntimeStream({
       }
       runtime?.dropUnsentUserRow();
     }
+    function releaseKickoffPending() {
+      if (!userId || !kickoffExpertId || !kickoffAttemptToken) return;
+      void withKickoffLock(userId, kickoffExpertId, async () => {
+        clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
+      }).catch(() => undefined);
+    }
     // The banner says it didn't go through; that send's text goes back to
-    // resend, never a newer send's, and its bubble is already gone.
+    // resend, never a newer send's, and its bubble is already gone. A
+    // kickoff's prompt is hidden, so it only frees the kickoff to run again.
     if (error instanceof SendNotDeliveredError) {
+      if (kickoffExpertId) {
+        releaseKickoffPending();
+        clearRecovery();
+        return;
+      }
       if (error.text && isComposerEmpty()) setInitialPrompt(error.text);
       if (coord.lastSubmittedMessageText === error.text) clearRecovery();
       return;
@@ -167,11 +179,7 @@ export function useCopilotRuntimeStream({
       isUserStoppingRef,
     });
     if (!kickoffExpertId) return;
-    if (userId && kickoffAttemptToken) {
-      void withKickoffLock(userId, kickoffExpertId, async () => {
-        clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
-      }).catch(() => undefined);
-    }
+    releaseKickoffPending();
     clearRecovery();
     runtime?.dropUnsentUserRow();
   }

@@ -265,6 +265,66 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       expect(userRows).toHaveLength(0);
     });
 
+    it.skipIf(path !== "stream runtime")(
+      "frees a kickoff whose send went nowhere, without showing its hidden prompt",
+      async () => {
+        const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000002";
+        server.use(
+          http.get("*/api/experts/identities", () =>
+            HttpResponse.json([
+              {
+                id: expertId,
+                name: "Maria",
+                avatar_url: null,
+                role: "Operations expert",
+                is_archived: false,
+              },
+            ]),
+          ),
+          // The route answers and closes, as it does for a send it neither
+          // runs, queues nor stores: framing only, no stream ids.
+          http.post(
+            `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+            () =>
+              new HttpResponse(
+                [
+                  { type: "start", messageId: "nowhere" },
+                  { type: "start-step" },
+                  { type: "finish-step" },
+                  { type: "finish" },
+                ]
+                  .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+                  .concat("data: [DONE]\n\n")
+                  .join(""),
+                { headers: { "content-type": "text/event-stream" } },
+              ),
+          ),
+        );
+
+        renderHost({
+          searchParams: `?sessionId=${TEST_SESSION_ID}&expertId=${expertId}&kickoff=1`,
+          sessionOverride: { expert_id: expertId },
+        });
+
+        await waitFor(
+          () =>
+            expect(
+              getTurnRuntime(TEST_SESSION_ID).getSnapshot().error?.name,
+            ).toBe("SendNotDeliveredError"),
+          { timeout: 10_000 },
+        );
+        await waitFor(() =>
+          expect(getKickoffStatus("test-user", expertId)).toBe("idle"),
+        );
+        expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+        expect(
+          useCopilotStreamStore.getState().getCoord(TEST_SESSION_ID)
+            .lastSubmittedKickoffExpertId,
+        ).toBeNull();
+      },
+      20_000,
+    );
+
     it("surfaces an HTTP 500 response as a visible error", async () => {
       server.use(
         copilotStreamErrorHandler({

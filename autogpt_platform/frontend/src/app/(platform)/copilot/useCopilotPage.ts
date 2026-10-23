@@ -535,7 +535,9 @@ function useCopilotPageChat(
   // click before that turn shows would queue its message a second time.
   const isRetryingRef = useRef(false);
   async function retryQueuedMessage(text: string) {
-    if (!sessionId || isRetryingRef.current || isInflightRef.current) return;
+    // Locked (an expert being resolved or let go): the chip stays as it is.
+    if (!sessionId || isExpertSendLocked) return;
+    if (isRetryingRef.current || isInflightRef.current) return;
     isRetryingRef.current = true;
     await resendHeldFollowUp(sessionId, text).catch((err: unknown) =>
       recoverFailedDeferredSend(text, [], err),

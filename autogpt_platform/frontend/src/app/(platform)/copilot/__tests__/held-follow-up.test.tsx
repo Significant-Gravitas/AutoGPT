@@ -174,6 +174,44 @@ describe("a follow-up the last turn ended without reading", () => {
     );
   });
 
+  it("keeps the chip when the expert can no longer be messaged", async () => {
+    const expertId = "3f8b0f7e-9f30-4a3b-a6a1-0000000000aa";
+    const posts: string[] = [];
+    server.use(
+      http.get("*/api/experts/identities", () =>
+        HttpResponse.json([
+          {
+            id: expertId,
+            name: "Maya",
+            avatar_url: null,
+            role: "Operations expert",
+            is_archived: true,
+          },
+        ]),
+      ),
+      http.post(STREAM_URL, ({ request }) => {
+        posts.push("sent");
+        return streamSseResponse([], { abortSignal: request.signal });
+      }),
+    );
+    renderHost({
+      sessionOverride: { messages: stored.messages, expert_id: expertId },
+      pendingMessages: buffer.messages,
+      pendingHeldReason: "error",
+    });
+    const retry = await screen.findByRole(
+      "button",
+      { name: /retry/i },
+      { timeout: 5000 },
+    );
+
+    await userEvent.setup().click(retry);
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(posts).toEqual([]);
+    expect(screen.getByText("Didn't go through")).toBeDefined();
+  });
+
   it("goes out once on Retry and gets its answer", async () => {
     const posts: string[] = [];
     server.use(
