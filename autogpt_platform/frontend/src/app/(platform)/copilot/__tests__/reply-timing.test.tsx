@@ -3,6 +3,7 @@ import {
   getPostV2CreateSessionMockHandler200,
   getPostV2CreateSessionResponseMock200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import type { SessionDetailResponseMessagesItem } from "@/app/api/__generated__/models/sessionDetailResponseMessagesItem";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
@@ -657,37 +658,74 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   });
 });
 
-// Only the AI SDK client drops a repeat of the message it just sent, so this
-// runs on that path alone: CI rejects a report with a skipped test.
+function storedMessage(
+  sequence: number,
+  role: "user" | "assistant",
+  content: string,
+): SessionDetailResponseMessagesItem {
+  return {
+    id: `db-${sequence}`,
+    role,
+    content,
+    tool_call_id: null,
+    tool_calls: null,
+    sequence,
+    duration_ms: null,
+    created_at: `2026-05-13T00:0${sequence}:00Z`,
+    metadata: null,
+  };
+}
+
+// Only the AI SDK client drops a repeat of a message still waiting for its
+// answer, so this runs on that path alone: CI rejects a report with a skipped
+// test.
 describe("on the AI SDK path", () => {
   beforeEach(() => {
     streamPath.runtime = false;
   });
 
   it("records nothing for a send suppressed as a duplicate", async () => {
+    // Reloaded while the second "same again" waits for its answer: the tab
+    // still remembers sending it, so the same text again is a double press.
+    // The answered copy above it must not be taken for this send.
+    useCopilotStreamStore.getState().updateCoord(TEST_SESSION_ID, {
+      lastSubmittedMessageText: "same again",
+    });
     const posts = vi.fn();
     server.use(
       http.post(
         `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
         ({ request }) => {
           posts();
-          return streamSseResponse(assistantTextChunks("Only reply."), {
+          return streamSseResponse(assistantTextChunks("Another reply."), {
             abortSignal: request.signal,
           });
         },
       ),
     );
 
-    renderHost();
-    await typeAndSend("same again");
+    renderHost({
+      sessionOverride: {
+        messages: [
+          storedMessage(1, "user", "same again"),
+          storedMessage(2, "assistant", "Only reply."),
+          storedMessage(3, "user", "same again"),
+        ],
+      },
+    });
     await screen.findByText("Only reply.", undefined, { timeout: 5000 });
-    await recordedReplies(1);
-    await waitForTurnOver();
-
     await typeAndSend("same again");
     await sleep(SETTLE_GRACE_MS + HELD_MS);
 
-    expect(posts).toHaveBeenCalledTimes(1);
-    expect(replySpans()).toHaveLength(1);
+    expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+      "value",
+      "",
+    );
+    expect(screen.getAllByText("same again")).toHaveLength(2);
+    // Leaving the chat ends the timing too, still unreported.
+    cleanup();
+    await sleep(20);
+    expect(posts).not.toHaveBeenCalled();
+    expect(replySpans()).toHaveLength(0);
   });
 });
