@@ -233,6 +233,30 @@ describe("Settings memory page — the memories list", () => {
     expect(screen.getByText("3 memories")).toBeDefined();
   });
 
+  it("drops a memory that was already forgotten elsewhere and refreshes the list", async () => {
+    let listCalls = 0;
+    server.use(
+      getListMyMemoryFactsMockHandler200(() => {
+        listCalls += 1;
+        const facts = listCalls === 1 ? makeFacts(3) : makeFacts(2, 1);
+        return { expert_id: null, items: facts, total: facts.length };
+      }),
+      http.delete(/\/api\/proxy\/api\/memory\/facts\/[^/]+$/, () =>
+        HttpResponse.json({ detail: "Memory not found" }, { status: 404 }),
+      ),
+    );
+    render(<SettingsMemoryPage />);
+
+    await screen.findByText("Memory number 0");
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole("button", { name: "Forget" })[0]);
+
+    await waitFor(() => expect(listCalls).toBe(2));
+    expect(screen.queryByText("Memory number 0")).toBeNull();
+    expect(await screen.findByText("2 memories")).toBeDefined();
+    expect(toast).toHaveBeenCalledWith({ title: "Already forgotten" });
+  });
+
   it("opens the erase confirmation from Forget everything", async () => {
     mockFacts(makeFacts(3));
     render(<SettingsMemoryPage />);

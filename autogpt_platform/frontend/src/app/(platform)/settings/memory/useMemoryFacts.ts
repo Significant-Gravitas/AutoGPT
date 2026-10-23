@@ -5,6 +5,7 @@ import {
   useListMyMemoryFactsInfinite,
 } from "@/app/api/__generated__/endpoints/memory/memory";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useState } from "react";
 import {
   FACTS_PAGE_SIZE,
@@ -71,7 +72,14 @@ export function useMemoryFacts({ scopeExpertID, onForgotten }: Args) {
           factUuid: uuid,
         });
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        onForgotten();
+        toast({ title: "Already forgotten" });
+        return;
+      }
+      // Not refetched: a 500 can be a forget whose clean-up failed, already
+      // out of the list, and the row stays so that trying again finishes it.
       setForgottenUUIDs((current) => current.filter((id) => id !== uuid));
       toast({
         title: "Could not forget that memory",
