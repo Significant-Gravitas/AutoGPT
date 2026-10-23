@@ -72,6 +72,8 @@ const PAGING_KEYS = new Set([
   "limit",
   "offset",
 ]);
+// How many there are: zero is "none", any other number is an answer.
+const COUNT_KEY = /(^|_)count$|^total$/;
 // Set when there is a further page; false says this one is all of it.
 const MORE_KEYS = new Set(["has_more", "has_next"]);
 
@@ -85,8 +87,9 @@ function isEmptyCollection(value: unknown): boolean {
 }
 
 function isBookkeeping(key: string, value: unknown): boolean {
-  if (isEmptyCollection(value) || value === 0 || value === "") return true;
-  if (typeof value === "number") return PAGING_KEYS.has(key);
+  if (isEmptyCollection(value) || value === "") return true;
+  if (typeof value === "number")
+    return PAGING_KEYS.has(key) || (value === 0 && COUNT_KEY.test(key));
   if (typeof value === "string") return SCOPE_KEY.test(key);
   return value === false && MORE_KEYS.has(key);
 }

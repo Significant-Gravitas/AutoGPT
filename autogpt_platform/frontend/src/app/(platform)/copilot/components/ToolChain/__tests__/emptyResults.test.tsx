@@ -69,6 +69,16 @@ describe("empty lookups", () => {
     );
   });
 
+  it("keep a connect call's own label", () => {
+    // A connect call only checks sign-in; it is not the tool running.
+    const connect = done(
+      "tool-run_capability",
+      { id: "tool:list_routines", input: { connect: true } },
+      NO_ROUTINES,
+    );
+    expect(toChainRow(connect, 0)?.text).toBe('Ran "tool:list_routines"');
+  });
+
   it("keep the plain label when something came back", () => {
     const some = { ...NO_ROUTINES, routines: [{ id: "r-1", title: "Digest" }] };
     const plain = toChainRow(done("tool-list_routines", {}, some), 0);
@@ -239,6 +249,9 @@ describe("isEmptyResult", () => {
     [{ routines: [{ id: "r-1" }] }, false],
     [{ name: "scraper", triggers: [] }, false],
     [{ ok: true, failed: [] }, false],
+    // A zero that means something is an answer; only counts are bookkeeping.
+    [{ items: [], score: 0 }, false],
+    [{ items: [], total_count: 0, count: 0 }, true],
     [{ type: "done", message: "Deleted." }, false],
     [[], false],
     ["", false],
