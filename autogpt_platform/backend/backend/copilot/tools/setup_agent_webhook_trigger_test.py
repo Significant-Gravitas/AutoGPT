@@ -553,7 +553,9 @@ async def test_an_external_call_files_the_library_entry_in_its_organization(tool
     session.external_caller = True
     session.organization_id, session.team_id = "org-1", "team-1"
     graph = _make_graph(manual=True, regular_credentials={})
-    preset = _make_preset(provider="generic_webhook", url="https://x/ingress")
+    preset = MagicMock(id="preset-1", is_active=True)
+    preset.name = "My Trigger"
+    preset.webhook.url, preset.webhook.provider = "https://x/ingress", "generic_webhook"
     ctxs, _ = _patches(graph, preset=preset)
     library_entry = AsyncMock(return_value=MagicMock(id="lib-1"))
     with ctxs[0], ctxs[2], ctxs[3], ctxs[4], patch(
