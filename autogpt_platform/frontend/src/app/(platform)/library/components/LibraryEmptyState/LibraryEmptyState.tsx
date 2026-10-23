@@ -132,7 +132,7 @@ function Card({ x, y, width }: CardProps) {
   const padding = 16;
   const dotRadius = 8;
 
-  // TODO(tokens): no exact role for the illustration colours #E4E4E7, white; #E4E4E7 equals the shadcn border role, which turns dark under .dark
+  // TODO(tokens): no fitting role for the skeleton fills #E4E4E7; #E4E4E7 is border, a border colour
   return (
     <g>
       <rect
@@ -142,8 +142,7 @@ function Card({ x, y, width }: CardProps) {
         height={height}
         rx={radius}
         ry={radius}
-        fill="white"
-        stroke="#E4E4E7"
+        className="fill-card stroke-border"
         strokeWidth={1}
       />
       <circle

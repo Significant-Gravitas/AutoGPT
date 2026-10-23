@@ -207,10 +207,7 @@ function VideoContent() {
 function ImgContent() {
   return (
     <div className="relative h-16">
-      <div
-        // TODO(tokens): no role for this use of from-zinc-900/20 (#2C2C30); from-zinc-900/20 shares its hex with foreground-strong and action-hover (text and button roles)
-        className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-zinc-900/20 to-transparent"
-      />
+      <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-action-hover/20 to-transparent" />
       <div className="absolute bottom-1 left-1 h-3 w-5 rounded-t-full bg-action-hover/25" />
       <div className="absolute bottom-1 right-2 h-5 w-4 rounded-t-full bg-action-hover/30" />
       <div className="absolute right-1.5 top-1.5 size-2 rounded-full bg-action-hover/40" />
@@ -219,11 +216,11 @@ function ImgContent() {
 }
 
 function ReactContent() {
-  // TODO(tokens): no exact role for the illustration colours rgb(24 24 27 / 0.35), rgb(24 24 27 / 0.55)
+  // TODO(tokens): no fitting role for the orbit stroke rgb(24 24 27 / 0.35); #18181B is primary, a fill
   return (
     <div className="flex h-16 items-center justify-center">
       <svg viewBox="-12 -12 24 24" className="h-10 w-10" aria-hidden>
-        <circle r="2" fill="rgb(24 24 27 / 0.55)" />
+        <circle r="2" className="fill-primary/55" />
         <g fill="none" stroke="rgb(24 24 27 / 0.35)" strokeWidth="1">
           <ellipse rx="10" ry="4" />
           <ellipse rx="10" ry="4" transform="rotate(60)" />
@@ -398,7 +395,7 @@ export function FileIllustration({
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
-          // TODO(tokens): no role for this use of bg-zinc-700 (#505057); bg-zinc-700 shares its hex with foreground-body (a text role)
+          // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body, a text colour
           "absolute rounded-md bg-zinc-700 px-2 py-1 text-caption-sm font-semibold uppercase leading-inherit tracking-wide text-action-foreground shadow-md shadow-black/10",
           config.badgePositionClass ?? DEFAULT_BADGE_POSITION,
           badgeClassName,

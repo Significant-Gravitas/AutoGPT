@@ -49,7 +49,7 @@ export function StorageUsage() {
         aria-label={usedLabel}
         className={cn(
           "h-1.5 w-32 bg-surface-hover",
-          // TODO(tokens): no role for this use of [&>div]:bg-red-400 (#F26969), [&>div]:bg-zinc-400 (#ADADB3); bg-zinc-400 shares its hex with foreground-subtle (a text role)
+          // TODO(tokens): no exact role for [&>div]:bg-red-400 (#F26969); no fitting role for [&>div]:bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
           percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
         )}
       />

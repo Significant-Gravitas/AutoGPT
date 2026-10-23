@@ -174,19 +174,17 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
   const cx = x + width / 2;
   const cy = y + height / 2;
 
-  // TODO(tokens): no exact role for the illustration colours #E4E4E7, #F4F4F5, white; #E4E4E7 and #F4F4F5 equal the shadcn border and muted roles, which turn dark under .dark
+  // TODO(tokens): no fitting role for the skeleton-line fill #E4E4E7; #E4E4E7 is border, a border colour
   return (
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path
         d={`M${x + 12} ${y}H${x + width - fold}L${x + width} ${y + fold}V${y + height - 12}a12 12 0 0 1-12 12H${x + 12}a12 12 0 0 1-12-12V${y + 12}a12 12 0 0 1 12-12Z`}
-        fill="white"
-        stroke="#E4E4E7"
+        className="fill-card stroke-border"
         strokeWidth={1}
       />
       <path
         d={`M${x + width - fold} ${y}V${y + fold}H${x + width}`}
-        fill="#F4F4F5"
-        stroke="#E4E4E7"
+        className="fill-muted stroke-border"
         strokeWidth={1}
       />
       {[0, 1, 2, 3].map((line) => (

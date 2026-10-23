@@ -84,7 +84,7 @@ function WalkthroughControl({ player }: { player: Player }) {
       {!player.hasStarted && (
         <div
           aria-hidden
-          // TODO(tokens): no role for this use of bg-zinc-950/15 (#09090B); bg-zinc-950/15 shares its hex with foreground (a shadcn text role that turns light under .dark)
+          // TODO(tokens): no fitting role for bg-zinc-950/15 #09090B; #09090B is foreground, a text colour
           className="pointer-events-none absolute inset-x-0 bottom-14 top-0 bg-zinc-950/15"
         />
       )}
@@ -115,7 +115,7 @@ function WalkthroughControl({ player }: { player: Player }) {
         className={
           player.hasStarted
             ? "absolute bottom-2.5 right-3"
-            : // TODO(tokens): no role for this use of bg-violet-600 (#7C3AED), hover:bg-violet-700 (#6D28D9), focus-visible:ring-violet-600 (#7C3AED); bg-violet-700 shares its hex with accent-strong (a text role)
+            : // TODO(tokens): no exact role for bg-violet-600 (#7C3AED), focus-visible:ring-violet-600 (#7C3AED); no fitting role for hover:bg-violet-700 #6D28D9; #6D28D9 is accent-strong, a text colour
               "absolute left-1/2 top-[calc(50%-1.75rem)] size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-white/20 bg-violet-600 text-action-foreground shadow-xl hover:border-white/30 hover:bg-violet-700 focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-4"
         }
       >

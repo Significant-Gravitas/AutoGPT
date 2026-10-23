@@ -91,7 +91,7 @@ function ExpertTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        // TODO(tokens): no role for this use of focus-visible:ring-zinc-400 (#ADADB3); ring-zinc-400 shares its hex with foreground-subtle (a text role)
+        // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
         "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
         hasAvatar ? "pl-1.5 pr-3.5" : "px-4",
         active

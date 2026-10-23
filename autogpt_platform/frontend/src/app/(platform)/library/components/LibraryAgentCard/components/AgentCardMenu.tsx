@@ -225,7 +225,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            // TODO(tokens): no role for this use of text-red-600 (#D93636), focus:text-red-600 (#D93636); text-red-600 shares its hex with error-hover (a hover fill role)
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill; no fitting role for focus:text-red-600 #D93636
             className="flex items-center gap-2 text-red-600 focus:bg-error-surface focus:text-red-600"
           >
             Delete workflow

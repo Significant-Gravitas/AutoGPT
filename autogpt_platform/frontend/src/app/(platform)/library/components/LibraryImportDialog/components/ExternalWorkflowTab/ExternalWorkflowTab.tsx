@@ -78,7 +78,7 @@ export default function ExternalWorkflowTab({
             type="button"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
-            // TODO(tokens): no role for this use of border-neutral-200 (#E5E5E5), text-neutral-600 (#525252), hover:border-purple-400 (#925CF7), hover:text-purple-600 (#6C2EDF); text-purple-600 shares its hex with brand-hover (a hover fill role)
+            // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5), text-neutral-600 (#525252), hover:border-purple-400 (#925CF7); no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
             className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50"
           >
             {p.label}

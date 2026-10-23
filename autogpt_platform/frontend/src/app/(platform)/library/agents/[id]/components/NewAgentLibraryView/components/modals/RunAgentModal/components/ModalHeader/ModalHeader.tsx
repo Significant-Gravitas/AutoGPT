@@ -63,7 +63,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
             className="mt-4 flex flex-col gap-4 rounded-medium border border-purple-100 bg-[#f1ebfe80] p-4"
           >
             <Text
-              // TODO(tokens): no role for this use of text-purple-600 (#6C2EDF); text-purple-600 shares its hex with brand-hover (a hover fill role)
+              // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
               variant="lead-semibold"
               className="text-purple-600"
             >

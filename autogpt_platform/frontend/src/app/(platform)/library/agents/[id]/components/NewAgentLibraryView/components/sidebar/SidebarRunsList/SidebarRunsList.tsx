@@ -127,10 +127,7 @@ export function SidebarRunsList({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="relative overflow-hidden">
-        <div
-          // TODO(tokens): no role for this use of from-[#FAFAFA]; from-[#FAFAFA] shares its hex with background (a shadcn role that turns dark under .dark)
-          className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-[#FAFAFA] to-transparent"
-        />
+        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-background to-transparent" />
         <div className="scrollbar-hide overflow-x-auto">
           <TabsLineList
             className={cn(AGENT_LIBRARY_SECTION_PADDING_X, "min-w-max")}

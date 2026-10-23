@@ -40,7 +40,7 @@ export function ViewToggle({ value, onChange }: Props) {
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              // TODO(tokens): no role for this use of focus-visible:ring-zinc-400 (#ADADB3); ring-zinc-400 shares its hex with foreground-subtle (a text role)
+              // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
               "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
               active
                 ? "bg-surface-hover text-foreground-strong"
