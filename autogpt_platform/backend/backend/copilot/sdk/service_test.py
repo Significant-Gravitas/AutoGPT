@@ -2,8 +2,11 @@
 
 import asyncio
 import base64
+import json
+import logging
 import os
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,17 +16,26 @@ from claude_agent_sdk import ResultMessage
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.graphiti.context_marker import (
+    INJECTED_MEMORY_MARKER,
+    INJECTED_MEMORY_NONCE,
+    append_injected_memory_block,
+    mark_injected_memory_block,
+)
+from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
+from .compaction import CompactionStats, CompactionTracker
 from .cost_tracking import TokenUsage
+from .response_adapter import SDKResponseAdapter
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
-    _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
+    _append_warm_context,
     _build_system_prompt_value,
     _close_codex_gateway_for_finally,
     _hidden_short_names_for_permissions,
@@ -35,11 +47,17 @@ from .service import (
     _raise_deferred_codex_cleanup_error,
     _record_result_usage,
     _redact_cli_stderr,
-    _resolve_dynamic_max_budget_usd,
+    _resend_with_fresh_warm_context,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
+    _RetryState,
+    _run_stream_attempt,
     _safe_close_sdk_client,
+    _start_follow_up_warm_context,
+    _StreamContext,
+    _strip_ephemeral_memory_from_cli_jsonl,
     _strip_synthetic_reprompt_from_cli_jsonl,
+    _TokenUsage,
 )
 
 
@@ -302,7 +320,8 @@ class TestPromptSupplement:
         assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
         # Keep the high-value workflow rules that are NOT in any tool schema.
         assert "@@agptfile:" in SHARED_TOOL_NOTES
-        assert "find_capability` is MANDATORY" in SHARED_TOOL_NOTES
+        assert "Search it; don't rely on what you remember." in SHARED_TOOL_NOTES
+        assert "start with `find_capability(" in SHARED_TOOL_NOTES
         assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
@@ -1475,6 +1494,31 @@ class TestStripSyntheticReprompt:
         )
         assert result == prior_user + final_assistant
 
+    def test_what_pointed_at_a_dropped_line_points_past_it(self):
+        """The CLI links each entry to the one before it; an entry whose
+        parent or leaf was dropped points at the nearest kept ancestor
+        instead, so --resume still reaches the earlier turns and the answer
+        (the chain CLI 2.1.284 writes for a re-prompted turn)."""
+        entries = [
+            {"type": "user", "uuid": "u1", "parentUuid": None, "message": {"role": "user", "content": "hi"}},
+            {"type": "assistant", "uuid": "a2", "parentUuid": "u1", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "hmm"}]}},
+            {"type": "user", "uuid": "u3", "parentUuid": "a2", "message": {"role": "user", "content": [{"type": "text", "text": _THINKING_ONLY_REPROMPT}]}},
+            {"type": "attachment", "uuid": "k4", "parentUuid": "u3", "attachment": {"type": "date"}},
+            {"type": "last-prompt", "leafUuid": "u3"},
+            {"type": "assistant", "uuid": "a5", "parentUuid": "k4", "message": {"role": "assistant", "content": [{"type": "text", "text": "Here you go."}]}},
+        ]  # fmt: skip
+        content = b"".join(json.dumps(entry).encode() + b"\n" for entry in entries)
+
+        result = [
+            json.loads(line)
+            for line in _strip_synthetic_reprompt_from_cli_jsonl(content).splitlines()
+        ]
+
+        assert [entry.get("uuid") for entry in result] == ["u1", "k4", None, "a5"]
+        assert result[1]["parentUuid"] == "u1"
+        assert result[2]["leafUuid"] == "u1"
+        assert result[3]["parentUuid"] == "k4"
+
 
 class TestConsumeSdkUntilDone:
     """Integration coverage for the extracted SDK consume loop.
@@ -1912,128 +1956,6 @@ class TestConsumeSdkUntilDone:
         assert loop_state.consecutive_empty_tool_calls >= 0
 
 
-class TestResolveDynamicMaxBudgetUsd:
-    """The per-query SDK budget is sized to the smaller of the static
-    config cap and the user's *actual* remaining USD spend, so the
-    CLI's "wrap up gracefully" reminder fires on real headroom."""
-
-    @pytest.mark.asyncio
-    async def test_returns_static_cap_without_user_id(self):
-        with patch(
-            "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-            7.5,
-        ):
-            result = await _resolve_dynamic_max_budget_usd(None)
-        assert result == 7.5
-
-    @pytest.mark.asyncio
-    async def test_returns_static_cap_when_unlimited(self):
-        # When tier limits are 0/0 we treat as unlimited and fall back to the
-        # static config cap (the per-query soft ceiling still applies).
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(0, 0, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=float("inf")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 10.0
-
-    @pytest.mark.asyncio
-    async def test_uses_remaining_when_smaller_than_static(self):
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 50_000_000, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=2.5),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 2.5
-
-    @pytest.mark.asyncio
-    async def test_clamps_to_floor_when_remaining_is_below(self):
-        # A near-capped user still gets enough headroom to dispatch the
-        # turn (and surface the wrap-up reminder) instead of being
-        # blocked at the SDK level.
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=0.05),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == _MAX_BUDGET_USD_FLOOR
-
-    @pytest.mark.asyncio
-    async def test_static_cap_wins_when_smaller_than_remaining(self):
-        # User has plenty of headroom — the per-query soft ceiling still
-        # applies so a single chat cannot blow the entire daily budget.
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(100_000_000, 0, "PRO")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=80.0),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 10.0
-
-    @pytest.mark.asyncio
-    async def test_redis_brownout_falls_back_to_static_cap(self):
-        """Redis brown-out → ``get_remaining_usd_budget`` returns the
-        ``floor_usd`` we passed.  The resolver passes ``-1.0`` as a
-        sentinel and falls back to the static cap when it sees that —
-        otherwise every turn during a Redis outage would shrink to the
-        $0.50 floor instead of the configured per-query cap."""
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 50_000_000, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=-1.0),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 10.0
-
-
 class TestStreamEndedWithoutResultMessage:
     """When the SDK CLI hangs up without a ResultMessage (per-query budget
     exhausted, max_turns hit, OOM, crash) the post-stream branch must
@@ -2262,6 +2184,141 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in ctx.session.messages]
         assert STREAM_ERROR_MARKER not in contents, contents
 
+    @pytest.mark.asyncio
+    async def test_a_hangup_while_landing_pauses_instead_of_the_notice(self):
+        """Once the governor is refusing tools, a CLI hangup ended the landing:
+        the turn pauses (no checkpoint claimed) rather than showing the
+        incomplete-turn notice, and a paused turn never auto-continues."""
+        from backend.copilot.constants import STREAM_INCOMPLETE_MARKER
+        from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.sdk.governor import TurnGovernor
+        from backend.copilot.sdk.service import _run_stream_attempt
+        from backend.copilot.turn_budget import TurnBudget
+        from backend.copilot.turn_pause import pause_of
+
+        ctx = self._ctx()
+        state = self._state()
+        governor = TurnGovernor(
+            budget=TurnBudget(usd=0.0, limiting="weekly"), step_checkin=450
+        )
+        assert governor.refusal() is not None
+        state.governor = governor
+        state.adapter.governor = governor
+
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=empty_iter),
+        ):
+            events = [ev async for ev in _run_stream_attempt(ctx, state)]
+
+        paused = [e for e in events if isinstance(e, StreamTurnPaused)]
+        assert len(paused) == 1
+        assert paused[0].pause["reason"] == "weekly"
+        assert paused[0].pause["checkpoint_saved"] is False
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_INCOMPLETE_MARKER not in contents, contents
+        assert pause_of(ctx.session.messages[-1]) is not None
+        assert governor.landed is True
+
+
+class TestCliBoundUserText:
+    """A message such as "/compact" reaches the CLI with a leading space, so
+    the CLI sends it to the model instead of answering it as a command, while
+    the transcript keeps what the user typed."""
+
+    def _ctx_and_state(self, image_blocks: list[dict]):
+        now = datetime.now(UTC)
+        session = ChatSession(
+            session_id="s1",
+            user_id="u-1",
+            usage=[],
+            started_at=now,
+            updated_at=now,
+            messages=[],
+        )
+        ctx = _StreamContext(
+            session=session,
+            session_id="s1",
+            log_prefix="[SDK] [s1]",
+            sdk_cwd="/tmp/test",
+            current_message="/compact",
+            file_ids=None,
+            message_id="m-1",
+            attachments=MagicMock(image_blocks=image_blocks),
+            compaction=CompactionTracker(),
+            lock=MagicMock(refresh=AsyncMock()),
+        )
+        state = _RetryState(
+            options=MagicMock(resume=None, session_id="s1"),
+            query_message="/compact",
+            compaction_stats=None,
+            use_resume=True,
+            resume_file="s1",
+            transcript_msg_count=0,
+            adapter=SDKResponseAdapter(message_id="m-1", session_id="s1"),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+        )
+        return ctx, state
+
+    async def _send(self, image_blocks: list[dict]):
+        async def no_messages(_client, wake=None, tool_display_wake=None):
+            for message in ():
+                yield message
+
+        ctx, state = self._ctx_and_state(image_blocks)
+        client = MagicMock(query=AsyncMock(), _transport=MagicMock(write=AsyncMock()))
+        sdk_client = MagicMock(
+            __aenter__=AsyncMock(return_value=client),
+            __aexit__=AsyncMock(return_value=False),
+        )
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=no_messages),
+        ):
+            async for _ in _run_stream_attempt(ctx, state):
+                pass
+        return client, state.transcript_builder
+
+    @pytest.mark.asyncio
+    async def test_text_turn(self):
+        client, transcript = await self._send(image_blocks=[])
+
+        client.query.assert_awaited_once_with(" /compact", session_id="s1")
+        transcript.append_user.assert_called_once_with(content="/compact")
+
+    @pytest.mark.asyncio
+    async def test_turn_with_images(self):
+        image = {"type": "image", "source": {"type": "base64", "data": "x"}}
+        client, transcript = await self._send(image_blocks=[image])
+
+        line = json.loads(client._transport.write.await_args.args[0])
+        assert line["message"]["content"] == [
+            image,
+            {"type": "text", "text": " /compact"},
+        ]
+        # The SDK's verbatim_prompts mark only reaches lines it writes itself.
+        assert line["client_composed"] is True
+        transcript.append_user.assert_called_once_with(
+            content=[image, {"type": "text", "text": "/compact"}]
+        )
+
 
 class TestHiddenShortNamesForPermissions:
     """``_hidden_short_names_for_permissions`` is the pure function that
@@ -2314,3 +2371,724 @@ class TestHiddenShortNamesForPermissions:
         assert hidden == frozenset()
         # Sanity: all real tools remain visible.
         assert all_known_tool_names() - hidden == all_known_tool_names()
+
+
+# SECRT-2378: warm context must not accumulate in the CLI --resume transcript.
+class TestStripEphemeralMemoryFromCliJsonl:
+    def _user_line(self, text: str) -> bytes:
+        return (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps([{"type": "text", "text": text}]).encode()
+            + b"}}\n"
+        )
+
+    def test_strips_marked_injected_block(self):
+        # The injector stamps the sentinel; the stripper must remove exactly it.
+        block = mark_injected_memory_block(
+            "<temporal_context>\n<FACTS>\n  - stale fact\n</FACTS>\n</temporal_context>"
+        )
+        line = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+    def test_preserves_user_typed_unmarked_tags(self):
+        # A <temporal_context> tag the USER typed carries no nonce — leave it.
+        line = self._user_line(
+            "how do I use <temporal_context>? <memory_context>x</memory_context>"
+        )
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_user_block_with_forged_marker(self):
+        # A user can type the marker attribute with any value; one that is not
+        # this process's nonce leaves their text to survive the upload scrub
+        # verbatim. A pasted matching nonce is the documented limit, pinned in
+        # test_a_user_block_carrying_this_process_nonce_is_scrubbed.
+        forged = (
+            '<temporal_context data-agpt-injected="1">my own notes'
+            "</temporal_context>"
+        )
+        line = self._user_line(f"remember this\n\n{forged}")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_block_marked_with_a_foreign_nonce(self):
+        # Only THIS process's nonce is scrubbed — a stamp from anywhere else
+        # (another process, a replayed transcript) is treated as user content.
+        foreign = INJECTED_MEMORY_MARKER.replace(INJECTED_MEMORY_NONCE, "deadbeef")
+        block = f"<temporal_context {foreign}>stale</temporal_context>"
+        line = self._user_line(f"the user turn\n\n{block}")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_marks_an_open_tag_that_carries_attributes(self):
+        # The producer (_format_context) lives in another module. If it ever
+        # emits attributes or padding, an exact-string stamp would silently
+        # no-op — and an unstamped block is never scrubbed, so stale memory
+        # replays on --resume. Match the tag by name so that can't happen.
+        block = mark_injected_memory_block(
+            '<temporal_context role="memory">\n  - stale fact\n</temporal_context>'
+        )
+        assert block is not None
+        assert INJECTED_MEMORY_MARKER in block
+        assert 'role="memory"' in block, "producer attributes must survive"
+
+        line = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+    def test_unstampable_block_is_dropped_and_logged(self, caplog):
+        # Belt and braces: if the tag NAME itself ever changes, the block
+        # cannot carry the mark, so nothing could scrub it from the uploaded
+        # transcript, where it would replay a forgotten fact on every later
+        # turn. The turn goes on without it (memory must never break chat)
+        # and an operator gets a signal.
+        block = "<memory_context>x</memory_context>"
+        with caplog.at_level(logging.WARNING):
+            assert mark_injected_memory_block(block) is None
+            assert append_injected_memory_block("the query", block) == "the query"
+        assert "temporal_context" in caplog.text
+
+    def test_a_user_block_carrying_this_process_nonce_is_scrubbed(self):
+        # The nonce is not a proof of authorship: the model reads it in the
+        # prompt, and a block carrying it is removed whoever wrote it. The
+        # documented limit of the scrub (``INJECTED_MEMORY_NONCE``).
+        pasted = f"<temporal_context {INJECTED_MEMORY_MARKER}>mine</temporal_context>"
+        line = self._user_line(f"my notes\n\n{pasted}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"mine" not in result
+        assert b"my notes" in result
+
+    def test_marker_carries_a_random_nonce(self):
+        assert INJECTED_MEMORY_NONCE not in ("", "1")
+        assert len(INJECTED_MEMORY_NONCE) >= 16
+        assert INJECTED_MEMORY_MARKER == (
+            f'data-agpt-injected="{INJECTED_MEMORY_NONCE}"'
+        )
+
+    def test_untouched_entry_is_byte_identical(self):
+        # No injected block: the line must come back byte-for-byte, even with
+        # trailing whitespace that a naive .strip() would have altered.
+        line = self._user_line("hello there   ")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_user_whitespace_around_removed_block(self):
+        # When a block IS removed, the user's own leading/trailing whitespace
+        # and intentional blank-line runs must survive untouched — only the
+        # block plus the "\n\n" separator the injector added is removed.
+        user_text = "  indented\n\n\n\nkeep blanks  "
+        block = mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        # Exactly how _append_warm_context builds it: text + "\n\n" + block.
+        line = self._user_line(f"{user_text}\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        restored = json.loads(result.strip())["message"]["content"][0]["text"]
+        assert restored == user_text
+
+    def test_drops_now_empty_text_block_keeps_siblings(self):
+        block = mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        content = [
+            {"type": "text", "text": "real question"},
+            {"type": "text", "text": block},
+        ]
+        line = (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps(content).encode()
+            + b"}}\n"
+        )
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        blocks = json.loads(result.strip())["message"]["content"]
+        # The emptied injected block is dropped; the real question survives.
+        assert len(blocks) == 1
+        assert blocks[0]["text"] == "real question"
+
+    def test_message_that_is_only_injected_block_is_left_intact(self):
+        # Stripping would empty the content — Anthropic rejects that on resume,
+        # so the original line is kept verbatim rather than emitted empty.
+        block = mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        assert block is not None
+        line = self._user_line(block)
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def _user_line_str(self, text: str) -> bytes:
+        """A user entry whose ``content`` is a BARE STRING.
+
+        The CLI emits this shape as well as the list-of-blocks one, so it
+        drives ``CLIUserTextMessage`` rather than ``CLIUserBlocksMessage``.
+        """
+        return (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps(text).encode()
+            + b"}}\n"
+        )
+
+    def test_strips_the_block_from_bare_string_content(self):
+        # The string-content branch is a real CLI shape but every other test
+        # here uses list-form blocks, so this path could strand injected
+        # memory in the transcript with the whole suite green.
+        block = mark_injected_memory_block(
+            "<temporal_context>\n  - stale fact\n</temporal_context>"
+        )
+        line = self._user_line_str(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"stale fact" not in result
+        restored = json.loads(result.strip())["message"]["content"]
+        # Still a bare string, and the user's own text is byte-identical.
+        assert restored == "deploy staging now"
+
+    def test_bare_string_that_is_only_the_block_is_left_intact(self):
+        # Emptying the content is what --resume rejects, so this fails safe
+        # by keeping the line rather than emitting "".
+        block = mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        assert block is not None
+        line = self._user_line_str(block)
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_round_trips_with_the_injector(self):
+        # What _append_warm_context stamps, the stripper removes.
+        block = mark_injected_memory_block("<temporal_context>fresh</temporal_context>")
+        assert block is not None
+        line = self._user_line("the user turn\n\n" + block)
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"the user turn" in result
+
+    def test_rewrite_preserves_every_other_field(self):
+        # Rewritten lines are re-serialised through typed models, so unknown
+        # CLI fields (entry-, message- and block-level) must survive.
+        block = mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        entry = {
+            "parentUuid": "p1",
+            "type": "user",
+            "uuid": "u1",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "id": "m1",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"keep me\n\n{block}",
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {"type": "image", "source": {"data": "AAA"}},
+                ],
+            },
+        }
+        result = json.loads(
+            _strip_ephemeral_memory_from_cli_jsonl(json.dumps(entry).encode() + b"\n")
+        )
+        assert result["parentUuid"] == "p1"
+        assert result["uuid"] == "u1"
+        assert result["timestamp"] == "2026-01-01T00:00:00Z"
+        assert result["message"]["id"] == "m1"
+        blocks = result["message"]["content"]
+        assert blocks[0] == {
+            "type": "text",
+            "text": "keep me",
+            "cache_control": {"type": "ephemeral"},
+        }
+        assert blocks[1] == {"type": "image", "source": {"data": "AAA"}}
+
+    def test_preserves_non_text_blocks_and_malformed_lines(self):
+        image = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"image","source":{"data":"AAA"}}]}}\n'
+        )
+        garbage = b"not-json\n"
+        assert _strip_ephemeral_memory_from_cli_jsonl(image) == image
+        assert _strip_ephemeral_memory_from_cli_jsonl(garbage) == garbage
+        assert _strip_ephemeral_memory_from_cli_jsonl(b"") == b""
+
+    def test_warns_when_a_nonce_line_is_not_valid_json(self, caplog):
+        """The fail-safe branch: a line carries THIS process's nonce but does
+        not parse. It must survive byte-identical (never eat user text) AND
+        warn — the warning is the only signal that the transcript is growing
+        and will replay stale memory on --resume."""
+        line = b'{"type":"user","message":' + INJECTED_MEMORY_NONCE.encode() + b"\n"
+        with caplog.at_level(logging.WARNING):
+            result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert result == line
+        assert "survived the transcript scrub" in caplog.text
+
+    def test_warns_when_a_nonce_line_is_not_a_cli_user_entry(self, caplog):
+        """Same fail-safe, other arm: valid JSON carrying the nonce that does
+        not match ``CLIUserEntry`` (e.g. an assistant entry)."""
+        entry = {
+            "type": "assistant",
+            "message": {"role": "assistant", "content": INJECTED_MEMORY_MARKER},
+        }
+        line = json.dumps(entry).encode() + b"\n"
+        with caplog.at_level(logging.WARNING):
+            result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert result == line
+        assert "survived the transcript scrub" in caplog.text
+
+    def test_rewrites_only_the_marked_line_of_a_long_transcript(self):
+        """The ``marker not in line`` fast path is what keeps the scrub from
+        re-validating every prior line on every turn. Pin that the other lines
+        come back byte-identical, not merely semantically equal — a reformat
+        would rewrite the whole transcript each turn."""
+        block = mark_injected_memory_block(
+            "<temporal_context>\n  - stale fact\n</temporal_context>"
+        )
+        prior = [
+            self._user_line("first question"),
+            b'{"type":"assistant","message":{"role":"assistant","content":"answer"}}\n',
+            self._user_line("second question"),
+        ]
+        marked = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(b"".join(prior + [marked]))
+
+        assert result.startswith(b"".join(prior)), "untouched lines must be verbatim"
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+
+class TestResendWithFreshWarmContext:
+    """Every retry of the turn's query sends the query as built plus one
+    block read for that send (the generator-level cases are in
+    ``retry_scenarios_test.py``)."""
+
+    @staticmethod
+    def _state(query_message: str, base: str | None) -> _RetryState:
+        return _RetryState(
+            options=MagicMock(),
+            query_message=query_message,
+            compaction_stats=None,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=MagicMock(),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+            warm_context_base=base,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("compacted", [False, True])
+    async def test_each_retry_replaces_the_block_instead_of_stacking(self, compacted):
+        base = "  the user's words\n\n\nkept exactly  "
+        state = self._state(f"{base}\n\n<old block>", base)
+        if compacted:
+            state.compaction_stats = CompactionStats(
+                messages_before=9, messages_after=2
+            )
+        append = AsyncMock(side_effect=lambda query, **_: f"{query}\n\n<fresh>")
+
+        await _resend_with_fresh_warm_context(state, append)
+        await _resend_with_fresh_warm_context(state, append)
+
+        assert state.query_message == f"{base}\n\n<fresh>"
+        assert append.await_args is not None
+        assert append.await_args.kwargs == {"was_compacted": compacted}
+
+    @pytest.mark.asyncio
+    async def test_a_continuation_is_resent_as_it_is(self):
+        """The building-mode restart sends a continuation, not the turn's
+        query: it has no base and carries no block of its own."""
+        state = self._state("continue building", None)
+        append = AsyncMock()
+
+        await _resend_with_fresh_warm_context(state, append)
+
+        assert state.query_message == "continue building"
+        append.assert_not_awaited()
+
+
+_FIRST_BLOCK = (
+    "<temporal_context>\n<FACTS>\n"
+    "  - Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)\n"
+    "</FACTS>\n</temporal_context>"
+)
+
+
+# SECRT-2378: the per-send wiring — the branch where the bug lived.
+class TestAppendWarmContext:
+    @pytest.mark.asyncio
+    async def test_appends_on_follow_up_user_turn(self):
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert out.startswith("the query")
+        # The appended block is stamped with the strip sentinel.
+        assert out.endswith("fresh</temporal_context>")
+        assert INJECTED_MEMORY_MARKER in out
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is False
+
+    @pytest.mark.asyncio
+    async def test_forces_refresh_after_compaction(self):
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            await _append_warm_context(
+                "q",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="continue",
+                was_compacted=True,
+            )
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is True
+
+    @pytest.mark.asyncio
+    async def test_refresh_is_scoped_to_the_expert(self):
+        """The first turn injects the EXPERT's warm context; a follow-up turn
+        that refreshed from the user's personal graph would swap the memory
+        set mid-conversation."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            await _append_warm_context(
+                "q",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id="expert-1",
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["expert_id"] == "expert-1"
+
+    @pytest.mark.asyncio
+    async def test_joiner_uses_the_refresh_the_starter_began(self):
+        """The refresh is in flight BEFORE the joiner is reached, so its
+        graph round-trip overlaps the query build. Pin that the joiner
+        consumes the started refresh rather than issuing a second fetch."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            pending = _start_follow_up_warm_context(
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+            )
+            assert pending is not None
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+                pending=pending,
+            )
+
+        assert out.startswith("the query")
+        assert INJECTED_MEMORY_MARKER in out
+        mock_refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_starter_declines_turns_that_would_not_fetch(self):
+        """A declined start must not fetch — and must leave the joiner's own
+        forced path intact for the one case the starter cannot judge yet
+        (a short message that turns out to follow a compaction)."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            for override in (
+                {"current_message": "ok"},  # substance gate
+                {"has_history": False},  # first turn
+                {"is_user_message": False},  # tool result
+                {"graphiti_enabled": False},  # memory off
+                {"user_id": None},  # anonymous
+            ):
+                base = {
+                    "graphiti_enabled": True,
+                    "has_history": True,
+                    "is_user_message": True,
+                    "user_id": "u1",
+                    "expert_id": None,
+                    "current_message": "a substantive follow-up request here",
+                }
+                base.update(override)
+                assert _start_follow_up_warm_context(**base) is None
+            mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unused_pending_refresh_is_cancelled(self):
+        """A started refresh the joiner does not use (a gate that closed in
+        between) must be cancelled — a dangling task would outlive the turn
+        and write nothing anyone reads."""
+        started = asyncio.Event()
+
+        async def _never_finishes(*_args, **_kwargs):
+            started.set()
+            await asyncio.sleep(3600)
+
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new=_never_finishes,
+        ):
+            pending = _start_follow_up_warm_context(
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="a substantive follow-up request here",
+            )
+            assert pending is not None
+            await started.wait()
+            out = await _append_warm_context(
+                "q",
+                graphiti_enabled=False,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="a substantive follow-up request here",
+                was_compacted=False,
+                pending=pending,
+            )
+
+        assert out == "q"
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(pending.task, timeout=1)
+
+    @pytest.mark.asyncio
+    async def test_retry_reads_memory_again_instead_of_replaying_the_block(self):
+        """The retry path rebuilds the query and calls this again for the
+        same message, and must read memory again. The failed attempt's tool
+        calls ran before the retry without counting as streamed output, and
+        its rollback takes a ``memory_forget`` among them out of the history
+        the retry sends: replaying the first block would hand the model the
+        fact the user just had forgotten."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            side_effect=[
+                "<temporal_context>Alice works on Atlas</temporal_context>",
+                "<temporal_context>Bob leads Atlas</temporal_context>",
+            ],
+        ) as mock_refresh:
+            first = await _append_warm_context(
+                "q1",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+            second = await _append_warm_context(
+                "q2",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=True,
+            )
+
+        assert mock_refresh.await_count == 2
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is True
+        assert "Alice works on Atlas" in first
+        assert second.startswith("q2")
+        assert "Alice works on Atlas" not in second
+        assert "Bob leads Atlas" in second
+        assert INJECTED_MEMORY_MARKER in second
+
+    @pytest.mark.asyncio
+    async def test_gated_out_first_call_still_allows_a_forced_retry_fetch(self):
+        """A trivial first attempt starts no refresh at all, and the
+        post-compaction retry (force=True) must still fetch — a skipped
+        refresh must not re-break the headline case this PR fixes."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>forced</temporal_context>",
+        ) as mock_refresh:
+            await _append_warm_context(
+                "q1",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="continue",
+                was_compacted=False,
+            )
+            out = await _append_warm_context(
+                "q2",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="continue",
+                was_compacted=True,
+            )
+
+        mock_refresh.assert_awaited_once()
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is True
+        assert out.endswith("forced</temporal_context>")
+
+    @pytest.mark.asyncio
+    async def test_returns_query_unchanged_when_refresh_yields_nothing(self):
+        """Empty graph or a timed-out fetch returns None — the query must
+        come back byte-identical with no sentinel stamped, or the scrub
+        would have a marker with no block to remove."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert out == "the query"
+        assert INJECTED_MEMORY_MARKER not in out
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("first_turn_block", [None, _FIRST_BLOCK])
+    async def test_noop_on_non_user_or_disabled(self, first_turn_block):
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            for override in (
+                {"is_user_message": False},  # tool-result submission
+                {"graphiti_enabled": False},  # memory off
+                {"user_id": None},  # anonymous
+            ):
+                base = {
+                    "graphiti_enabled": True,
+                    "has_history": first_turn_block is None,
+                    "is_user_message": True,
+                    "user_id": "u1",
+                    "expert_id": None,
+                    "current_message": "a substantive follow-up request here",
+                    "was_compacted": False,
+                    "first_turn_block": first_turn_block,
+                }
+                base.update(override)
+                out = await _append_warm_context("q", **base)
+                assert out == "q"
+            mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_first_send_of_a_first_turn_carries_its_fetch_marked(self):
+        """The first turn's block, read during setup, goes into the query
+        only, stamped like a refresh's so the upload scrub removes it; it is
+        not read again."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="hi",
+                was_compacted=False,
+                first_turn_block=_FIRST_BLOCK,
+            )
+
+        mock_refresh.assert_not_awaited()
+        assert out.startswith("the query\n\n<temporal_context ")
+        assert out.count("<temporal_context") == 1
+        assert INJECTED_MEMORY_MARKER in out
+        assert "Alice works on Atlas" in out
+
+    @pytest.mark.asyncio
+    async def test_a_first_turn_with_nothing_recalled_sends_the_query_as_is(self):
+        """An empty first-turn fetch is final for that send: no block, no
+        mark and no second read."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Alice working on",
+                was_compacted=False,
+                first_turn_block="",
+            )
+
+        mock_refresh.assert_not_awaited()
+        assert out == "the query"
+
+    @pytest.mark.asyncio
+    async def test_a_first_turn_retry_reads_memory_again_whatever_the_message(self):
+        """A retry of a first turn has no block of its own any more (the
+        first one was never part of the user's message), so it reads memory
+        again, forced like the first turn's own read: a first turn recalls
+        whatever the message's length."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id="expert-1",
+                current_message="hi",
+                was_compacted=False,
+            )
+
+        mock_refresh.assert_awaited_once_with(
+            "u1", "hi", expert_id="expert-1", force=True
+        )
+        assert out.endswith("fresh</temporal_context>")
+        assert INJECTED_MEMORY_MARKER in out

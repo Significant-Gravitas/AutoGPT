@@ -1,7 +1,9 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { setAnalyticsIdentitySignedIn } from "@/services/analytics/anonymous-id";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
+import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
@@ -100,6 +102,13 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
                 hasLoadedUser: true,
                 isUserLoading: false,
               });
+            } else if (!result.hasLoadedUser) {
+              // fetchUser answered without an error that there is no session,
+              // and the fallback found none either. Only then is the visitor
+              // known to be signed out; after an error the session stays
+              // unknown, so an older account can't take the marketing site's
+              // visitor id (anonymous-id.ts).
+              setAnalyticsIdentitySignedIn(false);
             }
           }
         } else {
@@ -131,6 +140,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   async function logOut(params?: LogOutParams): Promise<void> {
     const api = params?.api ?? get().apiRef;
     const options = params?.options ?? {};
+
+    await teardownPushSubscriptionBeforeLogout();
 
     setWebSocketDisconnectIntent();
 
@@ -295,7 +306,23 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 });
 
 useAuthStore.subscribe((state, previousState) => {
+  // Signing out is reported here; the signed-out state on load once
+  // initialize() is done.
+  if (state.user) setAnalyticsIdentitySignedIn(true);
+  else if (previousState.user) setAnalyticsIdentitySignedIn(false);
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
+    clearCopilotCompletedSessions();
   }
 });
+
+// Loaded lazily: the copilot store pulls in React hooks the auth store
+// otherwise has no reason to load.
+function clearCopilotCompletedSessions() {
+  if (typeof window === "undefined") return;
+  import("@/app/(platform)/copilot/store")
+    .then(({ useCopilotUIStore }) =>
+      useCopilotUIStore.getState().clearAllCompletedSessions(),
+    )
+    .catch(() => {});
+}

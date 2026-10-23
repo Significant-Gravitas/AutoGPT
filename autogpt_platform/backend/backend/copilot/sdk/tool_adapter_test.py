@@ -10,6 +10,11 @@ from mcp.types import ListToolsRequest, ToolAnnotations
 
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.google_data_redaction import (
+    REDACTED,
+    redact_google_data,
+    remember_google_output,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
@@ -745,6 +750,10 @@ class TestSDKDisallowedTools:
 
     def test_schedule_wakeup_tool_is_disallowed(self):
         assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_workflow_tool_is_disallowed(self, use_e2b: bool):
+        assert "Workflow" in get_sdk_disallowed_tools(use_e2b=use_e2b)
 
     @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
     def test_cli_cron_tools_are_disallowed(self, tool: str):
@@ -1560,3 +1569,40 @@ class TestLateToolResultCap:
 
         assert len(direct) < len(text)
         assert cap_late_tool_result(text) == direct
+
+
+class TestCutGoogleOutputIsRemembered:
+    """A Google output too large for the model is cut here, after
+    ``BaseTool`` remembered it whole; the cut text has to be redacted too."""
+
+    @staticmethod
+    async def _cut(text: str) -> str:
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(handler, "google_cut_tool")
+        with patch(
+            "backend.copilot.sdk.tool_adapter.get_execution_context",
+            return_value=(None, None),
+        ):
+            result = await wrapper({"q": "x"})
+        cut = _text_from_mcp_result(result)
+        assert cut != text
+        return cut
+
+    @pytest.mark.asyncio
+    async def test_a_remembered_google_output(self):
+        text = "Subject: payroll " + "x" * (_MCP_MAX_CHARS + 5_000)
+        remember_google_output(text)
+
+        cut = await self._cut(text)
+
+        assert redact_google_data({"output": cut}) == {"output": REDACTED}
+
+    @pytest.mark.asyncio
+    async def test_other_output_stays_readable(self):
+        text = "a harmless page " + "y" * (_MCP_MAX_CHARS + 5_000)
+
+        cut = await self._cut(text)
+
+        assert redact_google_data({"output": cut}) == {"output": cut}

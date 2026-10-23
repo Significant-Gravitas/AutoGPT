@@ -16,7 +16,7 @@ from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
-    from backend.data.integrations import Webhook
+    from backend.data.integrations import WebhookWithoutSecrets
 
 
 class LibraryAgentStatus(str, Enum):
@@ -545,27 +545,15 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     # Read-only in responses; set server-side via the setup-trigger flow only.
     webhook_id: Optional[str] = None
-    webhook: "Webhook | None"
+    webhook: "WebhookWithoutSecrets | None"
 
     # Expert attribution, resolved server-side at creation; every run this
     # preset fires inherits it.
     expert_id: Optional[str] = None
 
-    @pydantic.field_serializer("webhook")
-    def _redact_webhook_signing_material(
-        self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
-    ):
-        # Never expose a webhook's signing secret / provider webhook id to API
-        # clients; callers only need the ingress URL and non-sensitive metadata.
-        if webhook is None:
-            return None
-        return webhook.model_dump(
-            mode=info.mode, exclude={"secret", "provider_webhook_id"}
-        )
-
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        from backend.data.integrations import Webhook
+        from backend.data.integrations import WebhookWithoutSecrets
 
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
@@ -600,7 +588,11 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             organization_id=preset.organizationId,
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
-            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            webhook=(
+                WebhookWithoutSecrets.from_db(preset.Webhook)
+                if preset.Webhook
+                else None
+            ),
             expert_id=preset.expertId,
         )
 

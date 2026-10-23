@@ -56,7 +56,7 @@ export function WorthDoingPanel({ offer, endsAt }: Props) {
               <Text variant="body-medium" className="!text-zinc-900">
                 {row.title}
               </Text>
-              <Text variant="small" unmask={false} className="!text-zinc-600">
+              <Text variant="small" className="!text-zinc-600">
                 {row.body}
               </Text>
             </div>

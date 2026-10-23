@@ -1,4 +1,9 @@
-import type { ComponentProps } from "react";
+import { useContext, type ComponentProps } from "react";
+import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
+import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
+import { SupersededDelegationsContext } from "../../../supersededDelegationsContext";
+import { ChatSessionContext } from "../components/ChatSessionContext";
 import { act } from "@testing-library/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
@@ -78,19 +83,33 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: ({
+  ChainMessageParts: function ChainMessageParts({
     parts,
     isCurrentlyStreaming,
   }: {
     parts: unknown[];
     isCurrentlyStreaming?: boolean;
-  }) => (
-    <div
-      data-testid="chain-message-parts"
-      data-parts={JSON.stringify(parts)}
-      data-streaming={String(!!isCurrentlyStreaming)}
-    />
-  ),
+  }) {
+    const answered = useContext(AnsweredQuestionsContext);
+    const pending = useContext(PendingQuestionsContext);
+    const onboarding = useContext(PendingOnboardingContext);
+    const sessionId = useContext(ChatSessionContext);
+    const superseded = useContext(SupersededDelegationsContext);
+    return (
+      <div
+        data-testid="chain-message-parts"
+        data-parts={JSON.stringify(parts)}
+        data-streaming={String(!!isCurrentlyStreaming)}
+        data-answered={JSON.stringify(
+          [...answered].map(([id, answers]) => [id, [...answers]]),
+        )}
+        data-pending={String(pending !== null)}
+        data-onboarding={onboarding ?? ""}
+        data-session={sessionId ?? ""}
+        data-superseded={JSON.stringify([...superseded])}
+      />
+    );
+  },
 }));
 
 vi.mock("../components/QueueBadge", () => ({
@@ -129,6 +148,7 @@ vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
 }));
 vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
+  useElapsedAnchor: () => ({ startedAtMs: null, frozenSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
   CopilotPendingReviews: (props: object) => (
@@ -210,6 +230,127 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     cleanup();
   });
 
+  it("shares saved answers with read-only viewers without activating question forms", () => {
+    const question = {
+      type: "tool-ask_question",
+      toolCallId: "ask-1",
+      state: "output-available",
+      input: {},
+      output: {
+        type: "agent_builder_clarification_needed",
+        questions: [{ question: "Which region?", keyword: "region" }],
+      },
+    } as Message["parts"][number];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={[
+          { id: "asked", role: "assistant", parts: [question] },
+          {
+            id: "answered",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "**Here are my answers:**\n\n> Which region?\n\nEurope\n\nPlease proceed.",
+              },
+            ],
+          },
+          {
+            id: "pending",
+            role: "assistant",
+            parts: [
+              { ...question, toolCallId: "ask-2" } as Message["parts"][number],
+              {
+                type: "tool-expert_onboarding",
+                toolCallId: "hire",
+                state: "output-available",
+                input: {},
+                output: {
+                  type: "expert_onboarding",
+                  steps: [
+                    {
+                      question: "Which outcome?",
+                      keyword: "outcome",
+                      options: [],
+                    },
+                  ],
+                },
+              } as Message["parts"][number],
+            ],
+          },
+        ]}
+      />,
+    );
+    for (const row of screen.getAllByTestId("chain-message-parts")) {
+      expect(JSON.parse(row.getAttribute("data-answered") ?? "[]")).toEqual([
+        ["ask-1", [["region", "Europe"]]],
+      ]);
+      expect(row.getAttribute("data-pending")).toBe("false");
+      expect(row.getAttribute("data-onboarding")).toBe("");
+    }
+  });
+
+  it("tells every row its chat and the hand-offs a later one superseded", () => {
+    function delegate(toolCallId: string, prompt: string) {
+      return {
+        type: "tool-delegate_to_expert",
+        toolCallId,
+        state: "output-available",
+        input: { expert_id: "exp-alex", prompt },
+        output: { status: "running", sub_session_id: "sub-1" },
+      } as Message["parts"][number];
+    }
+    const thread: Message[] = [
+      { id: "first", role: "assistant", parts: [delegate("call-1", "Draft")] },
+      { id: "again", role: "assistant", parts: [delegate("call-2", "Again")] },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} messages={thread} />);
+
+    for (const row of screen.getAllByTestId("chain-message-parts")) {
+      // A held hand-off's card looks its review up in this chat.
+      expect(row.getAttribute("data-session")).toBe("sess-123");
+      expect(JSON.parse(row.getAttribute("data-superseded") ?? "[]")).toEqual([
+        "call-1",
+      ]);
+    }
+  });
+
+  it("gives a read-only viewer the superseded hand-offs but no chat to answer in", () => {
+    const thread: Message[] = [
+      {
+        id: "first",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-delegate_to_expert",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: { expert_id: "exp-alex" },
+            output: { status: "running", sub_session_id: "sub-1" },
+          } as Message["parts"][number],
+          {
+            type: "tool-delegate_to_expert",
+            toolCallId: "call-2",
+            state: "output-available",
+            input: { expert_id: "exp-alex" },
+            output: { status: "running", sub_session_id: "sub-1" },
+          } as Message["parts"][number],
+        ],
+      },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} readOnly messages={thread} />);
+
+    const row = screen.getByTestId("chain-message-parts");
+    expect(row.getAttribute("data-session")).toBe("");
+    expect(JSON.parse(row.getAttribute("data-superseded") ?? "[]")).toEqual([
+      "call-1",
+    ]);
+  });
+
   it("renders assistant messages through the chain renderer", () => {
     render(<ChatMessagesContainer {...baseProps} messages={messages} />);
 
@@ -226,6 +367,56 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     );
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
+  it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "assistant-paused",
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Saved where I got to." },
+              {
+                type: "data-turn-paused",
+                data: { reason: "steps", steps: 450 },
+              },
+            ],
+          },
+        ]}
+        status="streaming"
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
+  it("keeps the backend's status lines out of the thinking indicator", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="submitted"
+        messages={[
+          {
+            id: "assistant-status",
+            role: "assistant",
+            parts: [
+              {
+                type: "data-status",
+                data: { message: "Restoring your session…" },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "thinking",
+    );
+    expect(screen.queryByText("Restoring your session…")).toBeNull();
   });
 
   it("keeps the thinking indicator out of a read-only transcript", () => {
@@ -390,19 +581,19 @@ describe("ChatMessagesContainer — loading", () => {
     });
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
-    expect(screen.getByText("Reconnecting to live stream...")).toBeDefined();
+    expect(screen.getByText("Reconnecting…")).toBeDefined();
     expect(
       screen.getByText("Still syncing the latest progress."),
     ).toBeDefined();
   });
 
-  it("prefers the backend status message in the restore fallback", () => {
+  it("prefers the runtime's notice in the restore fallback", () => {
     render(
       <ChatMessagesContainer
         {...baseProps}
         isLoading={false}
         isRestoringActiveSession
-        restoreStatusMessage="Analyzing result..."
+        restoreStatusMessage="Catching up…"
         messages={[
           {
             id: "user-1",
@@ -417,7 +608,7 @@ describe("ChatMessagesContainer — loading", () => {
       vi.advanceTimersByTime(6_000);
     });
 
-    expect(screen.getByText("Analyzing result...")).toBeDefined();
+    expect(screen.getByText("Catching up…")).toBeDefined();
   });
 });
 
@@ -955,6 +1146,41 @@ describe("ChatMessagesContainer — readOnly mode", () => {
           title: "Daily briefing",
         },
       ]);
+    },
+  );
+
+  it.each([false, true])(
+    "shows a scheduled chat's note to its owner alone (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "notice-1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "Skipped: daily usage limit reached" },
+              ],
+              metadata: {
+                kind: "scheduled_chat_notice",
+                reason: "no_plan",
+                headline: "Skipped: daily usage limit reached",
+                body: "“Briefing” didn't run.",
+                actions: [],
+              },
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.queryAllByTestId("scheduled-chat-notice")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(
+        screen.queryAllByText("Skipped: daily usage limit reached"),
+      ).toHaveLength(readOnly ? 0 : 1);
     },
   );
 
@@ -1502,6 +1728,168 @@ describe("ChatMessagesContainer — held call rows", () => {
     expect(screen.queryByText(/folder_created/)).toBeNull();
     expect(screen.getByText("Approval answered")).toBeDefined();
   });
+
+  it.each([
+    ["approved", "Result sent to Otto."],
+    ["rejected", "Declined; nothing was sent to Otto."],
+    ["expired", "Expired; nothing was sent to Otto."],
+    ["unknown", "Unclear; check before relying on it."],
+  ])(
+    "labels the wake by the card's recorded outcome: %s",
+    (outcome, clause) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={answeredCards([{ id: "a", outcome }])}
+        />,
+      );
+
+      expect(
+        screen.getByText(`Approval answered: Read "a.example.com". ${clause}`),
+      ).toBeDefined();
+    },
+  );
+
+  // Each cause the backend closes a call for, with the body it writes; only
+  // a read can close after an identical re-read already delivered it.
+  it.each([
+    [
+      "an action whose card is no longer open",
+      false,
+      "Nothing ran: this card is no longer open.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose details were lost",
+      false,
+      "Nothing ran: the approved action's details were lost before it could run.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose tool no longer exists",
+      false,
+      "Nothing ran: this tool no longer exists.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "a read whose card is no longer open",
+      true,
+      "Nothing ran: this card is no longer open.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+    [
+      "a read an identical re-read already received",
+      true,
+      "The user released this content and it was already delivered to you once; nothing more arrives for this call.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+  ])("labels a closed card truly: %s", (_cause, read, body, label) => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a", outcome: "closed", read, body }])}
+      />,
+    );
+
+    expect(screen.getByText(`Approval answered: ${label}`)).toBeDefined();
+  });
+
+  it("claims nothing for a result row with no recorded outcome", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a" }])}
+      />,
+    );
+
+    expect(
+      screen.getByText('Approval answered: Read "a.example.com".'),
+    ).toBeDefined();
+  });
+
+  it("gives each answer in one wake its own clause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([
+          { id: "a", outcome: "approved" },
+          { id: "b", outcome: "rejected" },
+          { id: "c", outcome: "approved" },
+        ])}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'Approval answered: Read "a.example.com", Read "c.example.com". ' +
+          'Results sent to Otto. Read "b.example.com". ' +
+          "Declined; nothing was sent to Otto.",
+      ),
+    ).toBeDefined();
+  });
+
+  interface AnsweredCard {
+    id: string;
+    outcome?: string;
+    read?: boolean;
+    body?: string;
+  }
+
+  // A turn's held cards, its wake row, and a result row per card, as the
+  // server persists them.
+  function answeredCards(cards: AnsweredCard[]): Message[] {
+    return [
+      {
+        id: "assistant-cards",
+        role: "assistant",
+        parts: cards.map(({ id, read = true }) => ({
+          type: "tool-run_capability",
+          toolCallId: `call-${id}`,
+          state: "output-available",
+          input: {},
+          output: JSON.stringify({
+            type: "approval_required",
+            review_id: reviewId(id, read),
+            ask: read ? "Read" : "Post to",
+            object: `${id}.example.com`,
+          }),
+        })),
+      } as Message,
+      {
+        id: "wake",
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      ...cards.map(({ id, outcome, read = true, body }) => ({
+        id: `result-${id}`,
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: `<held_call_result tool="run_capability">\n${body ?? (outcome === "approved" ? "page text" : "Nothing ran.")}\n</held_call_result>`,
+          },
+        ],
+        metadata: {
+          held_call: {
+            review_id: reviewId(id, read),
+            tool_name: "run_capability",
+            tool_call_id: `call-${id}`,
+            outcome,
+          },
+        },
+      })),
+    ];
+  }
+
+  function reviewId(id: string, read: boolean) {
+    return `copilot-node-gate-${read ? "read-" : ""}run_capability:${id}`;
+  }
 });
 
 describe("ChatMessagesContainer — pending reviews", () => {
@@ -1534,6 +1922,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
     pollWhileEmpty,
     refetchKey,
     expertName: null,
+    expert: null,
   });
 
   afterEach(() => {

@@ -150,7 +150,7 @@ function expertFromInput(input: unknown): string | null {
   return value && !/^[0-9a-f-]{20,}$/i.test(value) ? value : null;
 }
 
-function isHeldReadId(reviewId: string | null) {
+export function isHeldReadId(reviewId: string | null) {
   return !!reviewId?.startsWith(`${COPILOT_GATE_NODE_PREFIX}read-`);
 }
 

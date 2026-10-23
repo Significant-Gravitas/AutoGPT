@@ -14,7 +14,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { heldReview } from "../../ApprovalQueue/__tests__/fixtures";
 import { useHeldAnswersStore } from "../../ApprovalQueue/heldAnswersStore";
-import { ChatSessionContext } from "../../ChatContainer/components/ChatSessionContext";
+import { ChatSessionContext } from "../../ChatMessagesContainer/components/ChatSessionContext";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import type { HeldOutcome } from "../../ChatMessagesContainer/heldCallRows";
 import { HeldOutcomesContext } from "../../ChatMessagesContainer/HeldOutcomesContext";

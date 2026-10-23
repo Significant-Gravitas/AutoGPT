@@ -15,7 +15,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import routes
+from backend.api.features.onboarding_dump import quality, routes
 from backend.api.features.onboarding_dump.models import (
     MAX_DURATION_SECS,
     MAX_PART_BYTES,
@@ -24,6 +24,7 @@ from backend.api.features.onboarding_dump.models import (
 )
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.data.understanding import BusinessUnderstandingInput
+from backend.util.gcs_utils_test import _gcs_http_error
 
 app = fastapi.FastAPI()
 app.include_router(routes.router)
@@ -41,6 +42,12 @@ RECOMMENDED_EXPERTS_URL = "/onboarding/brain-dump/recommended-experts"
 
 RECORDING_ID = "rec-1"
 TRANSCRIPT = "I run a small bakery and I want the weekly order emails handled."
+JUDGED_UNUSABLE = quality.QualityRejection(
+    error_code=quality.INSUFFICIENT_CONTENT, reason="judge_unusable"
+)
+# Taken before the autouse fixture below replaces it, for the one test
+# that drives the real gate.
+_REAL_QUALITY_GATE = quality.check_transcript_quality
 GREETING = "Let's get those weekly order emails off your plate."
 
 
@@ -104,6 +111,12 @@ class DumpStore:
             self.statuses.append(status)
         return True
 
+    async def clear_audio_paths(self, audio_paths: list[str]) -> int:
+        if self.row is None or self.row.audioPath not in audio_paths:
+            return 0
+        self.row.audioPath = None
+        return 1
+
     async def claim_transition(
         self,
         user_id: str,
@@ -124,13 +137,18 @@ class DumpStore:
         return True
 
     async def mark_failed(
-        self, user_id: str, recording_id: str, error_code: str
+        self,
+        user_id: str,
+        recording_id: str,
+        error_code: str,
+        reason: str | None = None,
     ) -> None:
         await self.update_dump(
             user_id,
             recording_id,
             status=BrainDumpStatus.failed,
             errorCode=error_code,
+            errorReason=reason,
         )
 
     async def mark_greeting_seen(self, user_id: str) -> None:
@@ -151,22 +169,11 @@ class DumpStore:
             self.row.greetingSeen = True
 
 
-# ``require_brain_dump_flag`` runs the real ``is_feature_enabled``, which
-# consults this env override before LaunchDarkly — so the gate is driven
-# here exactly the way it is driven locally, with no mock in the path.
-FLAG_ENV_VAR = "FORCE_FLAG_ONBOARDING_BRAIN_DUMP"
-
-
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
-
-
-@pytest.fixture(autouse=True)
-def flag_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(FLAG_ENV_VAR, "true")
 
 
 @pytest.fixture(autouse=True)
@@ -187,6 +194,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
+    mocker.patch(f"{module}.clear_audio_paths", new=store.clear_audio_paths)
     return store
 
 
@@ -200,6 +208,8 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "store_audio": AsyncMock(return_value="brain-dumps/rec-1.webm"),
         "discard_parts": AsyncMock(),
         "audio_download_url": AsyncMock(return_value="https://signed.example/audio"),
+        "audio_available": AsyncMock(return_value=True),
+        "delete_audio": AsyncMock(),
     }
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
@@ -294,7 +304,10 @@ def finalize(**overrides: Any):
 
 
 def test_parts_upload_then_finalize_completes_with_full_transcript(
-    dumps: DumpStore, stt_create: AsyncMock, extraction: dict[str, AsyncMock]
+    dumps: DumpStore,
+    stt_create: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    storage_mocks: dict[str, AsyncMock],
 ):
     part = upload_part()
     assert part.status_code == 200
@@ -328,7 +341,9 @@ def test_parts_upload_then_finalize_completes_with_full_transcript(
     ]
     assert dumps.row is not None
     assert dumps.row.transcript == TRANSCRIPT
-    assert dumps.row.audioPath == "brain-dumps/rec-1.webm"
+    # Only the transcript is kept: the recording went once it was stored.
+    assert dumps.row.audioPath is None
+    storage_mocks["delete_audio"].assert_awaited_once_with("brain-dumps/rec-1.webm")
     stt_create.assert_awaited_once()
     extraction["upsert_business_understanding"].assert_awaited_once()
 
@@ -448,9 +463,11 @@ def test_quality_rejected_voice_finalize_reports_the_error_code(
 ):
     """The API state the frontend branches on: a 200 envelope with
     ``failed`` + a quality error code, distinct from a transcription
-    failure — with transcript and audio still on the row."""
+    failure — with the transcript still on the row. The recording is not:
+    it went once the transcript was stored, and a re-record starts a new
+    take from the browser."""
     upload_part()
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
 
     response = finalize()
 
@@ -462,14 +479,14 @@ def test_quality_rejected_voice_finalize_reports_the_error_code(
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "insufficient_content"
     assert dumps.row.transcript == TRANSCRIPT
-    assert dumps.row.audioPath is not None
+    assert dumps.row.audioPath is None
     extraction["upsert_business_understanding"].assert_not_awaited()
 
 
 def test_quality_rejected_typed_finalize_reports_the_error_code(
     dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
 ):
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
 
     response = finalize(input_mode="typed", text="hello hello testing")
 
@@ -477,6 +494,35 @@ def test_quality_rejected_typed_finalize_reports_the_error_code(
     body = response.json()
     assert body["status"] == BrainDumpStatus.failed
     assert body["error_code"] == "insufficient_content"
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+def test_a_judge_outage_reports_its_own_code_and_reason(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    mocker: MockerFixture,
+):
+    """Through the real gate: a judge that times out is reported as an
+    outage the frontend offers a retry for, never as "not enough", and the
+    row and the response both say what decided it."""
+    quality_gate.side_effect = _REAL_QUALITY_GATE
+    judge = MagicMock()
+    judge.chat.completions.create = AsyncMock(side_effect=TimeoutError())
+    mocker.patch.object(quality, "get_openai_client", return_value=judge)
+    upload_part()
+
+    response = finalize()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == BrainDumpStatus.failed
+    assert body["error_code"] == "quality_check_unavailable"
+    assert body["error_reason"] == "judge_timeout"
+    assert body["transcript_words"] == 13
+    assert dumps.row is not None
+    assert dumps.row.errorCode == "quality_check_unavailable"
+    assert dumps.row.errorReason == "judge_timeout"
     extraction["upsert_business_understanding"].assert_not_awaited()
 
 
@@ -511,6 +557,8 @@ def test_skipped_finalize_records_the_skip_without_a_transcript(dumps: DumpStore
         "input_mode": BrainDumpInputMode.skipped,
         "transcript_preview": None,
         "error_code": None,
+        "error_reason": None,
+        "transcript_words": None,
     }
     assert dumps.row is not None
     assert dumps.row.inputMode == BrainDumpInputMode.skipped
@@ -518,7 +566,7 @@ def test_skipped_finalize_records_the_skip_without_a_transcript(dumps: DumpStore
     assert dumps.row.transcript is None
 
 
-def test_status_and_recording_reflect_the_stored_dump(dumps: DumpStore):
+def test_a_transcribed_take_offers_no_recording(dumps: DumpStore):
     upload_part()
     finalize()
 
@@ -528,15 +576,79 @@ def test_status_and_recording_reflect_the_stored_dump(dumps: DumpStore):
         "status": BrainDumpStatus.completed,
         "input_mode": BrainDumpInputMode.voice,
         "error_code": None,
-        "has_audio": True,
+        "has_audio": False,
         # The greeting is stored in the same update that completes the
         # dump, so a completed voice dump is always greeting-ready.
         "greeting_ready": True,
     }
 
     recording = client.get(RECORDING_URL, follow_redirects=False)
+    assert recording.status_code == 404
+    assert recording.json()["detail"] == "No recording found"
+
+
+def test_a_failed_take_keeps_its_recording_downloadable(
+    dumps: DumpStore, stt_create: AsyncMock
+):
+    upload_part()
+    stt_create.side_effect = RuntimeError("provider down")
+    finalize()
+
+    status = client.get(STATUS_URL)
+    assert status.json()["status"] == BrainDumpStatus.failed
+    assert status.json()["has_audio"] is True
+
+    recording = client.get(RECORDING_URL, follow_redirects=False)
     assert recording.status_code == 307
     assert recording.headers["location"] == "https://signed.example/audio"
+
+
+def test_recording_deleted_by_retention_is_404_not_a_dead_link(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock], stt_create: AsyncMock
+):
+    upload_part()
+    stt_create.side_effect = RuntimeError("provider down")
+    finalize()
+    storage_mocks["audio_available"].return_value = False
+
+    recording = client.get(RECORDING_URL, follow_redirects=False)
+
+    assert recording.status_code == 404
+    assert recording.json()["detail"] == "Recording no longer available"
+    storage_mocks["audio_download_url"].assert_not_awaited()
+    # The status stops offering a download that can only 404.
+    assert dumps.row is not None and dumps.row.audioPath is None
+
+
+def test_recording_check_failing_at_the_bucket_is_503_without_the_path(
+    dumps: DumpStore,
+    storage_mocks: dict[str, AsyncMock],
+    stt_create: AsyncMock,
+    mocker: MockerFixture,
+    test_user_id: str,
+):
+    """A GCS outage or auth error must not become a 500 whose traceback
+    carries the object URL, and with it the user ID."""
+    upload_part()
+    stt_create.side_effect = RuntimeError("provider down")
+    finalize()
+    storage_mocks["audio_available"].side_effect = _gcs_http_error(
+        503, f"https://storage.googleapis.com/storage/v1/b/b/o/{test_user_id}%2Fa.webm"
+    )
+    warning = mocker.patch.object(routes.logger, "warning")
+
+    recording = client.get(RECORDING_URL, follow_redirects=False)
+
+    assert recording.status_code == 503
+    assert recording.json()["detail"] == (
+        "Recording temporarily unavailable, try again"
+    )
+    storage_mocks["audio_download_url"].assert_not_awaited()
+    # Still the user's recording: the row keeps pointing at it.
+    assert dumps.row is not None and dumps.row.audioPath is not None
+    logged = " ".join(str(c.args) for c in warning.call_args_list)
+    assert "ClientResponseError" in logged
+    assert test_user_id not in logged and "storage.googleapis.com" not in logged
 
 
 def test_discard_clears_the_part_buffer_of_an_unfinished_take(
@@ -590,30 +702,9 @@ def test_intro_returns_greeting_and_prompts_before_completion(dumps: DumpStore):
     assert all(p["title"] and p["prompt"] for p in body["prompts"])
 
 
-def test_recommended_experts_are_withheld_while_the_team_flag_is_off(
-    dumps: DumpStore,
-):
-    """The route is gated on the brain-dump flag, the team on its own.
-
-    A user without ``ONBOARDING_EXPERT_TEAM`` gets a final answer with no
-    team rather than a section that never resolves.
-    """
-    upload_part()
-    finalize()
-
-    response = client.get(RECOMMENDED_EXPERTS_URL)
-
-    assert response.status_code == 200
-    assert response.json() == {"ready": True, "team": None}
-
-
 def test_recommended_experts_returns_the_stored_team(
     dumps: DumpStore, mocker: MockerFixture
 ):
-    mocker.patch(
-        "backend.api.features.onboarding_dump.service.is_feature_enabled",
-        new=AsyncMock(return_value=True),
-    )
     upload_part()
     finalize()
     assert dumps.row is not None
@@ -673,39 +764,3 @@ def test_recommended_providers_returns_the_stored_picks(dumps: DumpStore):
             {"provider": "github", "reason": "You mentioned chasing issues."}
         ],
     }
-
-
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda: upload_part(),
-        lambda: finalize(),
-        lambda: client.get(STATUS_URL),
-        lambda: client.get(RECORDING_URL, follow_redirects=False),
-        lambda: client.delete(DISCARD_URL),
-        lambda: client.get(INTRO_URL),
-        lambda: client.post(INTRO_COMPLETE_URL),
-        lambda: client.get(RECOMMENDED_URL),
-        lambda: client.get(RECOMMENDED_EXPERTS_URL),
-    ],
-    ids=[
-        "parts",
-        "finalize",
-        "status",
-        "recording",
-        "discard",
-        "intro",
-        "complete",
-        "recommended-providers",
-        "recommended-experts",
-    ],
-)
-def test_every_endpoint_is_404_when_the_flag_is_off(
-    monkeypatch: pytest.MonkeyPatch, call
-):
-    monkeypatch.setenv(FLAG_ENV_VAR, "false")
-
-    response = call()
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Feature not available"

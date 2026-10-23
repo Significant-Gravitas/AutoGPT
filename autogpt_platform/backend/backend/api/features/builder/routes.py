@@ -9,6 +9,7 @@ from autogpt_libs.auth.dependencies import (
 )
 from autogpt_libs.auth.models import RequestContext
 
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination
 
@@ -146,6 +147,7 @@ async def get_providers(
 
 @router.get(
     "/search",
+    dependencies=[fastapi.Depends(enforce_payment_paywall)],
     summary="Builder search",
     tags=["store", "private"],
     response_model=builder_model.SearchResponse,

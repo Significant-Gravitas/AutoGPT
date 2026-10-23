@@ -168,7 +168,13 @@ async def test_retrying_the_same_take_keeps_what_that_take_produced(
     update = upsert.await_args.kwargs["data"]["update"]
     assert create["recommendedProviders"] == Json(None)
     assert create["recommendedExperts"] == Json(None)
-    assert set(update) == {"recordingId", "status", "inputMode", "errorCode"}
+    assert set(update) == {
+        "recordingId",
+        "status",
+        "inputMode",
+        "errorCode",
+        "errorReason",
+    }
 
 
 @pytest.mark.asyncio
@@ -239,3 +245,40 @@ async def test_a_first_take_creates_the_row(mocker: MockerFixture, upsert: Async
     await db.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
 
     upsert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_clear_audio_paths_nulls_only_the_audio_in_batches(
+    mocker: MockerFixture,
+):
+    update_many = AsyncMock(side_effect=lambda **_: 1)
+    mocker.patch.object(
+        OnboardingBrainDump,
+        "prisma",
+        MagicMock(return_value=MagicMock(update_many=update_many)),
+    )
+    paths = [
+        f"gcs://bucket/uploads/users/u{i}/x/brain-dump-r.webm" for i in range(1001)
+    ]
+
+    cleared = await db.clear_audio_paths(paths)
+
+    assert cleared == 2
+    batches = [call.kwargs for call in update_many.await_args_list]
+    assert [len(b["where"]["audioPath"]["in"]) for b in batches] == [1000, 1]
+    assert all(b["data"] == {"audioPath": None} for b in batches)
+
+
+@pytest.mark.asyncio
+async def test_clear_audio_paths_with_nothing_to_clear_skips_the_query(
+    mocker: MockerFixture,
+):
+    update_many = AsyncMock()
+    mocker.patch.object(
+        OnboardingBrainDump,
+        "prisma",
+        MagicMock(return_value=MagicMock(update_many=update_many)),
+    )
+
+    assert await db.clear_audio_paths([]) == 0
+    update_many.assert_not_awaited()

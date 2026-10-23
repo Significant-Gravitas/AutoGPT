@@ -65,6 +65,16 @@ class FieldLabel(BaseModel):
     format: str | None = None
 
 
+class WorkflowStep(BaseModel):
+    """The workflow step a card answers: its row is the step's own review."""
+
+    graph_exec_id: str
+    node_exec_id: str
+    graph_id: str
+    graph_version: int
+    name: str
+
+
 class GateReviewPayload(BaseModel):
     """What the approval card, Home and the channels render: never the raw call."""
 
@@ -91,6 +101,7 @@ class GateReviewPayload(BaseModel):
     spend: dict[str, int] | None = None
     # A held hand-off: who it goes to, the brief, and why.
     handoff: HandoffCard | None = None
+    workflow: WorkflowStep | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
@@ -135,6 +146,7 @@ def review_payload(
     turn: int = 0,
     references: list[Reference] | None = None,
     handoff: HandoffCard | None = None,
+    workflow: WorkflowStep | None = None,
 ) -> dict[str, Any]:
     """The subject is kept as decided when the card opened: what the user saw,
     not a recomputation over a tree that may have moved since."""
@@ -161,11 +173,7 @@ def review_payload(
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
         decided_by=decided_by,
-        chat_rules_allowed=(
-            ["allow", "judge"]
-            if _offers_rules(tool_name, subject, spend, reason_kind)
-            else []
-        ),
+        chat_rules_allowed=_rules_offered(tool_name, subject, spend, reason_kind),
         headline=(
             Headline(ask="Run", object=subject.name)
             if subject is not None
@@ -173,6 +181,7 @@ def review_payload(
         ),
         spend=spend,
         handoff=handoff,
+        workflow=workflow,
     ).model_dump()
 
 
@@ -314,16 +323,21 @@ def payload_headline(payload: dict[str, Any]) -> str:
     return Headline.model_validate(payload["headline"]).text
 
 
-def _offers_rules(
+def _rules_offered(
     tool_name: str,
     subject: "GateSubject | None",
     spend: dict[str, int] | None,
     reason_kind: ReasonKind,
-) -> bool:
+) -> list[Literal["allow", "judge"]]:
     # A money card or a held read rules on nothing: neither consults a rule.
     if spend is not None or reason_kind == "content":
-        return False
-    return (subject.effect if subject else effect_for(tool_name)) in PARKABLE
+        return []
+    if (subject.effect if subject else effect_for(tool_name)) not in PARKABLE:
+        return []
+    # The gate ignores a judge rule on a schedule.
+    return (
+        ["allow"] if subject is not None and subject.schedules else ["allow", "judge"]
+    )
 
 
 def _payload_subject(
@@ -372,9 +386,11 @@ def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
 
 
 def _humanize(key: str) -> str:
-    # agent_ids -> "Agents": the card shows names there, not ids.
+    # agent_ids -> "Workflows": the card shows names there, not ids, and users
+    # know a graph as a workflow.
     plural = key.endswith("_ids")
     words = key.removesuffix("_ids").removesuffix("_id").replace("_", " ").strip()
+    words = words.replace("agent", "workflow").replace("graph", "workflow")
     words += "s" if plural else ""
     return words[:1].upper() + words[1:]
 

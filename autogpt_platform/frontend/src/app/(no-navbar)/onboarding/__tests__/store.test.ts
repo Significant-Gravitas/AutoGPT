@@ -198,9 +198,7 @@ describe("useOnboardingWizardStore", () => {
 
 describe("buildStepLayout", () => {
   it("places the paywall after personalization and hiring", () => {
-    expect(
-      buildStepLayout({ hasIntro: true, hasHire: true, hasPaywall: true }),
-    ).toEqual({
+    expect(buildStepLayout({ hasPaywall: true })).toEqual({
       team: 1,
       autopilot: 2,
       role: 3,
@@ -211,23 +209,15 @@ describe("buildStepLayout", () => {
     });
   });
 
-  it("leaves the hire step out when it is off", () => {
-    expect(buildStepLayout({ hasIntro: true, hasPaywall: true })).toEqual({
+  it("closes with the connection on self-host, never beside a paywall", () => {
+    expect(buildStepLayout({ hasConnect: true })).toEqual({
       team: 1,
       autopilot: 2,
       role: 3,
       painPoints: 4,
-      subscription: 5,
-      preparing: 6,
-    });
-  });
-
-  it("closes with the connection on self-host, never beside a paywall", () => {
-    expect(buildStepLayout({ hasConnect: true })).toEqual({
-      role: 1,
-      painPoints: 2,
-      connect: 3,
-      preparing: 4,
+      hire: 5,
+      connect: 6,
+      preparing: 7,
     });
     expect(
       buildStepLayout({ hasPaywall: true, hasConnect: true }).connect,

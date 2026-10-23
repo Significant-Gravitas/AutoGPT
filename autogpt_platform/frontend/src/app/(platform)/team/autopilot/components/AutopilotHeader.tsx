@@ -8,10 +8,10 @@ import { cn } from "@/lib/utils";
 import { WorkingForPill } from "../../components/DelegationList/DelegationStatusBadge";
 import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
 import {
-  AUTOPILOT_COVER_COLOR,
   AUTOPILOT_COVER_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 
 interface Props {
   delegationsToday: number;
@@ -22,7 +22,7 @@ export function AutopilotHeader({ delegationsToday }: Props) {
     <header>
       <ExpertCover
         className="h-36"
-        color={AUTOPILOT_COVER_COLOR}
+        color={AUTOPILOT_HEX}
         art={AUTOPILOT_COVER_URL}
       />
 
@@ -30,7 +30,7 @@ export function AutopilotHeader({ delegationsToday }: Props) {
         <AutopilotAvatar
           size={96}
           transparent={false}
-          className="relative z-10 -mt-12 ml-14 rounded-full"
+          className="relative z-10 -mt-12 ml-4 rounded-full border border-[#e3e3e3]"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">

@@ -25,18 +25,23 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { parseSidebarCookie, SIDEBAR_COOKIE_NAME } from "./sidebar-cookie";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = "20rem";
 const SIDEBAR_WIDTH_MOBILE = "20rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
+interface SetOpenOptions {
+  // False for the app's own collapses and restores: only the user's choice is remembered.
+  persist?: boolean;
+}
+
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
   open: boolean;
-  setOpen: (open: boolean) => void;
+  setOpen: (open: boolean, options?: SetOpenOptions) => void;
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
@@ -64,6 +69,8 @@ const SidebarProvider = React.forwardRef<
     defaultOpen?: boolean;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    // Remember the open state in a cookie; `getPersistedSidebarOpen` reads it back.
+    persistState?: boolean;
   }
 >(
   (
@@ -71,6 +78,7 @@ const SidebarProvider = React.forwardRef<
       defaultOpen = true,
       open: openProp,
       onOpenChange: setOpenProp,
+      persistState = false,
       className,
       style,
       children,
@@ -86,7 +94,10 @@ const SidebarProvider = React.forwardRef<
     const [_open, _setOpen] = React.useState(defaultOpen);
     const open = openProp ?? _open;
     const setOpen = React.useCallback(
-      (value: boolean | ((value: boolean) => boolean)) => {
+      (
+        value: boolean | ((value: boolean) => boolean),
+        { persist = true }: SetOpenOptions = {},
+      ) => {
         const openState = typeof value === "function" ? value(open) : value;
         if (setOpenProp) {
           setOpenProp(openState);
@@ -94,10 +105,11 @@ const SidebarProvider = React.forwardRef<
           _setOpen(openState);
         }
 
-        // This sets the cookie to keep the sidebar state.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        if (persistState && persist) {
+          document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        }
       },
-      [setOpenProp, open],
+      [setOpenProp, open, persistState],
     );
 
     // Helper to toggle the sidebar.
@@ -175,6 +187,32 @@ const SidebarProvider = React.forwardRef<
 );
 SidebarProvider.displayName = "SidebarProvider";
 
+// The browser's copy of the cookie; undefined on the server.
+function getPersistedSidebarOpen(): boolean | undefined {
+  if (typeof document === "undefined") return undefined;
+  return parseSidebarCookie(
+    document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+      ?.slice(SIDEBAR_COOKIE_NAME.length + 1),
+  );
+}
+
+// next/link has already called preventDefault by the time this runs, so the
+// modifier keys are what tell a same-tab navigation apart.
+function isSameTabLinkClick(event: React.MouseEvent<HTMLElement>) {
+  if (!(event.target instanceof Element)) return false;
+  if (event.button !== 0) return false;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return false;
+  }
+  const link = event.target.closest("a[href]");
+  if (!link) return false;
+  return (
+    link.getAttribute("target") !== "_blank" && !link.hasAttribute("download")
+  );
+}
+
 const Sidebar = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
@@ -195,6 +233,10 @@ const Sidebar = React.forwardRef<
     ref,
   ) => {
     const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+
+    function handleLinkClick(event: React.MouseEvent<HTMLDivElement>) {
+      if (isSameTabLinkClick(event)) setOpenMobile(false);
+    }
 
     if (collapsible === "none") {
       return (
@@ -217,13 +259,26 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+            tabIndex={-1}
+            // The default sheet eases in over 500ms, which lags behind the
+            // tap; a drawer curve that starts fast keeps up with the finger.
+            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground outline-none [animation-timing-function:cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:duration-200 data-[state=open]:duration-300 [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
               } as React.CSSProperties
             }
             side={side}
+            // Radix focuses the first control on open, which is the search
+            // button: it shows its focus ring and tooltip. Focus the panel
+            // itself so the focus trap still holds.
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              (event.currentTarget as HTMLElement).focus();
+            }}
+            // The sheet covers the page, so a link that navigates in this
+            // tab closes it on the way.
+            onClick={handleLinkClick}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>
@@ -593,7 +648,9 @@ const SidebarMenuButton = React.forwardRef<
       />
     );
 
-    if (!tooltip) {
+    // Tooltips never show on mobile, and mounting one per chat slows every
+    // opening of the sheet.
+    if (!tooltip || isMobile) {
       return button;
     }
 
@@ -762,6 +819,7 @@ const SidebarMenuSubButton = React.forwardRef<
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton";
 
 export {
+  getPersistedSidebarOpen,
   Sidebar,
   SidebarContent,
   SidebarFooter,

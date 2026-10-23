@@ -1,3 +1,7 @@
+# Node.js for Prisma and agent-browser comes from the official image, which
+# gets Node's security releases before the NodeSource apt repository does.
+FROM node:24.22.1-trixie-slim AS node
+
 # ============================ DEPENDENCY BUILDER ============================ #
 
 FROM debian:13-slim AS builder
@@ -11,27 +15,33 @@ WORKDIR /app
 
 RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;\n' > /etc/apt/apt.conf.d/99fixbadproxy
 
-# Install Node.js repository key and setup
-RUN apt-get update --allow-releaseinfo-change --fix-missing \
-    && apt-get install -y curl ca-certificates gnupg \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
+# APT_REFRESH is part of the cache key of every RUN after it, so a new value
+# re-runs the package installs below and security fixes reach the images
+# instead of staying behind a cached layer. CI passes the UTC date, which
+# refreshes them once a day. Every stage that installs packages declares it
+# before its first install.
+ARG APT_REFRESH
 
-# Update package list and install Python, Node.js, and build dependencies
-RUN apt-get update \
+# Install Python and build dependencies
+RUN apt-get update --allow-releaseinfo-change --fix-missing \
     && apt-get install -y \
+    ca-certificates \
     python3.13 \
     python3.13-dev \
     python3.13-venv \
     python3-pip \
     build-essential \
+    git \
     libpq5 \
     libz-dev \
     libssl-dev \
     postgresql-client \
-    nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=node /usr/local/bin/node /usr/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
 
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_NO_INTERACTION=1
@@ -66,6 +76,9 @@ FROM debian:13-slim AS migrate
 WORKDIR /app/autogpt_platform/backend
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# APT_REFRESH re-runs the package install below; see the builder stage.
+ARG APT_REFRESH
 
 # Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
 # libatomic1: debian:13-slim no longer ships it, but the Prisma CLI's bundled
@@ -113,6 +126,10 @@ WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# APT_REFRESH re-runs the package installs below, Chromium included; see the
+# builder stage.
+ARG APT_REFRESH
+
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
 # for the bash_exec MCP tool (fallback when E2B is not configured).
@@ -158,6 +175,13 @@ RUN apt-get update \
     && npm install -g agent-browser@0.37.1 \
     && rm -rf /tmp/* /root/.npm
 
+# The Copilot browser reaches the network only through an egress proxy that
+# carries TCP. This policy stops WebRTC from sending UDP around it, in every
+# frame and window; the matching command-line switch is not honoured.
+RUN mkdir -p /etc/chromium/policies/managed \
+    && echo '{"WebRtcIPHandling": "disable_non_proxied_udp"}' \
+        > /etc/chromium/policies/managed/agent-browser-network.json
+
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app/autogpt_platform/backend
@@ -184,5 +208,10 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
     poetry install --no-ansi --only-root
 
 ENV PORT=8000
+
+# The commit Sentry reports as the release. Declared after every layer so a new
+# sha only changes image metadata and leaves the cached layers above intact.
+ARG SENTRY_RELEASE=""
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 
 CMD ["rest"]

@@ -81,38 +81,6 @@ def compose_briefing(
     )
 
 
-def without_summaries(content: BriefingContent) -> BriefingContent:
-    """Strip the AI-written text out of a stored briefing.
-
-    Summaries are persisted regardless of `AI_ACTIVITY_STATUS`, and the live
-    path scrubs them per-execution when the flag is off — so the persisted path
-    has to scrub them too, or the card would leak what the gate hides.
-
-    An item without a summary carries no AI text at all: its `title`/`detail`
-    already came from the non-AI fallback, and for a failure that detail is the
-    run's own error — which the live gate keeps (it drops only
-    `activity_status` and `correctness_score`). Clearing those too would
-    downgrade a real error to the generic retry line the moment home switched
-    to the persisted row.
-    """
-    return content.model_copy(
-        update={
-            # The narrative is written *from* those summaries, so it is the
-            # same AI text one paragraph up — dropping the items but keeping
-            # the lede would leak exactly what the gate hides.
-            "narrative": None,
-            "run_items": [
-                (
-                    item.model_copy(update={"summary": None, "title": "", "detail": ""})
-                    if item.summary
-                    else item
-                )
-                for item in content.run_items
-            ],
-        }
-    )
-
-
 def _briefing(
     *,
     generated_at: datetime,

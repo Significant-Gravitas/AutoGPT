@@ -4,7 +4,7 @@ import { useContext, useState } from "react";
 import { usePendingReviewsForChatSession } from "@/hooks/usePendingReviews";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
-import { ChatSessionContext } from "../ChatContainer/components/ChatSessionContext";
+import { ChatSessionContext } from "../ChatMessagesContainer/components/ChatSessionContext";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import type { CardStatus } from "../ApprovalQueue/components/ApprovalCard/ApprovalCard";
 import {

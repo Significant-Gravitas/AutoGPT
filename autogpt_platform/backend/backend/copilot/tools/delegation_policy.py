@@ -4,8 +4,9 @@ Two limits, set on Otto's Settings tab: a daily budget across every
 delegation (checked before a new hand-off starts) and a per-delegation cap
 (stored on the delegated thread, and checked whenever its status is read,
 since the tree ledger has no per-child ceiling to hand it). The settings'
-mode is the approval mode a thread Otto opens starts in, and Ask first for a
-teammate hired this week when ``new_experts_ask_first`` is on.
+mode tightens the approval mode a thread Otto opens starts in, never looser
+than what the delegating chat's gate enforces, and Ask first for a teammate
+hired this week when ``new_experts_ask_first`` is on.
 """
 
 import logging
@@ -13,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 
+from backend.api.features.experts.models import Expert
 from backend.copilot.delegation_cap import (
     CAP_OPTIONS,
     cap_question,
@@ -21,6 +23,8 @@ from backend.copilot.delegation_cap import (
 )
 from backend.copilot.delegation_settings import DelegationSettings, start_of_utc_day
 from backend.copilot.executor.utils import enqueue_cancel_task
+from backend.copilot.gate import child_autopilot_mode
+from backend.copilot.gate.policy import strictest_mode
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.data.db_accessors import delegation_db
 
@@ -41,12 +45,12 @@ _UNCHECKED = (
 class DelegationTerms(BaseModel):
     """What a new delegated thread starts with."""
 
-    mode: AutopilotMode | None
+    mode: AutopilotMode
     cap_usd: float
 
 
 async def delegation_terms(
-    user_id: str, session: ChatSession, target_id: str
+    user_id: str, session: ChatSession, target: Expert
 ) -> DelegationTerms | str:
     """The new thread's mode and cap, or why the hand-off may not start.
 
@@ -58,21 +62,35 @@ async def delegation_terms(
             user_id, start_of_utc_day()
         )
         new_hire = settings.new_experts_ask_first and await _hired_lately(
-            user_id, target_id
+            user_id, target.id
         )
     except Exception:
         logger.warning(f"Delegation budget unreadable for {user_id}", exc_info=True)
         return _UNCHECKED
     if spent >= settings.daily_budget_usd * MICRODOLLARS_PER_USD:
         return _budget_spent(spent, settings)
-    # Otto's hand-offs follow the Settings tab; an expert's keep its own mode.
-    mode = (
-        settings.mode if session.expert_id is None else session.metadata.autopilot_mode
-    )
     return DelegationTerms(
-        mode="ask_first" if new_hire else mode,
+        mode=_child_mode(session, target, settings, new_hire),
         cap_usd=settings.per_delegation_cap_usd,
     )
+
+
+def _child_mode(
+    session: ChatSession,
+    target: Expert,
+    settings: DelegationSettings,
+    new_hire: bool,
+) -> AutopilotMode:
+    """The strictest of what the delegating chat's gate enforces (tightened by
+    the expert's own default), Otto's Settings tab for Otto's hand-offs, and
+    Ask first for a new hire. Each can only tighten: a setting never lets a
+    thread run looser than the chat that opened it."""
+    modes: list[AutopilotMode] = [child_autopilot_mode(session, target.autopilot_mode)]
+    if session.expert_id is None:
+        modes.append(settings.mode)
+    if new_hire:
+        modes.append("ask_first")
+    return strictest_mode(*modes)
 
 
 async def _hired_lately(user_id: str, expert_id: str) -> bool:

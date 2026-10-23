@@ -65,11 +65,17 @@ export function isGateReview(review: PendingHumanReviewModel) {
   return review.node_exec_id.startsWith(COPILOT_GATE_NODE_PREFIX);
 }
 
+export function getReviewToolName(review: PendingHumanReviewModel) {
+  const payload = asObject(review.payload) ?? {};
+  return (
+    str(payload, "tool") ??
+    (review.node_id ?? "").replace(COPILOT_GATE_NODE_PREFIX, "")
+  );
+}
+
 export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
   const payload = asObject(review.payload) ?? {};
-  const toolName =
-    str(payload, "tool") ??
-    (review.node_id ?? "").replace(COPILOT_GATE_NODE_PREFIX, "");
+  const toolName = getReviewToolName(review);
   const subject = asObject(payload.subject) ?? {};
   const headline = asObject(payload.headline) ?? {};
   const objectKey = str(headline, "object_key");

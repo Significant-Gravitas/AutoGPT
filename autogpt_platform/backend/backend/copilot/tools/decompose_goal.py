@@ -133,7 +133,7 @@ class DecomposeGoalTool(BaseTool):
             )
 
         return TaskDecompositionResponse(
-            message=f"Here's the plan to build your agent ({len(decomposition_steps)} steps):",
+            message=f"Here's the plan to build your workflow ({len(decomposition_steps)} steps):",
             goal=goal,
             steps=decomposition_steps,
             step_count=len(decomposition_steps),

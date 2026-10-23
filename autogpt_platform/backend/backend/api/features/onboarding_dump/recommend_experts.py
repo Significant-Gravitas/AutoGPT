@@ -13,7 +13,6 @@ card are copied from the template here, so a hallucinated id can never
 become a colleague the user is invited to hire.
 """
 
-import asyncio
 import logging
 import os
 
@@ -24,17 +23,20 @@ from backend.api.features.onboarding_dump.models import (
     RaiseSuggestion,
     RecommendedExpert,
 )
-from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.structured import request_json
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
 
 # Same reasoning as the provider job: matching needs against a roster is
 # a matching task, and the onboarding loading screen waits on it.
-_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-4-5")
+_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-5.5")
 _TIMEOUT_SECONDS = 30
 
 MAX_EXPERTS = 16
+# The hire step lays a team out three across; the fallback has read nothing,
+# so it proposes one row rather than the roster.
+MAX_FALLBACK_EXPERTS = 3
 MAX_REASON_CHARS = 140
 MAX_DIAGNOSIS_CHARS = 240
 MAX_WORKFLOW_NAMES = 3
@@ -142,16 +144,15 @@ async def generate_expert_recommendations(
     # non-JSON generation is cheaper to redo than to ship around.
     for attempt in range(2):
         try:
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.2,
-                    max_tokens=1200,
-                ),
+            reply = await request_json(
+                client,
+                model=_MODEL,
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=2000,
                 timeout=_TIMEOUT_SECONDS,
             )
-            data = parse_response_json(response.choices[0].message.content or "")
+            data = reply.data
         except Exception as e:  # degrades to the fallback below
             logger.warning(
                 "Brain dump team generation failed (attempt %s): %s", attempt + 1, e
@@ -159,7 +160,10 @@ async def generate_expert_recommendations(
             continue
         if data is not None:
             break
-        logger.warning("Brain dump team: non-JSON output (attempt %s)", attempt + 1)
+        logger.warning(
+            f"Brain dump team: non-JSON output (attempt {attempt + 1}, "
+            f"{reply.describe()})"
+        )
     if data is None:
         return fallback
 
@@ -343,14 +347,7 @@ def fallback_expert_recommendations(
         for template in templates
         if template.role.strip().lower() == role
     ]
-    picked: list[Expert] = []
-    seen: set[str] = set()
-    for template in [*prioritized, *templates]:
-        if template.id not in seen:
-            picked.append(template)
-            seen.add(template.id)
-        if len(picked) == MAX_EXPERTS:
-            break
+    picked = list({t.id: t for t in prioritized}.values())[:MAX_FALLBACK_EXPERTS]
 
     picked_roles = {template.role.strip().lower() for template in picked}
     return ExpertRecommendations(

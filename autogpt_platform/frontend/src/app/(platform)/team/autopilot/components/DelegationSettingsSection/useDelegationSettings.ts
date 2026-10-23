@@ -9,17 +9,13 @@ import { okData } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { withDefaults } from "./helpers";
 
-interface Args {
-  enabled: boolean;
-}
-
 type CachedSettings = { status: number; data: unknown } | undefined;
 
-export function useDelegationSettings({ enabled }: Args) {
+export function useDelegationSettings() {
   const queryClient = useQueryClient();
   const queryKey = getGetDelegationSettingsQueryKey();
   const query = useGetDelegationSettings({
-    query: { select: (res) => okData(res) ?? null, enabled },
+    query: { select: (res) => okData(res) ?? null },
   });
   const { mutateAsync, isPending } = useUpdateDelegationSettings();
   const settings = withDefaults(query.data);

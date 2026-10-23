@@ -1,33 +1,21 @@
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { uploadFileDirect } from "@/lib/direct-upload";
-import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef } from "react";
-import {
-  pendingUploadKey,
-  useCopilotStreamStore,
-  type PendingUploadAttachment,
-  type PendingUploadSend,
-} from "./copilotStreamStore";
+import { pendingUploadKey, useCopilotStreamStore } from "./copilotStreamStore";
 import { toastSendFailure } from "./helpers/sendFailureToast";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
+  describePendingUpload,
+  hasAttachments,
+  sendWithAttachments,
+  validateAttachments,
+  type OutgoingMessage,
+} from "./helpers/sendWithAttachments";
+import {
   buildStoredAttachmentParts,
-  isFolderPart,
-  MAX_ATTACHMENTS,
-  workspaceFileDownloadUrl,
   type StoredAttachmentPart,
   type WorkspaceAttachment,
 } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
 import type { SendInput } from "./stream/turnRuntime";
-
-const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
-
-interface UploadedFile {
-  file_id: string;
-  name: string;
-  mime_type: string;
-}
 
 type SendMessageFn = (message: SendInput) => Promise<void>;
 
@@ -65,126 +53,8 @@ export function useSendMessage({
   // the same tick short-circuits.
   const isCreatingSessionRef = useRef(false);
 
-  async function uploadFiles(
-    files: File[],
-    sid: string,
-  ): Promise<UploadedFile[]> {
-    const results = await Promise.allSettled(
-      files.map(async (file) => {
-        try {
-          const data = await uploadFileDirect(file, sid);
-          if (!data.file_id) throw new Error("No file_id returned");
-          return {
-            file_id: data.file_id,
-            name: data.name || file.name,
-            mime_type: data.mime_type || "application/octet-stream",
-          } as UploadedFile;
-        } catch (err) {
-          console.error("File upload failed:", err);
-          toast({
-            title: "File upload failed",
-            description: file.name,
-            variant: "destructive",
-          });
-          throw err;
-        }
-      }),
-    );
-    return results
-      .filter(
-        (r): r is PromiseFulfilledResult<UploadedFile> =>
-          r.status === "fulfilled",
-      )
-      .map((r) => r.value);
-  }
-
-  function buildFileParts(uploaded: UploadedFile[]): FileUIPart[] {
-    return uploaded.map((f) => ({
-      type: "file" as const,
-      mediaType: f.mime_type,
-      filename: f.name,
-      url: workspaceFileDownloadUrl(f.file_id),
-    }));
-  }
-
-  async function dispatchToSession(
-    sid: string,
-    text: string,
-    files: File[],
-    prebuiltParts: StoredAttachmentPart[],
-    metadata?: ExpertKickoffMetadata,
-  ) {
-    // The per-click UUID that becomes the backend's ``ChatMessage.id``
-    // is generated inside the transport's ``prepareSendMessagesRequest``
-    // (one call per ``sendMessages``, stable across SDK-internal
-    // retries) — NOT here.  AI SDK's ``messageId`` arg means
-    // "replace-existing-message" (edit mode), not "id of a new
-    // message", so passing it would put the SDK into edit-mode with no
-    // target and break the optimistic-render path that pushes the user
-    // bubble into ``messages`` synchronously.
-    if (files.length === 0) {
-      await sendMessage(messageInput(text, prebuiltParts, metadata));
-      return;
-    }
-    // The bubble shows right away; the transcript reads "Uploading N files…"
-    // until the uploads land and the real message takes the placeholder's
-    // spot. The slot is re-set here (not only in onSend) because this is the
-    // one path every send with files goes through, including the flush after
-    // session creation.
-    const pending = describePendingUpload(text, files, prebuiltParts);
-    useCopilotStreamStore.getState().setPendingUploadSend(sid, pending);
-    let send: Promise<void> | undefined;
-    try {
-      const uploaded = await uploadFiles(files, sid);
-      if (uploaded.length === 0) {
-        toast({
-          title: "File upload failed",
-          description: "Could not upload any files. Please try again.",
-          variant: "destructive",
-        });
-        // The workspace references didn't fail to upload (they need no upload),
-        // so don't discard them just because the local uploads failed.
-        if (prebuiltParts.length === 0) {
-          throw new Error("All file uploads failed");
-        }
-        send = sendMessage(messageInput(text, prebuiltParts, metadata));
-      } else {
-        // Merge already-stored workspace parts with the freshly uploaded ones so
-        // a single message can mix both kinds of attachment.
-        const allParts = [...prebuiltParts, ...buildFileParts(uploaded)];
-        send = sendMessage(messageInput(text, allParts, metadata));
-      }
-    } finally {
-      // `sendMessage` pushes the user bubble into `messages` synchronously,
-      // so the placeholder can go in the same tick with no gap between the
-      // two. Its promise only settles when the whole stream ends, which is
-      // why the cleanup happens here and not after the await below.
-      useCopilotStreamStore.getState().clearPendingUploadSend(sid, pending);
-    }
-    await send;
-  }
-
-  function messageInput(
-    text: string,
-    parts: StoredAttachmentPart[],
-    metadata?: ExpertKickoffMetadata,
-  ) {
-    // `{ text, files }` only accepts FileUIParts, so a message carrying a
-    // folder is built from its parts instead.
-    if (!parts.some(isFolderPart)) {
-      return {
-        text,
-        files: parts.length > 0 ? (parts as FileUIPart[]) : undefined,
-        metadata,
-      };
-    }
-    return {
-      parts: [
-        ...parts,
-        ...(text ? [{ type: "text" as const, text }] : []),
-      ] as UIMessage["parts"],
-      metadata,
-    };
+  function dispatchToSession(sid: string, message: OutgoingMessage) {
+    return sendWithAttachments({ sessionId: sid, message, sendMessage });
   }
 
   // Hold dispatchToSession in a ref so the queued-send effect can fire
@@ -205,7 +75,12 @@ export function useSendMessage({
     // dispatch failing. Recover here instead, or an all-uploads-failed first
     // send rejects with nobody listening and the user loses their message.
     void dispatchRef
-      .current(sessionId, send.text, send.files, parts, send.metadata)
+      .current(sessionId, {
+        text: send.text,
+        files: send.files,
+        parts,
+        metadata: send.metadata,
+      })
       .catch((error: unknown) => {
         recoverFailedDeferredSend(send.text, parts, error);
       });
@@ -218,53 +93,28 @@ export function useSendMessage({
     metadata?: ExpertKickoffMetadata,
   ) {
     const trimmed = message.trim();
-    const hasWorkspaceFiles = !!workspaceFiles && workspaceFiles.length > 0;
-    if (!trimmed && (!files || files.length === 0) && !hasWorkspaceFiles)
-      return;
-
+    const workspaceParts = buildStoredAttachmentParts(workspaceFiles ?? []);
+    const outgoing: OutgoingMessage = {
+      text: trimmed,
+      files: files ?? [],
+      parts: workspaceParts,
+      metadata,
+    };
+    if (!trimmed && !hasAttachments(outgoing)) return;
     // Backstop: the composer caps each attach, so the UI cannot reach this.
-    // Workspace references count too — uploaded or not, every attachment
-    // becomes one `file_ids` entry on the request the backend bounds.
-    if (
-      (files?.length ?? 0) + (workspaceFiles?.length ?? 0) >
-      MAX_ATTACHMENTS
-    ) {
-      toast({
-        title: "Too many attachments",
-        description: `You can attach up to ${MAX_ATTACHMENTS} attachments per message.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (files && files.length > 0) {
-      const oversized = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
-      if (oversized.length > 0) {
-        toast({
-          title: "File too large",
-          description: `${oversized[0].name} exceeds the 100 MB limit.`,
-          variant: "destructive",
-        });
-        return;
-      }
-    }
+    if (!validateAttachments(outgoing)) return;
 
     isUserStoppingRef.current = false;
-
-    const workspaceParts = buildStoredAttachmentParts(workspaceFiles ?? []);
 
     if (sessionId) {
       const { pendingFileParts, setPendingFileParts } =
         useCopilotStreamStore.getState();
       setPendingFileParts([]);
-      await dispatchToSession(
-        sessionId,
-        trimmed,
-        files ?? [],
-        [...pendingFileParts, ...workspaceParts],
-        metadata,
-      );
-      return;
+      await dispatchToSession(sessionId, {
+        ...outgoing,
+        parts: [...pendingFileParts, ...workspaceParts],
+      });
+      return sessionId;
     }
 
     if (isCreatingSessionRef.current) return;
@@ -272,10 +122,7 @@ export function useSendMessage({
     if (files && files.length > 0) {
       useCopilotStreamStore
         .getState()
-        .setPendingUploadSend(
-          null,
-          describePendingUpload(trimmed, files, workspaceParts),
-        );
+        .setPendingUploadSend(null, describePendingUpload(outgoing));
     }
     // Workspace parts must reach the post-creation flush, which reads them
     // from the store via `takePendingFirstSend`. Append so a pre-set part
@@ -288,7 +135,7 @@ export function useSendMessage({
       .getState()
       .setPendingFirstSend({ text: trimmed, files: files ?? [], metadata });
     try {
-      await createSession({
+      return await createSession({
         expertKickoff: metadata?.kind === "expert_kickoff",
       });
     } catch (err) {
@@ -356,27 +203,4 @@ export function recoverFailedDeferredSend(
       ? "your message is back in the composer"
       : "your files were not sent",
   });
-}
-
-function describePendingUpload(
-  text: string,
-  files: File[],
-  prebuiltParts: StoredAttachmentPart[],
-): PendingUploadSend {
-  const stored: PendingUploadAttachment[] = prebuiltParts.map((part) =>
-    isFolderPart(part)
-      ? { name: part.data.name, mediaType: "folder", isUploading: false }
-      : {
-          name: part.filename ?? "file",
-          mediaType: part.mediaType,
-          isUploading: false,
-        },
-  );
-  const local: PendingUploadAttachment[] = files.map((file) => ({
-    name: file.name,
-    mediaType: file.type || "application/octet-stream",
-    sizeBytes: file.size,
-    isUploading: true,
-  }));
-  return { text, attachments: [...stored, ...local] };
 }

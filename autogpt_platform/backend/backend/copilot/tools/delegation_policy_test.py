@@ -67,6 +67,7 @@ def delegate(monkeypatch):
     target.name = "Bea"
     target.is_archived = False
     target.schedules_paused_at = None
+    target.autopilot_mode = None
     create = AsyncMock(return_value=MagicMock(session_id="inner-1"))
     turn = AsyncMock(return_value=("running", SessionResult()))
     for name, value in {
@@ -82,13 +83,14 @@ def delegate(monkeypatch):
     return create, turn
 
 
-def _parent(expert_id: str | None) -> MagicMock:
+def _parent(expert_id: str | None, mode: str = "ask_first") -> MagicMock:
     sess = MagicMock(session_id="parent", user_id="alice", dry_run=False)
     sess.expert_id = expert_id
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.origin = "interactive"
-    sess.metadata.autopilot_mode = "ask_first"
+    sess.metadata.source_platform = None
+    sess.metadata.autopilot_mode = mode
     return sess
 
 
@@ -130,20 +132,49 @@ async def test_ottos_hand_off_runs_in_the_settings_mode_under_its_cap(
 ):
     create, _ = delegate
 
-    await _delegate(_parent(None))
+    await _delegate(_parent(None, mode="unsupervised"))
 
     kwargs = create.await_args.kwargs
-    assert kwargs["autopilot_mode"] == "unsupervised"
+    assert kwargs["inherited_autopilot_mode"] == "unsupervised"
     assert kwargs["delegation_cap_usd"] == 2.0
 
 
 @pytest.mark.asyncio
-async def test_an_experts_hand_off_keeps_the_experts_own_mode(settings_db, delegate):
+async def test_a_stricter_settings_mode_tightens_ottos_hand_off(settings_db, delegate):
+    create, _ = delegate
+    settings_db.get_delegation_settings.return_value = DelegationSettings(
+        mode="ask_first"
+    )
+
+    await _delegate(_parent(None, mode="auto"))
+
+    assert create.await_args.kwargs["inherited_autopilot_mode"] == "ask_first"
+
+
+@pytest.mark.asyncio
+async def test_the_settings_mode_cannot_loosen_the_chat_that_hands_off(
+    settings_db, delegate
+):
+    """Otto's Settings tab only tightens: a hand-off from an Ask first chat
+    stays Ask first even with Unsupervised picked there."""
     create, _ = delegate
 
-    await _delegate(_parent("expert-a"))
+    await _delegate(_parent(None, mode="ask_first"))
 
-    assert create.await_args.kwargs["autopilot_mode"] == "ask_first"
+    assert create.await_args.kwargs["inherited_autopilot_mode"] == "ask_first"
+
+
+@pytest.mark.asyncio
+async def test_an_experts_hand_off_ignores_ottos_settings_mode(settings_db, delegate):
+    """The Settings tab is Otto's: an expert's hand-off follows its own chat."""
+    create, _ = delegate
+    settings_db.get_delegation_settings.return_value = DelegationSettings(
+        mode="ask_first"
+    )
+
+    await _delegate(_parent("expert-a", mode="auto"))
+
+    assert create.await_args.kwargs["inherited_autopilot_mode"] == "auto"
 
 
 @pytest.mark.asyncio
@@ -320,8 +351,8 @@ async def test_a_newly_hired_teammate_starts_in_ask_first(
         days=hired_days_ago
     )
 
-    await _delegate(_parent(None))
+    await _delegate(_parent(None, mode="unsupervised"))
 
-    assert create.await_args.kwargs["autopilot_mode"] == expected
+    assert create.await_args.kwargs["inherited_autopilot_mode"] == expected
     # The hire date is only read while the toggle is on.
     assert settings_db.get_expert_hired_at.await_count == (1 if toggle else 0)

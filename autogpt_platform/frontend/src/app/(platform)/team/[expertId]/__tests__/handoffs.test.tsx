@@ -16,25 +16,11 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
-import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-  };
-});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -88,19 +74,24 @@ function handoff(over: Partial<DelegationSummary>): DelegationSummary {
 }
 
 function withHandoffs(delegations: DelegationSummary[]) {
+  const listed = vi.fn();
   server.use(
-    getListDelegationsMockHandler200({
-      delegations,
-      total: delegations.length,
-      summary: {
-        working: 0,
-        needs_you: 0,
-        completed: 0,
-        failed: 0,
-        spent_today_usd: 0,
-      },
+    getListDelegationsMockHandler200(() => {
+      listed();
+      return {
+        delegations,
+        total: delegations.length,
+        summary: {
+          working: 0,
+          needs_you: 0,
+          completed: 0,
+          failed: 0,
+          spent_today_usd: 0,
+        },
+      };
     }),
   );
+  return listed;
 }
 
 beforeEach(() => {
@@ -115,12 +106,8 @@ beforeEach(() => {
   );
 });
 
-async function openWork() {
-  await userEvent.click(await screen.findByRole("tab", { name: "Work" }));
-}
-
 describe("an expert's hand-offs from Otto", () => {
-  test("lists them above the runs with the week's summary", async () => {
+  test("lists them on the Overview with the week's summary", async () => {
     withHandoffs([
       handoff({}),
       handoff({
@@ -135,7 +122,6 @@ describe("an expert's hand-offs from Otto", () => {
       }),
     ]);
     render(<ExpertDetailPage />);
-    await openWork();
 
     expect((await screen.findByTestId("handoffs-summary")).textContent).toBe(
       "2 delegations this week · 1 done · 1 failed · $1.67 spent",
@@ -154,7 +140,6 @@ describe("an expert's hand-offs from Otto", () => {
     expect(within(rows[0]).getByRole("link").getAttribute("href")).toBe(
       "/copilot?sessionId=otto-chat",
     );
-    expect(screen.getByText("Alex's Work")).toBeDefined();
   });
 
   test("filters to what is in progress or failed", async () => {
@@ -167,7 +152,6 @@ describe("an expert's hand-offs from Otto", () => {
       }),
     ]);
     render(<ExpertDetailPage />);
-    await openWork();
     const filters = await screen.findByRole("group", {
       name: "Filter hand-offs",
     });
@@ -189,12 +173,16 @@ describe("an expert's hand-offs from Otto", () => {
     expect(await screen.findByText("Working for Otto")).toBeDefined();
   });
 
-  test("shows an empty state when Otto has handed nothing over", async () => {
-    withHandoffs([]);
+  test("leaves the Overview as it was when Otto has handed nothing over", async () => {
+    const listed = withHandoffs([]);
     render(<ExpertDetailPage />);
-    await openWork();
 
-    expect(await screen.findByText(/Nothing handed to Alex yet/)).toBeDefined();
+    expect(await screen.findByText("Conversations")).toBeDefined();
+    await waitFor(() => expect(listed).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("region", { name: "Hand-offs from Otto" }),
+    ).toBeNull();
+    expect(screen.queryByText(/Nothing handed to Alex yet/)).toBeNull();
     expect(screen.queryByText("Working for Otto")).toBeNull();
   });
 });

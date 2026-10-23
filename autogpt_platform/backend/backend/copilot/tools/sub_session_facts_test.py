@@ -45,6 +45,7 @@ def _parent(expert_id: str | None = None) -> MagicMock:
     sess.metadata.llm_credential_id = None
     sess.metadata.origin = "interactive"
     sess.metadata.autopilot_mode = "ask_first"
+    sess.metadata.source_platform = None
     sess.metadata.delegated_by_session_id = None
     return sess
 
@@ -91,6 +92,7 @@ class TestDelegateReportsCostAndTimes:
         target.name = "Bea"
         target.is_archived = False
         target.schedules_paused_at = None
+        target.autopilot_mode = None
         monkeypatch.setattr(
             "backend.copilot.tools.delegate_to_expert.resolve_target_expert",
             AsyncMock(return_value=target),
@@ -172,6 +174,7 @@ async def test_a_delegation_stopped_mid_wait_reads_as_cancelled(monkeypatch, cos
     target.name = "Bea"
     target.is_archived = False
     target.schedules_paused_at = None
+    target.autopilot_mode = None
     for name, value in {
         "resolve_target_expert": AsyncMock(return_value=target),
         "chain_refusal": AsyncMock(return_value=None),

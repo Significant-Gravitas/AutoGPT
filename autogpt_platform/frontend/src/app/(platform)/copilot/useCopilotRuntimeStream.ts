@@ -233,7 +233,7 @@ export function useCopilotRuntimeStream({
 
   useEffect(() => {
     if (!sessionId || !rawSessionMessages?.length) return;
-    const historical = latestProviderFailure(
+    const latest = latestProviderFailure(
       rawSessionMessages,
       sessionAuthProvider
         ? {
@@ -242,6 +242,10 @@ export function useCopilotRuntimeStream({
           }
         : null,
     );
+    // The dialog answers a spent quota, as on the live path. Reopening it for
+    // an expired login or a refused prompt would tell the user they hit a
+    // limit they never hit.
+    const historical = latest?.kind === "usage_limit" ? latest : null;
     const dismissed = dismissedProviderFailureRef.current;
     if (
       historical &&

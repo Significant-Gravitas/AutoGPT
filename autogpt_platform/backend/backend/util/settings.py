@@ -235,10 +235,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
-    enable_auth: bool = Field(
-        default=True,
-        description="If authentication is enabled or not",
-    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
@@ -407,6 +403,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    public_search_requests_per_minute: int = Field(
+        default=30,
+        ge=1,
+        description="Store search requests one signed-out client may make per minute.",
+    )
+    public_search_user_requests_per_minute: int = Field(
+        default=120,
+        ge=1,
+        description="Store search requests one signed-in account may make per minute.",
+    )
+    public_search_embeddings_per_minute: int = Field(
+        default=1000,
+        ge=0,
+        description=(
+            "New query embeddings store search may request per minute across all "
+            "clients; past it, store search ranks by text match alone."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -421,6 +435,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     websocket_server_port: int = Field(
         default=8001,
         description="The port for the websocket server to run on",
+    )
+
+    websocket_server_metrics_port: int = Field(
+        default=8014,
+        description="The port the websocket server serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public websocket port, so a "
+        "client of the server can't read them.",
     )
 
     execution_manager_port: int = Field(
@@ -450,6 +471,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for database server API to run on",
     )
 
+    swap_credential_service_port: int = Field(
+        default=8012,
+        description="The port for the swap proxy's service "
+        "(backend.copilot.swap_service)",
+    )
+
     agent_api_host: str = Field(
         default="0.0.0.0",
         description="The host for agent server API to run on",
@@ -458,6 +485,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     agent_api_port: int = Field(
         default=8006,
         description="The port for agent server API to run on",
+    )
+
+    agent_api_metrics_port: int = Field(
+        default=8013,
+        description="The port the agent server API serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public API port, so a client of "
+        "the API can't read them.",
     )
 
     notification_service_port: int = Field(
@@ -668,6 +702,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "deferred. Auth emails and internal ops mail are unaffected."
         ),
     )
+    owner_email_daily_limit: int = Field(
+        default=20,
+        description=(
+            "Most emails a user's own runs may send to that user's account "
+            "address in a UTC day, through SendEmailToMeBlock."
+        ),
+    )
 
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
@@ -696,6 +737,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "Postmark message stream for Alerts, Briefings and account mail. "
             "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    # Off until the privacy policy names email tracking. Auth mail is never
+    # tracked: its links carry sign-in tokens.
+    postmark_track_opens_and_clicks: bool = Field(
+        default=False,
+        description=(
+            "Ask Postmark to track opens (a tracking pixel) and clicks (links "
+            "rewritten through Postmark) in notification emails. Postmark "
+            "reports them to the webhook, which sends email_opened and "
+            "email_clicked to PostHog. Overrides the stream's own setting."
         ),
     )
     email_asset_base_url: str = Field(
@@ -842,6 +894,44 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    auth_ip_event_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days the sign-up and sign-in IP of an account is kept for the admin "
+            "users page before the daily retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_pass_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days a finished dream pass's record is kept before the weekly "
+            "retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_demotion_protect_days: int = Field(
+        default=30,
+        ge=0,
+        le=3650,
+        description=(
+            "The dream pass's deterministic recall guard: days after a fact "
+            "was last recalled during which its demotion writes, and the "
+            "ratification sweep's supersession of an unratified proposal, "
+            "leave it alone, unless the demotion is a contradiction or the "
+            "user's own retraction. 0 turns this guard off; it does not change the "
+            "sanitize prompt's own, stricter rule against demoting recalled "
+            "facts for staleness. The default of 30 is a floor, not a tuned "
+            "value: long enough that a few weeks away never makes a relied-on "
+            "memory look unused, to be tuned from the eval driver's "
+            "demotion-damage data (0-3650 days)"
+        ),
+    )
+
     stripe_tier_reconcile_interval_hours: int = Field(
         default=6,
         ge=1,
@@ -920,10 +1010,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
+        default=FeatureFlagBackend.POSTHOG,
+        description="Which vendor answers feature flag reads: posthog "
+        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
+        "log every disagreement).",
     )
 
     @field_validator("feature_flag_backend", mode="before")
@@ -941,9 +1031,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         except ValueError:
             logger.warning(
                 f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return FeatureFlagBackend.POSTHOG
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
@@ -986,6 +1076,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
+    )
+
+    sentry_release: str = Field(
+        default="",
+        description="Git sha of the deployed build, reported to Sentry as the "
+        "release. Blank reports no release.",
+    )
+
+    sentry_environment: str = Field(
+        default="",
+        description="Environment name Sentry events are tagged with, replacing "
+        "the one computed from app_env and behave_as (a PR preview names itself "
+        "pr-<n>). Blank keeps the computed one.",
     )
 
     autopilot_bot_teams_allow_unverified: bool = Field(
@@ -1124,6 +1227,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
     encryption_key: str = Field(default="", description="Encryption key")
+
+    internal_api_key: str = Field(
+        default="",
+        description="Key every internal service sends on its RPC calls and "
+        "requires on the methods it exposes; every backend service of one "
+        "deployment must have the same value. Setup generates it along with "
+        "the other secrets. Blank derives one from ENCRYPTION_KEY, so an "
+        "install set up before it existed keeps working.",
+    )
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
     rabbitmq_default_pass: str = Field(
@@ -1332,6 +1444,26 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    slack_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the Slack app used to sign in to Slack's MCP "
+        "server (mcp.slack.com). Slack does not support dynamic client "
+        "registration, so MCP sign-in to Slack is unavailable until this is set.",
+    )
+    slack_mcp_client_secret: str = Field(
+        default="", description="Client secret of the Slack MCP sign-in app"
+    )
+    hubspot_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the HubSpot MCP auth app used to sign in to "
+        "HubSpot's MCP server (mcp.hubspot.com). HubSpot does not support "
+        "dynamic client registration, so MCP sign-in to HubSpot is unavailable "
+        "until this is set.",
+    )
+    hubspot_mcp_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot MCP auth app"
+    )
 
     todoist_client_id: str = Field(default="", description="Todoist client ID")
     todoist_client_secret: str = Field(default="", description="Todoist client secret")
