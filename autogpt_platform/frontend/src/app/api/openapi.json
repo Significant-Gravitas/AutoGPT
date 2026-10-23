@@ -38706,6 +38706,11 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Metadata"
+          },
+          "is_internal": {
+            "type": "boolean",
+            "title": "Is Internal",
+            "default": false
           }
         },
         "type": "object",
