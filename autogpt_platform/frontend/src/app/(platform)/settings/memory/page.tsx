@@ -27,14 +27,10 @@ export default function SettingsMemoryPage() {
     selectScope,
     experts,
     scopeName,
-    facts,
-    isLoadingFacts,
-    isFactsError,
-    factsError,
-    refetchFacts,
+    memories,
     memoryCount,
-    forgetFact,
-    forgettingUuid,
+    isEraseOpen,
+    setIsEraseOpen,
     eraseScope,
     isErasing,
   } = useMemoryPage();
@@ -65,19 +61,27 @@ export default function SettingsMemoryPage() {
         onViewSummary={() => void chatPanel.openWithSeed("summary")}
       />
 
-      {isFactsError ? (
+      {memories.isError ? (
         <ErrorCard
-          responseError={factsError || undefined}
+          responseError={memories.error || undefined}
           context="memory"
-          onRetry={refetchFacts}
+          onRetry={memories.refetch}
         />
       ) : (
         <RecentMemoriesCard
-          facts={facts}
-          isLoading={isLoadingFacts}
-          forgettingUuid={forgettingUuid}
-          onForget={forgetFact}
+          facts={memories.facts}
+          total={memories.total}
+          isLoading={memories.isLoading}
+          isExpanded={memories.isExpanded}
+          canShowAll={memories.canShowAll}
+          hasMore={memories.hasMore}
+          isLoadingMore={memories.isLoadingMore}
+          onShowAll={memories.showAll}
+          onShowFewer={memories.showFewer}
+          onLoadMore={memories.loadMore}
+          onForget={memories.forgetFact}
           onForgetTopic={() => void chatPanel.openWithSeed("forget")}
+          onForgetEverything={() => setIsEraseOpen(true)}
         />
       )}
 
@@ -116,6 +120,8 @@ export default function SettingsMemoryPage() {
         scopeName={scopeName}
         memoryCount={memoryCount}
         isErasing={isErasing}
+        isOpen={isEraseOpen}
+        onOpenChange={setIsEraseOpen}
         onErase={eraseScope}
       />
 
