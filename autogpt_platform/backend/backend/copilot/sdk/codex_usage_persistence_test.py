@@ -122,6 +122,7 @@ def _stub_sdk(stack, session, gateway, client):
     for name, value in (
         ("inject_user_context", None),
         ("build_session_context", ""),
+        ("first_message_expert_context", ""),
         ("build_skills_update_notice", None),
         ("capture_chat_turn", None),
         ("resolve_codex_model_route", (gateway.model, None, "env")),

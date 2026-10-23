@@ -202,6 +202,7 @@ from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
+    first_message_expert_context,
     inject_user_context,
     strip_user_context_tags,
 )
@@ -253,6 +254,7 @@ from .compaction import (
 )
 from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text, cli_user_message
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
+from .first_turn_context import FirstTurnContext
 from .governor import TurnGovernor
 from .launch_env import launch_options
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
@@ -5315,6 +5317,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Results of approved cards that ran before the turn saved them; their
     # approvals are spent, so a turn that ends first must save them itself.
     unsaved_held: list[PendingMessage] = []
+    # A first turn's context reads, started before setup (``FirstTurnContext``).
+    first_turn_context: FirstTurnContext | None = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -5392,6 +5396,26 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 return None
 
             return sandbox
+
+        # A first turn's message carries context read from other services:
+        # the per-session follow-up awareness block, so the model can answer
+        # "cancel that" / "what did I schedule" without round-tripping to
+        # ``list_schedules`` (failure-tolerant: the helper degrades to the
+        # bare session_id line on any scheduler RPC hiccup); the per-user
+        # skill index; and the expert or team block. None of it needs what
+        # setup produces, so it is read beside the setup legs below.
+        if not has_history:
+            first_turn_context = FirstTurnContext(
+                (
+                    build_session_context(session_id=session_id, user_id=user_id)
+                    if user_id
+                    else None
+                ),
+                build_skills_context(user_id, expert_id=session.expert_id),
+                first_message_expert_context(
+                    user_id, session.expert_id, session.messages
+                ),
+            )
 
         # The E2B leg runs as its own task: if a sibling leg fails first, the
         # box it may already have opened (and the expert turn it counted)
@@ -5901,7 +5925,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # without us prepending them again. Warm context is not among them:
         # no turn persists its memory block, and every send carries its own
         # (``_append_warm_context`` below).
-        if not has_history:
+        # Only a first turn (no history) started its context reads.
+        if first_turn_context is not None:
             # Build env_ctx for the working directory and pass it into
             # inject_user_context so it is prepended AFTER
             # sanitize_user_supplied_context runs — preventing the trusted
@@ -5909,30 +5934,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             env_ctx_content = ""
             if not use_e2b and sdk_cwd:
                 env_ctx_content = f"working_dir: {sdk_cwd}"
-            # Build the per-session follow-up awareness block so the model
-            # can answer "cancel that" / "what did I schedule" on the very
-            # first turn without round-tripping to ``list_schedules``.
-            # Lands in the per-turn user message (after the last cache
-            # breakpoint) so it does NOT bust the cross-session prefix
-            # cache.  Failure-tolerant — the helper degrades to the bare
-            # session_id line on any scheduler RPC hiccup.
-            session_ctx_content = ""
-            if user_id:
-                session_ctx_content = await build_session_context(
-                    session_id=session_id, user_id=user_id
-                )
-            # Build the per-user skill index so the model sees what's
-            # available without an extra round-trip.  Failures here MUST
-            # NOT block the turn — log and continue with an empty index.
-            skills_ctx_content = ""
-            try:
-                skills_ctx_content = await build_skills_context(
-                    user_id, expert_id=session.expert_id
-                )
-            except Exception:
-                logger.exception(
-                    "[skills] failed to build skills_ctx — proceeding without it"
-                )
+            # The session block lands in the per-turn user message (after
+            # the last cache breakpoint) so it does NOT bust the
+            # cross-session prefix cache. A failed skills read leaves the
+            # index empty rather than blocking the turn.
+            (
+                session_ctx_content,
+                skills_ctx_content,
+                expert_ctx_content,
+            ) = await first_turn_context.results()
             # Pass env_ctx and its siblings to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -5951,6 +5961,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 skills_ctx=skills_ctx_content,
                 user_id=user_id,
                 expert_id=session.expert_id,
+                expert_ctx=expert_ctx_content,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -6745,6 +6756,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     finally:
         turn_error = sys.exception()
         tool_display_bridge.reset()
+        if first_turn_context is not None:
+            first_turn_context.close()
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
