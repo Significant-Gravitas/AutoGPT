@@ -66,13 +66,23 @@ class WorkspaceStorageBackend(ABC):
         pass
 
     @abstractmethod
-    async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
+    async def get_download_url(
+        self,
+        storage_path: str,
+        expires_in: int = 3600,
+        *,
+        response_type: str | None = None,
+        response_disposition: str | None = None,
+    ) -> str:
         """
         Get URL for downloading the file.
 
         Args:
             storage_path: The storage path
             expires_in: URL expiration time in seconds (default 1 hour)
+            response_type: Content-Type the signed URL serves the file with
+            response_disposition: Content-Disposition the signed URL serves
+                the file with
 
         Returns:
             Download URL (signed URL for GCS, direct API path for local)

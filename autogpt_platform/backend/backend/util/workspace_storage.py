@@ -134,7 +134,14 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
                 raise
             # File already deleted, that's fine
 
-    async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
+    async def get_download_url(
+        self,
+        storage_path: str,
+        expires_in: int = 3600,
+        *,
+        response_type: str | None = None,
+        response_disposition: str | None = None,
+    ) -> str:
         """
         Generate download URL for GCS file.
 
@@ -152,7 +159,12 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         try:
             sync_client = self._get_sync_client()
             return await generate_signed_url(
-                sync_client, self.bucket_name, blob_name, expires_in
+                sync_client,
+                self.bucket_name,
+                blob_name,
+                expires_in,
+                response_type=response_type,
+                response_disposition=response_disposition,
             )
         except AttributeError as e:
             # Signed URL generation requires service account with private key.

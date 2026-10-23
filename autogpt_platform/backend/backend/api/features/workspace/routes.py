@@ -99,18 +99,25 @@ INLINE_RENDERABLE_MIME_TYPES = frozenset(
 )
 
 
-def _create_streaming_response(
-    content: bytes, file: WorkspaceFile, *, inline: bool = False
-) -> Response:
-    """Create a streaming response for file content."""
+def _content_headers(file: WorkspaceFile, *, inline: bool) -> tuple[str, str]:
+    """Return the (Content-Type, Content-Disposition) a file is served with."""
     mime_type = (file.mime_type or "").split(";")[0].strip().lower()
     renderable = mime_type in INLINE_RENDERABLE_MIME_TYPES
     disposition = _sanitize_filename_for_header(
         file.name, disposition="inline" if inline and renderable else "attachment"
     )
+    media_type = file.mime_type if renderable else "application/octet-stream"
+    return media_type, disposition
+
+
+def _create_streaming_response(
+    content: bytes, file: WorkspaceFile, *, inline: bool = False
+) -> Response:
+    """Create a streaming response for file content."""
+    media_type, disposition = _content_headers(file, inline=inline)
     return Response(
         content=content,
-        media_type=file.mime_type if renderable else "application/octet-stream",
+        media_type=media_type,
         headers={
             "Content-Disposition": disposition,
             "Content-Security-Policy": "sandbox",
@@ -171,8 +178,16 @@ async def create_file_download_response(
     storage = await get_workspace_storage()
 
     if not file.storage_path.startswith("local://"):
+        # GCS serves the object itself, so the signed URL has to carry the
+        # same content headers the streamed response would get.
+        media_type, disposition = _content_headers(file, inline=inline)
         try:
-            url = await storage.get_download_url(file.storage_path, expires_in=300)
+            url = await storage.get_download_url(
+                file.storage_path,
+                expires_in=300,
+                response_type=media_type,
+                response_disposition=disposition,
+            )
         except Exception as e:
             logger.warning(
                 f"Could not sign a download URL for file {file.id}, "

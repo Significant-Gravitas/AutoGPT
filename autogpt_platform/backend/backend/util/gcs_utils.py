@@ -190,6 +190,9 @@ async def generate_signed_url(
     bucket_name: str,
     blob_name: str,
     expires_in: int,
+    *,
+    response_type: str | None = None,
+    response_disposition: str | None = None,
 ) -> str:
     """
     Generate a signed URL for temporary access to a GCS file.
@@ -201,6 +204,9 @@ async def generate_signed_url(
         bucket_name: GCS bucket name
         blob_name: Blob path within the bucket
         expires_in: URL expiration time in seconds
+        response_type: Content-Type GCS serves the object with, overriding
+            the object metadata
+        response_disposition: Content-Disposition GCS serves the object with
 
     Returns:
         Signed URL string
@@ -212,6 +218,8 @@ async def generate_signed_url(
         version="v4",
         expiration=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
         method="GET",
+        response_type=response_type,
+        response_disposition=response_disposition,
     )
 
 

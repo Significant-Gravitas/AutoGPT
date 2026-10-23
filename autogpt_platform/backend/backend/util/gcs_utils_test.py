@@ -12,6 +12,7 @@ from backend.util.gcs_utils import (
     download_range,
     download_with_fresh_session,
     generate_iam_signed_url,
+    generate_signed_url,
     parse_gcs_path,
 )
 
@@ -99,6 +100,27 @@ async def test_generate_iam_signed_url_uses_locally_signing_credentials(mocker):
     assert blob.generate_signed_url.call_args.kwargs["credentials"] is credentials
     assert "service_account_email" not in blob.generate_signed_url.call_args.kwargs
     assert "access_token" not in blob.generate_signed_url.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_generate_signed_url_passes_response_overrides():
+    client = MagicMock()
+    blob = client.bucket.return_value.blob.return_value
+    blob.generate_signed_url.return_value = "https://signed.example/object"
+
+    result = await generate_signed_url(
+        client,
+        "bucket",
+        "object",
+        60,
+        response_type="application/octet-stream",
+        response_disposition='attachment; filename="page.html"',
+    )
+
+    assert result == "https://signed.example/object"
+    kwargs = blob.generate_signed_url.call_args.kwargs
+    assert kwargs["response_type"] == "application/octet-stream"
+    assert kwargs["response_disposition"] == 'attachment; filename="page.html"'
 
 
 @pytest.mark.asyncio

@@ -1155,6 +1155,53 @@ class TestCreateFileDownloadResponse:
         )
 
     @pytest.mark.asyncio
+    async def test_gcs_signed_url_carries_download_headers_for_markup(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = (
+            "https://storage.googleapis.com/signed-url"
+        )
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(
+            storage_path="gcs://bucket/page.html",
+            name="page.html",
+            mime_type="text/html",
+        )
+        response = await create_file_download_response(file, inline=True)
+        assert response.status_code == 302
+        kwargs = mock_storage.get_download_url.call_args.kwargs
+        assert kwargs["response_type"] == "application/octet-stream"
+        assert kwargs["response_disposition"] == 'attachment; filename="page.html"'
+
+    @pytest.mark.asyncio
+    async def test_gcs_signed_url_keeps_inline_for_renderable_types(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = (
+            "https://storage.googleapis.com/signed-url"
+        )
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(
+            storage_path="gcs://bucket/photo.png",
+            name="photo.png",
+            mime_type="image/png",
+        )
+        await create_file_download_response(file, inline=True)
+        kwargs = mock_storage.get_download_url.call_args.kwargs
+        assert kwargs["response_type"] == "image/png"
+        assert kwargs["response_disposition"] == 'inline; filename="photo.png"'
+
+    @pytest.mark.asyncio
     async def test_gcs_api_fallback_streams_directly(self, mocker):
         from backend.api.features.workspace.routes import create_file_download_response
 

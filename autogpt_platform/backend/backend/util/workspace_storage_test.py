@@ -168,3 +168,26 @@ async def test_local_store_failure_keeps_sibling_files(tmp_path, mocker):
     assert not (tmp_path / "ws" / "file").exists()
     mocker.stopall()
     assert await storage.retrieve(kept) == b"keep"
+
+
+@pytest.mark.asyncio
+async def test_gcs_download_url_forwards_response_overrides(mocker):
+    storage = GCSWorkspaceStorage(bucket_name="my-bucket")
+    mocker.patch.object(storage, "_get_sync_client", return_value=MagicMock())
+    signer = mocker.patch(
+        "backend.util.workspace_storage.generate_signed_url",
+        AsyncMock(return_value="https://signed.example/object"),
+    )
+
+    url = await storage.get_download_url(
+        "gcs://my-bucket/workspaces/ws/file/page.html",
+        expires_in=300,
+        response_type="application/octet-stream",
+        response_disposition='attachment; filename="page.html"',
+    )
+
+    assert url == "https://signed.example/object"
+    assert signer.call_args.kwargs == {
+        "response_type": "application/octet-stream",
+        "response_disposition": 'attachment; filename="page.html"',
+    }

@@ -137,7 +137,14 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
                 break
             parent = parent.parent
 
-    async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
+    async def get_download_url(
+        self,
+        storage_path: str,
+        expires_in: int = 3600,
+        *,
+        response_type: str | None = None,
+        response_disposition: str | None = None,
+    ) -> str:
         """
         Get download URL for local file.
 
