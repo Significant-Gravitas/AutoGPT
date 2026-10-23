@@ -1,6 +1,6 @@
 import type { ToolUIPart } from "ai";
 import { describe, expect, it } from "vitest";
-import { render } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { AskQuestionTool } from "../AskQuestion/AskQuestion";
 import {
@@ -27,6 +27,7 @@ function failedPart(type: string) {
 const failedTools = [
   {
     name: "AskQuestion",
+    status: "Failed to ask question",
     view: (
       <CopilotChatActionsProvider onSend={() => {}}>
         <AskQuestionTool
@@ -37,6 +38,7 @@ const failedTools = [
   },
   {
     name: "SearchFeatureRequests",
+    status: "Error searching feature requests",
     view: (
       <SearchFeatureRequestsTool
         part={failedPart("tool-search_feature_requests")}
@@ -45,6 +47,7 @@ const failedTools = [
   },
   {
     name: "CreateFeatureRequest",
+    status: "Error creating feature request",
     view: (
       <CreateFeatureRequestTool
         part={failedPart("tool-create_feature_request")}
@@ -53,18 +56,22 @@ const failedTools = [
   },
   {
     name: "FindAgents",
+    status: "Error finding workflows",
     view: <FindAgentsTool part={failedPart("tool-find_agent")} />,
   },
   {
     name: "FindBlocks",
+    status: "Search failed",
     view: <FindBlocksTool part={failedPart("tool-find_block")} />,
   },
   {
     name: "SearchDocs",
+    status: "Error searching documentation",
     view: <SearchDocsTool part={failedPart("tool-search_docs")} />,
   },
   {
     name: "ViewAgentOutput",
+    status: "Error loading workflow output",
     view: <ViewAgentOutputTool part={failedPart("tool-view_agent_output")} />,
   },
 ];
@@ -72,10 +79,11 @@ const failedTools = [
 describe("failed tool calls", () => {
   it.each(failedTools)(
     "$name shows its status in the error colour",
-    ({ view }) => {
+    ({ view, status }) => {
       const { container } = render(view);
-      const errorColoured = container.querySelectorAll(".text-error");
-      expect(errorColoured.length).toBeGreaterThan(0);
+      expect(screen.getByText(status).classList.contains("text-error")).toBe(
+        true,
+      );
       expect(container.querySelector("svg.text-error")).not.toBeNull();
     },
   );
