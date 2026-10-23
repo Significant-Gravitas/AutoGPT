@@ -58,6 +58,7 @@ const EMPTY_SNAPSHOT: RuntimeSnapshot = {
   notice: null,
   error: null,
   stopped: false,
+  awaitingContinuation: false,
 };
 
 interface Args {
@@ -288,6 +289,7 @@ export function useCopilotRuntimeStream({
     // The runtime never locks the composer: a send while it resumes is queued.
     isReconnecting: false,
     isFinishProbing: false,
+    isAwaitingContinuation: snapshot.awaitingContinuation,
     isRestoringActiveSession: notice !== null,
     restoreStatusMessage: notice ? NOTICE_TEXT[notice] : null,
     isSyncing: false,
