@@ -794,6 +794,45 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     expect(badge.getAttribute("data-session-id")).toBe("sess-123");
   });
 
+  it.each([
+    ["queued", false, true],
+    ["running", false, false],
+    ["queued", true, false],
+  ])(
+    "keeps the queue badge under a card decision note (session %s, readOnly=%s)",
+    (sessionChatStatus, readOnly, shown) => {
+      const userId = "user-decision";
+      const turnStats: TurnStatsMap = new Map([
+        [userId, { isLatestUserMessage: true, rawMessageId: "uuid-d1" }],
+      ]);
+      const messages: Message[] = [
+        {
+          id: userId,
+          role: "user" as const,
+          parts: [
+            {
+              type: "text" as const,
+              text: "Approved: hire Maya (confirmation_id: c-1).",
+              state: "done" as const,
+            },
+          ],
+        },
+      ];
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={messages}
+          turnStats={turnStats}
+          sessionChatStatus={sessionChatStatus}
+          readOnly={readOnly}
+        />,
+      );
+
+      expect(screen.getByText("You approved hiring Maya")).toBeDefined();
+      expect(screen.queryByTestId("queue-badge") !== null).toBe(shown);
+    },
+  );
+
   it.each([false, true])(
     "shows and copies only the delegated task (readOnly=%s)",
     (readOnly) => {

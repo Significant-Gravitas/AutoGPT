@@ -470,7 +470,16 @@ export function ChatMessagesContainer({
     const cardDecisions = getCardDecisions(message);
     if (cardDecisions) {
       return (
-        <CardDecisionNote messageID={message.id} decisions={cardDecisions} />
+        <CardDecisionNote
+          messageID={message.id}
+          decisions={cardDecisions}
+          sessionID={sessionID}
+          showQueueBadge={
+            !readOnly &&
+            sessionChatStatus === "queued" &&
+            !!turnStats?.get(message.id)?.isLatestUserMessage
+          }
+        />
       );
     }
 
