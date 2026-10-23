@@ -374,7 +374,7 @@ export function useBrainDumpStep() {
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     trackBrainDump("brain_dump_skipped");
-    const recordedId = recorder.recordingId ?? recoverable?.recordingId;
+    const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
     // Nothing below can change where a skip goes, so the user is not kept
@@ -385,7 +385,7 @@ export function useBrainDumpStep() {
     await skip;
   }
 
-  async function recordSkip(recordedId: string | undefined) {
+  async function recordSkip(recordedId: string | null) {
     // The recording stays in the browser, so Back offers it again until
     // onboarding finishes, and the skip is its own take on the server: under
     // the recording's id, a later send of it would read as already done.

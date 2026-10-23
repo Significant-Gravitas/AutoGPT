@@ -1171,6 +1171,26 @@ describe("useBrainDumpStep — skip", () => {
     expect((createObjectURL.mock.calls[0][0] as Blob).type).toBe("audio/mp4");
   });
 
+  // The take on offer can be one another tab is still recording.
+  it("leaves the take on offer alone when skipping from the recovery screen", async () => {
+    recorderState.findRecoverable.mockResolvedValue({
+      recordingId: "rec-other-tab",
+      mimeType: "audio/webm",
+      durationSecs: 30,
+    });
+    getParts.mockResolvedValue([part(0, "rec-other-tab")]);
+    const { result } = await renderStep();
+    await waitFor(() => expect(result.current.screen).toBe("recovery"));
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(discardBrainDump).not.toHaveBeenCalled();
+    expect(saveMeta).not.toHaveBeenCalled();
+    expect(finalizeBody()).toMatchObject({ input_mode: "skipped" });
+  });
+
   // Back from Hire is a click away while the skip's discard is still on the
   // wire. Landing after the recovered take is resent, it would drop the
   // take's buffer and close it.
