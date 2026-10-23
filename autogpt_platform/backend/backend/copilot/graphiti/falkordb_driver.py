@@ -271,7 +271,9 @@ class AutoGPTFalkorDriver(FalkorDriver):
         # runtime call upstream ``FalkorDriver.execute_query`` makes.
         params = cast(
             dict[str, object],
-            convert_datetimes_to_strings(distinct_origins(cypher_query_, dict(kwargs))),
+            convert_datetimes_to_strings(
+                distinct_origins(_strip_cypher_noise(cypher_query_), dict(kwargs))
+            ),
         )
         attempts = max(1, graphiti_config.falkordb_query_max_attempts)
         read_only = _is_read_only_cypher(cypher_query_)

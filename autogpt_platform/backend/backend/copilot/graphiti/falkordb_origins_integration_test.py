@@ -23,6 +23,31 @@ _ALICE_OWNS: Fact = ("Alice", "Cygnus", "Alice owns Cygnus")
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_literal_distinct_text_preserves_repeats_before_limit(
+    scope_graph, stub_graphiti_client
+) -> None:
+    driver, scope = scope_graph
+    await ingest_facts(driver, scope, stub_graphiti_client, [ALICE])
+
+    records, _, _ = await driver.execute_query(
+        """
+        UNWIND $bfs_origin_node_uuids AS origin
+        RETURN origin AS value, "RETURN DISTINCT" AS marker
+        LIMIT $limit
+        """,
+        bfs_origin_node_uuids=["hub", "hub", "other"],
+        limit=2,
+    )
+
+    assert [record["value"] for record in records] == ["hub", "hub"]
+    assert [record["marker"] for record in records] == [
+        "RETURN DISTINCT",
+        "RETURN DISTINCT",
+    ]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 @pytest.mark.parametrize("limit", [10, 2])
 async def test_walking_each_origin_once_returns_the_same_facts_in_order(
     scope_graph, stub_graphiti_client, mocker, limit: int
