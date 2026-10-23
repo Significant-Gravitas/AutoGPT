@@ -209,28 +209,6 @@ export const SIZE_TOKENS: TokenMapping[] = [
   { token: "text-display", replaces: ["text-[44px]", "text-[2.75rem]"] },
 ];
 
-/**
- * The Text atom's variants (atoms/Text/helpers.ts) on the size roles, for
- * DS2a to apply by hand. `label` and the rem-based heading tracking stay raw:
- * TODO(tokens): SECRT-3152.
- */
-export const TEXT_ATOM_PAIRS = [
-  ["h1", "text-[2.75rem] leading-[3.5rem]", "text-display"],
-  ["h2", "text-[2rem] leading-[2.5rem]", "text-title"],
-  ["h3", "text-[1.75rem] leading-[2.5rem]", "text-heading"],
-  ["h4", "text-[1.375rem] leading-[1.5rem]", "text-heading-sm"],
-  ["h5", "text-[1rem] leading-[1.5rem]", "text-body-lg leading-6"],
-  ["lead", "text-[1.25rem] leading-[1.75rem]", "text-lead"],
-  ["large", "text-[1rem] leading-[1.625rem]", "text-body-lg"],
-  ["body", "text-[0.875rem] leading-[1.375rem]", "text-body"],
-  ["small", "text-[0.75rem] leading-[1.125rem]", "text-caption"],
-  [
-    "eyebrow",
-    "text-[0.75rem] leading-[1rem] tracking-[0.06em]",
-    "text-caption leading-4 tracking-eyebrow",
-  ],
-] as const;
-
 /** old class -> token class. Throws if a class is claimed twice. */
 export function buildReplacementMap() {
   const map = new Map<string, string>();

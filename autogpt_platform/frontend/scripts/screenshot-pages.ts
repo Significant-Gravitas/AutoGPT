@@ -55,6 +55,7 @@ const SIGNED_IN_ROUTES = [
   "/home",
   "/copilot",
   "/team",
+  "/team/autopilot",
   "/build",
   "/settings/profile",
   "/settings/account",

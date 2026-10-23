@@ -15,11 +15,13 @@
  *
  * Text sizes are checked as class lists, because a size token bundles a
  * line-height that a raw `text-[13px]` never set: each list the codemod
- * rewrites (and each Text atom variant) is rendered under three parent
- * line-heights (1.5, 30px, normal), at 1280px and 390px wide, both as written
- * and after cn(), and font-size, line-height, letter-spacing and weight must
- * match in every case. A few cn() checks prove tailwind-merge reads the size
- * names as font sizes.
+ * rewrites is rendered inside parents at `leading-[1.5]`, `leading-[30px]`
+ * and `leading-normal`, at 1280px and 390px wide, both as written and after
+ * cn(). Every Text atom variant is compared as the base checkout's string
+ * against this checkout's, bare and through cn() with typical caller
+ * overrides, the way <Text> renders it. Font size, line-height, letter
+ * spacing, weight, family, transform and colour must match in every case.
+ * A few cn() checks prove tailwind-merge reads the size names as font sizes.
  *
  * Prints `old class | new class | resolved value` and exits 1 on any
  * difference. DS2 and DS5 tickets run this script; they do not edit it.
@@ -35,7 +37,6 @@ import {
   buildSizeMap,
   rewriteClassList,
   SIZE_TOKENS,
-  TEXT_ATOM_PAIRS,
   TOKEN_GROUPS,
 } from "./codemod-tokens";
 import { comparePngs } from "./screenshot-pages";
@@ -88,6 +89,17 @@ const UNCHANGED_NAMES = [
 // The body background, and the colour every bordered element gets from
 // `* { @apply border-border }` without a colour class of its own.
 const SPECIAL_PAIRS: Pair[] = [
+  // sidebar.tsx's `outline` variant read the deleted HSL variables.
+  {
+    group: "Sidebar",
+    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-border))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))]",
+  },
+  {
+    group: "Sidebar",
+    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
+  },
   { group: "Page", oldClass: "bg-[#F6F7F8]", newClass: "bg-canvas" },
   { group: "Page", oldClass: "border", newClass: "border" },
   { group: "Opacity", oldClass: "bg-white/50", newClass: "bg-surface/50" },
@@ -239,9 +251,9 @@ function isColorPair(pair: Pair) {
   );
 }
 
-// Class lists the codemod produces for every raw size, plus the Text atom.
-// Lists the codemod skips are not swaps, so they are not checked.
-function textPairs(): Pair[] {
+// Class lists the codemod produces for every raw size. Lists the codemod
+// skips are not swaps, so they are not checked.
+function codemodTextPairs(): Pair[] {
   const map = buildReplacementMap();
   const sizeMap = buildSizeMap();
   const samples = SIZE_TOKENS.flatMap((mapping) =>
@@ -252,19 +264,49 @@ function textPairs(): Pair[] {
       `${raw} md:leading-6`,
     ]),
   );
-  const fromCodemod = samples
+  return samples
     .map((oldClass) => ({
       group: "Font size (codemod)",
       oldClass,
       newClass: rewriteClassList(oldClass, map, sizeMap).output,
     }))
     .filter((pair) => pair.oldClass !== pair.newClass);
-  const textAtom = TEXT_ATOM_PAIRS.map(([variant, oldClass, newClass]) => ({
-    group: `Text atom \`${variant}\` (DS2a)`,
-    oldClass,
-    newClass,
-  }));
-  return [...fromCodemod, ...textAtom];
+}
+
+// What callers pass to <Text className> on top of a variant.
+const TEXT_OVERRIDES = [
+  "text-sm",
+  "text-[13px]",
+  "leading-6",
+  "tracking-tight",
+  "font-normal",
+  "text-zinc-500",
+];
+
+// Every Text variant, base string against head string, merged with cn() as
+// <Text> does: bare, and under each caller override.
+async function textAtomPairs(baseDir: string, headDir: string) {
+  const load = async (dir: string) =>
+    (
+      (await import(join(dir, "src/components/atoms/Text/helpers.ts"))) as {
+        variants: Record<string, string>;
+      }
+    ).variants;
+  const oldVariants = await load(baseDir);
+  const newVariants = await load(headDir);
+  const pairs: Pair[] = [];
+  for (const variant of Object.keys(oldVariants)) {
+    for (const override of ["", ...TEXT_OVERRIDES]) {
+      pairs.push({
+        group: override
+          ? `Text \`${variant}\` + \`${override}\``
+          : `Text \`${variant}\``,
+        oldClass: cn(oldVariants[variant], override),
+        newClass: cn(newVariants[variant], override),
+      });
+    }
+  }
+  return pairs;
 }
 
 const TEXT_PROPS = [
@@ -272,8 +314,15 @@ const TEXT_PROPS = [
   "line-height",
   "letter-spacing",
   "font-weight",
+  "font-family",
+  "text-transform",
+  "color",
 ] as const;
-const PARENT_LINE_HEIGHTS = ["1.5", "30px", "normal"];
+const PARENT_LINE_HEIGHTS = [
+  "leading-[1.5]",
+  "leading-[30px]",
+  "leading-normal",
+];
 const TEXT_VIEWPORTS = [1280, 390];
 
 // Every (viewport, parent line-height, as written | after cn()) value of the
@@ -286,7 +335,7 @@ async function textValues(browser: Browser, css: string, lists: string[]) {
       PARENT_LINE_HEIGHTS.flatMap((parent) =>
         [list, cn(list)].map(
           (cls, mode) =>
-            `<div style="font-size:16px;line-height:${parent}"><span data-i="${i}" data-m="${mode}" class="${cls}" style="display:block">Ag</span></div>`,
+            `<div class="${parent}" style="font-size:16px"><span data-i="${i}" data-m="${mode}" class="${cls}" style="display:block">Ag</span></div>`,
         ),
       ),
     );
@@ -378,7 +427,9 @@ async function main(argv: string[]) {
   const outDir = outIndex >= 0 ? resolve(argv[outIndex + 1]) : null;
 
   const pairs = allPairs();
-  const texts = textPairs();
+  const codemodTexts = codemodTextPairs();
+  const atomTexts = await textAtomPairs(baseDir, headDir);
+  const texts = [...codemodTexts, ...atomTexts];
   const textClasses = (side: "oldClass" | "newClass") =>
     texts.flatMap((pair) =>
       [pair[side], cn(pair[side])].join(" ").split(/\s+/),
@@ -397,12 +448,14 @@ async function main(argv: string[]) {
     ...swatchExtras(swatchOld),
     ...SWATCH_HELPERS,
     ...textClasses("oldClass"),
+    ...PARENT_LINE_HEIGHTS,
   ]);
   const newCss = await compileCss(headDir, [
     ...newClasses,
     ...swatchExtras(swatchNew),
     ...SWATCH_HELPERS,
     ...textClasses("newClass"),
+    ...PARENT_LINE_HEIGHTS,
   ]);
 
   const propsPerPair = pairs.map((_, i) => {
@@ -469,7 +522,7 @@ async function main(argv: string[]) {
   });
 
   const textLines = [
-    "| group | old classes | new classes | font-size | line-height (parent 1.5 / 30px / normal) | result |",
+    "| group | old classes | new classes | font-size | line-height in a parent at leading-[1.5] / leading-[30px] / leading-normal | result |",
     "| --- | --- | --- | --- | --- | --- |",
   ];
   let textFailures = 0;
