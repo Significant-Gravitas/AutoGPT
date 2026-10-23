@@ -103,10 +103,6 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
             self._updated_fields.add(name)
         super().__setattr__(name, value)
 
-    def mark_updated(self, field_name: str) -> None:
-        if field_name in UpdateTrackingModel.model_fields:
-            self._updated_fields.add(field_name)
-
     def clear_updates(self) -> None:
         self._updated_fields.clear()
 

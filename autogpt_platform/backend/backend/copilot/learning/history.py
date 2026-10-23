@@ -16,11 +16,7 @@ from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import VersionDraft
 from backend.data.skill_version_files import SkillVersionFile, version_package_hash
-from backend.data.skill_versions import (
-    SkillHeadRecord,
-    SkillVersionRecord,
-    content_hash,
-)
+from backend.data.skill_versions import SkillVersionRecord, content_hash
 
 logger = logging.getLogger(__name__)
 
@@ -122,11 +118,3 @@ def _auto_improve_after(origin: str, keep_auto_improve: bool | None) -> bool | N
     if origin in HUMAN_CONTROLLED_ORIGINS:
         return False
     return None
-
-
-async def head_for(
-    user_id: str, expert_id: str | None, skill_name: str
-) -> SkillHeadRecord | None:
-    return await skill_versions_db().get_head(
-        user_id, owner_key_for(expert_id), skill_name
-    )
