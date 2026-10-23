@@ -13,7 +13,6 @@ card are copied from the template here, so a hallucinated id can never
 become a colleague the user is invited to hire.
 """
 
-import asyncio
 import logging
 import os
 
@@ -24,7 +23,7 @@ from backend.api.features.onboarding_dump.models import (
     RaiseSuggestion,
     RecommendedExpert,
 )
-from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.structured import request_json
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -145,21 +144,15 @@ async def generate_expert_recommendations(
     # non-JSON generation is cheaper to redo than to ship around.
     for attempt in range(2):
         try:
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.2,
-                    max_tokens=2000,
-                    # Haiku 5.5 thinks adaptively and spent the whole output
-                    # budget on it, so the JSON came back cut off or empty.
-                    extra_body={"reasoning": {"enabled": False}},
-                ),
+            reply = await request_json(
+                client,
+                model=_MODEL,
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=2000,
                 timeout=_TIMEOUT_SECONDS,
             )
-            choice = response.choices[0]
-            content = choice.message.content or ""
-            data = parse_response_json(content)
+            data = reply.data
         except Exception as e:  # degrades to the fallback below
             logger.warning(
                 "Brain dump team generation failed (attempt %s): %s", attempt + 1, e
@@ -169,7 +162,7 @@ async def generate_expert_recommendations(
             break
         logger.warning(
             f"Brain dump team: non-JSON output (attempt {attempt + 1}, "
-            f"finish_reason={choice.finish_reason}, {len(content)} chars)"
+            f"{reply.describe()})"
         )
     if data is None:
         return fallback
