@@ -10,17 +10,17 @@ interface Props {
 export function ErrorMessage({ errorMessage, context, hint }: Props) {
   return (
     <div className="space-y-2">
-      <Text variant="body" className="text-zinc-700">
+      <Text variant="body" className="text-foreground-body">
         We had the following error when retrieving {context ?? "your data"}:
       </Text>
-      <div className="rounded-lg border border-zinc-100 bg-zinc-50 p-3">
-        <Text variant="body" className="!text-red-700">
+      <div className="rounded-lg border border-separator bg-surface-muted p-3">
+        <Text variant="body" className="!text-error-foreground">
           {errorMessage}
         </Text>
       </div>
       {hint && (
         <div className="!mt-4">
-          <Text variant="body" className="text-zinc-700">
+          <Text variant="body" className="text-foreground-body">
             {hint}
           </Text>
         </div>

@@ -94,6 +94,8 @@ interface Props {
   className?: string;
   inputId?: string;
   draftKey?: string;
+  /** Off leaves keyboard focus where it is, on mount and when re-enabled. */
+  autoFocus?: boolean;
   /** Files dropped onto the chat window by the parent. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
@@ -135,8 +137,10 @@ interface Props {
   atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
-// Memoised: the chat page re-renders on every streamed flush, and the
-// composer's props stay the same while the reply streams in.
+// memo-boundary: the chat page re-renders on every streamed flush, and the
+// composer's props stay the same while the reply streams in. The builder,
+// memory and team chats render it from folders the compiler does not cover,
+// so their parents do not cache its element.
 export const ChatInput = memo(function ChatInput({
   onSend,
   disabled = false,
@@ -150,6 +154,7 @@ export const ChatInput = memo(function ChatInput({
   className,
   inputId = "chat-input",
   draftKey,
+  autoFocus = true,
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
@@ -266,6 +271,7 @@ export const ChatInput = memo(function ChatInput({
       canSendEmpty: hasAttachments && !atReset,
       inputId,
       draftKey,
+      autoFocus,
       failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
 

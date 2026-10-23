@@ -104,6 +104,8 @@ export function useCopilotRuntimeStream({
     fingerprint: string;
   } | null>(null);
 
+  // Kept as a memo: getting a runtime bumps it in the registry and can
+  // dispose an idle one, so it runs once per session.
   const runtime = useMemo(
     () => (sessionId ? getTurnRuntime(sessionId) : null),
     [sessionId],
@@ -194,6 +196,10 @@ export function useCopilotRuntimeStream({
     () => snapshot.ownedFrom ?? prospectiveCut(runtime, sessionView),
   );
   const history = useSessionHistory(sessionId, sessionView, cut);
+  // These memos stay with the compiler on. The renderer and the joiner hold
+  // the caches that keep a bubble's object, and so its key, for the life of
+  // the mount, so each is created once (per session); and the page's effects
+  // depend on the identity of `messages`.
   const renderTail = useMemo(
     () => createTailRenderer(sessionId ?? ""),
     [sessionId],
@@ -207,10 +213,7 @@ export function useCopilotRuntimeStream({
         : [],
     [sessionId, joinAssistantRuns, history.messages, tail.messages],
   );
-  const turnStats = useMemo(
-    () => withLatestUser(messages, history.stats, tail.stats),
-    [messages, history.stats, tail.stats],
-  );
+  const turnStats = withLatestUser(messages, history.stats, tail.stats);
 
   async function sendMessage(input: SendInput) {
     if (!runtime || !sessionId) return;
@@ -341,6 +344,8 @@ function useSessionHistory(
     retainedRows = retainRows(retained.rows, view);
     setRetained({ view, rows: retainedRows });
   }
+  // Kept as a memo with the compiler on: `messages` heads the list the page's
+  // effects depend on.
   return useMemo(() => {
     const rows = [...retainedRows.values()]
       .filter((row) => cut === null || (row.sequence ?? 0) < cut)

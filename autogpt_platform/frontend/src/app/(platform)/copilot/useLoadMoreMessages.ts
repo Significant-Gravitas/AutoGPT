@@ -86,6 +86,8 @@ export function useLoadMoreMessages({
   // are matched across inter-page boundaries.
   // Include initial page tool outputs so older paged pages can match
   // tool calls whose outputs landed in the initial page.
+  // Kept as a memo with the compiler on: these messages head the list whose
+  // identity the chat's effects depend on (see useCopilotPage).
   const { messages: pagedMessages, stats: pagedTurnStats } = useMemo((): {
     messages: UIMessage<unknown, UIDataTypes, UITools>[];
     stats: TurnStatsMap;

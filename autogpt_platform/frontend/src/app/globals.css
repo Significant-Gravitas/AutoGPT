@@ -269,3 +269,61 @@ body[data-google-picker-open="true"] [data-dialog-content] {
   font-size: 15px;
   line-height: 1.5rem;
 }
+
+/* DS2b keyframes */
+
+/* GlassOrb (molecules/GlassOrb): each blob turns on its own spinner and
+   drifts inside it. */
+@keyframes glass-orb-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes glass-orb-drift-1 {
+  from {
+    transform: rotate(-10deg) translate(0%, 0%) scale(1);
+  }
+  to {
+    transform: rotate(32deg) translate(8%, 12%) scale(1.12);
+  }
+}
+
+@keyframes glass-orb-drift-2 {
+  from {
+    transform: rotate(14deg) translate(0%, 0%) scale(1.05);
+  }
+  to {
+    transform: rotate(-24deg) translate(-10%, 6%) scale(0.92);
+  }
+}
+
+@keyframes glass-orb-drift-3 {
+  from {
+    transform: rotate(4deg) translate(-4%, 0%) scale(0.95);
+  }
+  to {
+    transform: rotate(-30deg) translate(10%, -12%) scale(1.15);
+  }
+}
+
+@keyframes glass-orb-drift-4 {
+  from {
+    transform: rotate(-22deg) translate(6%, -6%) scale(1.1);
+  }
+  to {
+    transform: rotate(18deg) translate(-6%, 10%) scale(0.9);
+  }
+}
+
+@keyframes glass-orb-drift-5 {
+  from {
+    transform: rotate(26deg) translate(-8%, 4%) scale(1);
+  }
+  to {
+    transform: rotate(-14deg) translate(6%, -8%) scale(1.18);
+  }
+}

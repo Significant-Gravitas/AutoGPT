@@ -18,6 +18,7 @@ import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesCont
 import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { getPendingOnboardingCallId } from "../ExpertOnboardingCard/helpers";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
@@ -592,6 +593,10 @@ export const ChatContainer = ({
                         <ChatInput
                           inputId={SESSION_COMPOSER_ID}
                           draftKey={sessionDraftKey(sessionId)}
+                          // An unanswered card takes the keys for its shortcuts.
+                          autoFocus={
+                            getPendingOnboardingCallId(messages) === null
+                          }
                           onSend={guardedOnSend}
                           disabled={isInputDisabled}
                           sendDisabled={isLimitReached && !atReset}

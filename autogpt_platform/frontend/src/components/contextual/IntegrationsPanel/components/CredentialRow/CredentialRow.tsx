@@ -37,7 +37,7 @@ export function CredentialRow({
   return (
     <div
       data-selected={selected}
-      className="flex w-full items-center justify-between py-3 pl-3 pr-5 transition-colors data-[selected=true]:bg-zinc-100"
+      className="flex w-full items-center justify-between py-3 pl-3 pr-5 transition-colors data-[selected=true]:bg-surface-hover"
     >
       <div className="flex items-center gap-3">
         {credential.isManaged ? (
@@ -49,10 +49,11 @@ export function CredentialRow({
             aria-checked={selected}
             aria-label={`Select ${credential.title}`}
             onClick={onToggleSelected}
+            // TODO(tokens): no exact role for focus-visible:ring-zinc-800 #3E3E43; #3E3E43 is action, the button fill
             className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
               selected
-                ? "text-zinc-800 hover:text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
+                ? "text-foreground-emphasis hover:text-foreground-strong"
+                : "text-foreground-tertiary hover:text-foreground-body"
             }`}
           >
             {selected ? (
@@ -65,17 +66,26 @@ export function CredentialRow({
 
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
-            <span className="text-[14px] font-medium leading-[22px] text-[#1F1F20]">
+            <span
+              // TODO(tokens): no exact role for text-[#1F1F20]
+              className="text-body font-medium leading-5.5 text-[#1F1F20]"
+            >
               {credential.title}
             </span>
-            <span className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[12px] font-medium leading-[20px] text-[#505057]">
+            <span
+              // TODO(tokens): no exact role for bg-[#EFF1F4]
+              className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-caption font-medium leading-5 text-foreground-body"
+            >
               {credential.isSignIn
                 ? "For chats"
                 : typeBadgeLabel(credential.type)}
             </span>
           </div>
-          <div className="flex items-center gap-3 leading-[20px]">
-            <span className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057]">
+          <div className="flex items-center gap-3 leading-5">
+            <span
+              // TODO(tokens): no exact text token for tracking-[1.1px]
+              className="text-caption-sm font-medium uppercase leading-inherit tracking-[1.1px] text-foreground-body"
+            >
               {credential.blocksNote ?? formatMaskedValue(credential)}
             </span>
           </div>
@@ -88,7 +98,8 @@ export function CredentialRow({
             <TooltipTrigger asChild>
               <span
                 tabIndex={0}
-                className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057] focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+                // TODO(tokens): no exact role for focus-visible:ring-zinc-800 #3E3E43; #3E3E43 is action, the button fill; no exact text token for tracking-[1.1px]
+                className="text-caption-sm font-medium uppercase leading-inherit tracking-[1.1px] text-foreground-body focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
               >
                 Managed
               </span>
@@ -105,7 +116,8 @@ export function CredentialRow({
           disabled={isDeleting}
           aria-busy={isDeleting}
           aria-label={`Delete ${credential.title}`}
-          className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-[#1F1F20]"
+          // TODO(tokens): no exact role for focus-visible:ring-purple-400 #925cf7, text-[#1F1F20], disabled:hover:text-[#1F1F20]
+          className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-[#1F1F20]"
         >
           {isDeleting ? (
             <Icon icon={Loading03Icon} size={20} className="animate-spin" />

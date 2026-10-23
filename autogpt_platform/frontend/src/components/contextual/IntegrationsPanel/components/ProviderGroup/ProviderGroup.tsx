@@ -34,22 +34,31 @@ export function ProviderGroup({
       type="single"
       collapsible
       defaultValue={provider.id}
-      className="w-full overflow-hidden rounded-2xl border border-[#DADADC] bg-white"
+      className="w-full overflow-hidden rounded-2xl border border-border-base bg-surface"
     >
       <AccordionItem value={provider.id} className="border-b-0">
-        <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-[#1F1F20]">
+        <AccordionTrigger
+          // TODO(tokens): no exact role for [&>svg]:text-[#1F1F20]
+          className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-[#1F1F20]"
+        >
           <div className="flex items-center gap-3">
             <ProviderAvatar provider={provider} />
-            <span className="text-[16px] font-medium leading-[26px] tracking-[-0.08px] text-black">
+            <span
+              // TODO(tokens): no exact text token for tracking-[-0.08px]
+              className="text-body-lg font-medium leading-6.5 tracking-[-0.08px] text-foreground-base"
+            >
               {provider.name}
             </span>
-            <span className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[14px] font-medium leading-[22px] text-black">
+            <span
+              // TODO(tokens): no exact role for bg-[#EFF1F4]
+              className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-body font-medium leading-5.5 text-foreground-base"
+            >
               {count}
             </span>
           </div>
         </AccordionTrigger>
         <AccordionContent className="px-0 pb-0 pt-0">
-          <div className="flex flex-col divide-y divide-[#DADADC] border-t border-[#DADADC]">
+          <div className="flex flex-col divide-y divide-border-base border-t border-border-base">
             {provider.credentials.map((credential) => (
               <CredentialRow
                 key={credential.id}
@@ -75,7 +84,8 @@ function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
     return (
       <div
         aria-hidden="true"
-        className="flex size-6 items-center justify-center rounded-full bg-[#D9D9D9] text-[10px] font-semibold uppercase text-zinc-700"
+        // TODO(tokens): no exact role for bg-[#D9D9D9]
+        className="flex size-6 items-center justify-center rounded-full bg-[#D9D9D9] text-tiny font-semibold uppercase leading-inherit text-foreground-body"
         data-testid={`provider-avatar-${provider.id}`}
       >
         {provider.name?.charAt(0) ?? provider.id.charAt(0)}
@@ -90,7 +100,7 @@ function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
       width={24}
       height={24}
       onError={() => setBroken(true)}
-      className="size-6 rounded-full bg-white object-contain"
+      className="size-6 rounded-full bg-surface object-contain"
       unoptimized
     />
   );

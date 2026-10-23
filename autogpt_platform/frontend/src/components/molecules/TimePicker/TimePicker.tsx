@@ -39,7 +39,7 @@ export function TimePicker({ value, onChange }: Props) {
       </div>
 
       <div className="mb-6 flex flex-col items-center">
-        <span className="m-auto text-xl font-bold">:</span>
+        <span className="m-auto text-lead font-bold">:</span>
       </div>
 
       <div className="flex flex-col items-center">

@@ -158,6 +158,7 @@ export function BrainDumpStep() {
             <RecoveryPrompt
               durationSecs={dump.recoverable.durationSecs}
               onResume={dump.handleResumeRecovered}
+              onDownload={dump.handleDownloadRecording}
               onDiscard={dump.handleDiscardRecovered}
             />
           </RevealItem>
@@ -167,6 +168,7 @@ export function BrainDumpStep() {
           <RevealItem>
             <FailureState
               mode={dump.submittedMode}
+              reason={dump.failureReason}
               onDownload={dump.handleDownloadRecording}
               onSkip={dump.handleSkip}
             />
