@@ -227,12 +227,17 @@ async def test_cancelling_unfolded_result_persistence_stops_the_unclaimed_cli():
 
     with _patched_turn(client_factory, session, resolve=resolve, persist=persist):
         turn = asyncio.create_task(run_turn())
-        async with asyncio.timeout(10):
-            await persistence_started.wait()
-        turn.cancel()
-        with pytest.raises(asyncio.CancelledError):
+        try:
             async with asyncio.timeout(10):
-                await turn
+                await persistence_started.wait()
+            turn.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                async with asyncio.timeout(10):
+                    await turn
+        finally:
+            if not turn.done():
+                turn.cancel()
+            await asyncio.gather(turn, return_exceptions=True)
 
     assert launches == []
     assert persisted == [[result]]
