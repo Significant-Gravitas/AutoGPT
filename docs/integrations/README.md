@@ -395,7 +395,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To Snapchat](block-integrations/ayrshare/post_to_snapchat.md#post-to-snapchat) | Post to Snapchat using Ayrshare |
 | [Post To Telegram](block-integrations/ayrshare/post_to_telegram.md#post-to-telegram) | Post to Telegram using Ayrshare |
 | [Post To Threads](block-integrations/ayrshare/post_to_threads.md#post-to-threads) | Post to Threads using Ayrshare |
-| [Post To Tik Tok](block-integrations/ayrshare/post_to_tiktok.md#post-to-tik-tok) | Post to TikTok using Ayrshare |
+| [Post To TikTok](block-integrations/ayrshare/post_to_tiktok.md#post-to-tiktok) | Post to TikTok using Ayrshare |
 | [Post To X](block-integrations/ayrshare/post_to_x.md#post-to-x) | Post to X / Twitter using Ayrshare |
 | [Post To YouTube](block-integrations/ayrshare/post_to_youtube.md#post-to-youtube) | Post to YouTube using Ayrshare |
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
@@ -530,6 +530,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Gmail Reply](block-integrations/google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](block-integrations/google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
+| [Send Email To Me](block-integrations/communication.md#send-email-to-me) | Email yourself: sends a message to your own inbox, at your account's email address, from the platform, with no email account to sign in to |
 
 ## Developer Tools
 
@@ -637,11 +638,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Google Calendar Create Event](block-integrations/google/calendar.md#google-calendar-create-event) | This block creates a new event in Google Calendar with customizable parameters |
+| [Notion Append To Page](block-integrations/notion/append_to_page.md#notion-append-to-page) | Add content to the end of an existing Notion page |
 | [Notion Create Page](block-integrations/notion/create_page.md#notion-create-page) | Create a new page in Notion |
 | [Notion Read Database](block-integrations/notion/read_database.md#notion-read-database) | Query a Notion database with optional filtering and sorting, returning structured entries |
 | [Notion Read Page](block-integrations/notion/read_page.md#notion-read-page) | Read a Notion page by its ID and return its raw JSON |
 | [Notion Read Page Markdown](block-integrations/notion/read_page_markdown.md#notion-read-page-markdown) | Read a Notion page and convert it to Markdown format with proper formatting for headings, lists, links, and rich text |
 | [Notion Search](block-integrations/notion/search.md#notion-search) | Search your Notion workspace for pages and databases by text query |
+| [Notion Update Page Properties](block-integrations/notion/update_page_properties.md#notion-update-page-properties) | Update an existing Notion page's properties, its title among them, its icon or cover, or whether it is in the trash |
 | [Todoist Close Task](block-integrations/todoist/tasks.md#todoist-close-task) | Closes a task in Todoist |
 | [Todoist Create Comment](block-integrations/todoist/comments.md#todoist-create-comment) | Creates a new comment on a Todoist task or project |
 | [Todoist Create Label](block-integrations/todoist/labels.md#todoist-create-label) | Creates a new label in Todoist, It will not work if same name already exists |

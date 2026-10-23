@@ -66,6 +66,17 @@ def list_tool():
     return ListSchedulesTool()
 
 
+@pytest.fixture(autouse=True)
+def forget_streak(mocker):
+    """The failure-streak cleanup a delete does, which reaches the database."""
+    forget = AsyncMock()
+    mocker.patch(
+        f"{_SCHEDULES_PATH}.scheduled_chats_db",
+        return_value=MagicMock(forget_scheduled_chat=forget),
+    )
+    return forget
+
+
 @pytest.fixture
 def delete_tool():
     return DeleteScheduleTool()
@@ -268,7 +279,7 @@ async def test_delete_schedule_missing_id(delete_tool, session):
 
 
 @pytest.mark.asyncio
-async def test_delete_schedule_success(delete_tool, session):
+async def test_delete_schedule_success(delete_tool, session, forget_streak):
     mock_client = AsyncMock()
     mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
     mock_client.delete_schedule = AsyncMock()
@@ -288,6 +299,25 @@ async def test_delete_schedule_success(delete_tool, session):
     mock_client.delete_schedule.assert_called_once_with(
         schedule_id="sched-1", user_id=_USER
     )
+    # As the delete route does: a paused follow-up leaves no paused ghost.
+    forget_streak.assert_awaited_once_with(_USER, "sched-1")
+
+
+@pytest.mark.asyncio
+async def test_a_delete_whose_streak_cleanup_fails_still_says_deleted(
+    delete_tool, session, forget_streak
+):
+    forget_streak.side_effect = RuntimeError("db blip")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
+    mock_client.delete_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await delete_tool._execute(
+            user_id=_USER, session=session, schedule_id="sched-1"
+        )
+
+    assert isinstance(result, ScheduleDeletedResponse)
 
 
 @pytest.mark.asyncio
@@ -450,6 +480,53 @@ async def test_expert_cannot_pause_another_experts_schedule():
 
     assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
     mock_client.pause_schedule.assert_not_awaited()
+
+
+def _at_reset_info(kind: str) -> CopilotTurnJobInfo:
+    """A resume or send the user set on a chat for the budget reset."""
+    info = _make_copilot_info(schedule_id=f"at-reset-{kind}-session-xyz")
+    return info.model_copy(update={"purpose": kind})
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_leaves_out_turns_at_the_budget_reset(list_tool, session):
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[
+            _make_copilot_info(),
+            _at_reset_info("resume"),
+            _at_reset_info("send"),
+        ]
+    )
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [schedule.schedule_id for schedule in result.schedules] == ["cop-1"]
+
+
+@pytest.mark.parametrize(
+    ("tool", "method"),
+    [
+        (DeleteScheduleTool(), "delete_schedule"),
+        (PauseScheduleTool(), "pause_schedule"),
+        (ResumeScheduleTool(), "resume_schedule"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_agent_cannot_touch_a_turn_at_the_budget_reset(tool, method, session):
+    """Not even personal AutoPilot, which manages every other schedule."""
+    job = _at_reset_info("resume")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[job])
+    setattr(mock_client, method, AsyncMock())
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await tool._execute(user_id=_USER, session=session, schedule_id=job.id)
+
+    assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
+    getattr(mock_client, method).assert_not_awaited()
 
 
 @pytest.mark.asyncio

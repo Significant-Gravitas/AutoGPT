@@ -73,7 +73,7 @@ export function createBackendSim(plans: TurnPlan[]) {
   };
   const turns = plans.map(simulatedTurn);
   const published = new Map<number, number>();
-  const connections: { closed: boolean; cut: () => void }[] = [];
+  const connections: Connection[] = [];
   const wakers = new Set<() => void>();
 
   function startTurn(index: number) {
@@ -81,7 +81,7 @@ export function createBackendSim(plans: TurnPlan[]) {
     state.startedAt = new Date().toISOString();
     state.trimmedBefore = 0;
     state.running = true;
-    state.current = leadingUserRows(plans[index].turn.rows);
+    state.current = rowsBeforeTurn(plans[index].turn, turns[index]);
     published.set(index, 0);
   }
 
@@ -133,7 +133,7 @@ export function createBackendSim(plans: TurnPlan[]) {
   function resume(turn: string, after: string) {
     const index = turns.findIndex((t) => t.id === turn);
     if (index === -1 || !published.has(index)) {
-      connections.push({ closed: true, cut() {} });
+      connections.push({ closed: true, waiting: false, cut() {} });
       return HttpResponse.json({ reason: "expired" }, { status: 410 });
     }
     const frames = turns[index].frames;
@@ -141,7 +141,7 @@ export function createBackendSim(plans: TurnPlan[]) {
     if (from === -1) from = frames.length;
     const floor = index === state.turnIndex ? state.trimmedBefore : 0;
     if (from < floor) {
-      connections.push({ closed: true, cut() {} });
+      connections.push({ closed: true, waiting: false, cut() {} });
       return HttpResponse.json(
         { reason: "trimmed", checkpoint: lastCheckpoint(index, floor) },
         { status: 409 },
@@ -155,8 +155,9 @@ export function createBackendSim(plans: TurnPlan[]) {
     let index = from;
     let cutRequested = false;
     let wake: (() => void) | null = null;
-    const connection = {
+    const connection: Connection = {
       closed: false,
+      waiting: false,
       cut() {
         cutRequested = true;
         wake?.();
@@ -181,6 +182,7 @@ export function createBackendSim(plans: TurnPlan[]) {
             }
             return;
           }
+          connection.waiting = true;
           const heartbeat = await new Promise<boolean>((resolve) => {
             const timer = setTimeout(() => resolve(true), HEARTBEAT_MS);
             wake = () => {
@@ -189,6 +191,7 @@ export function createBackendSim(plans: TurnPlan[]) {
             };
             wakers.add(wake);
           });
+          connection.waiting = false;
           if (wake) wakers.delete(wake);
           wake = null;
           if (heartbeat) {
@@ -287,6 +290,15 @@ export async function waitForConnections(sim: BackendSim, count: number) {
   });
 }
 
+/** Until the client has read every published frame off every open stream. */
+export async function waitForDelivered(sim: BackendSim) {
+  await waitFor(
+    () =>
+      expect(sim.connections.every((c) => c.closed || c.waiting)).toBe(true),
+    { timeout: 10_000 },
+  );
+}
+
 /** Past the post-finish probe (500 ms) and the first reconnect delay (1 s),
  *  so the client decides while the backend turn is still running. */
 export function turnKeepsRunning() {
@@ -342,6 +354,13 @@ function simulatedTurn(plan: TurnPlan, index: number, plans: TurnPlan[]) {
   return { id, frames, checkpoints, recordedCheckpoints };
 }
 
+interface Connection {
+  closed: boolean;
+  /** Pulled for more with nothing published: the client holds every frame. */
+  waiting: boolean;
+  cut: () => void;
+}
+
 interface CheckpointData {
   rows: number;
   sequence: number;
@@ -358,9 +377,20 @@ function frameData(frame: { sse: string }) {
   return line ? line.slice("data: ".length) : null;
 }
 
-function leadingUserRows(rows: Row[]) {
-  const firstOther = rows.findIndex((row) => row.role !== "user");
-  return firstOther === -1 ? rows : rows.slice(0, firstOther);
+// What the GET holds as the turn starts: everything before the rows its
+// checkpoints name, history and wake row included, else its leading prompt.
+function rowsBeforeTurn(
+  turn: RecordedTurn,
+  { recordedCheckpoints }: ReturnType<typeof simulatedTurn>,
+) {
+  const [first] = recordedCheckpoints.values();
+  if (first) {
+    return turn.rows.filter(
+      (row) => Number(row.sequence ?? 0) < first.sequence,
+    );
+  }
+  const firstOther = turn.rows.findIndex((row) => row.role !== "user");
+  return firstOther === -1 ? turn.rows : turn.rows.slice(0, firstOther);
 }
 
 function numbered(rows: Row[]): Row[] {

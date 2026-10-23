@@ -6,6 +6,7 @@ from backend.api.features.graph_executions.review.model import PendingHumanRevie
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.data.activity_event import ActivityEvent
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
@@ -42,6 +43,7 @@ def compose_home_dashboard(
     persisted_briefing: BriefingContent | None = None,
     work_events: list[ActivityEvent] | None = None,
     session_titles: dict[str, str | None] | None = None,
+    paused_chats: list[PausedScheduledChat] | None = None,
 ) -> HomeDashboardResponse:
     hired = [
         expert
@@ -82,6 +84,7 @@ def compose_home_dashboard(
             credits_balance=credits_balance,
             questions=questions,
             delegated_questions=delegated_questions,
+            paused_chats=paused_chats,
         ),
         briefing=compose_briefing(
             now=now,

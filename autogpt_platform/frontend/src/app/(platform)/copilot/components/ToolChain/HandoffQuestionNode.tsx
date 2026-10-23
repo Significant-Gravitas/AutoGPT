@@ -1,5 +1,6 @@
 "use client";
 
+import { useNowMinute } from "@/hooks/useNowMinute";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -23,8 +24,9 @@ export function HandoffQuestionNode({ delegation, isLast }: Props) {
   const { sendAnswer, isSending } = useDelegationAnswer();
   const { expert } = live;
   const href = threadHref(delegation);
+  const nowMs = useNowMinute(live.askedAt !== null);
   const waited = live.askedAt
-    ? formatElapsed((Date.now() - live.askedAt) / 1000)
+    ? formatElapsed(Math.max(0, nowMs - live.askedAt) / 1000)
     : null;
   const title = delegationTitle(delegation, expert.name);
   const heading = [`${expert.name} asks`, `paused on “${title}”`, waited]

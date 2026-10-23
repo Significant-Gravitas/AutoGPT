@@ -1,9 +1,11 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useAyrshareConnect } from "@/components/contextual/CredentialsInput/components/AyrshareConnectButton/useAyrshareConnect";
 import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog";
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
@@ -28,6 +30,7 @@ interface Props {
 type Grantable = ExpertGrant["credentials"][number];
 type SavedCredential = CredentialsProviderData["savedCredentials"][number];
 
+const AYRSHARE = "ayrshare";
 const UNUSABLE_ACCOUNT_ERROR =
   "That account is missing the access this needs. Try connecting again.";
 const GRANT_FAILED_ERROR = "Couldn't grant access. Try again.";
@@ -56,6 +59,7 @@ export function ConnectorRow({ row }: Props) {
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
   const grantedCredentials = useExpertCredentialSelection(row, allProviders);
+  const ayrshare = useAyrshareConnect();
 
   const rejectedIds = row.rejectedCredentialIds.filter(
     (id) => !renewedIds.includes(id),
@@ -127,7 +131,20 @@ export function ConnectorRow({ row }: Props) {
     return true;
   }
 
-  useEffect(() => {
+  // Several saved accounts can satisfy one row. Nothing picks between them for
+  // the user: the row offers them, and the backend runs on exactly that one.
+  const pickable = expertGrant
+    ? []
+    : filterSystemCredentials(
+        usableProviders?.[row.provider]?.savedCredentials ?? [],
+      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
+  // The selected credential itself must still fit: that another account
+  // does is no reason to keep this one and call it Connected.
+  const selectedStillFits = pickable.some(
+    (credential) => credential.id === row.selected?.id,
+  );
+
+  const syncSelection = useStableCallback(() => {
     if (expertGrant) {
       if (!awaitingNewAccount || row.selected || !knownIds.current) return;
       const fresh = newlyConnectedCredential(
@@ -185,30 +202,23 @@ export function ConnectorRow({ row }: Props) {
       type: savedCredential.type as CredentialsMetaInput["type"],
       title: savedCredential.title ?? undefined,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- row.select is rebuilt each render by the card
+  });
+  // row.select is rebuilt each render by the card, so only these decide.
+  const rejectedKey = rejectedIds.join();
+  const renewedKey = renewedIds.join();
+  useEffect(() => {
+    syncSelection();
   }, [
     savedCredential?.id,
     row.selected,
     allProviders,
     awaitingNewAccount,
     expertGrant?.expertId,
-    rejectedIds.join(),
-    renewedIds.join(),
+    rejectedKey,
+    renewedKey,
     hasRefusedAccount,
   ]);
 
-  // Several saved accounts can satisfy one row. Nothing picks between them for
-  // the user: the row offers them, and the backend runs on exactly that one.
-  const pickable = expertGrant
-    ? []
-    : filterSystemCredentials(
-        usableProviders?.[row.provider]?.savedCredentials ?? [],
-      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
-  // The selected credential itself must still fit: that another account
-  // does is no reason to keep this one and call it Connected.
-  const selectedStillFits = pickable.some(
-    (credential) => credential.id === row.selected?.id,
-  );
   const hasChoice =
     !expertGrant &&
     !row.selected &&
@@ -252,6 +262,15 @@ export function ConnectorRow({ row }: Props) {
       ? grantedCredentials.isSelectionGranted
       : !!row.selected && !rejectedIds.includes(row.selected.id));
 
+  // AutoGPT holds the Ayrshare account, so there is no key to ask for: the
+  // user links their networks on Ayrshare's own page. Having the managed
+  // profile says nothing about which networks are linked, so the row keeps
+  // offering that page once it is satisfied. Only an expert still waiting for
+  // its grant goes through the dialog.
+  const linksOnAyrshare =
+    row.provider === AYRSHARE &&
+    !(expertGrant && !isSatisfied && grantableOptions.length > 0);
+
   function openDialog() {
     knownIds.current = allProviders
       ? new Set(
@@ -290,7 +309,7 @@ export function ConnectorRow({ row }: Props) {
         )}
       </div>
 
-      {isSatisfied ? (
+      {isSatisfied && !linksOnAyrshare ? (
         <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           {expertGrant ? "Granted" : "Connected"}
@@ -302,17 +321,20 @@ export function ConnectorRow({ row }: Props) {
           className="shrink-0"
           disabled={
             isGranting ||
+            ayrshare.isLoading ||
             Boolean(
               expertGrant && (grantedCredentials.isPending || !allProviders),
             )
           }
-          onClick={openDialog}
+          onClick={linksOnAyrshare ? ayrshare.connect : openDialog}
         >
-          {buttonLabel({
-            canGrant: grantableOptions.length > 0,
-            awaitingReconnect,
-            hasChoice,
-          })}
+          {linksOnAyrshare
+            ? "Connect"
+            : buttonLabel({
+                canGrant: grantableOptions.length > 0,
+                awaitingReconnect,
+                hasChoice,
+              })}
         </Button>
       )}
 

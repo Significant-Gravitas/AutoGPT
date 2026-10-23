@@ -50,8 +50,17 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const [isResizing, setIsResizing] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
+  // The mobile sheet titles itself in its header; the artifacts library
+  // brings its own toolbar.
+  const showTitle = !mobile && activeTab !== "artifacts";
+
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
+      {showTitle && (
+        <h2 className="shrink-0 px-6 pb-1 pt-6 text-base font-semibold text-zinc-900">
+          {TAB_TITLES[activeTab]}
+        </h2>
+      )}
       {activeTab === "artifacts" ? (
         <ArtifactsTab sessionId={sessionId} />
       ) : activeTab === "work" ? (
@@ -78,8 +87,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           side="right"
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
-          <SheetHeader className="mt-12 p-2 text-left">
-            <SheetTitle className="text-sm font-medium text-zinc-900">
+          <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
+            <SheetTitle className="text-lg font-semibold text-zinc-900">
               {TAB_TITLES[activeTab]}
             </SheetTitle>
           </SheetHeader>
@@ -91,8 +100,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
 
   // Width is the animated property because the panel pushes the chat column
   // rather than overlaying it. Dragging the handle bypasses the tween (a
-  // queued 300ms tween per pointer move would trail the cursor). The chat's
-  // sidebar icon toggles the panel, so it carries no header of its own.
+  // queued 300ms tween per pointer move would trail the cursor).
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }

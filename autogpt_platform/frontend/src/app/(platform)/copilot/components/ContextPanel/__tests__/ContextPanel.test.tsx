@@ -97,7 +97,8 @@ describe("ContextPanel", () => {
     await waitFor(() =>
       expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
     );
-    expect(await screen.findByText("Nothing here yet.")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Files" })).toBeDefined();
+    expect(await screen.findByText("No files yet")).toBeDefined();
   });
 
   test("docks for the integrations tab with the expert's integrations", async () => {
@@ -108,7 +109,11 @@ describe("ContextPanel", () => {
     }));
     render(<ContextPanel sessionId="session-1" />);
 
-    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Integrations" })).toBeDefined();
+    expect(await screen.findByText("No integrations yet")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Add integration" }),
+    ).toBeDefined();
     expect(
       screen.getByRole("link", { name: "Open Maria's page" }),
     ).toBeDefined();

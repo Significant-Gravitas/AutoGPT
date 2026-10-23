@@ -4,31 +4,53 @@ One test per engine, driven through the engine's real entry point and stopped
 at the fold: removing the fold from one engine turns only that engine's test
 red. The held call itself runs inside ``resolve_answered``, so each test also
 proves the turn's execution context — the chat whose ceiling an approval
-raises included — is set before it runs.
+raises included — is set before it runs, and that the status it yields while
+the call runs reaches the engine's stream before the result is folded.
 """
 
+import asyncio
 import contextlib
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Iterator
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
+from backend.copilot.baseline import service as baseline_service
 from backend.copilot.baseline.service import stream_chat_completion_baseline
 from backend.copilot.context import (
     get_current_envelope,
     get_execution_context,
     set_execution_context,
 )
+from backend.copilot.gate.held import HeldCall, _result_row
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
-from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.pending_message_helpers import (
+    combine_pending_with_current,
+    persist_pending_as_user_rows,
+)
+from backend.copilot.pending_messages import (
+    PendingMessage,
+    format_pending_as_user_message,
+)
+from backend.copilot.response_model import StreamStatus
 from backend.copilot.sdk.expert_tool_gate_test import _make_patches, _make_session
+from backend.copilot.sdk.service import (
+    _session_messages_to_transcript,
+    stream_chat_completion_sdk,
+)
 from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 from backend.copilot.tree import root_envelope
 
 _RESULT = PendingMessage(
     content='<held_call_result tool="post_to_chat_platform">posted</held_call_result>'
 )
+_RUNNING = StreamStatus(message="Running the action you approved: Post a message")
+_SECOND = PendingMessage(
+    content='<held_call_result tool="send_email">sent</held_call_result>'
+)
+_RUNNING_SECOND = StreamStatus(message="Running the action you approved: Send an email")
 
 
 class _StopAtFold(Exception):
@@ -37,29 +59,30 @@ class _StopAtFold(Exception):
 
 @pytest.mark.asyncio
 async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
-    from backend.copilot.sdk.service import stream_chat_completion_sdk
-
     order: list[str] = []
     folded: list[list[PendingMessage]] = []
 
     caps: list[object] = []
     chats: list[str | None] = []
 
-    async def resolve(*_args, **kwargs):
+    async def resolve(_user_id, _session, deliver, **kwargs):
         order.append("resolve")
         caps.append(kwargs.get("cap"))
         chats.append(getattr(get_current_envelope(), "spend_session_id", None))
-        return [_RESULT]
+        yield _RUNNING
+        deliver(_RESULT)
 
     def set_context(*args, **kwargs):
         order.append("context")
         set_execution_context(*args, **kwargs)
 
     async def persist(_session, _builder, pending, **_kwargs):
+        order.append("fold")
         folded.append(list(pending))
         raise _StopAtFold
 
-    patches, _, _ = _make_patches(hire_experts_enabled=False)
+    patches, mcp_server = _make_patches()
+    mcp_server.side_effect = None
     session = _make_session()
     envelope = root_envelope("turn-2", session_id=session.session_id)
     with contextlib.ExitStack() as stack:
@@ -80,20 +103,29 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
                 new=persist,
             )
         )
+        stack.enter_context(
+            patch(
+                "backend.copilot.sdk.service.build_session_context",
+                new=AsyncMock(return_value=""),
+            )
+        )
         with contextlib.suppress(_StopAtFold):
-            async for _ in stream_chat_completion_sdk(
-                session_id=session.session_id,
-                message="hello",
-                is_user_message=True,
-                user_id="test-user",
-                session=session,
-                envelope=envelope,
-            ):
-                pass
+            async with asyncio.timeout(10):
+                async for chunk in stream_chat_completion_sdk(
+                    session_id=session.session_id,
+                    message="hello",
+                    is_user_message=True,
+                    user_id="test-user",
+                    session=session,
+                    envelope=envelope,
+                ):
+                    if chunk is _RUNNING:
+                        order.append("streamed")
         set_execution_context(None, None)
 
     context.assert_called()
     assert order.index("context") < order.index("resolve")
+    assert order.index("resolve") < order.index("streamed") < order.index("fold")
     assert folded == [[_RESULT]]
     # A late result is cut by the same rule as a direct MCP tool result.
     assert caps == [cap_late_tool_result]
@@ -108,70 +140,42 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
     chats: list[str | None] = []
     sent: list[list[dict]] = []
 
-    async def resolve(*_args, **_kwargs):
+    order: list[str] = []
+
+    async def resolve(_user_id, _session, deliver, **_kwargs):
         seen_context.append(get_execution_context())
         chats.append(getattr(get_current_envelope(), "spend_session_id", None))
-        return [_RESULT]
+        yield _RUNNING
+        deliver(_RESULT)
 
     persist = AsyncMock(return_value=True)
 
     async def model_loop(*, messages, **_kwargs):
+        order.append("model")
         sent.append(list(messages))
         raise _StopAtFold
         yield
 
-    svc = "backend.copilot.baseline.service"
-    with (
-        patch(f"{svc}.build_expert_identity_suffix", new=AsyncMock(return_value="")),
-        patch(f"{svc}.drain_pending_safe", new=AsyncMock(return_value=[])),
-        patch(
-            f"{svc}._resolve_baseline_model",
-            new=AsyncMock(
-                return_value=ResolvedModel(
-                    model="anthropic/claude-sonnet-4-6", source="env"
-                )
-            ),
-        ),
-        patch(
-            f"{svc}.normalize_model_for_transport",
-            new=MagicMock(side_effect=lambda model, cfg=None: model),
-        ),
-        patch(
-            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            f"{svc}._build_system_prompt",
-            new=AsyncMock(return_value=("system prompt", None)),
-        ),
-        patch(f"{svc}.is_enabled_for_user", new=AsyncMock(return_value=False)),
-        patch(f"{svc}.is_feature_enabled", new=AsyncMock(return_value=False)),
-        patch(
-            f"{svc}.build_builder_system_prompt_suffix",
-            new=AsyncMock(return_value=""),
-        ),
-        patch(f"{svc}.extract_context_messages", new=AsyncMock(return_value=[])),
-        patch(f"{svc}._compress_session_messages", new=AsyncMock(return_value=[])),
-        patch(f"{svc}.resolve_answered", new=resolve),
-        patch(f"{svc}.persist_pending_as_user_rows", new=persist),
-        patch(f"{svc}.tool_call_loop", new=model_loop),
-    ):
+    with _baseline_patches(resolve, persist, model_loop):
         try:
-            async for _ in stream_chat_completion_baseline(
-                session_id=session.session_id,
-                message=None,
-                is_user_message=False,
-                user_id="user-1",
-                session=session,
-                envelope=root_envelope("turn-2", session_id=session.session_id),
-            ):
-                pass
-        except Exception:
-            pass  # what the turn does after the model's first call is not under test
+            async with asyncio.timeout(10):
+                async for chunk in stream_chat_completion_baseline(
+                    session_id=session.session_id,
+                    message=None,
+                    is_user_message=False,
+                    user_id="user-1",
+                    session=session,
+                    envelope=root_envelope("turn-2", session_id=session.session_id),
+                ):
+                    if chunk is _RUNNING:
+                        order.append("streamed")
+        except _StopAtFold:
+            pass
         finally:
             set_execution_context(None, None)
 
     assert seen_context == [("user-1", session)]
+    assert order == ["streamed", "model"]
     assert chats == [session.session_id]
     assert len(sent) == 1
     assert sent[0][-1] == {"role": "user", "content": _RESULT.content}
@@ -183,14 +187,6 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
 async def test_the_card_copy_on_a_held_result_never_reaches_the_model():
     """The result row carries the card's arguments for the chain row, up to the
     card's clip; each engine's fold and history replay read the content alone."""
-    from backend.copilot.gate.held import HeldCall, _result_row
-    from backend.copilot.pending_message_helpers import (
-        combine_pending_with_current,
-        persist_pending_as_user_rows,
-    )
-    from backend.copilot.pending_messages import format_pending_as_user_message
-    from backend.copilot.sdk.service import _session_messages_to_transcript
-
     marker = "card-copy-only-7f3a"
     call = HeldCall(
         review_id="r1", tool_name="post_to_chat_platform", tool_call_id="c1", args={}
@@ -224,3 +220,206 @@ async def test_the_card_copy_on_a_held_result_never_reaches_the_model():
     ]
     assert all("posted" in text for text in model_inputs)
     assert not [text for text in model_inputs if marker in text]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stop, kept",
+    [
+        ("closed at the next card's status", [_RESULT]),
+        ("cancelled before the fold", [_RESULT, _SECOND]),
+    ],
+)
+async def test_a_sdk_turn_that_ends_early_keeps_the_results_of_calls_it_ran(stop, kept):
+    """Their approvals are spent, so nothing would run those calls again; a
+    card whose status the stream was closed at stays held for the next turn."""
+
+    async def resolve(_user_id, _session, deliver, **_kwargs):
+        yield _RUNNING
+        deliver(_RESULT)
+        yield _RUNNING_SECOND
+        deliver(_SECOND)
+
+    patches, mcp_server = _make_patches()
+    mcp_server.side_effect = None
+    session = _make_session()
+    with contextlib.ExitStack() as stack:
+        for target, kwargs in patches:
+            stack.enter_context(patch(target, **kwargs))
+        stack.enter_context(
+            patch("backend.copilot.sdk.service.resolve_answered", new=resolve)
+        )
+        stack.enter_context(
+            patch(
+                "backend.copilot.sdk.service.build_session_context",
+                new=AsyncMock(return_value=""),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "backend.copilot.sdk.service.drain_pending_safe",
+                AsyncMock(side_effect=asyncio.CancelledError),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "backend.copilot.pending_message_helpers.persist_session_safe",
+                _numbered,
+            )
+        )
+        turn = stream_chat_completion_sdk(
+            session_id=session.session_id,
+            message="hello",
+            is_user_message=True,
+            user_id="test-user",
+            session=session,
+            envelope=root_envelope("turn-2", session_id=session.session_id),
+        )
+        try:
+            async for chunk in turn:
+                if chunk is _RUNNING_SECOND and stop.startswith("closed"):
+                    await turn.aclose()
+                    break
+        except asyncio.CancelledError:
+            assert stop.startswith("cancelled")
+        set_execution_context(None, None)
+
+    assert _saved_results(session) == [r.content for r in kept]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stop, saved",
+    [
+        # The second card is not claimed yet, so it stays held.
+        ("closed at the next card's status", [_RESULT.content]),
+        # Cut inside the fold's own save: both rows are on the session only.
+        ("cancelled inside the fold's save", [_RESULT.content, _SECOND.content]),
+    ],
+)
+async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
+    stop, saved
+):
+    """Stopped before the try whose finally ends the turn: the results already
+    run are saved once, and the counted turn is ended on the box."""
+    session = ChatSession.new("user-1", dry_run=False)
+    session.title = "already titled"
+    sandbox = MagicMock()
+
+    async def resolve(_user_id, _session, deliver, **_kwargs):
+        yield _RUNNING
+        deliver(_RESULT)
+        yield _RUNNING_SECOND
+        deliver(_SECOND)
+
+    async def model_loop(**_kwargs):
+        raise AssertionError("the turn was stopped before the model")
+        yield
+
+    async def cut(_session: ChatSession, _log_prefix: str) -> ChatSession:
+        raise asyncio.CancelledError
+
+    fold_save = cut if stop.startswith("cancelled") else _numbered
+    svc = "backend.copilot.baseline.service"
+    with (
+        _baseline_patches(resolve, persist_pending_as_user_rows, model_loop),
+        patch.object(
+            type(baseline_service.config),
+            "active_e2b_api_key",
+            new_callable=PropertyMock,
+            return_value="e2b-key",
+        ),
+        patch(f"{svc}.get_or_create_sandbox", AsyncMock(return_value=sandbox)),
+        patch(f"{svc}.workspace_volume_mounts", MagicMock(return_value=[])),
+        patch(f"{svc}.count_expert_turn", AsyncMock()),
+        patch(f"{svc}.pause_sandbox_direct", AsyncMock()) as pause,
+        patch(
+            "backend.copilot.pending_message_helpers.persist_session_safe",
+            fold_save,
+        ),
+        patch(f"{svc}.persist_session_safe", _numbered),
+    ):
+        turn = stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message=None,
+            is_user_message=False,
+            user_id="user-1",
+            session=session,
+            envelope=root_envelope("turn-2", session_id=session.session_id),
+        )
+        try:
+            async for chunk in turn:
+                if chunk is _RUNNING_SECOND and stop.startswith("closed"):
+                    await turn.aclose()
+                    break
+        except asyncio.CancelledError:
+            assert stop.startswith("cancelled")
+        await asyncio.sleep(0)
+        set_execution_context(None, None)
+
+    assert _saved_results(session) == saved
+    pause.assert_awaited_once_with(sandbox, session.session_id, expert_id=None)
+
+
+@contextlib.contextmanager
+def _baseline_patches(resolve, persist, model_loop) -> Iterator[None]:
+    svc = "backend.copilot.baseline.service"
+    with (
+        patch(f"{svc}.build_expert_identity_suffix", new=AsyncMock(return_value="")),
+        patch(f"{svc}.drain_pending_safe", new=AsyncMock(return_value=[])),
+        patch(
+            f"{svc}._resolve_baseline_model",
+            new=AsyncMock(
+                return_value=ResolvedModel(
+                    model="anthropic/claude-sonnet-4-6", source="env"
+                )
+            ),
+        ),
+        patch(
+            f"{svc}.normalize_model_for_transport",
+            new=MagicMock(side_effect=lambda model, cfg=None: model),
+        ),
+        patch(
+            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            f"{svc}._build_system_prompt",
+            new=AsyncMock(return_value=("system prompt", None)),
+        ),
+        patch(f"{svc}._fetch_graphiti_context", new=AsyncMock(return_value="")),
+        patch.multiple(
+            svc,
+            enqueue_conversation_turn=AsyncMock(),
+            capture_chat_turn=AsyncMock(),
+            persist_and_record_usage=AsyncMock(),
+            upsert_chat_session=AsyncMock(),
+            upload_transcript=AsyncMock(),
+            active_mode=AsyncMock(return_value=None),
+            build_turn_budget_block=AsyncMock(return_value=""),
+        ),
+        patch(
+            f"{svc}.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(f"{svc}.extract_context_messages", new=AsyncMock(return_value=[])),
+        patch(f"{svc}._compress_session_messages", new=AsyncMock(return_value=[])),
+        patch(f"{svc}.resolve_answered", new=resolve),
+        patch(f"{svc}.persist_pending_as_user_rows", new=persist),
+        patch(f"{svc}.tool_call_loop", new=model_loop),
+    ):
+        yield
+
+
+async def _numbered(session: ChatSession, _log_prefix: str) -> ChatSession:
+    for i, message in enumerate(session.messages):
+        message.sequence = i
+    return session
+
+
+def _saved_results(session: ChatSession) -> list[str]:
+    return [
+        m.content or ""
+        for m in session.messages
+        if m.sequence is not None and "<held_call_result" in (m.content or "")
+    ]

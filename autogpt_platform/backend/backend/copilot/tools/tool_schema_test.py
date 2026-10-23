@@ -258,16 +258,37 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-# Bumped 77_014 -> 77_488 for delegate_to_expert's optional ``reason``
+# Bumped 77_014 -> 77_401 for memory_forget_search's `include_forgotten`
+# argument (#14972): a soft forget left a fact the chat could no longer find,
+# so it could never be made permanent with hard_delete. No tool was added.
+# Measured on this branch merged with dev 8432f734f5:
+#     merged tree, before                         76,975 (89 tools)
+#     + include_forgotten              +126       77,101 (89 tools)
+#     + headroom                       +300       77,401
+# The same deliberate margin as the line above, for the same reason.
+# Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
+# provider (SECRT-2878): the enum entry, its place in the supported list, one
+# sentence telling the model it returns the account-linking link (never a key
+# field), and scoping the sandbox-failure-only rule to the other providers so
+# it no longer forbids the ayrshare call. No tool was added (89 either side).
+# Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
+#     dev 583fc0bb4e                              76,975 (89 tools)
+#     + this PR's connect_integration  +200       77,175 (89 tools)
+# Plus one.
+# Both bumps met in the memory-core stack's merge with dev f05d2d7393;
+# re-measured on that merged tree (89 tools), with the stack's margin:
+#     merged tree                                 77,301 (89 tools)
+#     + headroom                       +300       77,601
+# Bumped 77_601 -> 78_014 for delegate_to_expert's optional ``reason``
 # argument (the "why this teammate" line on the hand-off card) and the
 # ``status=needs_input`` sentence telling the delegator to wait for the
-# user. No tool was added (89 either side). Measured on this branch rebased
-# on dev 7aaa60f999:
-#     dev 7aaa60f999                              76,975 (89 tools)
-#     + this PR's two descriptions   +213         77,188 (89 tools)
-#     + headroom                       +300       77,488
-# Same deliberate margin as the note above, for the same reason.
-_CHAR_BUDGET = 77_488
+# user (#14995). No tool was added (89 either side). Measured on that
+# branch merged with dev 1ffb0becc:
+#     dev 1ffb0becc                               77,501 (89 tools)
+#     + the two descriptions           +213       77,714 (89 tools)
+#     + headroom                       +300       78,014
+# The same deliberate margin as the notes above, for the same reason.
+_CHAR_BUDGET = 78_014
 
 
 @pytest.fixture(scope="module")
@@ -462,7 +483,15 @@ def test_total_schema_char_budget() -> None:
 # 69,461, 22 under the line above; find_capability's expert kind adds 27.
 #     merged tree                                 69,488
 #     + headroom                       +300       69,788
-_SESSION_WIRE_BUDGET = 69_788
+#
+# Re-measured on the memory-core stack merged with dev f05d2d7393. Neither
+# side moved this line, but each grew the largest session under it: the
+# stack's memory_forget_search `include_forgotten` (69,609 alone) and dev's
+# connect_integration `ayrshare` (69,687 alone). Together they measure 20
+# over it. Same headroom, for the same reason.
+#     merged tree                                 69,808
+#     + headroom                       +300       70,108
+_SESSION_WIRE_BUDGET = 70_108
 
 
 def test_largest_declared_session_wire_budget() -> None:

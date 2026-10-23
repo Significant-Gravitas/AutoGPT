@@ -8,7 +8,7 @@ reviews) are stood in for.
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -221,7 +221,7 @@ async def test_a_turn_that_did_not_finish_says_why(
         world.open_reviews[ids.bit] = [object()]
     if question:
         world.sessions[ids.bit].metadata.pending_question = PendingQuestion(
-            text=question, asked_at=datetime.now(timezone.utc)
+            text=question, asked_at=datetime.now(UTC)
         )
 
     await end_turn(ids.bit, ids.turn, error=error)

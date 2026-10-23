@@ -39,6 +39,41 @@ async def test_an_outward_call_asks_in_every_mode_for_otto(settings, mode):
 
 
 @pytest.mark.asyncio
+async def test_a_cheap_outward_call_never_runs_unchecked(settings):
+    """Unsupervised would run it; the toggle holds it for the user, since it
+    leaves the platform all the same."""
+    verdict = await delegation_rules.verdict_for(
+        "unsupervised", Effect.EXTERNAL_JUDGED, "u1", _session()
+    )
+
+    assert verdict is Verdict.ASK
+
+
+@pytest.mark.asyncio
+async def test_auto_keeps_judging_a_cheap_outward_call(settings):
+    """Auto already checks it with the supervisor, so the toggle adds nothing."""
+    verdict = await delegation_rules.verdict_for(
+        "auto", Effect.EXTERNAL_JUDGED, "u1", _session()
+    )
+
+    assert verdict is Verdict.JUDGE
+    settings.get_delegation_settings.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_with_the_toggle_off_a_cheap_outward_call_runs(settings):
+    settings.get_delegation_settings.return_value = DelegationSettings(
+        ask_before_external=False
+    )
+
+    verdict = await delegation_rules.verdict_for(
+        "unsupervised", Effect.EXTERNAL_JUDGED, "u1", _session()
+    )
+
+    assert verdict is Verdict.RUN
+
+
+@pytest.mark.asyncio
 async def test_a_thread_otto_delegated_asks_too(settings):
     thread = _session(expert_id="expert-b", delegated_by="otto-chat")
 

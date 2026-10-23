@@ -8,16 +8,20 @@ interface Props {
   isOpen: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  title?: string;
+  description: string;
 }
 
 export function UnsupervisedConfirmDialog({
   isOpen,
   onConfirm,
   onCancel,
+  title = "Run this chat unsupervised?",
+  description,
 }: Props) {
   return (
     <Dialog
-      title="Run this chat unsupervised?"
+      title={title}
       styling={{ maxWidth: "30rem", minWidth: "auto" }}
       controlled={{
         isOpen,
@@ -27,11 +31,7 @@ export function UnsupervisedConfirmDialog({
       }}
     >
       <Dialog.Content>
-        <Text variant="body">
-          AutoPilot will not ask before anything in this chat. Edits, commands
-          and actions outside the platform, like sending a message or an email,
-          run without your approval.
-        </Text>
+        <Text variant="body">{description}</Text>
         <Dialog.Footer>
           <Button variant="secondary" onClick={onCancel}>
             Cancel

@@ -14,15 +14,11 @@ import {
 import { SettingRow } from "./SettingRow";
 import { useDelegationSettings } from "./useDelegationSettings";
 
-interface Props {
-  enabled: boolean;
-}
-
 const SELECT_CLASS = "h-9 w-full rounded-lg py-1.5 pl-3 pr-2.5 sm:w-40";
 
-export function DelegationSettingsSection({ enabled }: Props) {
+export function DelegationSettingsSection() {
   const { settings, isLoading, isError, refetch, update } =
-    useDelegationSettings({ enabled });
+    useDelegationSettings();
 
   if (isLoading) {
     return (
@@ -49,7 +45,7 @@ export function DelegationSettingsSection({ enabled }: Props) {
       <SettingRow
         id="delegation-mode"
         title="Delegation mode"
-        description="How Otto hands work to your experts."
+        description="How Otto hands work to your experts. A hand-off never runs looser than the chat it came from."
         helper="Ask first proposes each hand-off for approval · Auto lets a judge check each call · Unsupervised runs within caps"
       >
         <Select

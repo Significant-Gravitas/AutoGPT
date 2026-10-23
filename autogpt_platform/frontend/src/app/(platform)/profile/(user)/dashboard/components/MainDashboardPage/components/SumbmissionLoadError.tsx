@@ -18,13 +18,13 @@ export function SubmissionLoadError() {
             variant="large-medium"
             className="text-neutral-900 dark:text-neutral-100"
           >
-            Failed to load agents
+            Failed to load workflows
           </Text>
           <Text
             variant="body"
             className="text-neutral-600 dark:text-neutral-400"
           >
-            Something went wrong while loading your submitted agents.
+            Something went wrong while loading your submitted workflows.
           </Text>
         </div>
         <Button

@@ -4,12 +4,13 @@ import { useContext, useState } from "react";
 import { usePendingReviewsForChatSession } from "@/hooks/usePendingReviews";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
-import { ChatSessionContext } from "../ChatContainer/components/ChatSessionContext";
+import { ChatSessionContext } from "../ChatMessagesContainer/components/ChatSessionContext";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import type { CardStatus } from "../ApprovalQueue/components/ApprovalCard/ApprovalCard";
 import {
   type ChatRule,
   type RuleScope,
+  answerReview,
   isGateReview,
   toApprovalItem,
 } from "../ApprovalQueue/helpers";
@@ -44,24 +45,14 @@ export function useHandoffApproval(held: HeldRowInfo) {
     if (!item || !review) return;
     setStatus(approved ? "approving" : "rejecting");
     setFailed(false);
-    let ok = false;
-    try {
-      const res = await processReviews(
-        [
-          {
-            node_exec_id: item.reviewId,
-            approved,
-            chat_rule: approved ? (rule ?? null) : null,
-            ...(approved && rule && scope ? { chat_rule_scope: scope } : {}),
-            ...(approved && review.editable ? editedReview(item, edits) : {}),
-          },
-        ],
-        [item.scope],
-      );
-      ok = res.status === 200 && res.data.failed_count === 0;
-    } catch {
-      ok = false;
-    }
+    const ok = await answerReview({
+      processReviews,
+      item,
+      approved,
+      rule,
+      scope,
+      approvedExtras: review.editable ? editedReview(item, edits) : {},
+    });
     setStatus("idle");
     if (ok) {
       // The row flips to the answer now; the persisted result lands later.

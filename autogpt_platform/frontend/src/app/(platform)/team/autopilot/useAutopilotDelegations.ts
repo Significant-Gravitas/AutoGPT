@@ -5,16 +5,12 @@ import {
 import { okData } from "@/app/api/helpers";
 import { isToday } from "../components/DelegationList/helpers";
 
-interface Args {
-  enabled: boolean;
-}
-
-export function useAutopilotDelegations({ enabled }: Args) {
+export function useAutopilotDelegations() {
   const listQuery = useListDelegations(undefined, {
-    query: { select: (res) => okData(res) ?? null, enabled },
+    query: { select: (res) => okData(res) ?? null },
   });
   const settingsQuery = useGetDelegationSettings({
-    query: { select: (res) => okData(res) ?? null, enabled },
+    query: { select: (res) => okData(res) ?? null },
   });
 
   const delegations = listQuery.data?.delegations ?? [];

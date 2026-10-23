@@ -6,11 +6,14 @@ for all FastAPI services in the AutoGPT platform.
 """
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import FastAPI
-from prometheus_client import Counter, Gauge, Histogram, Info
+from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
+
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +140,24 @@ SERVICE_INFO = Info(
     "Service information",
 )
 
+METRICS_ENV_VAR = "ENABLE_METRICS"
+
+
+def metrics_enabled() -> bool:
+    """The switch the HTTP instrumentation obeys, read the way it reads it."""
+    return os.getenv(METRICS_ENV_VAR, "False").lower() in ("true", "1")
+
+
+def start_metrics_server(port: int) -> None:
+    """Serve this process's metrics on a listener of their own, when they are on.
+
+    The public servers call this instead of routing /metrics on their app, so
+    no client of theirs can read the metrics. Bound like the executors'
+    metrics: pyro_host is every service's internal listener address.
+    """
+    if metrics_enabled():
+        start_http_server(port, addr=Config().pyro_host)
+
 
 def instrument_fastapi(
     app: FastAPI,
@@ -186,7 +207,7 @@ def instrument_fastapi(
         should_respect_env_var=True,
         should_instrument_requests_inprogress=True,
         excluded_handlers=excluded_handlers or ["/health", "/readiness"],
-        env_var_name="ENABLE_METRICS",
+        env_var_name=METRICS_ENV_VAR,
         inprogress_name=f"autogpt_{service_subsystem}_http_requests_inprogress",
         inprogress_labels=True,
     )

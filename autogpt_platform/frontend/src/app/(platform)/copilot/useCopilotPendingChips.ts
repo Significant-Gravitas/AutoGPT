@@ -1,6 +1,14 @@
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
@@ -136,7 +144,9 @@ function usePeekOnBoundary({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
   // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
@@ -187,7 +197,7 @@ function usePeekOnBoundary({
     const inFlightIds = new Set(
       (sessionChanged ? [] : queueRef.current).map((entry) => entry.id),
     );
-    void getV2GetPendingMessages(sessionId).then((res) => {
+    const peek = getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
       if (peekSeq !== latestPeekSeqRef.current) return;
       if (res.status !== 200) return;
@@ -245,7 +255,15 @@ function usePeekOnBoundary({
         return [...fromServer, ...queuedDuringWindow];
       });
     });
+    void peek.catch(ignoreMissingSession);
   }, [sessionId, status, queueRef, setQueue]);
+}
+
+// A deleted chat, or another account's, answers 404: nothing is pending. Any
+// other failure is rethrown, so it still reaches Sentry as before.
+function ignoreMissingSession(error: unknown) {
+  if (error instanceof ApiError && error.status === 404) return;
+  throw error;
 }
 
 // ── 2. Auto-continue promotion ─────────────────────────────────────────
@@ -282,7 +300,9 @@ function useAutoContinuePromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   const prevStatusRef = useRef(status);
   // The opener is the first assistant id observed after a turn starts.
   // Any LATER assistant id in the same chain is the auto-continue.
@@ -432,7 +452,9 @@ function useMidTurnDrainPromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   // Live ref tracks the latest sessionId so a poll captured at request
   // time can detect a session switch on resolve.  A cancellation flag
   // would also fire on enqueue (this effect re-runs on every queue

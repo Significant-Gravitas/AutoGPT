@@ -138,8 +138,11 @@ services:
     <<: *redis-node
     depends_on: [redis-0, redis-1, redis-2]
     restart: "no"
+    # A started shard can take a second to accept connections, and this runs once: wait for every PONG.
     command: >-
-      sh -c "redis-cli -h redis-0 -p 17000 cluster info 2>/dev/null | grep -q cluster_state:ok ||
+      sh -c "for node in redis-0:17000 redis-1:17001 redis-2:17002; do
+      i=0; until redis-cli -h $${node%:*} -p $${node#*:} ping 2>/dev/null | grep -q PONG || [ $$i -ge 60 ]; do i=$$((i + 1)); sleep 0.5; done; done;
+      redis-cli -h redis-0 -p 17000 cluster info 2>/dev/null | grep -q cluster_state:ok ||
       redis-cli --cluster create redis-0:17000 redis-1:17001 redis-2:17002 --cluster-replicas 0 --cluster-yes"
   falkordb:
     image: falkordb/falkordb:latest
@@ -279,8 +282,9 @@ services:
       <<: *backend-env
       CODEX_TEMP_ROOT: /run/autogpt-codex
     tmpfs: *codex-tmpfs
-    ports:
-      - "8002:8002"
+    # Metrics only. Reachable from the other containers, not from the host.
+    expose:
+      - "8002"
     networks:
       - app-network
     logging:
@@ -318,8 +322,9 @@ services:
       CODEX_TEMP_ROOT: /run/autogpt-codex
       PYTHONUNBUFFERED: "1"
     tmpfs: *codex-tmpfs
-    ports:
-      - "8008:8008"
+    # Metrics only. Reachable from the other containers, not from the host.
+    expose:
+      - "8008"
     volumes:
       - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
@@ -384,8 +389,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8005:8005"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8005"
     volumes:
       - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
@@ -422,8 +428,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8003:8003"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8003"
     networks:
       - app-network
     logging:
@@ -456,8 +463,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8007:8007"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8007"
     networks:
       - app-network
     logging:
@@ -490,8 +498,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8009:8009"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8009"
     networks:
       - app-network
     logging:
@@ -536,6 +545,9 @@ services:
       # directly; tables live in the platform schema (Prisma migrations).
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres
       AUTH_DB_SCHEMA: platform
+      # Node closes an idle keep-alive socket after 5 s (+1 s buffer); a client reusing one right then
+      # gets "socket hang up". Keep idle sockets longer than clients and proxies leave them unused.
+      KEEP_ALIVE_TIMEOUT: "65000"
 volumes:
   workspace-data:
   store-media-data:

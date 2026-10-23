@@ -12,7 +12,7 @@ backs every other copilot turn, so the delegated work:
 - speaks and acts as the target expert (``<expert_identity>`` is rebuilt from
   the target's Soul by the normal per-turn path),
 - reads and writes the *target's* memory namespace
-  (:func:`derive_memory_group_id` keys on the session's ``expert_id``),
+  (the session's ``expert_id`` selects its ``MemoryScope``),
 - attributes the agent runs it starts to the *target's* weekly budget (only
   graph executions accrue weekly spend; the delegated conversation's own LLM
   cost does not), which is why a paused/archived teammate is refused here,
@@ -197,7 +197,7 @@ class DelegateToExpertTool(BaseTool):
         terms = (
             None
             if delegated_session_id.strip()
-            else await delegation_terms(user_id, session, target.id)
+            else await delegation_terms(user_id, session, target)
         )
         if isinstance(terms, str):
             return self._error(terms, session)
@@ -331,8 +331,10 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 origin=child_session_origin(session.metadata),
-                # The teammate asks the user as often as the delegator must.
-                autopilot_mode=terms.mode,
+                # Decided by ``delegation_terms`` from the expert row already in
+                # hand, so the thread cannot pick up a looser default written
+                # in between, nor run looser than the chat that opened it.
+                inherited_autopilot_mode=terms.mode,
                 delegation_cap_usd=terms.cap_usd,
             )
             return new_session.session_id
