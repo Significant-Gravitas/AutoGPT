@@ -1,10 +1,11 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Coroutine
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeVar
 from uuid import UUID, uuid4
 
 from autogpt_libs import auth
@@ -110,6 +111,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     get_usage_status,
     increment_daily_reset_count,
+    is_user_paywalled,
     release_reset_lock,
     reset_daily_usage,
 )
@@ -194,6 +196,11 @@ from backend.util.settings import Settings
 settings = Settings()
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# Reads a message starts before its session checks (``_start_early_read``).
+_early_reads: set[asyncio.Task[Any]] = set()
 
 config = ChatConfig()
 
@@ -1807,6 +1814,32 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+def _start_early_read(read: Coroutine[Any, Any, _T], name: str) -> asyncio.Task[_T]:
+    """Start a read the route awaits later, where its check runs."""
+    task = asyncio.create_task(read, name=name)
+    # The loop holds tasks weakly; a request that ends early never awaits this.
+    _early_reads.add(task)
+    task.add_done_callback(_finish_early_read)
+    return task
+
+
+def _finish_early_read(task: asyncio.Task[Any]) -> None:
+    _early_reads.discard(task)
+    if not task.cancelled():
+        # Retrieved, so a read nobody awaited isn't logged as an unhandled error.
+        task.exception()
+
+
+async def _read_paywall_state(user_id: str) -> None:
+    """Read what the paywall reads, so the paywall check can join the read.
+
+    The route shares those reads within the request (``sharing_trial_reads``),
+    so the check gets this read's result, or its error, when it runs.
+    """
+    with contextlib.suppress(Exception):
+        await is_user_paywalled(user_id)
+
+
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -1907,7 +1940,25 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    session = await _validate_and_get_writable_session(session_id, user_id)
+    # Reads that need only the user or the session id start beside the
+    # session's own checks; each is still awaited where its check runs.
+    paywall_reads = _start_early_read(
+        _read_paywall_state(user_id), name=f"chat-paywall-reads-{session_id[:12]}"
+    )
+    turn_in_flight_read = (
+        _start_early_read(
+            is_turn_in_flight(session_id), name=f"chat-in-flight-{session_id[:12]}"
+        )
+        if request.is_user_message and request.message
+        else None
+    )
+    try:
+        session = await _validate_and_get_writable_session(session_id, user_id)
+    except BaseException:
+        paywall_reads.cancel()
+        if turn_in_flight_read is not None:
+            turn_in_flight_read.cancel()
+        raise
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     await enforce_model_entitlement(request.model, session, user_id)
@@ -1977,9 +2028,7 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
-        turn_in_flight = (
-            request.is_user_message and message and await is_turn_in_flight(session_id)
-        )
+        turn_in_flight = turn_in_flight_read is not None and await turn_in_flight_read
     except StreamRegistryUnavailable as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
