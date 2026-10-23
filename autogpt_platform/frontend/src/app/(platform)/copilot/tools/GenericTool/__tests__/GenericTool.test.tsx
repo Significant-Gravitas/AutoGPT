@@ -468,4 +468,21 @@ describe("GenericTool icons", () => {
     expect(badShape).toBeTruthy();
     expect(badShape).not.toBe(okShape);
   });
+
+  it("says an empty file search found nothing instead of printing []", () => {
+    render(
+      <GenericTool
+        part={makePart({
+          type: "tool-Glob",
+          state: "output-available",
+          input: { pattern: "**/*.csv" },
+          output: { content: [{ type: "text", text: "[]" }] },
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(screen.getByText("Nothing found.")).toBeDefined();
+    expect(document.body.textContent).not.toContain("[]");
+  });
 });

@@ -102,6 +102,16 @@ describe("the shared result fallback", () => {
     expect(screen.getByText("Nothing found.")).toBeDefined();
   });
 
+  it.each([[null], [[]], [{}], ["[]"], [" {} "]])(
+    "says nothing came back for a bare %j",
+    (output) => {
+      render(<ToolResult row={row(output, "glob")} />);
+
+      expect(screen.getByText("Nothing found.")).toBeDefined();
+      expect(document.body.textContent).not.toMatch(/\[\]|\{\}/);
+    },
+  );
+
   it("writes empty values inside a result as None", () => {
     render(
       <ToolResult

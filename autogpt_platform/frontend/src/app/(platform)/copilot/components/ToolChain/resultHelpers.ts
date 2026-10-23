@@ -102,6 +102,21 @@ export function isEmptyResult(output: unknown): boolean {
   );
 }
 
+/** Output with nothing in it at all: `null`, an empty list or object, or that
+ *  same JSON as text (an MCP tool's empty search answers "[]"). */
+export function isBlankOutput(value: unknown): boolean {
+  if (typeof value !== "string")
+    return value === null || isEmptyCollection(value);
+  const text = value.trim();
+  if (!/^(\[|\{|null$)/.test(text)) return false;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed === null || isEmptyCollection(parsed);
+  } catch {
+    return false;
+  }
+}
+
 /** A value as a result card shows it: empty lists and objects read "None"
  *  instead of their JSON. */
 export function displayValue(value: unknown): string {

@@ -10,7 +10,10 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
-import { isEmptyResult } from "../../components/ToolChain/resultHelpers";
+import {
+  isBlankOutput,
+  isEmptyResult,
+} from "../../components/ToolChain/resultHelpers";
 import {
   globalRegistry,
   OutputItem,
@@ -476,6 +479,9 @@ function getFileAccordionData(
   // Handle MCP-style content blocks from SDK tools (Read, Glob, Grep, Edit)
   if (!displayContent) {
     displayContent = extractMcpText(output);
+  }
+  if (displayContent && isBlankOutput(displayContent)) {
+    displayContent = "Nothing found.";
   }
 
   // For edit: show old/new diff; for write: show written content if output is just a status
