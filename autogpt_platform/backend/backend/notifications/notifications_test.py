@@ -330,6 +330,17 @@ async def test_the_allowlist_alone_decides_while_it_is_set(audience, caplog):
 
 
 @pytest.mark.asyncio
+async def test_an_allowlist_naming_no_address_lets_no_one_through(audience):
+    """A stray comma is a set allowlist, not an unset one: it must not widen a
+    canary to the whole audience."""
+    audience.user_notifications_allowlist = " , "
+    paying = _standing(SubscriptionTier.PRO)
+
+    assert not (await _deliver(NotificationType.BRIEFING, paying)).sent
+    assert product_mail_audience_where(datetime.now(timezone.utc)) == {"id": {"in": []}}
+
+
+@pytest.mark.asyncio
 async def test_the_allowlist_overrides_everyone(audience):
     audience.user_notifications_audience = UserNotificationsAudience.EVERYONE
     audience.user_notifications_allowlist = "team@agpt.co"

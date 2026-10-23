@@ -40,7 +40,7 @@ class ProductMailStanding(BaseModel):
 
 def is_product_mail_recipient(standing: ProductMailStanding, now: datetime) -> bool:
     allowlist = product_mail_allowlist()
-    if allowlist:
+    if allowlist is not None:
         return standing.email.strip().lower() in allowlist
     if (
         settings.config.user_notifications_audience
@@ -59,7 +59,9 @@ def is_product_mail_recipient(standing: ProductMailStanding, now: datetime) -> b
 def product_mail_audience_where(now: datetime) -> UserWhereInput | None:
     """`is_product_mail_recipient` as a where clause; None when everyone may."""
     allowlist = product_mail_allowlist()
-    if allowlist:
+    if allowlist is not None:
+        if not allowlist:
+            return {"id": {"in": []}}
         return {
             "OR": [
                 {"email": {"equals": address, "mode": "insensitive"}}
@@ -81,9 +83,14 @@ def product_mail_audience_where(now: datetime) -> UserWhereInput | None:
     }
 
 
-def product_mail_allowlist() -> list[str]:
-    """USER_NOTIFICATIONS_ALLOWLIST as lower-cased addresses; empty when unset."""
+def product_mail_allowlist() -> list[str] | None:
+    """USER_NOTIFICATIONS_ALLOWLIST as lower-cased addresses; None when unset.
+
+    A value that is set but names no address (a stray comma) is an empty list,
+    which lets no one through rather than falling back to the audience."""
     raw = settings.config.user_notifications_allowlist
+    if not raw.strip():
+        return None
     return [a.strip().lower() for a in raw.split(",") if a.strip()]
 
 

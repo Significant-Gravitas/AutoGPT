@@ -92,7 +92,7 @@ async def _in_product_audience(user_id: str, kind: NotificationType) -> bool:
         return True
     if standing is None:
         reason = "the account no longer exists"
-    elif product_mail_allowlist():
+    elif product_mail_allowlist() is not None:
         reason = "not on USER_NOTIFICATIONS_ALLOWLIST"
     else:
         reason = (
