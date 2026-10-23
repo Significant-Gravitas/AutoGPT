@@ -46,7 +46,7 @@ Ask Otto to "email me the result" or to send you a weekly digest, and the messag
 
 ## Chat more comfortably on your phone
 
-The composer gives your message more room and keeps its controls above the phone's safe area. On touch devices, **Take photo** in the **+** menu sends a camera shot through the usual attachment flow. Extra controls live in **More options**. Attached and sent images now show as thumbnails, in the composer and in the chat, instead of plain file cards. [#15545](https://github.com/Significant-Gravitas/AutoGPT/pull/15545) [#15882](https://github.com/Significant-Gravitas/AutoGPT/pull/15882)
+The composer gives your message more room and keeps its controls above the phone's safe area. On touch devices, **Take photo** in the **+** menu sends a camera shot through the usual attachment flow. Attached and sent images now show as thumbnails, in the composer and in the chat, instead of plain file cards. [#15545](https://github.com/Significant-Gravitas/AutoGPT/pull/15545) [#15882](https://github.com/Significant-Gravitas/AutoGPT/pull/15882)
 
 The keyboard stays closed until you need it and dismisses after sending. Message actions are visible without hovering, long links wrap, and the sidebar and the navigation menu close when you pick a chat or a page. A quick second tap on **Send** no longer stops the message you just sent. Your sidebar's open or closed choice also survives a reload. [#15769](https://github.com/Significant-Gravitas/AutoGPT/pull/15769) [#15692](https://github.com/Significant-Gravitas/AutoGPT/pull/15692) [#15547](https://github.com/Significant-Gravitas/AutoGPT/pull/15547) [#15574](https://github.com/Significant-Gravitas/AutoGPT/pull/15574)
 
