@@ -5,6 +5,7 @@ const QUEUED_POLL_MS = 10_000;
 
 interface Args {
   enabled: boolean;
+  /** Undefined while the session is being re-read. */
   sessionChatStatus: string | undefined;
   refetchSession: () => Promise<unknown>;
   followBackendTurn: () => void;
@@ -31,7 +32,8 @@ export function useFollowQueuedTurn({
   const wasQueuedRef = useRef(false);
 
   useEffect(() => {
-    if (!enabled) return;
+    // Unknown while the session refetches: only a read says it left the queue.
+    if (!enabled || sessionChatStatus === undefined) return;
     if (sessionChatStatus === "queued") {
       wasQueuedRef.current = true;
       const timer = setInterval(

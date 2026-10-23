@@ -11,7 +11,7 @@ describe("useFollowQueuedTurn", () => {
     const refetchSession = vi.fn(async () => undefined);
     const followBackendTurn = vi.fn();
     const view = renderHook(
-      ({ sessionChatStatus }: { sessionChatStatus: string }) =>
+      ({ sessionChatStatus }: { sessionChatStatus: string | undefined }) =>
         useFollowQueuedTurn({
           enabled,
           sessionChatStatus,
@@ -40,6 +40,18 @@ describe("useFollowQueuedTurn", () => {
 
     expect(followBackendTurn).toHaveBeenCalledTimes(1);
     expect(refetchSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps waiting while a re-read of the still-queued session is in flight", () => {
+    const { view, refetchSession, followBackendTurn } = renderQueued();
+
+    // The session hook reports no status while its query refetches.
+    view.rerender({ sessionChatStatus: undefined });
+    view.rerender({ sessionChatStatus: "queued" });
+    vi.advanceTimersByTime(10_000);
+
+    expect(followBackendTurn).not.toHaveBeenCalled();
+    expect(refetchSession).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a session that was never queued alone", () => {
