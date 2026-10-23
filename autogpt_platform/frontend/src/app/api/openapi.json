@@ -31552,7 +31552,10 @@
             "title": "Recordtype",
             "default": "SubscriptionChange"
           },
-          "MessageID": { "type": "string", "title": "Messageid" },
+          "MessageID": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Messageid"
+          },
           "ServerID": { "type": "integer", "title": "Serverid" },
           "MessageStream": { "type": "string", "title": "Messagestream" },
           "ChangedAt": { "type": "string", "title": "Changedat" },
@@ -31560,10 +31563,13 @@
           "Origin": { "type": "string", "title": "Origin" },
           "SuppressSending": { "type": "boolean", "title": "Suppresssending" },
           "SuppressionReason": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Suppressionreason"
           },
-          "Tag": { "type": "string", "title": "Tag" },
+          "Tag": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tag"
+          },
           "Metadata": {
             "additionalProperties": { "type": "string" },
             "type": "object",
