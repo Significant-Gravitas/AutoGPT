@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot import delegation_report, result_waiters, stream_registry
+from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage, ChatSession, PendingQuestion
 from backend.copilot.pending_message_helpers import drain_pending_safe
@@ -267,6 +268,26 @@ async def test_a_turn_that_ended_on_a_budget_pause_says_it_paused(
 
     (note,) = await drain_pending_safe(ids.otto)
     assert note.content.split("\n")[0] == headline
+
+
+@pytest.mark.parametrize(
+    "kickoff",
+    [KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE],
+    ids=["keep-going", "resumed-at-reset"],
+)
+async def test_a_turn_resumed_after_a_pause_reports_its_own_end(world, ids, kickoff):
+    add_session(world, ids.bit, delegated_by=ids.otto, reply="Drafting the PR.")
+    session = world.sessions[ids.bit]
+    append_pause_marker(session, TurnPause(reason="daily"))
+    session.messages += [
+        ChatMessage(role="assistant", content=kickoff),
+        ChatMessage(role="assistant", content="Opened the draft PR."),
+    ]
+
+    await end_turn(ids.bit, ids.turn)
+
+    (note,) = await drain_pending_safe(ids.otto)
+    assert note.content.split("\n")[0] == "Bit finished: Opened the draft PR."
 
 
 async def test_a_turn_without_closing_text_does_not_borrow_an_earlier_reply(world, ids):

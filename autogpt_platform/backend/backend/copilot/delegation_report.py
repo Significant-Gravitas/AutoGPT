@@ -10,6 +10,7 @@ import logging
 import uuid
 from itertools import takewhile
 
+from backend.copilot.continuation import KICKOFF_NOTES
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.model import (
     ChatMessage,
@@ -103,7 +104,15 @@ async def _note(user_id: str, session: ChatSession, name: str, *, failed: bool) 
 
 def _this_turn(session: ChatSession) -> list[ChatMessage]:
     """The rows after the message that started the turn, newest first."""
-    return list(takewhile(lambda m: m.role != "user", reversed(session.messages)))
+    return list(takewhile(lambda m: not _starts_a_turn(m), reversed(session.messages)))
+
+
+def _starts_a_turn(message: ChatMessage) -> bool:
+    # "Keep going" and the resume at a budget reset run as a turn whose
+    # message is a note rather than the user's.
+    return message.role == "user" or (
+        message.role == "assistant" and message.content in KICKOFF_NOTES
+    )
 
 
 def _closing_text(this_turn: list[ChatMessage]) -> str:
