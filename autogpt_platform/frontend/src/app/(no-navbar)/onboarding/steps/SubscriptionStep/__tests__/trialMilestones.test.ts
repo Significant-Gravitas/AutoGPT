@@ -2,6 +2,7 @@ import { trialOffer } from "@/tests/integrations/trial-fixtures";
 import { describe, expect, test } from "vitest";
 import {
   formatDay,
+  formatReadyLine,
   getTrialMilestones,
 } from "../components/TrialWelcome/helpers";
 
@@ -43,5 +44,14 @@ describe("getTrialMilestones", () => {
 
     expect(reminder.when).toBe("Today");
     expect(reminder.date).toBeUndefined();
+  });
+});
+
+describe("formatReadyLine", () => {
+  test("names up to three Experts beside Otto and counts the rest", () => {
+    expect(formatReadyLine([])).toBe("Otto is ready to start");
+    expect(formatReadyLine(["Maria", "Mina", "Max", "Kai", "Lena"])).toMatch(
+      /^Otto, Maria, Mina, Max,? and 2 more are ready to start$/,
+    );
   });
 });

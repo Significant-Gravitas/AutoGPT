@@ -1,11 +1,10 @@
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { OTTO_TINT } from "./ottoTint";
-import { formatReadyLine } from "./TrialWelcome/helpers";
+import { formatReadyLine, MAX_NAMED_EXPERTS } from "./TrialWelcome/helpers";
 import type { ReadyExpert } from "./useReadyExperts";
 
 const AVATAR_SIZE = 24;
-const MAX_AVATARS = 4;
 
 interface Props {
   experts: ReadyExpert[];
@@ -20,7 +19,7 @@ export function ReadyLine({ experts }: Props) {
     >
       <span aria-hidden className="flex shrink-0 -space-x-1">
         <AutopilotAvatar size={AVATAR_SIZE} className="rounded-full" />
-        {experts.slice(0, MAX_AVATARS).map((expert) => (
+        {experts.slice(0, MAX_NAMED_EXPERTS).map((expert) => (
           <span
             key={expert.id}
             className="rounded-full"

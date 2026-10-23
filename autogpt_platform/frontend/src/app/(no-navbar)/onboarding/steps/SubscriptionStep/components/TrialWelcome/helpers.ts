@@ -51,12 +51,12 @@ export function getTrialMilestones(
       when: formatDay(chargeDate),
       date: chargeDate,
       title: `Your first payment: ${amount}`,
-      detail: `Then ${formatTrialPrice(offer)}, plus any applicable tax. Cancel by ${formatDay(lastFreeDay)} to pay nothing.`,
+      detail: `Then ${formatCadencePrice(offer)}, plus any applicable tax. Cancel by ${formatDay(lastFreeDay)} to pay nothing.`,
     },
   ];
 }
 
-export function formatTrialPrice(offer: TrialOfferResponse) {
+export function formatCadencePrice(offer: TrialOfferResponse) {
   const cadence = offer.billing_cycle === "yearly" ? "year" : "month";
   return `${formatPlanAmount(offer)} a ${cadence}`;
 }
@@ -69,8 +69,17 @@ export function formatDay(date: Date) {
   });
 }
 
+// The Experts named beside Otto; the rest are counted, to match the avatars.
+export const MAX_NAMED_EXPERTS = 3;
+
 export function formatReadyLine(names: string[]) {
-  const everyone = ["Otto", ...names];
+  const named = names.slice(0, MAX_NAMED_EXPERTS);
+  const others = names.length - named.length;
+  const everyone = [
+    "Otto",
+    ...named,
+    ...(others > 0 ? [`${others} more`] : []),
+  ];
   const list = new Intl.ListFormat(undefined, {
     style: "long",
     type: "conjunction",

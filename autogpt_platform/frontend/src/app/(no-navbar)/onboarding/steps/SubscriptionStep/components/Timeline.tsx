@@ -61,7 +61,7 @@ export function Timeline({ label, milestones }: Props) {
             <div className={cn("flex flex-col", !isLast && "pb-5")}>
               <Text variant="small-medium" as="span" tone="secondary">
                 {milestone.date ? (
-                  <time dateTime={milestone.date.toISOString().slice(0, 10)}>
+                  <time dateTime={toLocalISODate(milestone.date)}>
                     {milestone.when}
                   </time>
                 ) : (
@@ -80,4 +80,11 @@ export function Timeline({ label, milestones }: Props) {
       })}
     </ol>
   );
+}
+
+// The visible date is local, so the machine-readable one must be too.
+function toLocalISODate(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
