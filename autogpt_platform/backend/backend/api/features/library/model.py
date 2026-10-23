@@ -53,14 +53,18 @@ def split_trigger_inputs(
     return graph_inputs, graph_inputs.pop(mask_key)
 
 
-def preset_trigger_config(inputs: GraphInput) -> GraphInput:
-    """A triggered preset's trigger config, for a reader without its graph.
-
-    Found by the mask key's prefix, as a graph has at most one trigger node; a
-    legacy flat preset is all trigger config, as in ``split_trigger_inputs``.
+def preset_trigger_configs(inputs: GraphInput) -> list[GraphInput]:
+    """Every candidate trigger config of a triggered preset, for a reader without
+    its graph: each object under a mask-prefixed key, since a graph input may use
+    the prefix too. A legacy flat preset is all trigger config.
     """
-    mask_key = next((k for k in inputs if k.startswith(NODE_INPUT_MASK_PREFIX)), None)
-    return inputs if mask_key is None else inputs[mask_key]
+    if not any(k.startswith(NODE_INPUT_MASK_PREFIX) for k in inputs):
+        return [inputs]
+    return [
+        v
+        for k, v in inputs.items()
+        if k.startswith(NODE_INPUT_MASK_PREFIX) and isinstance(v, dict)
+    ]
 
 
 class LibraryAgentStatus(str, Enum):

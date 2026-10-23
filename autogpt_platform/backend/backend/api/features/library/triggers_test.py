@@ -502,9 +502,20 @@ async def test_setup_keeps_a_blocks_own_input_check(trigger_blocks_enabled):
         (AllQuietWebhooksManager, "signing_secret"),
     ],
 )
-async def test_stored_trigger_secret_still_guards_ingress(manager, secret_field):
-    """A secret set at setup is found where setup stored it, so the preset's
-    webhook refuses an unsigned delivery."""
+@pytest.mark.parametrize(
+    "constant_inputs",
+    [
+        {"topic": "news"},
+        {"_node_input_mask_a": "news"},
+        {"_node_input_mask_a": {"topic": "news"}},
+    ],
+    ids=["plain-input", "prefixed-string-input", "prefixed-object-input"],
+)
+async def test_stored_trigger_secret_still_guards_ingress(
+    manager, secret_field, constant_inputs
+):
+    """A secret set at setup is found where setup stored it, even beside a graph
+    input that uses the mask prefix, so the webhook refuses an unsigned delivery."""
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
     with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
         await setup_triggered_preset(
@@ -515,9 +526,10 @@ async def test_stored_trigger_secret_still_guards_ingress(manager, secret_field)
             description="",
             trigger_config={secret_field: "t0ken"},
             agent_credentials={},
-            constant_inputs={"topic": "news"},
+            constant_inputs=constant_inputs,
         )
     stored = create_mock.await_args.kwargs["preset"].inputs
+    assert next(iter(stored)) in constant_inputs
     webhook = WebhookWithRelations.model_construct(
         id="wh-1",
         triggered_nodes=[],
