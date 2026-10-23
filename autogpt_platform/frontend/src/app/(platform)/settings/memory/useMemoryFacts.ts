@@ -84,6 +84,17 @@ export function useMemoryFacts({ scopeExpertID, onForgotten }: Args) {
     toast({ title: "Forgotten" });
   }
 
+  function loadMore() {
+    void factsQuery.fetchNextPage().then((result) => {
+      if (!result.isError) return;
+      toast({
+        title: "Could not load more memories",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    });
+  }
+
   function showAll() {
     setIsExpanded(true);
   }
@@ -103,12 +114,13 @@ export function useMemoryFacts({ scopeExpertID, onForgotten }: Args) {
       (visibleFacts.length > RECENT_FACTS_LIMIT || factsQuery.hasNextPage),
     hasMore: isExpanded && factsQuery.hasNextPage,
     isLoadingMore: factsQuery.isFetchingNextPage,
-    loadMore: () => void factsQuery.fetchNextPage(),
+    loadMore,
     showAll,
     showFewer,
     forgetFact,
     isLoading: factsQuery.isLoading,
-    isError: factsQuery.isError,
+    // A failed next page or background refetch keeps what is already shown.
+    isError: factsQuery.isError && !pages,
     error: factsQuery.error,
     refetch: factsQuery.refetch,
   };

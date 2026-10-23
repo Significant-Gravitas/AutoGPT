@@ -136,6 +136,38 @@ describe("Settings memory page — the memories list", () => {
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
+  it("keeps the loaded memories and says so when Show more fails", async () => {
+    server.use(
+      http.get(/\/api\/proxy\/api\/memory\/facts(\?.*)?$/, ({ request }) =>
+        new URL(request.url).searchParams.get("cursor")
+          ? HttpResponse.json({ detail: "Memory is down" }, { status: 500 })
+          : HttpResponse.json({
+              expert_id: null,
+              items: makeFacts(50),
+              total: 53,
+              next_cursor: "page-2",
+            }),
+      ),
+    );
+    render(<SettingsMemoryPage />);
+
+    expect(await screen.findByText("53 memories")).toBeDefined();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Show all 53" }));
+    await user.click(screen.getByRole("button", { name: "Show more" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Could not load more memories",
+          variant: "destructive",
+        }),
+      ),
+    );
+    expect(rows()).toHaveLength(50);
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+  });
+
   it("removes a forgotten memory at once, with no row left waiting on the server", async () => {
     mockFacts(makeFacts(8));
     let finishForget: () => void = () => {};
