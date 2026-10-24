@@ -131,6 +131,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
       return (
         <textarea
           ref={ref as React.Ref<HTMLTextAreaElement>}
+          data-slot="input-control"
           className={cn(
             baseStyles,
             errorStyles,
@@ -169,6 +170,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
     if (props.type === "amount") {
       return (
         <CurrencyInput
+          data-slot="input-control"
           className={cn(
             baseStyles,
             errorStyles,
@@ -212,6 +214,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
     return (
       <BaseInput
         ref={ref as React.Ref<HTMLInputElement>}
+        data-slot="input-control"
         className={cn(
           baseStyles,
           errorStyles,
@@ -242,12 +245,14 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
 
   const input = (
     <div
+      data-slot="input-wrapper"
       onBlur={isPasswordType ? handleWrapperBlur : undefined}
       className={cn("relative w-full", wrapperClassName)}
     >
       {renderInput()}
       {isPasswordType && (
         <button
+          data-slot="input-password-toggle"
           type="button"
           onClick={handleTogglePassword}
           disabled={props.disabled}
@@ -257,9 +262,17 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
           aria-controls={inputId}
         >
           {showPassword ? (
-            <Icon icon={EyeIcon} size={16} />
+            <Icon
+              data-slot="input-password-toggle-icon"
+              icon={EyeIcon}
+              size={16}
+            />
           ) : (
-            <Icon icon={EyeOffIcon} size={16} />
+            <Icon
+              data-slot="input-password-toggle-icon"
+              icon={EyeOffIcon}
+              size={16}
+            />
           )}
         </button>
       )}
@@ -267,9 +280,13 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
   );
 
   const inputWithError = (
-    <div className={cn("relative mb-6 w-full", wrapperClassName)}>
+    <div
+      data-slot="input-field"
+      className={cn("relative mb-6 w-full", wrapperClassName)}
+    >
       {input}
       <Text
+        data-slot="input-error"
         variant="small-medium"
         as="span"
         tone="error"
@@ -287,11 +304,15 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
   return hideLabel ? (
     inputWithError
   ) : (
-    <div className="flex w-full flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <label htmlFor={inputId}>
+    <div data-slot="input" className="flex w-full flex-col gap-2">
+      <div
+        data-slot="input-header"
+        className="flex items-center justify-between gap-2"
+      >
+        <div data-slot="input-label-group" className="flex items-center gap-1">
+          <label data-slot="input-label" htmlFor={inputId}>
             <Text
+              data-slot="input-label-text"
               variant={labelVariant}
               as="span"
               className={cn("text-foreground-base", labelClassName)}
@@ -304,7 +325,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
           ) : null}
         </div>
         {hint ? (
-          <Text variant="small" as="span" tone="subtle">
+          <Text data-slot="input-hint" variant="small" as="span" tone="subtle">
             {hint}
           </Text>
         ) : null}
