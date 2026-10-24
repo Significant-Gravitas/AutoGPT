@@ -107,7 +107,7 @@ function ContextualTip({ id, onDismiss, onUnavailable }: Props) {
           role="region"
           aria-labelledby={titleID}
           data-testid="contextual-tip"
-          className="z-[120] w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-zinc-200 p-4 shadow-xl"
+          className="z-[120] w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
         >
           <div className="flex flex-col gap-2">
             <Text variant="small-medium" className="text-violet-700">

@@ -88,7 +88,7 @@ export function TourStepCard({
           variant="ghost"
           size="xs"
           onClick={onSkip}
-          className="-ml-2.5 text-zinc-500"
+          className="-ml-2.5 text-foreground-tertiary"
         >
           {isLastStep ? "Close" : "Skip tour"}
         </Button>

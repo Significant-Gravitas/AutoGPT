@@ -104,7 +104,7 @@ export function TourSpotlight({ tour }: Props) {
           aria-labelledby={titleID}
           aria-describedby={bodyID}
           data-testid="first-run-tour"
-          className="z-[120] w-[21rem] max-w-[calc(100vw-2rem)] rounded-2xl border-zinc-200 p-5 shadow-xl"
+          className="z-[120] w-[21rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-5 shadow-xl"
         >
           <TourStepCard
             icon={step.icon}
