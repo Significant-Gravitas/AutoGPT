@@ -14,6 +14,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -616,7 +617,11 @@ class TestExecuteAsyncAclose:
         # Stop means stop: the threads this turn handed work to stop with it,
         # on a detached task so the teardown never waits on them.
         await asyncio.sleep(0)
-        cascade.assert_awaited_once_with("sess-1", "user-1")
+        cascade.assert_awaited_once()
+        session_id, user_id, since = cascade.await_args.args
+        assert (session_id, user_id) == ("sess-1", "user-1")
+        # From when this turn started, so earlier turns' hand-offs keep going.
+        assert isinstance(since, datetime) and since.tzinfo is not None
 
     @pytest.mark.asyncio
     async def test_a_cancelled_turn_stops_sharing_its_trial_read(self) -> None:

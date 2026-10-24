@@ -14,6 +14,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Callable, cast
 
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
@@ -305,15 +306,16 @@ async def _closing_at_model_output(
         await stream.aclose()
 
 
-def _cascade_cancel(entry: CoPilotExecutionEntry) -> None:
-    """Stop the threads this cancelled turn handed work to.
+def _cascade_cancel(entry: CoPilotExecutionEntry, started_at: datetime) -> None:
+    """Stop the threads this cancelled turn, started at *started_at*, handed
+    work to.
 
     Detached, never awaited here: the caller is the turn's teardown, and a
     slow or cancelled wait on the children must not keep this turn from
     releasing its lease and finishing as cancelled. The helper logs failures.
     """
     spawn_background_task(
-        cancel_delegated_children(entry.session_id, entry.user_id),
+        cancel_delegated_children(entry.session_id, entry.user_id, started_at),
         name=f"cancel-children-{entry.session_id[:12]}",
     )
 
@@ -669,6 +671,7 @@ class CoPilotProcessor:
         log: CoPilotLogMetadata,
         turn: TurnTrace,
     ):
+        started_at = datetime.now(UTC)
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
@@ -1001,7 +1004,7 @@ class CoPilotProcessor:
             if not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
             if error_msg == stream_registry.CANCELLED_MESSAGE:
-                _cascade_cancel(entry)
+                _cascade_cancel(entry, started_at)
             try:
                 if credential_lease is not None:
                     try:
