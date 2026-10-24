@@ -17,7 +17,12 @@ name was added.
 
 import re
 
-_NAME = r"[^\[\]\r\n]+"
+# Bounded, so a crafted line of repeated ", a teammate on" can't send the
+# match into quadratic backtracking. 80 covers every name a preamble holds:
+# callers are capped at CALLER_NAME_LIMIT (80), users at USER_NAME_LIMIT (40),
+# and old rows say "this user".
+NAME_MAX_LENGTH = 80
+_NAME = rf"[^\[\]\r\n]{{1,{NAME_MAX_LENGTH}}}"
 
 _PREAMBLES = (
     re.compile(

@@ -2,10 +2,15 @@ import type { UIMessage } from "ai";
 
 // The preamble names the user ("Priya's team") when a name is on file and says
 // "this user's team" when it isn't; the matcher must hide both.
-const TEAM_OWNER = "[^\\[\\]\\r\\n]+'s team";
+// Names are capped (80 characters at most), and bounding the match keeps a long
+// crafted line from backtracking quadratically.
+const NAME = "[^\\[\\]\\r\\n]{1,80}";
+const TEAM_OWNER = NAME + "'s team";
 
 const DELEGATION_PREAMBLE = new RegExp(
-  "^\\[Delegated task from [^\\[\\]\\r\\n]+, a teammate on " +
+  "^\\[Delegated task from " +
+    NAME +
+    ", a teammate on " +
     TEAM_OWNER +
     " — not " +
     "the user\\. They cannot see your thread, so report the outcome in your " +
@@ -14,7 +19,9 @@ const DELEGATION_PREAMBLE = new RegExp(
 );
 
 const HANDOFF_PREAMBLE = new RegExp(
-  "^\\[Task handed to you by [^\\[\\]\\r\\n]+, a teammate on " +
+  "^\\[Task handed to you by " +
+    NAME +
+    ", a teammate on " +
     TEAM_OWNER +
     "\\. It " +
     "is yours now: they are not waiting on a report and cannot answer " +

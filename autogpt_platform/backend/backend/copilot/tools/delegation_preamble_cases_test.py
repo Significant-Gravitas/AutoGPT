@@ -10,12 +10,14 @@ contract test fails until its matcher follows.
 
 import json
 import pathlib
+import time
 
 import pytest
 
-from backend.copilot.delegation_preamble import strip_teammate_preamble
+from backend.copilot.delegation_preamble import NAME_MAX_LENGTH, strip_teammate_preamble
 
 from .delegate_to_expert import _handoff_message
+from .expert_delegation import CALLER_NAME_LIMIT, USER_NAME_LIMIT, first_name
 from .handoff_to_expert import _transfer_message
 
 _CASES = json.loads(
@@ -67,3 +69,21 @@ def test_the_backend_hides_the_preamble_exactly_as_the_frontend_does(
     """The public share sanitizer strips the preamble on the server, so it
     must agree with the frontend matcher on every shared case."""
     assert strip_teammate_preamble(case["message"]) == case["visible"]
+
+
+def test_the_matcher_covers_the_longest_names_a_preamble_can_hold():
+    assert NAME_MAX_LENGTH >= max(CALLER_NAME_LIMIT, USER_NAME_LIMIT)
+    # As the tools build it: the caller capped by safe_caller_name inside the
+    # builder, the user by first_name before it.
+    row = _handoff_message("A" * 200, "", "Task", first_name("B" * 200))
+    assert strip_teammate_preamble(row) == "Task"
+
+
+def test_a_crafted_line_cannot_stall_the_matcher():
+    """Unbounded name classes backtrack quadratically on one long line of
+    repeated framing; this runs on the event loop for shares and titles."""
+    crafted = "[Delegated task from " + "x, a teammate on y's team " * 2500
+    started = time.perf_counter()
+    assert strip_teammate_preamble(crafted) == crafted
+    # Unbounded: ~0.5s on this input; bounded: well under a millisecond.
+    assert time.perf_counter() - started < 0.05
