@@ -7,6 +7,7 @@ from backend.api.features.integrations import support
 from backend.api.features.integrations.models import get_supported_auth_types
 from backend.api.features.integrations.support import ConnectableService
 from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.service_identity import catalog_slug
 
 FAKE_REGISTRY = [
@@ -65,8 +66,10 @@ def test_live_registry_offers_printify_and_every_mcp_catalog_server():
 def test_a_provider_counts_exactly_when_it_has_a_sign_in_here():
     """Etsy's blocks always exist; whether it is supported follows whether
     this deployment configured its OAuth app, whichever way the env is set."""
-    has_sign_in = bool(get_supported_auth_types("etsy"))
-    assert (support.find_connectable("Etsy") is not None) == has_sign_in
+    found = support.find_connectable("Etsy")  # loads the blocks first
+    configured = oauth_client_credentials("etsy") is not None
+    assert bool(get_supported_auth_types("etsy")) == configured
+    assert (found is not None) == configured
 
 
 def test_the_registry_is_read_once_per_batch(mocker: MockerFixture):

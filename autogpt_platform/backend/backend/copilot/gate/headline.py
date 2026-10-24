@@ -33,6 +33,7 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "delete_schedule": ("Delete a schedule", ()),
     "setup_agent_webhook_trigger": ("Set up the trigger", ("name",)),
     "create_feature_request": ("File a feature request", ("title",)),
+    "request_integration": ("Request support for", ("service",)),
     "confirm_expert_change": ("Confirm the team change", ()),
     "confirm_expert_soul_update": ("Confirm the teammate change", ()),
     "install_expert_workflow": ("Give a teammate a workflow", ()),

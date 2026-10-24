@@ -128,6 +128,9 @@ _PLATFORM = frozenset(
         "schedule_routine",
         "setup_agent_webhook_trigger",
         "create_feature_request",
+        # Records the ask the way create_feature_request does: a customer
+        # record in Linear named by the user's email.
+        "request_integration",
         "confirm_expert_change",
         "confirm_expert_soul_update",
         "grant_expert_credential",
@@ -156,9 +159,6 @@ _UNGATED = frozenset(
     {
         "connect_integration",
         "request_credential_grant",
-        # Tells the user a service is not supported yet; the request it
-        # records goes on our own tracker, nothing outside or in their name.
-        "request_integration",
         "resume_capability",
         # Previews: they only park a proposal and put it to the user on its own
         # card. The confirm that applies it is what the gate holds.
