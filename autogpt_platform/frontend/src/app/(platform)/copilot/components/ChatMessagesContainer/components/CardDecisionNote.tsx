@@ -48,13 +48,15 @@ export function CardDecisionNote({
         <Text
           key={i}
           variant="small"
-          className="flex items-center gap-1.5 text-zinc-500"
+          className="flex items-center gap-1.5 text-foreground-tertiary"
         >
           <Icon
             icon={note.verdict === "approved" ? Tick02Icon : Cancel01Icon}
             size={14}
             className={
-              note.verdict === "approved" ? "text-emerald-500" : "text-zinc-400"
+              note.verdict === "approved"
+                ? "text-success"
+                : "text-foreground-subtle"
             }
           />
           {note.text}
