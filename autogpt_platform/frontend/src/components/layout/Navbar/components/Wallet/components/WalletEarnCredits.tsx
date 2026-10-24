@@ -3,10 +3,10 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import { cn } from "@/lib/utils";
 import {
   ArrowDown01Icon,
@@ -31,7 +31,7 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
   );
 
   return (
-    <Collapsible asChild open={open} onOpenChange={setOpen}>
+    <CollapsibleRoot asChild open={open} onOpenChange={setOpen}>
       <section
         aria-labelledby={headingID}
         className="border-t border-separator"
@@ -50,7 +50,7 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
           ))}
         </CollapsibleContent>
       </section>
-    </Collapsible>
+    </CollapsibleRoot>
   );
 }
 

@@ -5,10 +5,10 @@ import {
   sidebarContainerVariants,
 } from "@/components/layout/AppSidebar/animations";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -143,7 +143,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <Collapsible defaultOpen className="group/collapsible">
+            <CollapsibleRoot defaultOpen className="group/collapsible">
               <SidebarGroup className="py-1">
                 <SidebarGroupLabel asChild className="text-[13px] font-medium">
                   <CollapsibleTrigger>
@@ -162,7 +162,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                   </SidebarGroupContent>
                 </CollapsibleContent>
               </SidebarGroup>
-            </Collapsible>
+            </CollapsibleRoot>
           </motion.div>
         </motion.div>
       </SidebarContent>

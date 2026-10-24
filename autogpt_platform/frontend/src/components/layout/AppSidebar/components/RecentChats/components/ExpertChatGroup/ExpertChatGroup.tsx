@@ -13,10 +13,10 @@ import {
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
@@ -67,7 +67,7 @@ export function ExpertChatGroup({
   const runningSessions = sessions.filter((session) => session.is_processing);
 
   return (
-    <Collapsible
+    <CollapsibleRoot
       open={isOpen}
       onOpenChange={setIsOpen}
       className="group/expert-group"
@@ -152,7 +152,7 @@ export function ExpertChatGroup({
           )}
         </GroupBody>
       </CollapsibleContent>
-    </Collapsible>
+    </CollapsibleRoot>
   );
 }
 
