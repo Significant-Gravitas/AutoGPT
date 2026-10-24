@@ -1,7 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/atoms/Input/Input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
@@ -137,6 +137,7 @@ export function SearchCommandModal({
               className="h-5 w-5 shrink-0 text-foreground-emphasis"
             />
             <Input
+              bare
               ref={inputRef}
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
