@@ -6,10 +6,15 @@ when a user can actually connect it here, through a block provider whose
 sign-in a user here can finish or an official MCP catalog server. A provider
 whose only sign-in is OAuth, with no app configured, has blocks but no way
 in, so it does not count.
+
+A provider's sign-ins come from every place one is declared: its
+ProviderBuilder, and the credentials fields of the blocks that can run.
+Older connectors (Slack's bot token) declare theirs only on their blocks.
 """
 
 import logging
 import re
+from collections import defaultdict
 from collections.abc import Iterable
 
 from pydantic import BaseModel
@@ -20,11 +25,13 @@ from backend.api.features.integrations.models import (
     get_supported_auth_types,
 )
 from backend.blocks import load_all_blocks
+from backend.data.model import CredentialsFieldInfo
 from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import DEVICE_HANDLERS_BY_NAME
 from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.providers import provider_key
 from backend.integrations.service_identity import catalog_slug
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +73,19 @@ class ConnectableService(BaseModel):
 def connectable_services() -> list[ConnectableService]:
     """Every service a user can connect in this deployment, providers first."""
     try:
-        load_all_blocks()
+        from_blocks = block_credential_types()
     except Exception as e:  # static providers and the catalog still answer
         logger.warning(f"Service support: block load failed: {e}")
+        from_blocks = {}
     services = [
         ConnectableService(
             key=name,
             name=name.replace("_", " ").title(),
             description=get_provider_description(name),
         )
-        for name in get_all_provider_names()
-        if name not in _NOT_SERVICES and can_sign_in(name)
+        for name in sorted({*get_all_provider_names(), *from_blocks})
+        if name not in _NOT_SERVICES
+        and _can_sign_in(name, from_blocks.get(name, frozenset()))
     ]
     keys = {service.key for service in services}
     for entry in get_mcp_catalog():
@@ -91,19 +100,59 @@ def connectable_services() -> list[ConnectableService]:
     return services
 
 
-def can_sign_in(provider: str) -> bool:
+@cached(ttl_seconds=3600)
+def block_credential_types() -> dict[str, frozenset[str]]:
+    """Each provider a block that can run takes credentials for, with the
+    credential types its fields accept. Loads the blocks."""
+    types: dict[str, set[str]] = defaultdict(set)
+    for block_id, block_cls in load_all_blocks().items():
+        try:
+            block = block_cls()
+            if block.disabled:
+                continue
+            infos = block.input_schema.get_credentials_fields_info().values()
+        except Exception:  # one bad block costs its own providers only
+            logger.debug("Service support: skipping block %s", block_id)
+            continue
+        for info in infos:
+            for provider, accepted in _types_by_provider(info):
+                types[provider_key(provider)].update(accepted)
+    return {provider: frozenset(found) for provider, found in types.items()}
+
+
+def _types_by_provider(info: CredentialsFieldInfo) -> list[tuple[str, frozenset]]:
+    """What each provider of one credentials field accepts. A field that
+    switches provider by another input (OpenAI key or a ChatGPT sign-in)
+    gives each provider only its own types."""
+    if not (info.discriminator and info.discriminator_mapping):
+        return [(provider, info.supported_types) for provider in info.provider]
+    pairs = []
+    for value in info.discriminator_mapping:
+        try:
+            narrowed = info.discriminate(value)
+        except ValueError:  # a value with no types configured offers none
+            continue
+        pairs += [
+            (provider, narrowed.supported_types) for provider in narrowed.provider
+        ]
+    return pairs
+
+
+def _can_sign_in(provider: str, from_blocks: frozenset[str]) -> bool:
     """Whether a user here can finish at least one of ``provider``'s sign-ins.
 
-    A key, password or website header is the user's own to paste. OAuth needs
-    the provider's app configured in this deployment (Google and Reddit
-    declare OAuth either way), and a device-code sign-in needs its handler.
+    A key, password or website header is the user's own to paste. An OAuth
+    account comes from the provider's app configured in this deployment
+    (Google and Reddit declare OAuth either way) or from its device-code
+    handler, whose sign-in yields the same OAuth credentials (Codex).
     """
-    for auth_type in get_supported_auth_types(provider):
+    has_device_handler = provider_key(provider) in DEVICE_HANDLERS_BY_NAME
+    for auth_type in {*get_supported_auth_types(provider), *from_blocks}:
         if auth_type == "oauth2":
-            if oauth_client_credentials(provider) is not None:
+            if has_device_handler or oauth_client_credentials(provider) is not None:
                 return True
         elif auth_type == "device_code":
-            if provider_key(provider) in DEVICE_HANDLERS_BY_NAME:
+            if has_device_handler:
                 return True
         else:
             return True
@@ -133,11 +182,17 @@ def unsupported_services(
     return list(missing.values())
 
 
-def mentioned_gaps(
-    text: str, services: list[ConnectableService] | None = None
+def unsupported_in_task(
+    integrations: list[str] | None,
+    text: str,
+    services: list[ConnectableService] | None = None,
 ) -> list[str]:
-    """Known unsupported tools that ``text`` names as whole words."""
-    return unsupported_services(_known_gaps_in(text), services)
+    """The tools a task needs that we cannot connect: the ones it declares,
+    and the known ones its text names. The text is read whatever the
+    declaration says, since the model that wrote it can leave a tool out
+    (``[]`` on a Shopify task)."""
+    declared = [canonical_name(name) for name in integrations or []]
+    return unsupported_services([*declared, *_known_gaps_in(text)], services)
 
 
 def canonical_name(name: str) -> str:

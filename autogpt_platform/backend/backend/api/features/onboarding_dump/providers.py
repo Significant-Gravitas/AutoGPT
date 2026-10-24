@@ -58,16 +58,11 @@ def connectable_lines() -> str:
 
 
 def label_support(prompts: list[PromptT]) -> list[PromptT]:
-    """Each prompt with ``unsupported`` worked out against the live registry.
-
-    A row stored before prompts recorded their integrations is read from its
-    text instead, for the tools we know we have no connector for.
-    """
+    """Each prompt with ``unsupported`` worked out against the live registry,
+    from what it declares and what its text names alike."""
     services = support.connectable_services()
     for prompt in prompts:
-        prompt.unsupported = (
-            support.unsupported_services(prompt.integrations, services)
-            if prompt.integrations is not None
-            else support.mentioned_gaps(f"{prompt.title} {prompt.prompt}", services)
+        prompt.unsupported = support.unsupported_in_task(
+            prompt.integrations, f"{prompt.title} {prompt.prompt}", services
         )
     return prompts

@@ -6,9 +6,13 @@ registry that still answers when block loading fails — is what keeps a
 bad import from turning either job into a wrong answer.
 """
 
+import pytest
 from pytest_mock import MockerFixture
 
+from backend.api.features.integrations import support
+from backend.api.features.integrations.support import ConnectableService
 from backend.api.features.onboarding_dump import providers
+from backend.api.features.onboarding_dump.models import SuggestedPrompt
 
 MODULE = "backend.api.features.onboarding_dump.providers"
 
@@ -45,3 +49,33 @@ def test_provider_lines_is_empty_for_an_empty_registry():
     # an empty string here is the difference between no constraint and a
     # constraint that names nothing.
     assert providers.provider_lines({}) == ""
+
+
+@pytest.mark.parametrize(
+    "integrations, expected",
+    [
+        ([], ["Shopify"]),  # the model said "no sign-in"
+        (["printify"], ["Shopify"]),  # the model left Shopify out
+        (["Shopify store"], ["Shopify"]),  # named twice, labelled once
+        (None, ["Shopify"]),  # a row stored before the field
+    ],
+)
+def test_a_task_naming_a_tool_we_lack_is_labelled_whatever_it_declares(
+    mocker: MockerFixture, integrations: list[str] | None, expected: list[str]
+):
+    """The model's integrations list is a claim, not the check: a Shopify task
+    that declares none (or the wrong ones) still says it needs Shopify."""
+    mocker.patch.object(
+        support,
+        "connectable_services",
+        return_value=[ConnectableService(key="printify", name="Printify")],
+    )
+    task = SuggestedPrompt(
+        title="Sync new Printify products to your Shopify store",
+        prompt="Each night, push new designs to Shopify.",
+        integrations=integrations,
+    )
+
+    [labelled] = providers.label_support([task])
+
+    assert labelled.unsupported == expected

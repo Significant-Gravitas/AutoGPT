@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 from backend.api.features.integrations import support
 from backend.api.features.integrations.models import get_supported_auth_types
 from backend.api.features.integrations.support import ConnectableService
+from backend.data.model import CredentialsFieldInfo
 from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.service_identity import catalog_slug
@@ -47,13 +48,14 @@ def test_unsupported_keeps_the_names_we_cannot_connect_in_order(registry):
     ) == ["Shopify", "Etsy"]
 
 
-def test_mentioned_gaps_finds_known_unsupported_tools_in_free_text(registry):
+def test_a_task_text_naming_known_unsupported_tools_is_read(registry):
     text = "List each sticker on Shopify and Printful, then post it to Canva."
-    assert support.mentioned_gaps(text) == ["Shopify", "Printful"]
+    assert support.unsupported_in_task(None, text) == ["Shopify", "Printful"]
 
 
-def test_mentioned_gaps_ignores_words_that_only_contain_a_name(registry):
-    assert support.mentioned_gaps("A wixed-up shopifyish idea for gelatos") == []
+def test_a_task_text_ignores_words_that_only_contain_a_name(registry):
+    text = "A wixed-up shopifyish idea for gelatos"
+    assert support.unsupported_in_task([], text) == []
 
 
 def test_live_registry_offers_printify_and_every_mcp_catalog_server():
@@ -118,3 +120,70 @@ def test_a_provider_users_can_bring_a_key_for_needs_no_app(mocker: MockerFixture
     _without_oauth_apps(mocker)
     found = support.find_connectable("GitHub")
     assert found is not None and found.key == "github"
+
+
+def test_a_legacy_connector_without_provider_metadata_is_connectable():
+    """Slack declares its bot-token credentials only on its blocks' fields
+    (blocks/slack/_auth.py), with no ProviderBuilder: it is still supported."""
+    assert get_supported_auth_types("slack") == []
+
+    found = support.find_connectable("Slack")
+
+    assert found is not None and found.key == "slack"
+    assert support.unsupported_services(["Slack"]) == []
+
+
+def test_a_credential_type_counts_only_from_a_block_that_can_run(
+    mocker: MockerFixture,
+):
+    """A disabled block takes no credentials from anyone, so its provider
+    gains no sign-in from it."""
+
+    info = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["acme_legacy"],
+            "credentials_types": ["api_key"],
+        }
+    )
+
+    def block(disabled: bool):
+        instance = mocker.Mock(disabled=disabled)
+        instance.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        return lambda: instance
+
+    try:
+        mocker.patch.object(
+            support, "load_all_blocks", return_value={"on": block(False)}
+        )
+        support.block_credential_types.cache_clear()
+        assert support.block_credential_types() == {
+            "acme_legacy": frozenset({"api_key"})
+        }
+        mocker.patch.object(
+            support, "load_all_blocks", return_value={"off": block(True)}
+        )
+        support.block_credential_types.cache_clear()
+        assert support.block_credential_types() == {}
+    finally:
+        support.block_credential_types.cache_clear()
+
+
+def test_a_provider_switching_field_credits_each_provider_its_own_types():
+    """Codex's block takes an OpenAI key or a ChatGPT sign-in through one
+    field: Codex gains the sign-in, not the key."""
+    types = support.block_credential_types()
+
+    assert types["codex"] == frozenset({"oauth2"})
+    assert "api_key" in types["openai"]
+
+
+def test_a_device_code_sign_in_counts_without_an_oauth_app(mocker: MockerFixture):
+    """Codex has no OAuth app, only a device-code handler, and that sign-in
+    gives the user the OAuth account its blocks take."""
+    mocker.patch.object(support, "oauth_client_credentials", return_value=None)
+
+    found = support.find_connectable("codex")
+
+    assert found is not None and found.key == "codex"
