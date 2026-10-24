@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import { CredentialMentionEditor } from "../../CredentialMention/CredentialMentionEditor";
@@ -9,13 +9,23 @@ import { CARD_SEND_BUTTON_CLASS } from "../helpers";
 import { useChatMentions } from "../useChatMentions";
 import { useConnectedIntegrations } from "../useConnectedIntegrations";
 import { MentionDropdown } from "./MentionDropdown";
-import { mentionStoryHandlers } from "./mentionStoryFixtures";
+import {
+  lateFileResultsHandlers,
+  mentionStoryHandlers,
+} from "./mentionStoryFixtures";
+
+const COMPOSER_POSITION = {
+  top: "w-full max-w-2xl",
+  middle: "w-full max-w-2xl pt-64",
+  bottom: "w-full max-w-2xl pt-80",
+};
 
 interface Props {
   expertId?: string;
+  position?: keyof typeof COMPOSER_POSITION;
 }
 
-function AccountMentionComposer({ expertId }: Props) {
+function AccountMentionComposer({ expertId, position = "bottom" }: Props) {
   const [value, setValue] = useState("");
   const [sent, setSent] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -33,7 +43,7 @@ function AccountMentionComposer({ expertId }: Props) {
       setAttachments((items) => [...items, folder.name]),
   });
   return (
-    <div className="w-full max-w-2xl pt-80">
+    <div className={COMPOSER_POSITION[position]}>
       {sent && (
         <div className="mb-8 flex justify-end">
           <div
@@ -113,6 +123,49 @@ export const AccountPicker: Story = {
     await expect(
       await canvas.findByRole("option", { name: /Team TODOs/ }),
     ).toBeVisible();
+  },
+};
+
+export const EmptyState: Story = {
+  args: { position: "top" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const textbox = canvas.getByRole("textbox");
+    await userEvent.type(textbox, "Check my @");
+    const first = await canvas.findByRole("option", { name: /Work Gmail/ });
+    const list = canvas.getByRole("listbox", { name: "Mention suggestions" });
+    await waitFor(() => {
+      const listTop = list.getBoundingClientRect().top;
+      expect(listTop).toBeGreaterThanOrEqual(0);
+      expect(listTop).toBeGreaterThanOrEqual(
+        textbox.getBoundingClientRect().bottom,
+      );
+    });
+    await expect(first).toBeVisible();
+  },
+};
+
+export const ResultsLoadLate: Story = {
+  args: { expertId: "expert-late-results", position: "middle" },
+  parameters: { msw: { handlers: lateFileResultsHandlers } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("textbox"), "Check my @");
+    await canvas.findByText("Searching files…");
+    await canvas.findByRole("option", { name: /Report 8/ }, { timeout: 3000 });
+    const list = canvas.getByRole("listbox", { name: "Mention suggestions" });
+    const form = canvasElement.querySelector("form");
+    if (!form) throw new Error("Composer form not rendered");
+    await waitFor(() => {
+      const { top, bottom } = form.getBoundingClientRect();
+      const roomOnRoomierSide = Math.max(top, window.innerHeight - bottom) - 16;
+      const listBox = list.getBoundingClientRect();
+      expect(listBox.height).toBeGreaterThanOrEqual(
+        Math.min(320, list.scrollHeight + 2, roomOnRoomierSide) - 1,
+      );
+      expect(listBox.top).toBeGreaterThanOrEqual(8 - 1);
+      expect(listBox.bottom).toBeLessThanOrEqual(window.innerHeight - 8 + 1);
+    });
   },
 };
 
