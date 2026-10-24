@@ -20,6 +20,7 @@ from prisma.enums import ReviewStatus
 from backend.blocks._base import BlockEffect
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
@@ -1337,3 +1338,102 @@ async def test_a_write_with_no_sandbox_to_resolve_it_in_is_judged(gate):
     ):
         ran, held, asked = await _bash("auto", _LONG_POST)
     assert (ran, held, asked) == (0, True, 1)
+
+
+# ---- an Airtable change: shown as it runs, asked after the pick ------------
+
+_READ = "backend.copilot.sdk.file_ref.read_file_bytes"
+_CREDS = "backend.copilot.tools.run_capability.resolve_block_credentials"
+_BLOCK = AirtableCreateTableBlock().id
+_FIELDS = [
+    {"name": "Order number", "type": "singleLineText"},
+    {"name": "Total", "type": "currency"},
+]
+_FROM_FILE = {
+    "base_id": "appX",
+    "table_name": "Orders",
+    "table_fields": "@@agptfile:workspace:///fields.json",
+}
+
+
+@pytest.fixture
+def files():
+    """Workspace files by path, read as the model's references resolve them."""
+    contents = {"fields.json": json.dumps(_FIELDS)}
+
+    async def read(uri, user_id, session):
+        return contents[uri.rsplit("/", 1)[-1]].encode()
+
+    with patch(_READ, AsyncMock(side_effect=read)):
+        yield contents
+
+
+@pytest.fixture(autouse=True)
+def creds():
+    with patch(_CREDS, AsyncMock(return_value=({}, []))):
+        yield
+
+
+def _approve_only(review_id: str):
+    async def find(rid, user_id, session_id):
+        if rid == review_id:
+            return SimpleNamespace(status=ReviewStatus.APPROVED, payload={})
+        return None
+
+    return AsyncMock(side_effect=find)
+
+
+async def test_fields_from_a_file_are_shown_and_exactly_they_run(gate, ran, files):
+    held = await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+
+    assert _is_held(held)
+    review_id, args, subject = (
+        gate.open_review.await_args.args[0],
+        gate.open_review.await_args.args[4],
+        gate.open_review.await_args.args[6],
+    )
+    assert [f.name for f in subject.preview.tables[0].fields] == [
+        "Order number",
+        "Total",
+    ]
+    # The card lists the fields themselves, not the file they came from.
+    assert args["input"]["table_fields"] == _FIELDS
+
+    gate.find_review = _approve_only(review_id)
+    with patch("backend.copilot.gate.review_store.find_review", gate.find_review):
+        await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+    ran.assert_awaited_once()
+    assert ran.await_args.args[3]["table_fields"] == _FIELDS
+
+
+async def test_a_file_changed_after_approval_asks_again(gate, ran, files):
+    await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+    approved = gate.open_review.await_args.args[0]
+
+    files["fields.json"] = json.dumps(_FIELDS + [{"name": "Secret", "type": "url"}])
+    with patch(
+        "backend.copilot.gate.review_store.find_review", _approve_only(approved)
+    ):
+        again = await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+
+    # A new card for the new fields, not the approval of the old ones.
+    assert _is_held(again)
+    ran.assert_not_awaited()
+    assert gate.open_review.await_count == 2
+    assert gate.open_review.await_args.args[0] != approved
+
+
+@pytest.mark.parametrize("unpicked", [{}, {"base_id": None}, {"base_id": ""}])
+async def test_the_base_is_picked_before_anything_asks(gate, ran, unpicked):
+    """The picker card comes first; the one approval follows the pick."""
+    payload = {"table_name": "Orders", "table_fields": _FIELDS, **unpicked}
+
+    first = await _run_capability(_session(), _BLOCK, payload)
+
+    assert not _is_held(first)
+    gate.open_review.assert_not_awaited()
+    ran.assert_awaited_once()
+
+    picked = await _run_capability(_session(), _BLOCK, {**payload, "base_id": "appX"})
+    assert _is_held(picked)
+    gate.open_review.assert_awaited_once()

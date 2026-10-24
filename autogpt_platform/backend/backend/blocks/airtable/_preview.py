@@ -52,15 +52,6 @@ def field_kind(field_type: Any, options: Any = None) -> str:
     return f"{kind} of {', '.join(choices)}" if choices else kind
 
 
-def covered_options(options: Any) -> list[str]:
-    """``options`` leaves the card only when the kind already says all of it
-    (a select's choices); any other option stays listed, since it is approved
-    too."""
-    if isinstance(options, dict) and set(options) <= {"choices"}:
-        return ["options"]
-    return []
-
-
 def table_preview(name: Any, fields: Any, description: Any = "") -> PreviewTable:
     return PreviewTable(
         name=str(name or ""),

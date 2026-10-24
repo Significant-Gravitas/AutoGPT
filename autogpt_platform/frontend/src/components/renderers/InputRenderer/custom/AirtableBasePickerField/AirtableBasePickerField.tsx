@@ -15,6 +15,7 @@ import {
   noUsableBaseText,
   pickerAccess,
   pickerCredentialsID,
+  pickerHint,
   SEARCH_THRESHOLD,
 } from "./helpers";
 import { useAirtableBasePickerField } from "./useAirtableBasePickerField";
@@ -75,9 +76,7 @@ function BasePicker({
           Choose an Airtable base
         </Text>
         <Text variant="small" id={`${labelID}-hint`} className="text-zinc-600">
-          A base is Airtable&apos;s word for a set of tables, like a spreadsheet
-          file with several sheets. Otto adds what it needs to the one you pick,
-          and you&apos;ll see what it adds before anything changes.
+          {pickerHint(needed)}
         </Text>
       </div>
       {ready && picker.bases.length >= SEARCH_THRESHOLD && (

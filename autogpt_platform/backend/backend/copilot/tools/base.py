@@ -339,6 +339,10 @@ GATE_APPROVED = "_gate_approved"
 # Passed beside it when an active gate reached any verdict on the call: a card,
 # a rule, the mode or the supervisor. Stripped the same way.
 GATE_DECIDED = "_gate_decided"
+# Passed when ``bind_args`` already resolved the call's arguments, so the tool
+# runs them as reviewed rather than resolving them a second time. Stripped the
+# same way.
+ARGS_BOUND = "_args_bound"
 
 
 def _awaits_the_user(output: StreamToolOutputAvailable) -> bool:
@@ -430,6 +434,14 @@ class BaseTool:
         """
         return None
 
+    async def bind_args(
+        self, user_id: str | None, session: ChatSession, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The call's arguments as they will run. A tool that resolves part of
+        its input at run time (a file reference) resolves it here, once, so the
+        approval binds what runs and a changed file asks again."""
+        return args
+
     async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
         """The content of files this call runs, by path, for the supervisor; None
         for one that could not be read, which holds the call."""
@@ -496,6 +508,7 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
         kwargs.pop(GATE_DECIDED, None)
+        kwargs.pop(ARGS_BOUND, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -561,11 +574,18 @@ class BaseTool:
         # The gate's model calls quote the call's arguments and result in
         # prompts of their own, so for a Google call their traces are redacted.
         google_call = is_google_call(kwargs)
+        # What the call will run, resolved once: the gate reviews, the card
+        # shows and the approval binds these values, and the tool runs them.
+        bound = (
+            await self.bind_args(user_id, session, kwargs)
+            if self.has_gate_subject
+            else kwargs
+        )
         with tracing_google_data(google_call):
-            gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
+            gated, decision = await self._gate(user_id, session, tool_call_id, bound)
         if gated is not None:
             return gated
-        run_kwargs = kwargs
+        run_kwargs = {**bound, ARGS_BOUND: True} if bound is not kwargs else kwargs
         if decision is not None and self.has_gate_subject:
             if decision.approved:
                 run_kwargs = {**run_kwargs, GATE_APPROVED: True}

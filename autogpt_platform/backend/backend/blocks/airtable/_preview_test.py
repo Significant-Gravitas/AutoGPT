@@ -228,27 +228,40 @@ async def test_a_new_field_is_made_with_the_options_the_card_showed():
     )
 
 
-def test_options_the_preview_cannot_word_stay_on_the_card():
-    """Choices are shown in the field's kind; any other option (a duration
-    format) must stay listed, since approving binds it too."""
-    block = AirtableCreateFieldBlock()
-    choices = block.change_preview(
+@pytest.mark.parametrize(
+    "description, options, detail",
+    [
+        (
+            None,
+            {"choices": [{"name": "New", "color": "greenBright"}, {"name": "Done"}]},
+            "New: color greenBright",
+        ),
+        (None, {"durationFormat": "h:mm"}, "duration format h:mm"),
+        (
+            "Who ordered it",
+            {"linkedTableId": "tblCustomers", "prefersSingleRecordLink": True},
+            "Who ordered it · linked table id tblCustomers · prefers single "
+            "record link on",
+        ),
+    ],
+    ids=["choice colours", "a format", "a note and nested settings"],
+)
+def test_a_new_field_shows_every_setting_it_is_made_with(description, options, detail):
+    """Creating one field on its own binds its note and every option, so the
+    card says all of them; the raw arguments it covers are not listed again."""
+    preview = AirtableCreateFieldBlock().change_preview(
         {
             "name": "Status",
             "field_type": "singleSelect",
-            "options": {"choices": [{"name": "New"}]},
-        }
-    )
-    duration = block.change_preview(
-        {
-            "name": "Time spent",
-            "field_type": "duration",
-            "options": {"durationFormat": "h:mm"},
+            "description": description,
+            "options": options,
         }
     )
 
-    assert choices is not None and "options" in choices.covers
-    assert duration is not None and "options" not in duration.covers
+    assert preview is not None
+    [field] = preview.tables[0].fields
+    assert field.detail == detail
+    assert set(preview.covers) == {"name", "field_type", "description", "options"}
 
 
 def test_a_choice_field_can_be_created_with_its_choices():

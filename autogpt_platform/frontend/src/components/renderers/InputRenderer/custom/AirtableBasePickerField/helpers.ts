@@ -40,6 +40,20 @@ export function lockedReason(access: BaseAccess, needed: BaseAccess): string {
   return needed === "create" ? "Needs creator access" : "View only";
 }
 
+// What the step will do to the base, and only that: a table change is shown
+// on a card first, a record write is not, and a read changes nothing.
+export function pickerHint(needed: BaseAccess): string {
+  const base =
+    "A base is Airtable's word for a set of tables, like a spreadsheet file with several sheets.";
+  if (needed === "read") {
+    return `${base} Otto only reads from the one you pick; nothing in it changes.`;
+  }
+  if (needed === "edit") {
+    return `${base} Otto adds records to the one you pick.`;
+  }
+  return `${base} Otto adds what it needs to the one you pick, and you'll see what it adds before anything changes.`;
+}
+
 // What to do when no base allows the step.
 export function noUsableBaseText(needed: BaseAccess): string {
   return needed === "create"

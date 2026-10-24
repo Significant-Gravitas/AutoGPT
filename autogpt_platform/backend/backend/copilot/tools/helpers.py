@@ -148,6 +148,20 @@ def is_picker_field(schema: Any) -> bool:
     )
 
 
+def missing_picker_fields(
+    input_schema: dict[str, Any], required: set[str], input_data: dict[str, Any]
+) -> list[str]:
+    """Required picker inputs the call leaves unpicked. The prompt tells the
+    model to pass an unpicked field as null, so an empty value is as missing
+    as an absent one. A call with any of these only shows its setup card."""
+    properties = input_schema.get("properties", {})
+    return sorted(
+        f
+        for f in required
+        if input_data.get(f) in (None, "") and is_picker_field(properties.get(f))
+    )
+
+
 def get_picker_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
@@ -1081,6 +1095,7 @@ async def prepare_block_for_execution(
     session_id: str,
     dry_run: bool,
     validate_only: bool = False,
+    refs_resolved: bool = False,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -1178,8 +1193,10 @@ async def prepare_block_for_execution(
         ).from_outside()
 
     # Expand @@agptfile: refs using the block's input schema so string/list
-    # fields get the correct deserialization.
-    if input_data:
+    # fields get the correct deserialization. A call the gate reviewed arrives
+    # resolved, and resolving file content again could expand a reference
+    # that is only text inside a file.
+    if input_data and not refs_resolved:
         try:
             input_data = await expand_file_refs_in_args(
                 input_data, user_id, session, input_schema=input_schema
@@ -1202,14 +1219,9 @@ async def prepare_block_for_execution(
     # the picker inline via FormRenderer's custom-field dispatch. Detecting
     # it here (instead of only inside execute_block's auto-creds layer)
     # saves a round trip when the caller omitted the field entirely.
-    # The prompt tells the model to pass an unpicked field as null, so an
-    # empty value is as missing as an absent one.
-    picker_fields_missing = [
-        f
-        for f in required_non_credential_keys
-        if input_data.get(f) in (None, "")
-        and is_picker_field(input_schema.get("properties", {}).get(f))
-    ]
+    picker_fields_missing = missing_picker_fields(
+        input_schema, required_non_credential_keys, input_data
+    )
 
     # validate_only suppresses the setup-card early-return — the caller is
     # doing static introspection, rendering a picker would violate the

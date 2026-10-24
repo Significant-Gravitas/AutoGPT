@@ -14,15 +14,13 @@ from backend.sdk import (
     BlockSchemaOutput,
     ChangePreview,
     CredentialsMetaInput,
-    PreviewField,
-    PreviewTable,
     Requests,
     SchemaField,
 )
 
 from ._api import TableFieldType, create_field, create_table, update_field, update_table
 from ._config import airtable, base_id_field
-from ._preview import covered_options, field_kind, preview, table_preview
+from ._preview import preview, table_preview
 
 
 class AirtableListSchemaBlock(Block):
@@ -219,20 +217,28 @@ class AirtableCreateFieldBlock(Block):
         )
 
     def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
+        # The field as one row of a table preview: its kind, then its note and
+        # every option in words, so the card shows all that the field is made
+        # with and the raw definition it covers is not listed again.
         name = input_data.get("name")
-        kind = field_kind(
-            input_data.get("field_type", TableFieldType.SINGLE_LINE_TEXT),
-            input_data.get("options"),
+        field = table_preview(
+            "",
+            [
+                {
+                    "name": name,
+                    "type": input_data.get(
+                        "field_type", TableFieldType.SINGLE_LINE_TEXT
+                    ),
+                    "description": input_data.get("description"),
+                    "options": input_data.get("options"),
+                }
+            ],
         )
         return preview(
             "Add a field to your Airtable table:",
             name,
-            [
-                PreviewTable(
-                    name="", fields=[PreviewField(name=str(name or ""), kind=kind)]
-                )
-            ],
-            ["name", "field_type", *covered_options(input_data.get("options"))],
+            [field],
+            ["name", "field_type", "description", "options"],
         )
 
     async def run(

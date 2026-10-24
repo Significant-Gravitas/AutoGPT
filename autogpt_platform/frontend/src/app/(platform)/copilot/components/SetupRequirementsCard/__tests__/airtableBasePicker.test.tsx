@@ -105,6 +105,34 @@ describe("Airtable base picker in the setup card", () => {
     expect(mockOnSend.mock.calls[0][0]).toContain('"base_id": "app2"');
   });
 
+  it.each([
+    ["create", /you'll see what it adds before anything changes/],
+    ["edit", /Otto adds records to the one you pick/],
+    ["read", /Otto only reads from the one you pick/],
+  ] as const)(
+    "the hint says what a %s step does to the base, and no more",
+    async (access, words) => {
+      serveBases([{ id: "app2", name: "Shop orders", access: "create" }]);
+      render(
+        <SetupRequirementsCard
+          output={pickerCard({
+            ...PICKER,
+            resource_picker: {
+              provider: "airtable",
+              access,
+              credentials_id: "cred-1",
+            },
+          })}
+        />,
+      );
+
+      expect(await screen.findByText(words)).toBeDefined();
+      if (access !== "create") {
+        expect(screen.queryByText(/before anything changes/)).toBeNull();
+      }
+    },
+  );
+
   it("a step that only reads can use a view-only base", async () => {
     serveBases([
       { id: "app2", name: "Shop orders", access: "create" },
