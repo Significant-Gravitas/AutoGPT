@@ -168,7 +168,7 @@ export function OnboardingIntroCard({
       {suggestions.tasks.length > 0 && (
         // Negative margins let the list's border breathe outward while the
         // row content (px-4) stays aligned with the text above it.
-        <motion.div {...reveal(promptsStart)} className="-mx-5 mt-5">
+        <motion.div {...reveal(promptsStart)} className="mt-5 md:-mx-5">
           <SuggestedTaskList
             tasks={suggestions.tasks}
             sendingId={suggestions.sendingId}

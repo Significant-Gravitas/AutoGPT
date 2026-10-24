@@ -111,7 +111,7 @@ function AskFrame({
   return (
     <section
       aria-label="One thing I need from you"
-      className="-mx-5 mt-3 rounded-lg border border-zinc-200 bg-white px-4 py-3"
+      className="mt-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 md:-mx-5"
     >
       <Text variant="small-medium" tone="muted" as="h3">
         One thing I need from you

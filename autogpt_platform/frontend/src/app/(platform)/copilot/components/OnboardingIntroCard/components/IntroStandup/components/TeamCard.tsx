@@ -32,7 +32,7 @@ export function TeamCard({ team }: Props) {
   return (
     <section
       aria-label="Your team"
-      className="-mx-5 mt-5 overflow-hidden rounded-lg border border-zinc-200 bg-white"
+      className="mt-5 overflow-hidden rounded-lg border border-zinc-200 bg-white md:-mx-5"
     >
       <div className="flex items-baseline justify-between gap-3 border-b border-zinc-100 px-4 py-2.5">
         <Text variant="body-medium" tone="primary" as="h3">
