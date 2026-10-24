@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 
+import { Text } from "@/components/atoms/Text/Text";
+
 import { Message, MessageContent, MessageResponse } from "./Message";
 
 const meta: Meta<typeof Message> = {
@@ -78,11 +80,11 @@ export const LinkSafetyModal: Story = {
   name: "LinkSafetyModal",
   render: () => (
     <div className="flex flex-col gap-4">
-      <p className="text-body leading-5 text-muted-foreground">
+      <Text variant="body" as="p" className="leading-5 text-muted-foreground">
         Click the external link below to trigger the link safety modal. Verify
         that both &quot;Copy link&quot; and &quot;Open link&quot; buttons are
         visible.
-      </p>
+      </Text>
       <AssistantMessage>
         {
           "Click this external link to see the safety modal: [Example Site](https://example.com)"
