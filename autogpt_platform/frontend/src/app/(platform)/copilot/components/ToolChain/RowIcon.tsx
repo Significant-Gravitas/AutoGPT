@@ -49,9 +49,9 @@ interface ProviderIconProps extends RowIconProps {
 
 export function RowIcon({ row }: RowIconProps) {
   if (row.state === "error") {
-    return <Icon icon={AlertDiamondIcon} size={16} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={16} className="text-error" />;
   }
-  const cls = "text-zinc-600";
+  const cls = "text-foreground-secondary";
   switch (row.category) {
     case "narration":
       return <Icon icon={AiEditingIcon} size={16} className={cls} />;

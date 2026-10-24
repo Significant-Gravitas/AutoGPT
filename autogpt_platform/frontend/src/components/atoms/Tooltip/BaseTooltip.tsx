@@ -39,7 +39,18 @@ function Tooltip({
   );
 }
 
-const TooltipTrigger = TooltipPrimitive.Trigger;
+// With `asChild` the child is the trigger element and keeps its own slot.
+const TooltipTrigger = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+>((props, ref) => (
+  <TooltipPrimitive.Trigger
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "tooltip-trigger" })}
+    {...props}
+  />
+));
+TooltipTrigger.displayName = TooltipPrimitive.Trigger.displayName;
 
 // Opt-in: content renders inline by default, so a trigger inside an
 // `overflow-hidden` ancestor clips its own tooltip. Wrap in this to escape.
@@ -56,6 +67,7 @@ const TooltipContent = React.forwardRef<
 >(({ className, sideOffset = 4, ...props }, ref) => (
   <TooltipPrimitive.Content
     ref={ref}
+    data-slot="tooltip-content"
     sideOffset={sideOffset}
     className={cn(
       tooltipContentClassName,
