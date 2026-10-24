@@ -87,7 +87,11 @@ export function Select({
   );
 
   const select = (
-    <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
+    <BaseSelect
+      value={value ?? ""}
+      onValueChange={onValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         data-slot="select-trigger"
         className={triggerStyles}
