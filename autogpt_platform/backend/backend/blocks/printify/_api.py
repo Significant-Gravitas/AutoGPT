@@ -6,15 +6,20 @@ from pydantic import ValidationError
 
 from backend.blocks.printify._config import PrintifyCredentials
 from backend.sdk import BaseModel, Field, Requests
+from backend.util.request import HTTPClientError, HTTPServerError
 
 API_URL = "https://api.printify.com/v1"
 TOKEN_PAGE = "https://printify.com/app/account/api"
 # Printify refuses requests without a User-Agent naming the client.
 USER_AGENT = "AutoGPT"
+# Throttling and 5xx are retried; without a cap a sustained one never ends.
+MAX_ATTEMPTS = 3
 
 
-class PrintifyError(Exception):
-    """A Printify response the user can act on, worded for them."""
+class PrintifyError(HTTPClientError):
+    """A 4xx from Printify, worded for the user. Keeps the shared HTTP error
+    contract (and its status) so a rejected token still gets the reconnect
+    card."""
 
 
 class PrintifyShop(BaseModel):
@@ -59,7 +64,9 @@ class PrintifyProduct(BaseModel):
 class PrintifyClient:
     def __init__(self, credentials: PrintifyCredentials):
         self._token = credentials.api_key.get_secret_value()
-        self._requests = Requests(raise_for_status=False)
+        self._requests = Requests(
+            raise_for_status=False, retry_max_attempts=MAX_ATTEMPTS
+        )
 
     async def list_shops(self) -> list[PrintifyShop]:
         data = await self._request("GET", "/shops.json")
@@ -152,7 +159,10 @@ class PrintifyClient:
         )
         if response.ok:
             return response.json() if response.content else None
-        raise PrintifyError(_error_message(response.status, response.content))
+        message = _error_message(response.status, response.content)
+        if response.status >= 500:
+            raise HTTPServerError(message, response.status)
+        raise PrintifyError(message, response.status)
 
 
 def _error_message(status: int, body: bytes) -> str:

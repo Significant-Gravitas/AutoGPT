@@ -47,7 +47,9 @@ async def _run(**kwargs):
     )
 
 
-async def test_an_unsupported_service_gets_the_card_and_joins_its_request():
+async def test_an_unsupported_service_gets_the_card_and_joins_its_request(
+    service_lock,
+):
     with (
         patch.object(
             request_integration,
@@ -75,7 +77,9 @@ async def test_an_unsupported_service_gets_the_card_and_joins_its_request():
     assert "HTTP" in response.message
 
 
-async def test_the_card_still_shows_when_the_request_cannot_be_recorded():
+async def test_the_card_still_shows_when_the_request_cannot_be_recorded(
+    service_lock,
+):
     with (
         patch.object(
             request_integration, "find_feature_request", AsyncMock(return_value=None)
@@ -105,3 +109,72 @@ async def test_a_service_we_support_is_never_called_unsupported():
 async def test_a_blank_service_is_refused():
     response = await _run(service="  ", use_case="anything")
     assert isinstance(response, ErrorResponse)
+
+
+@pytest.fixture
+def service_lock():
+    """A held lock stand-in, so filing never needs Redis in these tests."""
+    lock = AsyncMock()
+    with (
+        patch.object(
+            request_integration,
+            "_acquire_service_lock",
+            AsyncMock(return_value=lock),
+        ) as acquire,
+        patch.object(
+            request_integration, "_release_service_lock", AsyncMock()
+        ) as release,
+    ):
+        yield acquire, release, lock
+
+
+async def test_a_failed_lookup_never_files_a_second_request(service_lock):
+    """Not finding the request because Linear did not answer is not the same
+    as there being none: filing then would split one service's asks."""
+    with (
+        patch.object(
+            request_integration,
+            "find_feature_request",
+            AsyncMock(side_effect=RuntimeError("Linear timed out")),
+        ),
+        patch.object(request_integration, "file_feature_request", AsyncMock()) as file,
+    ):
+        response = await _run(service="Gelato", use_case="Print sticker sheets")
+
+    assert isinstance(response, IntegrationRequestResponse)
+    assert response.recorded is False
+    file.assert_not_awaited()
+
+
+async def test_one_service_is_looked_up_and_filed_under_its_lock(service_lock):
+    acquire, release, lock = service_lock
+    with (
+        patch.object(
+            request_integration, "find_feature_request", AsyncMock(return_value=None)
+        ),
+        patch.object(
+            request_integration,
+            "file_feature_request",
+            AsyncMock(return_value=_filed(is_new=True)),
+        ),
+    ):
+        response = await _run(service="Gelato", use_case="")
+
+    assert isinstance(response, IntegrationRequestResponse)
+    assert response.recorded is True
+    acquire.assert_awaited_once_with("Gelato")
+    release.assert_awaited_once_with(lock)
+
+
+async def test_without_the_lock_nothing_is_filed_and_the_card_still_shows():
+    with (
+        patch.object(
+            request_integration, "_acquire_service_lock", AsyncMock(return_value=None)
+        ),
+        patch.object(request_integration, "file_feature_request", AsyncMock()) as file,
+    ):
+        response = await _run(service="Gelato", use_case="")
+
+    assert isinstance(response, IntegrationRequestResponse)
+    assert response.recorded is False
+    file.assert_not_awaited()

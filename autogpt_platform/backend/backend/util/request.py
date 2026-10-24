@@ -567,8 +567,10 @@ class Requests:
                     "When uploading files, 'data' must be a dict of form fields."
                 )
 
-            # add the file parts
+            # add the file parts, each from its start: a retry or a redirect
+            # hop re-adds the same file object the last attempt read to EOF
             for field_name, (filename, fh, content_type) in files:
+                fh.seek(0)
                 form.add_field(
                     name=field_name,
                     value=fh,

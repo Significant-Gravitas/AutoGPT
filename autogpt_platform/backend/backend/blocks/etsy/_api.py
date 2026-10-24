@@ -6,14 +6,22 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.sdk import OAuth2Credentials, Requests
-from backend.util.request import Response
+from backend.util.request import HTTPClientError, HTTPServerError, Response
 from backend.util.settings import Secrets
 
 API_URL = "https://api.etsy.com/v3/application"
 
 
-class EtsyError(Exception):
-    """An Etsy response the user can act on, worded for them."""
+# Throttling and 5xx are retried; without a cap a sustained one never ends.
+MAX_ATTEMPTS = 3
+# No shop on the account is the user's to fix, like a missing resource.
+NO_SHOP_STATUS = 404
+
+
+class EtsyError(HTTPClientError):
+    """A 4xx from Etsy, worded for the user. Keeps the shared HTTP error
+    contract (and its status) so a rejected token, or a refused refresh,
+    still gets the reconnect card."""
 
 
 class EtsyMoney(BaseModel):
@@ -64,7 +72,10 @@ def api_key_header(client_id: str, client_secret: str) -> dict[str, str]:
 def raise_for_etsy_error(response: Response) -> None:
     if response.ok:
         return
-    raise EtsyError(_error_message(response.status, response.content))
+    message = _error_message(response.status, response.content)
+    if response.status >= 500:
+        raise HTTPServerError(message, response.status)
+    raise EtsyError(message, response.status)
 
 
 class EtsyClient:
@@ -86,13 +97,14 @@ class EtsyClient:
 
     @staticmethod
     def raw_requests() -> Requests:
-        return Requests(raise_for_status=False)
+        return Requests(raise_for_status=False, retry_max_attempts=MAX_ATTEMPTS)
 
     async def get_my_shop(self) -> EtsyShop:
         me = _Me.model_validate(await self._call("GET", "/users/me"))
         if not me.shop_id:
             raise EtsyError(
-                "This Etsy account has no shop yet. Open one on Etsy first."
+                "This Etsy account has no shop yet. Open one on Etsy first.",
+                NO_SHOP_STATUS,
             )
         return EtsyShop.model_validate(await self._call("GET", f"/shops/{me.shop_id}"))
 

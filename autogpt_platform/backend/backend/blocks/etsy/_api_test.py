@@ -16,7 +16,9 @@ from backend.blocks.etsy.listings import (
     draft_listing_form,
     update_listing_form,
 )
+from backend.copilot.tools.utils import credential_rejection_status
 from backend.util import json
+from backend.util.request import HTTPClientError, HTTPServerError
 
 SHOP = {"shop_id": 42, "shop_name": "StickerStudio", "url": "https://etsy.com/shop/s"}
 
@@ -253,3 +255,36 @@ async def test_refresh_keeps_the_credential_identity():
     assert refreshed.username == "StickerStudio"
     assert refreshed.refresh_token is not None
     assert refreshed.refresh_token.get_secret_value() == "7.new-refresh"
+
+
+async def test_a_signed_out_shop_reaches_the_reconnect_path():
+    client, _ = _client(_response(401, {"error": "invalid_token"}))
+
+    with pytest.raises(HTTPClientError) as caught:
+        await client.get_my_shop()
+
+    assert credential_rejection_status(caught.value) == 401
+
+
+async def test_a_refused_refresh_is_a_client_error_the_card_handles():
+    """creds_manager hands an HTTPClientError from a refresh to the
+    reconnect card; anything else becomes a bare failure."""
+    http = _http(_response(400, {"error": "invalid_grant"}))
+    with (
+        patch.object(EtsyClient, "raw_requests", return_value=http),
+        pytest.raises(HTTPClientError) as caught,
+    ):
+        await _handler().refresh_tokens(TEST_CREDENTIALS)
+
+    assert caught.value.status_code == 400
+
+
+async def test_an_etsy_outage_is_a_server_error():
+    client, _ = _client(_response(502, {"error": "bad gateway"}))
+
+    with pytest.raises(HTTPServerError):
+        await client.list_listings(42, "active", 25)
+
+
+def test_retries_on_throttling_are_bounded():
+    assert EtsyClient.raw_requests().retry_max_attempts == 3

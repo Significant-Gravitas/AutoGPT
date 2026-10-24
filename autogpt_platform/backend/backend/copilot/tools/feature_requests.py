@@ -297,22 +297,18 @@ class CreateFeatureRequestTool(BaseTool):
 async def find_feature_request(title: str) -> str | None:
     """The id of the feature request titled exactly ``title``, if one exists.
 
-    Returns None when Linear is unreachable or unconfigured too: the caller
-    files a new request, and a failure there is reported by that write.
+    Raises when Linear is unreachable or unconfigured: a failed look-up is
+    not an absent request, and filing on it would split one request in two.
     """
-    try:
-        client, project_id, _team_id = _get_linear_config()
-        data = await client.query(
-            SEARCH_ISSUES_QUERY,
-            {
-                "term": title,
-                "filter": {"project": {"id": {"eq": project_id}}},
-                "first": MAX_SEARCH_RESULTS,
-            },
-        )
-    except Exception as e:
-        logger.warning(f"Feature request lookup failed: {e}")
-        return None
+    client, project_id, _team_id = _get_linear_config()
+    data = await client.query(
+        SEARCH_ISSUES_QUERY,
+        {
+            "term": title,
+            "filter": {"project": {"id": {"eq": project_id}}},
+            "first": MAX_SEARCH_RESULTS,
+        },
+    )
     nodes = data.get("searchIssues", {}).get("nodes", [])
     wanted = title.casefold()
     return next(

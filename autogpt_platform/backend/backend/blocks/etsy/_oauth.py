@@ -7,8 +7,9 @@ from urllib.parse import urlencode
 from pydantic import BaseModel
 
 from backend.sdk import BaseOAuthHandler, OAuth2Credentials, ProviderName, SecretStr
+from backend.util.request import HTTPClientError, HTTPServerError
 
-from ._api import EtsyClient, EtsyError, api_key_header, raise_for_etsy_error
+from ._api import EtsyClient, api_key_header, raise_for_etsy_error
 
 AUTHORIZE_URL = "https://www.etsy.com/oauth/connect"
 TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token"
@@ -117,5 +118,6 @@ class EtsyOAuthHandler(BaseOAuthHandler):
         client = EtsyClient(credentials, self.client_id, self.client_secret)
         try:
             return (await client.get_my_shop()).shop_name
-        except EtsyError:
+        except (HTTPClientError, HTTPServerError):
+            # A nicer account label is not worth failing the sign-in over.
             return None

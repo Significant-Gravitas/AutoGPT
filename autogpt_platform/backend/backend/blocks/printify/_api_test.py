@@ -9,8 +9,10 @@ from backend.blocks.printify._config import TEST_CREDENTIALS, TEST_CREDENTIALS_I
 from backend.blocks.printify.catalog import PrintifySearchCatalogBlock
 from backend.blocks.printify.products import PrintifyCreateProductBlock, product_body
 from backend.blocks.printify.uploads import PrintifyUploadImageBlock
+from backend.copilot.tools.utils import credential_rejection_status
 from backend.data.execution import ExecutionContext
 from backend.util import json
+from backend.util.request import HTTPClientError, HTTPServerError
 
 
 def _response(status: int, body: object) -> Mock:
@@ -157,3 +159,28 @@ async def test_upload_block_sends_a_file_as_base64_and_a_url_as_is():
         "https://example.com/d/cat.png",
         None,
     )
+
+
+async def test_a_rejected_token_reaches_the_reconnect_path():
+    """The shared recovery reads the HTTP status off the exception; a
+    friendly message must not cost the user the reconnect card."""
+    client, _ = _client(_response(401, {"message": "Unauthenticated."}))
+
+    with pytest.raises(HTTPClientError) as caught:
+        await client.list_shops()
+
+    assert caught.value.status_code == 401
+    assert credential_rejection_status(caught.value) == 401
+
+
+async def test_a_printify_outage_is_a_server_error_not_a_client_one():
+    client, _ = _client(_response(503, {"message": "Down"}))
+
+    with pytest.raises(HTTPServerError) as caught:
+        await client.list_shops()
+
+    assert caught.value.status_code == 503
+
+
+def test_retries_on_throttling_are_bounded():
+    assert PrintifyClient(TEST_CREDENTIALS)._requests.retry_max_attempts == 3
