@@ -72,6 +72,7 @@ import {
   StopIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface RunningExecutionDetail {
   execution_id: string;
@@ -583,9 +584,13 @@ export function ExecutionsTable({
                       <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
-                        <span className="ml-1 text-xs text-orange-200">
+                        <Text
+                          variant="small-medium"
+                          as="span"
+                          className="ml-1 leading-4 text-orange-200"
+                        >
                           ({selectedOrphanedIds.length} orphaned)
-                        </span>
+                        </Text>
                       )}
                     </Button>
                   )}
@@ -602,14 +607,22 @@ export function ExecutionsTable({
                   </Button>
                 )}
                 {activeTab === "failed" && selectedIds.size === 0 && (
-                  <div className="px-3 text-sm text-gray-500">
+                  <Text
+                    variant="body"
+                    as="div"
+                    className="px-3 leading-5 text-gray-500"
+                  >
                     View-only (select to delete)
-                  </div>
+                  </Text>
                 )}
                 {activeTab === "invalid" && (
-                  <div className="rounded-md bg-pink-50 px-3 py-2 text-sm text-pink-700">
+                  <Text
+                    variant="body"
+                    as="div"
+                    className="rounded-md bg-pink-50 px-3 py-2 leading-5 text-pink-700"
+                  >
                     ⚠️ Read-only: Invalid states require manual investigation
-                  </div>
+                  </Text>
                 )}
                 <Button
                   variant="outline"
@@ -736,7 +749,7 @@ export function ExecutionsTable({
                                 disabled={activeTab === "invalid"}
                               />
                             </TableCell>
-                            <TableCell className="font-mono text-xs">
+                            <TableCell className="font-mono text-caption leading-4">
                               <div
                                 className="group flex cursor-pointer items-center gap-1 hover:text-gray-700"
                                 onClick={() => {
@@ -766,8 +779,10 @@ export function ExecutionsTable({
                                   <span className="text-gray-400">Unknown</span>
                                 )}
                               </div>
-                              <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                              <Text
+                                variant="small"
+                                as="div"
+                                className="group flex cursor-pointer items-center gap-1 font-mono leading-4 text-gray-500 hover:text-gray-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     execution.user_id,
@@ -784,18 +799,20 @@ export function ExecutionsTable({
                                   icon={Copy01Icon}
                                   className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
                                 />
-                              </div>
+                              </Text>
                             </TableCell>
                             <TableCell>
-                              <span
-                                className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                              <Text
+                                variant="small"
+                                as="span"
+                                className={`inline-flex rounded-full px-2 py-1 font-semibold leading-4 ${
                                   execution.status === "RUNNING"
                                     ? "bg-green-100 text-green-800"
                                     : "bg-yellow-100 text-yellow-800"
                                 }`}
                               >
                                 {execution.status}
-                              </span>
+                              </Text>
                             </TableCell>
                             <TableCell>
                               {(() => {
@@ -842,13 +859,15 @@ export function ExecutionsTable({
                             </TableCell>
                             {activeTab === "failed" && (
                               <TableCell className="max-w-xs truncate">
-                                <span
-                                  className="text-xs text-red-600"
+                                <Text
+                                  variant="small"
+                                  as="span"
+                                  className="leading-4 text-red-600"
                                   title={execution.error_message || ""}
                                 >
                                   {execution.error_message ||
                                     "No error message"}
-                                </span>
+                                </Text>
                               </TableCell>
                             )}
                             <TableCell>
@@ -928,11 +947,15 @@ export function ExecutionsTable({
 
                   {totalPages > 1 && (
                     <div className="mt-4 flex items-center justify-between">
-                      <div className="text-sm text-gray-600">
+                      <Text
+                        variant="body"
+                        as="div"
+                        className="leading-5 text-gray-600"
+                      >
                         Showing {(currentPage - 1) * pageSize + 1} to{" "}
                         {Math.min(currentPage * pageSize, total)} of {total}{" "}
                         executions
-                      </div>
+                      </Text>
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
@@ -1069,7 +1092,7 @@ export function ExecutionsTable({
                   <br />
                   <br />
                   This will automatically:
-                  <ul className="mt-2 list-disc pl-5 text-sm">
+                  <ul className="mt-2 list-disc pl-5 text-body leading-5">
                     <li>Send cancel signals for active executions</li>
                     <li>
                       Clean up orphaned executions ({">"}24h old) directly in DB
