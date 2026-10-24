@@ -64,11 +64,11 @@ export function SidebarUserActions() {
         ) : (
           accountMenu
         )}
+        {/* Shown in the collapsed rail too: a new account starts there, and
+            a wallet that only appears once the sidebar is expanded is one
+            new users never find. */}
         {profile && (
-          <div
-            className="group-data-[collapsible=icon]:hidden"
-            {...tourTarget("wallet")}
-          >
+          <div {...tourTarget("wallet")}>
             <Wallet key={profile.username} compact />
           </div>
         )}
