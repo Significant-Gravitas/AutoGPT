@@ -139,4 +139,29 @@ describe("tutorial requirement and connection status", () => {
       expect.arrayContaining(["bg-success-surface", "text-success"]),
     );
   });
+
+  it("turns both connection steps green when the edge is drawn after they show", () => {
+    const steps = createConnectionSteps(tour) as StepLike[];
+
+    for (const [id, status] of [
+      ["connect-blocks-output", "#connection-status-output"],
+      ["connect-blocks-input", "#connection-status-input"],
+    ]) {
+      useEdgeStore.setState({ edges: [] });
+      tour.next.mockClear();
+      mount(steps, id).when?.show?.();
+      expect(classes(status)).toEqual(
+        expect.arrayContaining(["bg-warning-surface", "text-amber-600"]),
+      );
+
+      useEdgeStore.setState({
+        edges: [{ id: "e1", source: "a", target: "b" }],
+      } as never);
+      expect(classes(status)).toEqual(
+        expect.arrayContaining(["bg-success-surface", "text-success"]),
+      );
+      vi.advanceTimersByTime(500);
+      expect(tour.next).toHaveBeenCalledTimes(1);
+    }
+  });
 });
