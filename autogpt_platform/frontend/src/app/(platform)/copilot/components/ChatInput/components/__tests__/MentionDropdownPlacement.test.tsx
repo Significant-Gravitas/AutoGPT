@@ -43,22 +43,20 @@ describe("MentionDropdown placement", () => {
     renderPlacedDropdown();
     const box = await waitForPlacedList();
     expect(box.top).toBeGreaterThanOrEqual(250 + 8);
-    const list = screen.getByRole("listbox", { name: "Mention suggestions" });
-    expect(list.style.getPropertyValue("--mention-available-height")).toBe(
-      `${420 - 250 - 8 - 8}px`,
-    );
+    expect(box.bottom).toBeLessThanOrEqual(420 - 8);
+    expect(box.height).toBe(420 - 250 - 8 - 8);
   });
 
   it("caps the list to the composer's width on a narrow screen", async () => {
     stubLayout({
-      viewportHeight: 844,
-      viewportWidth: 390,
-      composer: { top: 700, height: 100, left: 16, width: 358 },
+      viewportHeight: 568,
+      viewportWidth: 320,
+      composer: { top: 440, height: 100, left: 16, width: 288 },
     });
     renderPlacedDropdown();
-    await waitForPlacedList();
-    const list = screen.getByRole("listbox", { name: "Mention suggestions" });
-    expect(list.style.getPropertyValue("--mention-anchor-width")).toBe("358px");
+    const box = await waitForPlacedList();
+    expect(box.left).toBeGreaterThanOrEqual(16);
+    expect(box.right).toBeLessThanOrEqual(16 + 288);
   });
 
   it("hides the list when its scrolling container hides the composer", async () => {
@@ -105,7 +103,6 @@ function stubLayout({
   composer: Box;
   scroller?: Box;
 }) {
-  const listWidth = Math.min(320, composer.width ?? 800);
   function boxOf(element: Element): Box | null {
     if (element === document.documentElement) {
       return { top: 0, left: 0, height: viewportHeight, width: viewportWidth };
@@ -120,12 +117,15 @@ function stubLayout({
       return { left: 0, width: viewportWidth, ...scroller };
     }
     if (element.matches("[role=listbox]")) {
-      const [x, y] = translateOf(element as HTMLElement);
+      // Mirrors the list's max-h/max-w classes: 20rem, or less once the
+      // hook writes the room it found into the CSS variables.
+      const list = element as HTMLElement;
+      const [x, y] = translateOf(list);
       return {
         top: y,
         left: x,
-        height: LIST_CONTENT_HEIGHT,
-        width: listWidth,
+        height: Math.min(LIST_CONTENT_HEIGHT, cssCap(list, "height")),
+        width: Math.min(320, cssCap(list, "width")),
       };
     }
     return null;
@@ -167,6 +167,12 @@ function stubLayout({
   );
 }
 
+function cssCap(list: HTMLElement, axis: "height" | "width") {
+  const name =
+    axis === "height" ? "--mention-available-height" : "--mention-anchor-width";
+  return parseFloat(list.style.getPropertyValue(name)) || Infinity;
+}
+
 function translateOf(element: HTMLElement): [number, number] {
   const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(
     element.style.transform,
@@ -205,9 +211,8 @@ function renderPlacedDropdown({ inScroller = false } = {}) {
 
 async function waitForPlacedList() {
   const list = screen.getByRole("listbox", { name: "Mention suggestions" });
-  await waitFor(() => expect(list.style.transform).not.toBe(""));
   await waitFor(() =>
-    expect(list.style.getPropertyValue("--mention-anchor-width")).not.toBe(""),
+    expect(list.style.transform).toMatch(/translate\((?!0px, 0px\))/),
   );
   return list.getBoundingClientRect();
 }
