@@ -12,6 +12,7 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -1343,3 +1344,57 @@ class TestCacheNoneHandling:
         assert call_count == 1
 
         maybe_none_redis.cache_clear()
+
+
+class TestCacheKeyBinding:
+    """The service RPC calls cached functions by keyword while invalidation
+    call sites pass arguments positionally; both must reach one entry."""
+
+    @pytest.mark.parametrize("shared_cache", [False, True])
+    def test_delete_reaches_an_entry_cached_by_another_call_style(
+        self, shared_cache: bool
+    ):
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=shared_cache)
+        def lookup(user_id: str, include_org: bool = False) -> str:
+            nonlocal call_count
+            call_count += 1
+            return f"{user_id}:{include_org}"
+
+        lookup.cache_clear()
+        lookup(user_id="u1")
+        lookup("u1")
+        lookup("u1", False)
+        assert call_count == 1
+
+        assert lookup.cache_delete("u1") is True
+        lookup(user_id="u1")
+        assert call_count == 2
+
+        assert lookup.cache_delete(user_id="u1", include_org=False) is True
+        lookup("u1")
+        assert call_count == 3
+
+        lookup("u1", include_org=True)
+        assert call_count == 4
+        lookup.cache_clear()
+
+    @pytest.mark.parametrize("shared_cache", [False, True])
+    def test_a_call_that_does_not_bind_raises_instead_of_reading_the_cache(
+        self, shared_cache: bool
+    ):
+        @cached(ttl_seconds=30, shared_cache=shared_cache)
+        def lookup(user_id: str, /) -> str:
+            return user_id
+
+        lookup.cache_clear()
+        assert lookup("u1") == "u1"
+
+        # Keyed by name, this call would match the entry ``lookup("u1")`` stored.
+        by_name: dict[str, Any] = {"user_id": "u1"}
+        with pytest.raises(TypeError):
+            lookup(**by_name)
+        with pytest.raises(TypeError):
+            lookup.cache_delete(**by_name)
+        lookup.cache_clear()
