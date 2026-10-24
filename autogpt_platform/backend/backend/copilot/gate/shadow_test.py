@@ -23,7 +23,7 @@ from backend.copilot.gate import held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate import shadow
 from backend.copilot.gate.content import ContentVerdict
-from backend.copilot.gate.reads_test import _Fetch, _plain_output, _Rows
+from backend.copilot.gate.reads_test import _Declared, _Fetch, _plain_output, _Rows
 from backend.copilot.gate.tool_images_test import _ImageRead, image
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
@@ -205,6 +205,38 @@ async def test_shadow_hands_every_read_over_whole(rows, events, verdict):
     assert rows.rows == {} and rows.held == []
     (event,) = _recorded(events)
     assert event["verdict"] == ("hold" if verdict.held else "allow")
+
+
+_ESCAPED_PAGE = (
+    'Overzicht gebouwen\n\nKlik hier om naar jouw "persoonlijke" DUWO account.'
+)
+
+
+@pytest.mark.parametrize("screen", ["enforce", "shadow"])
+async def test_an_unquoted_hold_shows_the_page_as_read_only_where_the_screen_enforces(
+    rows, events, screen
+):
+    """Enforce holds a declared read on a card quoting the page with its escapes
+    decoded; shadow judges the same parts, records the verdict and holds nothing."""
+    unquoted = ContentVerdict(
+        held=True, passage="not on the page", decided_by="jev", code="instructs_agent"
+    )
+    tool = _Declared(_ESCAPED_PAGE, (_ESCAPED_PAGE,))
+    with _flags(screen), patch(
+        f"{_READS}.judge_content", AsyncMock(return_value=unquoted)
+    ):
+        result = await _read(tool)
+        await _settled()
+
+    if screen == "enforce":
+        (row,) = rows.rows.values()
+        assert row.payload["excerpt"] == _ESCAPED_PAGE
+        assert _recorded(events) == []
+    else:
+        assert rows.rows == {} and rows.held == []
+        assert json.loads(result.output)["content"] == _ESCAPED_PAGE
+        (event,) = _recorded(events)
+        assert (event["verdict"], event["reason_code"]) == ("hold", "instructs_agent")
 
 
 @pytest.mark.parametrize("verdict", [_HELD, _CLEAN])
