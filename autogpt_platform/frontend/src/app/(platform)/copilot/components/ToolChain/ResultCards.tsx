@@ -38,16 +38,19 @@ interface LinkCardProps {
   secret?: boolean;
 }
 
-export const CARD = "rounded-xl bg-white ring-1 ring-zinc-200/70";
+export const CARD = "rounded-xl bg-surface ring-1 ring-border-base/70";
 export const HALF = "w-full sm:w-1/2";
 export const RESULT_GRID =
+  // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a line colour)
   "grid max-h-64 gap-1.5 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 sm:grid-cols-2";
 
 const STATUS_STYLES: Record<string, string> = {
-  COMPLETED: "bg-green-50 text-green-600",
-  FAILED: "bg-red-50 text-red-500",
+  COMPLETED: "bg-success-surface text-success",
+  FAILED: "bg-error-surface text-error",
+  // TODO(tokens): no exact role for bg-purple-50; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
   RUNNING: "bg-purple-50 text-purple-600",
-  QUEUED: "bg-amber-50 text-amber-600",
+  // TODO(tokens): no exact role for text-amber-600
+  QUEUED: "bg-warning-surface text-amber-600",
 };
 
 export function StatusPill({ status, className }: StatusPillProps) {
@@ -56,8 +59,9 @@ export function StatusPill({ status, className }: StatusPillProps) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
-        STATUS_STYLES[normalized] ?? "bg-zinc-100 text-zinc-500",
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm font-medium leading-inherit",
+        STATUS_STYLES[normalized] ??
+          "bg-surface-hover text-foreground-tertiary",
         className,
       )}
     >
@@ -76,16 +80,18 @@ export function StatusCard({ label, ok }: StatusCardProps) {
         <Icon
           icon={CheckmarkCircle02Icon}
           size={16}
+          // TODO(tokens): no exact role for text-green-500
           className="shrink-0 text-green-500"
         />
       ) : (
         <Icon
           icon={CancelCircleIcon}
           size={16}
+          // TODO(tokens): no exact role for text-red-400
           className="shrink-0 text-red-400"
         />
       )}
-      <p className="min-w-0 truncate text-[13px] font-medium text-zinc-700">
+      <p className="min-w-0 truncate text-body-sm font-medium leading-inherit text-foreground-body">
         {label}
       </p>
     </div>
@@ -95,10 +101,12 @@ export function StatusCard({ label, ok }: StatusCardProps) {
 export function StatCard({ value, label }: StatCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-baseline gap-2 p-2.5`}>
-      <span className="text-lg font-semibold leading-none text-zinc-800">
+      <span className="text-lg font-semibold leading-none text-foreground-emphasis">
         {value.toLocaleString()}
       </span>
-      <span className="min-w-0 truncate text-xs text-zinc-500">{label}</span>
+      <span className="min-w-0 truncate text-xs text-foreground-tertiary">
+        {label}
+      </span>
     </div>
   );
 }
@@ -106,14 +114,14 @@ export function StatCard({ value, label }: StatCardProps) {
 export function ChipList({ label, items }: ChipListProps) {
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      <p className="mb-1.5 text-[11px] uppercase tracking-wide text-zinc-400">
+      <p className="mb-1.5 text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
         {label}
       </p>
       <div className="flex flex-wrap gap-1">
         {Array.from(new Set(items)).map((item) => (
           <span
             key={item}
-            className="max-w-full truncate rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+            className="max-w-full truncate rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
           >
             {item}
           </span>
@@ -135,22 +143,30 @@ export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
         secret && "ph-no-capture",
       )}
     >
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Icon icon={GlobeIcon} size={15} className="shrink-0 text-zinc-400" />
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+        <Icon
+          icon={GlobeIcon}
+          size={15}
+          className="shrink-0 text-foreground-subtle"
+        />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">
+        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
           {title ?? domain}
         </p>
-        <p className="truncate text-xs text-zinc-500">{title ? domain : url}</p>
+        <p className="truncate text-xs text-foreground-tertiary">
+          {title ? domain : url}
+        </p>
       </div>
-      {meta && <span className="shrink-0 text-xs text-zinc-400">{meta}</span>}
+      {meta && (
+        <span className="shrink-0 text-xs text-foreground-subtle">{meta}</span>
+      )}
       <Link
         href={url}
         target="_blank"
         rel="noreferrer"
         aria-label="Open link"
-        className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+        className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
       >
         <Icon icon={LinkSquare01Icon} size={14} />
       </Link>
