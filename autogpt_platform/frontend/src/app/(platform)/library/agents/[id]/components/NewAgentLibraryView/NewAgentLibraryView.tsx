@@ -237,7 +237,7 @@ export function NewAgentLibraryView() {
         <SectionWrap className="mb-3 block lg:order-2 lg:flex lg:min-h-0 lg:flex-col">
           <div
             className={cn(
-              "border-b border-zinc-100 pb-5",
+              "border-b border-separator pb-5",
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >

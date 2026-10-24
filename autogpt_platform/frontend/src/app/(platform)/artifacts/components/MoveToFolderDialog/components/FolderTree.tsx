@@ -100,10 +100,10 @@ export function FolderTree({
             className={cn(
               "flex items-center gap-2 rounded-lg py-2 pr-2 outline-none",
               isDisabled
-                ? "cursor-not-allowed text-zinc-400"
-                : "cursor-pointer text-zinc-800 hover:bg-zinc-50",
-              isSelected && "bg-zinc-100",
-              "focus-visible:ring-2 focus-visible:ring-zinc-300",
+                ? "cursor-not-allowed text-foreground-subtle"
+                : "cursor-pointer text-foreground-emphasis hover:bg-surface-muted",
+              isSelected && "bg-surface-hover",
+              "focus-visible:ring-2 focus-visible:ring-border-strong",
             )}
             data-testid="move-to-folder-option"
           >
@@ -116,7 +116,7 @@ export function FolderTree({
                   e.stopPropagation();
                   onToggleExpanded(row.id as string);
                 }}
-                className="flex h-[18px] w-[22px] shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+                className="flex h-[18px] w-[22px] shrink-0 items-center justify-center rounded text-foreground-subtle hover:bg-surface-active hover:text-foreground-secondary"
               >
                 <Icon
                   icon={ArrowRight01Icon}
@@ -135,7 +135,7 @@ export function FolderTree({
               size={18}
               className={cn(
                 "shrink-0",
-                isDisabled ? "text-zinc-300" : FOLDER_STYLE.icon,
+                isDisabled ? "text-foreground-disabled" : FOLDER_STYLE.icon,
               )}
             />
             <Text
@@ -150,7 +150,7 @@ export function FolderTree({
               <Text
                 variant="small"
                 as="span"
-                className="ml-auto shrink-0 pl-2 text-zinc-400"
+                className="ml-auto shrink-0 pl-2 text-foreground-subtle"
               >
                 {row.disabledReason}
               </Text>
