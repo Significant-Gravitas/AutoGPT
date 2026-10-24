@@ -76,7 +76,8 @@ export function EditNameDialog({ currentName }: Props) {
       <Dialog.Trigger>
         <button
           type="button"
-          className="ml-1 inline-flex items-center text-violet-500 transition-colors hover:text-violet-700"
+          // TODO(tokens): no exact role for text-violet-500
+          className="ml-1 inline-flex items-center text-violet-500 transition-colors hover:text-accent-strong"
         >
           <Icon icon={PencilIcon} size={16} />
         </button>
