@@ -11,6 +11,7 @@ const LIVE_EVENT_NAMES = [
   "brain_dump_canceled",
   "brain_dump_completed",
   "brain_dump_download",
+  "brain_dump_mic_failed",
   "brain_dump_permission_denied",
   "brain_dump_recovery_shown",
   "brain_dump_recovery_used",
