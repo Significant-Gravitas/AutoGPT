@@ -53,13 +53,17 @@ import { latestReplyMentionsCost, useCostReplyMoment } from "../useTipMoment";
 // jsdom lays nothing out: tagged elements get a box unless listed here
 // (the wallet on an install without billing, the phone's menu on desktop).
 const hidden = new Set<string>();
+// Targets laid out somewhere other than the default box.
+const placed = new Map<string, DOMRectInit>();
 function stubLayout() {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
       const target = this.getAttribute("data-tour-target");
-      return target && !hidden.has(target)
-        ? DOMRect.fromRect({ x: 10, y: 100, width: 240, height: 40 })
-        : DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 });
+      if (!target || hidden.has(target))
+        return DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 });
+      return DOMRect.fromRect(
+        placed.get(target) ?? { x: 10, y: 100, width: 240, height: 40 },
+      );
     },
   );
 }
@@ -82,6 +86,7 @@ function Page() {
 
 beforeEach(() => {
   hidden.clear();
+  placed.clear();
   billing.enabled = true;
   window.localStorage.clear();
   capture.mockReset();
@@ -425,6 +430,29 @@ describe("contextual tips — showing one", () => {
     expect(capture).not.toHaveBeenCalledWith("contextual_tip_shown", {
       tip: "first-cost",
     });
+  });
+
+  it("does not point at a target scrolled out of view", async () => {
+    // A tip shows while the user is busy and never scrolls the page, so a
+    // target below the fold waits like a missing one.
+    placed.set("wallet", {
+      x: 10,
+      y: window.innerHeight + 300,
+      width: 240,
+      height: 40,
+    });
+    hidden.add("menu");
+    render(<Page />);
+
+    act(() => {
+      requestTip("first-cost");
+      requestTip("first-expert");
+    });
+
+    expect(
+      await screen.findByText("Experts can own tasks", {}, { timeout: 4000 }),
+    ).toBeDefined();
+    expect(screen.queryByText("Where costs come from")).toBeNull();
   });
 
   it("puts the tip away with Escape", async () => {

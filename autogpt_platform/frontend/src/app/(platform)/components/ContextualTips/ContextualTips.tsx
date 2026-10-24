@@ -10,7 +10,7 @@ import {
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { useEffect, useId, useRef } from "react";
-import type { Box } from "../FirstRunTour/helpers";
+import { isOnScreen, type Box } from "../FirstRunTour/helpers";
 import { TourScrim } from "../FirstRunTour/components/TourScrim";
 import { useTourStops } from "../FirstRunTour/useTourStops";
 import { tipStepOf } from "./helpers";
@@ -69,7 +69,7 @@ function ContextualTip({ id, onDismiss, onShown, onUnavailable }: Props) {
   const titleID = useId();
   const body = getTipBody(id, { isTrial: experience.isActiveTrial });
   const isMenu = stop?.target === "menu";
-  const hasBox = box !== null;
+  const hasBox = isOnScreen(box);
   const giveWay = useStableCallback(onUnavailable);
 
   const reportOnScreen = useStableCallback(onShown);
@@ -87,7 +87,7 @@ function ContextualTip({ id, onDismiss, onShown, onUnavailable }: Props) {
   }, [hasBox, giveWay]);
 
   // Nothing on screen to point at yet: wait rather than float in a corner.
-  if (!box) return null;
+  if (!isOnScreen(box)) return null;
 
   return (
     <>

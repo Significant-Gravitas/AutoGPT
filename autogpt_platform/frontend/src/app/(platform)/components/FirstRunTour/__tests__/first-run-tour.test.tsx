@@ -220,6 +220,36 @@ describe("first-run walkthrough", () => {
     }
   });
 
+  it("still points at a target below the fold, and scrolls it into view", async () => {
+    // On a short screen the first tasks can sit entirely below the fold;
+    // they are scrolled away, not missing.
+    placed.set("first-tasks", {
+      x: 300,
+      y: window.innerHeight + 200,
+      width: 600,
+      height: 240,
+    });
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderTour();
+      openTour();
+      act(() => useFirstRunTourStore.getState().goTo("start"));
+
+      expect(
+        await screen.findByText("Pick a first task and Otto gets going on it."),
+      ).toBeDefined();
+      await waitFor(() =>
+        expect(scrollIntoView.mock.contexts).toContain(
+          document.querySelector('[data-tour-target="first-tasks"]'),
+        ),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
   it("leaves the wallet step out where billing is off", async () => {
     billing.enabled = false;
     renderTour();

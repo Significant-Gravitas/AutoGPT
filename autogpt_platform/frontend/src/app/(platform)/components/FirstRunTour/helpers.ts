@@ -37,9 +37,11 @@ export interface Box {
   height: number;
 }
 
-// A target only counts when it is laid out and on screen: the collapsed
-// sidebar keeps the full nav in the DOM with `display: none`, and the phone
-// keeps it in a closed sheet.
+// A target only counts when it is laid out and not off to the side: the
+// collapsed sidebar keeps the full nav in the DOM with `display: none`, and
+// the phone keeps it in a sheet slid off the edge. Above or below the fold
+// is only scrolled away: the walkthrough scrolls it in, and a tip waits
+// until it is on screen (see `isOnScreen`).
 export function findTourTarget(target: TourTarget) {
   const nodes = document.querySelectorAll<HTMLElement>(
     `[${TOUR_TARGET_ATTRIBUTE}="${target}"]`,
@@ -47,12 +49,16 @@ export function findTourTarget(target: TourTarget) {
   for (const node of Array.from(nodes)) {
     const rect = node.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) continue;
-    if (rect.bottom <= 0 || rect.right <= 0) continue;
-    if (rect.top >= window.innerHeight || rect.left >= window.innerWidth)
-      continue;
+    if (rect.right <= 0 || rect.left >= window.innerWidth) continue;
     return node;
   }
   return null;
+}
+
+// A spotlight box with something in it: one clamped to the screen comes
+// out empty when its target is scrolled away.
+export function isOnScreen(box: Box | null): box is Box {
+  return box !== null && box.width >= 1 && box.height >= 1;
 }
 
 export interface ResolvedStop {
