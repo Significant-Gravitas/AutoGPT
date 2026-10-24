@@ -103,6 +103,24 @@ export function clearOnboardingHandoff() {
   }
 }
 
+// The account this tab last had signed in. Kept beside the flags (and so
+// across reloads) because a session can end without logOut(): a sign-out
+// in another tab, a failed session check.
+const HANDOFF_OWNER_KEY = "autogpt:onboarding-handoff-owner";
+
+// Called for each account that signs in here: a different one than this
+// tab last had starts with no handoff. The same one keeps it.
+export function claimOnboardingHandoff(userID: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const owner = window.sessionStorage.getItem(HANDOFF_OWNER_KEY);
+    if (owner && owner !== userID) clearOnboardingHandoff();
+    window.sessionStorage.setItem(HANDOFF_OWNER_KEY, userID);
+  } catch {
+    // Storage can be unavailable (private mode); then there is no handoff.
+  }
+}
+
 function setFlag(key: string) {
   if (typeof window === "undefined") return;
   try {

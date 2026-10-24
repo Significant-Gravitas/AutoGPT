@@ -256,6 +256,25 @@ describe("useAuthStore onboarding handoff", () => {
     expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
   });
 
+  it("is cleared when the next account signs in after a session ended some other way", () => {
+    // A sign-out in another tab or a failed session check drops the user
+    // without logOut(); the next sign-in still must not inherit the flags.
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
+    expect(window.sessionStorage.getItem(INTRO)).toBeNull();
+  });
+
+  it("survives the same user signing back in after a dropped session", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBe("1");
+  });
+
   it("survives the same user being refreshed", () => {
     useAuthStore.setState({ user: { id: "user-1" } as User });
     useAuthStore.setState({ user: { id: "user-1" } as User });
