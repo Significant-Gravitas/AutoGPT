@@ -53,7 +53,8 @@ def fixed_in(advisory, tag):
         )
     release_url = f"{BASE_URL}/releases/tag/{tag}"
     has_reference = re.search(
-        re.escape(release_url) + r"(?=[\s)#?<>]|$)", advisory.get("description") or ""
+        re.escape(release_url) + r"""(?=$|[\s)#?<>\]"'`]|[.,;:!]+(?=$|[\s)<>\]"'`]))""",
+        advisory.get("description") or "",
     )
     return bool(has_reference) and any(
         version_number(vulnerability.get("patched_versions")) == version

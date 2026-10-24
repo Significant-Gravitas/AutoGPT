@@ -73,6 +73,31 @@ class ReleaseNotesTest(unittest.TestCase):
         self.assertNotIn("Example fix", result)
         self.assertEqual(result.count(START), 1)
 
+    def test_release_links_allow_prose_punctuation_but_reject_tag_extensions(self):
+        item = advisory()
+        url = f"{BASE_URL}/releases/tag/{TAG}"
+        for suffix in (
+            ".",
+            ", next",
+            "; next",
+            ": next",
+            "!",
+            "]",
+            '"',
+            "'",
+            "`",
+            '."',
+            "?download=1",
+            "#notes",
+        ):
+            with self.subTest(suffix=suffix):
+                item["description"] = url + suffix
+                self.assertIn("Example fix", release_notes([item], TAG))
+        for suffix in ("0", ".1", ".other", "-rc1", "/different", ",next"):
+            with self.subTest(suffix=suffix), self.assertRaises(ValueError):
+                item["description"] = url + suffix
+                release_notes([item], TAG)
+
     def test_malformed_markers_fail_without_overwriting_notes(self):
         for notes in (START, END, END + START, START + START + END):
             with self.subTest(notes=notes), self.assertRaises(ValueError):
