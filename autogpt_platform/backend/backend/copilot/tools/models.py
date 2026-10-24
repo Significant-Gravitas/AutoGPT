@@ -672,9 +672,10 @@ class ExpertHandoffOutcome(BaseModel):
     """
 
     title: str
+    # ``sent``: on the queue for the expert's thread (a worker picks it up).
     # ``queued``: waiting for one of the user's task slots. ``unconfirmed``:
-    # sent to the thread, but whether it started could not be read.
-    status: Literal["started", "queued", "unconfirmed", "failed"]
+    # the send raised after it may have reached the broker.
+    status: Literal["sent", "queued", "unconfirmed", "failed"]
     sub_session_id: str | None = None
     link: str | None = None
 

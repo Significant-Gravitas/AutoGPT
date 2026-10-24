@@ -46,7 +46,10 @@ from .run_sub_session import _sub_session_link
 
 logger = logging.getLogger(__name__)
 
-_STARTED = frozenset({"running", "completed"})
+# With nothing waited for, "running" only means the turn is on the queue: a
+# worker can still refuse it at pickup, so the hand-off claims "sent", never
+# "started".
+_SENT = frozenset({"running", "completed"})
 
 
 class _NotStarted(Exception):
@@ -96,7 +99,7 @@ async def hand_off_to_new_hire(
         # A refusal (tree budget or depth, a full set of task slots) says
         # itself what has to change first.
         return _report(applied, task, "failed", None, sent.message, False)
-    status = "started" if sent.status in _STARTED else "queued"
+    status = "sent" if sent.status in _SENT else "queued"
     return _report(applied, task, status, sent.sub_session_id)
 
 
@@ -139,7 +142,7 @@ async def _discard(thread: str, user_id: str) -> None:
 def _report(
     applied: ExpertChangeAppliedResponse,
     task: ExpertHandoffTask,
-    status: Literal["started", "queued", "unconfirmed", "failed"],
+    status: Literal["sent", "queued", "unconfirmed", "failed"],
     thread: str | None,
     reason: str = "",
     retry: bool = False,
@@ -161,7 +164,7 @@ def _report(
 
 
 def _sent_message(
-    status: Literal["started", "queued", "unconfirmed"],
+    status: Literal["sent", "queued", "unconfirmed"],
     name: str,
     task: ExpertHandoffTask,
     thread: str,
@@ -177,14 +180,14 @@ def _sent_message(
             "running."
         )
     state = (
-        f"has started on {task.title} in {where}"
-        if status == "started"
-        else f"will start on {task.title} in {where} when one of the user's "
-        "task slots frees"
+        f"{task.title} was sent to {where}"
+        if status == "sent"
+        else f"{task.title} is waiting in {where} for one of the user's task "
+        "slots to free"
     )
     return (
         f"{name} is hired and {state}. Tell the user in one short line that "
-        f"{name} is on it and where to follow along. Don't ask whether to hand "
+        f"it is with {name} and where to follow along. Don't ask whether to hand "
         "it over: they chose that on the card. Their result comes back here; "
         f"check it with tool:get_sub_session_result (sub_session_id: {thread}) "
         "when you need it. Their workflows and skills finish installing in the "

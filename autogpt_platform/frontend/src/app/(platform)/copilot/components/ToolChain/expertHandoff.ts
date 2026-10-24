@@ -5,7 +5,7 @@ export interface HandoffTask {
   brief: string;
 }
 
-type HandoffStatus = "started" | "queued" | "unconfirmed" | "failed";
+type HandoffStatus = "sent" | "queued" | "unconfirmed" | "failed";
 
 export interface HandoffOutcome {
   title: string;
@@ -40,7 +40,7 @@ export function handoffOutcomeOf(
 
 function statusOf(handoff: Record<string, unknown>): HandoffStatus {
   const status = str(handoff, "status");
-  return status === "started" || status === "queued" || status === "unconfirmed"
+  return status === "sent" || status === "queued" || status === "unconfirmed"
     ? status
     : "failed";
 }

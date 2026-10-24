@@ -192,7 +192,7 @@ describe("after the hire and hand-off", () => {
           expert,
           handoff: {
             title: TITLE,
-            status: "started",
+            status: "sent",
             sub_session_id: "thread-1",
             link: "/copilot?sessionId=thread-1",
           },
@@ -202,7 +202,7 @@ describe("after the hire and hand-off", () => {
 
     expect(screen.getByText("Expert hired")).toBeDefined();
     expect(
-      screen.getByText(/started on the Printify order pipeline/),
+      screen.getByText(/Sent the Printify order pipeline to/),
     ).toBeDefined();
     expect(
       screen
@@ -269,7 +269,7 @@ describe("after the hire and hand-off", () => {
     ).toBe("/copilot?sessionId=thread-1");
   });
 
-  it("never calls a started task failed just because it has no link", () => {
+  it("never calls a sent task failed just because it has no link", () => {
     render(
       <ExpertChangeCard
         output={{
@@ -277,13 +277,13 @@ describe("after the hire and hand-off", () => {
           applied: true,
           kind: "hire",
           expert,
-          handoff: { title: TITLE, status: "started", link: null },
+          handoff: { title: TITLE, status: "sent", link: null },
         }}
       />,
     );
 
     expect(
-      screen.getByText(/started on the Printify order pipeline/),
+      screen.getByText(/Sent the Printify order pipeline to/),
     ).toBeDefined();
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
@@ -358,7 +358,7 @@ describe("hand-off parts follow the theme", () => {
     expect(container).toBeDefined();
   });
 
-  it.each(["started", "queued", "unconfirmed", "failed"])(
+  it.each(["sent", "queued", "unconfirmed", "failed"])(
     "uses only design tokens on the %s row",
     (status) => {
       const { container } = render(

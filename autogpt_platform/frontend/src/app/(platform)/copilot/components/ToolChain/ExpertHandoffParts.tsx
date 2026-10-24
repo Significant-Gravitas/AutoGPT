@@ -196,7 +196,7 @@ function HandoffSentence({ outcome, expertName }: StatusProps) {
   }
   return (
     <>
-      {name} started on {outcome.title}. The work happens in their own chat.
+      Sent {outcome.title} to {name}. The work happens in their own chat.
     </>
   );
 }

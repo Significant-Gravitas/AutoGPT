@@ -229,7 +229,10 @@ class TestHireAndHandOffInOneApproval:
         assert turn["timeout"] == 0
         # The card and Otto both learn where the work is happening.
         assert resp.handoff is not None
-        assert resp.handoff.status == "started"
+        # Only queued so far: a worker can still refuse it at pickup, so
+        # nothing may claim it started (Sentry).
+        assert resp.handoff.status == "sent"
+        assert "started" not in resp.message
         assert resp.handoff.title == _TITLE
         assert resp.handoff.sub_session_id == "thread-1"
         assert resp.handoff.link == "/copilot?sessionId=thread-1"
