@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
