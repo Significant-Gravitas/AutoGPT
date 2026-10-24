@@ -8,7 +8,7 @@ import { HelpCircleIcon } from "@hugeicons/core-free-icons";
 
 const rowClasses =
   // TODO(tokens): no exact role for text-neutral-700 (#404040), hover:bg-neutral-100 (#F5F5F5), focus-visible:bg-neutral-100 (#F5F5F5)
-  "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-neutral-700 outline-none transition-colors duration-200 ease-out hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
+  "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-body font-normal leading-5 text-neutral-700 outline-none transition-colors duration-200 ease-out hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
 
 export function AccountMenuFeedbackRow() {
   const { isLoggedIn, isUserLoading } = useAuth();
