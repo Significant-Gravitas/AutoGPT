@@ -31,45 +31,57 @@ _TTL_SECONDS = 7 * 24 * 60 * 60
 _SERVER_WRITTEN_KEYS = frozenset(
     {"from_session_id", "held_call", "held_calls_answered"}
 )
-# A claim is its owner while that request is still saving or queueing the
-# answer, and its owner plus this suffix once it has: only then is the card
-# answered. A claim still pending can be given back if the request fails.
-_ACCEPTED = "|accepted"
-# All or nothing: a request that names an id someone else claimed takes none.
+# A claim is "owner|pending|<deadline ms>" while that request is still saving
+# or queueing the answer, and "owner|accepted" once it has: only then is the
+# card answered. A pending claim can be given back if the request fails, and
+# lapses at its deadline if the request died before it could (a killed
+# worker): saving or queueing takes seconds, so a claim this old is no one's.
+_PENDING_LEASE_MS = 60_000
+# All or nothing: a request that names an id someone else holds takes none.
 # 0: someone else's accepted answer, 3: someone else's still pending,
 # 1: claimed now, 2: already this owner's.
 _CLAIM = """
-local accepted = ARGV[1] .. ARGV[3]
-local held = true
+local now = redis.call('TIME')
+now = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+local pending = ARGV[1] .. '|pending|'
+local accepted = ARGV[1] .. '|accepted'
+local take = {}
 for i = 4, #ARGV do
   local value = redis.call('HGET', KEYS[1], ARGV[i])
-  if value then
-    if value ~= ARGV[1] and value ~= accepted then
-      if string.sub(value, -string.len(ARGV[3])) == ARGV[3] then return 0 end
-      return 3
-    end
-  else
-    held = false
+  local mine = value == accepted
+    or (value and string.sub(value, 1, #pending) == pending)
+  if not value then
+    table.insert(take, ARGV[i])
+  elseif not mine then
+    if string.sub(value, -9) == '|accepted' then return 0 end
+    local deadline = tonumber(string.match(value, '|pending|(%d+)$'))
+    if deadline and deadline > now then return 3 end
+    table.insert(take, ARGV[i])
   end
 end
-if held then return 2 end
-for i = 4, #ARGV do redis.call('HSETNX', KEYS[1], ARGV[i], ARGV[1]) end
+if #take == 0 then return 2 end
+local claim = pending .. (now + tonumber(ARGV[3]))
+for _, id in ipairs(take) do redis.call('HSET', KEYS[1], id, claim) end
 redis.call('EXPIRE', KEYS[1], ARGV[2])
 return 1
 """
 # Only the request that holds a pending claim marks it accepted.
 _ACCEPT = """
-for i = 3, #ARGV do
-  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[1] then
-    redis.call('HSET', KEYS[1], ARGV[i], ARGV[1] .. ARGV[2])
+local pending = ARGV[1] .. '|pending|'
+for i = 2, #ARGV do
+  local value = redis.call('HGET', KEYS[1], ARGV[i])
+  if value and string.sub(value, 1, #pending) == pending then
+    redis.call('HSET', KEYS[1], ARGV[i], ARGV[1] .. '|accepted')
   end
 end
 return 1
 """
 # Only the request that claimed an id gives it back, and only while pending.
 _RELEASE = """
+local pending = ARGV[1] .. '|pending|'
 for i = 2, #ARGV do
-  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[1] then
+  local value = redis.call('HGET', KEYS[1], ARGV[i])
+  if value and string.sub(value, 1, #pending) == pending then
     redis.call('HDEL', KEYS[1], ARGV[i])
   end
 end
@@ -90,6 +102,7 @@ async def claim_answer(
     "answered": the chat, or another request's accepted answer, came first.
     "pending": another request holds the card but has not saved yet; it may
     still fail, so this one is neither answered nor taken, and should retry.
+    A pending claim whose request died lapses after ``_PENDING_LEASE_MS``.
     """
     try:
         session = await get_chat_session(session_id, user_id)
@@ -110,9 +123,7 @@ async def accept_claim(
     """Mark this request's claim answered once its answer is saved or queued."""
     try:
         redis = await get_redis_async()
-        await redis.eval(
-            _ACCEPT, 1, f"{_KEY}{session_id}", owner, _ACCEPTED, *confirmation_ids
-        )
+        await redis.eval(_ACCEPT, 1, f"{_KEY}{session_id}", owner, *confirmation_ids)
     except Exception:
         logger.warning(
             f"Could not accept card answers for session {session_id}", exc_info=True
@@ -216,7 +227,7 @@ async def _claim(
                 f"{_KEY}{session_id}",
                 owner,
                 _TTL_SECONDS,
-                _ACCEPTED,
+                _PENDING_LEASE_MS,
                 *confirmation_ids,
             )
         )

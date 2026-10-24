@@ -181,6 +181,31 @@ async def test_an_answer_still_being_sent_is_waited_on_not_taken_as_given() -> N
     assert await card_decided._claim(session, ["c-1"], "tab-b") == "held"
 
 
+@needs_redis
+async def test_a_claim_whose_request_died_lapses(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Tab A claims, then its worker is killed before it saves or gives the
+    claim back. The card must not stay locked: once the lease is past, the
+    next answer lands. An accepted answer never lapses."""
+    mocker.patch.object(card_decided, "_PENDING_LEASE_MS", 200)
+    session = f"s-{uuid.uuid4()}"
+    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
+    await card_decided.accept_claim(session, ["c-2"], "tab-a")
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "pending"
+
+    await asyncio.sleep(0.3)  # A is gone
+
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
+    assert await card_decided._claim(session, ["c-2"], "tab-b") == "taken"
+    # A's late paths no longer touch B's claim.
+    await card_decided.release_claim(session, ["c-1"], "tab-a")
+    await card_decided.accept_claim(session, ["c-1"], "tab-a")
+    assert await card_decided._claim(session, ["c-1"], "tab-c") == "pending"
+    await card_decided.accept_claim(session, ["c-1"], "tab-b")
+    assert await card_decided._claim(session, ["c-1"], "tab-c") == "taken"
+
+
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
