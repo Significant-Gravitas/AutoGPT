@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { Text } from "@/components/atoms/Text/Text";

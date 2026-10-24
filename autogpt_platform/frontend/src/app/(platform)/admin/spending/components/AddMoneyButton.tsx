@@ -14,7 +14,7 @@ import {
   DialogFooter,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { Input } from "@/components/__legacy__/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
