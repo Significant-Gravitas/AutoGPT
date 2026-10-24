@@ -25,6 +25,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -4351,6 +4352,36 @@ def test_cancel_session_clears_pending_buffer(
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
     mock_clear.assert_awaited_once_with("sess-1")
+
+
+def test_cancel_session_forgets_the_card_answers_it_drops(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A decision queued behind the stopped turn is never saved, so the card
+    is the user's to answer again."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=True),
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    mocker.patch(
+        "backend.api.features.chat.routes.peek_pending_messages",
+        new=AsyncMock(return_value=[PendingMessage(content=line)]),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        new_callable=AsyncMock,
+    )
+    forget = mocker.patch(
+        "backend.api.features.chat.routes.forget_unsaved_answers",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    forget.assert_awaited_with(test_user_id, "sess-1", [line])
 
 
 def test_cancel_session_survives_pending_clear_failure(

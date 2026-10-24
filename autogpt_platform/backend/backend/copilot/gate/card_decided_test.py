@@ -8,8 +8,12 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_mock
 
-from backend.copilot.gate import card_decided
-from backend.copilot.gate.card_decided import claim_answer, decided_ids
+from backend.copilot.gate import card_approval, card_decided
+from backend.copilot.gate.card_decided import (
+    claim_answer,
+    decided_ids,
+    forget_unsaved_answers,
+)
 from backend.copilot.model import ChatMessage
 from backend.data import redis_client
 from backend.util.testing import is_tcp_port_reachable
@@ -115,6 +119,43 @@ async def test_a_failed_request_gives_back_only_its_own_claim() -> None:
 
     await card_decided.release_claim(session, ["c-1"], "tab-a")
     assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
+
+
+@needs_redis
+async def test_answers_dropped_before_they_were_saved_are_forgotten(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session_id = f"s-{uuid.uuid4()}"
+    # c-2 was answered by a row the chat holds; a dropped copy must not undo it.
+    session = mocker.MagicMock(messages=[_tagged("row-1", "c-2")])
+    mocker.patch.object(
+        card_decided, "get_chat_session", new_callable=AsyncMock, return_value=session
+    )
+    for cid in ("c-1", "c-2"):
+        await card_approval.record_card_decisions(
+            "u-1", session_id, f"Approved: hire Maya (confirmation_id: {cid})."
+        )
+        assert (
+            await card_decided._claim(session_id, [cid], f"queued-{cid}") == "claimed"
+        )
+
+    await forget_unsaved_answers(
+        "u-1",
+        session_id,
+        [
+            "Approved: hire Maya (confirmation_id: c-1).",
+            "Approved: hire Maya (confirmation_id: c-2).",
+        ],
+    )
+
+    assert await card_decided._claim(session_id, ["c-1"], "tab-b") == "claimed"
+    assert not await card_approval.approved_on_card(
+        "confirm_expert_change", {"confirmation_id": "c-1"}, "u-1", session_id
+    )
+    assert await card_decided._claim(session_id, ["c-2"], "tab-b") == "taken"
+    assert await card_approval.approved_on_card(
+        "confirm_expert_change", {"confirmation_id": "c-2"}, "u-1", session_id
+    )
 
 
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(

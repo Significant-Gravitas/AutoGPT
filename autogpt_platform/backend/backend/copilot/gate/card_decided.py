@@ -10,7 +10,11 @@ import logging
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
-from backend.copilot.gate.card_approval import CARD_DECISION_KIND, parse_card_decisions
+from backend.copilot.gate.card_approval import (
+    CARD_DECISION_KIND,
+    parse_card_decisions,
+    withdraw_card_approvals,
+)
 from backend.copilot.model import ChatMessage, get_chat_session
 from backend.data.redis_client import get_redis_async
 
@@ -74,6 +78,39 @@ async def claim_answer(
         return "answered"
     claimed = await _claim(session_id, confirmation_ids, owner)
     return "answered" if claimed == "taken" else claimed
+
+
+async def forget_unsaved_answers(
+    user_id: str, session_id: str, messages: Iterable[str]
+) -> None:
+    """Forget the answers in queued messages dropped before they were saved.
+
+    A stopped session drops its queued follow-ups; a card decision among them
+    never reaches the chat, so the card is the user's to answer again. An id
+    the chat already holds an answer for is left alone.
+    """
+    ids = {d.confirmation_id for m in messages for d in parse_card_decisions(m)}
+    if not ids:
+        return
+    try:
+        session = await get_chat_session(session_id, user_id)
+    except Exception:
+        logger.warning(
+            f"Could not read session {session_id} for card answers", exc_info=True
+        )
+        return
+    if session:
+        ids -= decided_ids(session.messages, None)
+    if not ids:
+        return
+    await withdraw_card_approvals(user_id, session_id, ids)
+    try:
+        redis = await get_redis_async()
+        await redis.hdel(f"{_KEY}{session_id}", *ids)
+    except Exception:
+        logger.warning(
+            f"Could not forget card answers for session {session_id}", exc_info=True
+        )
 
 
 def decided_ids(

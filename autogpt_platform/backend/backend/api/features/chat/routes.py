@@ -55,7 +55,11 @@ from backend.copilot.gate.card_approval import (
     parse_card_decisions,
     record_card_decisions,
 )
-from backend.copilot.gate.card_decided import claim_answer, release_claim
+from backend.copilot.gate.card_decided import (
+    claim_answer,
+    forget_unsaved_answers,
+    release_claim,
+)
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -1731,14 +1735,18 @@ _CANCEL_CONFIRM_TIMEOUT_SECONDS = 5.0
 _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS = 0.5
 
 
-async def _clear_pending_best_effort(session_id: str) -> None:
+async def _clear_pending_best_effort(session_id: str, user_id: str) -> None:
     """Drop the session's pending buffer, swallowing Redis errors.
 
     Cancel cleanup must never block the cancel itself, so a transient
-    Redis failure is logged and ignored rather than raised.
+    Redis failure is logged and ignored rather than raised. A card decision
+    among the dropped follow-ups is never saved, so its answer is forgotten
+    and the card is the user's to answer again.
     """
     try:
+        dropped = [m.content for m in await peek_pending_messages(session_id)]
         await clear_pending_messages_unsafe(session_id)
+        await forget_unsaved_answers(user_id, session_id, dropped)
     except Exception:
         logger.warning(
             "[CANCEL] Failed to clear pending buffer for session ...%s",
@@ -1783,7 +1791,7 @@ async def cancel_session_task(
     # stopped — at which point the CAS gate rejects every new write, so the
     # buffer stays empty.  Best-effort throughout: a Redis hiccup must not
     # block the cancel itself, so we swallow and log.
-    await _clear_pending_best_effort(session_id)
+    await _clear_pending_best_effort(session_id, user_id)
 
     # Queued sessions: just flip back to idle.  The user clicked X
     # before any compute was spent; no executor involvement needed.
@@ -1828,7 +1836,7 @@ async def cancel_session_task(
             # Re-clear now the turn is no longer running: the CAS gate rejects
             # any further pending writes, so this drops anything queued during
             # the cancel window and closes the cross-turn leak for good.
-            await _clear_pending_best_effort(session_id)
+            await _clear_pending_best_effort(session_id, user_id)
             return CancelSessionResponse(cancelled=True)
 
     logger.warning(
@@ -1845,7 +1853,7 @@ async def cancel_session_task(
     )
     # Status is now force-flipped out of "running"; re-clear to drop any
     # follow-up that landed during the poll window.
-    await _clear_pending_best_effort(session_id)
+    await _clear_pending_best_effort(session_id, user_id)
     return CancelSessionResponse(
         cancelled=True, reason="cancel_published_not_confirmed"
     )

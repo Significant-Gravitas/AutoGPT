@@ -10,6 +10,7 @@ a note of what was decided instead of the line itself.
 
 import logging
 import re
+from collections.abc import Iterable
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -63,6 +64,23 @@ async def record_card_decisions(user_id: str, session_id: str, message: str) -> 
         # Unrecorded, the confirm just goes to the mode's verdict.
         logger.warning(
             f"Could not record card decisions for session {session_id}", exc_info=True
+        )
+
+
+async def withdraw_card_approvals(
+    user_id: str, session_id: str, confirmation_ids: Iterable[str]
+) -> None:
+    """Withdraw approvals recorded for a request that was dropped unsaved."""
+    fields = [_field(user_id, cid) for cid in confirmation_ids]
+    if not fields:
+        return
+    try:
+        redis = await get_redis_async()
+        await redis.hdel(_key(session_id), *fields)
+    except Exception:
+        logger.warning(
+            f"Could not withdraw card approvals for session {session_id}",
+            exc_info=True,
         )
 
 
