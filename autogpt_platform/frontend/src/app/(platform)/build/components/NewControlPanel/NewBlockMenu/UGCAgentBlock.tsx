@@ -73,7 +73,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         <div className="flex items-center space-x-1.5">
           {edited_time && (
             <Text
-              variant="small-lh-5"
+              variant="small-loose"
               as="span"
               className={cn(
                 "line-clamp-1 text-zinc-500 group-disabled:text-zinc-400",
@@ -86,7 +86,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           <span className="font-sans text-zinc-400">•</span>
 
           <Text
-            variant="small-lh-5"
+            variant="small-loose"
             as="span"
             className={cn(
               "line-clamp-1 text-zinc-500 group-disabled:text-zinc-400",
@@ -96,7 +96,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           </Text>
 
           <Text
-            variant="small-medium-lh-5"
+            variant="small-medium-loose"
             as="span"
             className={cn(
               "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] text-zinc-500",
