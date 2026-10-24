@@ -47,12 +47,27 @@ export interface ChainActionEntry {
   questions?: QuestionRequest;
 }
 
+/** A registration belongs to the component that made it (`owner`, its
+ *  `useId()`), not to the card's id. One card can be mounted twice for a
+ *  moment — a chain row animating out while its lifted copy takes over — and
+ *  both register the same id; keyed by id, the leaving copy's cleanup deleted
+ *  the entry the staying copy still owned, and the card vanished. */
 export interface ChainActions {
-  register: (entry: ChainActionEntry) => void;
-  unregister: (id: string) => void;
+  register: (owner: string, entry: ChainActionEntry) => void;
+  unregister: (owner: string) => void;
 }
 
 export const ChainActionsContext = createContext<ChainActions | null>(null);
+
+/** One entry per card, the latest registration winning when two copies of
+ *  the same card are mounted. */
+export function uniqueChainEntries(
+  registrations: ReadonlyMap<string, ChainActionEntry>,
+): ChainActionEntry[] {
+  const byId = new Map<string, ChainActionEntry>();
+  registrations.forEach((entry) => byId.set(entry.id, entry));
+  return [...byId.values()];
+}
 
 /** The chain's single reply. Every card contributes its line, except that
  *  cards which only confirm credentials share one confirmation: two cards
