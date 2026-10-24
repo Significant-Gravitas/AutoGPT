@@ -7,23 +7,39 @@ from urllib.parse import urlsplit
 from pydantic import JsonValue
 
 OutputType = Literal["table", "doc", "image", "unknown"]
-RunOutputEntry = tuple[datetime | None, datetime, Mapping[str, JsonValue]]
+RunOutputEntry = tuple[
+    datetime | None,
+    datetime,
+    Mapping[str, JsonValue],
+    Mapping[str, list[JsonValue]],
+]
 
 _IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp")
 _DOC_MIN_LENGTH = 200
 
 
 def reconstruct_run_outputs(entries: Iterable[RunOutputEntry]) -> dict[str, list[Any]]:
+    """Map Agent Output node executions to ``{name: [values]}``, keyed on the
+    node's ``name`` input (the block doesn't yield ``name`` when formatting)."""
     ordered = sorted(
         entries,
         key=lambda entry: (entry[0] is None, entry[0] or entry[1]),
     )
     outputs: dict[str, list[Any]] = defaultdict(list)
-    for _, _, input_data in ordered:
+    for _, _, input_data, output_data in ordered:
         name = input_data.get("name")
-        if isinstance(name, str):
-            outputs[name].append(input_data.get("value"))
+        if not isinstance(name, str):
+            continue
+        outputs[name].extend(output_values(input_data, output_data))
     return outputs
+
+
+def output_values(
+    input_data: Mapping[str, Any], output_data: Mapping[str, list[Any]]
+) -> list[Any]:
+    """Values an Agent Output node produced: its yielded ``output`` (formatted
+    when ``format`` is set), or its input ``value`` if it yielded nothing."""
+    return list(output_data.get("output") or [input_data.get("value")])
 
 
 def classify_output_type(value: object) -> OutputType:
