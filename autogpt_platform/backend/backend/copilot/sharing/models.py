@@ -13,8 +13,10 @@ path:
 
 The sanitizer also strips server-injected context blocks from user
 messages (memory_context / env_context / user_context) via the existing
-:func:`strip_injected_context_for_display`.  That data is never owned
-by the user and would confuse a public reader.
+:func:`strip_injected_context_for_display`, and the bracketed preamble a
+delegated or handed-off task opens with (:func:`strip_teammate_preamble`),
+which names the user.  That data is never owned by the user and would
+confuse a public reader.
 """
 
 import json
@@ -24,6 +26,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from backend.copilot.delegation_preamble import strip_teammate_preamble
 from backend.copilot.model import ChatMessage as ChatMessageDomain
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.service import strip_injected_context_for_display
@@ -164,7 +167,8 @@ def sanitize_chat_session(
 def sanitize_chat_message(message: ChatMessageDomain) -> SharedChatMessage:
     """Project a message for public consumption.
 
-    - Strips injected context blocks from ``role=user`` string content.
+    - Strips injected context blocks from ``role=user`` string content, and
+      the teammate-task preamble after them, which names the user.
     - Redacts secret-shaped keys inside ``tool_calls`` and ``function_call``.
     - Redacts secret-shaped keys inside ``role=tool`` JSON content when it
       parses as JSON (tool responses carry structured payloads like
@@ -186,7 +190,7 @@ def sanitize_chat_message(message: ChatMessageDomain) -> SharedChatMessage:
     """
     content = message.content
     if message.role == "user" and isinstance(content, str) and content:
-        content = strip_injected_context_for_display(content)
+        content = strip_teammate_preamble(strip_injected_context_for_display(content))
     elif message.role == "tool" and isinstance(content, str) and content:
         content = _redact_secret_keys_in_json_string(content)
 
