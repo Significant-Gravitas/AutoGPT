@@ -6,6 +6,7 @@ cap by a fixed step and carry on, or stop there. The answer arrives through
 ``answer_session`` like any other; this module recognises it and applies it.
 """
 
+import logging
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
@@ -13,6 +14,8 @@ from pydantic import BaseModel
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import PendingQuestion
 from backend.data.db_accessors import chat_db, delegation_db
+
+logger = logging.getLogger(__name__)
 
 CAP_STOP = "Stop"
 _RAISES: dict[str, float] = {"Raise by $1": 1.0, "Raise by $5": 5.0}
@@ -58,6 +61,27 @@ async def park_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
         datetime.now(UTC),
         options=CAP_OPTIONS,
     )
+
+
+async def hold_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
+    """Hold a thread whose turn landed on its cap for the user's word: parked
+    on the raise-or-stop question while ``ask_before_over_cap`` is on, else
+    stopped there. The turn has already ended, so nothing is left to cancel.
+    """
+    if await asks_over_cap(user_id):
+        await park_at_cap(session_id, user_id, cap_usd)
+    else:
+        await delegation_db().stop_delegation_at_cap(session_id, user_id)
+
+
+async def asks_over_cap(user_id: str) -> bool:
+    """Unreadable settings ask: a question costs less than a lost thread."""
+    try:
+        settings = await delegation_db().get_delegation_settings(user_id)
+    except Exception:
+        logger.warning(f"Delegation settings unreadable for {user_id}", exc_info=True)
+        return True
+    return settings.ask_before_over_cap
 
 
 async def stop_at_cap(session_id: str, user_id: str) -> None:

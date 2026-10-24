@@ -26,6 +26,7 @@ from backend.api.features.experts.delegations import (
 )
 from backend.copilot.constants import COPILOT_ERROR_PREFIX
 from backend.copilot.delegation_list_db import HELD_HANDOFF_PREFIX
+from backend.copilot.turn_pause import PAUSE_KEY
 from backend.copilot.turn_queue import (
     QUEUE_UNAVAILABLE,
     QUEUED_TURN_REFUSED_KEY,
@@ -359,6 +360,54 @@ async def test_a_turn_that_never_started_reads_as_stopped_or_failed(team):
         "refused": "failed",
     }
     assert response.summary.failed == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_paused_hand_off_never_reads_done(team):
+    """A turn that landed on a limit ends on the pause marker: stopped while
+    it waits to be picked up, needs you while its cap question is parked,
+    and failed once it was stopped at its cap."""
+    user_id, expert_id, otto = team
+    brief = "[Delegated task from Otto.]\n\n"
+    cap_question = {
+        "text": "This hand-off has reached its $2.00 cap. Raise it and continue?",
+        "asked_at": _T0.isoformat(),
+        "options": ["Raise by $1", "Raise by $5", "Stop"],
+    }
+    cases = {
+        "paused": ({"reason": "daily"}, {}),
+        "parked": (
+            {"reason": "task", "cap_usd": 2.0},
+            {"pending_question": cap_question},
+        ),
+        "stopped": (
+            {"reason": "task", "cap_usd": 2.0},
+            {"delegation_cap_stopped": True},
+        ),
+    }
+    ids = {}
+    for minutes, (name, (pause, meta)) in enumerate(cases.items()):
+        sid = await _thread(
+            user_id, otto, expert_id, minutes, [("user", brief + name)], **meta
+        )
+        await ChatMessage.prisma().create(
+            data={
+                "sessionId": sid,
+                "role": "assistant",
+                "content": "Paused.",
+                "sequence": 1,
+                "metadata": SafeJson({PAUSE_KEY: pause}),
+            }
+        )
+        ids[sid] = name
+
+    response = await list_delegations(user_id, parent_session_id=otto)
+
+    assert {ids[r.sub_session_id]: r.status for r in response.delegations} == {
+        "paused": "cancelled",
+        "parked": "needs_input",
+        "stopped": "failed",
+    }
 
 
 @pytest.mark.asyncio(loop_scope="session")

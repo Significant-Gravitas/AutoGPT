@@ -120,8 +120,15 @@ def stub_sub_session_costs(monkeypatch):
         "backend.copilot.tools.sub_session_facts",
         "backend.copilot.tools.delegation_policy",
         "backend.copilot.gate.delegation_rules",
+        "backend.copilot.delegation_cap",
     ):
         monkeypatch.setattr(f"{module}.delegation_db", MagicMock(return_value=client))
+    # A thread's cap is read fresh from its row; with no row, what the caller
+    # already knows stands.
+    monkeypatch.setattr(
+        "backend.copilot.tools.delegation_policy.get_chat_session_metadata",
+        AsyncMock(return_value=None),
+    )
     return client
 
 

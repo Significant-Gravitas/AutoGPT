@@ -520,7 +520,9 @@ def response_from_outcome(
     so a card can show "$0.12 · 2m 14s" whatever state the child is in.
 
     A completed turn that stopped on ``ask_question`` is ``needs_input``: the
-    child is waiting on the user, not done. The question is read from the
+    child is waiting on the user, not done. One that landed on a limit (a
+    budget, a hand-off's cap, a step check-in) is ``cancelled``: it stopped
+    part-way and is picked up from its thread. The question is read from the
     turn's last tool call, or from ``pending_ask`` when the caller has the
     child's parked question instead (a cold poll of an idle thread).
 
@@ -594,6 +596,19 @@ def response_from_outcome(
         return status("error", spawn_limit_message())
     if outcome == "failed":
         return status("error", f"{actor} failed. See the sub's transcript for details.")
+    pause = result.pause
+    if outcome == "completed" and pause is not None and pause.started:
+        # Landed on a limit part-way: not a result. A hand-off's cap pause is
+        # read again by the caller, which reports the cap question it holds.
+        return status(
+            "cancelled",
+            f"{actor} stopped before finishing. {pause.summary} What it had "
+            "done so far is in its reply; the user picks the task up from the "
+            f"thread{f' at {link}' if link else ''}. Don't redo the work or "
+            "report it as finished.",
+            outside=(result.response_text,),
+            response=result.response_text,
+        )
     ask = pending_ask or ask_from_tool_calls(result.tool_calls)
     if ask is not None:
         return status(

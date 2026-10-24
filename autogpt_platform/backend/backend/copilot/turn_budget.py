@@ -54,6 +54,9 @@ class TurnBudget(BaseModel):
     # allowance is real money with no plan behind it, so the CLI backstop
     # sits exactly on the budget instead of above it.
     hard_cap: bool = False
+    # Set when a delegated thread's per-hand-off cap is what binds: the turn
+    # that lands on it is held at the cap, not just paused.
+    cap_usd: float | None = None
 
 
 async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
@@ -103,11 +106,19 @@ async def within_delegation_cap(
     cap = session.metadata.delegation_cap_usd
     if budget is None or cap is None or not user_id:
         return budget
-    costs = await delegation_db().get_session_costs(user_id, [session.session_id])
-    left = max(0.0, cap - costs.get(session.session_id, 0) / 1_000_000)
+    left = await delegation_cap_left_usd(user_id, session, cap)
     if left >= budget.usd:
         return budget
-    return TurnBudget(usd=left, limiting="task")
+    return TurnBudget(usd=left, limiting="task", cap_usd=cap)
+
+
+async def delegation_cap_left_usd(
+    user_id: str, session: "ChatSession", cap_usd: float
+) -> float:
+    """What a delegated thread may still spend under its cap: the cap less its
+    earlier turns, which are on the cost log by the time a new turn starts."""
+    costs = await delegation_db().get_session_costs(user_id, [session.session_id])
+    return max(0.0, cap_usd - costs.get(session.session_id, 0) / 1_000_000)
 
 
 async def _limiting_window(

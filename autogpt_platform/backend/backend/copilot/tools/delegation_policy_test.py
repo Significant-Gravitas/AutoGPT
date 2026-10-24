@@ -10,6 +10,7 @@ import pytest
 from backend.copilot.delegation_settings import DelegationSettings
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.copilot.sdk.session_waiter import SessionOutcome, SessionResult
+from backend.copilot.turn_pause import TurnPause
 
 from .delegate_to_expert import DelegateToExpertTool
 from .get_sub_session_result import GetSubSessionResultTool
@@ -29,12 +30,13 @@ def settings_db(monkeypatch):
     db.get_expert_hired_at = AsyncMock(
         return_value=datetime.now(UTC) - timedelta(days=30)
     )
-    monkeypatch.setattr(
-        "backend.copilot.tools.delegation_policy.delegation_db", lambda: db
-    )
-    monkeypatch.setattr(
-        "backend.copilot.tools.sub_session_facts.delegation_db", lambda: db
-    )
+    for module in (
+        "backend.copilot.tools.delegation_policy",
+        "backend.copilot.tools.sub_session_facts",
+        "backend.copilot.delegation_cap",
+        "backend.copilot.gate.delegation_rules",
+    ):
+        monkeypatch.setattr(f"{module}.delegation_db", lambda: db)
     return db
 
 
@@ -219,9 +221,12 @@ async def test_a_working_delegation_past_its_cap_asks_to_raise_it(
 
 
 @pytest.mark.asyncio
-async def test_a_finished_delegation_past_its_cap_keeps_its_result(
+async def test_a_final_answer_that_crossed_the_cap_keeps_its_result(
     settings_db, delegate, cancel
 ):
+    """Each engine stops a turn at its cap between steps, so spend past the
+    cap with a finished result means the final answer itself crossed it.
+    That answer is the task's result, already paid for: it stands."""
     _, turn = delegate
     turn.return_value = ("completed", SessionResult(response_text="done"))
     settings_db.get_session_costs.return_value = {"inner-1": 2_500_000}
@@ -247,7 +252,9 @@ def _thread(**metadata) -> ChatSessionInfo:
     )
 
 
-async def _poll(monkeypatch, fresh: ChatSessionInfo, running: bool):
+async def _poll(
+    monkeypatch, fresh: ChatSessionInfo, running: bool, include_progress: bool = False
+):
     sub = MagicMock(user_id="alice", expert_id="expert-b", messages=[])
     sub.metadata = fresh.metadata
     registry = MagicMock(status="running") if running else None
@@ -256,7 +263,6 @@ async def _poll(monkeypatch, fresh: ChatSessionInfo, running: bool):
     sub.messages = [] if running else [last]
     for target, value in {
         "get_chat_session": AsyncMock(return_value=sub),
-        "get_chat_session_metadata": AsyncMock(return_value=fresh),
         "stream_registry.get_session": AsyncMock(return_value=registry),
         "wait_for_session_result": AsyncMock(return_value=("running", SessionResult())),
         "_delegated_expert_info": AsyncMock(return_value=None),
@@ -265,8 +271,15 @@ async def _poll(monkeypatch, fresh: ChatSessionInfo, running: bool):
         monkeypatch.setattr(
             f"backend.copilot.tools.get_sub_session_result.{target}", value
         )
+    monkeypatch.setattr(
+        "backend.copilot.tools.delegation_policy.get_chat_session_metadata",
+        AsyncMock(return_value=fresh),
+    )
     return await GetSubSessionResultTool()._execute(
-        user_id="alice", session=_parent(None), sub_session_id="inner-1"
+        user_id="alice",
+        session=_parent(None),
+        sub_session_id="inner-1",
+        include_progress=include_progress,
     )
 
 
@@ -356,3 +369,107 @@ async def test_a_newly_hired_teammate_starts_in_ask_first(
     assert create.await_args.kwargs["inherited_autopilot_mode"] == expected
     # The hire date is only read while the toggle is on.
     assert settings_db.get_expert_hired_at.await_count == (1 if toggle else 0)
+
+
+_CAP_QUESTION = PendingQuestion(
+    text="This hand-off has reached its $2.00 cap. Raise it and continue?",
+    asked_at=datetime.now(UTC),
+    options=["Raise by $1", "Raise by $5", "Stop"],
+)
+
+
+def _landed_thread(monkeypatch, **metadata) -> None:
+    """The thread as the executor left it after its turn landed on the cap."""
+    fresh = _thread(**metadata)
+    fresh.metadata.delegation_cap_usd = 2.0
+    monkeypatch.setattr(
+        "backend.copilot.tools.delegation_policy.get_chat_session_metadata",
+        AsyncMock(return_value=fresh),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_hand_off_that_landed_on_its_cap_waits_on_the_user(
+    monkeypatch, settings_db, delegate, cancel, parked
+):
+    """The turn ended on its cap and the executor parked the raise-or-stop
+    question. The cost log has not caught up yet, and the turn "finished":
+    neither may turn it into Done."""
+    _, turn = delegate
+    pause = TurnPause(reason="task", checkpoint_saved=False, cap_usd=2.0)
+    turn.return_value = (
+        "completed",
+        SessionResult(response_text="Where I got to: half", pause=pause),
+    )
+    _landed_thread(monkeypatch, pending_question=_CAP_QUESTION)
+
+    r = await _delegate(_parent(None))
+
+    assert (r.status, r.question) == ("needs_input", _CAP_QUESTION.text)
+    assert r.question_options == ["Raise by $1", "Raise by $5", "Stop"]
+    cancel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_hand_off_stopped_at_its_cap_reads_cap_reached(
+    monkeypatch, settings_db, delegate, cancel, parked
+):
+    """With ``ask_before_over_cap`` off the executor stopped it there."""
+    _, turn = delegate
+    pause = TurnPause(reason="task", checkpoint_saved=False, cap_usd=2.0)
+    turn.return_value = ("completed", SessionResult(pause=pause))
+    _landed_thread(monkeypatch, delegation_cap_stopped=True)
+
+    r = await _delegate(_parent(None))
+
+    assert (r.status, r.error) == ("error", "cap reached")
+
+
+@pytest.mark.asyncio
+async def test_a_hand_off_paused_on_another_limit_reads_stopped_not_done(
+    monkeypatch, settings_db, delegate, cancel, parked
+):
+    """Out of today's budget: the work stopped part-way and is picked up from
+    the thread, so the parent hears it paused rather than a result."""
+    _, turn = delegate
+    pause = TurnPause(reason="daily")
+    turn.return_value = (
+        "completed",
+        SessionResult(response_text="Where I got to: half", pause=pause),
+    )
+    _landed_thread(monkeypatch)
+
+    r = await _delegate(_parent(None))
+
+    assert r.status == "cancelled"
+    assert "today's budget" in r.message
+
+
+@pytest.mark.asyncio
+async def test_a_poll_with_progress_still_stops_a_thread_past_its_cap(
+    monkeypatch, settings_db, cancel, parked
+):
+    settings_db.get_session_costs.return_value = {"inner-1": 1_000_000}
+    settings_db.get_delegation_settings.return_value = _no_over_cap_question()
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result._build_progress_snapshot",
+        AsyncMock(return_value=None),
+    )
+
+    r = await _poll(monkeypatch, _thread(), running=True, include_progress=True)
+
+    assert (r.status, r.error) == ("error", "cap reached")
+    cancel.assert_awaited_once_with("inner-1")
+
+
+@pytest.mark.asyncio
+async def test_a_poll_reads_a_parked_cap_before_the_cost_log_catches_up(
+    monkeypatch, settings_db, cancel, parked
+):
+    settings_db.get_session_costs.return_value = {}
+    thread = _thread(pending_question=_CAP_QUESTION)
+    thread.metadata.delegation_cap_usd = 2.0
+
+    r = await _poll(monkeypatch, thread, running=False)
+
+    assert (r.status, r.question) == ("needs_input", _CAP_QUESTION.text)

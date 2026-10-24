@@ -48,7 +48,13 @@ from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .delegation_policy import CapState, DelegationTerms, delegation_terms, enforce_cap
+from .delegation_policy import (
+    CapState,
+    DelegationTerms,
+    delegation_terms,
+    enforce_cap,
+    read_cap_state,
+)
 from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
@@ -269,10 +275,14 @@ class DelegateToExpertTool(BaseTool):
             actor=target.name,
             facts=await run_facts(user_id, inner_session_id, outcome, started_on),
         )
-        # A resumed thread keeps the cap it was opened with; its poll checks it.
-        cap = terms.cap_usd if terms else None
+        # As the thread's row holds it now: a turn that landed on its cap was
+        # held there before it ended, and a resumed thread keeps its own cap.
+        opened_with = CapState(cap_usd=terms.cap_usd if terms else None)
         delegated = await enforce_cap(
-            delegated, CapState(cap_usd=cap), target.name, user_id
+            delegated,
+            await read_cap_state(inner_session_id, opened_with),
+            target.name,
+            user_id,
         )
         delegated.message += await build_spawn_state_note()
         return apply_delegated_expert(delegated, expert)

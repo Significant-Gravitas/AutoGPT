@@ -6,6 +6,7 @@ import {
   COPILOT_RETRYABLE_ERROR_PREFIX,
 } from "./helpers/messageMarkers";
 import type { DelegationAnswer } from "./delegationAnswerStore";
+import { turnPauseOfMetadata } from "./turnPause";
 import type {
   ChatDelegation,
   DelegationStatus,
@@ -113,17 +114,22 @@ const CANCELLED_BEFORE_START_TEXT =
 /** How an idle thread's last turn ended, read the way Otto's Delegations
  *  list reads it: a turn that died before replying, or ended on an error,
  *  failed, and one that ended on the cancel marker was stopped. A turn that
- *  never started ends on the queue's note: stopped, or refused (failed).
- *  With no transcript to read, the poll still says it finished. */
+ *  never started ends on the queue's note: stopped, or refused (failed). One
+ *  that landed on a limit part-way is stopped until it is picked up, and a
+ *  thread stopped at its hand-off cap failed. With no transcript to read,
+ *  the poll still says it finished. */
 export function settledStatusOf(
   session: SessionDetailResponse,
 ): "completed" | "failed" | "cancelled" {
+  if (session.metadata?.delegation_cap_stopped) return "failed";
   const last = session.messages?.at(-1);
   if (!last) return "completed";
   if (last.role !== "assistant") return "failed";
   const content = typeof last.content === "string" ? last.content : "";
   if (asObject(last.metadata)?.queued_turn_refused === true)
     return content === CANCELLED_BEFORE_START_TEXT ? "cancelled" : "failed";
+  const pause = turnPauseOfMetadata(last.metadata);
+  if (pause) return pause.started ? "cancelled" : "failed";
   if (
     content.startsWith(COPILOT_ERROR_PREFIX) ||
     content.startsWith(COPILOT_RETRYABLE_ERROR_PREFIX)

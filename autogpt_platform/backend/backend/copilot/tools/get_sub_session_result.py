@@ -25,12 +25,7 @@ from typing import Any
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
-from backend.copilot.model import (
-    CHAT_STATUS_QUEUED,
-    ChatSession,
-    get_chat_session,
-    get_chat_session_metadata,
-)
+from backend.copilot.model import CHAT_STATUS_QUEUED, ChatSession, get_chat_session
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
@@ -42,7 +37,7 @@ from backend.copilot.turn_queue import cancel_queued_turn, queued_turn_refusal
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .delegation_policy import CapState, cap_state, enforce_cap
+from .delegation_policy import CapState, cap_state, enforce_cap, read_cap_state
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -265,7 +260,7 @@ class GetSubSessionResultTool(BaseTool):
             # doesn't carry progress, so we build the response here.
             progress = await _build_progress_snapshot(inner_session_id)
             link = _sub_session_link(inner_session_id)
-            return apply_delegated_expert(
+            running = await enforce_cap(
                 SubSessionStatusResponse(
                     message=(
                         f"{actor} still running after {elapsed:.0f}s."
@@ -282,8 +277,11 @@ class GetSubSessionResultTool(BaseTool):
                     started_at=facts.started_at,
                     progress=progress,
                 ).from_outside(progress),
-                delegate,
+                await _cap_state(sub, inner_session_id),
+                actor,
+                user_id,
             )
+            return apply_delegated_expert(running, delegate)
 
         # On completion, read the authoritative workspace-file manifest from the
         # sub's session. This covers the cold-poll / already-terminal path where
@@ -419,15 +417,11 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
 
 
 async def _cap_state(sub: ChatSession, inner_session_id: str) -> CapState:
-    """The thread's cap as its row holds it now.
-
-    Read past the session cache: a raise or a parked cap question is written
-    to the row alone, and the cancelled turn can re-cache an older copy.
-    """
+    """The thread's cap as its row holds it now; a thread opened without
+    one has none to read."""
     if sub.metadata.delegation_cap_usd is None:
         return CapState(cap_usd=None)
-    fresh = await get_chat_session_metadata(inner_session_id)
-    return cap_state(fresh.metadata if fresh else sub.metadata)
+    return await read_cap_state(inner_session_id, cap_state(sub.metadata))
 
 
 def _parked_on_question(sub: ChatSession) -> SessionResult | None:

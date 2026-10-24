@@ -20,6 +20,7 @@ from backend.copilot.db import _PENDING_QUESTION_SESSION_COLUMNS as SESSION_COLU
 from backend.copilot.delegation_db import delegated_session_sql
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
+from backend.copilot.turn_pause import PAUSE_KEY
 from backend.copilot.turn_queue import QUEUED_TURN_REFUSED_KEY, TURN_CANCELLED
 from backend.data import db
 
@@ -39,18 +40,26 @@ class DelegatedThread(BaseModel):
 
 
 # $1 user, $2 expert, $3 parent, $4/$5 error prefixes, $6 the stop marker,
-# $7 the queue's refusal flag, $8 its note for a turn stopped while queued.
+# $7 the queue's refusal flag, $8 its note for a turn stopped while queued,
+# $9 the pause marker's key.
 _THREADS = (
     'WITH d AS (SELECT s."id", s."createdAt", CASE '
     "WHEN s.\"chatStatus\" = 'running' THEN 'running' "
     "WHEN s.\"chatStatus\" = 'queued' THEN 'queued' "
     "WHEN jsonb_typeof(s.\"metadata\" -> 'pending_question') = 'object' "
     "THEN 'needs_input' "
+    # Held at its hand-off cap and stopped there.
+    "WHEN (s.\"metadata\" ->> 'delegation_cap_stopped')::boolean THEN 'failed' "
     # Idle, yet the turn never answered: it died before a reply or a marker.
     "WHEN last.\"role\" IS DISTINCT FROM 'assistant' THEN 'failed' "
     # Never started: the queue's note closes it, stopped or refused.
     "WHEN last.\"metadata\" -> $7::text = 'true'::jsonb "
     "THEN CASE WHEN last.\"content\" = $8 THEN 'cancelled' ELSE 'failed' END "
+    # Landed on a limit part-way and picked up from the thread: stopped. A
+    # turn refused before it ran never started.
+    'WHEN last."metadata" -> $9::text IS NOT NULL '
+    "THEN CASE WHEN last.\"metadata\" -> $9::text ->> 'started' = 'false' "
+    "THEN 'failed' ELSE 'cancelled' END "
     "WHEN position($4 in COALESCE(last.\"content\", '')) = 1 "
     "OR position($5 in COALESCE(last.\"content\", '')) = 1 "
     'THEN CASE WHEN position($6 in last."content") > 0 '
@@ -78,8 +87,8 @@ async def list_delegated_threads(
     """The newest *limit* delegated threads matching *filters*, in any of
     *statuses* (every status when None)."""
     rows = await db.query_raw_with_schema(
-        _THREADS + 'SELECT "id", status FROM d WHERE ($9::text[] IS NULL OR '
-        'status = ANY($9::text[])) ORDER BY "createdAt" DESC LIMIT $10',
+        _THREADS + 'SELECT "id", status FROM d WHERE ($10::text[] IS NULL OR '
+        'status = ANY($10::text[])) ORDER BY "createdAt" DESC LIMIT $11',
         *_params(user_id, filters),
         statuses,
         limit,
@@ -101,7 +110,7 @@ async def count_threads_started_since(
     rows = await db.query_raw_with_schema(
         _THREADS + "SELECT COUNT(*) AS n FROM d "
         # The column holds UTC without a zone; the driver binds timestamptz.
-        "WHERE \"createdAt\" >= ($9::timestamptz AT TIME ZONE 'UTC')",
+        "WHERE \"createdAt\" >= ($10::timestamptz AT TIME ZONE 'UTC')",
         *_params(user_id, filters),
         since,
     )
@@ -129,6 +138,7 @@ def _params(user_id: str, filters: DelegationFilter) -> tuple[str | None, ...]:
         CANCELLED_MESSAGE,
         QUEUED_TURN_REFUSED_KEY,
         TURN_CANCELLED,
+        PAUSE_KEY,
     )
 
 

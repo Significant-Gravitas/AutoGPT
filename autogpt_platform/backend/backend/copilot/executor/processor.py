@@ -32,6 +32,7 @@ from backend.copilot.credit_billing import (
     credit_billing,
 )
 from backend.copilot.delegation_cancel import cancel_delegated_children
+from backend.copilot.delegation_cap import hold_at_cap
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
@@ -113,6 +114,9 @@ _CANCEL_GRACE_SECONDS = 5.0
 # The cancel marker is written inside that grace, ahead of marking the turn
 # done; a wedged store gives up on the marker, never on ending the turn.
 _CANCEL_MARKER_TIMEOUT_SECONDS = 2.0
+
+# How long a landed turn's teardown waits to hold its thread at the cap.
+_HOLD_AT_CAP_TIMEOUT_SECONDS = 5.0
 
 # How long to wait before logging again that a cancelled turn is still draining.
 _CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
@@ -346,6 +350,30 @@ async def _close_on_cancel_marker(
         )
     except Exception as marker_err:
         log.error(f"Failed to persist the cancel marker: {marker_err}")
+
+
+async def _hold_at_cap(
+    entry: CoPilotExecutionEntry,
+    cap_usd: float,
+    log: "CoPilotLogMetadata | TruncatedLogger",
+) -> None:
+    """Hold a delegated thread whose turn landed on its hand-off cap, whichever
+    engine ran it, so every reader finds it waiting on the user rather than
+    done: the parent's waiter, a later poll, the lists and the live card.
+
+    Before the turn is marked done, which is what the waiter wakes on.
+    Bounded: a store that never answers costs the hold, not the turn's end;
+    a poll still applies the cap when it reads the thread's spend.
+    """
+    if not entry.user_id:
+        return
+    try:
+        await asyncio.wait_for(
+            hold_at_cap(entry.session_id, entry.user_id, cap_usd),
+            timeout=_HOLD_AT_CAP_TIMEOUT_SECONDS,
+        )
+    except Exception as hold_err:
+        log.error(f"Failed to hold the thread at its cap: {hold_err}")
 
 
 async def _refuse_turn(
@@ -709,6 +737,8 @@ class CoPilotProcessor:
         cost_context_stack = AsyncExitStack()
         scheduled_watch = ScheduledTurnWatch.for_entry(entry)
         credit_turn: CreditBilledTurn | None = None
+        # The hand-off cap the turn landed on, when a delegated thread did.
+        landed_at_cap: float | None = None
 
         try:
             from backend.copilot.model import get_chat_session
@@ -992,6 +1022,8 @@ class CoPilotProcessor:
             try:
                 async for chunk in published_stream:
                     turn.observe(chunk)
+                    if isinstance(chunk, StreamTurnPaused):
+                        landed_at_cap = TurnPause.model_validate(chunk.pause).cap_usd
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")
                         break
@@ -1053,6 +1085,8 @@ class CoPilotProcessor:
                     scheduled_watch.report(error_msg)
                 if error_msg == stream_registry.CANCELLED_MESSAGE:
                     await _close_on_cancel_marker(entry.session_id, log)
+                elif not error_msg and landed_at_cap is not None:
+                    await _hold_at_cap(entry, landed_at_cap, log)
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id,

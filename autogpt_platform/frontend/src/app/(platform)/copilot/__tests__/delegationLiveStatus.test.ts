@@ -115,6 +115,39 @@ describe("resolveLiveStatus", () => {
     ).toBe("failed");
   });
 
+  it("never reads a hand-off that landed on a limit as done", () => {
+    function settled(
+      pause: Record<string, unknown>,
+      metadata: Record<string, unknown> = {},
+    ) {
+      return resolve("running", {
+        session: {
+          chat_status: "idle",
+          metadata,
+          messages: [
+            { role: "user", content: "Draft the PRD" },
+            {
+              role: "assistant",
+              content: "Paused.",
+              metadata: { turn_paused: pause },
+            },
+          ],
+        } as unknown as SessionDetailResponse,
+      });
+    }
+    // Out of today's budget part-way: stopped, picked up from the thread.
+    expect(settled({ reason: "daily", started: true })).toBe("cancelled");
+    // Refused before it ran.
+    expect(settled({ reason: "daily", started: false })).toBe("failed");
+    // Stopped at its hand-off cap.
+    expect(
+      settled(
+        { reason: "task", started: true, cap_usd: 2 },
+        { delegation_cap_stopped: true },
+      ),
+    ).toBe("failed");
+  });
+
   it("follows the polled session over the frozen transcript", () => {
     expect(resolve("running")).toBe("completed");
     expect(resolve("needs-input", { isLive: true })).toBe("running");

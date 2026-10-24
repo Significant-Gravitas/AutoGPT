@@ -1,22 +1,24 @@
 """The user's delegation settings, applied to one hand-off.
 
 Two limits, set on Otto's Settings tab: a daily budget across every
-delegation (checked before a new hand-off starts) and a per-delegation cap
-(stored on the delegated thread, and checked whenever its status is read,
-since the tree ledger has no per-child ceiling to hand it). The settings'
+delegation (checked before a new hand-off starts) and a per-delegation cap,
+stored on the delegated thread. Each engine stops the thread's turn at what
+the cap has left and the executor holds the thread there
+(``delegation_cap.hold_at_cap``); every read of the thread reports that
+hold, and stops a turn still running past the cap as a backstop. The settings'
 mode tightens the approval mode a thread Otto opens starts in, never looser
 than what the delegating chat's gate enforces, and Ask first for a teammate
 hired this week when ``new_experts_ask_first`` is on.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.delegation_cap import (
     CAP_OPTIONS,
+    asks_over_cap,
     cap_question,
     is_cap_question,
     park_at_cap,
@@ -24,8 +26,14 @@ from backend.copilot.delegation_cap import (
 from backend.copilot.delegation_settings import DelegationSettings, start_of_utc_day
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.gate import child_autopilot_mode
+from backend.copilot.gate.delegation_rules import hired_lately
 from backend.copilot.gate.policy import strictest_mode
-from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
+from backend.copilot.model import (
+    AutopilotMode,
+    ChatSession,
+    ChatSessionMetadata,
+    get_chat_session_metadata,
+)
 from backend.data.db_accessors import delegation_db
 
 from .models import SubSessionStatusResponse
@@ -34,8 +42,6 @@ from .sub_session_facts import MICRODOLLARS_PER_USD
 logger = logging.getLogger(__name__)
 
 CAP_REACHED = "cap reached"
-# How long a new hire's hand-offs start in Ask first, when the user asks for it.
-NEW_HIRE_WINDOW = timedelta(days=7)
 _UNCHECKED = (
     "Could not check today's delegation budget, so nothing was handed off. "
     "Try again in a moment."
@@ -61,7 +67,7 @@ async def delegation_terms(
         spent = await delegation_db().get_delegation_spend_since(
             user_id, start_of_utc_day()
         )
-        new_hire = settings.new_experts_ask_first and await _hired_lately(
+        new_hire = settings.new_experts_ask_first and await hired_lately(
             user_id, target.id
         )
     except Exception:
@@ -93,12 +99,6 @@ def _child_mode(
     return strictest_mode(*modes)
 
 
-async def _hired_lately(user_id: str, expert_id: str) -> bool:
-    """Hired less than a week ago. An unknown hire date counts as new."""
-    hired_at = await delegation_db().get_expert_hired_at(user_id, expert_id)
-    return hired_at is None or datetime.now(UTC) - hired_at < NEW_HIRE_WINDOW
-
-
 class CapState(BaseModel):
     """A delegated thread's cap, as read fresh from its row."""
 
@@ -117,40 +117,49 @@ def cap_state(meta: ChatSessionMetadata) -> CapState:
     )
 
 
+async def read_cap_state(session_id: str, known: CapState) -> CapState:
+    """The thread's cap as its row holds it now.
+
+    Read past the session cache: a raise, a parked cap question or a stop is
+    written to the row alone, after the turn that cached the session.
+    ``known`` stands in when the row can't be found.
+    """
+    fresh = await get_chat_session_metadata(session_id)
+    return cap_state(fresh.metadata) if fresh else known
+
+
 async def enforce_cap(
     response: SubSessionStatusResponse, state: CapState, actor: str, user_id: str
 ) -> SubSessionStatusResponse:
-    """Stop a still-working thread that has spent its cap, and say so.
+    """Apply the thread's cap to what a read of it reports.
 
-    With ``ask_before_over_cap`` on, the thread is parked on a question (raise
-    the cap, or stop) and reads ``needs_input`` until the user answers; off,
-    or once they answered "Stop", it reads ``error`` / "cap reached". A
-    thread that finished within its run keeps its result: there is nothing
-    left to stop, and discarding work already paid for helps nobody.
+    A thread held at its cap (its turn landed there, or a read stopped it)
+    reads so whatever else the read saw: ``needs_input`` on the raise-or-stop
+    question while it is parked, ``error`` / "cap reached" once stopped. The
+    cost log runs behind the turn, so the hold, not the logged spend, says
+    the cap was reached.
+
+    A thread still working past its cap is stopped here too, a backstop for
+    a turn that ran on past it. A thread that finished within its run keeps
+    its result: there is nothing left to stop, and discarding work already
+    paid for helps nobody.
     """
     cap = state.cap_usd
-    if cap is None or response.cost_usd is None or response.cost_usd < cap:
+    if cap is None:
         return response
-    working = response.status in ("running", "queued")
-    if not (working or state.parked or state.stopped):
+    if state.stopped:
+        return _cap_reached(response, cap, actor)
+    if state.parked:
+        return _awaiting_raise(response, cap, actor)
+    if response.cost_usd is None or response.cost_usd < cap:
         return response
-    if working:
-        await enqueue_cancel_task(response.sub_session_id)
-    if not state.stopped and await _asks_over_cap(user_id):
-        if not state.parked:
-            await park_at_cap(response.sub_session_id, user_id, cap)
+    if response.status not in ("running", "queued"):
+        return response
+    await enqueue_cancel_task(response.sub_session_id)
+    if await asks_over_cap(user_id):
+        await park_at_cap(response.sub_session_id, user_id, cap)
         return _awaiting_raise(response, cap, actor)
     return _cap_reached(response, cap, actor)
-
-
-async def _asks_over_cap(user_id: str) -> bool:
-    """Unreadable settings ask: a question costs less than a lost thread."""
-    try:
-        settings = await delegation_db().get_delegation_settings(user_id)
-    except Exception:
-        logger.warning(f"Delegation settings unreadable for {user_id}", exc_info=True)
-        return True
-    return settings.ask_before_over_cap
 
 
 def _awaiting_raise(
