@@ -129,14 +129,12 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(var(--color-card)/0.08),transparent_60%)]"
             />
             <span
-              // A pill (shape, fill, padding) Text cannot carry: caption at
-              // text-xs's 16px line height on the element itself.
               className={cn(
-                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium leading-4",
+                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1",
                 running
-                  ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981, text-emerald-300 #6EE7B7
-                    "bg-emerald-500/15 text-emerald-300"
-                  : "bg-surface/10 text-foreground-disabled",
+                  ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981
+                    "bg-emerald-500/15"
+                  : "bg-surface/10",
               )}
             >
               <span
@@ -147,7 +145,13 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   running ? "bg-emerald-400" : "bg-zinc-400",
                 )}
               />
-              {status}
+              <Text
+                variant="small-medium-tight"
+                as="span"
+                tone={running ? "success-light" : "disabled"}
+              >
+                {status}
+              </Text>
             </span>
             <Text
               variant="body-md"
@@ -194,15 +198,14 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   <Icon icon={Folder01Icon} size={15} aria-hidden />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  {/* Monospace, which Text does not set: caption at 16px. */}
-                  <code className="text-caption leading-4 text-foreground-emphasis">
+                  <Text variant="small-mono-tight" as="code" tone="emphasis">
                     {path}
-                  </code>
+                  </Text>
                   <Text variant="small" className="!text-foreground-tertiary">
                     {describeMount(path, computer)}{" "}
-                    <span className="font-mono text-caption leading-4 text-foreground-subtle">
+                    <Text variant="small-mono-tight" as="span" tone="subtle">
                       {name}
-                    </span>
+                    </Text>
                   </Text>
                 </span>
               </li>

@@ -98,16 +98,23 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               {pauseNames.map((item) => (
                 <span
                   key={item.id}
-                  // A pill Text cannot carry: caption at text-xs's 16px.
-                  // TODO(tokens): no exact role: text-amber-800 #92400E
-                  className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 text-caption leading-4 text-amber-800"
+                  className="flex min-w-0 max-w-full rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5"
                 >
-                  {item.name}
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="warning-strong"
+                    className="truncate"
+                  >
+                    {item.name}
+                  </Text>
                 </span>
               ))}
               {hiddenPauseCount > 0 ? (
-                <span className="px-1 py-0.5 text-caption leading-4 text-foreground-tertiary">
-                  +{hiddenPauseCount} more
+                <span className="flex px-1 py-0.5">
+                  <Text variant="small-tight" as="span" tone="muted">
+                    +{hiddenPauseCount} more
+                  </Text>
                 </span>
               ) : null}
             </div>
@@ -193,16 +200,21 @@ function Consequence({
           </Text>
           {tag ? (
             <span
-              // A pill Text cannot carry: caption at text-xs's 16px.
               className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-caption font-medium leading-4",
+                "flex shrink-0 rounded-full px-2 py-0.5",
                 isWarn
-                  ? "bg-warning-surface text-warning-foreground"
-                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
-                    "bg-emerald-50 text-emerald-700",
+                  ? "bg-warning-surface"
+                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5
+                    "bg-emerald-50",
               )}
             >
-              {tag}
+              <Text
+                variant="small-medium-tight"
+                as="span"
+                tone={isWarn ? "warning" : "success-strong"}
+              >
+                {tag}
+              </Text>
             </span>
           ) : null}
         </div>

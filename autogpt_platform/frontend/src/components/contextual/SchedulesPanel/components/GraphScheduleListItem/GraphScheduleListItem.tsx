@@ -107,12 +107,13 @@ export function GraphScheduleListItem({
             </Text>
             <span className="text-foreground-disabled">•</span>
             <span
-              // A badge Text cannot carry: caption at text-xs's 16px.
-              // TODO(tokens): no exact role for bg-emerald-100 #d1fae5, text-emerald-700 #047857
-              className="rounded-md bg-emerald-100 px-2 py-0.5 text-caption leading-4 text-emerald-700"
+              // TODO(tokens): no exact role for bg-emerald-100 #d1fae5
+              className="flex rounded-md bg-emerald-100 px-2 py-0.5"
               data-testid="schedule-kind-badge"
             >
-              Workflow run
+              <Text variant="small-tight" as="span" tone="success-strong">
+                Workflow run
+              </Text>
             </span>
           </div>
         </div>
