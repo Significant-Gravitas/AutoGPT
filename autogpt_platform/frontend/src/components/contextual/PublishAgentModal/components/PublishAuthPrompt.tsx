@@ -14,7 +14,8 @@ export const PublishAuthPrompt = () => {
           </Text>
           <Text
             variant="lead"
-            className="max-w-[80%] text-neutral-600 dark:text-neutral-400"
+            // TODO(tokens): no exact role for text-neutral-600 #525252
+            className="max-w-[80%] text-neutral-600"
           >
             Log in or create an account to publish your workflows to the
             marketplace and join a community of creators
@@ -23,7 +24,8 @@ export const PublishAuthPrompt = () => {
         <div className="flex flex-col items-center gap-3 sm:flex-row">
           <Button
             onClick={() => router.push("/login")}
-            className="bg-neutral-800 text-white hover:bg-neutral-900"
+            // TODO(tokens): no exact role for bg-neutral-800 #262626, hover:bg-neutral-900 #171717
+            className="bg-neutral-800 text-action-foreground hover:bg-neutral-900"
           >
             Log in
           </Button>

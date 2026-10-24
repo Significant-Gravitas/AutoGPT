@@ -284,25 +284,30 @@ export function ConnectorRow({ row }: Props) {
 
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
-      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1.5">
+      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-separator bg-surface p-1.5">
         <ProviderAvatar id={row.provider} name={row.displayName} />
       </span>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-zinc-900">
+        <span className="truncate text-sm font-medium text-foreground-strong">
           {row.displayName}
         </span>
         {grantError && !isDialogOpen ? (
-          <span className="truncate text-xs text-red-600">{grantError}</span>
+          <span
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
+            className="truncate text-xs text-red-600"
+          >
+            {grantError}
+          </span>
         ) : expertGrant && !isSatisfied ? (
-          <span className="truncate text-xs text-zinc-500">
+          <span className="truncate text-xs text-foreground-tertiary">
             {grantableOptions.length > 0
               ? "Needs this expert's access"
               : "This expert needs its own access"}
           </span>
         ) : (
           row.description && (
-            <span className="truncate text-xs text-zinc-500">
+            <span className="truncate text-xs text-foreground-tertiary">
               {row.description}
             </span>
           )
@@ -310,7 +315,7 @@ export function ConnectorRow({ row }: Props) {
       </div>
 
       {isSatisfied && !linksOnAyrshare ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
+        <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           {expertGrant ? "Granted" : "Connected"}
         </span>

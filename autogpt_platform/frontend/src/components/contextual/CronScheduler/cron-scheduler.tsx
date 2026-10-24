@@ -5,7 +5,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/__legacy__/ui/button";
@@ -351,7 +351,7 @@ export function CronScheduler({
             ))}
           </div>
           {selectedWeekDays.length === 0 && (
-            <p className="text-sm text-red-500">
+            <p className="text-sm text-error">
               Please select at least one day of the week
             </p>
           )}
@@ -419,7 +419,7 @@ export function CronScheduler({
             </div>
           )}
           {selectedMonthDays.length === 0 && (
-            <p className="text-sm text-red-500">
+            <p className="text-sm text-error">
               Please select at least one day of the month
             </p>
           )}
@@ -471,7 +471,7 @@ export function CronScheduler({
             })}
           </div>
           {selectedMonths.length === 0 && (
-            <p className="text-sm text-red-500">
+            <p className="text-sm text-error">
               Please select at least one month
             </p>
           )}

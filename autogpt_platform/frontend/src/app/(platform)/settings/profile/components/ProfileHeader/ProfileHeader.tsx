@@ -77,6 +77,7 @@ export function ProfileHeader({
         onMouseLeave={() => setIsHovered(false)}
         disabled={isUploading}
         aria-label="Change profile photo"
+        // TODO(tokens): no exact role (focus-visible:ring-purple-400 #925CF7)
         className="group relative h-[112px] w-[112px] shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
         <Avatar className="h-[112px] w-[112px] shadow-[0_8px_28px_-12px_rgba(15,15,20,0.18)] ring-2 ring-white">
@@ -86,7 +87,7 @@ export function ProfileHeader({
             width={224}
             height={224}
           />
-          <AvatarFallback className="bg-gradient-to-br from-zinc-100 to-zinc-200 text-zinc-500">
+          <AvatarFallback className="bg-gradient-to-br from-surface-hover to-surface-active text-foreground-tertiary">
             <Icon icon={UserIcon} size={48} />
           </AvatarFallback>
         </Avatar>
@@ -97,7 +98,7 @@ export function ProfileHeader({
             opacity: isUploading || isHovered ? 1 : 0,
           }}
           transition={{ duration: 0.18, ease: EASE_OUT }}
-          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-[2px]"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-action-foreground backdrop-blur-[2px]"
         >
           {isUploading ? (
             <Icon icon={Loading03Icon} size={26} className="animate-spin" />
@@ -124,7 +125,7 @@ export function ProfileHeader({
               duration: reduceMotion ? 0 : 0.32,
               ease: BADGE_ARC_EASE,
             }}
-            className="absolute bottom-1 right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
+            className="absolute bottom-1 right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-surface text-foreground-base shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
             style={{ transformOrigin: "center" }}
           >
             <Icon icon={PencilIcon} size={16} />
@@ -142,7 +143,11 @@ export function ProfileHeader({
 
       <div className="grid w-full gap-4 sm:grid-cols-2">
         <label htmlFor="profile-name" className="flex w-full flex-col gap-2">
-          <Text variant="body-medium" as="span" className="px-4 text-black">
+          <Text
+            variant="body-medium"
+            as="span"
+            className="px-4 text-foreground-base"
+          >
             Display name
           </Text>
           <Input
@@ -161,10 +166,14 @@ export function ProfileHeader({
           className="flex w-full flex-col gap-2"
         >
           <div className="flex items-center justify-between px-4">
-            <Text variant="body-medium" as="span" className="text-black">
+            <Text
+              variant="body-medium"
+              as="span"
+              className="text-foreground-base"
+            >
               Handle
             </Text>
-            <Text variant="small" as="span" className="!text-zinc-400">
+            <Text variant="small" as="span" className="!text-foreground-subtle">
               agpt.co/@your-handle
             </Text>
           </div>

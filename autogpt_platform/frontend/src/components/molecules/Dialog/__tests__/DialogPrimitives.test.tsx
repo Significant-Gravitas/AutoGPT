@@ -6,9 +6,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../dialog";
+} from "../components/DialogPrimitives";
 
-describe("legacy DialogContent", () => {
+describe("DialogContent primitive", () => {
   test("injects an sr-only Description when none is provided", () => {
     render(
       <Dialog open>

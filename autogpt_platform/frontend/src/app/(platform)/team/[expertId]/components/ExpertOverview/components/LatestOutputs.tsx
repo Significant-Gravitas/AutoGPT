@@ -46,18 +46,21 @@ export function LatestOutputs({
               key="image"
               icon={Image01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
               key="table"
               icon={Table01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-emerald-500 #10B981
               className="text-emerald-500"
             />,
             <Icon
               key="doc"
               icon={File02Icon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}

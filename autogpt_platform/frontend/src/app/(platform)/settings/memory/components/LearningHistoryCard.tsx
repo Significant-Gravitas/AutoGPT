@@ -35,13 +35,13 @@ export function LearningHistoryCard({
   }
   return (
     <div
-      className="flex flex-col rounded-[18px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
+      className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
       data-testid="learning-history-card"
     >
       <Text variant="body-medium" as="span" className="text-textBlack">
         Learning history
       </Text>
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-foreground-tertiary">
         What overnight learning changed, where it came from, and what it did not
         learn.
       </Text>
@@ -65,14 +65,18 @@ export function LearningHistoryCard({
           options={STATE_FILTERS}
         />
       </div>
-      <div className="mt-2 flex flex-col divide-y divide-zinc-100">
+      <div className="mt-2 flex flex-col divide-y divide-separator">
         {isLoading ? (
           <div className="flex flex-col gap-2 py-3">
             <Skeleton className="h-5 w-3/4" />
             <Skeleton className="h-5 w-2/3" />
           </div>
         ) : items.length === 0 ? (
-          <Text variant="small" as="p" className="py-3 text-zinc-500">
+          <Text
+            variant="small"
+            as="p"
+            className="py-3 text-foreground-tertiary"
+          >
             Nothing learned yet. A quiet night means nothing needed to change.
           </Text>
         ) : (
@@ -100,15 +104,23 @@ export function LearningHistoryCard({
                 <Text
                   variant="small"
                   as="span"
-                  className="shrink-0 text-zinc-400"
+                  className="shrink-0 text-foreground-subtle"
                 >
                   {formatWhen(new Date(item.created_at).toISOString())}
                 </Text>
               </div>
-              <Text variant="small" as="span" className="text-zinc-600">
+              <Text
+                variant="small"
+                as="span"
+                className="text-foreground-secondary"
+              >
                 {item.summary}
               </Text>
-              <Text variant="small" as="span" className="text-zinc-500">
+              <Text
+                variant="small"
+                as="span"
+                className="text-foreground-tertiary"
+              >
                 {[
                   expertName(item.expert_id),
                   item.origin_label,
