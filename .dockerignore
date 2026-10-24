@@ -70,3 +70,20 @@
 # Logs and temp files
 **/*.log
 **/*.tmp
+
+# Frontend tests, stories and their configs. No image builds or runs them (CI
+# runs Playwright and Vitest from the checkout), and while they were in the
+# context every test-only change rebuilt Next.js from scratch. Keep in sync
+# with autogpt_platform/single-container/Dockerfile.dockerignore;
+# .github/scripts/test_frontend_build_context.py checks both.
+autogpt_platform/frontend/**/__tests__/
+autogpt_platform/frontend/**/*.test.*
+autogpt_platform/frontend/**/*.spec.*
+autogpt_platform/frontend/**/*.stories.*
+autogpt_platform/frontend/src/playwright/
+autogpt_platform/frontend/src/tests/
+autogpt_platform/frontend/src/mocks/
+autogpt_platform/frontend/coverage/
+autogpt_platform/frontend/playwright*.config.ts
+autogpt_platform/frontend/vitest.config.mts
+autogpt_platform/frontend/test-runner-jest.config.js
