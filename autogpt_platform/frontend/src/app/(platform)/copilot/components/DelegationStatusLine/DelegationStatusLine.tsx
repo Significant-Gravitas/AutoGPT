@@ -15,6 +15,7 @@ import { useContext } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
@@ -65,6 +66,18 @@ function DelegationLine({ delegation, readOnly }: LineProps) {
   const tone = TONE_ICON[view.tone];
   const canRetry = live.status === "failed" && !readOnly && !!actions;
 
+  function retry() {
+    void Promise.resolve(actions?.onSend(retryMessage(name))).catch(
+      (error: unknown) =>
+        toastSendFailure({
+          title: "Couldn't retry the hand-off",
+          error,
+          recovery: "use Retry to try again",
+          paywallRecovery: "use Retry once you have a plan",
+        }),
+    );
+  }
+
   return (
     <div
       data-testid="delegation-status-line"
@@ -90,7 +103,7 @@ function DelegationLine({ delegation, readOnly }: LineProps) {
           variant="secondary"
           size="xs"
           leadingIcon={ArrowReloadHorizontalIcon}
-          onClick={() => void actions.onSend(retryMessage(name))}
+          onClick={retry}
         >
           Retry
         </Button>

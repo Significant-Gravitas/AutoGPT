@@ -13,7 +13,13 @@ import { HeldOutcomesContext } from "../../ChatMessagesContainer/HeldOutcomesCon
 import { SupersededDelegationsContext } from "../../../supersededDelegationsContext";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { useCopilotUIStore } from "../../../store";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { DelegationStatusLine } from "../DelegationStatusLine";
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
 
 function part(
   tool: string,
@@ -304,5 +310,29 @@ describe("DelegationStatusLine", () => {
     expect(screen.getByText("Alex stopped")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(onSend).toHaveBeenCalledWith("Please retry the hand-off to Alex.");
+  });
+
+  it("says so when the retry could not be sent", async () => {
+    const onSend = vi.fn().mockRejectedValue(new Error("network down"));
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <DelegationStatusLine
+          parts={[
+            part("delegate_to_expert", "c1", {
+              type: "error",
+              error: "Budget cap reached",
+              expert: ALEX,
+            }),
+          ]}
+          messageId="m1"
+        />
+      </CopilotChatActionsProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Couldn't retry the hand-off" }),
+      ),
+    );
   });
 });
