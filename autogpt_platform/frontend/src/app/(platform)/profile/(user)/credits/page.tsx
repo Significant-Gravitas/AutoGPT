@@ -25,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/components/TablePrimitives";
 
 function CoPilotUsageSection() {
   const router = useRouter();
