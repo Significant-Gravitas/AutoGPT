@@ -26,25 +26,38 @@ export function RunRow({ item, isHidden = false }: Props) {
         avatarUrl={item.expert_avatar_url}
         size={28}
       />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+      <div data-slot="briefing-card-run-row-body" className="min-w-0 flex-1">
+        <div
+          data-slot="briefing-card-run-row-header"
+          className="flex items-center gap-2"
+        >
           {/* Agent names and run summaries are user data: never opt them into
               unmasking in session replays. */}
-          <Text variant="body-medium" className="truncate text-zinc-900">
+          <Text variant="body-medium" tone="primary" className="truncate">
             {item.agent_name}
           </Text>
           {isFailed ? (
-            <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-[0.6875rem] font-medium text-red-600">
+            <span
+              data-slot="briefing-card-run-row-status"
+              // TODO(tokens): no text role for red-600 (#D93636); error-hover
+              // is the hover fill.
+              className="shrink-0 rounded-full bg-error-surface px-2 py-0.5 text-caption-sm font-medium leading-inherit text-red-600"
+            >
               Failed
             </span>
           ) : null}
         </div>
         {text ? (
-          <Text variant="body" className="line-clamp-2 text-zinc-500">
+          <Text variant="body" tone="muted" className="line-clamp-2">
             {/* Attribution matters once more than one agent reports:
                 mirrors the thread markdown's "**{agent}**: {summary}". */}
             {attribution ? (
-              <span className="text-zinc-400">{attribution} · </span>
+              <span
+                data-slot="briefing-card-run-row-attribution"
+                className="text-foreground-subtle"
+              >
+                {attribution} ·{" "}
+              </span>
             ) : null}
             {text}
           </Text>
@@ -54,7 +67,7 @@ export function RunRow({ item, isHidden = false }: Props) {
         <Icon
           icon={ArrowRight01Icon}
           size={16}
-          className="shrink-0 self-center text-zinc-300 transition-colors group-hover:text-zinc-500"
+          className="shrink-0 self-center text-foreground-disabled transition-colors group-hover:text-foreground-tertiary"
         />
       ) : null}
     </>
@@ -66,17 +79,23 @@ export function RunRow({ item, isHidden = false }: Props) {
   // without this they keep their place in the tab order and focus lands on
   // rows the reader cannot see.
   return (
-    <li aria-hidden={isHidden || undefined}>
+    <li data-slot="briefing-card-run-row" aria-hidden={isHidden || undefined}>
       {link ? (
         <Link
           href={link}
           tabIndex={isHidden ? -1 : undefined}
-          className={cn(rowClassName, "transition-colors hover:bg-zinc-50")}
+          data-slot="briefing-card-run-row-content"
+          className={cn(
+            rowClassName,
+            "transition-colors hover:bg-surface-muted",
+          )}
         >
           {body}
         </Link>
       ) : (
-        <div className={rowClassName}>{body}</div>
+        <div data-slot="briefing-card-run-row-content" className={rowClassName}>
+          {body}
+        </div>
       )}
     </li>
   );

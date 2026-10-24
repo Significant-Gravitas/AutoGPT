@@ -66,24 +66,38 @@ export function HeldCallRow({
               id={headlineButtonId(item.id)}
               aria-haspopup="dialog"
               onClick={onOpen}
-              className="line-clamp-2 min-w-0 rounded-md text-left text-zinc-900 [overflow-wrap:anywhere] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+              className="line-clamp-2 min-w-0 rounded-md text-left text-foreground-strong [overflow-wrap:anywhere] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
             >
               <Text variant="body-medium" as="span" className="text-pretty">
                 <HeadlineText item={approval} />
               </Text>
             </button>
             {approval.subject.irreversible && (
-              <Tag className="bg-red-50 text-red-700">Can&apos;t be undone</Tag>
+              <Tag className="bg-error-surface text-error-foreground">
+                Can&apos;t be undone
+              </Tag>
             )}
-            {mode && <Tag className="bg-zinc-100 text-zinc-600">{mode}</Tag>}
+            {mode && (
+              <Tag className="bg-surface-hover text-foreground-secondary">
+                {mode}
+              </Tag>
+            )}
             {item.priority === "high" && (
-              <Tag className="bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10">
+              <Tag
+                // TODO(tokens): no exact role (ring-amber-600/10 #D97706)
+                className="bg-warning-surface text-warning-foreground ring-1 ring-inset ring-amber-600/10"
+              >
                 Waiting
               </Tag>
             )}
           </div>
           {failed ? (
-            <Text variant="body" role="alert" className="!text-red-600">
+            <Text
+              // TODO(tokens): no fitting role for !text-red-600 #D93636; #D93636 is error-hover, a hover fill
+              variant="body"
+              role="alert"
+              className="!text-red-600"
+            >
               Couldn&apos;t send your answer. Nothing ran. Try again.
             </Text>
           ) : reason ? (

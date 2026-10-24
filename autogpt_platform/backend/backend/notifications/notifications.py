@@ -30,15 +30,21 @@ from backend.data.notifications import (
     TrialUpdateData,
     get_notif_data_type,
 )
+from backend.data.product_mail_audience import (
+    PRODUCT_MAIL_LAPSE_WINDOW,
+    is_product_mail_recipient,
+    product_mail_allowlist,
+)
 from backend.data.user import (
     FOOTER_CHOICES,
     generate_preference_link,
     generate_unsubscribe_link,
 )
-from backend.notifications import briefing_runner, mailerlite
+from backend.notifications import briefing_runner, mailerlite, owner_email
 from backend.notifications.consent import log_kept_out_skip
 from backend.notifications.dedupe import claim_daily_send
 from backend.notifications.email import EmailSender
+from backend.notifications.owner_email_body import BodyFormat, InlineImage
 from backend.notifications.preferences import SERVICE_MESSAGES, wants_notification
 from backend.notifications.queue import (
     AUDIENCE_QUEUE,
@@ -58,6 +64,7 @@ from backend.util.service import (
     AppService,
     AppServiceClient,
     UnhealthyServiceError,
+    endpoint_to_async,
     endpoint_to_sync,
     expose,
 )
@@ -73,6 +80,27 @@ def _utc_today() -> date:
     """The cap resets at UTC midnight, matching the Alert engine's own daily
     cap. Both are documented as a follow-up to move to the user's local day."""
     return datetime.now(tz=timezone.utc).date()
+
+
+async def _in_product_audience(user_id: str, kind: NotificationType) -> bool:
+    """USER_NOTIFICATIONS_AUDIENCE and USER_NOTIFICATIONS_ALLOWLIST, logging
+    why when the answer is no."""
+    standing = await get_database_manager_async_client(
+        should_retry=False
+    ).get_product_mail_standing(user_id)
+    if standing and is_product_mail_recipient(standing, datetime.now(timezone.utc)):
+        return True
+    if standing is None:
+        reason = "the account no longer exists"
+    elif product_mail_allowlist() is not None:
+        reason = "not on USER_NOTIFICATIONS_ALLOWLIST"
+    else:
+        reason = (
+            "no plan or trial, and none ended in the last "
+            f"{PRODUCT_MAIL_LAPSE_WINDOW.days} days"
+        )
+    logger.info(f"Skipping {kind} for user {user_id}: {reason}")
+    return False
 
 
 async def _kept_out_since_queued(event: AudienceEventModel) -> bool:
@@ -284,6 +312,25 @@ class NotificationManager(AppService):
             self.email_sender.send_email_or_raise, to, subject, body, text_body
         )
 
+    @expose
+    async def send_owner_email(
+        self,
+        user_id: str,
+        subject: str,
+        body: str,
+        link: str | None = None,
+        body_format: BodyFormat = BodyFormat.MARKDOWN,
+        images: list[InlineImage] | None = None,
+    ) -> None:
+        """Email a message one of the user's own runs composed to that user's
+        own address. Not gated by ENABLE_USER_NOTIFICATIONS: like the auth mail
+        above, the user asked for it."""
+        await owner_email.send_owner_email(
+            self.email_sender,
+            user_id,
+            owner_email.parse_owner_email(subject, body, link, body_format, images),
+        )
+
     # ── consumers ───────────────────────────────────────────────────────
 
     async def _process_user_notification(self, message: str) -> bool:
@@ -328,6 +375,13 @@ class NotificationManager(AppService):
                 f"Skipping {event.type} for user {event.user_id}: not wanted or "
                 "unverified"
             )
+            return True
+
+        # Before the daily cap, so mail that won't go claims no slot.
+        if event.type not in SERVICE_MESSAGES and not await _in_product_audience(
+            event.user_id, event.type
+        ):
+            # Acked, not retried, like the daily cap.
             return True
 
         # The volume knob's own ceiling, across every product notification.
@@ -821,3 +875,4 @@ class NotificationManagerClient(AppServiceClient):
     send_due_briefings = endpoint_to_sync(NotificationManager.send_due_briefings)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
     send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)
+    send_owner_email = endpoint_to_async(NotificationManager.send_owner_email)

@@ -50,7 +50,7 @@ export function McpConnectPanel({
   return (
     <div className="flex flex-col gap-4">
       {!lockServerURL && (
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" className="text-foreground-secondary">
           Enter the server URL from the service&apos;s setup instructions.
         </Text>
       )}
@@ -81,7 +81,7 @@ export function McpConnectPanel({
       )}
       {state.phase === "manual-token" && (
         <>
-          <Text variant="small" className="text-zinc-600">
+          <Text variant="small" className="text-foreground-secondary">
             {allowedAuthMethods
               ? "Use the credential described in the setup instructions above."
               : "Use an API credential only if this server supports it. Follow the server's documentation for the correct authentication type."}
@@ -92,8 +92,8 @@ export function McpConnectPanel({
               onChange={state.selectScheme}
               disabled={state.isSubmitting}
               className="flex flex-col gap-1"
-              labelClassName="text-sm font-medium text-zinc-700"
-              selectClassName="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+              labelClassName="text-sm font-medium text-foreground-body"
+              selectClassName="rounded-lg border border-border-strong bg-surface px-3 py-2 text-foreground-strong"
             />
           )}
           <Input
@@ -114,7 +114,8 @@ export function McpConnectPanel({
         <div
           role="alert"
           aria-live="polite"
-          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          // TODO(tokens): no exact role for border-red-200 #FAC5C5
+          className="rounded-lg border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground"
         >
           {state.error}
         </div>

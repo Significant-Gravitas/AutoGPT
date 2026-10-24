@@ -74,6 +74,9 @@ async function settle() {
 
 async function loadOlderChats() {
   fireEvent.click(await screen.findByRole("button", { name: /load more/i }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load all Otto chats" }),
+  );
   await screen.findByText("Chat 74");
   await settle();
 }

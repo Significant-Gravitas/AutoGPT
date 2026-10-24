@@ -37,14 +37,6 @@ def setup_app_auth(mock_jwt_user):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture(autouse=True)
-def memory_enabled():
-    with patch(
-        f"{_MOCK_MODULE}.is_enabled_for_user", new=AsyncMock(return_value=True)
-    ) as mock:
-        yield mock
-
-
 def _driver_returning(*query_results) -> AsyncMock:
     driver = AsyncMock()
     driver.execute_query.side_effect = [(r, None, None) for r in query_results]
@@ -85,10 +77,18 @@ class TestOverview:
         assert body["episodes"] == 5
         driver.close.assert_awaited_once()
 
-    def test_disabled_memory_is_403(self, memory_enabled) -> None:
-        memory_enabled.return_value = False
-        resp = client.get("/memory/overview")
-        assert resp.status_code == 403
+    def test_memory_is_available_without_a_flag_provider(self) -> None:
+        driver = _driver_returning([{"c": 0}], [{"c": 0}], [{"c": 0}])
+        with (
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver),
+            patch(
+                "backend.util.feature_flag.is_feature_enabled",
+                new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+            ) as flags,
+        ):
+            resp = client.get("/memory/overview")
+        assert resp.status_code == 200
+        flags.assert_not_called()
 
     def test_fact_count_only_counts_live_edges(self) -> None:
         """Counted with recall's own live-fact test, so the number shown is
@@ -273,6 +273,36 @@ class TestForgetFact:
 
 
 class TestEraseScope:
+    @pytest.fixture(autouse=True)
+    def clear_understanding(self):
+        with patch(
+            f"{_MOCK_MODULE}.clear_business_understanding",
+            new=AsyncMock(return_value=True),
+        ) as clear:
+            yield clear
+
+    def test_account_erase_also_forgets_the_understanding(
+        self, clear_understanding, test_user_id
+    ) -> None:
+        driver = _driver_returning([{"c": 2}], [])
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.delete("/memory")
+        assert resp.status_code == 200
+        clear_understanding.assert_awaited_once_with(test_user_id)
+
+    def test_expert_erase_keeps_the_understanding(self, clear_understanding) -> None:
+        driver = _driver_returning([{"c": 3}], [])
+        with (
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver),
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert()),
+            ),
+        ):
+            resp = client.delete(f"/memory/experts/{_EXPERT_ID}")
+        assert resp.status_code == 200
+        clear_understanding.assert_not_awaited()
+
     def test_erases_all_nodes(self) -> None:
         driver = _driver_returning([{"c": 214}], [])
         with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):

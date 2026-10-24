@@ -50,7 +50,7 @@ export function WorkspaceFolders({ parentId, onSelectFolder }: Props) {
 
   return (
     <div className="flex flex-col gap-3" data-testid="workspace-folders">
-      <Text variant="large-medium" className="text-zinc-700">
+      <Text variant="large-medium" className="text-foreground-body">
         Folders
       </Text>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">

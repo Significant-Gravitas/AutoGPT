@@ -42,12 +42,12 @@ export function SwitchCycleDialog({
                 <Text
                   variant="body"
                   as="span"
-                  className="font-semibold text-zinc-700"
+                  className="font-semibold text-foreground-body"
                 >
                   {line.label}
                 </Text>
               ) : null}
-              <Text variant="body" as="span" className="text-zinc-700">
+              <Text variant="body" as="span" className="text-foreground-body">
                 {line.text}
               </Text>
             </div>

@@ -17,11 +17,14 @@ export function HeldPassage({ passage }: Props) {
 
   return (
     <figure className="flex flex-col gap-1">
-      <figcaption className="text-xs text-zinc-500">What it says</figcaption>
+      <figcaption className="text-xs text-foreground-tertiary">
+        What it says
+      </figcaption>
       <blockquote
         id={id}
         className={cn(
-          "whitespace-pre-wrap border-l-2 border-amber-400 bg-amber-50/60 px-3 py-2 text-sm text-zinc-800 [overflow-wrap:anywhere]",
+          // TODO(tokens): no exact role for border-amber-400
+          "whitespace-pre-wrap border-l-2 border-amber-400 bg-warning-surface/60 px-3 py-2 text-sm text-foreground-emphasis [overflow-wrap:anywhere]",
           long &&
             !expanded &&
             "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
@@ -44,7 +47,7 @@ export function HeldPassage({ passage }: Props) {
           type="button"
           variant="link"
           size="small"
-          className="h-auto min-w-0 self-start px-0 py-0 text-sm"
+          className="h-auto min-w-0 self-start px-0 py-0 text-body leading-5"
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded(!expanded)}

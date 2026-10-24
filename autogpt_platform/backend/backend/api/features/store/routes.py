@@ -14,6 +14,8 @@ from starlette.datastructures import Headers
 import backend.data.graph
 import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
+from backend.api.features.search.rate_limit import enforce_public_search_rate_limit
+from backend.api.utils.client_ip import ClientIP
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
@@ -34,6 +36,9 @@ router = fastapi.APIRouter()
 
 SubmissionSortKey = Literal["submitted", "runs"]
 SubmissionSortDir = Literal["asc", "desc"]
+
+# Same bound as global search: caps what one query can cost to embed.
+MAX_SEARCH_QUERY_LENGTH = 512
 
 
 ##############################################
@@ -84,7 +89,8 @@ async def update_or_create_profile(
     tags=["store", "public"],
 )
 async def unified_search(
-    query: str,
+    client: ClientIP,
+    query: str = Query(max_length=MAX_SEARCH_QUERY_LENGTH),
     content_types: list[prisma.enums.ContentType] | None = Query(
         default=None,
         description="Content types to search. If not specified, searches all.",
@@ -101,6 +107,7 @@ async def unified_search(
 
     Combines semantic (embedding-based) and lexical (text-based) search for best results.
     """
+    await enforce_public_search_rate_limit(client, user_id=user_id)
 
     # Perform unified hybrid search
     results, total = await search_engine.unified_hybrid_search(
@@ -109,6 +116,7 @@ async def unified_search(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        public_search=True,
     )
 
     # Convert results to response model
@@ -150,6 +158,7 @@ async def unified_search(
     tags=["store", "public"],
 )
 async def get_agents(
+    client: ClientIP,
     featured: bool = Query(
         default=False, description="Filter to only show featured agents"
     ),
@@ -158,7 +167,9 @@ async def get_agents(
     ),
     category: str | None = Query(default=None, description="Filter agents by category"),
     search_query: str | None = Query(
-        default=None, description="Literal + semantic search on names and descriptions"
+        default=None,
+        max_length=MAX_SEARCH_QUERY_LENGTH,
+        description="Literal + semantic search on names and descriptions",
     ),
     sorted_by: store_db.StoreAgentsSortOptions | None = Query(
         default=None,
@@ -166,6 +177,9 @@ async def get_agents(
     ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    user_id: str | None = Security(
+        autogpt_libs.auth.get_optional_user_id, use_cache=False
+    ),
 ) -> store_model.StoreAgentsResponse:
     """
     Get a paginated list of agents from the marketplace,
@@ -179,7 +193,9 @@ async def get_agents(
     - Agent Details - Similar Agents
     - Creator Details - Agents By Creator
     """
-    agents = await store_cache._get_cached_store_agents(
+    if search_query and search_query.strip():
+        await enforce_public_search_rate_limit(client, user_id=user_id)
+    agents = await store_cache.get_public_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -281,7 +297,8 @@ async def get_graph_meta_by_store_listing_version_id(
 ) -> backend.data.graph.GraphModelWithoutNodes:
     """Get outline of graph belonging to a specific marketplace listing version"""
     graph = await store_db.get_available_graph(store_listing_version_id)
-    return graph
+    # Public outline: it names the workflow, not the account that published it.
+    return graph.shared_copy()
 
 
 @router.get(

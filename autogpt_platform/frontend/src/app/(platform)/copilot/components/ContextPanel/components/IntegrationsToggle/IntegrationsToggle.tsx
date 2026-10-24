@@ -59,7 +59,7 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
               className,
               "flex items-center justify-center",
               isLarge ? "size-9" : "size-8",
-              isActive && "bg-zinc-100",
+              isActive && "bg-surface-hover",
             )}
           >
             <Icon
@@ -99,7 +99,7 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
           className,
           "flex items-center gap-1.5 px-1.5",
           isLarge ? "h-9 w-auto" : "h-8",
-          isActive && "bg-zinc-100",
+          isActive && "bg-surface-hover",
         )}
       >
         <span className="flex -space-x-1.5">
@@ -108,7 +108,8 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
               <TooltipTrigger asChild>
                 <span
                   className={cn(
-                    "flex items-center justify-center rounded-full bg-white ring-2 ring-white smooth-shadow-ring-sm",
+                    // TODO(tokens): no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a fill) and action-foreground (a text colour)
+                    "flex items-center justify-center rounded-full bg-surface ring-2 ring-white smooth-shadow-ring-sm",
                     isLarge ? "size-7" : "size-6",
                   )}
                 >

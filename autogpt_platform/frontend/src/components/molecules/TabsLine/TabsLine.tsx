@@ -43,7 +43,7 @@ function TabsLine({ variant = "default", ...props }: TabsLineProps) {
     <TabsLineContext.Provider
       value={{ variant, activeTabElement, setActiveTabElement }}
     >
-      <TabsPrimitive.Root {...props} />
+      <TabsPrimitive.Root data-slot="tabs" {...props} />
     </TabsLineContext.Provider>
   );
 }
@@ -72,7 +72,7 @@ const TabsLineList = React.forwardRef<
   const isFlush = flush ?? isCompact;
 
   return (
-    <div className="relative">
+    <div data-slot="tabs-list-root" className="relative">
       <TabsPrimitive.List
         ref={(node) => {
           if (typeof ref === "function") ref(node);
@@ -81,8 +81,9 @@ const TabsLineList = React.forwardRef<
           // @ts-ignore
           listRef.current = node;
         }}
+        data-slot="tabs-list"
         className={cn(
-          "inline-flex w-full items-center justify-start border-b border-zinc-100",
+          "inline-flex w-full items-center justify-start border-b border-separator",
           isFlush && "[&>button:first-child]:!pl-0",
           className,
         )}
@@ -90,9 +91,10 @@ const TabsLineList = React.forwardRef<
       />
       {activeTabElement && (
         <div
+          data-slot="tabs-indicator"
           className={cn(
-            "transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out",
-            isCompact && "bg-zinc-900",
+            "transition-left transition-right absolute bottom-0 h-0.5 bg-brand-hover duration-200 ease-in-out",
+            isCompact && "bg-action-hover",
             indicatorClassName,
           )}
           style={{
@@ -149,16 +151,20 @@ const TabsLineTrigger = React.forwardRef<
         // @ts-ignore
         elementRef.current = node;
       }}
+      data-slot="tabs-trigger"
+      // TODO(tokens): no role for neutral-400 (#A3A3A3).
       className={cn(
-        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-[0.875rem] font-medium leading-[1.5rem] text-zinc-700 transition-all data-[state=active]:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-body font-medium leading-6 text-foreground-body transition-all data-[state=active]:text-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
         icon && "gap-1.5",
         variant === "compact" &&
-          "px-2.5 py-2 text-sm leading-5 text-zinc-600 data-[state=active]:text-zinc-900",
+          "px-2.5 py-2 text-body leading-5 text-foreground-secondary data-[state=active]:text-foreground-strong",
         className,
       )}
       {...props}
     >
-      {icon ? <Icon icon={icon} size={14} aria-hidden /> : null}
+      {icon ? (
+        <Icon data-slot="tabs-trigger-icon" icon={icon} size={14} aria-hidden />
+      ) : null}
       {children}
     </TabsPrimitive.Trigger>
   );
@@ -171,6 +177,8 @@ const TabsLineContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
+    data-slot="tabs-panel"
+    // TODO(tokens): no role for stone-400 (#A8A29E).
     className={cn(
       // Radix marks inactive panels with the `hidden` attribute, but the UA
       // rule behind it is weaker than any author display utility — a panel

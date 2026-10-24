@@ -41,7 +41,7 @@ export function AgentTeam({ dashboard, className }: Props) {
           action={{ href: "/marketplace", label: "Browse experts" }}
         />
       ) : (
-        <div className="divide-y divide-zinc-100">
+        <div className="divide-y divide-separator">
           {agents.slice(0, 3).map((agent) => (
             <AgentRow key={agent.expert.id} agent={agent} />
           ))}
@@ -51,13 +51,13 @@ export function AgentTeam({ dashboard, className }: Props) {
       {team.total > 0 ? (
         <Link
           href="/team"
-          className="group flex items-center justify-between border-t border-zinc-100 px-4 py-2 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50"
+          className="group flex items-center justify-between border-t border-separator px-4 py-2 outline-none transition-colors hover:bg-surface-muted focus-visible:bg-surface-muted"
         >
           <Text
             variant="small-medium"
             as="span"
             tone="muted"
-            className="transition-colors group-hover:text-zinc-900"
+            className="transition-colors group-hover:text-foreground-strong"
           >
             View all {team.total} experts
           </Text>

@@ -43,6 +43,7 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
 )
 from backend.util.settings import Config
+from backend.util.text import split_camelcase
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,12 @@ class BlockCost(BaseModel):
             cost_divisor=max(1, cost_divisor),
             **data,
         )
+
+    @property
+    def is_free(self) -> bool:
+        """Whether this entry can never charge. Every cost type scales
+        ``cost_amount`` except TOKENS, which prices from the token rate table."""
+        return self.cost_amount == 0 and self.cost_type != BlockCostType.TOKENS
 
 
 class BlockInfo(BaseModel):
@@ -610,6 +617,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         is_irreversible_action: bool = False,
         capability_kind: CapabilityKind | None = None,
         effect: BlockEffect | None = None,
+        display_name: str | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -637,6 +645,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 provider-backed generic blocks (code sandboxes, SQL, HTTP).
             effect: What running the block does; see BlockEffect. Irreversible
                 implies EXTERNAL or EXTERNAL_JUDGED.
+            display_name: The block's name as people read it, e.g. "Create
+                Airtable table". Undeclared, it is read off the class name.
         """
         self.id = id
         self.input_schema = input_schema
@@ -655,6 +665,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.is_irreversible_action = is_irreversible_action
         self._capability_kind: CapabilityKind | None = capability_kind
         self.effect = effect
+        self._display_name = display_name
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
@@ -744,6 +755,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     @property
     def name(self):
         return self.__class__.__name__
+
+    @property
+    def display_name(self) -> str:
+        """The block's name as people read it: the one it declares, else its
+        class name in words with " Block" dropped, which is how the builder
+        titles an undeclared block (``NewBlockMenu/Block.tsx``,
+        ``CustomNode/helpers.ts``): ``AirtableCreateTableBlock`` reads
+        "Airtable Create Table"."""
+        if self._display_name:
+            return self._display_name
+        return split_camelcase(self.name).removesuffix(" Block")
 
     @property
     def capability_kind(self) -> CapabilityKind:

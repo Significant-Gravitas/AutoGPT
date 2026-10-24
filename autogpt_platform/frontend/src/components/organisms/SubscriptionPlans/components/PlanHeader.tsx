@@ -13,7 +13,10 @@ type Props = Pick<SubscriptionPlansProps, "billing" | "onBillingChange"> & {
 
 export function PlanHeader({ header, ...billing }: Props) {
   return (
-    <header className="mb-5 flex flex-col items-center text-center">
+    <header
+      data-slot="plan-header"
+      className="mb-5 flex flex-col items-center text-center"
+    >
       {header === undefined ? <DefaultHeading /> : header}
       <BillingToggle {...billing} />
     </header>
@@ -26,7 +29,11 @@ function DefaultHeading() {
       <AutoGPTLogo hideText className="relative right-5 mb-2 h-8 w-20" />
       <Text variant="h3" as="h1" className="leading-9">
         Choose the plan that&apos;s right for{" "}
-        <span className="bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
+        <span
+          data-slot="plan-header-heading-accent"
+          // TODO(tokens): no role for the indigo-500 gradient stop.
+          className="bg-gradient-to-r from-brand to-indigo-500 bg-clip-text text-transparent"
+        >
           you
         </span>
       </Text>

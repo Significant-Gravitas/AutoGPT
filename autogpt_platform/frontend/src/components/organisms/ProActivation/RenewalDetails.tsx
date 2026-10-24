@@ -27,21 +27,28 @@ interface Props {
 
 export function RenewalDetails({ terms }: Props) {
   return (
-    <div className="space-y-2">
+    <div data-slot="renewal-details" className="space-y-2">
       {terms.renewal_discounts?.map((discount, index) => (
-        <Text key={index} variant="small" className="text-zinc-600">
+        <Text key={index} variant="small" tone="secondary">
           {discountText(discount, terms.currency)}
         </Text>
       ))}
-      <details className="group text-sm text-zinc-500">
-        <summary className="w-fit cursor-pointer rounded-small underline decoration-zinc-300 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500">
+      <details
+        data-slot="renewal-details-terms"
+        className="group text-sm text-foreground-tertiary"
+      >
+        <summary
+          data-slot="renewal-details-terms-toggle"
+          // TODO(tokens): no role for the violet-500 focus outline.
+          className="w-fit cursor-pointer rounded-small underline decoration-border-strong underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
+        >
           Full renewal terms
         </summary>
-        <Text variant="small" className="mt-3 leading-relaxed text-zinc-600">
+        <Text variant="small" tone="secondary" className="mt-3 leading-relaxed">
           {terms.renewal_terms}
         </Text>
         {terms.renewal_tax?.rates?.map((rate, index) => (
-          <Text key={index} variant="small" className="mt-2 text-zinc-600">
+          <Text key={index} variant="small" tone="secondary" className="mt-2">
             {rate.display_name}: {rate.percentage}%{" "}
             {rate.inclusive ? "included" : "additional"}
             {[rate.country, rate.state].filter(Boolean).length

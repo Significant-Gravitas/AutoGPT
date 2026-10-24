@@ -25,7 +25,7 @@ export function AppSidebarHeader() {
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={toggleSidebar}
           className={cn(
-            "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200 max-md:size-10",
+            "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-surface-active max-md:size-10",
             isCollapsed
               ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
               : "flex",

@@ -6,6 +6,8 @@ import { AutoPilotUsageSection } from "../AutoPilotUsageSection/AutoPilotUsageSe
 import { BannedAlert } from "../BannedAlert";
 import { DetailsSection } from "../DetailsSection";
 import { OrganisationsSection } from "../OrganisationsSection";
+import { RelatedAccountsSection } from "../RelatedAccountsSection/RelatedAccountsSection";
+import { SignInsSection } from "../SignInsSection/SignInsSection";
 import { SpendingSection } from "../SpendingSection";
 import { UserHeader } from "../UserHeader/UserHeader";
 
@@ -33,12 +35,18 @@ export function UserView({ user }: Props) {
           <div className="order-3 lg:order-none">
             <OrganisationsSection userId={user.id} />
           </div>
+          <div className="order-4 lg:order-none">
+            <SignInsSection userId={user.id} />
+          </div>
+          <div className="order-5 lg:order-none">
+            <RelatedAccountsSection user={user} />
+          </div>
         </div>
         <div className="contents lg:flex lg:flex-col lg:gap-6">
           <div className="order-1 lg:order-none">
             <DetailsSection user={user} />
           </div>
-          <div className="order-4 lg:order-none">
+          <div className="order-6 lg:order-none">
             <SpendingSection userId={user.id} />
           </div>
         </div>
