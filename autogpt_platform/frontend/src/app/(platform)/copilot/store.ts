@@ -100,8 +100,9 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "microsoft_365_copilot"; credentialId: string };
 
 /** Context panel tab, each docked on the right: the chat's files, the
- *  artifacts library, or the chat's expert's integrations. */
-export type ContextPanelTab = "files" | "artifacts" | "integrations";
+ *  artifacts library, the chat's expert's integrations, or the work this
+ *  chat handed to experts. */
+export type ContextPanelTab = "files" | "artifacts" | "integrations" | "work";
 
 /** The expert whose files and integrations the context panel lists. */
 export interface ContextPanelExpert {
@@ -121,7 +122,7 @@ function getPersistedTab(): ContextPanelTab {
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
   // Anything else (including a "progress" tab persisted by the retired
   // sidebar) falls back to the files card.
-  return saved === "artifacts" ? saved : "files";
+  return saved === "artifacts" || saved === "work" ? saved : "files";
 }
 
 function clampWidth(value: number, min: number, max: number): number {
@@ -256,6 +257,8 @@ interface CopilotUIState {
   setArtifactPanelMode: (mode: ArtifactPanelMode) => void;
   openContextPanelForFiles: () => void;
   showFilesTab: () => void;
+  /** The status line and the docked expert bar: open the panel on Work. */
+  openWorkTab: () => void;
 
   // Card-based auto-open: ArtifactCard registers itself on mount, the store
   // decides whether to auto-open. Much simpler than message-scanning.
@@ -662,6 +665,24 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         isOpen: true,
         activeTab: "files",
+        activeArtifact: null,
+        history: [],
+        mode: "artifact",
+        isComputerOpen: false,
+      },
+    }));
+  },
+
+  openWorkTab: () => {
+    if (isClient) {
+      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "work");
+    }
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: true,
+        activeTab: "work",
         activeArtifact: null,
         history: [],
         mode: "artifact",

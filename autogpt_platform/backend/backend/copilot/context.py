@@ -10,6 +10,7 @@ import re
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
+from backend.copilot.delegation_settings import DelegationSettings
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
@@ -67,10 +68,24 @@ _turn_budget: ContextVar[dict[str, int] | None] = ContextVar(
 )
 
 
+# The user's delegation settings, read once per turn and shared by every tool
+# call in it (same in-place dict trick as the budget above).
+_turn_delegation_settings: ContextVar[dict[str, DelegationSettings] | None] = (
+    ContextVar("_turn_delegation_settings", default=None)
+)
+
+
 def reset_consult_budget() -> None:
-    """Give the turn a fresh consult and message allowance. Called by both
-    engines' setters."""
+    """Give the turn a fresh consult and message allowance, and forget the
+    settings the last turn read. Called by both engines' setters."""
     _turn_budget.set({})
+    _turn_delegation_settings.set({})
+
+
+def turn_delegation_settings_cache() -> dict[str, DelegationSettings]:
+    """This turn's settings cache; a fresh one outside any turn."""
+    cache = _turn_delegation_settings.get()
+    return cache if cache is not None else {}
 
 
 def take_session_message_slot() -> str | None:

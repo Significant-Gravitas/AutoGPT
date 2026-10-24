@@ -3,6 +3,7 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
+import { DelegationStatusLine } from "../../../DelegationStatusLine/DelegationStatusLine";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
 import { WorkCard } from "../../../WorkCard/WorkCard";
@@ -149,17 +150,24 @@ export const MessageRow = memo(function MessageRow({
     >
       <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (
-          <ChainMessageParts
-            parts={renderableParts}
-            messageID={message.id}
-            isCurrentlyStreaming={isCurrentlyStreaming}
-            onRetry={isLastAssistant ? onRetry : undefined}
-            fileUrlBuilder={fileUrlBuilder}
-            readOnly={readOnly}
-            compactionPhase={compactionPhase}
-            liveCompactionCallId={liveCompactionCallId}
-            liveCompactionStats={liveCompactionStats}
-          />
+          <>
+            <ChainMessageParts
+              parts={renderableParts}
+              messageID={message.id}
+              isCurrentlyStreaming={isCurrentlyStreaming}
+              onRetry={isLastAssistant ? onRetry : undefined}
+              fileUrlBuilder={fileUrlBuilder}
+              readOnly={readOnly}
+              compactionPhase={compactionPhase}
+              liveCompactionCallId={liveCompactionCallId}
+              liveCompactionStats={liveCompactionStats}
+            />
+            <DelegationStatusLine
+              parts={renderableParts}
+              messageId={message.id}
+              readOnly={readOnly}
+            />
+          </>
         ) : (
           <UserMessageClamp
             trailing={sentFrom ? <SentFromBadge sentFrom={sentFrom} /> : null}

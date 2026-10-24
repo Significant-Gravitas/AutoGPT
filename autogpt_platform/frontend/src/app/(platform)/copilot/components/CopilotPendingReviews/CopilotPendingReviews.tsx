@@ -8,7 +8,12 @@ import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotC
 import { okData } from "@/app/api/helpers";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ApprovalQueue } from "../ApprovalQueue/ApprovalQueue";
-import { isGateReview, toApprovalItem } from "../ApprovalQueue/helpers";
+import {
+  getReviewToolName,
+  isGateReview,
+  toApprovalItem,
+} from "../ApprovalQueue/helpers";
+import { HANDOFF_TOOLS } from "../ToolChain/HandoffApprovalNode";
 import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
 type Props =
@@ -35,8 +40,11 @@ export function CopilotPendingReviews(props: Props) {
   const { pendingReviews, answeredReviews, refetch } =
     useCopilotPendingReviews(props);
 
+  // A held hand-off renders as a node on its own chain row, so the queue
+  // leaves it out rather than showing the same card twice.
   const heldReviews = pendingReviews
     .filter(isGateReview)
+    .filter((review) => !HANDOFF_TOOLS.has(getReviewToolName(review)))
     .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
   const otherReviews = pendingReviews.filter(
     (r) => !r.node_exec_id.startsWith(COPILOT_GATE_NODE_PREFIX),

@@ -14,13 +14,14 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
-from backend.copilot import budget_gate
+from backend.copilot import budget_gate, stream_registry
 from backend.copilot.ai_spans import current_span_id
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
@@ -565,6 +566,14 @@ class TestExecuteAsyncAclose:
                 "backend.copilot.model.get_chat_session",
                 new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
             ),
+            patch(
+                "backend.copilot.executor.processor.cancel_delegated_children",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "backend.copilot.executor.processor.persist_error_marker",
+                new=AsyncMock(return_value=True),
+            ),
         ]
 
     @pytest.mark.asyncio
@@ -575,10 +584,20 @@ class TestExecuteAsyncAclose:
         cluster_lock = MagicMock()
 
         patches = self._patches(published)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5] as cascade,
+            patches[6] as marker,
+        ):
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+        cascade.assert_not_awaited()
+        marker.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_cancel_break_calls_aclose(self) -> None:
@@ -590,10 +609,117 @@ class TestExecuteAsyncAclose:
         cluster_lock = MagicMock()
 
         patches = self._patches(published)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5] as cascade,
+            patches[6] as marker,
+        ):
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+        # Whichever engine ran, and wherever the stop caught it, the thread
+        # ends on the cancel marker, so a reload and the Delegations list
+        # both read it as stopped rather than finished or failed.
+        marker.assert_awaited_once_with(
+            "sess-1", stream_registry.CANCELLED_MESSAGE, retryable=False
+        )
+        # Stop means stop: the threads this turn handed work to stop with it,
+        # on a detached task so the teardown never waits on them.
+        await asyncio.sleep(0)
+        cascade.assert_awaited_once()
+        session_id, user_id, since = cascade.await_args.args
+        assert (session_id, user_id) == ("sess-1", "user-1")
+        # From when this turn started, so earlier turns' hand-offs keep going.
+        assert isinstance(since, datetime) and since.tzinfo is not None
+
+    @pytest.mark.asyncio
+    async def test_the_cancel_marker_lands_before_the_turn_is_marked_done(
+        self,
+    ) -> None:
+        """Marked done, the turn wakes the next one and a reloading client
+        reads the thread: both must find the marker already there."""
+        published = _TrackedStream(events=[MagicMock()])
+        cancel = threading.Event()
+        cancel.set()
+        order: list[str] = []
+
+        patches = self._patches(published)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3] as completed,
+            patches[4],
+            patches[5],
+            patches[6] as marker,
+        ):
+            marker.side_effect = lambda *_a, **_k: order.append("marker")
+            completed.side_effect = lambda *_a, **_k: order.append("completed")
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), cancel, MagicMock(), _make_log()
+            )
+
+        assert order == ["marker", "completed"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_marker_write_still_ends_the_turn(self) -> None:
+        published = _TrackedStream(events=[MagicMock()])
+        cancel = threading.Event()
+        cancel.set()
+
+        patches = self._patches(published)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3] as completed,
+            patches[4],
+            patches[5],
+            patches[6] as marker,
+        ):
+            marker.side_effect = RuntimeError("db down")
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), cancel, MagicMock(), _make_log()
+            )
+
+        completed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_wedged_marker_write_still_ends_the_turn(self) -> None:
+        """Inside the cancel grace: a store that never answers costs the
+        marker, not the turn's end."""
+        published = _TrackedStream(events=[MagicMock()])
+        cancel = threading.Event()
+        cancel.set()
+
+        async def never_answers(*_args, **_kwargs) -> bool:
+            await asyncio.Event().wait()
+            return True
+
+        patches = self._patches(published)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3] as completed,
+            patches[4],
+            patches[5],
+            patches[6] as marker,
+            patch(
+                "backend.copilot.executor.processor._CANCEL_MARKER_TIMEOUT_SECONDS",
+                0.05,
+            ),
+        ):
+            marker.side_effect = never_answers
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), cancel, MagicMock(), _make_log()
+            )
+
+        completed.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_a_cancelled_turn_stops_sharing_its_trial_read(self) -> None:
@@ -617,6 +743,7 @@ class TestExecuteAsyncAclose:
             patches[2],
             patches[3],
             patches[4],
+            patches[6],
             patch(
                 "backend.copilot.executor.processor.trial_reads_shared",
                 recorded_block,
@@ -700,7 +827,14 @@ class TestExecuteAsyncAclose:
         cancel.set()
 
         patches = self._patches(_TrackedStream(events=[MagicMock()]))
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[6],
+        ):
             await CoPilotProcessor()._execute_async(
                 _make_entry(), cancel, MagicMock(), _make_log()
             )

@@ -299,6 +299,7 @@ async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
             status=ReviewStatus.APPROVED,
             session_id=session.session_id,
             reviewed_at=datetime.now(UTC),
+            was_edited=False,
             # The card the gate stored; the late result carries its arguments.
             payload=review_payload(call.tool_name, call.args),
         )

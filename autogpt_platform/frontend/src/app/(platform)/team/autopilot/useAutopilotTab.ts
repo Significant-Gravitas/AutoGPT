@@ -2,9 +2,11 @@ import { parseAsStringLiteral, useQueryState } from "nuqs";
 
 const tabParser = parseAsStringLiteral([
   "basics",
+  "delegations",
   "schedules",
   "workflows",
   "skills",
+  "settings",
 ] as const)
   .withDefault("basics")
   .withOptions({ history: "push" });

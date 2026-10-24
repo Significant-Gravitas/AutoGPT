@@ -29,6 +29,10 @@ import { useComposerBudget } from "./useComposerBudget";
 import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { DelegationDock } from "../DelegationDock/DelegationDock";
+import { DelegatedThreadNotice } from "./components/DelegatedThreadNotice/DelegatedThreadNotice";
+import { getOpeningText } from "./components/DelegatedThreadNotice/helpers";
+import { hasRunningTaskList } from "../DelegationDock/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
@@ -515,6 +519,14 @@ export const ChatContainer = ({
                   hideIntegrationsOnMobile={floatingControls === "newLayout"}
                 />
               </div>
+              {sessionSentFrom && !archivedExpertIdentity && (
+                <DelegatedThreadNotice
+                  sentFrom={sessionSentFrom}
+                  sessionId={sessionId}
+                  expert={expertIdentity ?? null}
+                  openingText={getOpeningText(messages)}
+                />
+              )}
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
@@ -576,6 +588,14 @@ export const ChatContainer = ({
                       />
                     </div>
                   )}
+                  <div className="relative z-10">
+                    <DelegationDock
+                      messages={messages}
+                      hasActiveTaskList={
+                        isTaskBarEnabled && hasRunningTaskList(messages)
+                      }
+                    />
+                  </div>
                   {composer.scheduled.pending && (
                     <ScheduledSendChip
                       job={composer.scheduled.pending}

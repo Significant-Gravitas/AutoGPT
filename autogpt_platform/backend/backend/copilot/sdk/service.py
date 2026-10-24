@@ -83,7 +83,7 @@ from backend.copilot.sdk.cost_tracking import (
 )
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
-from backend.copilot.turn_budget import resolve_turn_budget
+from backend.copilot.turn_budget import resolve_turn_budget, within_delegation_cap
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -5607,14 +5607,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # check-in only. A turn billed to credits gets what its balance covers.
         credit_turn = credit_billed_turn(user_id)
         governor = TurnGovernor(
-            budget=(
-                None
-                if is_codex_transport
-                else (
-                    credit_turn.budget
-                    if credit_turn is not None
-                    else await resolve_turn_budget(user_id)
-                )
+            # A delegated thread also stops at what its hand-off cap has left.
+            budget=await within_delegation_cap(
+                (
+                    None
+                    if is_codex_transport
+                    else (
+                        credit_turn.budget
+                        if credit_turn is not None
+                        else await resolve_turn_budget(user_id)
+                    )
+                ),
+                user_id,
+                session,
             ),
             step_checkin=config.sdk_step_checkin,
         )

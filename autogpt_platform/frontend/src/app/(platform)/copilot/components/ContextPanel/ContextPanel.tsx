@@ -18,6 +18,7 @@ import { PanelResizeHandle } from "../PanelResizeHandle";
 import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArtifactsTab } from "./components/ArtifactsTab/ArtifactsTab";
 import { IntegrationsTab } from "./components/IntegrationsTab/IntegrationsTab";
+import { WorkTab } from "./components/WorkTab/WorkTab";
 import { useContextPanel } from "./useContextPanel";
 
 interface Props {
@@ -34,6 +35,7 @@ const TAB_TITLES: Record<ContextPanelTab, string> = {
   files: "Files",
   artifacts: "Artifacts",
   integrations: "Integrations",
+  work: "Work",
 };
 
 export function ContextPanel({ sessionId, mobile }: Props) {
@@ -61,6 +63,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
       )}
       {activeTab === "artifacts" ? (
         <ArtifactsTab sessionId={sessionId} />
+      ) : activeTab === "work" ? (
+        <WorkTab sessionId={sessionId} />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-3 pt-4">
           {activeTab === "integrations" ? (
