@@ -29,7 +29,7 @@ async def test_only_a_hand_off_gets_a_card():
 
 @pytest.mark.asyncio
 async def test_an_unknown_teammate_is_named_by_the_reference():
-    with patch.object(handoff, "_resolve", AsyncMock(return_value=None)):
+    with patch.object(handoff, "resolve_expert", AsyncMock(return_value=None)):
         card = await handoff_card("delegate_to_expert", _ARGS, "u1")
 
     assert card == HandoffCard(

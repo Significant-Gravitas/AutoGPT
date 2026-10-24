@@ -32,7 +32,7 @@ from . import chat_rules, held
 from . import review as review_store
 from .card_approval import approved_on_card
 from .classifier import DecidedBy, Judgement, supervise
-from .delegation_rules import verdict_for
+from .delegation_rules import hand_off_hold, verdict_for
 from .handoff import is_approved_edit
 from .headline import Headline
 from .policy import (
@@ -274,8 +274,21 @@ async def check_action(
             outward_judged=outward_judged,
         )
 
+    held_by_settings = (
+        await hand_off_hold(tool_name, args, user_id, session)
+        if effect is Effect.TEAM
+        else None
+    )
     ruling = await rule_on(
-        session, user_id, rule_key, effect, subject, judge, over_ceiling, chat_call=True
+        session,
+        user_id,
+        rule_key,
+        effect,
+        subject,
+        judge,
+        over_ceiling,
+        chat_call=True,
+        asks_because=held_by_settings,
     )
     if ruling.run:
         return DECIDED
@@ -311,12 +324,15 @@ async def rule_on(
     *,
     floor: bool = False,
     chat_call: bool = False,
+    asks_because: str | None = None,
 ) -> Ruling:
     """The user's rule on the subject in this chat, else the mode's verdict for
     its effect, the supervisor deciding where either says judge. ``floor``
     turns the mode's run into an ask; a rule still decides. ``chat_call``: a
     call the chat itself makes, which the user's delegation settings also
-    cover (ask before anything external); a workflow's step is not one."""
+    cover (ask before anything external); a workflow's step is not one.
+    ``asks_because`` is a floor with its own reason: the user's delegation
+    settings holding a hand-off."""
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
@@ -342,7 +358,11 @@ async def rule_on(
         verdict = await verdict_for(mode, effect, user_id, session)
     else:
         verdict = verdict_for_effect(mode, effect)
-    if rule is None and verdict is Verdict.RUN and _mode_asks(mode, subject, floor):
+    if (
+        rule is None
+        and verdict is Verdict.RUN
+        and (asks_because or _mode_asks(mode, subject, floor))
+    ):
         verdict = Verdict.ASK
     by = "rule" if rule else "mode"
     if verdict is Verdict.RUN:
@@ -350,7 +370,7 @@ async def rule_on(
     if verdict is Verdict.ASK and subject is not None and subject.reason:
         return Ruling(run=False, reason=subject.reason, reason_kind="subject", by=by)
     if verdict is Verdict.ASK:
-        reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
+        reason = _ASK_FIRST if mode == "ask_first" else asks_because or _OUTWARD
         return Ruling(run=False, reason=reason, by=by)
     judgement = await judge()
     # Only an ask carries the supervisor's words onto a card.

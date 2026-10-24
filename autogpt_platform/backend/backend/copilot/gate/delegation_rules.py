@@ -4,22 +4,37 @@
 Unsupervised, in Otto's own chat and in any thread Otto delegated. With it off
 the mode table decides, as for every other effect. An expert's own chat is not
 Otto's and keeps its mode.
+
+The delegation mode and ``new_experts_ask_first`` decide whether Otto's
+hand-off itself waits for approval, whatever mode Otto's chat runs in.
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from backend.copilot.context import turn_delegation_settings_cache
 from backend.copilot.delegation_settings import DelegationSettings
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.data.db_accessors import delegation_db
 
-from .policy import Effect, Verdict, verdict_for_effect
+from .handoff import resolve_expert
+from .policy import Effect, Verdict, effect_for, verdict_for_effect
 
 logger = logging.getLogger(__name__)
 
 # Both leave the platform. The toggle stops either from running unchecked;
 # a cheap one Auto hands the supervisor stays with the supervisor.
 _OUTWARD = frozenset({Effect.EXTERNAL, Effect.EXTERNAL_JUDGED})
+# How long a new hire's hand-offs wait for approval, when the user asks for it.
+NEW_HIRE_WINDOW = timedelta(days=7)
+_HAND_OFF_ASKS_FIRST = (
+    "Your delegation settings say Ask first, so this hand-off needs your approval."
+)
+_NEW_HIRE_ASKS_FIRST = (
+    "{name} joined your team this week and new experts start in Ask first, "
+    "so this hand-off needs your approval."
+)
 
 
 async def verdict_for(
@@ -33,6 +48,36 @@ async def verdict_for(
         return verdict
     settings = await turn_delegation_settings(user_id)
     return Verdict.ASK if settings.ask_before_external else verdict
+
+
+async def hand_off_hold(
+    tool_name: str, args: dict[str, Any], user_id: str, session: ChatSession
+) -> str | None:
+    """Why the user's delegation settings hold this hand-off for approval, or
+    None when they leave it to the chat's mode.
+
+    Otto's own chat only, as for the mode a thread Otto opens starts in: an
+    expert's chat keeps its own mode. A teammate that cannot be found is left
+    to the tool, which refuses the hand-off itself.
+    """
+    if effect_for(tool_name) is not Effect.TEAM or session.expert_id is not None:
+        return None
+    settings = await turn_delegation_settings(user_id)
+    if settings.mode == "ask_first":
+        return _HAND_OFF_ASKS_FIRST
+    if not settings.new_experts_ask_first:
+        return None
+    reference = str(args.get("expert_id") or "").strip()
+    target = await resolve_expert(user_id, reference) if reference else None
+    if target is None or not await hired_lately(user_id, target.id):
+        return None
+    return _NEW_HIRE_ASKS_FIRST.format(name=target.name)
+
+
+async def hired_lately(user_id: str, expert_id: str) -> bool:
+    """Hired less than a week ago. An unknown hire date counts as new."""
+    hired_at = await delegation_db().get_expert_hired_at(user_id, expert_id)
+    return hired_at is None or datetime.now(UTC) - hired_at < NEW_HIRE_WINDOW
 
 
 async def turn_delegation_settings(user_id: str) -> DelegationSettings:

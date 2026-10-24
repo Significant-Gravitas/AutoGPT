@@ -48,7 +48,7 @@ async def handoff_card(
     if tool_name != HANDOFF_TOOL:
         return None
     reference = str(args.get("expert_id") or "").strip()
-    expert = await _resolve(user_id, reference) if reference else None
+    expert = await resolve_expert(user_id, reference) if reference else None
     reason = str(args.get("reason") or "").strip()
     return HandoffCard(
         expert_id=expert.id if expert else reference,
@@ -104,7 +104,7 @@ def is_approved_edit(review_id: str) -> bool:
     return _approved_edit.get() == review_id
 
 
-async def _resolve(user_id: str, reference: str) -> Expert | None:
+async def resolve_expert(user_id: str, reference: str) -> Expert | None:
     # Deferred: the tools package imports the gate.
     from backend.copilot.tools.expert_delegation import resolve_target_expert
 
