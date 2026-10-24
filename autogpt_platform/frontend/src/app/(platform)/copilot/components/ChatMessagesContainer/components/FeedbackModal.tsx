@@ -38,11 +38,7 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
     >
       <Dialog.Content>
         <div className="mx-auto w-[95%] space-y-4">
-          <Text
-            variant="body"
-            as="p"
-            className="leading-5 text-muted-foreground"
-          >
+          <Text variant="body-tight" as="p" className="text-muted-foreground">
             Your feedback helps us improve. Share details below.
           </Text>
           <Input
@@ -57,9 +53,9 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
           />
           <div className="flex items-center justify-between">
             <Text
-              variant="small"
+              variant="small-tight"
               as="p"
-              className="leading-4 text-muted-foreground"
+              className="text-muted-foreground"
             >
               {comment.length}/2000
             </Text>
