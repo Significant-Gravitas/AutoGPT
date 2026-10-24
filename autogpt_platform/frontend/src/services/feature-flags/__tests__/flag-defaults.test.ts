@@ -49,3 +49,35 @@ describe("experimental dream flag defaults fail closed", () => {
     expect(result.current).toBe(true);
   });
 });
+
+// A closed account is only erased once SECRT-2854's routine runs, so a `true`
+// here would let every LaunchDarkly-less environment delete accounts that
+// nothing ever erases.
+describe("self-serve account deletion flag fails closed", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it("uses the backend's key", () => {
+    expect(Flag.SELF_SERVE_ACCOUNT_DELETION).toBe(
+      "self-serve-account-deletion",
+    );
+  });
+
+  it("resolves to false when LaunchDarkly has not answered", () => {
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.SELF_SERVE_ACCOUNT_DELETION),
+    );
+    expect(result.current).toBe(false);
+  });
+
+  it("still lets local dev force it on via the env override", () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION = "true";
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.SELF_SERVE_ACCOUNT_DELETION),
+    );
+    expect(result.current).toBe(true);
+  });
+});

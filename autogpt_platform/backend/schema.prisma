@@ -411,6 +411,29 @@ model SubscriptionTrialClaim {
   @@index([trialId])
 }
 
+enum AccountDeletionSource {
+  SETTINGS
+  PAYWALL
+}
+
+// A user's request to delete their account. Its presence closes the account
+// (backend auth rejects the user); the data erasure routine (SECRT-2854)
+// processes rows with completedAt null. No relation to User: the row must
+// outlive the erasure of the User it names.
+model AccountDeletionRequest {
+  id                 String                @id @default(uuid())
+  userId             String                @unique
+  requestedAt        DateTime              @default(now())
+  source             AccountDeletionSource
+  // Set once the confirmation email went out. The erasure routine sends it
+  // for a row where this is still null, before it erases the User.
+  confirmationSentAt DateTime?
+  // Set by the erasure routine once the user's data is gone.
+  completedAt        DateTime?
+
+  @@index([completedAt])
+}
+
 model UserOnboarding {
   id        String    @id @default(uuid())
   createdAt DateTime  @default(now())

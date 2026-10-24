@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
+import { getSignInErrorNotice } from "./helpers";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -39,6 +40,7 @@ export function useLoginPage() {
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
+  const signInErrorNotice = getSignInErrorNotice(searchParams.get("error"));
   const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
@@ -143,7 +145,7 @@ export function useLoginPage() {
 
   return {
     form,
-    feedback,
+    feedback: feedback ?? signInErrorNotice,
     nextUrl,
     verificationEmail,
     verificationNotice,

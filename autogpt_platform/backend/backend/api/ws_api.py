@@ -4,6 +4,11 @@ from typing import Protocol
 
 import pydantic
 import uvicorn
+from autogpt_libs.auth.closed_accounts import (
+    ACCOUNT_CLOSED_DETAIL,
+    AccountState,
+    get_account_state,
+)
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
@@ -84,6 +89,10 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
     user_id = payload.get("sub")
     if not user_id:
         await websocket.close(code=4002, reason="Invalid token")
+        return ""
+    # A token minted before the account closed still verifies.
+    if await get_account_state(user_id) is AccountState.CLOSED:
+        await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
         return ""
 
     # Refused when the ban can't be read, as a request to a signed-in route is;

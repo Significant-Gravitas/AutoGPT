@@ -89,7 +89,9 @@ def test_an_optional_auth_route_answers_when_the_ban_is_unreadable(mocker):
 
 def test_every_route_that_reads_a_token_refuses_a_banned_account():
     """A route that takes ``get_jwt_payload`` without one of the resolvers
-    above would let a banned account through."""
+    above would let a banned account through. The account deletion route is
+    no exception: a ban that came from closing the account passes, so its
+    repeat request still gets an answer, and any other ban is refused."""
     unguarded = [
         f"{sorted(route.methods)} {route.path}"
         for route in rest_app.routes
