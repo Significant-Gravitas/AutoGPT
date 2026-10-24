@@ -23,6 +23,9 @@ export const variants = {
   h1: "font-poppins text-display font-semibold tracking-[-0.033rem] text-foreground-base",
   h2: "font-poppins text-title font-medium text-foreground-base tracking-[-0.02rem]",
   h3: "font-poppins text-heading font-medium text-foreground-base tracking-[-0.01313rem]",
+  // TODO(tokens): no tracking token is -0.025em (tracking-tight); h3 with it.
+  "h3-tracking-tight":
+    "font-poppins text-heading font-medium text-foreground-base tracking-tight",
   h4: "font-poppins text-heading-sm font-medium text-foreground-base",
   h5: "font-poppins text-body-lg font-medium leading-6 text-foreground-base",
 
@@ -33,10 +36,43 @@ export const variants = {
   large: "font-sans text-body-lg font-normal text-foreground-base",
   "large-medium": "font-sans text-body-lg font-medium text-foreground-base",
   "large-semibold": "font-sans text-body-lg font-semibold text-foreground-base",
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
+  "large-medium-tight":
+    "font-sans text-body-lg font-medium leading-6 text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-tight":
+    "font-sans text-body font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-medium-tight":
+    "font-sans text-body font-medium leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-semibold-tight":
+    "font-sans text-body font-semibold leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-tight":
+    "font-sans text-caption font-normal leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-medium-tight":
+    "font-sans text-caption font-medium leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-mono-tight":
+    "font-mono text-caption font-normal leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-medium-mono-tight":
+    "font-mono text-caption font-medium leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-loose":
+    "font-sans text-caption font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-medium-loose":
+    "font-sans text-caption font-medium leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
+  "small-relaxed":
+    "font-sans text-caption font-normal leading-relaxed text-foreground-base",
 
   // Label Text
   label:
@@ -62,6 +98,8 @@ export const tones = {
   error: "text-error", // #EF4444
   warning: "text-warning-foreground", // #B45309
   success: "text-success", // #149443
+  // The parent's colour, for copy inside a control that changes it on hover.
+  inherit: "text-inherit",
 } as const;
 
 export type Tone = keyof typeof tones;
@@ -72,16 +110,28 @@ export const variantElementMap: Record<Variant, As> = {
   h3: "h3",
   h4: "h4",
   h5: "h5",
+  "h3-tracking-tight": "h3",
   lead: "p",
   "lead-medium": "p",
   "lead-semibold": "p",
   large: "p",
   "large-medium": "p",
   "large-semibold": "p",
+  "large-medium-tight": "p",
   body: "p",
   "body-medium": "p",
+  "body-tight": "p",
+  "body-medium-tight": "p",
+  "body-semibold-tight": "p",
   small: "p",
   "small-medium": "p",
+  "small-tight": "p",
+  "small-medium-tight": "p",
+  "small-mono-tight": "code",
+  "small-medium-mono-tight": "code",
+  "small-loose": "p",
+  "small-medium-loose": "p",
+  "small-relaxed": "p",
   label: "span",
   eyebrow: "span",
 };

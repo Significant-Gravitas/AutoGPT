@@ -122,10 +122,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
               </Text>
             </div>
             <Text
-              variant="small-medium"
+              variant="small-medium-tight"
               as="div"
               // TODO(tokens): no exact role: border-slate-300 #B8BFCA, bg-slate-100 #EFF1F4
-              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 leading-4 text-foreground-base"
+              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5"
             >
               {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
               item
@@ -140,10 +140,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
             </Text>
           </div>
           <Text
-            variant="body"
+            variant="body-tight"
             as="div"
             // TODO(tokens): no exact role: text-gray-600 #4B5563
-            className="leading-5 text-gray-600"
+            className="text-gray-600"
           >
             {shouldGroupExecutions ? (
               <div>
@@ -161,9 +161,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                     Execution ID:
                   </Text>
                   <Text
-                    variant="body-medium"
+                    variant="small-medium-mono-tight"
+                    as="p"
                     // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                    className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-caption leading-4"
+                    className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1"
                   >
                     {execId}
                   </Text>
@@ -206,9 +207,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         Execution ID:
                       </Text>
                       <Text
-                        variant="body-medium"
+                        variant="small-medium-mono-tight"
+                        as="p"
                         // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                        className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-caption leading-4"
+                        className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1"
                       >
                         {execution.execId}
                       </Text>

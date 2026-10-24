@@ -101,12 +101,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
         )}
         {description && (
           <Text
-            variant="small"
+            variant="small-loose"
             as="span"
             tone="muted"
-            className={cn(
-              "line-clamp-1 leading-5 group-disabled:text-foreground-subtle",
-            )}
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             {highlightText(description, highlightedText)}
           </Text>

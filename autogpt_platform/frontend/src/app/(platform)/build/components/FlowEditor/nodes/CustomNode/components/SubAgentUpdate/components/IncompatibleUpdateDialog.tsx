@@ -61,9 +61,9 @@ export function IncompatibleUpdateDialog({
       <Dialog.Content>
         <div className="space-y-4">
           <Text
-            variant="body"
+            variant="body-tight"
             // TODO(tokens): no exact role: text-gray-600 #4B5563
-            className="leading-5 text-gray-600"
+            className="text-gray-600"
           >
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
@@ -191,10 +191,10 @@ function TwoColumnSection({
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
           <Text
-            variant="body"
+            variant="body-tight"
             as="div"
             // TODO(tokens): no exact role: text-gray-500 #6B7280
-            className="flex items-center gap-1.5 leading-5 text-gray-500"
+            className="flex items-center gap-1.5 text-gray-500"
           >
             {leftIcon}
             <span>{leftTitle}</span>
@@ -203,16 +203,16 @@ function TwoColumnSection({
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
                 <Text
-                  variant="body"
+                  variant="body-tight"
                   as="li"
                   key={item}
                   // TODO(tokens): no exact role: text-gray-700 #374151
-                  className="leading-5 text-gray-700"
+                  className="text-gray-700"
                 >
                   <Text
-                    variant="small"
+                    variant="small-mono-tight"
                     as="code"
-                    className="rounded bg-error-surface px-1 py-0.5 font-mono leading-4 text-error-foreground"
+                    className="rounded bg-error-surface px-1 py-0.5 text-error-foreground"
                   >
                     {item}
                   </Text>
@@ -220,10 +220,10 @@ function TwoColumnSection({
               ))
             ) : (
               <Text
-                variant="body"
+                variant="body-tight"
                 as="li"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="italic leading-5 text-gray-400"
+                className="italic text-gray-400"
               >
                 None
               </Text>
@@ -234,10 +234,10 @@ function TwoColumnSection({
         {/* Right column - Possible solutions */}
         <div className="min-w-0">
           <Text
-            variant="body"
+            variant="body-tight"
             as="div"
             // TODO(tokens): no exact role: text-gray-500 #6B7280
-            className="flex items-center gap-1.5 leading-5 text-gray-500"
+            className="flex items-center gap-1.5 text-gray-500"
           >
             {rightIcon}
             <span>{rightTitle}</span>
@@ -246,16 +246,16 @@ function TwoColumnSection({
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
                 <Text
-                  variant="body"
+                  variant="body-tight"
                   as="li"
                   key={item}
                   // TODO(tokens): no exact role: text-gray-700 #374151
-                  className="leading-5 text-gray-700"
+                  className="text-gray-700"
                 >
                   <Text
-                    variant="small"
+                    variant="small-mono-tight"
                     as="code"
-                    className="rounded bg-success-surface px-1 py-0.5 font-mono leading-4 text-success-foreground"
+                    className="rounded bg-success-surface px-1 py-0.5 text-success-foreground"
                   >
                     {item}
                   </Text>
@@ -263,10 +263,10 @@ function TwoColumnSection({
               ))
             ) : (
               <Text
-                variant="body"
+                variant="body-tight"
                 as="li"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="italic leading-5 text-gray-400"
+                className="italic text-gray-400"
               >
                 None
               </Text>
@@ -298,26 +298,27 @@ function SingleColumnSection({
         <span className="font-medium">{title}</span>
       </div>
       <Text
-        variant="body"
+        variant="body-tight"
         // TODO(tokens): no exact role: text-gray-500 #6B7280
-        className="mt-1 leading-5 text-gray-500"
+        className="mt-1 text-gray-500"
       >
         {description}
       </Text>
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
           <Text
-            variant="body"
+            variant="body-tight"
             as="li"
             key={item}
             // TODO(tokens): no exact role: text-gray-700 #374151
-            className="ml-4 list-disc leading-5 text-gray-700"
+            className="ml-4 list-disc text-gray-700"
           >
             <Text
-              variant="small"
+              variant="small-mono-tight"
+              tone="inherit"
               as="code"
               // TODO(tokens): no exact role: bg-gray-100 #F3F4F6
-              className="rounded bg-gray-100 px-1 py-0.5 font-mono leading-4 text-inherit"
+              className="rounded bg-gray-100 px-1 py-0.5"
             >
               {item}
             </Text>

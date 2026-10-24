@@ -92,9 +92,10 @@ export const ViewMoreData = ({
                       Execution ID:
                     </Text>
                     <Text
-                      variant="body-medium"
+                      variant="small-medium-mono-tight"
+                      as="p"
                       // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                      className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-caption leading-4"
+                      className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1"
                     >
                       {result.node_exec_id}
                     </Text>

@@ -606,7 +606,8 @@ describe("useBrainDumpRecorder", () => {
 
     // After a crash the upload queue is gone with the page, so every part
     // is replayed — including ones already marked uploaded, since the
-    // server's buffer may have expired and a missing part 0 is fatal.
+    // server's buffer may have expired and a missing part 0 is fatal. Each is
+    // marked resent, or the server refuses a take a skip discarded.
     it("replays every stored part when a take is adopted", async () => {
       const parts = [
         { id: "rec-crashed:0", partIndex: 0, uploaded: true },
@@ -619,7 +620,9 @@ describe("useBrainDumpRecorder", () => {
         await result.current.adoptRecovered("rec-crashed", "audio/mp4");
       });
 
-      expect(queue.enqueue.mock.calls.map(([p]) => p)).toEqual(parts);
+      expect(queue.enqueue.mock.calls.map(([p]) => p)).toEqual(
+        parts.map((part) => ({ ...part, resent: true })),
+      );
       expect(result.current.recordingId).toBe("rec-crashed");
       expect(result.current.mimeType).toBe("audio/mp4");
       expect(result.current.phase).toBe("stopped");

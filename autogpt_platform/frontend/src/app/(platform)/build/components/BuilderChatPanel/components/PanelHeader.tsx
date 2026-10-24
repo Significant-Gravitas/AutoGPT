@@ -33,10 +33,10 @@ export function PanelHeader({
           className="text-violet-600"
         />
         <Text
-          variant="body"
+          variant="body-semibold-tight"
           as="span"
           // TODO(tokens): no exact role: text-slate-800 #475263
-          className="font-semibold leading-5 text-slate-800"
+          className="text-slate-800"
         >
           Chat with Builder
         </Text>
