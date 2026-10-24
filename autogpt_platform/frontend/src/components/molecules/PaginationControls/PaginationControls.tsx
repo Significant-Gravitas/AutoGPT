@@ -42,13 +42,11 @@ export function PaginationControls({
       >
         Previous
       </Button>
-      {/* Text with the label's own line height; its colour stays inherited from
-          the page, as the plain span's was. */}
       <Text
-        variant="body"
+        variant="body-tight"
         as="span"
+        tone="inherit"
         data-slot="pagination-controls-label"
-        className="leading-5 text-inherit"
       >
         Page {currentPage} of {totalPages}
       </Text>
