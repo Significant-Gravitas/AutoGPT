@@ -100,7 +100,7 @@ export const variants = {
   "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
-  "large-medium-lh-6":
+  "large-medium-tight":
     "font-sans text-body-lg font-medium leading-6 text-foreground-base",
 } as const;
 
@@ -171,5 +171,5 @@ export const variantElementMap: Record<Variant, As> = {
   "caption-sm-mono-inherit": "span",
   "small-loose": "p",
   "small-medium-loose": "p",
-  "large-medium-lh-6": "p",
+  "large-medium-tight": "p",
 };
