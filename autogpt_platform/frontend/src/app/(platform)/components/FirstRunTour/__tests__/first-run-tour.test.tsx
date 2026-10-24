@@ -311,12 +311,17 @@ describe("first-run walkthrough — who gets it by itself", () => {
     expect(useFirstRunTourStore.getState().source).toBeNull();
   });
 
-  it("waits for the onboarding record before deciding", async () => {
+  it("opens straight away for someone fresh out of onboarding, before the onboarding record loads", async () => {
+    // The first-run flag is set by this tab's own wizard, so it cannot be a
+    // leftover from another device. Waiting for the record held the
+    // walkthrough back for as long as the provider took to load after a
+    // sign-up, and the user had already moved on.
     onboarding.current.state = null;
     render(<AutoStart isPending onFinished={vi.fn()} />);
 
-    await act(async () => {});
-    expect(useFirstRunTourStore.getState().source).toBeNull();
+    await waitFor(() =>
+      expect(useFirstRunTourStore.getState().source).toBe("auto"),
+    );
   });
 
   it("does nothing for someone who did not just finish onboarding", async () => {

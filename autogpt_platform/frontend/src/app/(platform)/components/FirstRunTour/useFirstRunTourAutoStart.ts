@@ -15,9 +15,11 @@ interface Args {
 }
 
 // Opens the walkthrough by itself once, on the first home visit after
-// onboarding. Waits for the onboarding record so someone who already has it
-// (FIRST_RUN_TOUR, or the old CAPABILITY_CARDS deck) on another device never
-// sees it flash open.
+// onboarding. It does not wait for the onboarding record: the first-run flag
+// is set by this tab's own wizard, so it cannot be left over from another
+// device, and the record can take a while to arrive after a sign-up. When the
+// record is already loaded and shows the walkthrough (FIRST_RUN_TOUR, or the
+// old CAPABILITY_CARDS deck), it stays shut.
 export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
   const { user } = useAuth();
   const userID = user?.id ?? null;
@@ -30,17 +32,16 @@ export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
   const hasHadIntro =
     state !== null &&
     TOUR_DONE_STEPS.some((step) => state.completedSteps.includes(step));
-  const isKnown = userID !== null && state !== null;
 
   useEffect(() => {
-    if (!isPending || !isKnown || startedFor.current === userID) return;
+    if (!isPending || userID === null || startedFor.current === userID) return;
     if (hasHadIntro || peekFirstRunTourSeen(userID)) {
       finish();
       return;
     }
     startedFor.current = userID;
     open("auto");
-  }, [isPending, isKnown, hasHadIntro, userID, open, finish]);
+  }, [isPending, hasHadIntro, userID, open, finish]);
 
   // Re-run on every change of `source`, but read the store itself: in the
   // commit where the effect above opened the walkthrough, this render's
