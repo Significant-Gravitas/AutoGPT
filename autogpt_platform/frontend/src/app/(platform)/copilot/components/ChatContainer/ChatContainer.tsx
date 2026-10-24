@@ -17,7 +17,6 @@ import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
-import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { getPendingOnboardingCallId } from "../ExpertOnboardingCard/helpers";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
@@ -39,6 +38,7 @@ import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { useOpenPendingOnboarding } from "./useOpenPendingOnboarding";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
 import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
 import { useVoiceMode } from "../../voice/useVoiceMode";
@@ -306,6 +306,21 @@ export const ChatContainer = ({
     silenceTimeoutMs,
     onSend: guardedOnSend,
   });
+  useOpenPendingOnboarding({
+    expertId: expertIdentity?.id ?? null,
+    sessionId,
+    enabled:
+      messages.length === 0 &&
+      !isInputDisabled &&
+      !isLimitReached &&
+      !isStreaming &&
+      !isCreatingSession &&
+      !isUploadingFiles &&
+      !pendingSend &&
+      !isExpertArchived &&
+      !voice.isActive &&
+      !voice.isStarting,
+  });
   const toggleVoice = useStableCallback(voice.toggle);
   const retryVoiceUtterance = useStableCallback(voice.retryFailedUtterance);
   const downloadVoiceUtterance = useStableCallback(
@@ -492,7 +507,7 @@ export const ChatContainer = ({
           {sessionId && isSessionNotFound ? (
             <SessionNotFound />
           ) : sessionId ? (
-            <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
+            <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
               <div className="absolute right-0 top-0 z-30">
                 <ContextPanelToggle
                   sessionId={sessionId}
@@ -500,41 +515,29 @@ export const ChatContainer = ({
                   hideIntegrationsOnMobile={floatingControls === "newLayout"}
                 />
               </div>
-              <NewChatOnboarding
-                expertId={expertIdentity?.id ?? null}
-                enabled={
-                  messages.length === 0 &&
-                  !isInputDisabled &&
-                  !isLimitReached &&
-                  !isStreaming &&
-                  !isCreatingSession &&
-                  !isExpertArchived
-                }
-              >
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={isLoadingSession}
-                  isRestoringActiveSession={isRestoringActiveSession}
-                  restoreStatusMessage={restoreStatusMessage}
-                  activeStreamStartedAt={activeStreamStartedAt}
-                  sessionID={sessionId}
-                  sessionChatStatus={sessionChatStatus}
-                  sessionSentFrom={sessionSentFrom}
-                  hasMoreMessages={hasMoreMessages}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={onLoadMore}
-                  onRetry={handleRetry}
-                  turnStats={turnStats}
-                  queuedMessages={queuedMessages}
-                  pendingSend={pendingSend}
-                  bottomContentPadding={usageCardHeight + composerTabInset}
-                  expertIdentity={expertIdentity}
-                  isResolvingExpertIdentity={isResolvingExpertIdentity}
-                  floatingControls={floatingControls}
-                />
-              </NewChatOnboarding>
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
+                isLoading={isLoadingSession}
+                isRestoringActiveSession={isRestoringActiveSession}
+                restoreStatusMessage={restoreStatusMessage}
+                activeStreamStartedAt={activeStreamStartedAt}
+                sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
+                sessionSentFrom={sessionSentFrom}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
+                onRetry={handleRetry}
+                turnStats={turnStats}
+                queuedMessages={queuedMessages}
+                pendingSend={pendingSend}
+                bottomContentPadding={usageCardHeight + composerTabInset}
+                expertIdentity={expertIdentity}
+                isResolvingExpertIdentity={isResolvingExpertIdentity}
+                floatingControls={floatingControls}
+              />
               {archivedExpertIdentity ? (
                 <>
                   {hasComposerTab && (

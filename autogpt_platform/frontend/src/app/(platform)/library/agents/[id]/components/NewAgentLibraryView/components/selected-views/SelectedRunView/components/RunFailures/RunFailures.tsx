@@ -20,7 +20,8 @@ const WarningIcon = createIconComponent(Alert02Icon);
 const FailedIcon = createIconComponent(CancelCircleIcon);
 
 const ERROR_PREVIEW_LIMIT = 300;
-const ERROR_CLASS_NAME = "whitespace-pre-wrap break-words !text-zinc-800";
+const ERROR_CLASS_NAME =
+  "whitespace-pre-wrap break-words !text-foreground-emphasis";
 
 interface Props {
   run: GraphExecution | GraphExecutionWithNodes;
@@ -48,7 +49,7 @@ export function RunFailures({ run }: Props) {
         </AlertTitle>
         <AlertDescription className="flex flex-col gap-3">
           {run.status === AgentExecutionStatus.COMPLETED ? (
-            <Text variant="small" className="!text-zinc-600">
+            <Text variant="small" className="!text-foreground-secondary">
               The run still finished, so its output may be incomplete.
             </Text>
           ) : null}
