@@ -95,7 +95,9 @@ async def test_only_one_of_two_racing_answers_claims_a_card() -> None:
     )
 
     assert results.count("claimed") == 1
-    assert results.count("taken") == 9
+    # The winner has not saved yet: the others are told to wait, not that
+    # the card was answered.
+    assert results.count("pending") == 9
 
 
 @needs_redis
@@ -104,7 +106,7 @@ async def test_a_claim_is_all_or_nothing_and_its_own_retry_holds_it() -> None:
 
     assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
     assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "held"
-    assert await card_decided._claim(session, ["c-2", "c-3"], "tab-b") == "taken"
+    assert await card_decided._claim(session, ["c-2", "c-3"], "tab-b") == "pending"
     # The refused claim took nothing, so c-3 is still free.
     assert await card_decided._claim(session, ["c-3"], "tab-b") == "claimed"
 
@@ -115,7 +117,7 @@ async def test_a_failed_request_gives_back_only_its_own_claim() -> None:
     assert await card_decided._claim(session, ["c-1"], "tab-a") == "claimed"
 
     await card_decided.release_claim(session, ["c-1"], "tab-b")
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "taken"
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "pending"
 
     await card_decided.release_claim(session, ["c-1"], "tab-a")
     assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
@@ -138,6 +140,7 @@ async def test_answers_dropped_before_they_were_saved_are_forgotten(
         assert (
             await card_decided._claim(session_id, [cid], f"queued-{cid}") == "claimed"
         )
+        await card_decided.accept_claim(session_id, [cid], f"queued-{cid}")
 
     await forget_unsaved_answers(
         "u-1",
@@ -158,6 +161,26 @@ async def test_answers_dropped_before_they_were_saved_are_forgotten(
     )
 
 
+@needs_redis
+async def test_an_answer_still_being_sent_is_waited_on_not_taken_as_given() -> None:
+    """Tab A claims, tab B asks while A is still sending. If A then fails,
+    B's retry must land; if A saves, B's must be refused."""
+    session = f"s-{uuid.uuid4()}"
+    assert await card_decided._claim(session, ["c-1"], "tab-a") == "claimed"
+
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "pending"
+    await card_decided.release_claim(session, ["c-1"], "tab-a")  # A failed
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
+
+    await card_decided.accept_claim(session, ["c-1"], "tab-b")  # B saved
+    assert await card_decided._claim(session, ["c-1"], "tab-a") == "taken"
+    # An accepted answer is not given back by a late failure path either.
+    await card_decided.release_claim(session, ["c-1"], "tab-b")
+    assert await card_decided._claim(session, ["c-1"], "tab-a") == "taken"
+    # Its own retry still holds it.
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "held"
+
+
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -173,7 +196,12 @@ async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
 
 @pytest.mark.parametrize(
     "claimed, result",
-    [("claimed", "claimed"), ("held", "held"), ("taken", "answered")],
+    [
+        ("claimed", "claimed"),
+        ("held", "held"),
+        ("taken", "answered"),
+        ("pending", "pending"),
+    ],
 )
 async def test_an_unanswered_card_is_answered_by_whoever_claims_it(
     mocker: pytest_mock.MockerFixture, claimed: str, result: str

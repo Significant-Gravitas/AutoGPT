@@ -20,7 +20,7 @@ from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
 
-ClaimResult = Literal["answered", "claimed", "held"]
+ClaimResult = Literal["answered", "pending", "claimed", "held"]
 
 _KEY = "copilot:gate:card_decided:"
 # Far past a proposal's 15 minutes; the chat itself is the lasting record.
@@ -31,21 +31,42 @@ _TTL_SECONDS = 7 * 24 * 60 * 60
 _SERVER_WRITTEN_KEYS = frozenset(
     {"from_session_id", "held_call", "held_calls_answered"}
 )
+# A claim is its owner while that request is still saving or queueing the
+# answer, and its owner plus this suffix once it has: only then is the card
+# answered. A claim still pending can be given back if the request fails.
+_ACCEPTED = "|accepted"
 # All or nothing: a request that names an id someone else claimed takes none.
-# 0: taken by someone else, 1: claimed now, 2: already this owner's.
+# 0: someone else's accepted answer, 3: someone else's still pending,
+# 1: claimed now, 2: already this owner's.
 _CLAIM = """
+local accepted = ARGV[1] .. ARGV[3]
 local held = true
-for i = 3, #ARGV do
-  local owner = redis.call('HGET', KEYS[1], ARGV[i])
-  if owner and owner ~= ARGV[1] then return 0 end
-  if not owner then held = false end
+for i = 4, #ARGV do
+  local value = redis.call('HGET', KEYS[1], ARGV[i])
+  if value then
+    if value ~= ARGV[1] and value ~= accepted then
+      if string.sub(value, -string.len(ARGV[3])) == ARGV[3] then return 0 end
+      return 3
+    end
+  else
+    held = false
+  end
 end
 if held then return 2 end
-for i = 3, #ARGV do redis.call('HSET', KEYS[1], ARGV[i], ARGV[1]) end
+for i = 4, #ARGV do redis.call('HSETNX', KEYS[1], ARGV[i], ARGV[1]) end
 redis.call('EXPIRE', KEYS[1], ARGV[2])
 return 1
 """
-# Only the request that claimed an id gives it back.
+# Only the request that holds a pending claim marks it accepted.
+_ACCEPT = """
+for i = 3, #ARGV do
+  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[1] then
+    redis.call('HSET', KEYS[1], ARGV[i], ARGV[1] .. ARGV[2])
+  end
+end
+return 1
+"""
+# Only the request that claimed an id gives it back, and only while pending.
 _RELEASE = """
 for i = 2, #ARGV do
   if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[1] then
@@ -62,10 +83,13 @@ async def claim_answer(
     """Claim these cards for this request, unless something else answered one.
 
     ``owner`` is the request's scoped client message id. "claimed": this
-    request took the claim, and gives it back with ``release_claim`` if it
-    saves nothing. "held": it was already this owner's (a retransmit of the
-    answering request) or the store is down, so there is nothing to give back.
-    "answered": the chat, or another request, answered first.
+    request took the claim; it marks it accepted with ``accept_claim`` once
+    the answer is saved or queued, or gives it back with ``release_claim``.
+    "held": it was already this owner's (a retransmit of the answering
+    request) or the store is down, so there is nothing to give back.
+    "answered": the chat, or another request's accepted answer, came first.
+    "pending": another request holds the card but has not saved yet; it may
+    still fail, so this one is neither answered nor taken, and should retry.
     """
     try:
         session = await get_chat_session(session_id, user_id)
@@ -78,6 +102,21 @@ async def claim_answer(
         return "answered"
     claimed = await _claim(session_id, confirmation_ids, owner)
     return "answered" if claimed == "taken" else claimed
+
+
+async def accept_claim(
+    session_id: str, confirmation_ids: list[str], owner: str
+) -> None:
+    """Mark this request's claim answered once its answer is saved or queued."""
+    try:
+        redis = await get_redis_async()
+        await redis.eval(
+            _ACCEPT, 1, f"{_KEY}{session_id}", owner, _ACCEPTED, *confirmation_ids
+        )
+    except Exception:
+        logger.warning(
+            f"Could not accept card answers for session {session_id}", exc_info=True
+        )
 
 
 async def forget_unsaved_answers(
@@ -167,12 +206,18 @@ async def release_claim(
 
 async def _claim(
     session_id: str, confirmation_ids: list[str], owner: str
-) -> Literal["claimed", "held", "taken"]:
+) -> Literal["claimed", "held", "taken", "pending"]:
     try:
         redis = await get_redis_async()
         result = int(
             await redis.eval(
-                _CLAIM, 1, f"{_KEY}{session_id}", owner, _TTL_SECONDS, *confirmation_ids
+                _CLAIM,
+                1,
+                f"{_KEY}{session_id}",
+                owner,
+                _TTL_SECONDS,
+                _ACCEPTED,
+                *confirmation_ids,
             )
         )
     except Exception:
@@ -183,4 +228,6 @@ async def _claim(
         return "held"
     if result == 0:
         return "taken"
+    if result == 3:
+        return "pending"
     return "claimed" if result == 1 else "held"
