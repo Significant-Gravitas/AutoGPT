@@ -55,7 +55,7 @@ from backend.copilot.gate.card_approval import (
     parse_card_decisions,
     record_card_decisions,
 )
-from backend.copilot.gate.card_decided import is_already_answered, release_claim
+from backend.copilot.gate.card_decided import claim_answer, release_claim
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -310,36 +310,43 @@ def _card_answer_metadata(
     return None if has_attachments else card_decision_metadata(message)
 
 
+CardAdmission = Literal["refused", "claimed", "unclaimed"]
+
+
 async def _admit_card_answer(
     user_id: str,
     session_id: str,
     message: str,
     metadata: dict[str, Any] | None,
     owner: str,
-) -> bool:
+) -> CardAdmission:
     """Record the card decisions in a user's own request, once per card.
 
     The only writer of card approvals: a model can add chat rows, not
-    requests. A card the chat already answered, in this tab or another, is not
-    answered again: a message that only answers it is dropped (False), and
-    one with the user's own words around the line is kept with nothing
-    recorded. Called just before the row is saved or queued, and given back
-    with ``_release_card_answer`` if it is not.
+    requests. A card the chat already answered, in this tab or another, is
+    not answered again: a message that only answers it is "refused", and one
+    with the user's own words around the line goes on with nothing recorded.
+    "claimed" means this request took the claim, so a path that then saves
+    nothing gives it back with ``_release_card_answer``. Called just before
+    the row is saved or queued.
     """
     ids = _card_ids(message)
     if not ids:
-        return True
-    if await is_already_answered(user_id, session_id, ids, owner=owner):
+        return "unclaimed"
+    claim = await claim_answer(user_id, session_id, ids, owner=owner)
+    if claim == "answered":
         logger.info(f"Refused a second answer to a card in session {session_id}")
-        return metadata is None
+        return "unclaimed" if metadata is None else "refused"
     await record_card_decisions(user_id, session_id, message)
-    return True
+    return "claimed" if claim == "claimed" else "unclaimed"
 
 
-async def _release_card_answer(session_id: str, message: str, owner: str) -> None:
-    """Give back the card claim of a request that saved and queued nothing."""
-    if ids := _card_ids(message):
-        await release_claim(session_id, ids, owner)
+async def _release_card_answer(
+    session_id: str, message: str, owner: str, admission: CardAdmission
+) -> None:
+    """Give back the claim of a request that took it and saved nothing."""
+    if admission == "claimed":
+        await release_claim(session_id, _card_ids(message), owner)
 
 
 def _card_ids(message: str) -> list[str]:
@@ -2054,9 +2061,14 @@ async def stream_chat_post(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
             )
-        if request.is_user_message and not await _admit_card_answer(
-            user_id, session_id, message, card_metadata, card_owner
-        ):
+        admission: CardAdmission = (
+            await _admit_card_answer(
+                user_id, session_id, message, card_metadata, card_owner
+            )
+            if request.is_user_message
+            else "unclaimed"
+        )
+        if admission == "refused":
             # Answered already: the client's refetch shows the answer.
             return _empty_ui_message_stream_response()
         try:
@@ -2072,11 +2084,11 @@ async def stream_chat_post(
             )
             return _empty_ui_message_stream_response(follow_up_queued=True)
         except HTTPException as exc:
-            await _release_card_answer(session_id, message, card_owner)
+            await _release_card_answer(session_id, message, card_owner, admission)
             if exc.status_code != 409:
                 raise
         except BaseException:
-            await _release_card_answer(session_id, message, card_owner)
+            await _release_card_answer(session_id, message, card_owner, admission)
             raise
 
     if request.expert_kickoff and persisted_kickoff_has_reply is not None:
@@ -2145,9 +2157,14 @@ async def stream_chat_post(
     # the row may not be written yet, and a queued copy never gets this id.
     # A copy that finds the key reserved waits for this request's outcome, so
     # it is never told a send was taken that is then refused.
-    if request.is_user_message and not await _admit_card_answer(
-        user_id, session_id, message, card_metadata, card_owner
-    ):
+    admission = (
+        await _admit_card_answer(
+            user_id, session_id, message, card_metadata, card_owner
+        )
+        if request.is_user_message
+        else "unclaimed"
+    )
+    if admission == "refused":
         # Answered already: the client's refetch shows the answer.
         return _empty_ui_message_stream_response()
     claim_owner = uuid4().hex
@@ -2157,12 +2174,12 @@ async def stream_chat_post(
         else None
     )
     if claim == "reserved":
-        await _release_card_answer(session_id, message, card_owner)
+        await _release_card_answer(session_id, message, card_owner, admission)
         raise client_message_in_progress_error()
 
     async def release_client_message_claim() -> None:
         # Nothing was saved, so the card is still the user's to answer.
-        await _release_card_answer(session_id, message, card_owner)
+        await _release_card_answer(session_id, message, card_owner, admission)
         if claim == "claimed" and client_message_id is not None:
             await release_client_message(session_id, client_message_id, claim_owner)
 
@@ -2493,9 +2510,10 @@ async def queue_pending_message(
         request.message,
         has_attachments=bool(request.file_ids or request.folder_ids),
     )
-    if not await _admit_card_answer(
+    admission = await _admit_card_answer(
         user_id, session_id, request.message, card_metadata, card_owner
-    ):
+    )
+    if admission == "refused":
         # True "turn in flight" keeps the client from resending via /stream.
         return await already_accepted_response(session_id)
     try:
@@ -2510,7 +2528,7 @@ async def queue_pending_message(
             client_message_id=client_message_id,
         )
     except BaseException:
-        await _release_card_answer(session_id, request.message, card_owner)
+        await _release_card_answer(session_id, request.message, card_owner, admission)
         raise
 
 

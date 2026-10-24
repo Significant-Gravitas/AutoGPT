@@ -9,7 +9,7 @@ import pytest
 import pytest_mock
 
 from backend.copilot.gate import card_decided
-from backend.copilot.gate.card_decided import decided_ids, is_already_answered
+from backend.copilot.gate.card_decided import claim_answer, decided_ids
 from backend.copilot.model import ChatMessage
 from backend.data import redis_client
 from backend.util.testing import is_tcp_port_reachable
@@ -42,9 +42,13 @@ def _tagged(row_id: str, *confirmation_ids: str) -> ChatMessage:
     )
 
 
-def test_the_chat_says_which_cards_were_answered() -> None:
+def _row(content: str, metadata: dict | None = None, role: str = "user"):
+    return ChatMessage(role=role, content=content, metadata=metadata)
+
+
+def test_the_chat_says_which_cards_the_user_answered() -> None:
     messages = [
-        ChatMessage(role="user", content="Get someone for marketing."),
+        _row("Get someone for marketing."),
         _tagged("row-1", "c-1"),
         # Saved before rows were tagged: the line itself is the record.
         ChatMessage(
@@ -53,15 +57,29 @@ def test_the_chat_says_which_cards_were_answered() -> None:
             content="Not approved: do not hire Ada, discard that proposal "
             "(confirmation_id: c-2).",
         ),
+        # Queued behind a running turn: the row carries the queue's own
+        # metadata, and is still the user's answer.
+        _row(
+            "Approved: hire Bo (confirmation_id: c-5).\nAnd start on Monday.",
+            {"cost_context": {}, "llm_auth_provider": "platform"},
+        ),
         # Otto quoting a line is not the user deciding.
-        ChatMessage(
-            role="assistant", content="Approved: hire Bo (confirmation_id: c-3)."
+        _row("Approved: hire Bo (confirmation_id: c-3).", role="assistant"),
+        # Rows the server wrote for something else are not either.
+        _row(
+            "Approved: hire Cy (confirmation_id: c-4).",
+            {"from_session_id": "s-parent"},
+        ),
+        _row("Approved: hire Di (confirmation_id: c-6).", {"held_calls_answered": 1}),
+        _row(
+            "Approved: hire Ed (confirmation_id: c-7).",
+            {"hidden": True, "kind": "expert_kickoff"},
         ),
     ]
 
-    assert decided_ids(messages, skip_message_id=None) == {"c-1", "c-2"}
+    assert decided_ids(messages, skip_message_id=None) == {"c-1", "c-2", "c-5"}
     # A retransmit of the request that wrote row-1 is not a second answer.
-    assert decided_ids(messages, skip_message_id="row-1") == {"c-2"}
+    assert decided_ids(messages, skip_message_id="row-1") == {"c-2", "c-5"}
 
 
 @needs_redis
@@ -72,30 +90,31 @@ async def test_only_one_of_two_racing_answers_claims_a_card() -> None:
         *(card_decided._claim(session, ["c-1"], f"tab-{i}") for i in range(10))
     )
 
-    assert sum(results) == 1
+    assert results.count("claimed") == 1
+    assert results.count("taken") == 9
 
 
 @needs_redis
-async def test_a_claim_is_all_or_nothing_and_its_own_retry_passes() -> None:
+async def test_a_claim_is_all_or_nothing_and_its_own_retry_holds_it() -> None:
     session = f"s-{uuid.uuid4()}"
 
-    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a")
-    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a")
-    assert not await card_decided._claim(session, ["c-2", "c-3"], "tab-b")
+    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
+    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "held"
+    assert await card_decided._claim(session, ["c-2", "c-3"], "tab-b") == "taken"
     # The refused claim took nothing, so c-3 is still free.
-    assert await card_decided._claim(session, ["c-3"], "tab-b")
+    assert await card_decided._claim(session, ["c-3"], "tab-b") == "claimed"
 
 
 @needs_redis
 async def test_a_failed_request_gives_back_only_its_own_claim() -> None:
     session = f"s-{uuid.uuid4()}"
-    assert await card_decided._claim(session, ["c-1"], "tab-a")
+    assert await card_decided._claim(session, ["c-1"], "tab-a") == "claimed"
 
     await card_decided.release_claim(session, ["c-1"], "tab-b")
-    assert not await card_decided._claim(session, ["c-1"], "tab-b")
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "taken"
 
     await card_decided.release_claim(session, ["c-1"], "tab-a")
-    assert await card_decided._claim(session, ["c-1"], "tab-b")
+    assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
 
 
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
@@ -107,13 +126,16 @@ async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
     )
     claim = mocker.patch.object(card_decided, "_claim", new_callable=AsyncMock)
 
-    assert await is_already_answered("u-1", "s-1", ["c-1"], owner="row-9")
+    assert await claim_answer("u-1", "s-1", ["c-1"], owner="row-9") == "answered"
     claim.assert_not_awaited()
 
 
-@pytest.mark.parametrize("claimed, answered", [(True, False), (False, True)])
+@pytest.mark.parametrize(
+    "claimed, result",
+    [("claimed", "claimed"), ("held", "held"), ("taken", "answered")],
+)
 async def test_an_unanswered_card_is_answered_by_whoever_claims_it(
-    mocker: pytest_mock.MockerFixture, claimed: bool, answered: bool
+    mocker: pytest_mock.MockerFixture, claimed: str, result: str
 ) -> None:
     session = mocker.MagicMock(messages=[_tagged("row-1", "c-1")])
     mocker.patch.object(
@@ -123,7 +145,7 @@ async def test_an_unanswered_card_is_answered_by_whoever_claims_it(
         card_decided, "_claim", new_callable=AsyncMock, return_value=claimed
     )
 
-    assert await is_already_answered("u-1", "s-1", ["c-2"], owner="row-9") is answered
+    assert await claim_answer("u-1", "s-1", ["c-2"], owner="row-9") == result
     claim.assert_awaited_once_with("s-1", ["c-2"], "row-9")
 
 
@@ -140,4 +162,5 @@ async def test_a_store_outage_never_blocks_an_answer(
         card_decided, "get_redis_async", new_callable=AsyncMock, side_effect=OSError
     )
 
-    assert not await is_already_answered("u-1", "s-1", ["c-1"], owner="row-9")
+    # Nothing to give back either: the claim was never taken.
+    assert await claim_answer("u-1", "s-1", ["c-1"], owner="row-9") == "held"

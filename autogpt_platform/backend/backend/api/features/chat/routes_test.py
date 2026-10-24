@@ -333,9 +333,9 @@ def _mock_stream_internals(
     )
     # A card decision checks the chat and Redis for an earlier answer.
     mocker.patch(
-        "backend.api.features.chat.routes.is_already_answered",
+        "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value=False,
+        return_value="claimed",
     )
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -691,9 +691,9 @@ def test_stream_chat_drops_a_second_answer_to_an_answered_card(
         new_callable=AsyncMock,
     )
     answered = mocker.patch(
-        "backend.api.features.chat.routes.is_already_answered",
+        "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value=True,
+        return_value="answered",
     )
 
     response = client.post(
@@ -726,9 +726,9 @@ def test_stream_chat_keeps_the_users_words_but_not_a_second_answer(
         new_callable=AsyncMock,
     )
     answered = mocker.patch(
-        "backend.api.features.chat.routes.is_already_answered",
+        "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value=True,
+        return_value="answered",
     )
     message = (
         "Not approved: do not hire Maya, discard that proposal "
@@ -753,9 +753,9 @@ def test_stream_chat_sends_the_first_answer_to_a_card(
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.chat.routes.is_already_answered",
+        "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value=False,
+        return_value="claimed",
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
 
@@ -796,6 +796,41 @@ def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
     )
 
 
+def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A copy of a send still in flight must not give back the original's claim."""
+    _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="held",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_client_message",
+        new_callable=AsyncMock,
+        return_value="reserved",
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "message_id": "click-1",
+        },
+    )
+
+    assert response.status_code == 503
+    release.assert_not_awaited()
+
+
 def test_queue_pending_message_gives_back_a_card_claim_when_not_queued(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -805,9 +840,9 @@ def test_queue_pending_message_gives_back_a_card_claim_when_not_queued(
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.chat.routes.is_already_answered",
+        "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value=False,
+        return_value="claimed",
     )
     mocker.patch(
         "backend.api.features.chat.routes.queue_pending_for_http",
@@ -3155,9 +3190,9 @@ def test_queue_pending_message_answers_a_card_once(
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.chat.routes.is_already_answered",
+        "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value=answered,
+        return_value="answered" if answered else "claimed",
     )
     push = mocker.patch(
         "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
