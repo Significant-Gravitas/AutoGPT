@@ -325,9 +325,9 @@ export function SchedulesTable({
                             <TableCell>
                               <div>{schedule.graph_name || "Unknown"}</div>
                               <Text
-                                variant="small"
+                                variant="small-mono-tight"
                                 as="div"
-                                className="font-mono leading-4 text-gray-500"
+                                className="text-gray-500"
                               >
                                 v{schedule.graph_version}
                               </Text>
@@ -339,9 +339,9 @@ export function SchedulesTable({
                                 )}
                               </div>
                               <Text
-                                variant="small"
+                                variant="small-mono-tight"
                                 as="div"
-                                className="group flex cursor-pointer items-center gap-1 font-mono leading-4 text-gray-500 hover:text-gray-700"
+                                className="group flex cursor-pointer items-center gap-1 text-gray-500 hover:text-gray-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     schedule.user_id,
@@ -364,16 +364,17 @@ export function SchedulesTable({
                               {schedule.cron ? (
                                 <>
                                   <Text
-                                    variant="small"
+                                    variant="small-mono-tight"
                                     as="code"
-                                    className="rounded bg-gray-100 px-2 py-1 font-mono leading-4 text-inherit"
+                                    tone="inherit"
+                                    className="rounded bg-gray-100 px-2 py-1"
                                   >
                                     {schedule.cron}
                                   </Text>
                                   <Text
-                                    variant="small"
+                                    variant="small-tight"
                                     as="div"
-                                    className="leading-4 text-gray-500"
+                                    className="text-gray-500"
                                   >
                                     {schedule.timezone}
                                   </Text>
@@ -392,9 +393,9 @@ export function SchedulesTable({
                             {activeTab === "orphaned" && (
                               <TableCell>
                                 <Text
-                                  variant="small"
+                                  variant="small-tight"
                                   as="span"
-                                  className="leading-4 text-purple-600"
+                                  className="text-purple-600"
                                 >
                                   {(
                                     schedule as OrphanedScheduleDetail
@@ -413,11 +414,7 @@ export function SchedulesTable({
 
               {totalPages > 1 && activeTab === "all" && (
                 <div className="mt-4 flex items-center justify-between">
-                  <Text
-                    variant="body"
-                    as="div"
-                    className="leading-5 text-gray-600"
-                  >
+                  <Text variant="body-tight" as="div" className="text-gray-600">
                     Showing {(currentPage - 1) * pageSize + 1} to{" "}
                     {Math.min(currentPage * pageSize, total)} of {total}{" "}
                     schedules

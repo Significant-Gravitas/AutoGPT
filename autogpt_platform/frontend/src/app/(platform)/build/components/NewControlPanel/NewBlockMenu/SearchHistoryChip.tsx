@@ -28,11 +28,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
       {...rest}
     >
       <ArrowUpRight className="h-6 w-6 text-zinc-500" strokeWidth={1.25} />
-      <Text
-        variant="body"
-        as="span"
-        className="leading-[1.375rem] text-zinc-800"
-      >
+      <Text variant="body" as="span" className="text-zinc-800">
         {content}
       </Text>
     </Button>

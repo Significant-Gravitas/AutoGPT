@@ -403,10 +403,11 @@ function PaginationBar({
         {pages.map((entry, idx) =>
           entry === "…" ? (
             <Text
-              variant="body"
+              variant="body-tight"
               as="span"
+              tone="subtle"
               key={`gap-${idx}`}
-              className="px-1 leading-5 text-foreground-subtle"
+              className="px-1"
               aria-hidden
             >
               …
@@ -418,7 +419,7 @@ function PaginationBar({
               onClick={() => onChange(entry)}
               aria-current={entry === page ? "page" : undefined}
               className={cn(
-                "relative flex size-9 items-center justify-center rounded-full text-body font-medium leading-5 transition",
+                "relative flex size-9 items-center justify-center rounded-full transition",
                 entry === page
                   ? "text-action-foreground"
                   : "border border-border-base text-foreground-body hover:border-border-strong",
@@ -432,7 +433,14 @@ function PaginationBar({
                   transition={{ type: "spring", stiffness: 420, damping: 32 }}
                 />
               ) : null}
-              <span className="relative">{entry}</span>
+              <Text
+                as="span"
+                variant="body-medium-tight"
+                tone="inherit"
+                className="relative"
+              >
+                {entry}
+              </Text>
             </button>
           ),
         )}

@@ -128,9 +128,10 @@ export function ExpandableRow({
           <TableCell colSpan={7} className="border-t-0 p-0">
             <div className="bg-muted/30 px-4 py-3">
               <Text
-                variant="body"
+                variant="body-semibold-tight"
                 as="h4"
-                className="mb-2 font-semibold leading-5 text-inherit"
+                tone="inherit"
+                className="mb-2"
               >
                 Version History
               </Text>

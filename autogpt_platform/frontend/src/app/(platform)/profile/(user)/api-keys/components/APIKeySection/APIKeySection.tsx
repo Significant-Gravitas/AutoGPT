@@ -49,9 +49,10 @@ export function APIKeysSection() {
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
                     <Text
-                      variant="small"
+                      variant="small-tight"
                       as="div"
-                      className="rounded-md border p-1 px-2 leading-4 text-inherit"
+                      tone="inherit"
+                      className="rounded-md border p-1 px-2"
                     >
                       {`${key.head}******************${key.tail}`}
                     </Text>

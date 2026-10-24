@@ -585,9 +585,9 @@ export function ExecutionsTable({
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
                         <Text
-                          variant="small-medium"
+                          variant="small-medium-tight"
                           as="span"
-                          className="ml-1 leading-4 text-orange-200"
+                          className="ml-1 text-orange-200"
                         >
                           ({selectedOrphanedIds.length} orphaned)
                         </Text>
@@ -608,18 +608,18 @@ export function ExecutionsTable({
                 )}
                 {activeTab === "failed" && selectedIds.size === 0 && (
                   <Text
-                    variant="body"
+                    variant="body-tight"
                     as="div"
-                    className="px-3 leading-5 text-gray-500"
+                    className="px-3 text-gray-500"
                   >
                     View-only (select to delete)
                   </Text>
                 )}
                 {activeTab === "invalid" && (
                   <Text
-                    variant="body"
+                    variant="body-tight"
                     as="div"
-                    className="rounded-md bg-pink-50 px-3 py-2 leading-5 text-pink-700"
+                    className="rounded-md bg-pink-50 px-3 py-2 text-pink-700"
                   >
                     ⚠️ Read-only: Invalid states require manual investigation
                   </Text>
@@ -749,8 +749,11 @@ export function ExecutionsTable({
                                 disabled={activeTab === "invalid"}
                               />
                             </TableCell>
-                            <TableCell className="font-mono text-caption leading-4">
-                              <div
+                            <TableCell>
+                              <Text
+                                variant="small-mono-tight"
+                                as="div"
+                                tone="inherit"
                                 className="group flex cursor-pointer items-center gap-1 hover:text-gray-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
@@ -769,7 +772,7 @@ export function ExecutionsTable({
                                   icon={Copy01Icon}
                                   className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
                                 />
-                              </div>
+                              </Text>
                             </TableCell>
                             <TableCell>{execution.graph_name}</TableCell>
                             <TableCell>{execution.graph_version}</TableCell>
@@ -780,9 +783,9 @@ export function ExecutionsTable({
                                 )}
                               </div>
                               <Text
-                                variant="small"
+                                variant="small-mono-tight"
                                 as="div"
-                                className="group flex cursor-pointer items-center gap-1 font-mono leading-4 text-gray-500 hover:text-gray-700"
+                                className="group flex cursor-pointer items-center gap-1 text-gray-500 hover:text-gray-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     execution.user_id,
@@ -803,9 +806,9 @@ export function ExecutionsTable({
                             </TableCell>
                             <TableCell>
                               <Text
-                                variant="small"
+                                variant="small-semibold-tight"
                                 as="span"
-                                className={`inline-flex rounded-full px-2 py-1 font-semibold leading-4 ${
+                                className={`inline-flex rounded-full px-2 py-1 ${
                                   execution.status === "RUNNING"
                                     ? "bg-green-100 text-green-800"
                                     : "bg-yellow-100 text-yellow-800"
@@ -860,9 +863,9 @@ export function ExecutionsTable({
                             {activeTab === "failed" && (
                               <TableCell className="max-w-xs truncate">
                                 <Text
-                                  variant="small"
+                                  variant="small-tight"
                                   as="span"
-                                  className="leading-4 text-red-600"
+                                  className="text-red-600"
                                   title={execution.error_message || ""}
                                 >
                                   {execution.error_message ||
@@ -948,9 +951,9 @@ export function ExecutionsTable({
                   {totalPages > 1 && (
                     <div className="mt-4 flex items-center justify-between">
                       <Text
-                        variant="body"
+                        variant="body-tight"
                         as="div"
-                        className="leading-5 text-gray-600"
+                        className="text-gray-600"
                       >
                         Showing {(currentPage - 1) * pageSize + 1} to{" "}
                         {Math.min(currentPage * pageSize, total)} of {total}{" "}
@@ -1092,7 +1095,7 @@ export function ExecutionsTable({
                   <br />
                   <br />
                   This will automatically:
-                  <ul className="mt-2 list-disc pl-5 text-body leading-5">
+                  <ul className="mt-2 list-disc pl-5">
                     <li>Send cancel signals for active executions</li>
                     <li>
                       Clean up orphaned executions ({">"}24h old) directly in DB
