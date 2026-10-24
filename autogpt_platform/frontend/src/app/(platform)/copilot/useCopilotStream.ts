@@ -696,7 +696,6 @@ export function useCopilotStream({
     },
     isUserStoppingRef,
     setIsUserStopping,
-    messages: rawMessages,
   });
 
   // Silent-stall watchdog: triggers the reconnect cascade if the stream
