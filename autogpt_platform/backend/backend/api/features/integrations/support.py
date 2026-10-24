@@ -91,9 +91,15 @@ def find_connectable(name: str) -> ConnectableService | None:
     return _match(name, connectable_services())
 
 
-def unsupported_services(names: Iterable[str]) -> list[str]:
-    """The names in ``names`` we cannot connect, de-duplicated, in order."""
-    services = connectable_services()
+def unsupported_services(
+    names: Iterable[str], services: list[ConnectableService] | None = None
+) -> list[str]:
+    """The names in ``names`` we cannot connect, de-duplicated, in order.
+
+    Pass ``services`` when labelling many names at once, so the registry is
+    read once rather than per call.
+    """
+    services = connectable_services() if services is None else services
     missing: dict[str, str] = {}
     for name in names:
         label = name.strip()
@@ -103,14 +109,26 @@ def unsupported_services(names: Iterable[str]) -> list[str]:
     return list(missing.values())
 
 
-def mentioned_gaps(text: str) -> list[str]:
+def mentioned_gaps(
+    text: str, services: list[ConnectableService] | None = None
+) -> list[str]:
     """Known unsupported tools that ``text`` names as whole words."""
-    mentioned = [
+    return unsupported_services(_known_gaps_in(text), services)
+
+
+def canonical_name(name: str) -> str:
+    """One spelling per known tool ("Shopify store" is Shopify), so asks for
+    the same tool land together; anything else is kept as written."""
+    known = _known_gaps_in(name)
+    return known[0] if known else " ".join(name.split())
+
+
+def _known_gaps_in(text: str) -> list[str]:
+    return [
         name
         for name in KNOWN_GAPS
         if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)
     ]
-    return unsupported_services(mentioned)
 
 
 def _match(name: str, services: list[ConnectableService]) -> ConnectableService | None:

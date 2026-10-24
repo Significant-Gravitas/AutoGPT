@@ -328,3 +328,21 @@ def test_the_label_is_never_stored(rows: RowStore, registry: None):
         ["printify"],
     ]
     assert all("unsupported" not in item for item in stored)
+
+
+def test_a_page_of_tasks_reads_the_registry_once(rows: RowStore, mocker: MockerFixture):
+    """Labels for the whole list come from one read of the registry, not one
+    per task or per name."""
+    read = mocker.patch.object(
+        support,
+        "connectable_services",
+        return_value=[support.ConnectableService(key="printify", name="Printify")],
+    )
+    rows.put(
+        STICKER_SHOP
+        + [{"title": "Sync Shopify orders", "prompt": "Pull my Shopify orders."}]
+    )
+
+    client.get(URL)
+
+    assert read.call_count == 1

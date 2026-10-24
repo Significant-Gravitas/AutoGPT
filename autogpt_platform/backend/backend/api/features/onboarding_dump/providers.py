@@ -9,14 +9,10 @@ two can never drift onto different views of the registry.
 import logging
 from typing import TypeVar
 
+from backend.api.features.integrations import support
 from backend.api.features.integrations.models import (
     get_all_provider_names,
     get_provider_description,
-)
-from backend.api.features.integrations.support import (
-    connectable_services,
-    mentioned_gaps,
-    unsupported_services,
 )
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
 from backend.blocks import load_all_blocks
@@ -57,7 +53,7 @@ def connectable_lines() -> str:
     are in.
     """
     return provider_lines(
-        {service.key: service.description for service in connectable_services()}
+        {service.key: service.description for service in support.connectable_services()}
     )
 
 
@@ -67,10 +63,11 @@ def label_support(prompts: list[PromptT]) -> list[PromptT]:
     A row stored before prompts recorded their integrations is read from its
     text instead, for the tools we know we have no connector for.
     """
+    services = support.connectable_services()
     for prompt in prompts:
         prompt.unsupported = (
-            unsupported_services(prompt.integrations)
+            support.unsupported_services(prompt.integrations, services)
             if prompt.integrations is not None
-            else mentioned_gaps(f"{prompt.title} {prompt.prompt}")
+            else support.mentioned_gaps(f"{prompt.title} {prompt.prompt}", services)
         )
     return prompts

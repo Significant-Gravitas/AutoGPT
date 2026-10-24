@@ -11,7 +11,7 @@ import logging
 import uuid
 from typing import Any
 
-from backend.api.features.integrations.support import find_connectable
+from backend.api.features.integrations.support import canonical_name, find_connectable
 from backend.copilot.model import ChatSession
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -77,7 +77,7 @@ class RequestIntegrationTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
-        name = " ".join((service or "").split())[:MAX_SERVICE_CHARS]
+        name = canonical_name(service or "")[:MAX_SERVICE_CHARS]
         if not name:
             return ErrorResponse(
                 message="Name the service the user wants.", session_id=session_id

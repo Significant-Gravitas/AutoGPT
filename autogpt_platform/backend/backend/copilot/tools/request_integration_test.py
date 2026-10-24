@@ -146,6 +146,24 @@ async def test_a_failed_lookup_never_files_a_second_request(service_lock):
     file.assert_not_awaited()
 
 
+async def test_one_tool_written_two_ways_joins_one_request(service_lock):
+    with (
+        patch.object(
+            request_integration, "find_feature_request", AsyncMock(return_value=None)
+        ) as find,
+        patch.object(
+            request_integration,
+            "file_feature_request",
+            AsyncMock(return_value=_filed(is_new=True)),
+        ),
+    ):
+        response = await _run(service="Shopify store", use_case="")
+
+    assert isinstance(response, IntegrationRequestResponse)
+    assert response.service == "Shopify"
+    find.assert_awaited_once_with("Integration request: Shopify")
+
+
 async def test_one_service_is_looked_up_and_filed_under_its_lock(service_lock):
     acquire, release, lock = service_lock
     with (

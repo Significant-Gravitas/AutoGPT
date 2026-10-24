@@ -119,17 +119,20 @@ async def test_search_catalog_matches_singular_and_plural_names():
         {"id": 400, "title": "Kiss-Cut Stickers"},
         {"id": 5, "title": "Unisex Heavy Cotton Tee"},
     ]
-    client, _ = _client(_response(200, blueprints))
-    with patch("backend.blocks.printify.catalog.PrintifyClient", return_value=client):
-        outputs = [
-            output
-            async for output in block.run(
-                block.Input(credentials=TEST_CREDENTIALS_INPUT, query="stickers"),
-                credentials=TEST_CREDENTIALS,
-            )
-        ]
+    for query in ("stickers", "sticker", "Kiss-Cut sticker"):
+        client, _ = _client(_response(200, blueprints))
+        with patch(
+            "backend.blocks.printify.catalog.PrintifyClient", return_value=client
+        ):
+            outputs = [
+                output
+                async for output in block.run(
+                    block.Input(credentials=TEST_CREDENTIALS_INPUT, query=query),
+                    credentials=TEST_CREDENTIALS,
+                )
+            ]
 
-    assert [b.id for b in outputs[0][1]] == [400]
+        assert [b.id for b in outputs[0][1]] == [400], query
 
 
 async def test_upload_block_sends_a_file_as_base64_and_a_url_as_is():
