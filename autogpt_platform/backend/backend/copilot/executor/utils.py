@@ -727,7 +727,15 @@ async def dispatch_turn(
     finally:
         if not committed:
             if admitted_here:
-                await release_turn(envelope)
+                try:
+                    await release_turn(envelope)
+                except BaseException:
+                    # Same rule as the meta cleanup below: never mask the
+                    # original error, and never skip the rest of the cleanup.
+                    logger.exception(
+                        "dispatch_turn: tree release failed for session=%s",
+                        session_id,
+                    )
             try:
                 await stream_registry.delete_session_meta(session_id)
             except BaseException:
