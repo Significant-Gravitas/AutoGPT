@@ -828,7 +828,11 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
         />,
       );
 
-      expect(screen.getByText("You approved hiring Maya")).toBeDefined();
+      expect(
+        screen.getByText(
+          readOnly ? "Approved hiring Maya" : "You approved hiring Maya",
+        ),
+      ).toBeDefined();
       expect(screen.queryByTestId("queue-badge") !== null).toBe(shown);
     },
   );

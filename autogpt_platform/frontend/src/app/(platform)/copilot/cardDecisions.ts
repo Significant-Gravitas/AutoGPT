@@ -62,10 +62,13 @@ export function getCardDecisions(
 ): CardDecision[] | null {
   if (message.role !== "user") return null;
   if (message.parts.some((part) => part.type !== "text")) return null;
-  return (
-    decisionsFromMetadata(message.metadata) ??
-    decisionsFromText(messageText(message))
-  );
+  const decisions = message.metadata
+    ? decisionsFromMetadata(message.metadata)
+    : decisionsFromText(messageText(message));
+  // The card always names the change; a line in other words is shown as typed.
+  if (!decisions?.every((decision) => decision.verb && decision.name))
+    return null;
+  return decisions;
 }
 
 function decisionsFromMetadata(metadata: unknown): CardDecision[] | null {
@@ -166,8 +169,11 @@ export function answeredIdsInRows(rows: unknown[]): Set<string> {
 }
 
 // Every decision line in a row, not only a row made of them, as for the gate.
+// A row the server wrote for something else, such as a subtask's prompt, is
+// not the user answering, whatever its text says.
 function rowDecisions(metadata: unknown, text: string): CardDecision[] {
-  return decisionsFromMetadata(metadata) ?? text.split("\n").flatMap(parseLine);
+  if (metadata) return decisionsFromMetadata(metadata) ?? [];
+  return text.split("\n").flatMap(parseLine);
 }
 
 const GERUNDS: Record<DecisionVerb, string> = {
@@ -186,7 +192,10 @@ interface NoteGroup {
 
 /** One sentence per run of the same answer to the same kind of change:
  *  "You approved hiring Maya and Fiona", then "You declined creating Ada". */
-export function decisionNotes(decisions: CardDecision[]) {
+export function decisionNotes(
+  decisions: CardDecision[],
+  { readOnly = false }: { readOnly?: boolean } = {},
+) {
   const groups: NoteGroup[] = [];
   for (const { verdict, verb, name } of decisions) {
     const named = verb !== null && name !== null;
@@ -203,11 +212,17 @@ export function decisionNotes(decisions: CardDecision[]) {
   }
   return groups.map((group) => ({
     verdict: group.verdict,
-    text: noteText(group),
+    text: noteText(group, readOnly),
   }));
 }
 
-function noteText({ verdict, verb, names }: NoteGroup): string {
-  if (!verb || !names.length) return `You ${verdict} a proposed change`;
-  return `You ${verdict} ${GERUNDS[verb]} ${NAMES.format(names)}`;
+// A shared chat is read by someone else, so it does not say "you".
+function noteText(
+  { verdict, verb, names }: NoteGroup,
+  readOnly: boolean,
+): string {
+  const answer = readOnly
+    ? `${verdict[0].toUpperCase()}${verdict.slice(1)}`
+    : `You ${verdict}`;
+  return verb ? `${answer} ${GERUNDS[verb]} ${NAMES.format(names)}` : answer;
 }

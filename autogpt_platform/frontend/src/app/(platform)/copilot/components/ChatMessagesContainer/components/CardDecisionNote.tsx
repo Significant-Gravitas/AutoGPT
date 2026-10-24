@@ -8,6 +8,8 @@ interface Props {
   messageID: string;
   decisions: CardDecision[];
   sessionID?: string | null;
+  /** A shared chat: the note does not speak to the reader as "you". */
+  readOnly: boolean;
   /** The decision is the latest message of a queued session: its turn waits
    *  for a free slot and can still be cancelled, as on any user row. */
   showQueueBadge: boolean;
@@ -19,6 +21,7 @@ export function CardDecisionNote({
   messageID,
   decisions,
   sessionID,
+  readOnly,
   showQueueBadge,
 }: Props) {
   return (
@@ -26,7 +29,7 @@ export function CardDecisionNote({
       data-message-id={messageID}
       className="flex flex-col items-center gap-0.5 py-1"
     >
-      {decisionNotes(decisions).map((note, i) => (
+      {decisionNotes(decisions, { readOnly }).map((note, i) => (
         <Text
           key={i}
           variant="small"

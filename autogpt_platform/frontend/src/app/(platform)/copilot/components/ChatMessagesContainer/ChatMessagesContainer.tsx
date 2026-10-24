@@ -463,6 +463,7 @@ export function ChatMessagesContainer({
           messageID={message.id}
           decisions={cardDecisions}
           sessionID={sessionID}
+          readOnly={readOnly}
           showQueueBadge={
             !readOnly &&
             sessionChatStatus === "queued" &&

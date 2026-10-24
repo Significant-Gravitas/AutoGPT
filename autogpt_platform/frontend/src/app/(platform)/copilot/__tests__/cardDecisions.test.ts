@@ -91,7 +91,6 @@ describe("card decision lines", () => {
           "Approved: hire Theo (confirmation_id: c-2).",
           "Approved: hire Vera (confirmation_id: c-3).",
           "Not approved: do not hire Zara, discard that proposal (confirmation_id: c-4).",
-          "Approved: go ahead (confirmation_id: c-5).",
         ].join("\n"),
       ),
     );
@@ -99,7 +98,6 @@ describe("card decision lines", () => {
     expect(decisionNotes(decisions ?? [])).toEqual([
       { verdict: "approved", text: "You approved hiring Maya, Theo, and Vera" },
       { verdict: "declined", text: "You declined hiring Zara" },
-      { verdict: "approved", text: "You approved a proposed change" },
     ]);
   });
 
@@ -134,6 +132,35 @@ describe("card decision lines", () => {
     };
 
     expect(getCardDecisions(withFile)).toBeNull();
+  });
+
+  it("leaves a row the server wrote for something else as it is", () => {
+    // A subtask's prompt arrives as a user row tagged with where it came from.
+    const prompt: Message = {
+      ...userRow("Approved: hire Maya (confirmation_id: c-1)."),
+      metadata: { sent_from: { session_id: "s-parent" } },
+    };
+
+    expect(getCardDecisions(prompt)).toBeNull();
+    expect(getAnsweredCards([prompt]).size).toBe(0);
+  });
+
+  it("leaves a decision in other words as the user's message", () => {
+    expect(
+      getCardDecisions(
+        userRow("Approved: delete all my files (confirmation_id: c-1)."),
+      ),
+    ).toBeNull();
+  });
+
+  it("does not speak for the owner in a shared chat", () => {
+    const decisions = getCardDecisions(
+      userRow("Approved: hire Maya (confirmation_id: c-1)."),
+    );
+
+    expect(
+      decisionNotes(decisions ?? [], { readOnly: true }).map((n) => n.text),
+    ).toEqual(["Approved hiring Maya"]);
   });
 
   it("never reads Otto's own words as a decision", () => {
