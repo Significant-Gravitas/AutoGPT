@@ -1,5 +1,6 @@
 """Etsy OAuth 2.0 (authorization code with PKCE)."""
 
+import logging
 import time
 from typing import ClassVar
 from urllib.parse import urlencode
@@ -7,9 +8,10 @@ from urllib.parse import urlencode
 from pydantic import BaseModel
 
 from backend.sdk import BaseOAuthHandler, OAuth2Credentials, ProviderName, SecretStr
-from backend.util.request import HTTPClientError, HTTPServerError
 
 from ._api import EtsyClient, api_key_header, raise_for_etsy_error
+
+logger = logging.getLogger(__name__)
 
 AUTHORIZE_URL = "https://www.etsy.com/oauth/connect"
 TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token"
@@ -120,6 +122,8 @@ class EtsyOAuthHandler(BaseOAuthHandler):
         client = EtsyClient(credentials, self.client_id, self.client_secret)
         try:
             return (await client.get_my_shop()).shop_name
-        except (HTTPClientError, HTTPServerError):
-            # A nicer account label is not worth failing the sign-in over.
+        except Exception as e:
+            # Only a label: the code is spent by now, so no failure here
+            # (HTTP, transport or an odd reply) may cost the user the sign-in.
+            logger.warning(f"Etsy shop name lookup failed: {e}")
             return None

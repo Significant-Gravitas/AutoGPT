@@ -328,3 +328,53 @@ async def test_a_malformed_success_body_is_a_validation_error(call):
 
     with pytest.raises(ValidationError):
         await call(client)
+
+
+async def test_processing_profiles_are_listed_for_physical_listings():
+    profiles = {
+        "count": 1,
+        "results": [
+            {
+                "shop_id": 42,
+                "readiness_state_id": 7001,
+                "readiness_state": "made_to_order",
+                "min_processing_days": 1,
+                "max_processing_days": 3,
+                "processing_days_display_label": "1-3 days",
+            }
+        ],
+    }
+    client, http = _client(_response(200, profiles))
+
+    result = await client.list_processing_profiles(42)
+
+    assert http.request.await_args.args[1].endswith(
+        "/shops/42/readiness-state-definitions"
+    )
+    assert [(p.readiness_state_id, p.label) for p in result] == [(7001, "1-3 days")]
+
+
+def test_a_processing_profile_is_sent_when_given():
+    assert draft_listing_form(_draft(readiness_state_id=7001))[
+        "readiness_state_id"
+    ] == ("7001")
+    assert "readiness_state_id" not in draft_listing_form(_draft())
+
+
+async def test_a_shop_name_that_cannot_be_read_never_fails_the_sign_in():
+    """The code is single-use and already spent: a bad shop reply may cost
+    the account its label, never the connection."""
+    tokens = {
+        "access_token": "7.access",
+        "refresh_token": "7.refresh",
+        "expires_in": 3600,
+    }
+    http = _http(_response(200, tokens))
+    http.request = AsyncMock(return_value=_response(200, ["not", "an", "object"]))
+    with patch.object(EtsyClient, "raw_requests", return_value=http):
+        credentials = await _handler().exchange_code_for_tokens(
+            "code-1", ["shops_r"], "verifier-1"
+        )
+
+    assert credentials.access_token.get_secret_value() == "7.access"
+    assert credentials.username is None

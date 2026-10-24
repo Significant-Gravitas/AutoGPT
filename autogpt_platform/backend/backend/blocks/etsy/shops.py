@@ -1,6 +1,7 @@
 from backend.blocks.etsy._api import (
     EtsyCategory,
     EtsyClient,
+    EtsyProcessingProfile,
     EtsyShippingProfile,
     EtsyShop,
 )
@@ -31,6 +32,13 @@ _TEST_SHOP = EtsyShop(
     currency_code="USD",
 )
 _TEST_PROFILES = [EtsyShippingProfile(shipping_profile_id=2001, title="Stickers")]
+_TEST_PROCESSING = [
+    EtsyProcessingProfile(
+        readiness_state_id=7001,
+        readiness_state="made_to_order",
+        processing_days_display_label="1-3 days",
+    )
+]
 _TEST_CATEGORIES = [
     EtsyCategory(id=1, name="Paper & Party Supplies", path="Paper & Party Supplies"),
     EtsyCategory(
@@ -56,13 +64,17 @@ class EtsyGetMyShopBlock(Block):
             description="Shipping profiles; physical listings need one",
             default_factory=list,
         )
+        processing_profiles: list[EtsyProcessingProfile] = SchemaField(
+            description="Processing times a physical listing can use",
+            default_factory=list,
+        )
 
     def __init__(self):
         super().__init__(
             id="11fe7225-3d92-46e7-9ba5-a9bbc5546db3",
             description=(
                 "Get your connected Etsy shop, its shop id and its shipping "
-                "profiles, which every listing block needs."
+                "and processing profiles, which the listing blocks need."
             ),
             categories={BlockCategory.MARKETING, BlockCategory.DATA},
             input_schema=EtsyGetMyShopBlock.Input,
@@ -73,10 +85,14 @@ class EtsyGetMyShopBlock(Block):
                 ("shop", _TEST_SHOP),
                 ("shop_id", _TEST_SHOP.shop_id),
                 ("shipping_profiles", _TEST_PROFILES),
+                ("processing_profiles", _TEST_PROCESSING),
             ],
             test_mock={
                 "get_shop": lambda credentials: _TEST_SHOP,
                 "list_shipping_profiles": lambda credentials, shop_id: _TEST_PROFILES,
+                "list_processing_profiles": lambda credentials, shop_id: (
+                    _TEST_PROCESSING
+                ),
             },
             effect=BlockEffect.READ,
             disabled=not ETSY_OAUTH_IS_CONFIGURED,
@@ -92,6 +108,12 @@ class EtsyGetMyShopBlock(Block):
     ) -> list[EtsyShippingProfile]:
         return await EtsyClient(credentials).list_shipping_profiles(shop_id)
 
+    @staticmethod
+    async def list_processing_profiles(
+        credentials: EtsyCredentials, shop_id: int
+    ) -> list[EtsyProcessingProfile]:
+        return await EtsyClient(credentials).list_processing_profiles(shop_id)
+
     async def run(
         self, input_data: Input, *, credentials: EtsyCredentials, **kwargs
     ) -> BlockOutput:
@@ -99,6 +121,9 @@ class EtsyGetMyShopBlock(Block):
         yield "shop", shop
         yield "shop_id", shop.shop_id
         yield "shipping_profiles", await self.list_shipping_profiles(
+            credentials, shop.shop_id
+        )
+        yield "processing_profiles", await self.list_processing_profiles(
             credentials, shop.shop_id
         )
 

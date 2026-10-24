@@ -43,6 +43,15 @@ class EtsyShippingProfile(BaseModel):
     title: str = ""
 
 
+class EtsyProcessingProfile(BaseModel):
+    """How long the shop takes to make or ship an item (Etsy's "readiness
+    state" definitions)."""
+
+    readiness_state_id: int
+    readiness_state: str = ""
+    label: str = Field(default="", alias="processing_days_display_label")
+
+
 class EtsyCategory(BaseModel):
     id: int
     name: str
@@ -114,6 +123,12 @@ class EtsyClient:
     async def list_shipping_profiles(self, shop_id: int) -> list[EtsyShippingProfile]:
         data = await self._call("GET", f"/shops/{shop_id}/shipping-profiles")
         return _ShippingProfilePage.model_validate(data).results
+
+    async def list_processing_profiles(
+        self, shop_id: int
+    ) -> list[EtsyProcessingProfile]:
+        data = await self._call("GET", f"/shops/{shop_id}/readiness-state-definitions")
+        return _ProcessingProfilePage.model_validate(data).results
 
     async def list_categories(self) -> list[EtsyCategory]:
         """Every seller category, flattened, each with its full path."""
@@ -244,6 +259,10 @@ class _TaxonomyNode(BaseModel):
 # malformed reply a validation error rather than a KeyError.
 class _ShippingProfilePage(BaseModel):
     results: list[EtsyShippingProfile]
+
+
+class _ProcessingProfilePage(BaseModel):
+    results: list[EtsyProcessingProfile]
 
 
 class _TaxonomyPage(BaseModel):

@@ -62,6 +62,14 @@ class EtsyCreateDraftListingBlock(Block):
             description="Shipping profile from Get My Etsy Shop; needed for physical items",
             default=0,
         )
+        readiness_state_id: int = SchemaField(
+            description=(
+                "Processing profile from Get My Etsy Shop (how long it takes "
+                "to make); 0 uses the shop's default"
+            ),
+            default=0,
+            advanced=True,
+        )
         listing_type: Literal["physical", "download"] = SchemaField(
             description="A physical item, or a digital download", default="physical"
         )
@@ -157,6 +165,8 @@ def draft_listing_form(data: EtsyCreateDraftListingBlock.Input) -> dict[str, str
         form["tags"] = csv(data.tags)
     if data.shipping_profile_id:
         form["shipping_profile_id"] = str(data.shipping_profile_id)
+    if data.readiness_state_id:
+        form["readiness_state_id"] = str(data.readiness_state_id)
     return form
 
 
