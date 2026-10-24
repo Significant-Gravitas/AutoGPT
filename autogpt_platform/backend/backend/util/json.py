@@ -3,6 +3,7 @@ import logging
 import math
 import re
 from collections import OrderedDict
+from collections.abc import Mapping
 from copy import deepcopy
 from enum import Enum
 from threading import Lock
@@ -295,17 +296,26 @@ def sanitize_json(data: Any) -> Any:
         basic_result = to_dict(data)
         return to_dict(basic_result, custom_encoder={str: sanitize_string})
     except Exception as e:
-        # Log the failure and fall back to string representation
+        # JSON columns expect an object or array; a repr string would later fail
+        # GraphInput validation and poison execution reads. Preserve the error
+        # while returning an empty, type-compatible container for these inputs.
         logger.error(
-            "SafeJson fallback to string representation due to serialization error: %s (%s). "
-            "Data type: %s",
+            "SafeJson fallback due to serialization error: %s (%s). Data type: %s",
             type(e).__name__,
             truncate(str(e), 200),
             type(data).__name__,
         )
-
-        # Ultimate fallback: convert to string representation and sanitize
-        return sanitize_string(str(data))
+        # A dict at the top level means the original value was object-like;
+        # list/tuple/set means it was array-like. JSON-convertible scalar types
+        # keep the existing scalar string fallback; anything else becomes {} so
+        # every JSON column value remains a valid JSON object or array.
+        if isinstance(data, Mapping):
+            return {}
+        if isinstance(data, (list, tuple, set)):
+            return []
+        if isinstance(data, (str, int, float, bool)) or data is None:
+            return sanitize_string(str(data))
+        return {}
 
 
 class SafeJson(Json):
