@@ -1,6 +1,7 @@
 import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   TabsLine,
   TabsLineContent,
@@ -83,12 +84,16 @@ export function WalletRefill() {
 
   return (
     <div className="mx-1 border-b border-border-strong">
-      <p className="mx-0 mt-4 font-sans text-xs font-medium text-accent-strong">
+      <Text
+        variant="small-medium"
+        as="p"
+        className="mx-0 mt-4 leading-4 text-accent-strong"
+      >
         Add credits to your balance
-      </p>
-      <p className="mx-0 my-1 font-sans text-xs font-normal text-foreground-tertiary">
+      </Text>
+      <Text variant="small" as="p" tone="muted" className="mx-0 my-1 leading-4">
         Choose a one-time top-up or set up automatic refills
-      </p>
+      </Text>
       <TabsLine
         variant="pill"
         defaultValue="top-up"
@@ -100,21 +105,41 @@ export function WalletRefill() {
         </TabsLineList>
         <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-border-base">
           <TabsLineContent value="top-up" className="flex flex-col">
-            <div className="mt-2 justify-start font-sans text-sm font-medium leading-snug text-foreground-strong">
+            <Text
+              variant="body-medium"
+              as="div"
+              tone="primary"
+              className="mt-2 justify-start leading-snug"
+            >
               One-time top-up
-            </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-foreground-tertiary">
+            </Text>
+            <Text
+              variant="small"
+              as="div"
+              tone="muted"
+              className="mt-1 justify-start leading-tight"
+            >
               Enter an amount (min. $5) and add credits instantly.
-            </div>
+            </Text>
             <TopUpForm submitLabel="Top up" size="small" />
           </TabsLineContent>
           <TabsLineContent value="auto-refill" className="flex flex-col">
-            <div className="justify-start font-sans text-sm font-medium leading-snug text-foreground-strong">
+            <Text
+              variant="body-medium"
+              as="div"
+              tone="primary"
+              className="justify-start leading-snug"
+            >
               Auto-refill
-            </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-foreground-tertiary">
+            </Text>
+            <Text
+              variant="small"
+              as="div"
+              tone="muted"
+              className="mt-1 justify-start leading-tight"
+            >
               Choose a one-time top-up or set up automatic refills.
-            </div>
+            </Text>
 
             <FormProvider {...autoRefillForm}>
               <form
@@ -166,7 +191,11 @@ export function WalletRefill() {
               </form>
             </FormProvider>
           </TabsLineContent>
-          <div className="mb-3 justify-start font-sans text-xs font-normal leading-tight">
+          <Text
+            variant="small"
+            as="div"
+            className="mb-3 justify-start leading-tight text-inherit"
+          >
             <span className="text-foreground-tertiary">
               To update your billing details, head to{" "}
             </span>
@@ -176,7 +205,7 @@ export function WalletRefill() {
             >
               Billing settings
             </Link>
-          </div>
+          </Text>
         </div>
       </TabsLine>
     </div>

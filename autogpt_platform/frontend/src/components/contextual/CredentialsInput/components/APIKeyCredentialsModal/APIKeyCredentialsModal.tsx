@@ -2,6 +2,7 @@ import { FormProvider } from "react-hook-form";
 import { FormDescription, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   BlockIOCredentialsSubSchema,
@@ -54,9 +55,14 @@ export function APIKeyCredentialsModal({
     >
       <Dialog.Content>
         {schemaDescription && (
-          <p className="mb-4 text-sm text-foreground-secondary">
+          <Text
+            variant="body"
+            as="p"
+            tone="secondary"
+            className="mb-4 leading-5"
+          >
             {schemaDescription}
-          </p>
+          </Text>
         )}
 
         <FormProvider {...form}>
@@ -96,7 +102,13 @@ export function APIKeyCredentialsModal({
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>
-                              <code className="text-xs font-bold">{s}</code>
+                              <Text
+                                variant="small"
+                                as="code"
+                                className="font-mono font-bold leading-4 text-inherit"
+                              >
+                                {s}
+                              </Text>
                               {i < a.length - 1 && ", "}
                             </span>
                           ))}

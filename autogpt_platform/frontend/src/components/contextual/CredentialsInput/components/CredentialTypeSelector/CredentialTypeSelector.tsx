@@ -4,6 +4,7 @@ import { FormProvider } from "react-hook-form";
 import { FormDescription, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   TabsLine,
@@ -143,9 +144,9 @@ type OAuthTabContentProps = {
 function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-foreground-secondary">
+      <Text variant="body" as="p" tone="secondary" className="leading-5">
         Sign in with your {providerName} account using OAuth.
-      </p>
+      </Text>
       <Button
         variant="primary"
         size="small"
@@ -199,7 +200,9 @@ function APIKeyTabContent({
   return (
     <div className="space-y-4">
       {schemaDescription && (
-        <p className="text-sm text-foreground-secondary">{schemaDescription}</p>
+        <Text variant="body" as="p" tone="secondary" className="leading-5">
+          {schemaDescription}
+        </Text>
       )}
 
       <FormProvider {...form}>
@@ -235,7 +238,13 @@ function APIKeyTabContent({
                       Required scope(s) for this block:{" "}
                       {schema.credentials_scopes?.map((s, i, a) => (
                         <span key={i}>
-                          <code className="text-xs font-bold">{s}</code>
+                          <Text
+                            variant="small"
+                            as="code"
+                            className="font-mono font-bold leading-4 text-inherit"
+                          >
+                            {s}
+                          </Text>
                           {i < a.length - 1 && ", "}
                         </span>
                       ))}
@@ -289,7 +298,9 @@ function SimpleActionTab({
 }: SimpleActionTabProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-foreground-secondary">{description}</p>
+      <Text variant="body" as="p" tone="secondary" className="leading-5">
+        {description}
+      </Text>
       <Button variant="primary" size="small" onClick={onClick} type="button">
         {buttonLabel}
       </Button>

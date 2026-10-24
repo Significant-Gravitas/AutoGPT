@@ -3,6 +3,7 @@ import { z } from "zod";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
@@ -194,9 +195,14 @@ export function HostScopedCredentialsModal({
     >
       <Dialog.Content>
         {schema.description && (
-          <p className="mb-4 text-sm text-foreground-secondary">
+          <Text
+            variant="body"
+            as="p"
+            tone="secondary"
+            className="mb-4 leading-5"
+          >
             {schema.description}
-          </p>
+          </Text>
         )}
 
         <FormProvider {...form}>

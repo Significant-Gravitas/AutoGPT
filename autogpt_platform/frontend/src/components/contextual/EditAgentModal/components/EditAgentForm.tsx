@@ -153,7 +153,11 @@ export function EditAgentForm({
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="flex items-center gap-2 leading-5 text-textBlack"
+                >
                   <Icon
                     icon={Store01Icon}
                     size={18}
@@ -174,7 +178,7 @@ export function EditAgentForm({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <div className="grid gap-x-4 sm:grid-cols-2">
@@ -242,7 +246,11 @@ export function EditAgentForm({
 
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="flex items-center gap-2 leading-5 text-textBlack"
+                >
                   <Icon
                     icon={Album01Icon}
                     size={18}
@@ -263,7 +271,7 @@ export function EditAgentForm({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <ThumbnailImages
@@ -280,7 +288,11 @@ export function EditAgentForm({
 
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="flex items-center gap-2 leading-5 text-textBlack"
+                >
                   <Icon
                     icon={SparklesIcon}
                     size={18}
@@ -301,7 +313,7 @@ export function EditAgentForm({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <FormField
