@@ -90,7 +90,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
             variant="body-medium"
             as="span"
             className={cn(
-              "line-clamp-1 leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+              "line-clamp-1 text-zinc-800 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(
@@ -101,10 +101,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
         )}
         {description && (
           <Text
-            variant="small"
+            variant="small-lh-5"
             as="span"
             className={cn(
-              "line-clamp-1 leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "line-clamp-1 text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(description, highlightedText)}

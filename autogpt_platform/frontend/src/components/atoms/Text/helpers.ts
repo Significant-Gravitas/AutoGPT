@@ -87,6 +87,12 @@ export const variants = {
   // Keeps the parent's line height, like the raw size it replaced.
   "tiny-inherit":
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem (text-xs leading-5); caption plus leading-5.
+  "small-lh-5":
+    "font-sans text-caption font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem (text-xs leading-5); caption plus leading-5.
+  "small-medium-lh-5":
+    "font-sans text-caption font-medium leading-5 text-foreground-base",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -152,4 +158,6 @@ export const variantElementMap: Record<Variant, As> = {
   "small-semibold-tight": "p",
   "small-mono-bold-tight": "code",
   "tiny-inherit": "span",
+  "small-lh-5": "p",
+  "small-medium-lh-5": "p",
 };

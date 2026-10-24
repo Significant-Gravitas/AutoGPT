@@ -70,7 +70,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             variant="body-medium"
             as="span"
             className={cn(
-              "line-clamp-1 leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+              "line-clamp-1 text-zinc-800 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(title, highlightedText)}
@@ -78,10 +78,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
         <div className="flex items-center space-x-2.5">
           <Text
-            variant="small"
+            variant="small-lh-5"
             as="span"
             className={cn(
-              "truncate leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "truncate text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             By {creator_name}
@@ -90,10 +90,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <span className="font-sans text-zinc-400">•</span>
 
           <Text
-            variant="small"
+            variant="small-lh-5"
             as="span"
             className={cn(
-              "truncate leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "truncate text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             {number_of_runs} runs
@@ -105,9 +105,9 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             onClick={(e) => e.stopPropagation()}
           >
             <Text
-              variant="small-medium"
+              variant="small-medium-lh-5"
               as="span"
-              className="leading-5 text-blue-700 underline"
+              className="text-blue-700 underline"
             >
               Workflow page
             </Text>
