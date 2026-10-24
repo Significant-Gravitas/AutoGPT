@@ -72,13 +72,10 @@ class HireExpertTool(BaseTool):
         return (
             "Propose hiring a ready-made expert from the roster. Never "
             "writes: returns who would join plus a one-time confirmation_id. "
-            "The user sees who would join on a card with Approve and Decline "
-            "buttons, so do not describe them in text — one short line at "
-            "most, then wait. Only after they approve, call "
-            "tool:confirm_expert_change with that id. When the hire is for a "
-            "task the user already described, pass it as handoff_title and "
-            "handoff_task: the card then hires and hands it off in one click, "
-            "so never ask in text whether to hand it over. Use "
+            "The user answers on a card, so do not describe it in text — one "
+            "short line at most, then wait. Only after they approve, call "
+            "tool:confirm_expert_change with the id they approved. For a task "
+            "already in the chat, pass handoff_title + handoff_task. Use "
             "tool:raise_expert when no template fits."
         )
 
@@ -97,20 +94,11 @@ class HireExpertTool(BaseTool):
                 },
                 "handoff_title": {
                     "type": "string",
-                    "description": (
-                        "The task as the user would name it, a few words, "
-                        "e.g. 'the Printify order pipeline'. Shown on the "
-                        "card's button. Required with handoff_task."
-                    ),
+                    "description": "That task in a few words, for the button.",
                 },
                 "handoff_task": {
                     "type": "string",
-                    "description": (
-                        "The task the user already described that this hire "
-                        "is for, written for the expert with the context "
-                        "they need; they cannot see this chat. Omit when "
-                        "there is no concrete task yet."
-                    ),
+                    "description": "The task, written for the expert.",
                 },
             },
             "required": ["template_id"],

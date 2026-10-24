@@ -49,8 +49,7 @@ class ConfirmExpertChangeTool(BaseTool):
         return (
             "Apply a hire_expert or raise_expert proposal after the user has "
             "approved it. Takes only the confirmation_id and creates exactly "
-            "the previewed expert; the id is single-use. A hire's "
-            "handoff_confirmation_id also starts the task it was proposed for."
+            "the previewed expert; the id is single-use."
         )
 
     @property

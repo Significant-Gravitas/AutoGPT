@@ -145,6 +145,6 @@ def _failed_message(
     return (
         f"{name} is hired and on the team, but {task.title} did not reach them: "
         f"{reason} The user already approved handing it over on the card, so "
-        f"start it with tool:delegate_to_expert (expert_id: {expert_id}) and the "
+        f"start it with delegate_to_expert (expert_id: {expert_id}) and the "
         "same task instead of asking them again."
     )
