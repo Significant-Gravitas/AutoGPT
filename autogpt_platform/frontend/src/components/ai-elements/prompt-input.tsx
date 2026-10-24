@@ -261,7 +261,7 @@ export function PromptInputTextarea({
       ref={textareaRef}
       rows={1}
       className={cn(
-        "max-h-48 min-h-0 text-base leading-6 md:text-base",
+        "max-h-48 min-h-0 text-body-lg leading-6 md:text-body-lg md:leading-6",
         className,
       )}
       name="message"

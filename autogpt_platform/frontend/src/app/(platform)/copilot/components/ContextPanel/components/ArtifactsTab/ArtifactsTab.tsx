@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -56,11 +57,16 @@ export function ArtifactsTab({ sessionId }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto px-4 py-8">
       <div className="flex flex-col items-center gap-3">
-        <p className="max-w-[17rem] text-center text-sm text-foreground-tertiary">
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          className="max-w-[17rem] text-center leading-5"
+        >
           {files.length === 0
             ? "Nothing to preview yet."
             : "Pick an artifact from this chat to preview it here."}
-        </p>
+        </Text>
         <Button
           as="NextLink"
           href="/artifacts"
