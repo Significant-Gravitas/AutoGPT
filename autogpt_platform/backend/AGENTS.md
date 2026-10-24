@@ -92,7 +92,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **Pin the clock for code keyed to a time window** (a rate-limit minute, a daily counter), set mid-window, because a run that crosses the boundary splits the test's calls across two windows.
 - **Never patch `time.sleep`, `asyncio.sleep`, `time.time` or `time.monotonic` on the shared module**, including through `backend.x.y.asyncio.sleep` when `y` does `import asyncio`; patch a name the module bound itself (`from asyncio import sleep`) or inject the clock, because the stub reaches every coroutine in the event loop. `backend/util/architecture_test.py` refuses new ones.
 - **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`.
-- **Drive a concurrency test's interleaving with a barrier**, not `asyncio.gather` alone, which switches tasks only at I/O and may never interleave where the race is.
+- **Test a race by forcing the bad order** — to prove two concurrent calls can't both pass a check-then-act (both read "unclaimed", then both claim), patch the call the check makes so each task then waits on a shared `asyncio.Barrier(2)` before acting, with a timeout, since correct code blocks the second task. `asyncio.gather` alone switches tasks only where they await, so one task can check and act before the other checks, and the test passes with the bug still there.
 
 ### Test-Driven Development (TDD)
 
