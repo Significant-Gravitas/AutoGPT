@@ -32,6 +32,11 @@ defaults:
 
 jobs:
   serve-agent-protocol:
+    name: serve-agent-protocol${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

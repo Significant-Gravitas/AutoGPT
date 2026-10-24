@@ -58,7 +58,7 @@ jobs:
         run: bash .github/scripts/platform-single-container-publish.sh authorize
 
   build-and-scan:
-    name: Build, smoke, and scan (${{ matrix.platform }})
+    name: Build, smoke, and scan (${{ matrix.platform }})${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
     permissions:
       contents: read
       packages: write
@@ -67,6 +67,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
+        platform: [linux/amd64, linux/arm64]
         include:
           - platform: linux/amd64
             runner: ubuntu-24.04
@@ -288,7 +290,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: platform-single-container-ci-${{ matrix.suffix }}
+          name: platform-single-container-ci-${{ matrix.suffix }}-copy-${{ matrix.test-copy }}
           path: ${{ runner.temp }}/platform-single-container-results
           if-no-files-found: error
           retention-days: 7

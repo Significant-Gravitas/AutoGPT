@@ -28,9 +28,14 @@ jobs:
   # dependencies exactly and cannot share an environment with the backend.
   # Pure unit and loopback tests: no database or external services needed.
   test:
+    name: test${{ github.event_name == 'pull_request' && format(' (swap proxy, copy {0}/3)', matrix.test-copy) || '' }}
     permissions:
       contents: read
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -95,3 +100,11 @@ jobs:
           python ../../.github/scripts/validate_junit.py --synthesize-invalid
           --require-no-skips
           junit-swap-proxy.xml
+
+      - name: Upload test report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: swap-proxy-test-report-copy-${{ matrix.test-copy }}
+          path: autogpt_platform/swap_proxy/junit-swap-proxy.xml
+          if-no-files-found: error
