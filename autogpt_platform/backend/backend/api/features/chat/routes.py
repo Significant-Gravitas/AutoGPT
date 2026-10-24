@@ -52,10 +52,10 @@ from backend.copilot.expert_kickoff import (
 )
 from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.held_follow_ups import (
+    follow_up_state,
     held_follow_up_reason,
-    holds_follow_up,
     restore_held_follow_up,
-    take_held_follow_up,
+    take_follow_up,
 )
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
@@ -419,6 +419,17 @@ class StreamChatRequest(BaseModel):
             "guarantees that."
         ),
     )
+    resend_pending_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Id of a follow-up the last turn left unread (from GET "
+            "/messages/pending) that this send resends. The server takes that "
+            "very message off the queue and runs it as a turn, keeping its "
+            "files, page and provenance; if a turn has read it meanwhile, the "
+            "send is answered as queued and nothing runs twice."
+        ),
+    )
     expert_kickoff: bool = Field(
         default=False,
         description=(
@@ -451,6 +462,11 @@ class QueuePendingMessageRequest(BaseModel):
     )
 
 
+class PendingMessageItem(BaseModel):
+    id: str
+    content: str
+
+
 class PeekPendingMessagesResponse(BaseModel):
     """Response for the pending-message peek (GET) endpoint.
 
@@ -462,6 +478,11 @@ class PeekPendingMessagesResponse(BaseModel):
 
     messages: list[str]
     count: int
+    items: list[PendingMessageItem] = Field(
+        default_factory=list,
+        description="The same messages with their ids, in queue order; a "
+        "Retry names the one it resends by its id.",
+    )
     held_reason: FollowUpHeldReason | None = Field(
         default=None,
         description="Set when the turn that should have read these messages "
@@ -1822,17 +1843,6 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
-def _may_resend_held(request: StreamChatRequest) -> bool:
-    """Retry resends a held follow-up as text alone. A send with its own files
-    or page is new, even when its words match a held one."""
-    return (
-        request.is_user_message
-        and not request.file_ids
-        and not request.folder_ids
-        and not request.context
-    )
-
-
 async def _carry_resent_payload(
     resent: PendingMessage,
     *,
@@ -2051,9 +2061,11 @@ async def stream_chat_post(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
             )
-        if _may_resend_held(request) and await holds_follow_up(session_id, message):
-            # A held follow-up resent just as another turn starts: that turn
-            # reads the waiting copy, with its files, so a second is not queued.
+        if request.resend_pending_id and (
+            await follow_up_state(session_id, request.resend_pending_id) != "unknown"
+        ):
+            # Still waiting, the running turn reads it; already read, a turn
+            # did. Either way a second copy would have Otto read it twice.
             return _empty_ui_message_stream_response(follow_up_queued=True)
         try:
             await queue_pending_for_http(
@@ -2154,13 +2166,19 @@ async def stream_chat_post(
         if claim == "claimed" and client_message_id is not None:
             await accept_client_message(session_id, client_message_id, claim_owner)
 
-    # A follow-up the last turn left unread, sent again: this turn's start
-    # would read the waiting copy too, so take it out while the send is made.
-    resent = (
-        await take_held_follow_up(session_id, request.message)
-        if _may_resend_held(request) and claim != "accepted"
-        else None
-    )
+    # A follow-up the last turn left unread, resent by its id: take that very
+    # message off the queue so this turn runs it, and the next turn's start
+    # does not read it again. One a turn read meanwhile is not sent twice.
+    resent: PendingMessage | None = None
+    if request.resend_pending_id and claim != "accepted":
+        resent = await take_follow_up(session_id, request.resend_pending_id)
+        if resent is None and (
+            await follow_up_state(session_id, request.resend_pending_id) == "read"
+        ):
+            await release_client_message_claim()
+            return _empty_ui_message_stream_response(follow_up_queued=True)
+        if resent is not None:
+            message = resent.content
 
     turn_context = request.context
     try:
@@ -2539,6 +2557,7 @@ async def get_pending_messages(
     return PeekPendingMessagesResponse(
         messages=[m.content for m in pending],
         count=len(pending),
+        items=[PendingMessageItem(id=m.id, content=m.content) for m in pending],
         held_reason=(
             await _held_reason_while_idle(session_id, pending) if pending else None
         ),

@@ -13,7 +13,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot.model import (
@@ -144,6 +144,12 @@ class QueuePendingMessageResponse(BaseModel):
     buffer_length: int
     max_buffer_length: int
     turn_in_flight: bool
+    pending_id: str | None = Field(
+        default=None,
+        description="Id of the message this push queued, as GET "
+        "/messages/pending lists it; None when nothing was pushed (or for a "
+        "retransmit of a send already queued).",
+    )
 
 
 async def queue_user_message(
@@ -182,6 +188,7 @@ async def queue_user_message(
             buffer_length=new_len or 0,
             max_buffer_length=MAX_PENDING_MESSAGES,
             turn_in_flight=new_len is not None,
+            pending_id=pending.id if new_len is not None else None,
         )
 
     new_len = await push_pending_message(session_id, pending)
@@ -189,6 +196,7 @@ async def queue_user_message(
         buffer_length=new_len,
         max_buffer_length=MAX_PENDING_MESSAGES,
         turn_in_flight=await is_turn_in_flight(session_id),
+        pending_id=pending.id,
     )
 
 

@@ -32,7 +32,8 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     release_client_message,
     stash_pending_for_persist,
-    take_pending_message,
+    take_pending_message_by_id,
+    was_pending_message_read,
 )
 from backend.copilot.tool_image import ToolImage
 
@@ -46,6 +47,7 @@ class _FakeRedis:
         # handle both and our tests exercise both.
         self.lists: dict[str, list[str | bytes]] = {}
         self.strings: dict[str, str] = {}
+        self.sets: dict[str, set[str]] = {}
         self.ttls: dict[str, int | None] = {}
         self.published: list[tuple[str, str]] = []
 
@@ -120,6 +122,15 @@ class _FakeRedis:
         self.strings[key] = value
         self.ttls[key] = ex
         return True
+
+    async def sadd(self, key: str, *members: str) -> int:
+        bucket = self.sets.setdefault(key, set())
+        before = len(bucket)
+        bucket.update(members)
+        return len(bucket) - before
+
+    async def sismember(self, key: str, member: str) -> int:
+        return int(member in self.sets.get(key, set()))
 
     async def get(self, key: str) -> str | None:
         return self.strings.get(key)
@@ -582,21 +593,28 @@ async def test_drain_returns_what_it_popped_even_when_the_held_marker_cannot_be_
 
 
 @pytest.mark.asyncio
-async def test_take_pending_message_removes_only_the_oldest_copy_of_that_text(
+async def test_take_pending_message_by_id_takes_that_message_once(
     fake_redis: _FakeRedis,
 ) -> None:
-    await push_pending_message("sess1", PendingMessage(content="status?"))
-    await push_pending_message("sess1", PendingMessage(content="and Monday"))
-    await push_pending_message("sess1", PendingMessage(content="status?"))
+    await push_pending_message("sess1", PendingMessage(id="a", content="status?"))
+    await push_pending_message("sess1", PendingMessage(id="b", content="status?"))
 
-    taken = await take_pending_message("sess1", "status?")
+    taken = await take_pending_message_by_id("sess1", "b")
 
-    assert taken is not None and taken.content == "status?"
-    assert [m.content for m in await peek_pending_messages("sess1")] == [
-        "and Monday",
-        "status?",
-    ]
-    assert await take_pending_message("sess1", "not queued") is None
+    assert taken is not None and taken.id == "b"
+    assert [m.id for m in await peek_pending_messages("sess1")] == ["a"]
+    assert await take_pending_message_by_id("sess1", "b") is None
+    assert await was_pending_message_read("sess1", "b")
+
+
+@pytest.mark.asyncio
+async def test_a_drain_records_what_it_read(fake_redis: _FakeRedis) -> None:
+    await push_pending_message("sess1", PendingMessage(id="a", content="status?"))
+
+    await drain_pending_messages("sess1")
+
+    assert await was_pending_message_read("sess1", "a")
+    assert not await was_pending_message_read("sess1", "never-queued")
 
 
 @pytest.mark.asyncio

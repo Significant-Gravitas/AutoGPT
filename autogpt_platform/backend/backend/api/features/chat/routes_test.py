@@ -383,14 +383,14 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
-    # No follow-up is held unless a test says so.
-    mocker.patch(
-        "backend.api.features.chat.routes.holds_follow_up",
+    # No resent follow-up waits or was read unless a test says so.
+    mock_follow_up_state = mocker.patch(
+        "backend.api.features.chat.routes.follow_up_state",
         new_callable=AsyncMock,
-        return_value=False,
+        return_value="unknown",
     )
     mock_take_held = mocker.patch(
-        "backend.api.features.chat.routes.take_held_follow_up",
+        "backend.api.features.chat.routes.take_follow_up",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -406,6 +406,7 @@ def _mock_stream_internals(
         cancel_resume=mock_cancel_resume,
         claims=claims,
         take_held=mock_take_held,
+        follow_up_state=mock_follow_up_state,
         restore_held=mock_restore_held,
     )
 
@@ -926,29 +927,165 @@ def test_stream_chat_marks_a_send_queued_at_the_running_cap(
     assert "data-follow-up-queued" not in response.text
 
 
-def test_stream_chat_resend_of_a_held_follow_up_takes_its_waiting_copy(
+def _resend(pending_id: str = "pm-1", **body: object):
+    return client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Status?", "resend_pending_id": pending_id, **body},
+    )
+
+
+def test_stream_chat_resend_runs_the_held_follow_up_it_names(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """A follow-up the last turn left unread, sent again, is read once: its
-    waiting copy comes out before the turn that answers it starts."""
+    """Retry names the follow-up by its id; that very message becomes the
+    turn's, so the next turn's start does not read it again."""
     mocks = _mock_stream_internals(mocker)
-    mocks.take_held.return_value = PendingMessage(content="Status?")
+    mocks.take_held.return_value = PendingMessage(id="pm-1", content="Status?")
+
+    response = _resend()
+
+    assert response.status_code == 200
+    mocks.take_held.assert_awaited_once_with("sess-1", "pm-1")
+    assert mocks.enqueue.await_args.kwargs["message"] == "Status?"
+    mocks.restore_held.assert_not_awaited()
+
+
+def test_stream_chat_resend_of_a_follow_up_another_turn_read_runs_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Between the chip showing and the Retry, another tab's turn (or an
+    approval's) read the follow-up: the resend must not run it a second time."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.take_held.return_value = None
+    mocks.follow_up_state.return_value = "read"
+
+    response = _resend()
+
+    assert response.status_code == 200
+    assert '"type": "data-follow-up-queued"' in response.text
+    mocks.enqueue.assert_not_awaited()
+    assert mocks.claims.keys == set()
+
+
+@pytest.mark.parametrize("turn_in_flight", [False, True])
+def test_stream_chat_resend_after_another_turn_drained_it_runs_nothing(
+    mocker: pytest_mock.MockerFixture, turn_in_flight: bool
+) -> None:
+    """The interleaving the reviewers named, on the real hold logic: the chip
+    shows the follow-up as held, then another tab's turn (or an approval's)
+    reads the queue, then the Retry arrives. Nothing may run it twice, and no
+    copy may be queued, whether that turn has ended or still runs."""
+    from backend.copilot import held_follow_ups
+    from backend.copilot import pending_messages as pm_module
+    from backend.copilot.pending_messages_test import _FakeRedis
+
+    redis = _FakeRedis()
+
+    async def _redis() -> _FakeRedis:
+        return redis
+
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch.object(pm_module, "get_redis_async", _redis)
+    mocker.patch.object(held_follow_ups, "get_redis_async", _redis)
+    mocker.patch(
+        "backend.api.features.chat.routes.follow_up_state",
+        new=held_follow_ups.follow_up_state,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.take_follow_up",
+        new=held_follow_ups.take_follow_up,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=turn_in_flight,
+    )
+    queue_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+
+    async def interleave() -> str:
+        held = PendingMessage(content="Status?")
+        await pm_module.push_pending_message("sess-1", held)
+        await held_follow_ups.hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+        # Another turn reads the queue between the chip and the Retry.
+        await pm_module.drain_pending_messages("sess-1")
+        return held.id
+
+    pending_id = asyncio.run(interleave())
+
+    response = _resend(pending_id)
+
+    assert response.status_code == 200
+    assert '"type": "data-follow-up-queued"' in response.text
+    mocks.enqueue.assert_not_awaited()
+    queue_pending.assert_not_awaited()
+    assert asyncio.run(pm_module.peek_pending_messages("sess-1")) == []
+
+
+def test_stream_chat_resend_of_a_follow_up_that_expired_unread_is_sent(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Never read and no longer queued: sending its text cannot repeat it."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.take_held.return_value = None
+    mocks.follow_up_state.return_value = "unknown"
+
+    response = _resend()
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["message"] == "Status?"
+
+
+@pytest.mark.parametrize("state", ["waiting", "read"])
+def test_stream_chat_resend_while_a_turn_runs_queues_no_second_copy(
+    mocker: pytest_mock.MockerFixture, state: str
+) -> None:
+    """Another tab's turn started before the resend: it reads the waiting
+    copy, or already has, so the resend queues nothing."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.follow_up_state.return_value = state
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    queue_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+
+    response = _resend()
+
+    assert response.status_code == 200
+    assert '"type": "data-follow-up-queued"' in response.text
+    queue_pending.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_a_plain_send_with_the_same_words_never_touches_the_hold(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Only a resend names a held follow-up; matching words are a new message."""
+    mocks = _mock_stream_internals(mocker)
 
     response = client.post("/sessions/sess-1/stream", json={"message": "Status?"})
 
     assert response.status_code == 200
-    mocks.take_held.assert_awaited_once_with("sess-1", "Status?")
+    mocks.take_held.assert_not_awaited()
+    mocks.follow_up_state.assert_not_awaited()
     mocks.enqueue.assert_awaited_once()
-    mocks.restore_held.assert_not_awaited()
 
 
 def test_stream_chat_resend_keeps_the_held_follow_ups_files_and_page(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Retry sends only the text; the files and page the follow-up was sent
+    """Retry sends only the id; the files and page the follow-up was sent
     with stay with it."""
     mocks = _mock_stream_internals(mocker)
     mocks.take_held.return_value = PendingMessage(
+        id="pm-1",
         content="Summarise this",
         file_ids=["file-1"],
         context=PendingMessageContext(url="https://example.org/report"),
@@ -963,9 +1100,7 @@ def test_stream_chat_resend_keeps_the_held_follow_ups_files_and_page(
         return_value="\n\n[files: report.pdf]",
     )
 
-    response = client.post(
-        "/sessions/sess-1/stream", json={"message": "Summarise this"}
-    )
+    response = _resend()
 
     assert response.status_code == 200
     resolve.assert_awaited_once()
@@ -981,90 +1116,13 @@ def test_stream_chat_resend_of_another_sessions_message_keeps_its_provenance(
     mocks = _mock_stream_internals(mocker)
     provenance = {"from_session_id": "sess-maya", "from_expert_id": "maya"}
     mocks.take_held.return_value = PendingMessage(
-        content="Draft is ready for review", metadata=provenance
+        id="pm-1", content="Draft is ready for review", metadata=provenance
     )
 
-    response = client.post(
-        "/sessions/sess-1/stream", json={"message": "Draft is ready for review"}
-    )
+    response = _resend()
 
     assert response.status_code == 200
     assert mocks.enqueue.await_args.kwargs["message_metadata"] == provenance
-
-
-def test_stream_chat_resend_while_a_turn_starts_queues_no_second_copy(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """Another tab's turn started between the client's held check and this
-    resend: that turn reads the waiting copy, so this send adds none."""
-    mocks = _mock_stream_internals(mocker)
-    mocker.patch(
-        "backend.api.features.chat.routes.is_turn_in_flight",
-        new_callable=AsyncMock,
-        return_value=True,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.holds_follow_up",
-        new_callable=AsyncMock,
-        return_value=True,
-    )
-    queue_pending = mocker.patch(
-        "backend.api.features.chat.routes.queue_pending_for_http",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post("/sessions/sess-1/stream", json={"message": "Status?"})
-
-    assert response.status_code == 200
-    assert '"type": "data-follow-up-queued"' in response.text
-    queue_pending.assert_not_awaited()
-    mocks.enqueue.assert_not_awaited()
-
-
-def test_stream_chat_send_with_its_own_page_is_not_taken_for_a_held_one(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """Retry sends text alone; matching words with a page attached are new."""
-    mocks = _mock_stream_internals(mocker)
-
-    response = client.post(
-        "/sessions/sess-1/stream",
-        json={"message": "Status?", "context": {"url": "https://example.org"}},
-    )
-
-    assert response.status_code == 200
-    mocks.take_held.assert_not_awaited()
-    assert mocks.enqueue.await_args.kwargs["context"] == {"url": "https://example.org"}
-
-
-def test_stream_chat_follow_up_with_files_while_a_turn_runs_is_queued(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """A follow-up carrying files is queued even if its words match a held one."""
-    _mock_stream_internals(mocker)
-    mocker.patch(
-        "backend.api.features.chat.routes.is_turn_in_flight",
-        new_callable=AsyncMock,
-        return_value=True,
-    )
-    holds = mocker.patch(
-        "backend.api.features.chat.routes.holds_follow_up",
-        new_callable=AsyncMock,
-        return_value=True,
-    )
-    queue_pending = mocker.patch(
-        "backend.api.features.chat.routes.queue_pending_for_http",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post(
-        "/sessions/sess-1/stream",
-        json={"message": "Status?", "file_ids": ["file-1"]},
-    )
-
-    assert response.status_code == 200
-    holds.assert_not_awaited()
-    queue_pending.assert_awaited_once()
 
 
 def test_stream_chat_refused_resend_puts_the_held_follow_up_back(
@@ -1073,7 +1131,7 @@ def test_stream_chat_refused_resend_puts_the_held_follow_up_back(
     """A resend refused at the in-flight cap never started a turn, so the
     follow-up goes back to wait for the next one."""
     mocks = _mock_stream_internals(mocker)
-    held = PendingMessage(content="Status?")
+    held = PendingMessage(id="pm-1", content="Status?")
     mocks.take_held.return_value = held
     mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
     mocker.patch.object(
@@ -1083,7 +1141,7 @@ def test_stream_chat_refused_resend_puts_the_held_follow_up_back(
         side_effect=chat_routes.turn_queue.InflightCapExceeded(),
     )
 
-    response = client.post("/sessions/sess-1/stream", json={"message": "Status?"})
+    response = _resend()
 
     assert response.status_code == 429
     mocks.restore_held.assert_awaited_once_with("sess-1", held)
@@ -3034,9 +3092,9 @@ def _mock_stream_queue_internals(
     """Mock dependencies for the pending-message queue path."""
     # No held follow-up: a send while a turn runs is simply queued.
     mocker.patch(
-        "backend.api.features.chat.routes.holds_follow_up",
+        "backend.api.features.chat.routes.follow_up_state",
         new_callable=AsyncMock,
-        return_value=False,
+        return_value="unknown",
     )
     if session_exists:
         mock_session = mocker.MagicMock()
@@ -3443,8 +3501,8 @@ def test_get_pending_messages_returns_queued_messages(
         "backend.api.features.chat.routes.peek_pending_messages",
         new_callable=AsyncMock,
         return_value=[
-            MagicMock(content="first message"),
-            MagicMock(content="second message"),
+            PendingMessage(id="pm-1", content="first message"),
+            PendingMessage(id="pm-2", content="second message"),
         ],
     )
 
@@ -3454,6 +3512,10 @@ def test_get_pending_messages_returns_queued_messages(
     data = response.json()
     assert data["count"] == 2
     assert data["messages"] == ["first message", "second message"]
+    assert data["items"] == [
+        {"id": "pm-1", "content": "first message"},
+        {"id": "pm-2", "content": "second message"},
+    ]
     assert data["held_reason"] is None
 
 
@@ -3468,7 +3530,7 @@ def _mock_pending_peek(
     mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
         new_callable=AsyncMock,
-        return_value=[MagicMock(content="What is my team working on?")],
+        return_value=[PendingMessage(id="pm-1", content="What is my team working on?")],
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",

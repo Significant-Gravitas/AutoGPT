@@ -7,12 +7,12 @@ import pytest
 from backend.copilot import held_follow_ups
 from backend.copilot import pending_messages as pm_module
 from backend.copilot.held_follow_ups import (
+    follow_up_state,
     held_follow_up_reason,
     held_reason_for,
     hold_follow_ups_at_turn_end,
-    holds_follow_up,
     restore_held_follow_up,
-    take_held_follow_up,
+    take_follow_up,
 )
 from backend.copilot.pending_messages import (
     PendingMessage,
@@ -35,9 +35,13 @@ def fake_redis(monkeypatch: pytest.MonkeyPatch) -> _FakeRedis:
     return redis
 
 
-async def _queued(*texts: str) -> None:
+async def _queued(*texts: str) -> list[str]:
+    ids = []
     for text in texts:
-        await push_pending_message("sess-1", PendingMessage(content=text))
+        message = PendingMessage(content=text)
+        await push_pending_message("sess-1", message)
+        ids.append(message.id)
+    return ids
 
 
 @pytest.mark.asyncio
@@ -70,17 +74,41 @@ async def test_a_turn_that_read_every_follow_up_clears_an_earlier_hold(
 
 
 @pytest.mark.asyncio
-async def test_a_resend_of_a_held_follow_up_takes_its_waiting_copy_out_once(
+async def test_a_resend_takes_the_follow_up_it_names_once(
     fake_redis: _FakeRedis,
 ) -> None:
-    await _queued("status?", "and Monday")
+    status, monday = await _queued("status?", "and Monday")
     await hold_follow_ups_at_turn_end("sess-1", "turn-1", "stopped")
 
-    taken = await take_held_follow_up("sess-1", "status?")
+    taken = await take_follow_up("sess-1", status)
 
     assert taken is not None and taken.content == "status?"
-    assert [m.content for m in await peek_pending_messages("sess-1")] == ["and Monday"]
-    assert await take_held_follow_up("sess-1", "status?") is None
+    assert [m.id for m in await peek_pending_messages("sess-1")] == [monday]
+    # A second Retry of it finds it gone, and read: it must not run again.
+    assert await take_follow_up("sess-1", status) is None
+    assert await follow_up_state("sess-1", status) == "read"
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_another_turn_read_meanwhile_is_read_not_unknown(
+    fake_redis: _FakeRedis,
+) -> None:
+    [status] = await _queued("status?")
+    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+    assert await follow_up_state("sess-1", status) == "waiting"
+
+    # Another tab's turn (or an approval's) reads the queue before the Retry.
+    await drain_pending_messages("sess-1")
+
+    assert await take_follow_up("sess-1", status) is None
+    assert await follow_up_state("sess-1", status) == "read"
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_that_expired_unread_is_unknown(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await follow_up_state("sess-1", "expired-id") == "unknown"
 
 
 @pytest.mark.asyncio
@@ -89,34 +117,10 @@ async def test_the_next_turns_read_of_the_queue_ends_the_hold(
 ) -> None:
     await _queued("status?")
     await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
-    assert await holds_follow_up("sess-1", "status?")
 
     await drain_pending_messages("sess-1")
-    await _queued("status?")
 
-    # Typed again while that turn runs: queued, not held.
     assert await held_follow_up_reason("sess-1") is None
-    assert not await holds_follow_up("sess-1", "status?")
-    assert await take_held_follow_up("sess-1", "status?") is None
-
-
-@pytest.mark.asyncio
-async def test_a_message_typed_again_after_the_turn_ended_is_not_the_held_one(
-    fake_redis: _FakeRedis,
-) -> None:
-    await _queued("yes")
-    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "ended")
-    # Retried: the only held copy goes out, and its turn reads nothing more.
-    assert await take_held_follow_up("sess-1", "yes") is not None
-
-    # The user types the same word again while that turn runs.
-    await push_pending_message(
-        "sess-1", PendingMessage(content="yes", enqueued_at=time.time() + 60)
-    )
-
-    assert not await holds_follow_up("sess-1", "yes")
-    assert await take_held_follow_up("sess-1", "yes") is None
-    assert [m.content for m in await peek_pending_messages("sess-1")] == ["yes"]
 
 
 @pytest.mark.asyncio
@@ -140,24 +144,14 @@ async def test_a_queue_with_a_message_newer_than_the_hold_is_not_reported_held(
 async def test_a_refused_resend_puts_the_follow_up_back(
     fake_redis: _FakeRedis,
 ) -> None:
-    await _queued("status?")
+    [status] = await _queued("status?")
     await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
-    taken = await take_held_follow_up("sess-1", "status?")
+    taken = await take_follow_up("sess-1", status)
 
     await restore_held_follow_up("sess-1", taken)
 
-    assert [m.content for m in await peek_pending_messages("sess-1")] == ["status?"]
-
-
-@pytest.mark.asyncio
-async def test_a_send_takes_nothing_while_follow_ups_wait_for_a_running_turn(
-    fake_redis: _FakeRedis,
-) -> None:
-    # Queued for a turn that is still running: it will read them itself.
-    await _queued("status?")
-
-    assert await take_held_follow_up("sess-1", "status?") is None
-    assert len(await peek_pending_messages("sess-1")) == 1
+    assert [m.id for m in await peek_pending_messages("sess-1")] == [status]
+    assert await follow_up_state("sess-1", status) == "waiting"
 
 
 @pytest.mark.parametrize(

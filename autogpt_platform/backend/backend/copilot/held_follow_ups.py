@@ -5,15 +5,16 @@ A message typed while a turn runs waits in the session's pending queue
 running turn reads the queue, so a turn that ends first (an error, a Stop, a
 pause at a limit, or simply before it got to them) leaves its follow-ups
 there with nothing left to answer them. The turn's end records that here and
-tells the client, which shows each one as not sent, with a Retry. A retry is
-an ordinary send of the same text: it takes the waiting copy out first, so the
-turn it starts reads the message once rather than twice.
+tells the client, which shows each one as not sent, with a Retry. A retry
+names the follow-up by its id: the server takes that very message off the
+queue and runs it as a turn, or, if another turn read it meanwhile, sends
+nothing, so Otto never reads one message twice.
 """
 
 import logging
 import math
 import time
-from typing import get_args
+from typing import Literal, get_args
 
 from backend.copilot.pending_messages import (
     PENDING_TTL_SECONDS,
@@ -22,7 +23,8 @@ from backend.copilot.pending_messages import (
     peek_pending_count,
     peek_pending_messages,
     push_pending_message,
-    take_pending_message,
+    take_pending_message_by_id,
+    was_pending_message_read,
 )
 from backend.copilot.response_model import FollowUpHeldReason, StreamFollowUpHeld
 from backend.data.redis_client import get_redis_async
@@ -123,48 +125,37 @@ async def _read_hold(session_id: str) -> tuple[FollowUpHeldReason, float] | None
         return reason, math.inf
 
 
-async def holds_follow_up(session_id: str, message: str) -> bool:
-    """Whether *message* waits in the queue as a held follow-up, unread yet."""
-    try:
-        hold = await _read_hold(session_id)
-        if hold is None:
-            return False
-        waiting = await peek_pending_messages(session_id)
-    except Exception:
-        logger.warning(
-            f"Could not check session {session_id} for a held follow-up",
-            exc_info=True,
-        )
-        return False
-    # Typed again after the turn ended, it is a new follow-up, not the held one.
-    return any(
-        pending.content == message and pending.enqueued_at <= hold[1]
-        for pending in waiting
-    )
+FollowUpState = Literal["waiting", "read", "unknown"]
 
 
-async def take_held_follow_up(session_id: str, message: str) -> PendingMessage | None:
-    """Take the held copy of *message* out of the queue as it is sent again.
+async def follow_up_state(session_id: str, pending_id: str) -> FollowUpState:
+    """Where the follow-up *pending_id* stands: still ``waiting`` in the queue,
+    already ``read`` by a turn, or ``unknown`` (expired unread, or never
+    queued here). Only an unknown one can be sent again without risking Otto
+    reading it twice."""
+    waiting = await peek_pending_messages(session_id)
+    if any(pending.id == pending_id for pending in waiting):
+        return "waiting"
+    if await was_pending_message_read(session_id, pending_id):
+        return "read"
+    return "unknown"
 
-    Only while follow-ups are held: then the send starts a turn, whose start
-    would otherwise read the waiting copy as well. Returns the copy so a send
-    that is refused can put it back; None when nothing was taken.
-    """
-    try:
-        hold = await _read_hold(session_id)
-        if hold is None:
-            return None
-        taken = await take_pending_message(session_id, message, enqueued_by=hold[1])
-    except Exception:
-        logger.warning(
-            f"Could not take a resent follow-up out of session {session_id}",
-            exc_info=True,
-        )
-        return None
+
+async def take_follow_up(session_id: str, pending_id: str) -> PendingMessage | None:
+    """Take the follow-up *pending_id* off the queue to send it as a turn of
+    its own. Atomic: of two resends of it, only one gets it. Returns it so a
+    send that is refused can put it back; None when it no longer waits."""
+    taken = await take_pending_message_by_id(session_id, pending_id)
     if taken is not None:
         logger.info(
             "Resent follow-up taken out of the queue",
-            extra={"json_fields": {"session_id": session_id, "path": "resend"}},
+            extra={
+                "json_fields": {
+                    "session_id": session_id,
+                    "pending_id": pending_id,
+                    "path": "resend",
+                }
+            },
         )
     return taken
 
