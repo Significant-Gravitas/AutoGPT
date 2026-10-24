@@ -324,6 +324,45 @@ describe("first-run walkthrough — who gets it by itself", () => {
     );
   });
 
+  it("closes again if the record then shows this person already had an intro", async () => {
+    // A first-run flag can outlive its account in the tab (sessionStorage
+    // survives signing out and back in as someone else).
+    onboarding.current.state = null;
+    const onFinished = vi.fn();
+    const { rerender } = render(
+      <AutoStart isPending onFinished={onFinished} />,
+    );
+    await waitFor(() =>
+      expect(useFirstRunTourStore.getState().source).toBe("auto"),
+    );
+
+    onboarding.current.state = { completedSteps: ["CAPABILITY_CARDS"] };
+    rerender(<AutoStart isPending onFinished={onFinished} />);
+
+    await waitFor(() =>
+      expect(useFirstRunTourStore.getState().source).toBeNull(),
+    );
+    expect(onFinished).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a walkthrough the person asked for alone when the record loads", async () => {
+    onboarding.current.state = null;
+    const { rerender } = render(<AutoStart isPending onFinished={vi.fn()} />);
+    await waitFor(() =>
+      expect(useFirstRunTourStore.getState().source).toBe("auto"),
+    );
+    act(() => {
+      useFirstRunTourStore.getState().close();
+      useFirstRunTourStore.getState().open("menu");
+    });
+
+    onboarding.current.state = { completedSteps: ["FIRST_RUN_TOUR"] };
+    rerender(<AutoStart isPending onFinished={vi.fn()} />);
+
+    await act(async () => {});
+    expect(useFirstRunTourStore.getState().source).toBe("menu");
+  });
+
   it("does nothing for someone who did not just finish onboarding", async () => {
     render(<AutoStart isPending={false} onFinished={vi.fn()} />);
 

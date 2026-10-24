@@ -15,17 +15,19 @@ interface Args {
 }
 
 // Opens the walkthrough by itself once, on the first home visit after
-// onboarding. It does not wait for the onboarding record: the first-run flag
-// is set by this tab's own wizard, so it cannot be left over from another
-// device, and the record can take a while to arrive after a sign-up. When the
-// record is already loaded and shows the walkthrough (FIRST_RUN_TOUR, or the
-// old CAPABILITY_CARDS deck), it stays shut.
+// onboarding. It does not wait for the onboarding record, which can take a
+// while to arrive after a sign-up. The first-run flag is this tab's, so it
+// can still outlive its account (signing out and in as someone else): when
+// the record shows the walkthrough (FIRST_RUN_TOUR, or the old
+// CAPABILITY_CARDS deck), it stays shut, or shuts again if it was opened
+// before the record arrived.
 export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
   const { user } = useAuth();
   const userID = user?.id ?? null;
   const { state } = useOnboarding();
   const source = useFirstRunTourStore((store) => store.source);
   const open = useFirstRunTourStore((store) => store.open);
+  const close = useFirstRunTourStore((store) => store.close);
   const startedFor = useRef<string | null>(null);
   const finish = useStableCallback(onFinished);
 
@@ -34,14 +36,19 @@ export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
     TOUR_DONE_STEPS.some((step) => state.completedSteps.includes(step));
 
   useEffect(() => {
-    if (!isPending || userID === null || startedFor.current === userID) return;
+    if (!isPending || userID === null) return;
+    if (startedFor.current === userID) {
+      const isAutoOpen = useFirstRunTourStore.getState().source === "auto";
+      if (hasHadIntro && isAutoOpen) close();
+      return;
+    }
     if (hasHadIntro || peekFirstRunTourSeen(userID)) {
       finish();
       return;
     }
     startedFor.current = userID;
     open("auto");
-  }, [isPending, hasHadIntro, userID, open, finish]);
+  }, [isPending, hasHadIntro, userID, open, close, finish]);
 
   // Re-run on every change of `source`, but read the store itself: in the
   // commit where the effect above opened the walkthrough, this render's
