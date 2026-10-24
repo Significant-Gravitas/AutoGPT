@@ -153,7 +153,12 @@ function SettingsBillingPage() {
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
       <header className="space-y-1">
-        <Text variant="h3" as="h1" className="tracking-[-0.035em]">
+        <Text
+          // TODO(tokens): no exact text token (tracking-[-0.035em])
+          variant="h3"
+          as="h1"
+          className="tracking-[-0.035em]"
+        >
           Billing &amp; usage
         </Text>
         <Text variant="body" tone="secondary">

@@ -73,15 +73,15 @@ export function InstallWorkflowPicker({
       <Dialog.Content>
         {mode === "pick-expert" ? (
           hiredExperts.length === 0 ? (
-            <Text variant="body" className="text-zinc-500">
+            <Text variant="body" className="text-foreground-tertiary">
               No hired experts yet.
             </Text>
           ) : (
-            <div className="divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200/80">
+            <div className="divide-y divide-separator overflow-hidden rounded-lg border border-border-base/80">
               {hiredExperts.map((expert) => (
                 <div
                   key={expert.id}
-                  className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
+                  className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-surface-muted"
                 >
                   <Avatar className="h-9 w-9">
                     {expert.avatar_url ? (
@@ -93,7 +93,7 @@ export function InstallWorkflowPicker({
                     <Text variant="body-medium" className="truncate">
                       {expert.name}
                     </Text>
-                    <Text variant="small" className="!text-zinc-500">
+                    <Text variant="small" className="!text-foreground-tertiary">
                       {expert.role}
                     </Text>
                   </div>
@@ -144,23 +144,29 @@ export function InstallWorkflowPicker({
               wrapperClassName="!mb-0"
             />
             {isSearching ? (
-              <Text variant="small" className="py-2 text-center !text-zinc-500">
+              <Text
+                variant="small"
+                className="py-2 text-center !text-foreground-tertiary"
+              >
                 Searching…
               </Text>
             ) : isEmpty ? (
-              <Text variant="small" className="py-2 text-center !text-zinc-500">
+              <Text
+                variant="small"
+                className="py-2 text-center !text-foreground-tertiary"
+              >
                 {source === "library"
                   ? "No workflows in your library."
                   : "No workflows found."}
               </Text>
             ) : (
-              <div className="divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200/80">
+              <div className="divide-y divide-separator overflow-hidden rounded-lg border border-border-base/80">
                 {source === "library"
                   ? libraryResults.map((agent) => (
                       <div
                         key={agent.id}
                         data-testid="install-workflow-option"
-                        className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
+                        className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-surface-muted"
                       >
                         <WorkflowTile imageUrl={agent.image_url} />
                         <div className="min-w-0 flex-1">
@@ -169,7 +175,7 @@ export function InstallWorkflowPicker({
                           </Text>
                           <Text
                             variant="small"
-                            className="truncate !text-zinc-500"
+                            className="truncate !text-foreground-tertiary"
                           >
                             {workflowSubtitle(agent.description)}
                           </Text>
@@ -188,14 +194,17 @@ export function InstallWorkflowPicker({
                       <div
                         key={agent.agent_graph_id}
                         data-testid="install-workflow-option"
-                        className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
+                        className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-surface-muted"
                       >
                         <WorkflowTile imageUrl={agent.agent_image} />
                         <div className="min-w-0 flex-1">
                           <Text variant="body-medium" className="truncate">
                             {agent.agent_name}
                           </Text>
-                          <Text variant="small" className="!text-zinc-500">
+                          <Text
+                            variant="small"
+                            className="!text-foreground-tertiary"
+                          >
                             by {agent.creator}
                           </Text>
                         </div>

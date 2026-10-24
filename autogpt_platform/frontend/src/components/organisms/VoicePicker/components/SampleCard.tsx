@@ -49,7 +49,7 @@ export function SampleCard({
       >
         <span
           className={cn(
-            "text-xs font-semibold uppercase tracking-[0.12em]",
+            "text-xs font-semibold uppercase tracking-caps",
             labelClassName ?? "text-accent",
           )}
         >
@@ -68,7 +68,7 @@ export function SampleCard({
           "whitespace-pre-line text-muted-foreground",
           compact
             ? "line-clamp-3 text-sm leading-normal"
-            : "text-[15px] leading-relaxed",
+            : "text-body-md leading-relaxed",
         )}
       >
         {sample.text}

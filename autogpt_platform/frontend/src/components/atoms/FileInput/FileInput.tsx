@@ -34,7 +34,7 @@ function PreviewButton({
         <Button
           variant="outline"
           size="small"
-          className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-500"
+          className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-gray-500 hover:text-info-foreground dark:text-gray-400 dark:hover:text-blue-500"
           type="button"
           aria-label="Preview file"
         >
@@ -108,6 +108,10 @@ interface Base64ModeProps extends BaseProps {
 
 type Props = UploadModeProps | Base64ModeProps;
 
+// TODO(tokens): no role holds Tailwind's gray-50/300/500/600/700/900
+// (#F9FAFB, #D1D5DB, #6B7280, #4B5563, #374151, #111827) or blue-200
+// #BFDBFE, blue-300 #93C5FD, blue-700 #1D4ED8. The dark: classes never apply
+// (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
 export function FileInput(props: Props) {
   const {
     value,
@@ -328,8 +332,8 @@ export function FileInput(props: Props) {
       <div className={cn("flex flex-col gap-1.5", className)}>
         <div className="nodrag flex flex-col gap-1.5">
           {isUploading ? (
-            <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-800 dark:bg-blue-950">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600 dark:border-blue-700 dark:border-t-blue-400" />
+            <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-info-surface p-2 dark:border-blue-800 dark:bg-blue-950">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-info-foreground dark:border-blue-700 dark:border-t-blue-400" />
               <Text
                 variant="small"
                 className="text-blue-700 dark:text-blue-300"
@@ -376,7 +380,7 @@ export function FileInput(props: Props) {
               <Button
                 variant="outline"
                 size="small"
-                className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-gray-500 hover:text-error-hover dark:text-gray-400 dark:hover:text-red-500"
                 onClick={handleClear}
                 type="button"
                 aria-label="Clear file"
@@ -390,7 +394,7 @@ export function FileInput(props: Props) {
                 variant="outline"
                 size="small"
                 onClick={() => inputRef.current?.click()}
-                className="flex-1 border-zinc-300 text-xs"
+                className="flex-1 border-border-strong text-caption leading-4"
                 disabled={isUploading}
                 type="button"
               >
@@ -409,7 +413,7 @@ export function FileInput(props: Props) {
           />
         </div>
         {uploadError && (
-          <Text variant="small" className="text-red-600 dark:text-red-400">
+          <Text variant="small" tone="danger" className="dark:text-red-400">
             {uploadError}
           </Text>
         )}
@@ -422,8 +426,8 @@ export function FileInput(props: Props) {
       {isUploading ? (
         <div className="space-y-2">
           <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
+            <div className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-surface-muted p-4 text-body leading-5">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-info-foreground" />
               <span className="text-gray-700">
                 {mode === "base64" ? "Processing..." : "Uploading..."}
               </span>
@@ -433,11 +437,14 @@ export function FileInput(props: Props) {
       ) : value ? (
         <div className="space-y-2">
           <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-gray-500">
+            <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-surface-muted p-4 text-body leading-5 text-gray-500">
               <div className="flex items-center gap-2">
-                <Icon icon={File02Icon} className="h-7 w-7 text-black" />
+                <Icon
+                  icon={File02Icon}
+                  className="h-7 w-7 text-foreground-base"
+                />
                 <div className="flex flex-col gap-0.5">
-                  <span className="font-normal text-black">
+                  <span className="font-normal text-foreground-base">
                     {fileInfo
                       ? getFileLabel(fileInfo.name, fileInfo.content_type)
                       : getFileLabelFromValue(value)}
@@ -463,7 +470,7 @@ export function FileInput(props: Props) {
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear file"
-                  className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                  className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-gray-500 hover:text-error-hover dark:text-gray-400 dark:hover:text-red-500"
                 >
                   <Icon icon={Delete02Icon} className="h-5 w-5" />
                 </Button>
@@ -471,7 +478,9 @@ export function FileInput(props: Props) {
             </div>
           </div>
           {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-gray-500">{storageNote}</p>
+            <p className="text-caption leading-4 text-gray-500">
+              {storageNote}
+            </p>
           )}
         </div>
       ) : (
@@ -480,7 +489,7 @@ export function FileInput(props: Props) {
             <div
               onDrop={handleFileDrop}
               onDragOver={(e) => e.preventDefault()}
-              className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-zinc-50 text-sm text-gray-500"
+              className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-surface-muted text-body leading-5 text-gray-500"
             >
               Choose a file or drag and drop it here
             </div>
@@ -495,11 +504,15 @@ export function FileInput(props: Props) {
           </div>
 
           {uploadError && (
-            <div className="text-sm text-red-600">Error: {uploadError}</div>
+            <div className="text-body leading-5 text-error-hover">
+              Error: {uploadError}
+            </div>
           )}
 
           {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-gray-500">{storageNote}</p>
+            <p className="text-caption leading-4 text-gray-500">
+              {storageNote}
+            </p>
           )}
         </div>
       )}

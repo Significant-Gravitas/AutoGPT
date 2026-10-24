@@ -102,7 +102,11 @@ export function PendingReviewCard({
     } else if (typeof data === "boolean") {
       return (
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
+          <span
+            // TODO(tokens): no role for Tailwind's default gray-500; the zinc
+            // roles are a different grey.
+            className="text-sm text-gray-500"
+          >
             {data ? "Enabled" : "Disabled"}
           </span>
           <Switch
@@ -134,14 +138,24 @@ export function PendingReviewCard({
   return (
     <div className="space-y-4">
       {nodeId && (
-        <Text variant="small" className="text-gray-500">
+        <Text
+          // TODO(tokens): no role for Tailwind's default gray-500; the zinc roles
+          // are a different grey.
+          variant="small"
+          className="text-gray-500"
+        >
           Node #{getShortenedNodeId(nodeId)}
         </Text>
       )}
 
       <div className="space-y-3">
         {instructions && (
-          <Text variant="body" className="font-semibold text-gray-900">
+          <Text
+            // TODO(tokens): no role for Tailwind's default gray-900; the zinc
+            // roles are a different grey.
+            variant="body"
+            className="font-semibold text-gray-900"
+          >
             {instructions}
           </Text>
         )}
@@ -151,8 +165,17 @@ export function PendingReviewCard({
         ) : isDataEditable && !autoApproveFuture ? (
           renderDataInput()
         ) : (
-          <div className="rounded-lg border border-gray-200 bg-white p-3">
-            <Text variant="small" className="text-gray-600">
+          <div
+            // TODO(tokens): no role for Tailwind's default gray-200; the zinc
+            // roles are a different grey.
+            className="rounded-lg border border-gray-200 bg-surface p-3"
+          >
+            <Text
+              // TODO(tokens): no role for Tailwind's default gray-600; the zinc
+              // roles are a different grey.
+              variant="small"
+              className="text-gray-600"
+            >
               {JSON.stringify(currentData, null, 2)}
             </Text>
           </div>
@@ -169,12 +192,22 @@ export function PendingReviewCard({
                 onAutoApproveFutureChange(review.node_exec_id, enabled)
               }
             />
-            <Text variant="small" className="text-gray-700">
+            <Text
+              // TODO(tokens): no role for Tailwind's default gray-700; the zinc
+              // roles are a different grey.
+              variant="small"
+              className="text-gray-700"
+            >
               Auto-approve future executions of this block
             </Text>
           </div>
           {autoApproveFuture && (
-            <Text variant="small" className="pl-11 text-gray-500">
+            <Text
+              // TODO(tokens): no role for Tailwind's default gray-500; the zinc
+              // roles are a different grey.
+              variant="small"
+              className="pl-11 text-gray-500"
+            >
               Original data will be used for this and all future reviews from
               this block.
             </Text>

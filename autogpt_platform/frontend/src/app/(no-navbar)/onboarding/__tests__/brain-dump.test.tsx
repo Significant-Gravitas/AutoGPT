@@ -4,6 +4,7 @@ import {
   getGetBrainDumpStatusMockHandler200,
   getUploadBrainDumpPartMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import openapi from "@/app/api/openapi.json";
 import { server } from "@/mocks/mock-server";
 import {
   cleanup,
@@ -14,7 +15,15 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import OnboardingPage from "../page";
 import { NO_PAYWALL_STEPS, PAYWALL_LAST_STEPS } from "../store";
 import { useOnboardingWizardStore } from "../store";
@@ -82,6 +91,10 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
       ? recordingStoreState.meta
       : null,
   clearRecording: async () => {
+    recordingStoreState.parts = [];
+    recordingStoreState.meta = null;
+  },
+  clearSkippedRecordings: async () => {
     recordingStoreState.parts = [];
     recordingStoreState.meta = null;
   },
@@ -501,6 +514,83 @@ describe("onboarding brain dump — typed fallback", () => {
       ),
     ).toBeDefined();
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("caps a long paste at the backend's limit and says how much is left", async () => {
+    const backendLimit = finalizeTextMaxLength();
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    const box = await screen.findByPlaceholderText<HTMLTextAreaElement>(
+      "What repeats every week? What would you hand off first?",
+    );
+
+    await userEvent.click(box);
+    await userEvent.paste("a".repeat(backendLimit + 50));
+
+    expect(box.value).toHaveLength(backendLimit);
+    expect(screen.getByText("0 characters left")).toBeDefined();
+  });
+
+  it("returns to the text with the limit spelled out when finalize refuses it as too long", async () => {
+    server.use(
+      http.post(
+        "http://localhost:3000/api/proxy/api/onboarding/brain-dump/finalize",
+        () =>
+          HttpResponse.json(
+            {
+              detail: [
+                {
+                  type: "string_too_long",
+                  loc: ["body", "text"],
+                  msg: "String should have at most 20000 characters",
+                  ctx: { max_length: 20000 },
+                },
+              ],
+            },
+            { status: 422 },
+          ),
+      ),
+    );
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await userEvent.type(
+      await screen.findByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "Invoices every Monday",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(
+      await screen.findByText(
+        "That's over the 20,000-character limit; trim it and try again.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByPlaceholderText<HTMLTextAreaElement>(
+        "What repeats every week? What would you hand off first?",
+      ).value,
+    ).toBe("Invoices every Monday");
+    expect(screen.queryByText("Your recording is safe. Try again.")).toBeNull();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+      "{Backspace}",
+    );
+
+    expect(
+      screen.queryByText(
+        "That's over the 20,000-character limit; trim it and try again.",
+      ),
+    ).toBeNull();
   });
 });
 
@@ -962,10 +1052,53 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
-    // Already gone while the record is unanswered, so Back to the step
-    // cannot offer the abandoned take again.
-    expect(recordingStoreState.parts).toHaveLength(0);
+    // The take stays for Back, and the skip is recorded as a take of its
+    // own, so sending the recording later is not read as already done.
+    expect(recordingStoreState.parts).toHaveLength(1);
+    expect(skip.skipBodies[0]).not.toMatchObject({
+      recording_id: recordingStoreState.parts[0].recordingId,
+    });
     skip.release();
+  });
+
+  it("says why a take failed, and still offers the recording after skipping and going Back", async () => {
+    finalizeReturns({ status: "failed", error_code: "storage_failed" });
+    const objectURLs = [
+      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:dump"),
+      vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined),
+    ];
+    const downloads: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
+    onTestFinished(() => {
+      click.mockRestore();
+      objectURLs.forEach((spy) => spy.mockRestore());
+    });
+
+    await recordAndSend();
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(
+      screen.getByText("We couldn't store your recording on our side."),
+    ).toBeDefined();
+    const recordingID = recordingStoreState.parts[0].recordingId;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continue without it" }),
+    );
+    await screen.findByTestId("step-hire");
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(
+      await screen.findByText("Pick up where you left off?"),
+    ).toBeDefined();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Download recording" }),
+    );
+    await waitFor(() =>
+      expect(downloads).toEqual([`brain-dump-${recordingID}.webm`]),
+    );
   });
 
   it("opens the typed composer from the recovery screen", async () => {
@@ -1005,3 +1138,12 @@ describe("onboarding step map integrity", () => {
     });
   });
 });
+
+function finalizeTextMaxLength() {
+  const limit =
+    openapi.components.schemas.FinalizeRequest.properties.text.anyOf.find(
+      (branch) => branch.type === "string",
+    )?.maxLength;
+  expect(limit).toBeTypeOf("number");
+  return limit!;
+}

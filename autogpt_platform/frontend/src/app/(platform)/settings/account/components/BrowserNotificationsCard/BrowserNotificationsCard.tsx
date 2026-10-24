@@ -25,14 +25,14 @@ export function BrowserNotificationsCard({ index = 0 }: Props) {
       }
       className="flex w-full flex-col"
     >
-      <div className="flex h-fit flex-col gap-4 rounded-[18px] border border-zinc-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex h-fit flex-col gap-4 rounded-[18px] border border-border-base bg-surface px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex flex-col gap-1">
           <Text variant="body-medium" as="span" className="text-textBlack">
             Browser
           </Text>
           {/* Unlike the email settings above, these live in this browser's
               local storage — they don't follow the account to another device. */}
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-foreground-tertiary">
             Set per device. Turning these on here won&apos;t carry over to your
             phone or another browser.
           </Text>

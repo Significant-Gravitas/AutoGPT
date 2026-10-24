@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   ArrowDown01Icon,
   SentIcon,
@@ -55,6 +56,23 @@ import { ToolResult } from "./ToolResult";
 
 const COLLAPSED_WINDOW = 2;
 
+async function sendOnce(
+  sending: { current: boolean },
+  entries: ChainActionEntry[],
+  message: string,
+  sendReply: (message: string) => void,
+) {
+  if (sending.current) return;
+  sending.current = true;
+  try {
+    await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+    entries.forEach((entry) => entry.onSent?.());
+    sendReply(message);
+  } finally {
+    sending.current = false;
+  }
+}
+
 interface Props {
   parts: MessagePart[];
   isStreaming: boolean;
@@ -85,6 +103,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const [actionEntries, setActionEntries] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
+  // Kept as memos with the compiler on: the cards' register effects depend on
+  // this context value, and re-running them would re-register every card.
   const register = useCallback((entry: ChainActionEntry) => {
     setActionEntries((prev) => {
       const next = new Map(prev);
@@ -154,21 +174,51 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     allActionsReady &&
     (connectorRequests.length > 0 || inputRequests.length > 0);
 
+  // The cards are already gone by the time a send can fail — the user's
+  // message is appended optimistically and the chat's error banner offers
+  // Retry — so the failure only needs to be said out loud, and the toast
+  // points at the thread rather than the composer.
+  function sendReply(message: string) {
+    void Promise.resolve(onSend(message)).catch((error: unknown) =>
+      toastSendFailure({
+        title: "Couldn't send message",
+        error,
+        recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
+      }),
+    );
+  }
+
+  // Proceed stays clickable while beforeSend runs, and a second click would
+  // send the same reply again. The ref is set before the first await, so the
+  // second click sees it in time.
+  function sendAfter(entries: ChainActionEntry[], message: string) {
+    return sendOnce(sendingRef, entries, message, sendReply);
+  }
+
+  const autoSendOnce = useStableCallback(() => {
+    if (!canAutoSend || autoSentRef.current) return;
+    autoSentRef.current = true;
+    setAutoSent(true);
+    const message = buildChainReply(pendingActions);
+    if (!message) return;
+    void sendAfter(pendingActions, message);
+  });
+  // pendingActions is rebuilt every render; the ref makes this once-per-chain.
   useEffect(
     function sendOnceEveryCardIsSatisfied() {
-      if (!canAutoSend || autoSentRef.current) return;
-      autoSentRef.current = true;
-      setAutoSent(true);
-      const message = buildChainReply(pendingActions);
-      if (!message) return;
-      void sendAfter(pendingActions, message);
+      autoSendOnce();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
   );
 
   useCredentialFailureCounters({ entries: actionEntries });
 
+  // Kept as a memo: the compiler folds this into the scope of everything
+  // rendered below the early return, so without it the rows would be rebuilt
+  // whenever the chain expands, starts or stops streaming, or a card
+  // registers.
   const rows = useMemo(
     () =>
       markSupersededSubSessionRows(
@@ -240,22 +290,6 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // still-running chain has no such ending.
   const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
 
-  // The cards are already gone by the time a send can fail — the user's
-  // message is appended optimistically and the chat's error banner offers
-  // Retry — so the failure only needs to be said out loud, and the toast
-  // points at the thread rather than the composer.
-  function sendReply(message: string) {
-    void Promise.resolve(onSend(message)).catch((error: unknown) =>
-      toastSendFailure({
-        title: "Couldn't send message",
-        error,
-        recovery: "it is still in the thread, use Retry to send it again",
-        paywallRecovery:
-          "it is still in the thread, use Retry once you have a plan",
-      }),
-    );
-  }
-
   // Proceed sends the combined reply of every READY card as one message,
   // and their onSent callbacks fire at that moment. Unready cards (e.g. an
   // unconnected MCP server) are left out instead of blocking the ready ones.
@@ -264,21 +298,6 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     const message = buildChainReply(readyActions);
     if (!message) return;
     void sendAfter(readyActions, message);
-  }
-
-  // Proceed stays clickable while beforeSend runs, and a second click would
-  // send the same reply again. The ref is set before the first await, so the
-  // second click sees it in time.
-  async function sendAfter(entries: ChainActionEntry[], message: string) {
-    if (sendingRef.current) return;
-    sendingRef.current = true;
-    try {
-      await Promise.all(entries.map((entry) => entry.beforeSend?.()));
-      entries.forEach((entry) => entry.onSent?.());
-      sendReply(message);
-    } finally {
-      sendingRef.current = false;
-    }
   }
 
   return (

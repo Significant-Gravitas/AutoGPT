@@ -68,7 +68,10 @@ export function useUploadQueue() {
   async function drainQueue(take: number) {
     while (takeRef.current === take && queueRef.current.length > 0) {
       const part = queueRef.current[0];
-      const uploaded = await uploadWithRetries(part);
+      const uploaded = await uploadWithRetries(
+        part,
+        () => takeRef.current === take,
+      );
       if (takeRef.current !== take) return;
       if (!uploaded) {
         // Leave it at the head — reconnecting replays from here so
@@ -124,8 +127,14 @@ export function useUploadQueue() {
   return { enqueue, flush, reset, pendingCount, isOffline };
 }
 
-async function uploadWithRetries(part: RecordingPart) {
+// Stops retrying once the take is discarded: a part 0 landing after that
+// would claim the server row for a take nobody will finalize.
+async function uploadWithRetries(
+  part: RecordingPart,
+  isCurrentTake: () => boolean,
+) {
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (!isCurrentTake()) return false;
     try {
       await uploadBrainDumpPart({
         file: part.blob,
