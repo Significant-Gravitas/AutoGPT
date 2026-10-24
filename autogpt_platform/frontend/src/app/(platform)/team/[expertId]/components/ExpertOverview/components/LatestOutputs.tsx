@@ -41,6 +41,7 @@ export function LatestOutputs({
         <CardError message="Couldn't load outputs." onRetry={onRetry} />
       ) : outputs.length === 0 ? (
         <PanelEmptyState
+          textSize="body-md"
           tiles={[
             <Icon
               key="image"

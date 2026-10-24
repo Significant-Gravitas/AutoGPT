@@ -64,7 +64,7 @@ export function ExpertSkillListItem({
           )}
         >
           <Text
-            variant="body-medium"
+            variant="body-md-medium"
             className="break-words !text-foreground-strong"
           >
             {entry.name}

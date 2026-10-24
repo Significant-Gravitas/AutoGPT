@@ -62,7 +62,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
           <Text variant="large-medium" className="!text-foreground-strong">
             Fire {expert.name}
           </Text>
-          <Text variant="body" className="mt-0.5 !text-foreground-secondary">
+          <Text variant="body-md" className="mt-0.5 !text-foreground-secondary">
             {expert.name} leaves your team and stops working for you. Here is
             what that means for what you have set up.
           </Text>
@@ -88,7 +88,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
             <button
               type="button"
               onClick={() => void retryPreview()}
-              className="mt-1 text-sm font-medium text-foreground-body underline underline-offset-2 hover:text-foreground"
+              className="mt-1 text-body-md font-medium text-foreground-body underline underline-offset-2 hover:text-foreground"
             >
               Retry
             </button>
@@ -145,6 +145,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
         <Button
           variant="destructive"
           size="small"
+          className="text-body-md"
           onClick={onFire}
           data-testid="expert-fire-button"
         >
@@ -186,7 +187,7 @@ function Consequence({
       </span>
       <div className="min-w-0 flex-1 pt-1">
         <div className="flex items-center justify-between gap-3">
-          <Text variant="body" className="!text-foreground-emphasis">
+          <Text variant="body-md" className="!text-foreground-emphasis">
             {title}
           </Text>
           {tag ? (

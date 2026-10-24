@@ -161,7 +161,7 @@ export default function ExpertDetailPage() {
 
         <ExpertNeedsYouSection expert={expert} />
 
-        <TabsLine data-profile-tabs variant="compact" defaultValue={initialTab}>
+        <TabsLine variant="compact" defaultValue={initialTab}>
           <TabsLineList
             flush={false}
             className={PROFILE_TABS_LIST_CLASS}

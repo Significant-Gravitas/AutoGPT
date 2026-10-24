@@ -35,6 +35,8 @@ export const variants = {
   "large-semibold": "font-sans text-body-lg font-semibold text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
+  "body-md": "font-sans text-body-md font-normal text-foreground-base",
+  "body-md-medium": "font-sans text-body-md font-medium text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
 
@@ -80,6 +82,8 @@ export const variantElementMap: Record<Variant, As> = {
   "large-semibold": "p",
   body: "p",
   "body-medium": "p",
+  "body-md": "p",
+  "body-md-medium": "p",
   small: "p",
   "small-medium": "p",
   label: "span",

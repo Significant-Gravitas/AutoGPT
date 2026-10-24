@@ -25,6 +25,8 @@ interface Props<T extends string> {
   defaultValue: T;
   options: readonly PillFilterOption<T>[];
   onChange: (next: T) => void;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 /** A pill like the header's buttons, naming the current filter. Any choice
@@ -35,6 +37,7 @@ export function PillFilterMenu<T extends string>({
   defaultValue,
   options,
   onChange,
+  textSize = "body",
 }: Props<T>) {
   const current =
     options.find((option) => option.value === value) ?? options[0];
@@ -58,6 +61,7 @@ export function PillFilterMenu<T extends string>({
           }
           className={cn(
             "group shrink-0 gap-1.5 font-medium",
+            textSize === "body-md" && "text-body-md",
             isActive &&
               "border-action-hover bg-action-hover text-action-foreground hover:border-action hover:bg-action [&_svg]:text-action-foreground",
           )}

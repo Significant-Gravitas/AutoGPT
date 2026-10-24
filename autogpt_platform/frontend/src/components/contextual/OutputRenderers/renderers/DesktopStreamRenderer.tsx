@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import React, { useRef } from "react";
 import {
   ArrowExpandIcon,
@@ -51,11 +52,14 @@ interface PreviewProps {
   /** False on a shared transcript: the owner-bound link would only answer
    *  the viewer with a 404, so the frame is replaced by a notice. */
   ownerView?: boolean;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 export function DesktopStreamPreview({
   value,
   ownerView = true,
+  textSize = "body",
 }: PreviewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const ownerOnly = value.requires_auth === true && !ownerView;
@@ -67,7 +71,12 @@ export function DesktopStreamPreview({
   return (
     <div className="overflow-hidden rounded-lg border border-border-base">
       <div className="flex items-center justify-between border-b border-border-base bg-surface-muted px-3 py-2">
-        <div className="flex items-center gap-2 text-sm text-foreground-body">
+        <div
+          className={cn(
+            "flex items-center gap-2 text-foreground-body",
+            textSize === "body-md" ? "text-body-md" : "text-sm",
+          )}
+        >
           <Icon icon={ComputerIcon} size={16} />
           <span className="font-medium">Interactive Desktop</span>
           <span className="rounded bg-surface-active px-1.5 py-0.5 text-xs uppercase text-foreground-secondary">
@@ -98,7 +107,12 @@ export function DesktopStreamPreview({
         )}
       </div>
       {ownerOnly ? (
-        <div className="flex aspect-video w-full items-center justify-center bg-action-hover px-6 text-center text-sm text-foreground-subtle">
+        <div
+          className={cn(
+            "flex aspect-video w-full items-center justify-center bg-action-hover px-6 text-center text-foreground-subtle",
+            textSize === "body-md" ? "text-body-md" : "text-sm",
+          )}
+        >
           The live desktop is only visible to the owner of this chat.
         </div>
       ) : (

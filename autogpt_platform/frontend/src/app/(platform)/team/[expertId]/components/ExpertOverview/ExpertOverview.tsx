@@ -96,6 +96,7 @@ export function ExpertOverview({
             <ActivityChart days={overview.chartDays} />
           ) : (
             <PanelEmptyState
+              textSize="body-md"
               tiles={[
                 <Icon
                   key="a"

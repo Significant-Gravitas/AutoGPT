@@ -28,6 +28,8 @@ interface Props {
   iconClassName?: string;
   /** Size override for the View/Delete buttons, e.g. compact row actions. */
   actionClassName?: string;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 export function GraphScheduleListItem({
@@ -36,6 +38,7 @@ export function GraphScheduleListItem({
   className,
   iconClassName,
   actionClassName,
+  textSize = "body",
 }: Props) {
   const {
     nextRunLabel,
@@ -85,7 +88,7 @@ export function GraphScheduleListItem({
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text
-            variant="body-medium"
+            variant={textSize === "body-md" ? "body-md-medium" : "body-medium"}
             className="block w-full truncate text-ellipsis"
           >
             {agentLabel}

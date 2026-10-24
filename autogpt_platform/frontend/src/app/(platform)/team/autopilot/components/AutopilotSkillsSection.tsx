@@ -29,6 +29,7 @@ export function AutopilotSkillsSection({ skills }: Props) {
           Otto&apos;s Skills
         </Text>
         <ToolbarSearch
+          textSize="body-md"
           id="otto-skills-search"
           label="Search skills"
           value={query}
@@ -36,12 +37,12 @@ export function AutopilotSkillsSection({ skills }: Props) {
         />
       </div>
       {skills.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No skills yet. Skills in your library that no expert has claimed show
           up here.
         </Text>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No skills match.
         </Text>
       ) : (

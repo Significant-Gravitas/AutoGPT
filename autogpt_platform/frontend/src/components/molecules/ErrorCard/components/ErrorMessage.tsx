@@ -5,13 +5,19 @@ interface Props {
   errorMessage: string;
   context: string;
   hint?: string;
+  textSize?: "body" | "body-md";
 }
 
-export function ErrorMessage({ errorMessage, context, hint }: Props) {
+export function ErrorMessage({
+  errorMessage,
+  context,
+  hint,
+  textSize = "body",
+}: Props) {
   return (
     <div data-slot="error-card-message" className="space-y-2">
       <Text
-        variant="body"
+        variant={textSize}
         data-slot="error-card-context"
         className="text-foreground-body"
       >
@@ -22,7 +28,7 @@ export function ErrorMessage({ errorMessage, context, hint }: Props) {
         className="rounded-lg border border-separator bg-surface-muted p-3"
       >
         <Text
-          variant="body"
+          variant={textSize}
           data-slot="error-card-detail-text"
           className="!text-error-foreground"
         >
@@ -32,7 +38,7 @@ export function ErrorMessage({ errorMessage, context, hint }: Props) {
       {hint && (
         <div data-slot="error-card-hint" className="!mt-4">
           <Text
-            variant="body"
+            variant={textSize}
             data-slot="error-card-hint-text"
             className="text-foreground-body"
           >
