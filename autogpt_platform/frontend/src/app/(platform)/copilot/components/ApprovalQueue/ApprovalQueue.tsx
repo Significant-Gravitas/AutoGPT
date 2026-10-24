@@ -71,7 +71,7 @@ export function ApprovalQueue({
     return (
       <section
         aria-label="Waiting for you"
-        className="overflow-hidden rounded-xl border border-zinc-200 bg-white"
+        className="overflow-hidden rounded-xl border border-border-base bg-surface"
       >
         <QueueHeader
           count={pending.length}
@@ -88,7 +88,7 @@ export function ApprovalQueue({
     <section
       aria-label="Waiting for you"
       className={cn(
-        "overflow-hidden rounded-xl border border-zinc-200 bg-white transition-opacity duration-200 motion-reduce:transition-none",
+        "overflow-hidden rounded-xl border border-border-base bg-surface transition-opacity duration-200 motion-reduce:transition-none",
         leaving && "opacity-0",
       )}
     >
@@ -110,17 +110,17 @@ export function ApprovalQueue({
         onShow={null}
       />
       {showModeLine && pending.length > 0 && (
-        <p className="border-b border-zinc-100 px-4 py-2 text-sm text-zinc-500">
+        <p className="border-b border-separator px-4 py-2 text-sm text-foreground-tertiary">
           {modeLine(mode)}
         </p>
       )}
-      <ol className="divide-y divide-zinc-100">
+      <ol className="divide-y divide-separator">
         {pending.map((item) => (
           <li
             key={item.reviewId}
             id={approvalCardId(item.reviewId)}
             tabIndex={-1}
-            className="scroll-mb-24 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-300"
+            className="scroll-mb-24 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-strong"
           >
             {compact &&
             queue.openId !== item.reviewId &&
@@ -148,7 +148,7 @@ export function ApprovalQueue({
           </li>
         ))}
       </ol>
-      <ul aria-live="polite" className="divide-y divide-zinc-100">
+      <ul aria-live="polite" className="divide-y divide-separator">
         {receipts.map((receipt) => (
           <ReceiptLine key={receipt.item.reviewId} receipt={receipt} />
         ))}
