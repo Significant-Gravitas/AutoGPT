@@ -139,7 +139,7 @@ vi.mock("../useVoiceRecording", () => ({
   }),
 }));
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({
     disabled,
     status,
