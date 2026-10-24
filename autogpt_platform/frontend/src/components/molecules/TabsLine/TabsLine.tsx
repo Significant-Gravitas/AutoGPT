@@ -77,6 +77,7 @@ const TabsLineList = React.forwardRef<
     return (
       <TabsPrimitive.List
         ref={ref}
+        data-slot="tabs-list"
         // TODO(tokens): no role holds gray-100 (#F3F4F6) or neutral-500
         // (#737373). The dark: classes never apply (forcedTheme="light") and
         // are DS6's (SECRT-3116) to delete.
