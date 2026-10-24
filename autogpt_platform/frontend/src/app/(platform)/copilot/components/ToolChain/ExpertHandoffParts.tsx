@@ -128,7 +128,7 @@ interface StatusProps {
 
 /** Where the work went once the hire and hand-off landed. */
 export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
-  if (outcome.status === "failed" || !outcome.link) {
+  if (outcome.status === "failed") {
     return (
       <div
         role="status"
@@ -151,18 +151,20 @@ export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
       <p className="min-w-[min(100%,14rem)] flex-1 text-sm text-zinc-600 [overflow-wrap:anywhere]">
         <HandoffSentence outcome={outcome} expertName={expertName} />
       </p>
-      <NextLink
-        href={outcome.link}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-800"
-      >
-        Open {possessive(expertName)} chat
-        <Icon
-          icon={ArrowUpRight01Icon}
-          size={14}
-          aria-hidden
-          className="rtl:-scale-x-100"
-        />
-      </NextLink>
+      {outcome.link && (
+        <NextLink
+          href={outcome.link}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-800"
+        >
+          Open {possessive(expertName)} chat
+          <Icon
+            icon={ArrowUpRight01Icon}
+            size={14}
+            aria-hidden
+            className="rtl:-scale-x-100"
+          />
+        </NextLink>
+      )}
     </div>
   );
 }

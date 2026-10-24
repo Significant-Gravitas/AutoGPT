@@ -237,6 +237,26 @@ describe("after the hire and hand-off", () => {
     ).toBe("/copilot?sessionId=thread-1");
   });
 
+  it("never calls a started task failed just because it has no link", () => {
+    render(
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_applied",
+          applied: true,
+          kind: "hire",
+          expert,
+          handoff: { title: TITLE, status: "started", link: null },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/started on the Printify order pipeline/),
+    ).toBeDefined();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
   it("says plainly when the task did not start", () => {
     render(
       <ExpertChangeCard

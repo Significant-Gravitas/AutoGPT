@@ -229,7 +229,7 @@ class TestHireAndHandOffInOneApproval:
         assert resp.handoff.sub_session_id == "thread-1"
         assert resp.handoff.link == "/copilot?sessionId=thread-1"
         assert "/copilot?sessionId=thread-1" in resp.message
-        assert "ask" in resp.message.lower()
+        assert "don't ask whether to hand it over" in resp.message.lower()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_only_hires_without_handing_anything_off(self):

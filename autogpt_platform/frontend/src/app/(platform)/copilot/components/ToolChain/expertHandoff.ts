@@ -31,8 +31,11 @@ export function handoffOutcomeOf(
   const handoff = asObject(output.handoff);
   const title = handoff && str(handoff, "title");
   if (!handoff || !title) return null;
-  const link = str(handoff, "link") ?? null;
-  return { title, status: link ? statusOf(handoff) : "failed", link };
+  return {
+    title,
+    status: statusOf(handoff),
+    link: str(handoff, "link") ?? null,
+  };
 }
 
 function statusOf(handoff: Record<string, unknown>): HandoffStatus {
