@@ -26,7 +26,8 @@ const badgeSizes: Record<BadgeSize, string> = {
   medium: "px-2 py-0.5 text-caption leading-5",
 };
 
-// Bordered chips in a single size, which ignore `size`.
+// Bordered chips in a single size, which ignore `size`. They render a <div>,
+// like the legacy badge they replace.
 const chipBase =
   "inline-flex cursor-default items-center rounded-md border px-2.5 py-0.5 text-caption font-semibold leading-4 transition-colors focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2";
 
@@ -53,9 +54,9 @@ export function Badge({
 }: BadgeProps) {
   if (isChip(variant)) {
     return (
-      <span className={cn(chipBase, chipVariants[variant], className)}>
+      <div className={cn(chipBase, chipVariants[variant], className)}>
         {children}
-      </span>
+      </div>
     );
   }
 
