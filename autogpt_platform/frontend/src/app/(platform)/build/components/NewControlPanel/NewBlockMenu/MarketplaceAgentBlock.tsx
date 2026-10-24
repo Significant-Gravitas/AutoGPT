@@ -107,7 +107,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           >
             <span
               // TODO(tokens): no exact role: text-blue-700 #1D4ED8
-              className="font-sans text-xs leading-5 text-blue-700 underline"
+              className="font-sans text-caption leading-5 text-blue-700 underline"
             >
               Workflow page
             </span>

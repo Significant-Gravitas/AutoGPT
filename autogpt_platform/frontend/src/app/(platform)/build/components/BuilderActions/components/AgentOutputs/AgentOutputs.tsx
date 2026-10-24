@@ -111,12 +111,12 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         <SheetHeader className="px-2 py-2">
           <div className="flex items-center justify-between">
             <div>
-              <SheetTitle className="text-xl">Run Outputs</SheetTitle>
-              <SheetDescription className="mt-1 text-sm text-muted-foreground">
+              <SheetTitle className="text-lead">Run Outputs</SheetTitle>
+              <SheetDescription className="mt-1 text-body leading-5 text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <span
                     // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00
-                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800"
+                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-caption font-medium leading-4 text-yellow-800"
                   >
                     Beta
                   </span>
@@ -134,13 +134,13 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                 outputs.map((group) => (
                   <div key={group.nodeID} className="space-y-2">
                     <div>
-                      <Label className="text-base font-semibold">
+                      <Label className="text-body-lg font-semibold leading-6">
                         {group.metadata.name || "Unnamed Output"}
                       </Label>
                       {group.metadata.description && (
                         <Label
                           // TODO(tokens): no exact role: text-gray-600 #4B5563
-                          className="mt-1 block text-sm text-gray-600"
+                          className="mt-1 block text-body leading-5 text-gray-600"
                         >
                           {group.metadata.description}
                         </Label>

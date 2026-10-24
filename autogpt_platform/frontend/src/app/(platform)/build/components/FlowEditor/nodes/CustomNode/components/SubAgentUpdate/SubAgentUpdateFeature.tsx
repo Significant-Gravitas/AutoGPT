@@ -88,7 +88,7 @@ function SubAgentUpdateAvailableBar({
         <Icon icon={ArrowUp02Icon} className="h-4 w-4 text-info-foreground" />
         <span
           // TODO(tokens): no exact role: text-blue-700 #1D4ED8
-          className="text-sm text-blue-700"
+          className="text-body leading-5 text-blue-700"
         >
           Update available (v{currentVersion} → v{latestVersion})
         </span>
@@ -101,7 +101,7 @@ function SubAgentUpdateAvailableBar({
               <p className="font-medium">Incompatible changes detected</p>
               <p
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="text-xs text-gray-400"
+                className="text-caption leading-4 text-gray-400"
               >
                 Click Update to see details
               </p>
@@ -114,7 +114,7 @@ function SubAgentUpdateAvailableBar({
         variant={isCompatible ? "primary" : "outline"}
         onClick={onUpdate}
         className={cn(
-          "h-7 text-xs",
+          "h-7 text-caption leading-4",
           // TODO(tokens): no exact role: text-amber-600 #D97706
           !isCompatible &&
             "border-warning text-amber-600 hover:bg-warning-surface",
