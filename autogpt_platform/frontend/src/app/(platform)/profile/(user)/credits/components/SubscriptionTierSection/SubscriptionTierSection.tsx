@@ -54,7 +54,7 @@ export function SubscriptionTierSection() {
   if (error) {
     return (
       <div className="space-y-4">
-        {/* TODO(tokens): no role holds 18px/28px (text-lg). */}
+        {/* TODO(tokens): SECRT-3152, no role holds 18px/28px (text-lg). */}
         <h3 className="text-lg font-medium">Subscription Plan</h3>
         <Text
           variant="body"
@@ -76,7 +76,7 @@ export function SubscriptionTierSection() {
   if (currentTier === "ENTERPRISE") {
     return (
       <div className="space-y-4">
-        {/* TODO(tokens): no role holds 18px/28px (text-lg). */}
+        {/* TODO(tokens): SECRT-3152, no role holds 18px/28px (text-lg). */}
         <h3 className="text-lg font-medium">Subscription Plan</h3>
         <div
           // TODO(tokens): no exact role (border-violet-500 #8B5CF6, dark:bg-violet-900/20)
@@ -144,7 +144,7 @@ export function SubscriptionTierSection() {
 
   return (
     <div className="space-y-4">
-      {/* TODO(tokens): no role holds 18px/28px (text-lg). */}
+      {/* TODO(tokens): SECRT-3152, no role holds 18px/28px (text-lg). */}
       <h3 className="text-lg font-medium">Subscription Plan</h3>
 
       {needsSubscription && (
@@ -227,7 +227,7 @@ export function SubscriptionTierSection() {
                 )}
               </div>
 
-              {/* TODO(tokens): no role holds 24px/32px (text-2xl). */}
+              {/* TODO(tokens): SECRT-3152, no role holds 24px/32px (text-2xl). */}
               <p className="mb-1 text-2xl font-bold">
                 {formatCost(cost, tier.key)}
               </p>
