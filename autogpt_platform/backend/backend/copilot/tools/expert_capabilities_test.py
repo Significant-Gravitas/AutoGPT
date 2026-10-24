@@ -200,6 +200,9 @@ async def test_an_expert_ids_validate_only_answer_is_not_held_by_the_judge(team)
     judge = AsyncMock(return_value=ContentVerdict(held=False))
     with (
         patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
         patch.object(review_store, "find_review", AsyncMock(return_value=None)),
         patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, ALLOW))),
         patch("backend.copilot.gate.reads.judge_content", judge),
