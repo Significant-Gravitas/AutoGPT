@@ -7,6 +7,7 @@ import {
 import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate/types";
 import { Alert01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type ResolutionModeBarProps = {
   incompatibilities: IncompatibilityInfo | null;
@@ -66,7 +67,10 @@ export function ResolutionModeBar({
           {incompatibilities.inputTypeMismatches.map((m, i) => (
             <React.Fragment key={m.name}>
               <code className="font-mono">{m.name}</code>
-              <span className="text-gray-400">
+              <span
+                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
+                className="text-gray-400"
+              >
                 {" "}
                 ({m.oldType} → {m.newType})
               </span>
@@ -81,31 +85,42 @@ export function ResolutionModeBar({
   };
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-amber-50 px-3 py-2 dark:bg-amber-900/30">
+    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-warning-surface px-3 py-2">
       <div className="flex items-center gap-2">
         <Icon
           icon={Alert01Icon}
-          className="h-4 w-4 text-amber-600 dark:text-amber-400"
+          // TODO(tokens): no exact role: text-amber-600 #D97706
+          className="h-4 w-4 text-amber-600"
         />
-        <span className="text-sm text-amber-700 dark:text-amber-300">
+        <Text
+          variant="body"
+          as="span"
+          className="leading-5 text-warning-foreground"
+        >
           Remove incompatible connections
-        </span>
+        </Text>
         <Tooltip>
           <TooltipTrigger asChild>
             <Icon
               icon={InformationCircleIcon}
-              className="h-4 w-4 cursor-help text-amber-500"
+              className="h-4 w-4 cursor-help text-warning"
             />
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <p className="mb-2 font-semibold">Incompatible changes:</p>
-            <div className="text-xs">{renderIncompatibilities()}</div>
-            <p className="mt-2 text-xs text-gray-400">
+            <Text variant="small" as="div" className="leading-4 text-inherit">
+              {renderIncompatibilities()}
+            </Text>
+            <Text
+              variant="small"
+              // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
+              className="mt-2 leading-4 text-gray-400"
+            >
               {(incompatibilities?.newRequiredInputs.length ?? 0) > 0
                 ? "Replace / delete"
                 : "Delete"}{" "}
               the red connections to continue
-            </p>
+            </Text>
           </TooltipContent>
         </Tooltip>
       </div>

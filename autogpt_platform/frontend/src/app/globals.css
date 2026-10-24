@@ -61,6 +61,15 @@
     --color-info-foreground: 37 99 235; /* blue-600 #2563EB */
     --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
 
+    /* Builder (flow editor) */
+    --color-builder-canvas: 249 249 249; /* #F9F9F9, what the transparent canvas shows (the app inset); not read yet */
+    --color-builder-grid: 145 145 154; /* #91919A, xyflow's default dot colour */
+    --color-node-surface: 254 254 254; /* white #FEFEFE, the node card */
+    --color-node-border: 207 212 219; /* slate-200 #CFD4DB, the node ring at /60 */
+    --color-node-selected: 207 212 219; /* slate-200 #CFD4DB, the selected node's ring */
+    --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
+    --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
+
     /* shadcn names, at the values their old HSL variables rendered.
        TODO(tokens): several differ from the role of the same intent above
        (foreground #09090B vs foreground-base #141414, muted-foreground

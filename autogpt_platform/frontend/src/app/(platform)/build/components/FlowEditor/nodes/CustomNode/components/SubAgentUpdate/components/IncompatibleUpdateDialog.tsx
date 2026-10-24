@@ -10,6 +10,7 @@ import {
   PlusSignCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type IncompatibleUpdateDialogProps = {
   isOpen: boolean;
@@ -44,7 +45,7 @@ export function IncompatibleUpdateDialog({
     <Dialog
       title={
         <div className="flex items-center gap-2">
-          <Icon icon={Alert01Icon} className="h-5 w-5 text-amber-500" />
+          <Icon icon={Alert01Icon} className="h-5 w-5 text-warning" />
           Incompatible Update
         </div>
       }
@@ -59,26 +60,28 @@ export function IncompatibleUpdateDialog({
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <Text
+            variant="body"
+            // TODO(tokens): no exact role: text-gray-600 #4B5563
+            className="leading-5 text-gray-600"
+          >
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
-          </p>
+          </Text>
 
           {/* Input changes - two column layout */}
           {hasInputChanges && (
             <TwoColumnSection
               title="Input Changes"
               leftIcon={
-                <Icon
-                  icon={CancelCircleIcon}
-                  className="h-4 w-4 text-red-500"
-                />
+                <Icon icon={CancelCircleIcon} className="h-4 w-4 text-error" />
               }
               leftTitle="Removed"
               leftItems={incompatibilities.missingInputs}
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
+                  // TODO(tokens): no exact role: text-green-500 #16A34A
                   className="h-4 w-4 text-green-500"
                 />
               }
@@ -92,16 +95,14 @@ export function IncompatibleUpdateDialog({
             <TwoColumnSection
               title="Output Changes"
               leftIcon={
-                <Icon
-                  icon={CancelCircleIcon}
-                  className="h-4 w-4 text-red-500"
-                />
+                <Icon icon={CancelCircleIcon} className="h-4 w-4 text-error" />
               }
               leftTitle="Removed"
               leftItems={incompatibilities.missingOutputs}
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
+                  // TODO(tokens): no exact role: text-green-500 #16A34A
                   className="h-4 w-4 text-green-500"
                 />
               }
@@ -113,10 +114,7 @@ export function IncompatibleUpdateDialog({
           {hasTypeMismatches && (
             <SingleColumnSection
               icon={
-                <Icon
-                  icon={CancelCircleIcon}
-                  className="h-4 w-4 text-red-500"
-                />
+                <Icon icon={CancelCircleIcon} className="h-4 w-4 text-error" />
               }
               title="Type Changed"
               description="These connected inputs have a different type:"
@@ -131,7 +129,7 @@ export function IncompatibleUpdateDialog({
               icon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-amber-500"
+                  className="h-4 w-4 text-warning"
                 />
               }
               title="New Required Inputs"
@@ -155,6 +153,7 @@ export function IncompatibleUpdateDialog({
               variant="primary"
               size="small"
               onClick={onConfirm}
+              // TODO(tokens): no exact role: bg-amber-600 #D97706; no fitting role for border-amber-700 #B45309; #B45309 is warning-foreground (a text colour); no fitting role for hover:bg-amber-700 #B45309; #B45309 is warning-foreground (a text colour)
               className="border-amber-700 bg-amber-600 hover:bg-amber-700"
             >
               Update Anyway
@@ -186,57 +185,91 @@ function TwoColumnSection({
   rightItems,
 }: TwoColumnSectionProps) {
   return (
-    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
+    <div className="rounded-md border border-sidebar-border p-3">
       <span className="font-medium">{title}</span>
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+          <Text
+            variant="body"
+            as="div"
+            // TODO(tokens): no exact role: text-gray-500 #6B7280
+            className="flex items-center gap-1.5 leading-5 text-gray-500"
+          >
             {leftIcon}
             <span>{leftTitle}</span>
-          </div>
+          </Text>
           <ul className="mt-1.5 space-y-1">
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
-                <li
+                <Text
+                  variant="body"
+                  as="li"
                   key={item}
-                  className="text-sm text-gray-700 dark:text-gray-300"
+                  // TODO(tokens): no exact role: text-gray-700 #374151
+                  className="leading-5 text-gray-700"
                 >
-                  <code className="rounded bg-red-50 px-1 py-0.5 font-mono text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  <Text
+                    variant="small"
+                    as="code"
+                    className="rounded bg-error-surface px-1 py-0.5 font-mono leading-4 text-error-foreground"
+                  >
                     {item}
-                  </code>
-                </li>
+                  </Text>
+                </Text>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
+              <Text
+                variant="body"
+                as="li"
+                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
+                className="italic leading-5 text-gray-400"
+              >
                 None
-              </li>
+              </Text>
             )}
           </ul>
         </div>
 
         {/* Right column - Possible solutions */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+          <Text
+            variant="body"
+            as="div"
+            // TODO(tokens): no exact role: text-gray-500 #6B7280
+            className="flex items-center gap-1.5 leading-5 text-gray-500"
+          >
             {rightIcon}
             <span>{rightTitle}</span>
-          </div>
+          </Text>
           <ul className="mt-1.5 space-y-1">
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
-                <li
+                <Text
+                  variant="body"
+                  as="li"
                   key={item}
-                  className="text-sm text-gray-700 dark:text-gray-300"
+                  // TODO(tokens): no exact role: text-gray-700 #374151
+                  className="leading-5 text-gray-700"
                 >
-                  <code className="rounded bg-green-50 px-1 py-0.5 font-mono text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                  <Text
+                    variant="small"
+                    as="code"
+                    className="rounded bg-success-surface px-1 py-0.5 font-mono leading-4 text-success-foreground"
+                  >
                     {item}
-                  </code>
-                </li>
+                  </Text>
+                </Text>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
+              <Text
+                variant="body"
+                as="li"
+                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
+                className="italic leading-5 text-gray-400"
+              >
                 None
-              </li>
+              </Text>
             )}
           </ul>
         </div>
@@ -259,24 +292,36 @@ function SingleColumnSection({
   items,
 }: SingleColumnSectionProps) {
   return (
-    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
+    <div className="rounded-md border border-sidebar-border p-3">
       <div className="flex items-center gap-2">
         {icon}
         <span className="font-medium">{title}</span>
       </div>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <Text
+        variant="body"
+        // TODO(tokens): no exact role: text-gray-500 #6B7280
+        className="mt-1 leading-5 text-gray-500"
+      >
         {description}
-      </p>
+      </Text>
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
-          <li
+          <Text
+            variant="body"
+            as="li"
             key={item}
-            className="ml-4 list-disc text-sm text-gray-700 dark:text-gray-300"
+            // TODO(tokens): no exact role: text-gray-700 #374151
+            className="ml-4 list-disc leading-5 text-gray-700"
           >
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">
+            <Text
+              variant="small"
+              as="code"
+              // TODO(tokens): no exact role: bg-gray-100 #F3F4F6
+              className="rounded bg-gray-100 px-1 py-0.5 font-mono leading-4 text-inherit"
+            >
               {item}
-            </code>
-          </li>
+            </Text>
+          </Text>
         ))}
       </ul>
     </div>

@@ -26,7 +26,7 @@ export function NodeAdvancedToggle({
   return (
     <div
       className={cn(
-        "flex items-center justify-start gap-2 bg-white px-5 pb-3.5",
+        "flex items-center justify-start gap-2 bg-surface px-5 pb-3.5",
         isLastSection && "rounded-b-xlarge",
       )}
     >
@@ -39,6 +39,7 @@ export function NodeAdvancedToggle({
         <Text
           variant="body"
           as="span"
+          // TODO(tokens): no exact role: text-slate-700 #475263
           className="flex items-center gap-2 !font-semibold text-slate-700"
         >
           Advanced{" "}

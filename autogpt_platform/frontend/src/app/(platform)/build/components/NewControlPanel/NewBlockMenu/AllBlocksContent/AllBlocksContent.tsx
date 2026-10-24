@@ -6,6 +6,7 @@ import { beautifyString } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const AllBlocksContent = () => {
   const {
@@ -52,17 +53,24 @@ export const AllBlocksContent = () => {
     <div className={blockMenuContainerStyle}>
       {categories?.map((category, index) => (
         <Fragment key={category.name}>
-          {index > 0 && <Separator className="h-[1px] w-full text-zinc-300" />}
+          {index > 0 && (
+            <Separator className="h-[1px] w-full text-foreground-disabled" />
+          )}
 
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              <Text variant="body-medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
-              </p>
-              <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
+              </Text>
+              <Text
+                variant="body"
+                as="span"
+                tone="secondary"
+                className="rounded-full bg-surface-hover px-[0.375rem] font-sans"
+              >
                 {category.total_blocks}
-              </span>
+              </Text>
             </div>
 
             <div className="space-y-2">
@@ -97,7 +105,7 @@ export const AllBlocksContent = () => {
               {category.total_blocks > category.blocks.length && (
                 <Button
                   variant={"link"}
-                  className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
+                  className="px-0 font-sans text-body text-foreground-secondary underline hover:text-foreground-emphasis"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >

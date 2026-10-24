@@ -66,7 +66,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
               disabled={!flowID || isLoading}
-              className="group text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+              // TODO(tokens): no exact role: text-amber-600 #D97706
+              className="group text-amber-600 hover:bg-warning-surface hover:text-warning-foreground"
             >
               <Icon
                 icon={FlaskConicalIcon}

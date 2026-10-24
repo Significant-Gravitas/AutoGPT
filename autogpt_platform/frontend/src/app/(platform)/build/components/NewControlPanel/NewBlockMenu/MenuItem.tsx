@@ -3,6 +3,7 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes } from "react";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   selected?: boolean;
@@ -24,19 +25,24 @@ export const MenuItem: React.FC<Props> = ({
       data-id={menuItemType ? `menu-item-${menuItemType}` : undefined}
       className={cn(
         "flex h-[2.375rem] w-[12.875rem] justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0",
-        selected && "bg-zinc-100",
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0",
+        selected && "bg-surface-hover",
         className,
       )}
       {...rest}
     >
-      <span className="truncate font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+      <Text
+        variant="body-medium"
+        as="span"
+        tone="emphasis"
+        className="truncate"
+      >
         {name}
-      </span>
+      </Text>
       {number !== undefined && (
-        <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-600">
+        <Text variant="body" as="span" tone="secondary">
           {number > 100 ? "100+" : number}
-        </span>
+        </Text>
       )}
     </Button>
   );

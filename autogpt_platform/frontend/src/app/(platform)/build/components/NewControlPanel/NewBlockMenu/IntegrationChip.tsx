@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   name?: string;
@@ -22,8 +23,8 @@ export const IntegrationChip: IntegrationChipComponent = ({
   return (
     <Button
       className={cn(
-        "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-[0.5rem] bg-zinc-50 p-2 pr-3 shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
+        "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-[0.5rem] bg-surface-muted p-2 pr-3 shadow-none",
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong",
         className,
       )}
       {...rest}
@@ -40,9 +41,9 @@ export const IntegrationChip: IntegrationChipComponent = ({
         )}
       </div>
       {name && (
-        <span className="truncate font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+        <Text variant="body" as="span" tone="emphasis" className="truncate">
           {beautifyString(name)}
-        </span>
+        </Text>
       )}
     </Button>
   );
@@ -50,9 +51,9 @@ export const IntegrationChip: IntegrationChipComponent = ({
 
 const IntegrationChipSkeleton: React.FC = () => {
   return (
-    <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-[0.5rem] bg-zinc-100 p-2 pr-3">
-      <Skeleton className="h-9 w-12 rounded-[0.5rem] bg-zinc-200" />
-      <Skeleton className="h-5 w-24 self-center rounded-sm bg-zinc-200" />
+    <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-[0.5rem] bg-surface-hover p-2 pr-3">
+      <Skeleton className="h-9 w-12 rounded-[0.5rem] bg-surface-active" />
+      <Skeleton className="h-5 w-24 self-center rounded-sm bg-surface-active" />
     </Skeleton>
   );
 };
