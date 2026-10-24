@@ -3447,6 +3447,49 @@
             "description": "Service token is missing the required scope"
           },
           "422": {
+            "description": "Invalid request, or detail `email_undeliverable`: the mail provider won't deliver to this address"
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/auth/email/suppression": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Check whether the mailer has suppressed an address",
+        "description": "Asked by sign-up and the resend button before they email an address, so\none Postmark won't deliver to is refused up front. Not suppressed when the\nmailer can't tell.",
+        "operationId": "checkAuthEmailSuppression",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthEmailSuppressionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEmailSuppressionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
             "description": "Validation Error",
             "content": {
               "application/json": {
@@ -12723,7 +12766,7 @@
       "delete": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Discard Brain Dump",
-        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nStored audio is left alone. A named take still uploading is also marked\nfailed, so it no longer holds the row against the user's next take.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nStored audio is left alone. A named take still uploading is also marked\nfailed, so it no longer holds the row against the user's next take, and\na part of it that arrives later is refused.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
         "operationId": "discard_brain_dump",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -12851,7 +12894,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Upload Brain Dump Part",
-        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.",
+        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.\n\nA part of a take the client discarded is refused, unless ``resent`` says\nthe client is deliberately sending that take again from its local copy.",
         "operationId": "upload_brain_dump_part",
         "requestBody": {
           "content": {
@@ -20410,6 +20453,22 @@
         "required": ["type", "to", "url"],
         "title": "AuthEmailRequest"
       },
+      "AuthEmailSuppressionRequest": {
+        "properties": {
+          "to": { "type": "string", "format": "email", "title": "To" }
+        },
+        "type": "object",
+        "required": ["to"],
+        "title": "AuthEmailSuppressionRequest"
+      },
+      "AuthEmailSuppressionResponse": {
+        "properties": {
+          "suppressed": { "type": "boolean", "title": "Suppressed" }
+        },
+        "type": "object",
+        "required": ["suppressed"],
+        "title": "AuthEmailSuppressionResponse"
+      },
       "AuthIPEventKind": {
         "type": "string",
         "enum": ["SIGN_UP", "SIGN_IN"],
@@ -21198,7 +21257,8 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Part Index"
-          }
+          },
+          "resent": { "type": "boolean", "title": "Resent", "default": false }
         },
         "type": "object",
         "required": ["file", "recording_id", "part_index"],
@@ -25068,10 +25128,16 @@
       },
       "Experiment": {
         "type": "string",
-        "enum": ["subscription-pricing-page-initial-state"],
+        "enum": [
+          "subscription-pricing-page-initial-state",
+          "trial-checkout-no-charge-copy"
+        ],
         "title": "Experiment",
-        "description": "Experiments the frontend shows; each is a multivariate PostHog flag.",
-        "x-enum-varnames": ["SUBSCRIPTION_PRICING"]
+        "description": "Experiments, each a multivariate PostHog flag read by the frontend or backend.",
+        "x-enum-varnames": [
+          "SUBSCRIPTION_PRICING",
+          "TRIAL_CHECKOUT_NO_CHARGE_COPY"
+        ]
       },
       "ExperimentAssignment": {
         "properties": {
@@ -35571,6 +35637,12 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Current Period End",
             "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
+          },
+          "paused_workflow_schedules": {
+            "type": "integer",
+            "title": "Paused Workflow Schedules",
+            "description": "Active workflow schedules that won't run until the user has a plan. Counted only for NO_TIER; 0 for every other tier.",
+            "default": 0
           },
           "pending_tier": {
             "anyOf": [

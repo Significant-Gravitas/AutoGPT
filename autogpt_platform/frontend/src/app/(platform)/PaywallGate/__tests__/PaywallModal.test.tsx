@@ -101,6 +101,7 @@ interface SubscriptionShape {
   monthly_cost?: number;
   proration_credit_cents?: number;
   has_active_stripe_subscription?: boolean;
+  paused_workflow_schedules?: number;
 }
 
 function setupMocks({
@@ -199,6 +200,43 @@ describe("PaywallModal — dynamic plan rendering", () => {
     expect(screen.getByText("Pro")).toBeDefined();
     expect(screen.queryByText("Max")).toBeNull();
     expect(screen.queryByText("Business")).toBeNull();
+  });
+});
+
+describe("PaywallModal — paused scheduled work", () => {
+  it.each([
+    [3, "Your 3 scheduled workflows are paused until you subscribe."],
+    [1, "Your scheduled workflow is paused until you subscribe."],
+  ])(
+    "tells a user without a plan that %i workflow schedule(s) wait for one",
+    (count, text) => {
+      setupMocks({
+        subscription: {
+          tier: "NO_TIER",
+          tier_costs: { PRO: 5000 },
+          paused_workflow_schedules: count,
+        },
+      });
+
+      render(<PaywallModal />);
+
+      expect(screen.getByText(text)).toBeDefined();
+    },
+  );
+
+  it("says nothing about scheduled work when none is paused", () => {
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000 },
+        paused_workflow_schedules: 0,
+      },
+    });
+
+    render(<PaywallModal />);
+
+    expect(screen.getByText("Pro")).toBeDefined();
+    expect(screen.queryByText(/paused until you subscribe/)).toBeNull();
   });
 });
 
