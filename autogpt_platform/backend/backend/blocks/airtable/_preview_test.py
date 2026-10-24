@@ -216,3 +216,46 @@ async def test_a_new_field_is_made_with_the_options_the_card_showed():
         "Hours on the order",
         {"durationFormat": "h:mm"},
     )
+
+
+def test_options_the_preview_cannot_word_stay_on_the_card():
+    """Choices are shown in the field's kind; any other option (a duration
+    format) must stay listed, since approving binds it too."""
+    block = AirtableCreateFieldBlock()
+    choices = block.change_preview(
+        {
+            "name": "Status",
+            "field_type": "singleSelect",
+            "options": {"choices": [{"name": "New"}]},
+        }
+    )
+    duration = block.change_preview(
+        {
+            "name": "Time spent",
+            "field_type": "duration",
+            "options": {"durationFormat": "h:mm"},
+        }
+    )
+
+    assert choices is not None and "options" in choices.covers
+    assert duration is not None and "options" not in duration.covers
+
+
+def test_a_choice_field_can_be_created_with_its_choices():
+    """Select choices are a list of objects, not strings."""
+    inputs = AirtableCreateFieldBlock.Input.model_validate(
+        {
+            "credentials": {
+                "id": "c1",
+                "provider": "airtable",
+                "type": "api_key",
+            },
+            "base_id": "appX",
+            "table_id": "tblX",
+            "name": "Status",
+            "field_type": "singleSelect",
+            "options": {"choices": [{"name": "New"}, {"name": "Shipped"}]},
+        }
+    )
+
+    assert inputs.options == {"choices": [{"name": "New"}, {"name": "Shipped"}]}

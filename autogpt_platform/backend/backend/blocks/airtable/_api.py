@@ -610,13 +610,13 @@ async def create_field(
     field_type: TableFieldType,
     name: str,
     description: str | None = None,
-    options: dict[str, str] | None = None,
-) -> dict[str, str | dict[str, str]]:
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
 
     assert (
         field_type in TABLE_FIELD_TYPES
     ), f"Field type {field_type} is not valid. Valid types are {TABLE_FIELD_TYPES}."
-    params: dict[str, str | dict[str, str]] = {}
+    params: dict[str, Any] = {}
     params["type"] = field_type
     params["name"] = name
     if description:

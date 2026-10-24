@@ -22,7 +22,7 @@ from backend.sdk import (
 
 from ._api import TableFieldType, create_field, create_table, update_field, update_table
 from ._config import airtable, base_id_field
-from ._preview import field_kind, preview, table_preview
+from ._preview import covered_options, field_kind, preview, table_preview
 
 
 class AirtableListSchemaBlock(Block):
@@ -200,7 +200,7 @@ class AirtableCreateFieldBlock(Block):
         description: str | None = SchemaField(
             description="The description of the field to create", default=None
         )
-        options: dict[str, str] | None = SchemaField(
+        options: dict[str, Any] | None = SchemaField(
             description="The options of the field to create", default=None
         )
 
@@ -232,7 +232,7 @@ class AirtableCreateFieldBlock(Block):
                     name="", fields=[PreviewField(name=str(name or ""), kind=kind)]
                 )
             ],
-            ["name", "field_type", "options"],
+            ["name", "field_type", *covered_options(input_data.get("options"))],
         )
 
     async def run(
