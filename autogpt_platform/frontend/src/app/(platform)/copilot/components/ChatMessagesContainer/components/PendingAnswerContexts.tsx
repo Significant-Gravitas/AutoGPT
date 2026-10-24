@@ -26,6 +26,8 @@ interface Props {
   readOnly?: boolean;
   /** When each row was saved, for the time an answered card shows. */
   turnStats?: TurnStatsMap;
+  /** Messages waiting behind a running turn; a decision among them stands. */
+  queuedMessages?: string[];
 }
 
 const NO_HELD_OUTCOMES: ReadonlyMap<string, HeldOutcome> = new Map();
@@ -40,6 +42,7 @@ export function PendingAnswerContexts({
   children,
   readOnly = false,
   turnStats,
+  queuedMessages,
 }: Props) {
   // The questions and held outcomes are rebuilt as new objects on every call,
   // and `messages` changes on every streamed flush, so each one keeps the
@@ -51,7 +54,7 @@ export function PendingAnswerContexts({
   const answeredQuestions = useEqualValue(getAnsweredQuestions(messages));
   const heldOutcomes = useEqualValue(getHeldOutcomesOrNone(messages));
   const answeredCards = useEqualValue(
-    toAnsweredCardStates(messages, turnStats),
+    toAnsweredCardStates(messages, turnStats, queuedMessages),
   );
   if (readOnly) {
     return (
@@ -91,9 +94,10 @@ function getHeldOutcomesOrNone(
 function toAnsweredCardStates(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
   turnStats: TurnStatsMap | undefined,
+  queuedMessages: string[] | undefined,
 ): ReadonlyMap<string, AnsweredCardState> {
   const states = new Map<string, AnsweredCardState>();
-  for (const [id, card] of getAnsweredCards(messages)) {
+  for (const [id, card] of getAnsweredCards(messages, queuedMessages)) {
     states.set(id, {
       verdict: card.verdict,
       at: turnStats?.get(card.messageID)?.createdAt ?? null,

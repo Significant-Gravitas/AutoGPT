@@ -640,7 +640,10 @@ export function ExpertChangeGroup({
     // A tab opened before another one answered still shows the buttons: it
     // sends only what is still open, and shows the rest as answered.
     const answeredNow = actions.sessionId
-      ? await answeredIdsOnServer(actions.sessionId)
+      ? await answeredIdsOnServer(
+          actions.sessionId,
+          open.map((proposal) => proposal.confirmationId),
+        )
       : null;
     const toSend = answeredNow
       ? open.filter((proposal) => !answeredNow.has(proposal.confirmationId))

@@ -121,6 +121,29 @@ function Thread({ initial }: { initial: Message[] }) {
   );
 }
 
+// Stands in for a send while a turn runs: the decision waits in the queue,
+// shown as a queued chip, and the send resolves before any row exists.
+function QueuedThread({ initial }: { initial: Message[] }) {
+  const [queued, setQueued] = useState<string[]>([]);
+  async function handleSend(text: string) {
+    setQueued([...queued, text]);
+  }
+  return (
+    <ChatContainer
+      messages={initial}
+      status="streaming"
+      error={undefined}
+      sessionId={SESSION_ID}
+      isLoadingSession={false}
+      isCreatingSession={false}
+      onCreateSession={vi.fn()}
+      onSend={handleSend}
+      onStop={vi.fn()}
+      queuedMessages={queued}
+    />
+  );
+}
+
 class MockResizeObserver {
   observe() {}
   unobserve() {}
@@ -314,6 +337,30 @@ describe("a proposal card the chat already answered", () => {
     expect(await screen.findByText("Approved")).toBeDefined();
   });
 
+  it("stays answered while its decision waits behind a running turn", async () => {
+    const user = userEvent.setup();
+    // The user asked something else after the card; Otto is answering it.
+    const followUp: Message = {
+      id: `${SESSION_ID}-seq-3`,
+      role: "user",
+      parts: [{ type: "text", text: "What will Maya cost?" }],
+    };
+    const answering: Message = {
+      id: "streaming-reply",
+      role: "assistant",
+      parts: [{ type: "text", text: "Maya's plan" }],
+    };
+    render(<QueuedThread initial={[ask, hireCard, followUp, answering]} />);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    expect(await screen.findByText("Queued")).toBeDefined();
+    await waitFor(() => expectNoDecisionButtons());
+    expect(screen.getByText("Approved")).toBeDefined();
+    expect(screen.queryByText("Sent")).toBeNull();
+  });
+
   it("stops asking when another tab's answer arrives", () => {
     const { rerender } = render(<Chat messages={[ask, hireCard]} />);
     expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
@@ -406,6 +453,62 @@ describe("a proposal card the chat already answered", () => {
     expect(onSend).not.toHaveBeenCalled();
     // Nothing is in flight: the card waits for the refetch, not on "Sent".
     await waitFor(() => expect(screen.queryByText("Sent")).toBeNull());
+  });
+
+  it("in a stale tab, finds another tab's answer older than the newest page", async () => {
+    // The other tab answered, then the chat went on for more than a page:
+    // the answer and the card are only on the page before the newest one.
+    const answerAndCard = [
+      {
+        role: "tool",
+        content: JSON.stringify({ confirmation_id: CONFIRMATION_ID }),
+        sequence: 2,
+      },
+      {
+        role: "user",
+        content: `Approved: hire Maya (confirmation_id: ${CONFIRMATION_ID}).`,
+        sequence: 3,
+      },
+    ];
+    const laterRows = Array.from({ length: 50 }, (_, i) => ({
+      role: i % 2 ? "assistant" : "user",
+      content: `Later message ${i}`,
+      sequence: 4 + i,
+    }));
+    const pages: (number | null)[] = [];
+    server.use(
+      getGetV2GetSessionMockHandler(({ request }) => {
+        const before = new URL(request.url).searchParams.get("before_sequence");
+        pages.push(before === null ? null : Number(before));
+        const older = before !== null;
+        return {
+          id: SESSION_ID,
+          created_at: "2026-10-24T03:00:00Z",
+          updated_at: "2026-10-24T03:00:00Z",
+          user_id: "user-1",
+          messages: older ? answerAndCard : laterRows,
+          has_more_messages: !older,
+          oldest_sequence: older ? 2 : 4,
+        };
+      }),
+    );
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onBackendTurn = vi.fn();
+    render(
+      <Chat
+        messages={[ask, hireCard]}
+        onSend={onSend}
+        onBackendTurn={onBackendTurn}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Decline" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    await waitFor(() => expect(onBackendTurn).toHaveBeenCalledTimes(1));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(pages).toEqual([null, 4]);
   });
 
   it("drops a refused answer once the saved one is on screen", () => {

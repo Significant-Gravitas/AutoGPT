@@ -145,21 +145,35 @@ function parseLine(line: string): CardDecision[] {
  *  never asks again. Any decision line counts, as it does for the gate, and a
  *  later line overrides an earlier one, as a decline withdrew an approval. A
  *  saved answer wins over one only on screen: the server refuses a second
- *  answer, so an unsaved one that disagrees was never taken. */
+ *  answer, so an unsaved one that disagrees was never taken. A message still
+ *  queued behind a running turn is an unsaved answer: the server took it, and
+ *  the card does not ask again while it waits. */
 export function getAnsweredCards(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  queued: readonly string[] = [],
 ): Map<string, AnsweredCard> {
   const saved = new Map<string, AnsweredCard>();
   const unsaved = new Map<string, AnsweredCard>();
-  for (const message of messages) {
-    if (message.role !== "user") continue;
-    const answered = extractDbSequence(message) === null ? unsaved : saved;
-    const decisions = rowDecisions(message.metadata, messageText(message));
+  function record(
+    answered: Map<string, AnsweredCard>,
+    decisions: CardDecision[],
+    messageID: string,
+  ) {
     for (const { verdict, confirmationId } of decisions) {
-      if (confirmationId)
-        answered.set(confirmationId, { verdict, messageID: message.id });
+      if (confirmationId) answered.set(confirmationId, { verdict, messageID });
     }
   }
+  for (const message of messages) {
+    if (message.role !== "user") continue;
+    record(
+      extractDbSequence(message) === null ? unsaved : saved,
+      rowDecisions(message.metadata, messageText(message)),
+      message.id,
+    );
+  }
+  queued.forEach((text, i) =>
+    record(unsaved, rowDecisions(undefined, text), `queued-${i}`),
+  );
   for (const [id, card] of unsaved) {
     if (!saved.has(id)) saved.set(id, card);
   }

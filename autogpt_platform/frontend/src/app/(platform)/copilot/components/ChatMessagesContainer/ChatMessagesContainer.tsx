@@ -684,6 +684,7 @@ export function ChatMessagesContainer({
       messages={allMessages}
       readOnly={readOnly}
       turnStats={turnStats}
+      queuedMessages={readOnly ? undefined : queuedMessages}
     >
       {thread}
     </PendingAnswerContexts>
