@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
@@ -65,9 +66,18 @@ export const ConversationEmptyState = ({
       <>
         {icon && <div className="text-neutral-500">{icon}</div>}
         <div className="space-y-1">
-          <h3 className="text-sm font-medium">{title}</h3>
+          <Text
+            variant="body-medium"
+            as="h3"
+            className="leading-5 text-inherit"
+          >
+            {title}
+          </Text>
           {description && (
-            <p className="text-sm text-neutral-500">{description}</p>
+            // TODO(tokens): no role holds neutral-500 #737373.
+            <Text variant="body" as="p" className="leading-5 text-neutral-500">
+              {description}
+            </Text>
           )}
         </div>
       </>
