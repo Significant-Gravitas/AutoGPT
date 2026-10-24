@@ -78,7 +78,7 @@ export function ExpertChatGroup({
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium text-foreground-strong max-md:py-2 max-md:text-base"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body font-medium leading-5 text-foreground-strong max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
           {isAutopilot ? (
             <AutopilotAvatar
@@ -145,7 +145,7 @@ export function ExpertChatGroup({
                   isAutopilot ? Infinity : count + EXPERT_CHAT_PAGE_SIZE,
                 )
               }
-              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5 max-md:text-sm"
+              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-caption font-medium leading-4 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5 max-md:text-body max-md:leading-5"
             >
               {isAutopilot ? "Load all" : "Load more"}
             </button>

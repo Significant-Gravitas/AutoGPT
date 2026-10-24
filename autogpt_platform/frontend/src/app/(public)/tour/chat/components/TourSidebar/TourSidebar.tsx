@@ -145,7 +145,10 @@ export function TourSidebar({ variant = "tour" }: Props) {
           <motion.div variants={itemVariants}>
             <CollapsibleRoot defaultOpen className="group/collapsible">
               <SidebarGroup className="py-1">
-                <SidebarGroupLabel asChild className="text-[13px] font-medium">
+                <SidebarGroupLabel
+                  asChild
+                  className="text-body-sm font-medium leading-inherit"
+                >
                   <CollapsibleTrigger>
                     Workspace
                     <Icon
