@@ -1843,6 +1843,28 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+async def _put_back_unless_stored(
+    session_id: str, message_id: str | None, resent: PendingMessage | None
+) -> None:
+    """Put back a resent follow-up whose send was refused, unless its row was
+    already stored under this send's id before the refusal: the chat has it
+    then, and the next turn reading the queue copy too would run it twice."""
+    if resent is None:
+        return
+    stored = None
+    try:
+        if message_id is not None:
+            stored = await chat_message_has_assistant_reply(message_id, session_id)
+    except Exception:
+        logger.warning(
+            f"Could not check whether session {session_id} stored a refused "
+            "resend; putting it back",
+            exc_info=True,
+        )
+    if stored is None:
+        await restore_held_follow_up(session_id, resent)
+
+
 async def _carry_resent_payload(
     resent: PendingMessage,
     *,
@@ -2227,7 +2249,7 @@ async def stream_chat_post(
             )
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
-            await restore_held_follow_up(session_id, resent)
+            await _put_back_unless_stored(session_id, message_id, resent)
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
         # if total in-flight (running + queued) is still under the hard
@@ -2259,7 +2281,7 @@ async def stream_chat_post(
             )
         except turn_queue.InflightCapExceeded:
             await release_client_message_claim()
-            await restore_held_follow_up(session_id, resent)
+            await _put_back_unless_stored(session_id, message_id, resent)
             raise HTTPException(
                 status_code=429,
                 detail=inflight_turn_limit_message(inflight_cap),
@@ -2268,7 +2290,7 @@ async def stream_chat_post(
             # Raised inside the handler above, so the outer BaseException
             # clause never sees it.
             await release_client_message_claim()
-            await restore_held_follow_up(session_id, resent)
+            await _put_back_unless_stored(session_id, message_id, resent)
             raise
         await accept_client_message_claim()
         position = await turn_queue.queue_position(user_id, session_id)
@@ -2282,13 +2304,14 @@ async def stream_chat_post(
         )
     except BaseException:
         await release_client_message_claim()
-        await restore_held_follow_up(session_id, resent)
+        await _put_back_unless_stored(session_id, message_id, resent)
         raise
     await accept_client_message_claim()
 
     if turn_id is None:
-        # No turn starts to read the message, so the held copy stays.
-        await restore_held_follow_up(session_id, resent)
+        # The chat already holds this message (stored under its id, or the
+        # same words a running turn just stored), so a resent follow-up stays
+        # taken: putting it back would have the next turn read it again.
         logger.info(
             f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
         )

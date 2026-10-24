@@ -400,6 +400,12 @@ def _mock_stream_internals(
         "backend.api.features.chat.routes.restore_held_follow_up",
         new_callable=AsyncMock,
     )
+    # A refused send stored no row unless a test says so.
+    mock_stored = mocker.patch(
+        "backend.api.features.chat.routes.chat_message_has_assistant_reply",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     return types.SimpleNamespace(
         enqueue=mock_schedule,
         paywall=mock_paywall,
@@ -410,6 +416,7 @@ def _mock_stream_internals(
         take_held=mock_take_held,
         follow_up_state=mock_follow_up_state,
         restore_held=mock_restore_held,
+        stored=mock_stored,
     )
 
 
@@ -1140,6 +1147,63 @@ def test_stream_chat_refused_resend_puts_the_held_follow_up_back(
 
     assert response.status_code == 429
     mocks.restore_held.assert_awaited_once_with("sess-1", held)
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_resend_the_chat_already_stored_stays_taken_and_retries_run_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The resend's row is already stored (an earlier attempt saved it and then
+    failed), so no turn starts. The follow-up must not go back on the queue,
+    where the next turn would read it a second time, and a further Retry under
+    the now-accepted key must not leave it stuck as held."""
+    redis = _FakeRedis()
+
+    async def _redis() -> _FakeRedis:
+        return redis
+
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch.object(pending_messages_module, "get_redis_async", _redis)
+    mocker.patch.object(held_follow_ups, "get_redis_async", _redis)
+    for name in ("follow_up_state", "take_follow_up", "restore_held_follow_up"):
+        mocker.patch(
+            f"backend.api.features.chat.routes.{name}",
+            new=getattr(held_follow_ups, name),
+        )
+    mocks.enqueue.return_value = None
+    held = PendingMessage(content="Status?")
+    await pending_messages_module.push_pending_message("sess-1", held)
+    await held_follow_ups.hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+
+    first = _resend(held.id, message_id=f"resend-{held.id}")
+    again = _resend(held.id, message_id=f"resend-{held.id}")
+
+    assert (first.status_code, again.status_code) == (200, 200)
+    assert await pending_messages_module.peek_pending_messages("sess-1") == []
+    assert await held_follow_ups.follow_up_state("sess-1", held.id) == "read"
+    assert mocks.enqueue.await_count == 1
+
+
+@pytest.mark.parametrize(
+    "stored, put_back", [(None, True), (False, False), (True, False)]
+)
+def test_stream_chat_failed_resend_goes_back_only_if_its_row_was_not_stored(
+    mocker: pytest_mock.MockerFixture, stored: bool | None, put_back: bool
+) -> None:
+    """A dispatch that fails after the row was saved leaves the message in the
+    chat; a queue copy as well would be read by the next turn too."""
+    mocks = _mock_stream_internals(mocker)
+    held = PendingMessage(id="pm-1", content="Status?")
+    mocks.take_held.return_value = held
+    mocks.enqueue.side_effect = RuntimeError("dispatch failed")
+    mocks.stored.return_value = stored
+
+    with pytest.raises(RuntimeError):
+        _resend(message_id="resend-pm-1")
+
+    sent_as = mocks.enqueue.await_args.kwargs["message_id"]
+    mocks.stored.assert_awaited_once_with(sent_as, "sess-1")
+    assert mocks.restore_held.await_count == int(put_back)
 
 
 async def test_other_empty_streams_carry_no_follow_up_marker() -> None:
