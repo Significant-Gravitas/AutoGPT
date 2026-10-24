@@ -6822,6 +6822,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         _use_openrouter_reconcile = bool(
             _reconciles_openrouter_cost(is_codex_transport) and collected_gen_ids
         )
+        spend_cap_usd = governor.spend_cap_usd if governor is not None else None
 
         if is_codex_transport:
             await persist_and_record_usage(
@@ -6885,6 +6886,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix=log_prefix,
                     langfuse_trace_id=langfuse_trace_id,
                     absorbed_generation_ids=absorbed_gen_ids,
+                    spend_cap_usd=spend_cap_usd,
                 )
             )
             _background_tasks.add(cost_reconcile_task)
@@ -6915,6 +6917,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # OpenRouter when ``openrouter_active``, Anthropic
                 # otherwise.
                 provider=("open_router" if config.openrouter_active else "anthropic"),
+                spend_cap_usd=spend_cap_usd,
             )
 
         # --- Persist session messages ---

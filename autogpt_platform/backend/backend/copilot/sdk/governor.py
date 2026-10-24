@@ -74,6 +74,9 @@ class TurnGovernor:
         # Set once the turn has closed as a pause: queued follow-ups then wait
         # for the user to pick the task back up instead of auto-continuing.
         self.paused = False
+        # Set once the CLI's budget backstop ended the turn, after the call
+        # that crossed it had already been made.
+        self.backstopped = False
 
     def observe(self, message: Message) -> None:
         if isinstance(message, AssistantMessage):
@@ -106,6 +109,7 @@ class TurnGovernor:
         if result_subtype == "error_max_turns":
             return self._pause("steps", checkpoint_saved=False)
         if result_subtype == "error_max_budget_usd":
+            self.backstopped = True
             reason = self.budget.limiting if self.budget is not None else "task"
             return self._pause(reason, checkpoint_saved=False)
         if self.landing is None or not self.refused:
@@ -113,6 +117,19 @@ class TurnGovernor:
         if result_subtype != "success":
             return None
         return self._pause(self.landing, checkpoint_saved=wrote_checkpoint)
+
+    @property
+    def spend_cap_usd(self) -> float | None:
+        """The most the account is charged for this turn, or None for its cost.
+
+        A hard cap's backstop sits on what the account had left, so the call it
+        stops on overshot that; it is charged what was left, landing on the limit.
+        """
+        if not self.backstopped or self.budget is None or not self.budget.hard_cap:
+            return None
+        if self.budget.limiting == "task":
+            return None
+        return self.budget.usd
 
     def hangup_pause(self) -> TurnPause | None:
         """The pause for a turn the CLI ended without a result while landing.

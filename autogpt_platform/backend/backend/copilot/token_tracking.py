@@ -131,6 +131,7 @@ async def persist_and_record_usage(
     skip_daily: bool = False,
     execution_path: str = "sync",
     expert_id: str | None = None,
+    spend_cap_usd: float | None = None,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -155,6 +156,8 @@ async def persist_and_record_usage(
         provider: Cost provider name (e.g. "anthropic", "open_router").
         expert_id: The expert the spend is attributed to on the cost log
             row (``PlatformCostLog.expertId``); ``None`` for the account's own.
+        spend_cap_usd: The most the account's spend is charged; the cost log
+            and the tree still record the full cost.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -230,18 +233,27 @@ async def persist_and_record_usage(
     cost_microdollars = usd_to_microdollars(cost_float)
 
     if cost_microdollars is not None and cost_microdollars > 0:
+        # Capped in whole microdollars, so spend lands exactly on the limit.
+        cap = usd_to_microdollars(spend_cap_usd)
+        spend_microdollars = (
+            cost_microdollars if cap is None else max(0, min(cost_microdollars, cap))
+        )
         # A turn billed to credits is charged to the credit balance as its cost
         # lands, and spends nothing from the plan's daily and weekly windows.
-        if user_id and not await record_credit_billed_cost(user_id, cost_microdollars):
+        if (
+            user_id
+            and spend_microdollars > 0
+            and not await record_credit_billed_cost(user_id, spend_microdollars)
+        ):
             # record_cost_usage() owns its fail-open handling for Redis/network
             # errors. Don't wrap with a broad except here — unexpected accounting
             # bugs should surface instead of being silently logged as warnings.
             await record_cost_usage(
                 user_id=user_id,
-                cost_microdollars=cost_microdollars,
+                cost_microdollars=spend_microdollars,
                 skip_daily=skip_daily,
             )
-        # Same charge, second ledger: the tree this turn belongs to. A tree is
+        # The full cost, on a second ledger: the tree this turn belongs to. A tree is
         # identified by its root turn, not by a user, so this must not sit
         # behind the user_id guard — an anonymous turn still spends its tree's
         # budget.

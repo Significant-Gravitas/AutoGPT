@@ -338,6 +338,7 @@ async def record_turn_cost_from_openrouter(
     log_prefix: str,
     langfuse_trace_id: str | None = None,
     absorbed_generation_ids: Collection[str] = (),
+    spend_cap_usd: float | None = None,
 ) -> None:
     """Persist turn cost from OpenRouter's authoritative ``/generation``.
 
@@ -486,6 +487,7 @@ async def record_turn_cost_from_openrouter(
             cost_usd=real_cost,
             model=model,
             provider="open_router",
+            spend_cap_usd=spend_cap_usd,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
