@@ -100,15 +100,14 @@ def agent_refs_by_graph(
 ) -> dict[str, AgentRef]:
     # A schedule keeps the name it was given, so its runs keep one even when the
     # graph is in neither the library nor an expert's workflows. Older runs carry
-    # no schedule id, so a graph whose schedules disagree on a name gets none.
+    # no schedule id, so a graph gets none unless all its schedules share one.
     names_by_graph: defaultdict[str, set[str]] = defaultdict(set)
     for schedule in schedules:
-        if schedule.agent_name:
-            names_by_graph[schedule.graph_id].add(schedule.agent_name)
+        names_by_graph[schedule.graph_id].add(schedule.agent_name or "")
     scheduled_names = {
         graph_id: next(iter(names))
         for graph_id, names in names_by_graph.items()
-        if len(names) == 1
+        if len(names) == 1 and "" not in names
     }
     agents = {
         ref.graph_id: AgentRef(

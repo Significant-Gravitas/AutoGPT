@@ -220,10 +220,11 @@ def test_a_library_or_expert_name_outranks_the_schedules() -> None:
         (["Morning prep", "Evening prep"], None),
         (["Evening prep", "Morning prep"], None),
         (["Daily prep", "Daily prep"], "Daily prep"),
+        (["Daily prep", None], None),
     ],
 )
 def test_a_graph_takes_a_schedule_name_only_when_its_schedules_agree(
-    names: list[str], expected: str | None
+    names: list[str | None], expected: str | None
 ) -> None:
     # Older runs carry no schedule id, so one schedule's name may not be theirs.
     jobs = [
