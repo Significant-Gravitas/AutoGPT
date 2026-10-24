@@ -27,7 +27,7 @@ vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", async () => {
     const { ready, justConnected, credentialsReady } = card.current;
     useEffect(() => {
       if (!chainActions) return;
-      chainActions.register({
+      chainActions.register("github", {
         id: "github",
         ready,
         justConnected,

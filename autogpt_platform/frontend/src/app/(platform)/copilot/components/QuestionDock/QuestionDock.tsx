@@ -10,7 +10,10 @@ import {
 } from "../../tools/clarifying-questions";
 import { QuestionMultiAnswerField } from "../ChainActionCard/QuestionMultiAnswerField";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import { ChainActionsContext } from "../ToolChain/chainActions";
+import {
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "../ToolChain/chainActions";
 import {
   buildAnswersMessage,
   buildQuestionsEntry,
@@ -34,6 +37,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
   const [renderedDockId, setRenderedDockId] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, { focus: () => void } | null>>({});
   const formId = useId();
+  const owner = useId();
 
   const dismissed = dockId === dismissedId;
   const allAnswered = questions.every((q) => isAnswered(answers[q.keyword]));
@@ -42,18 +46,21 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
   // Proceed step — register readiness + message instead.
   useEffect(() => {
     if (!chainActions || dismissed) return;
-    chainActions.register(
+    function register(entry: ChainActionEntry) {
+      chainActions?.register(owner, entry);
+    }
+    register(
       buildQuestionsEntry({
         dockId,
         questions,
         answers,
-        register: chainActions.register,
+        register,
         setAnswers,
         dismiss: () => setDismissedId(dockId),
       }),
     );
-    return () => chainActions.unregister(dockId);
-  }, [chainActions, dismissed, dockId, answers, questions]);
+    return () => chainActions.unregister(owner);
+  }, [chainActions, dismissed, dockId, answers, questions, owner]);
 
   if (renderedDockId !== dockId) {
     setRenderedDockId(dockId);

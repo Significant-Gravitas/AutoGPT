@@ -260,7 +260,7 @@ export function SetupRequirementsCard({
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   const registerWithChain = useStableCallback((actions: ChainActions) => {
-    actions.register({
+    actions.register(actionId, {
       id: actionId,
       ready: canRun,
       manualProceed: needsManualPick || hasUserActionableInputs,
