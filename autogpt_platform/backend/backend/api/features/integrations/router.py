@@ -73,11 +73,8 @@ from backend.integrations.managed_providers.ayrshare import (
     get_sso_link as get_ayrshare_sso_link,
 )
 from backend.integrations.mcp_catalog import get_mcp_catalog
-from backend.integrations.oauth import (
-    CREDENTIALS_BY_PROVIDER,
-    DEVICE_HANDLERS_BY_NAME,
-    HANDLERS_BY_NAME,
-)
+from backend.integrations.oauth import DEVICE_HANDLERS_BY_NAME, HANDLERS_BY_NAME
+from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
@@ -1932,31 +1929,8 @@ def _get_provider_oauth_handler(
             detail=f"Provider '{key}' does not support OAuth",
         )
 
-    # Check if this provider has custom OAuth credentials
-    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(key)
-
-    if oauth_credentials and not oauth_credentials.use_secrets:
-        # SDK provider with custom env vars
-        import os
-
-        client_id = (
-            os.getenv(oauth_credentials.client_id_env_var)
-            if oauth_credentials.client_id_env_var
-            else None
-        )
-        client_secret = (
-            os.getenv(oauth_credentials.client_secret_env_var)
-            if oauth_credentials.client_secret_env_var
-            else None
-        )
-    else:
-        # Original provider using settings.secrets
-        client_id = getattr(settings.secrets, f"{provider_name.value}_client_id", None)
-        client_secret = getattr(
-            settings.secrets, f"{provider_name.value}_client_secret", None
-        )
-
-    if not (client_id and client_secret):
+    app = oauth_client_credentials(key)
+    if app is None:
         logger.error(
             f"Attempt to use unconfigured {provider_name.value} OAuth integration"
         )
@@ -1967,6 +1941,7 @@ def _get_provider_oauth_handler(
                 "hint": "Set client ID and secret in the application's deployment environment",
             },
         )
+    client_id, client_secret = app
 
     handler_class = HANDLERS_BY_NAME[key]
     frontend_base_url = settings.config.frontend_base_url

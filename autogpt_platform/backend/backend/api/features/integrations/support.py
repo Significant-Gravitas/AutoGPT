@@ -2,10 +2,10 @@
 
 The greeting promises automations, Otto answers "can you use X?", and the
 Home checklist labels tasks, all from one answer: a service is supported
-when a user can actually connect it here, through a block provider that
-offers a sign-in in this deployment or an official MCP catalog server. A
-provider whose OAuth app is not configured has blocks but no way in, so it
-does not count.
+when a user can actually connect it here, through a block provider whose
+sign-in a user here can finish or an official MCP catalog server. A provider
+whose only sign-in is OAuth, with no app configured, has blocks but no way
+in, so it does not count.
 """
 
 import logging
@@ -21,6 +21,9 @@ from backend.api.features.integrations.models import (
 )
 from backend.blocks import load_all_blocks
 from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.oauth import DEVICE_HANDLERS_BY_NAME
+from backend.integrations.oauth.app_credentials import oauth_client_credentials
+from backend.integrations.providers import provider_key
 from backend.integrations.service_identity import catalog_slug
 
 logger = logging.getLogger(__name__)
@@ -71,7 +74,7 @@ def connectable_services() -> list[ConnectableService]:
             description=get_provider_description(name),
         )
         for name in get_all_provider_names()
-        if name not in _NOT_SERVICES and get_supported_auth_types(name)
+        if name not in _NOT_SERVICES and can_sign_in(name)
     ]
     keys = {service.key for service in services}
     for entry in get_mcp_catalog():
@@ -84,6 +87,25 @@ def connectable_services() -> list[ConnectableService]:
                 )
             )
     return services
+
+
+def can_sign_in(provider: str) -> bool:
+    """Whether a user here can finish at least one of ``provider``'s sign-ins.
+
+    A key, password or website header is the user's own to paste. OAuth needs
+    the provider's app configured in this deployment (Google and Reddit
+    declare OAuth either way), and a device-code sign-in needs its handler.
+    """
+    for auth_type in get_supported_auth_types(provider):
+        if auth_type == "oauth2":
+            if oauth_client_credentials(provider) is not None:
+                return True
+        elif auth_type == "device_code":
+            if provider_key(provider) in DEVICE_HANDLERS_BY_NAME:
+                return True
+        else:
+            return True
+    return False
 
 
 def find_connectable(name: str) -> ConnectableService | None:

@@ -89,3 +89,29 @@ def test_a_known_tool_is_named_one_way_however_it_was_written(registry):
 
 def test_a_word_shared_with_a_domain_name_is_not_that_service(registry):
     assert support.find_connectable("Customer support inbox") is None
+
+
+def _without_oauth_apps(mocker: MockerFixture) -> None:
+    mocker.patch.object(support, "oauth_client_credentials", return_value=None)
+
+
+def test_an_oauth_only_provider_needs_its_app_configured(mocker: MockerFixture):
+    """Google declares OAuth even where no app is set up; it only counts once
+    a user here could actually finish the sign-in."""
+    _without_oauth_apps(mocker)
+    assert support.find_connectable("Google Sheets") is None
+    assert support.find_connectable("Reddit") is None
+
+    mocker.patch.object(
+        support, "oauth_client_credentials", return_value=("id", "secret")
+    )
+    found = support.find_connectable("Google Sheets")
+    assert found is not None and found.key == "google"
+
+
+def test_a_provider_users_can_bring_a_key_for_needs_no_app(mocker: MockerFixture):
+    """GitHub also takes a personal token, so a missing OAuth app does not
+    make it unsupported."""
+    _without_oauth_apps(mocker)
+    found = support.find_connectable("GitHub")
+    assert found is not None and found.key == "github"

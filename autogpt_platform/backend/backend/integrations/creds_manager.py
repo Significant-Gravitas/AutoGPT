@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,11 +16,8 @@ from backend.integrations.credentials_store import (
     provider_matches,
 )
 from backend.integrations.creds_events import publish_creds_changed
-from backend.integrations.oauth import (
-    CREDENTIALS_BY_PROVIDER,
-    DEVICE_HANDLERS_BY_NAME,
-    HANDLERS_BY_NAME,
-)
+from backend.integrations.oauth import DEVICE_HANDLERS_BY_NAME, HANDLERS_BY_NAME
+from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
@@ -575,24 +571,8 @@ async def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandl
     if provider_name not in HANDLERS_BY_NAME:
         raise KeyError(f"Unknown provider '{provider_name}'")
 
-    provider_creds = CREDENTIALS_BY_PROVIDER[provider_name]
-    if not provider_creds.use_secrets:
-        # This is safe to do as we check that the env vars exist in the registry
-        client_id = (
-            os.getenv(provider_creds.client_id_env_var)
-            if provider_creds.client_id_env_var
-            else None
-        )
-        client_secret = (
-            os.getenv(provider_creds.client_secret_env_var)
-            if provider_creds.client_secret_env_var
-            else None
-        )
-    else:
-        client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
-        client_secret = getattr(
-            settings.secrets, f"{provider_name.value}_client_secret"
-        )
+    app = oauth_client_credentials(provider_name)
+    client_id, client_secret = app if app else (None, None)
 
     if not (client_id and client_secret):
         raise MissingConfigError(
