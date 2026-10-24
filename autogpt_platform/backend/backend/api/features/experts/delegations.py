@@ -26,6 +26,7 @@ from backend.copilot.delegation_threads_db import (
 )
 from backend.copilot.gate.handoff import HandoffCard
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.models import DelegatedExpertInfo
 
 DelegationStatus = Literal[
@@ -247,10 +248,13 @@ async def expert_infos(
 def brief_of(first_message: str | None) -> str:
     """The task as the delegator wrote it, without the hand-off preamble.
 
-    ``delegate_to_expert`` frames the prompt with bracketed paragraphs (who
-    asked, optional context) before the task itself.
+    The stored first message starts with the context blocks the server puts
+    there for the model (the skills index, the user's context), which the
+    chat history hides the same way; then ``delegate_to_expert`` frames the
+    prompt with bracketed paragraphs (who asked, optional context) before
+    the task itself.
     """
-    text = (first_message or "").strip()
+    text = strip_injected_context_for_display((first_message or "").strip()).strip()
     while text.startswith("[") and "]\n\n" in text:
         head, rest = text.split("]\n\n", 1)
         if "\n\n" in head:

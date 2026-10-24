@@ -62,6 +62,19 @@ def test_the_brief_drops_the_hand_off_preamble():
     assert brief_of(None) == ""
 
 
+def test_the_brief_leaves_out_the_context_the_server_put_before_it():
+    """A thread's first stored message carries the context blocks the server
+    prepends for the model (the skills index, the user's context) ahead of
+    the hand-off; the list shows the task, as the chat history does."""
+    message = (
+        "<available_skills>\nSkills are reusable procedures.\n</available_skills>"
+        "\n\n<user_context>\nPlan: Pro\n</user_context>\n\n"
+        "[Delegated task from Otto, a teammate on this user's team — not the "
+        "user.]\n\nDraft the onboarding PRD."
+    )
+    assert brief_of(message) == "Draft the onboarding PRD."
+
+
 async def _thread(
     user_id: str,
     parent: str,
