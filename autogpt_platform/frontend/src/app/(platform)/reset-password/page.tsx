@@ -263,7 +263,11 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <div className="flex h-[80vh] items-center justify-center">
-          <LoadingSpinner variant="circle" className="size-16" />
+          <LoadingSpinner
+            variant="circle"
+            className="size-16"
+            aria-hidden="true"
+          />
         </div>
       }
     >

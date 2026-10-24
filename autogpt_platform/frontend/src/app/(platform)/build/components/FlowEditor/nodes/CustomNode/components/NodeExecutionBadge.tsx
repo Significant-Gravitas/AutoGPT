@@ -27,7 +27,11 @@ export const NodeExecutionBadge = ({ nodeId }: { nodeId: string }) => {
       >
         {status}
         {status === AgentExecutionStatus.RUNNING && (
-          <LoadingSpinner variant="circle" className="size-4" />
+          <LoadingSpinner
+            variant="circle"
+            className="size-4"
+            aria-hidden="true"
+          />
         )}
       </Badge>
     </div>

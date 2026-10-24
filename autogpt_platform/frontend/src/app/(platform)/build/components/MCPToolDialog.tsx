@@ -531,7 +531,11 @@ export function MCPToolDialog({
             >
               {loading || oauthLoading ? (
                 <span className="flex items-center gap-2">
-                  <LoadingSpinner variant="circle" className="size-4" />
+                  <LoadingSpinner
+                    variant="circle"
+                    className="size-4"
+                    aria-hidden="true"
+                  />
                   {oauthLoading ? "Waiting for sign-in..." : "Connecting..."}
                 </span>
               ) : authRequired && !showManualToken ? (
