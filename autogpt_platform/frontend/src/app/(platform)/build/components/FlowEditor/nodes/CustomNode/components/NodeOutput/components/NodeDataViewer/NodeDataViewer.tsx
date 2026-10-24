@@ -122,10 +122,10 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
               </Text>
             </div>
             <Text
-              variant="small"
+              variant="small-medium"
               as="div"
               // TODO(tokens): no exact role: border-slate-300 #B8BFCA, bg-slate-100 #EFF1F4
-              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 font-medium leading-4 text-foreground-base"
+              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 leading-4 text-foreground-base"
             >
               {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
               item

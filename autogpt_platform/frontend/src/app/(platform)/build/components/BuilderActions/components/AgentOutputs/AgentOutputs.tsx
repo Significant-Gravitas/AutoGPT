@@ -116,10 +116,10 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
               <SheetDescription className="mt-1 text-body leading-5 text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <Text
-                    variant="small"
+                    variant="small-medium"
                     as="span"
                     // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00
-                    className="rounded-md bg-yellow-100 px-2 py-0.5 font-medium leading-4 text-yellow-800"
+                    className="rounded-md bg-yellow-100 px-2 py-0.5 leading-4 text-yellow-800"
                   >
                     Beta
                   </Text>

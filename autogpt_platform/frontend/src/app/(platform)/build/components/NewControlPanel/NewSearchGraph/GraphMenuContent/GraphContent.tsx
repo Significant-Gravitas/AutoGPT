@@ -117,7 +117,7 @@ export function GraphSearchContent({
                             variant="small"
                             as="span"
                             tone="muted"
-                            className="shrink-0 rounded-[0.75rem] bg-surface-active px-2 font-sans leading-5"
+                            className="shrink-0 rounded-[0.75rem] bg-surface-active px-2 leading-5"
                           >
                             {nodeType}
                           </Text>
