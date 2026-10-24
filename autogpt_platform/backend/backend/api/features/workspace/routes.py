@@ -455,7 +455,9 @@ async def get_storage_usage(
 
     used_bytes, file_count, limit_bytes = await asyncio.gather(
         get_workspace_total_size(workspace.id),
-        count_workspace_files(workspace.id),
+        # Bytes count every file, since all of them use the quota; the count
+        # is of the files the user can see.
+        count_workspace_files(workspace.id, include_internal=False),
         get_workspace_storage_limit_bytes(user_id),
     )
 
@@ -650,6 +652,9 @@ async def list_workspace_files(
         metadata_not_equals=metadata_not_equals,
         folder_id=folder_id,
         root_only=root_only,
+        # Otto's own working files (parked tool outputs, its build scratchpad)
+        # are not the user's; leaving them out here keeps paging correct.
+        include_internal=False,
     )
     if expert_id is not None:
         # Fails closed: an unowned or archived expert resolves to no sessions

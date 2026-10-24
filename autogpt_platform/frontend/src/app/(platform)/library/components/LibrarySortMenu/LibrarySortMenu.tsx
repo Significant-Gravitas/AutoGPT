@@ -19,7 +19,7 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
   const { handleSortChange } = useLibrarySortMenu({ setLibrarySort });
   return (
     <div className="flex items-center" data-testid="sort-by-dropdown">
-      <span className="hidden whitespace-nowrap text-sm text-zinc-500 sm:inline">
+      <span className="hidden whitespace-nowrap text-sm text-foreground-tertiary sm:inline">
         sort by
       </span>
       <Select onValueChange={handleSortChange}>
