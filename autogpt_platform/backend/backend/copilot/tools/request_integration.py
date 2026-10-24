@@ -36,6 +36,9 @@ LOCK_KEY_PREFIX = "copilot:integration_request:"
 LOCK_TTL_SECONDS = 30
 LOCK_ATTEMPTS = 20
 LOCK_RETRY_SECONDS = 0.1
+# The card is the user's answer and must not wait on Linear: past this the
+# ask goes unrecorded and the card says so.
+RECORD_TIMEOUT_SECONDS = 10.0
 
 
 class RequestIntegrationTool(BaseTool):
@@ -110,9 +113,20 @@ async def _record(
 ) -> bool:
     """Add this ask to the service's feature request, filing it if new.
 
-    Anything short of a clean answer leaves the ask unrecorded rather than
-    filed twice: the card is the user's answer either way.
+    Anything short of a clean answer in time leaves the ask unrecorded rather
+    than filed twice: the card is the user's answer either way.
     """
+    try:
+        async with asyncio.timeout(RECORD_TIMEOUT_SECONDS):
+            return await _record_under_lock(user_id, service, use_case, session_id)
+    except TimeoutError:
+        logger.warning(f"Integration request for {service} was not recorded: timeout")
+        return False
+
+
+async def _record_under_lock(
+    user_id: str, service: str, use_case: str, session_id: str | None
+) -> bool:
     lock = await _acquire_service_lock(service)
     if lock is None:
         logger.warning(f"Integration request for {service} was not recorded: busy")

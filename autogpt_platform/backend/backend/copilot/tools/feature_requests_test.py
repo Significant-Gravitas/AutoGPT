@@ -1,11 +1,20 @@
 """Tests for SearchFeatureRequestsTool and CreateFeatureRequestTool."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.linear._api import LinearAPIException
+from backend.util.request import Requests
+
 from ._test_data import make_session
-from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
+from .feature_requests import (
+    LINEAR_MAX_ATTEMPTS,
+    CreateFeatureRequestTool,
+    SearchFeatureRequestsTool,
+    find_feature_request,
+)
 from .models import (
     ErrorResponse,
     FeatureRequestCreatedResponse,
@@ -608,3 +617,29 @@ class TestCreateFeatureRequestTool:
         assert isinstance(resp, ErrorResponse)
         assert resp.details is not None
         assert resp.details["issue_id"] == "issue-1"
+
+
+async def test_a_sustained_linear_outage_gives_up_after_a_few_attempts():
+    """Otto waits on these calls mid-turn: a Linear that keeps answering 503
+    must end in an error after a few tries, not keep the turn waiting."""
+    outage = MagicMock(status=503, ok=False)
+    outage.json.return_value = {"errors": [{"message": "Service unavailable"}]}
+    settings = MagicMock()
+    settings.secrets.copilot_linear_api_key = (
+        "fake-linear-key"  # pragma: allowlist secret
+    )
+    settings.secrets.linear_feature_request_project_id = _FAKE_PROJECT_ID
+    settings.secrets.linear_feature_request_team_id = _FAKE_TEAM_ID
+    with (
+        patch(
+            "backend.copilot.tools.feature_requests._get_settings",
+            return_value=settings,
+        ),
+        patch.object(Requests, "_request", AsyncMock(return_value=outage)) as sent,
+        pytest.raises(LinearAPIException),
+    ):
+        await asyncio.wait_for(
+            find_feature_request("Integration request: Gelato"), timeout=20
+        )
+
+    assert sent.await_count == LINEAR_MAX_ATTEMPTS

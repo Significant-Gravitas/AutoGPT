@@ -98,6 +98,12 @@ def _get_settings() -> Settings:
     return _settings
 
 
+# Otto waits on these calls mid-turn, and Linear's client retries 429s and
+# 5xx: without a cap an outage would keep the turn waiting indefinitely.
+LINEAR_MAX_ATTEMPTS = 3
+LINEAR_RETRY_MAX_WAIT_SECONDS = 2.0
+
+
 def _get_linear_config() -> tuple[LinearClient, str, str]:
     """Return a configured Linear client, project ID, and team ID.
 
@@ -117,7 +123,11 @@ def _get_linear_config() -> tuple[LinearClient, str, str]:
         api_key=SecretStr(secrets.copilot_linear_api_key),
         title="System Linear API Key",
     )
-    client = LinearClient(credentials=credentials)
+    client = LinearClient(
+        credentials=credentials,
+        retry_max_attempts=LINEAR_MAX_ATTEMPTS,
+        retry_max_wait=LINEAR_RETRY_MAX_WAIT_SECONDS,
+    )
     return (
         client,
         secrets.linear_feature_request_project_id,

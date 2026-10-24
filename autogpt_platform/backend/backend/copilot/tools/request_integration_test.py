@@ -1,5 +1,6 @@
 """request_integration: the "not supported yet" answer, and the request it records."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -196,3 +197,27 @@ async def test_without_the_lock_nothing_is_filed_and_the_card_still_shows():
     assert isinstance(response, IntegrationRequestResponse)
     assert response.recorded is False
     file.assert_not_awaited()
+
+
+async def test_a_linear_outage_still_returns_the_card_in_time(service_lock):
+    """However long Linear takes, the user gets the card, unrecorded, and
+    the service's lock is given back."""
+    _, release, lock = service_lock
+
+    async def never_answers(title: str) -> str | None:
+        await asyncio.Event().wait()
+        return None
+
+    with (
+        patch.object(request_integration, "RECORD_TIMEOUT_SECONDS", 0.05),
+        patch.object(request_integration, "find_feature_request", never_answers),
+        patch.object(request_integration, "file_feature_request", AsyncMock()) as file,
+    ):
+        response = await asyncio.wait_for(
+            _run(service="Gelato", use_case="Print sticker sheets"), timeout=5
+        )
+
+    assert isinstance(response, IntegrationRequestResponse)
+    assert response.recorded is False
+    file.assert_not_awaited()
+    release.assert_awaited_once_with(lock)
