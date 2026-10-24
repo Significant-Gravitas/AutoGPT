@@ -65,12 +65,12 @@ function Root({
         cloneElement(
           children,
           undefined,
-          <FeaturedSurface density={density}>
+          <FeaturedSurface density={spacing}>
             {children.props.children}
           </FeaturedSurface>,
         )
       ) : (
-        <FeaturedSurface density={density}>{children}</FeaturedSurface>
+        <FeaturedSurface density={spacing}>{children}</FeaturedSurface>
       );
   }
 
@@ -80,7 +80,7 @@ function Root({
         data-slot="attention-card"
         className={cn(
           cardVariants({ variant: card }),
-          !isFeatured && densityVariants({ density }),
+          !isFeatured && densityVariants({ density: spacing }),
           className,
         )}
         {...rest}
