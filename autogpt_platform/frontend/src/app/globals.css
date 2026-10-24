@@ -62,7 +62,7 @@
     --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
 
     /* Builder (flow editor) */
-    --color-builder-canvas: 249 249 249; /* #F9F9F9, the inset behind the transparent xyflow canvas */
+    --color-builder-canvas: 249 249 249; /* #F9F9F9, what the transparent canvas shows (the app inset); not read yet */
     --color-builder-grid: 145 145 154; /* #91919A, xyflow's default dot colour */
     --color-node-surface: 254 254 254; /* white #FEFEFE, the node card */
     --color-node-border: 207 212 219; /* slate-200 #CFD4DB, the node ring at /60 */
