@@ -36,11 +36,12 @@ _SHELL = (
     "printf|export|jq"
 )
 # A command and its argument in command position: opening a line or sentence
-# ("cat brief shows…") or right after a run verb ("I'm running cat brief").
-# Prepositions such as "with" are left out: "listings with cat food" is prose.
+# ("cat brief shows…") or right after a run verb ("I'm running cat brief"),
+# bare or quoted as inline code ("I ran `cat brief`"). Prepositions such as
+# "with" are left out: "listings with cat food" is prose.
 _COMMAND_POSITION = re.compile(
     r"(?:^|(?<=[.!?]\s)|\b(?:[Rr]un(?:s|ning)?|[Rr]an|[Ee]xecut(?:e|es|ed|ing)"
-    r"|[Cc]all(?:s|ed|ing)?)\s+)"
+    r"|[Cc]all(?:s|ed|ing)?)\s+)[`'\"]?"
     rf"((?:{_SHELL})\s+[\w~/-]+(?:\.[\w~/-]+)*)",
     re.MULTILINE,
 )

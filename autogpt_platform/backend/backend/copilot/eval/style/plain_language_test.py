@@ -69,6 +69,13 @@ def test_a_command_after_a_run_verb_is_caught():
     assert technical_terms("cat brief shows the dates.", _TOOLS) == ["cat brief"]
 
 
+def test_a_command_in_inline_code_after_a_run_verb_is_caught():
+    assert technical_terms("I ran `cat brief` to check.", _TOOLS) == ["cat brief"]
+    assert technical_terms("Running 'python3 report' now.", _TOOLS) == [
+        "python3 report"
+    ]
+
+
 def test_ordinary_words_after_a_run_verb_stay_plain():
     reply = "Running the cat food promo this week. Ran the head office rota."
     assert technical_terms(reply, _TOOLS) == []
