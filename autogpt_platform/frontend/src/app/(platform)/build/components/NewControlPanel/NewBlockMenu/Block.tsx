@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes, memo, useState } from "react";
@@ -117,6 +117,7 @@ function BlockCard({
   return (
     <>
       <Button
+        variant="legacy-default"
         draggable={!isMCPBlock}
         data-id={blockDataId}
         className={cn(

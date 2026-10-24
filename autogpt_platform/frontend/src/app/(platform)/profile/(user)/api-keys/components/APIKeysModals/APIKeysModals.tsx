@@ -12,7 +12,7 @@ import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/__legacy__/ui/label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";
 import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
@@ -34,7 +34,7 @@ export const APIKeysModals = () => {
     <div className="mb-4 flex justify-end">
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogTrigger asChild>
-          <Button>Create Key</Button>
+          <Button variant="legacy-default">Create Key</Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
@@ -96,10 +96,17 @@ export const APIKeysModals = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+            <Button
+              variant="legacy-outline"
+              onClick={() => setIsCreateOpen(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreateKey} disabled={isCreating}>
+            <Button
+              variant="legacy-default"
+              onClick={handleCreateKey}
+              disabled={isCreating}
+            >
               Create
             </Button>
           </DialogFooter>
@@ -119,12 +126,21 @@ export const APIKeysModals = () => {
             <code className="ph-no-capture flex-1 rounded-md bg-secondary p-2 text-sm">
               {keyState.newApiKey}
             </code>
-            <Button size="icon" variant="outline" onClick={handleCopyKey}>
+            <Button
+              size="legacy-icon"
+              variant="legacy-outline"
+              onClick={handleCopyKey}
+            >
               <LuCopy className="h-4 w-4" />
             </Button>
           </div>
           <DialogFooter>
-            <Button onClick={() => setIsKeyDialogOpen(false)}>Close</Button>
+            <Button
+              variant="legacy-default"
+              onClick={() => setIsKeyDialogOpen(false)}
+            >
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

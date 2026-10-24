@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import React, { Fragment } from "react";
 import { IntegrationBlock } from "../IntergrationBlock";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
@@ -72,7 +72,7 @@ export const IntegrationBlocks = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <Button
-              variant={"link"}
+              variant={"legacy-link"}
               className="p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800"
               onClick={() => {
                 setIntegration(undefined);

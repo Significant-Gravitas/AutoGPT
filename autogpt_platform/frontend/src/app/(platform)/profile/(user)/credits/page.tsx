@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -63,7 +63,11 @@ function CoPilotUsageSection() {
         )}
         <StorageBar />
       </div>
-      <Button className="w-full" onClick={() => router.push("/copilot")}>
+      <Button
+        variant="legacy-default"
+        className="w-full"
+        onClick={() => router.push("/copilot")}
+      >
         Open Otto
       </Button>
     </div>
@@ -225,6 +229,7 @@ export default function CreditsPage() {
             </div>
 
             <Button
+              variant="legacy-default"
               type="submit"
               className="w-full"
               disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
@@ -296,12 +301,16 @@ export default function CreditsPage() {
 
             {autoTopUpConfig?.amount ? (
               <>
-                <Button type="submit" className="w-full">
+                <Button
+                  variant="legacy-default"
+                  type="submit"
+                  className="w-full"
+                >
                   Save Changes
                 </Button>
                 <Button
                   className="w-full"
-                  variant="destructive"
+                  variant="legacy-destructive"
                   onClick={() =>
                     updateAutoTopUpConfig(0, 0).then(() => {
                       toast({ title: "Auto top-up config disabled! 🎉" });
@@ -312,7 +321,7 @@ export default function CreditsPage() {
                 </Button>
               </>
             ) : (
-              <Button type="submit" className="w-full">
+              <Button variant="legacy-default" type="submit" className="w-full">
                 Enable Auto-Refill
               </Button>
             )}
@@ -333,6 +342,7 @@ export default function CreditsPage() {
             billing portal.
           </p>
           <Button
+            variant="legacy-default"
             type="submit"
             className="w-full"
             onClick={() => openBillingPortal()}
@@ -393,6 +403,7 @@ export default function CreditsPage() {
           </Table>
           {transactionHistory.next_transaction_time && (
             <Button
+              variant="legacy-default"
               type="submit"
               className="w-full"
               onClick={() => fetchTransactionHistory()}
@@ -439,7 +450,7 @@ export default function CreditsPage() {
           )}
 
           <Button
-            variant="destructive"
+            variant="legacy-destructive"
             onClick={() => openRefundModal()}
             className="w-full"
           >

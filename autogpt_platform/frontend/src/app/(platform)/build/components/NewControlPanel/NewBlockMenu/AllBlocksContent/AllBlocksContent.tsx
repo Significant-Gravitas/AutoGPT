@@ -1,6 +1,6 @@
 import React, { Fragment } from "react";
 import { Block } from "../Block";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { beautifyString } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
@@ -96,7 +96,7 @@ export const AllBlocksContent = () => {
 
               {category.total_blocks > category.blocks.length && (
                 <Button
-                  variant={"link"}
+                  variant={"legacy-link"}
                   className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}

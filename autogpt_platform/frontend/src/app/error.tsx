@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
 
 export default function Error({
@@ -30,10 +30,10 @@ export default function Error({
           again later or contact support if the issue persists.
         </p>
         <div className="mt-6 flex flex-row justify-center gap-4">
-          <Button onClick={reset} variant="outline">
+          <Button onClick={reset} variant="legacy-outline">
             Retry
           </Button>
-          <Button>
+          <Button variant="legacy-default">
             <Link href="/">Go to Homepage</Link>
           </Button>
         </div>

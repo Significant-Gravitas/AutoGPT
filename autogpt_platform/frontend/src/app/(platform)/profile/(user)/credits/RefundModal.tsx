@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Select,
   SelectContent,
@@ -141,10 +141,12 @@ export const RefundModal = ({
           </div>
         </div>
         <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="legacy-outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleRefundRequest}>Request Refund</Button>
+          <Button variant="legacy-default" onClick={handleRefundRequest}>
+            Request Refund
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

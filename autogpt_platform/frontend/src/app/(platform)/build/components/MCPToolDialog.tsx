@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Label } from "@/components/__legacy__/ui/label";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
@@ -503,7 +503,7 @@ export function MCPToolDialog({
         <DialogFooter>
           {step === "tool" && (
             <Button
-              variant="outline"
+              variant="legacy-outline"
               onClick={() => {
                 setStep("url");
                 setSelectedTool(null);
@@ -512,11 +512,12 @@ export function MCPToolDialog({
               Back
             </Button>
           )}
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="legacy-outline" onClick={handleClose}>
             Cancel
           </Button>
           {step === "url" && (
             <Button
+              variant="legacy-default"
               onClick={
                 authRequired && !showManualToken
                   ? handleOAuthSignIn
@@ -544,7 +545,11 @@ export function MCPToolDialog({
             </Button>
           )}
           {step === "tool" && (
-            <Button onClick={handleConfirm} disabled={!selectedTool}>
+            <Button
+              variant="legacy-default"
+              onClick={handleConfirm}
+              disabled={!selectedTool}
+            >
               Add Block
             </Button>
           )}

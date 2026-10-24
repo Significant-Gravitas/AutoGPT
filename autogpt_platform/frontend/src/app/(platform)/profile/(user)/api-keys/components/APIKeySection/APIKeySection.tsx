@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, MoreVertical } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Table,
   TableBody,
@@ -80,8 +80,8 @@ export function APIKeysSection() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           data-testid="api-key-actions"
-                          variant="ghost"
-                          size="sm"
+                          variant="legacy-ghost"
+                          size="legacy-sm"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </Button>

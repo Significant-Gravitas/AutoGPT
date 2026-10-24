@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -120,7 +120,7 @@ export const DateInput = ({
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant="ghost"
+            variant="legacy-ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
