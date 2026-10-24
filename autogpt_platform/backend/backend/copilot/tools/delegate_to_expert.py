@@ -333,7 +333,7 @@ async def run_delegated_turn(
         workspace_files=workspace_files,
         actor=target.name,
     )
-    delegated.message += await build_spawn_state_note()
+    delegated.message += await _spawn_note()
     return apply_delegated_expert(
         delegated,
         DelegatedExpertInfo(
@@ -344,6 +344,16 @@ async def run_delegated_turn(
             color=target.color,
         ),
     )
+
+
+async def _spawn_note() -> str:
+    """The tree's state for the result, or nothing: it is read after the task
+    is queued, so failing here must not report that task as failed."""
+    try:
+        return await build_spawn_state_note()
+    except Exception:
+        logger.warning("Could not read the spawn state note", exc_info=True)
+        return ""
 
 
 def _error(message: str, session: ChatSession) -> ErrorResponse:

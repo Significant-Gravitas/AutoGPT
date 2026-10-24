@@ -628,3 +628,63 @@ async def test_queue_spawned_turn_stores_impersonation_with_the_queued_row() -> 
 
 
 usage_snapshot = usage_activation_fixtures.usage_snapshot
+
+
+@pytest.mark.asyncio
+async def test_a_failed_publish_is_unconfirmed_not_unsent() -> None:
+    """The broker may hold a message whose publish raised (a lost confirm),
+    so that failure must not read as "nothing was sent" to a caller that
+    would then send the same task again (SECRT-3138 review)."""
+    queue = MagicMock(publish_message=AsyncMock(side_effect=OSError("confirm lost")))
+    slot = MagicMock()
+    with (
+        patch.object(
+            utils,
+            "_admitted_turn_envelope",
+            new=AsyncMock(return_value=root_envelope("t1")),
+        ),
+        patch.object(utils, "release_turn", new=AsyncMock()),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch("backend.copilot.stream_registry.delete_session_meta", new=AsyncMock()),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(return_value=queue),
+        ),
+        pytest.raises(utils.TurnPublishUnconfirmed) as raised,
+    ):
+        await utils.dispatch_turn(
+            slot, session_id="s1", user_id="u1", turn_id="t1", message="hi"
+        )
+
+    assert isinstance(raised.value.__cause__, OSError)
+    slot.keep.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_failure_before_the_publish_keeps_its_own_type() -> None:
+    """Before the publish nothing can have reached the broker, so the error
+    stays what it was and callers may treat the turn as never sent."""
+    queue = MagicMock(publish_message=AsyncMock())
+    with (
+        patch.object(
+            utils,
+            "_admitted_turn_envelope",
+            new=AsyncMock(return_value=root_envelope("t1")),
+        ),
+        patch.object(utils, "release_turn", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.create_session",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        patch("backend.copilot.stream_registry.delete_session_meta", new=AsyncMock()),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(return_value=queue),
+        ),
+        pytest.raises(ConnectionError),
+    ):
+        await utils.dispatch_turn(
+            MagicMock(), session_id="s1", user_id="u1", turn_id="t1", message="hi"
+        )
+
+    queue.publish_message.assert_not_awaited()

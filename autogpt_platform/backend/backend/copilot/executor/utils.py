@@ -585,6 +585,16 @@ async def schedule_turn(
         )
 
 
+class TurnPublishUnconfirmed(Exception):
+    """Publishing a turn raised, so the broker may hold it or not.
+
+    A publish can fail after the broker took the message (a lost confirm),
+    so unlike any failure before it, this one does not prove the turn was
+    never sent. A caller deciding whether to send a task again must treat it
+    as possibly running. The original error is the ``__cause__``.
+    """
+
+
 async def dispatch_turn(
     slot: TurnSlot,
     *,
@@ -683,30 +693,35 @@ async def dispatch_turn(
             tool_name=tool_name,
             turn_id=turn_id,
         )
-        await enqueue_copilot_turn(
-            session_id=session_id,
-            user_id=user_id,
-            message=message,
-            turn_id=turn_id,
-            is_user_message=is_user_message,
-            context=context,
-            file_ids=file_ids,
-            organization_id=organization_id,
-            team_id=team_id,
-            model=model,
-            llm_auth_provider=llm_auth_provider,
-            llm_credential_id=llm_credential_id,
-            permissions=permissions,
-            request_arrival_at=request_arrival_at,
-            message_metadata=message_metadata,
-            envelope=envelope,
-            unattended=unattended,
-            impersonated=impersonated,
-            credential_pins=credential_pins,
-            scheduled=scheduled,
-            tool_name=tool_name,
-            trace_headers=trace_headers,
-        )
+        try:
+            await enqueue_copilot_turn(
+                session_id=session_id,
+                user_id=user_id,
+                message=message,
+                turn_id=turn_id,
+                is_user_message=is_user_message,
+                context=context,
+                file_ids=file_ids,
+                organization_id=organization_id,
+                team_id=team_id,
+                model=model,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                permissions=permissions,
+                request_arrival_at=request_arrival_at,
+                message_metadata=message_metadata,
+                envelope=envelope,
+                unattended=unattended,
+                impersonated=impersonated,
+                credential_pins=credential_pins,
+                scheduled=scheduled,
+                tool_name=tool_name,
+                trace_headers=trace_headers,
+            )
+        except Exception as e:
+            raise TurnPublishUnconfirmed(
+                "The turn's publish raised; it may or may not be queued."
+            ) from e
         slot.keep()
         committed = True
     finally:

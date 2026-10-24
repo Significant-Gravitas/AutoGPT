@@ -14,19 +14,20 @@ same way. The user's click on the card is the approval for both; the hand-off
 is not put to them again.
 
 The hire stands whatever happens to the task, and what is reported is only
-what is known: started, queued for a task slot, not started (with whether a
-retry can help), or sent but unconfirmed. When the send raises, the thread
-says which: a dispatch that failed released its turn, leaving the thread
-idle, so it is removed and a retry is safe; anything else may be running and
-is never sent a second time.
+what is known: started, queued for a task slot, refused (no retry: the
+refusal says why), or, when the send raised, which side of the publish it
+raised on. Before it (``TurnPublishUnconfirmed`` not raised) nothing reached
+the broker, so the empty thread is removed and a retry is safe; a publish
+that raised may still have delivered, so that task is reported unconfirmed
+and never sent a second time.
 """
 
 import logging
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, delete_chat_session
-from backend.data.db_accessors import chat_db
+from backend.copilot.executor.utils import TurnPublishUnconfirmed
+from backend.copilot.model import ChatSession, delete_chat_session
 
 from .delegate_to_expert import (
     open_delegation_thread,
@@ -84,14 +85,17 @@ async def hand_off_to_new_hire(
             opened_here=True,
             wait_for_result=0,
         )
+    except TurnPublishUnconfirmed:
+        logger.warning("Hand-off to a new hire is unconfirmed", exc_info=True)
+        return _report(applied, task, "unconfirmed", thread)
     except Exception:
-        logger.warning("Hand-off to a new hire raised", exc_info=True)
-        if await _was_sent(thread):
-            return _report(applied, task, "unconfirmed", thread)
+        logger.warning("Hand-off to a new hire was not sent", exc_info=True)
         await _discard(thread, user_id)
         return _report(applied, task, "failed", None, "It could not be sent.", True)
     if not isinstance(sent, SubSessionStatusResponse) or sent.status == "error":
-        return _report(applied, task, "failed", None, sent.message, True)
+        # A refusal (tree budget or depth, a full set of task slots) says
+        # itself what has to change first.
+        return _report(applied, task, "failed", None, sent.message, False)
     status = "started" if sent.status in _STARTED else "queued"
     return _report(applied, task, status, sent.sub_session_id)
 
@@ -121,20 +125,6 @@ async def _target(user_id: str, session: ChatSession, expert_id: str) -> Expert:
     if (refusal := await chain_refusal(user_id, session, target)) is not None:
         raise _NotStarted(refusal, retry=False)
     return target
-
-
-async def _was_sent(thread: str) -> bool:
-    """Whether a send that raised may have reached *thread*.
-
-    Only an idle thread proves it did not: a failed dispatch releases its
-    turn slot, which sets the thread back to idle. An unreadable status
-    counts as sent, so the task is never handed over twice.
-    """
-    try:
-        return await chat_db().get_chat_session_status(thread) != CHAT_STATUS_IDLE
-    except Exception:
-        logger.warning("Could not read a hand-off thread's status", exc_info=True)
-        return True
 
 
 async def _discard(thread: str, user_id: str) -> None:

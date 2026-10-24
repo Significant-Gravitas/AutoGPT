@@ -1042,3 +1042,28 @@ class TestRefusedDelegationCleanup:
         )
 
         deleted.assert_not_awaited()
+
+
+class TestAfterTheDispatch:
+    @pytest.mark.asyncio
+    async def test_a_failed_spawn_note_does_not_undo_a_dispatched_task(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """The tree note is decoration on a task already queued. Raising there
+        would report a running delegation as a failure, and a caller that
+        retries on it would run the task twice (SECRT-3138 review)."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.build_spawn_state_note",
+            AsyncMock(side_effect=RuntimeError("redis blip")),
+        )
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        assert isinstance(result, SubSessionStatusResponse)
+        assert result.status == "running"
+        assert result.sub_session_id == mock_sessions[0].session_id
