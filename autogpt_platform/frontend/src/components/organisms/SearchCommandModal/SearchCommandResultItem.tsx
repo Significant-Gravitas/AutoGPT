@@ -49,14 +49,22 @@ export function SearchCommandResultItem({
     >
       <span
         aria-hidden="true"
+        data-slot="search-command-result-item-indicator"
         className={cn(
           "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-action-hover transition-opacity duration-150",
           isHighlighted ? "opacity-100" : "opacity-0",
         )}
       />
-      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
+      <div
+        data-slot="search-command-result-item-body"
+        className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5"
+      >
         {Icon ? (
-          <span aria-hidden className="contents">
+          <span
+            aria-hidden
+            data-slot="search-command-result-item-icon"
+            className="contents"
+          >
             <Icon
               className={cn(
                 "h-4 w-4 shrink-0 transition-colors duration-150",
@@ -67,8 +75,12 @@ export function SearchCommandResultItem({
             />
           </span>
         ) : null}
-        <div className="min-w-0 flex-1">
+        <div
+          data-slot="search-command-result-item-content"
+          className="min-w-0 flex-1"
+        >
           <div
+            data-slot="search-command-result-item-title"
             className={cn(
               "truncate text-sm font-normal transition-colors duration-150",
               isHighlighted ? "text-foreground" : "text-foreground-emphasis",
@@ -77,6 +89,7 @@ export function SearchCommandResultItem({
             {highlightMatch(item.title, query).map((part, partIndex) => (
               <span
                 key={`${part.text}-${partIndex}`}
+                data-slot="search-command-result-item-title-segment"
                 className={part.isMatch ? "font-semibold" : undefined}
               >
                 {part.text}
@@ -84,7 +97,10 @@ export function SearchCommandResultItem({
             ))}
           </div>
           {item.subtitle ? (
-            <div className="mt-0.5 truncate text-xs text-foreground-tertiary">
+            <div
+              data-slot="search-command-result-item-subtitle"
+              className="mt-0.5 truncate text-xs text-foreground-tertiary"
+            >
               {item.subtitle}
             </div>
           ) : null}
@@ -98,6 +114,7 @@ export function SearchCommandResultItem({
         ) : (
           <span
             aria-hidden="true"
+            data-slot="search-command-result-item-key"
             className={cn(
               // TODO(tokens): no shadow token for the key-cap shadow.
               "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-secondary shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
