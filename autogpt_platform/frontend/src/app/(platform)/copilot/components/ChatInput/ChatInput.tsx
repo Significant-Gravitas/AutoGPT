@@ -560,7 +560,7 @@ export const ChatInput = memo(function ChatInput({
               className={cn(
                 "max-md:max-h-32",
                 stacked && "px-0.5 py-1",
-                isCompact && "text-sm leading-5 md:text-sm",
+                isCompact && "text-body leading-5 md:text-body md:leading-5",
               )}
             />
             {isRecording && !value && (

@@ -234,7 +234,7 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
     >
       <table
         data-slot="work-output-sheet-table-grid"
-        className="w-full border-collapse text-sm"
+        className="w-full border-collapse text-body leading-5"
       >
         <thead data-slot="work-output-sheet-table-head">
           <tr
