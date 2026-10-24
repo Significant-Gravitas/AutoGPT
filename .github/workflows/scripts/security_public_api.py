@@ -96,7 +96,9 @@ def public_pages(endpoint, query=""):
             raise PublicDataError(PublicErrorCode.PAGE_REPEATED)
         seen.add(path)
         page, headers = public_json(path)
-        if not isinstance(page, list):
+        if not isinstance(page, list) or any(
+            not isinstance(item, dict) for item in page
+        ):
             raise PublicDataError(PublicErrorCode.API_COLLECTION)
         result.extend(page)
         matches = re.findall(r'<([^>]+)>;\s*rel="next"', headers.get("Link", ""))

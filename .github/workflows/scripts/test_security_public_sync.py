@@ -13,6 +13,7 @@ from urllib.error import HTTPError
 import security_public_api as api
 import security_public_publish as publish
 import security_public_sync as sync
+import security_release_notes as manual
 from security_release_notes import BASE_URL, END, START, fetch_advisories
 from test_security_release_notes import TAG, advisory
 
@@ -71,6 +72,42 @@ class SafeDiagnosticsTests(unittest.TestCase):
 
 
 class AnonymousApiTests(unittest.TestCase):
+    def test_collection_members_must_be_objects_before_results_are_returned(self):
+        for endpoint in ("security-advisories", "releases"):
+            for member in (None, CANARY, 1, True, []):
+                with self.subTest(endpoint=endpoint, member=member):
+                    with patch.object(
+                        api, "public_json", return_value=([{"id": 1}, member], {})
+                    ), self.assertRaises(api.PublicDataError) as raised:
+                        api.public_pages(endpoint)
+                    self.assertIs(
+                        raised.exception.code, api.PublicErrorCode.API_COLLECTION
+                    )
+                    self.assertNotIn(CANARY, str(raised.exception))
+
+    def test_manual_cli_rejects_invalid_collection_without_overwriting_output(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "release-notes.md"
+            output.write_text("Existing notes\n", encoding="utf-8")
+            captured = io.StringIO()
+            with patch(
+                "sys.argv", ["notes", "--tag", TAG, "--output", str(output)]
+            ), patch.object(
+                api, "public_json", return_value=([advisory(), CANARY], {})
+            ), contextlib.redirect_stdout(
+                captured
+            ), contextlib.redirect_stderr(
+                captured
+            ), self.assertRaises(
+                SystemExit
+            ) as raised:
+                manual.main()
+            self.assertEqual(raised.exception.code, 2)
+            self.assertEqual(output.read_text(encoding="utf-8"), "Existing notes\n")
+            self.assertIn(api.PublicErrorCode.API_COLLECTION.value, captured.getvalue())
+            self.assertNotIn(CANARY, captured.getvalue())
+            self.assertNotIn("Traceback", captured.getvalue())
+
     def test_ambient_tokens_proxies_and_credentials_are_not_used(self):
         response = MagicMock()
         response.__enter__.return_value = response
