@@ -4,7 +4,7 @@ import type { BriefingRunItem } from "@/app/api/__generated__/models/briefingRun
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { cn } from "@/lib/utils";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { getSafeLink, getSubtitleParts } from "../helpers";
 
 interface Props {
@@ -21,12 +21,14 @@ export function RunRow({ item, isHidden = false }: Props) {
 
   const body = (
     <>
-      <ExpertAvatar
-        name={item.expert_name}
-        avatarUrl={item.expert_avatar_url}
-        size={28}
-      />
-      <div className="min-w-0 flex-1">
+      <AttentionCard.Icon>
+        <ExpertAvatar
+          name={item.expert_name}
+          avatarUrl={item.expert_avatar_url}
+          size={28}
+        />
+      </AttentionCard.Icon>
+      <AttentionCard.Content>
         <div className="flex items-center gap-2">
           {/* Agent names and run summaries are user data: never opt them into
               unmasking in session replays. */}
@@ -53,18 +55,14 @@ export function RunRow({ item, isHidden = false }: Props) {
             {text}
           </Text>
         ) : null}
-      </div>
+      </AttentionCard.Content>
       {link ? (
-        <Icon
-          icon={ArrowRight01Icon}
-          size={16}
-          className="shrink-0 self-center text-foreground-disabled transition-colors group-hover:text-foreground-tertiary"
-        />
+        <AttentionCard.Icon trailing>
+          <Icon icon={ArrowRight01Icon} size={16} />
+        </AttentionCard.Icon>
       ) : null}
     </>
   );
-
-  const rowClassName = "group flex items-start gap-3 px-5 py-4";
 
   // Collapsed rows stay mounted and are clipped by the list's overflow, so
   // without this they keep their place in the tab order and focus lands on
@@ -72,18 +70,15 @@ export function RunRow({ item, isHidden = false }: Props) {
   return (
     <li aria-hidden={isHidden || undefined}>
       {link ? (
-        <Link
-          href={link}
-          tabIndex={isHidden ? -1 : undefined}
-          className={cn(
-            rowClassName,
-            "transition-colors hover:bg-surface-muted",
-          )}
-        >
-          {body}
-        </Link>
+        <AttentionCard.Row asChild align="start" inset interactive>
+          <Link href={link} tabIndex={isHidden ? -1 : undefined}>
+            {body}
+          </Link>
+        </AttentionCard.Row>
       ) : (
-        <div className={rowClassName}>{body}</div>
+        <AttentionCard.Row align="start" inset>
+          {body}
+        </AttentionCard.Row>
       )}
     </li>
   );

@@ -3,6 +3,7 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { cn } from "@/lib/utils";
 import { TrialCanceledDialog } from "./TrialCanceledDialog/TrialCanceledDialog";
 import { TrialOffer } from "./TrialOffer";
@@ -108,23 +109,13 @@ export function TrialCardContent({
       </section>
     );
   return (
-    <section
-      aria-label="AutoGPT trial"
-      // TODO(tokens): no role for the zinc-300 to zinc-500 gradient border.
-      className="w-full rounded-2xl bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px"
+    <AttentionCard.Root
+      asChild
+      variant="featured"
+      density="roomy"
+      className="w-full"
     >
-      <div
-        // TODO(tokens): no radius token for 15px, the 16px card inside its 1px
-        // border.
-        className="relative overflow-hidden rounded-[15px] bg-surface p-5 md:p-6"
-      >
-        <div
-          aria-hidden
-          // TODO(tokens): no token for the purple and indigo radial glow.
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(168,85,247,0.10),transparent_60%),radial-gradient(120%_60%_at_100%_100%,rgba(99,102,241,0.06),transparent_60%)]"
-        />
-        <div className="relative">{body}</div>
-      </div>
-    </section>
+      <section aria-label="AutoGPT trial">{body}</section>
+    </AttentionCard.Root>
   );
 }
