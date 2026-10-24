@@ -52,9 +52,10 @@ from backend.copilot.expert_kickoff import (
 )
 from backend.copilot.gate.card_approval import (
     card_decision_metadata,
+    parse_card_decisions,
     record_card_decisions,
 )
-from backend.copilot.gate.card_decided import is_already_answered
+from backend.copilot.gate.card_decided import is_already_answered, release_claim
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -301,33 +302,48 @@ async def _validate_session_expert_writable_by_user(
         raise HTTPException(status_code=404, detail="Expert not found")
 
 
+def _card_answer_metadata(
+    message: str, *, has_attachments: bool
+) -> dict[str, Any] | None:
+    """The metadata that tags a user row made only of card decisions."""
+    # A note in place of the row would hide what was attached to it.
+    return None if has_attachments else card_decision_metadata(message)
+
+
 async def _admit_card_answer(
     user_id: str,
     session_id: str,
     message: str,
-    *,
-    owner: str | None,
-    has_attachments: bool,
-) -> tuple[bool, dict[str, Any] | None]:
+    metadata: dict[str, Any] | None,
+    owner: str,
+) -> bool:
     """Record the card decisions in a user's own request, once per card.
 
     The only writer of card approvals: a model can add chat rows, not
-    requests. Returns whether the request may go on, and the metadata that
-    tags a row made only of decisions. A card the chat already answered, in
-    this tab or another, is not answered again.
+    requests. A card the chat already answered, in this tab or another, is not
+    answered again: a message that only answers it is dropped (False), and
+    one with the user's own words around the line is kept with nothing
+    recorded. Called just before the row is saved or queued, and given back
+    with ``_release_card_answer`` if it is not.
     """
-    # A note in place of the row would hide what was attached to it.
-    metadata = None if has_attachments else card_decision_metadata(message)
-    if metadata and await is_already_answered(
-        user_id,
-        session_id,
-        [d["confirmation_id"] for d in metadata["decisions"]],
-        owner=owner or uuid4().hex,
-    ):
-        logger.info(f"Dropped a second answer to a card in session {session_id}")
-        return False, None
+    ids = _card_ids(message)
+    if not ids:
+        return True
+    if await is_already_answered(user_id, session_id, ids, owner=owner):
+        logger.info(f"Refused a second answer to a card in session {session_id}")
+        return metadata is None
     await record_card_decisions(user_id, session_id, message)
-    return True, metadata
+    return True
+
+
+async def _release_card_answer(session_id: str, message: str, owner: str) -> None:
+    """Give back the card claim of a request that saved and queued nothing."""
+    if ids := _card_ids(message):
+        await release_claim(session_id, ids, owner)
+
+
+def _card_ids(message: str) -> list[str]:
+    return [d.confirmation_id for d in parse_card_decisions(message)]
 
 
 async def _validate_and_get_writable_session(
@@ -1971,19 +1987,16 @@ async def stream_chat_post(
         if request.message_id
         else None
     )
-    message_metadata: dict[str, Any] | None = None
-    if request.is_user_message:
-        admitted, message_metadata = await _admit_card_answer(
-            user_id,
-            session_id,
-            message,
-            owner=message_id,
-            has_attachments=bool(request.file_ids or request.folder_ids),
+    # A retransmit carries the same id, so it is not a second answer.
+    card_owner = message_id or uuid4().hex
+    card_metadata = (
+        _card_answer_metadata(
+            message, has_attachments=bool(request.file_ids or request.folder_ids)
         )
-        if not admitted:
-            # Nothing was recorded or saved; the client's refetch shows the
-            # answer that stands.
-            return _empty_ui_message_stream_response()
+        if request.is_user_message
+        else None
+    )
+    message_metadata: dict[str, Any] | None = card_metadata
     persisted_kickoff_has_reply: bool | None = None
     resume_persisted_kickoff = False
     if request.expert_kickoff:
@@ -2041,6 +2054,11 @@ async def stream_chat_post(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
             )
+        if request.is_user_message and not await _admit_card_answer(
+            user_id, session_id, message, card_metadata, card_owner
+        ):
+            # Answered already: the client's refetch shows the answer.
+            return _empty_ui_message_stream_response()
         try:
             await queue_pending_for_http(
                 session_id=session_id,
@@ -2054,8 +2072,12 @@ async def stream_chat_post(
             )
             return _empty_ui_message_stream_response(follow_up_queued=True)
         except HTTPException as exc:
+            await _release_card_answer(session_id, message, card_owner)
             if exc.status_code != 409:
                 raise
+        except BaseException:
+            await _release_card_answer(session_id, message, card_owner)
+            raise
 
     if request.expert_kickoff and persisted_kickoff_has_reply is not None:
         if persisted_kickoff_has_reply:
@@ -2123,6 +2145,11 @@ async def stream_chat_post(
     # the row may not be written yet, and a queued copy never gets this id.
     # A copy that finds the key reserved waits for this request's outcome, so
     # it is never told a send was taken that is then refused.
+    if request.is_user_message and not await _admit_card_answer(
+        user_id, session_id, message, card_metadata, card_owner
+    ):
+        # Answered already: the client's refetch shows the answer.
+        return _empty_ui_message_stream_response()
     claim_owner = uuid4().hex
     claim = (
         await claim_client_message(session_id, client_message_id, claim_owner)
@@ -2130,9 +2157,12 @@ async def stream_chat_post(
         else None
     )
     if claim == "reserved":
+        await _release_card_answer(session_id, message, card_owner)
         raise client_message_in_progress_error()
 
     async def release_client_message_claim() -> None:
+        # Nothing was saved, so the card is still the user's to answer.
+        await _release_card_answer(session_id, message, card_owner)
         if claim == "claimed" and client_message_id is not None:
             await release_client_message(session_id, client_message_id, claim_owner)
 
@@ -2458,26 +2488,30 @@ async def queue_pending_message(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
-    admitted, _ = await _admit_card_answer(
-        user_id,
-        session_id,
+    card_owner = client_message_id or uuid4().hex
+    card_metadata = _card_answer_metadata(
         request.message,
-        owner=client_message_id,
         has_attachments=bool(request.file_ids or request.folder_ids),
     )
-    if not admitted:
+    if not await _admit_card_answer(
+        user_id, session_id, request.message, card_metadata, card_owner
+    ):
         # True "turn in flight" keeps the client from resending via /stream.
         return await already_accepted_response(session_id)
-    return await queue_pending_for_http(
-        session_id=session_id,
-        user_id=user_id,
-        message=request.message,
-        context=request.context,
-        file_ids=request.file_ids,
-        folder_ids=request.folder_ids,
-        expert_id=session.expert_id,
-        client_message_id=client_message_id,
-    )
+    try:
+        return await queue_pending_for_http(
+            session_id=session_id,
+            user_id=user_id,
+            message=request.message,
+            context=request.context,
+            file_ids=request.file_ids,
+            folder_ids=request.folder_ids,
+            expert_id=session.expert_id,
+            client_message_id=client_message_id,
+        )
+    except BaseException:
+        await _release_card_answer(session_id, request.message, card_owner)
+        raise
 
 
 @router.get(

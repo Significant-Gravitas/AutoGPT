@@ -12,6 +12,7 @@ import httpx
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from fastapi import HTTPException
 from pydantic import SecretStr
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
@@ -715,6 +716,34 @@ def test_stream_chat_drops_a_second_answer_to_an_answered_card(
     mocks.enqueue.assert_not_awaited()
 
 
+def test_stream_chat_keeps_the_users_words_but_not_a_second_answer(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A typed line on an answered card is not recorded; the rest is still sent."""
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    answered = mocker.patch(
+        "backend.api.features.chat.routes.is_already_answered",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    message = (
+        "Not approved: do not hire Maya, discard that proposal "
+        "(confirmation_id: c-1).\nAnd let's talk about pricing."
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": message})
+
+    assert response.status_code == 200
+    assert answered.await_args.args[2] == ["c-1"]
+    record.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+    assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
+
+
 def test_stream_chat_sends_the_first_answer_to_a_card(
     mocker: pytest_mock.MockerFixture, test_user_id: str
 ) -> None:
@@ -735,6 +764,67 @@ def test_stream_chat_sends_the_first_answer_to_a_card(
     assert response.status_code == 200
     record.assert_awaited_once_with(test_user_id, "sess-1", line)
     mocks.enqueue.assert_awaited_once()
+
+
+def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A retry after a failure must not find its own card already claimed."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = HTTPException(status_code=429, detail="busy")
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "message_id": "click-1",
+        },
+    )
+
+    assert response.status_code == 429
+    release.assert_awaited_once_with(
+        "sess-1",
+        ["c-1"],
+        chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1"),
+    )
+
+
+def test_queue_pending_message_gives_back_a_card_claim_when_not_queued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_already_answered",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+        side_effect=HTTPException(status_code=429, detail="too many"),
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "Approved: hire Maya (confirmation_id: c-1)."},
+    )
+
+    assert response.status_code == 429
+    release.assert_awaited_once()
 
 
 @pytest.mark.parametrize("attachment", ["file_ids", "folder_ids"])

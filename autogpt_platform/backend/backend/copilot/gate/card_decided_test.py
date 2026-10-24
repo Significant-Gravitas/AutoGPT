@@ -86,6 +86,18 @@ async def test_a_claim_is_all_or_nothing_and_its_own_retry_passes() -> None:
     assert await card_decided._claim(session, ["c-3"], "tab-b")
 
 
+@needs_redis
+async def test_a_failed_request_gives_back_only_its_own_claim() -> None:
+    session = f"s-{uuid.uuid4()}"
+    assert await card_decided._claim(session, ["c-1"], "tab-a")
+
+    await card_decided.release_claim(session, ["c-1"], "tab-b")
+    assert not await card_decided._claim(session, ["c-1"], "tab-b")
+
+    await card_decided.release_claim(session, ["c-1"], "tab-a")
+    assert await card_decided._claim(session, ["c-1"], "tab-b")
+
+
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

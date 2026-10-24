@@ -28,6 +28,15 @@ for i = 3, #ARGV do redis.call('HSET', KEYS[1], ARGV[i], ARGV[1]) end
 redis.call('EXPIRE', KEYS[1], ARGV[2])
 return 1
 """
+# Only the request that claimed an id gives it back.
+_RELEASE = """
+for i = 2, #ARGV do
+  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[1] then
+    redis.call('HDEL', KEYS[1], ARGV[i])
+  end
+end
+return 1
+"""
 
 
 async def is_already_answered(
@@ -59,19 +68,36 @@ def decided_ids(
     for message in messages:
         if message.role != "user" or message.id == skip_message_id:
             continue
-        metadata = message.metadata or {}
-        if metadata.get("kind") == CARD_DECISION_KIND:
-            decided |= {
-                d["confirmation_id"]
-                for d in metadata.get("decisions", [])
-                if isinstance(d, dict) and isinstance(d.get("confirmation_id"), str)
-            }
+        metadata = message.metadata
+        if metadata:
+            # A row the server wrote for something else, such as a subtask's
+            # prompt, says nothing about the user's answers.
+            if metadata.get("kind") == CARD_DECISION_KIND:
+                decided |= {
+                    d["confirmation_id"]
+                    for d in metadata.get("decisions", [])
+                    if isinstance(d, dict) and isinstance(d.get("confirmation_id"), str)
+                }
             continue
-        # Saved before rows were tagged: the line itself is the record.
+        # Typed, or saved before rows were tagged: the line itself is the record.
         decided |= {
             d.confirmation_id for d in parse_card_decisions(message.content or "")
         }
     return decided
+
+
+async def release_claim(
+    session_id: str, confirmation_ids: list[str], owner: str
+) -> None:
+    """Give back a claim when the request that took it saved nothing, so a
+    retry of the same answer under a new message id is not refused."""
+    try:
+        redis = await get_redis_async()
+        await redis.eval(_RELEASE, 1, f"{_KEY}{session_id}", owner, *confirmation_ids)
+    except Exception:
+        logger.warning(
+            f"Could not release card answers for session {session_id}", exc_info=True
+        )
 
 
 async def _claim(session_id: str, confirmation_ids: list[str], owner: str) -> bool:

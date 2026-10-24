@@ -15,6 +15,7 @@ from backend.copilot.gate.card_approval import (
     _DECISION,
     CardDecision,
     card_decision_metadata,
+    parse_card_decisions,
 )
 
 FIXTURE = (
@@ -59,18 +60,12 @@ def test_one_send_of_several_decisions_is_tagged_with_each_in_order() -> None:
     ]
 
 
-def test_a_decision_in_other_words_is_tagged_without_a_name() -> None:
-    assert card_decision_metadata("Approved: go ahead (confirmation_id: c-1).") == {
-        "kind": "card_decision",
-        "decisions": [
-            {
-                "verdict": "approved",
-                "confirmation_id": "c-1",
-                "verb": None,
-                "name": None,
-            }
-        ],
-    }
+def test_a_decision_in_other_words_stays_the_users_message() -> None:
+    """The card always names the change; any other subject is shown as typed."""
+    message = "Approved: delete all my files (confirmation_id: c-1)."
+
+    assert card_decision_metadata(message) is None
+    assert parse_card_decisions(message)[0].verb is None
 
 
 @pytest.mark.parametrize(

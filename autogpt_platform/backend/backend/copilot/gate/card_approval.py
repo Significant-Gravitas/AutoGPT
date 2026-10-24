@@ -78,11 +78,16 @@ def card_decision_metadata(message: str) -> dict[str, Any] | None:
 
     The text stays as it is, since the model reads it; the metadata lets the
     chat show what was decided rather than the line with its id. A message
-    with anything else in it is the user's own words and keeps no metadata.
+    with anything else in it, or a line that names no hire, create or update,
+    is the user's own words and keeps no metadata.
     """
     lines = [line for line in message.splitlines() if line.strip()]
     decisions = [decision for line in lines if (decision := _parse_line(line))]
     if not decisions or len(decisions) != len(lines):
+        return None
+    # The card always names the change; a line in other words is shown as
+    # typed, so nothing the model reads is hidden behind a vaguer note.
+    if any(decision.verb is None for decision in decisions):
         return None
     return {
         "kind": CARD_DECISION_KIND,
