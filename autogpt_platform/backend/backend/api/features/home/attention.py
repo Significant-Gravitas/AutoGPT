@@ -28,7 +28,6 @@ def compose_attention_items(
     reviews: list[PendingHumanReviewModel],
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
-    is_paywalled: bool = False,
     questions: list[ChatSessionInfo] | None = None,
     paused_chats: list[PausedScheduledChat] | None = None,
 ) -> list[HomeAttentionItem]:
@@ -43,12 +42,7 @@ def compose_attention_items(
         for session, question in _open_questions(questions or [])
         if _is_answerable(session, expert_by_id)
     )
-    # Only workflow schedules resume once a plan returns: a scheduled chat says so
-    # in its own chat, and a refused one-shot is dropped (SECRT-2879).
-    workflow_schedules = sum(schedule.kind == "graph" for schedule in schedules)
-    if is_paywalled and workflow_schedules:
-        items.append(_paywalled_schedules_attention(workflow_schedules))
-    elif credits_balance is not None and credits_balance <= 0 and schedules:
+    if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
     return sorted(items, key=_attention_sort_key)
 
@@ -305,24 +299,6 @@ def _credits_attention(schedule_count: int) -> HomeAttentionItem:
         ),
         why_it_matters="Experts and workflows need a positive balance before paid blocks can start.",
         primary_action=HomeAction(label="Add credits", href="/profile/credits"),
-    )
-
-
-def _paywalled_schedules_attention(schedule_count: int) -> HomeAttentionItem:
-    # A paywalled owner's scheduled runs are skipped at fire time
-    # (UserPaywalledError in add_graph_execution) and nothing else tells them,
-    # so the schedule looks active while silently never running.
-    return HomeAttentionItem(
-        id="paywalled-schedules",
-        kind="credits",
-        priority="high",
-        title="Resubscribe to resume your scheduled work",
-        description=(
-            f"{schedule_count} scheduled task{'s' if schedule_count != 1 else ''} "
-            "won't run while your plan is inactive."
-        ),
-        why_it_matters="They resume automatically once you have an active plan.",
-        primary_action=HomeAction(label="Resubscribe", href="/settings/billing"),
     )
 
 

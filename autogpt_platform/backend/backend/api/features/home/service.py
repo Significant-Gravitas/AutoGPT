@@ -15,7 +15,6 @@ from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
-from backend.copilot.rate_limit import is_user_paywalled
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.data import activity_event as activity_db
@@ -56,7 +55,6 @@ class HomeSourceData(BaseModel):
     cost_summary: UserExecutionCostSummary
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo]
     credits_balance: int | None
-    is_paywalled: bool
     questions: list[ChatSessionInfo]
     work_events: list[activity_db.ActivityEvent]
     paused_chats: list[PausedScheduledChat]
@@ -103,7 +101,6 @@ async def build_home_dashboard(
         library_refs=library_refs,
         cost_summary=data.cost_summary,
         credits_balance=data.credits_balance,
-        is_paywalled=data.is_paywalled,
         timezone_name=data.timezone_name,
         questions=data.questions,
         persisted_briefing=persisted_briefing,
@@ -186,7 +183,6 @@ async def _load_home_source_data(
     )
     schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
     credits_task = asyncio.create_task(_get_credits(user_id=user_id, ctx=ctx))
-    paywalled_task = asyncio.create_task(_get_paywalled(user_id=user_id))
     questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
     work_events_task = asyncio.create_task(
         _get_work_events(user_id=user_id, since=week_start)
@@ -202,7 +198,6 @@ async def _load_home_source_data(
         cost_summary_task,
         schedules_task,
         credits_task,
-        paywalled_task,
         questions_task,
         work_events_task,
         paused_chats_task,
@@ -217,7 +212,6 @@ async def _load_home_source_data(
         cost_summary=cost_summary_task.result(),
         schedules=schedules_task.result(),
         credits_balance=credits_task.result(),
-        is_paywalled=paywalled_task.result(),
         questions=questions_task.result(),
         work_events=work_events_task.result(),
         paused_chats=paused_chats_task.result(),
@@ -340,16 +334,3 @@ async def _get_credits(*, user_id: str, ctx: RequestContext | None) -> int | Non
             "Home could not load credits for user %s", user_id[:_LOG_ID_CHARS]
         )
         return None
-
-
-async def _get_paywalled(*, user_id: str) -> bool:
-    # Mirrors the gate add_graph_execution skips scheduled runs on, so the Home
-    # item and the skip agree. Fails to False: an unknown entitlement must not
-    # fabricate a "resubscribe" nag.
-    try:
-        return await is_user_paywalled(user_id)
-    except Exception:
-        logger.warning(
-            f"Home could not load paywall state for user {user_id[:_LOG_ID_CHARS]}"
-        )
-        return False

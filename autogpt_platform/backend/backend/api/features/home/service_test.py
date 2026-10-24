@@ -10,7 +10,6 @@ from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.data.activity_event import ActivityEvent
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
-from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .service import _get_pending_questions, _get_work_events, build_home_dashboard
 
@@ -346,34 +345,6 @@ async def test_a_paused_scheduled_chat_needs_attention(
     dashboard = await build_home_dashboard(user_id="user-1")
 
     assert [item.id for item in dashboard.attention] == ["paused-chat-sched-1"]
-
-
-@pytest.mark.asyncio
-async def test_a_lapsed_plan_with_a_workflow_schedule_asks_to_resubscribe(
-    mocker: MockerFixture, home_dependencies, paywalled_user
-) -> None:
-    scheduler = MagicMock()
-    scheduler.get_execution_schedules = AsyncMock(
-        return_value=[
-            GraphExecutionJobInfo(
-                id="schedule-1",
-                name="Daily digest",
-                next_run_time="2026-10-25T08:00:00+00:00",
-                user_id=paywalled_user,
-                graph_id="graph-1",
-                graph_version=1,
-                cron="0 8 * * *",
-                input_data={},
-            )
-        ]
-    )
-    mocker.patch(
-        "backend.api.features.home.service.get_scheduler_client", return_value=scheduler
-    )
-
-    dashboard = await build_home_dashboard(user_id=paywalled_user)
-
-    assert [item.id for item in dashboard.attention] == ["paywalled-schedules"]
 
 
 @pytest.mark.asyncio

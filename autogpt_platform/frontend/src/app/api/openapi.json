@@ -35572,6 +35572,12 @@
             "title": "Current Period End",
             "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
           },
+          "paused_workflow_schedules": {
+            "type": "integer",
+            "title": "Paused Workflow Schedules",
+            "description": "Active workflow schedules that won't run until the user has a plan. Counted only for NO_TIER; 0 for every other tier.",
+            "default": 0
+          },
           "pending_tier": {
             "anyOf": [
               {
