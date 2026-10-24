@@ -60,16 +60,22 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: ${{ needs.public-data.outputs.source }}
-          path: trusted
-          persist-credentials: false
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: dev
-          path: content
-          persist-credentials: false
+      - name: Check out public code and content without credentials
+        env:
+          TRUSTED_SOURCE: ${{ needs.public-data.outputs.source }}
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          [[ "$TRUSTED_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          git init trusted
+          git -C trusted remote add origin https://github.com/Significant-Gravitas/AutoGPT.git
+          git -C trusted fetch --no-tags --depth=1 origin "$TRUSTED_SOURCE"
+          git -C trusted checkout --detach "$TRUSTED_SOURCE"
+          git init content
+          git -C content remote add origin https://github.com/Significant-Gravitas/AutoGPT.git
+          git -C content fetch --no-tags --depth=1 origin refs/heads/dev
+          git -C content checkout -b dev FETCH_HEAD
       - name: Re-fetch public data and generate only approved files
         env:
           EXPECTED_DIGEST: ${{ needs.public-data.outputs.digest }}
@@ -114,10 +120,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: ${{ needs.public-data.outputs.source }}
-          persist-credentials: false
+      - name: Check out trusted public code without credentials
+        env:
+          TRUSTED_SOURCE: ${{ needs.public-data.outputs.source }}
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          [[ "$TRUSTED_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          git init .
+          git remote add origin https://github.com/Significant-Gravitas/AutoGPT.git
+          git fetch --no-tags --depth=1 origin "$TRUSTED_SOURCE"
+          git checkout --detach "$TRUSTED_SOURCE"
       - name: Revalidate public records and update managed release sections
         env:
           EXPECTED_DIGEST: ${{ needs.public-data.outputs.digest }}

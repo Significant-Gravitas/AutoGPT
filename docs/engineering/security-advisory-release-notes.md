@@ -58,7 +58,8 @@ The jobs have separate permissions and no shared report artifacts:
 2. The credits job uses that exact code commit, re-fetches anonymous public
    records, and requires the digest to agree. It treats `dev` as data, generates
    the two allowed files, and opens or updates one PR against `dev`. The existing
-   bot PR branch is never executed. Only the PR action receives its write token.
+   bot PR branch is never executed. Both public Git checkouts run without
+   credentials; only the PR action is supplied the write token.
 3. The release job independently re-fetches and compares public records, then
    rechecks the projection after reading release metadata. It reads each target
    release anonymously immediately before updating its managed section. Drafts
@@ -67,6 +68,12 @@ The jobs have separate permissions and no shared report artifacts:
    an edit racing the final read and write can still be overwritten. Avoid manual
    release-note edits during this short job, and inspect concurrent changes before
    rerunning. Updates are serialized but are not a cross-release transaction.
+
+Both writer jobs fetch their pinned public source without checkout actions or
+credentials. GitHub permissions remain job-scoped, so their workflow code and
+actions must be trusted. The release job also requires the credits job to succeed:
+failed validation or credit preparation stops release updates until a successful
+rerun, even if the failure was limited to creating the credits PR.
 
 The release writer uses only the repository's short-lived `GITHUB_TOKEN` with
 `contents: write`. The credits writer additionally needs `pull-requests: write`.
