@@ -4,19 +4,17 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Callable
 from functools import wraps
 from uuid import uuid4
 
 from tenacity import (
-    RetryCallState,
     retry,
     retry_if_exception_type,
     retry_if_not_exception_type,
     stop_after_attempt,
-    stop_after_delay,
     wait_exponential_jitter,
 )
+from tenacity.retry import retry_base
 from tenacity.stop import stop_base
 
 from backend.util.settings import get_service_name
@@ -153,6 +151,8 @@ def create_retry_decorator(
     max_wait: float = 30.0,
     context: str = "",
     reraise: bool = True,
+    retry_anyway: tuple[type[BaseException], ...] = (),
+    also_stop: stop_base | None = None,
 ):
     """
     Create a preconfigured retry decorator with sensible defaults.
@@ -165,16 +165,22 @@ def create_retry_decorator(
         max_wait: Maximum wait time in seconds (default: 30)
         context: Optional context string for log messages
         reraise: Whether to reraise the final exception (default: True)
+        retry_anyway: Subclasses of excluded exception types to retry after all
+        also_stop: Another stop condition, ending the retries when either does
 
     Returns:
         Configured retry decorator
     """
-    stop = stop_after_attempt(max_attempts) | _StopOnShutdown()
+    stop: stop_base = stop_after_attempt(max_attempts) | _StopOnShutdown()
+    if also_stop is not None:
+        stop = stop | also_stop
     wait = wait_exponential_jitter(max=max_wait)
     before_sleep = _create_retry_callback(context)
-    retry_on = (
+    retry_on: retry_base | None = (
         retry_if_not_exception_type(exclude_exceptions) if exclude_exceptions else None
     )
+    if retry_on is not None and retry_anyway:
+        retry_on = retry_on | retry_if_exception_type(retry_anyway)
 
     def decorator(func):
         # Pick the interruptible sleep matching the wrapped function so a
@@ -199,31 +205,6 @@ def create_retry_decorator(
             wait=wait,
             before_sleep=before_sleep,
             reraise=reraise,
-        )(func)
-
-    return decorator
-
-
-def create_deadline_retry_decorator(
-    retry_on: type[BaseException],
-    max_delay: float,
-    max_wait: float,
-    before_sleep: Callable[[RetryCallState], None],
-):
-    """Retry only *retry_on*, until *max_delay* seconds after the first attempt."""
-
-    def decorator(func):
-        return retry(
-            retry=retry_if_exception_type(retry_on),
-            stop=stop_after_delay(max_delay) | _StopOnShutdown(),
-            wait=wait_exponential_jitter(max=max_wait),
-            before_sleep=before_sleep,
-            reraise=True,
-            sleep=(
-                _interruptible_async_sleep
-                if inspect.iscoroutinefunction(func)
-                else _interruptible_sleep
-            ),
         )(func)
 
     return decorator

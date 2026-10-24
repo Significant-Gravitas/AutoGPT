@@ -5,6 +5,7 @@ import logging
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
@@ -19,6 +20,7 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import retry as retry_module
 from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
@@ -1355,39 +1357,56 @@ class _StartupRecordingService(AppService):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("call_path", ["sync", "async"])
 async def test_a_call_to_a_route_the_old_server_lacks_waits_for_the_new_one(
-    previous_release, call_path, caplog
+    previous_release, call_path
 ):
     client = get_service_client(RolloutServiceClient, request_retry=True)
     if call_path == "sync":
         call = asyncio.create_task(asyncio.to_thread(client.added_in_release))
     else:
         call = asyncio.create_task(client.added_in_release_async())
-    # Long enough for two retries against the previous release.
-    await asyncio.sleep(4)
+    await asyncio.sleep(1.5)
     assert not call.done()
 
     previous_release.stop()
     with RolloutServiceNewRelease():
         assert await asyncio.wait_for(call, timeout=60) == 2
 
-    warnings = [r for r in caplog.records if "added_in_release" in r.getMessage()]
-    assert len(warnings) == 1
-
 
 @pytest.mark.asyncio
-async def test_a_route_that_never_appears_fails_once_its_wait_runs_out(
-    previous_release, monkeypatch
+@pytest.mark.parametrize("call_path", ["sync", "async"])
+@pytest.mark.parametrize("transport_error_at", [None, 100.0])
+async def test_each_call_waits_300_s_from_its_first_missing_route(
+    fake_clock, call_path, transport_error_at
 ):
-    monkeypatch.setattr(service_module, "rpc_client_missing_route_wait_seconds", 2)
-    client = get_service_client(RolloutServiceClient, request_retry=True)
+    """A transport error between the 404s must not restart the wait."""
+    attempts: list[float] = []
+    transport_errors: list[float] = []
 
-    started = time.monotonic()
-    with pytest.raises(HTTPClientError) as exc_info:
-        await asyncio.wait_for(client.added_in_release_async(), timeout=30)
+    def answer(request: httpx.Request) -> httpx.Response:
+        attempts.append(fake_clock.now)
+        if fake_clock.now > 1000:  # ends a wait that is never cut off
+            return httpx.Response(200, json=2)
+        failing = (
+            transport_error_at is not None and fake_clock.now >= transport_error_at
+        )
+        if failing and not transport_errors:
+            transport_errors.append(fake_clock.now)
+            raise httpx.ConnectError("connection refused", request=request)
+        return httpx.Response(404, json={"detail": "Not Found"})
 
-    assert exc_info.value.status_code == 404
-    assert "added_in_release" in str(exc_info.value)
-    assert time.monotonic() - started >= 2
+    client = await _rollout_client_answered_by(answer)
+    for _ in range(2):
+        attempts.clear()
+        with pytest.raises(HTTPClientError) as exc_info:
+            if call_path == "sync":
+                call = asyncio.to_thread(client.added_in_release)
+            else:
+                call = client.added_in_release_async()
+            await asyncio.wait_for(call, timeout=30)
+
+        assert exc_info.value.status_code == 404
+        assert 240 <= attempts[-1] - attempts[0] < 300
+    assert bool(transport_errors) == (transport_error_at is not None)
 
 
 @pytest.mark.asyncio
@@ -1401,6 +1420,46 @@ async def test_a_not_found_raised_by_the_method_is_not_retried(
         await asyncio.wait_for(client.lookup(), timeout=30)
 
     assert await client.lookup_calls() == 1
+
+
+@pytest.fixture
+def fake_clock(monkeypatch) -> "FakeClock":
+    clock = FakeClock()
+    monkeypatch.setattr(service_module, "monotonic", clock.monotonic)
+    monkeypatch.setattr(retry_module, "_interruptible_sleep", clock.sleep)
+    monkeypatch.setattr(retry_module, "_interruptible_async_sleep", clock.async_sleep)
+    return clock
+
+
+class FakeClock:
+    """The retries' clock and sleep, where a sleep only moves the clock on."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+    async def async_sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+async def _rollout_client_answered_by(
+    answer: Callable[[httpx.Request], httpx.Response]
+):
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+    transport = httpx.MockTransport(answer)
+    inner = cast(Any, client)
+    inner._sync_clients[RolloutServiceNewRelease.__name__] = httpx.Client(
+        transport=transport, base_url=inner.base_url
+    )
+    inner._async_clients[asyncio.get_running_loop()] = httpx.AsyncClient(
+        transport=transport, base_url=inner.base_url
+    )
+    return client
 
 
 @pytest.fixture
