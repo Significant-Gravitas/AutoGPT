@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { usePanelSidebarCollapse } from "@/app/(platform)/team/components/ExpertSidePanel/usePanelSidebarCollapse";
 import { Sidebar, useSidebar } from "@/components/molecules/Sidebar/Sidebar";
-import { SIDEBAR_COOKIE_NAME } from "@/components/molecules/Sidebar/sidebarCookie";
+import { SIDEBAR_COOKIE_NAME } from "@/components/molecules/Sidebar/sidebar-cookie";
 import { PlatformChrome } from "../PlatformChrome";
 
 let pathname = "/home";
