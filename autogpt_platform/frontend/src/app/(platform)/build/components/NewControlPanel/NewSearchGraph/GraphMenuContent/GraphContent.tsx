@@ -114,7 +114,7 @@ export function GraphSearchContent({
                         </Text>
                         {hasCustomName && (
                           <Text
-                            variant="small-relaxed"
+                            variant="small-loose"
                             as="span"
                             tone="muted"
                             className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2"
@@ -125,7 +125,7 @@ export function GraphSearchContent({
                       </div>
                       {description && (
                         <Text
-                          variant="small-relaxed"
+                          variant="small-loose"
                           as="span"
                           tone="muted"
                           className="line-clamp-1"
