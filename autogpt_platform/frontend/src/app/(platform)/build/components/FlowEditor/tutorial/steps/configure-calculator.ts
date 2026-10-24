@@ -12,7 +12,7 @@ import { banner } from "../styles";
 // TODO(tokens): no exact role: text-amber-600 #D97706
 const getRequirementsHtml = () => `
   <div id="requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-warning-border rounded-2xl">
-    <p id="requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
+    <p id="requirements-title" class="text-body leading-5 font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
     <ul id="requirements-list" class="text-body-sm leading-inherit text-amber-600 m-0 pl-4 space-y-1">
       <li id="req-a" class="flex items-center gap-2">
         <span class="req-icon">○</span> Enter a number in field <strong>A</strong> (e.g., 10)
@@ -70,8 +70,8 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
     id: "enter-values",
     title: "Enter Values",
     text: `
-      <div class="text-sm leading-5.5 text-foreground-emphasis">
-        <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">Now let's configure the block with actual values.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Now let's configure the block with actual values.</p>
         ${getRequirementsHtml()}
         ${banner(ICONS.ClickIcon, "Fill in all the required fields above", "action")}
       </div>

@@ -11,7 +11,7 @@ import { TUTORIAL_SELECTORS } from "../constants";
 
 // TODO(tokens): no exact role: ring-green-200 #94D5AC, text-amber-600 #D97706
 const getConnectionStatusHtml = (id: string, isConnected: boolean = false) => `
-  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-success-surface ring-1 ring-green-200" : "bg-warning-surface ring-1 ring-warning-border"} rounded-2xl text-center text-sm ${isConnected ? "text-success" : "text-amber-600"}">
+  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-success-surface ring-1 ring-green-200" : "bg-warning-surface ring-1 ring-warning-border"} rounded-2xl text-center text-body leading-5 ${isConnected ? "text-success" : "text-amber-600"}">
     ${isConnected ? "✅ Connected!" : "Waiting for connection..."}
   </div>
 `;
@@ -124,11 +124,11 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
       title: "Connect the Blocks: Output",
       // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
       text: `
-        <div class="text-sm leading-5.5 text-foreground-emphasis">
-          <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">Now, let's connect the <strong>Result output</strong> of the first Calculator to the <strong>input (A)</strong> of the second Calculator.</p>
+        <div class="text-body text-foreground-emphasis">
+          <p class="text-body font-normal text-foreground-emphasis m-0">Now, let's connect the <strong>Result output</strong> of the first Calculator to the <strong>input (A)</strong> of the second Calculator.</p>
           
           <div class="mt-3 p-3 bg-info-surface ring-1 ring-blue-200 rounded-2xl">
-            <p class="text-sm font-medium text-info-foreground m-0 mb-2">Drag from the Result output:</p>
+            <p class="text-body leading-5 font-medium text-info-foreground m-0 mb-2">Drag from the Result output:</p>
             <p class="text-body-sm leading-inherit text-info-foreground m-0">Click and drag from the <strong>Result</strong> output pin (right side) of the <strong>first Calculator block</strong>.</p>
           </div>
           ${getConnectionStatusHtml("connection-status-output", false)}
@@ -214,11 +214,11 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
       title: "Connect the Blocks: Input",
       // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
       text: `
-        <div class="text-sm leading-5.5 text-foreground-emphasis">
-          <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">Now, connect to the <strong>input (A)</strong> of the second Calculator block.</p>
+        <div class="text-body text-foreground-emphasis">
+          <p class="text-body font-normal text-foreground-emphasis m-0">Now, connect to the <strong>input (A)</strong> of the second Calculator block.</p>
           
           <div class="mt-3 p-3 bg-info-surface ring-1 ring-blue-200 rounded-2xl">
-            <p class="text-sm font-medium text-info-foreground m-0 mb-2">Drop on the A input:</p>
+            <p class="text-body leading-5 font-medium text-info-foreground m-0 mb-2">Drop on the A input:</p>
             <p class="text-body-sm leading-inherit text-info-foreground m-0">Drag to the <strong>A</strong> input handle (left side) of the <strong>second Calculator block</strong>.</p>
           </div>
           ${getConnectionStatusHtml("connection-status-input", false)}
@@ -302,11 +302,11 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
       title: "Blocks Connected! 🎉",
       // TODO(tokens): no exact role: ring-green-200 #94D5AC, text-green-500 #16A34A
       text: `
-        <div class="text-sm leading-5.5 text-foreground-emphasis">
-          <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">Excellent! Your Calculator blocks are now connected:</p>
+        <div class="text-body text-foreground-emphasis">
+          <p class="text-body font-normal text-foreground-emphasis m-0">Excellent! Your Calculator blocks are now connected:</p>
           
           <div class="mt-3 p-3 bg-success-surface ring-1 ring-green-200 rounded-2xl">
-            <div class="flex items-center justify-center gap-2 text-sm font-medium text-success">
+            <div class="flex items-center justify-center gap-2 text-body leading-5 font-medium text-success">
               <span>Calculator 1</span>
               <span>→</span>
               <span>Calculator 2</span>
@@ -314,7 +314,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
             <p class="text-caption leading-inherit text-green-500 m-0 mt-2 text-center italic">The result of Calculator 1 flows into Calculator 2's input A</p>
           </div>
           
-          <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0" style="margin-top: 0.75rem;">Now let's save and run your workflow!</p>
+          <p class="text-body font-normal text-foreground-emphasis m-0" style="margin-top: 0.75rem;">Now let's save and run your workflow!</p>
         </div>
       `,
       beforeShowPromise: async () => {

@@ -32,7 +32,7 @@ const getSecondCalculatorFormSelector = (): string | HTMLElement => {
 // TODO(tokens): no exact role: text-amber-600 #D97706
 const getSecondCalcRequirementsHtml = () => `
   <div id="second-calc-requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-warning-border rounded-2xl">
-    <p id="second-calc-requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
+    <p id="second-calc-requirements-title" class="text-body leading-5 font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
     <ul id="second-calc-requirements-list" class="text-body-sm leading-inherit text-amber-600 m-0 pl-4 space-y-1">
       <li id="req2-b" class="flex items-center gap-2">
         <span class="req-icon">○</span> Enter a number in field <strong>B</strong> (e.g., 2)
@@ -89,12 +89,12 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     title: "Adding Second Calculator",
     // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
     text: `
-      <div class="text-sm leading-5.5 text-foreground-emphasis">
-        <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">Great job configuring the first Calculator!</p>
-        <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0" style="margin-top: 0.5rem;">Now let's add a <strong>second Calculator block</strong> and connect them together.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Great job configuring the first Calculator!</p>
+        <p class="text-body font-normal text-foreground-emphasis m-0" style="margin-top: 0.5rem;">Now let's add a <strong>second Calculator block</strong> and connect them together.</p>
         
         <div class="mt-3 p-3 bg-info-surface ring-1 ring-blue-200 rounded-2xl">
-          <p class="text-sm font-medium text-info-foreground m-0 mb-1">We'll create a chain:</p>
+          <p class="text-body leading-5 font-medium text-info-foreground m-0 mb-1">We'll create a chain:</p>
           <p class="text-body-sm leading-inherit text-info-foreground m-0">Calculator 1 → Calculator 2</p>
           <p class="text-caption leading-inherit text-info m-0 mt-1 italic">The output of the first will feed into the second!</p>
         </div>
@@ -118,12 +118,12 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     title: "Second Calculator Added! ✅",
     // TODO(tokens): no exact role: ring-green-200 #94D5AC
     text: `
-      <div class="text-sm leading-5.5 text-foreground-emphasis">
-        <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">I've added a <strong>second Calculator block</strong> to your canvas.</p>
-        <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0" style="margin-top: 0.5rem;">Now let's configure it and connect them together.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">I've added a <strong>second Calculator block</strong> to your canvas.</p>
+        <p class="text-body font-normal text-foreground-emphasis m-0" style="margin-top: 0.5rem;">Now let's configure it and connect them together.</p>
         
         <div class="mt-3 p-3 bg-success-surface ring-1 ring-green-200 rounded-2xl">
-          <p class="text-sm font-medium text-success m-0">You now have 2 Calculator blocks!</p>
+          <p class="text-body leading-5 font-medium text-success m-0">You now have 2 Calculator blocks!</p>
         </div>
       </div>
     `,
@@ -145,8 +145,8 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     id: "configure-second-calculator",
     title: "Configure Second Calculator",
     text: `
-      <div class="text-sm leading-5.5 text-foreground-emphasis">
-        <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">Now configure the <strong>second Calculator block</strong>.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Now configure the <strong>second Calculator block</strong>.</p>
         ${getSecondCalcRequirementsHtml()}
         ${banner(ICONS.ClickIcon, "Fill in field B and select an Operation", "action")}
       </div>

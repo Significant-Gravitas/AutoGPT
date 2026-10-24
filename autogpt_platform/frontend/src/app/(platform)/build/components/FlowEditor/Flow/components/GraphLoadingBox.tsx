@@ -25,10 +25,7 @@ export const GraphLoadingBox = ({
 
   return (
     <div className="absolute left-[50%] top-[50%] z-[99] -translate-x-1/2 -translate-y-1/2">
-      <div
-        // TODO(tokens): no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border (a border colour)
-        className="flex flex-col items-center gap-4 rounded-xlarge border border-gray-200 bg-surface p-8 shadow-lg"
-      >
+      <div className="flex flex-col items-center gap-4 rounded-xlarge border border-sidebar-border bg-surface p-8 shadow-lg">
         <div className="relative h-12 w-12">
           {/* TODO(tokens): no fitting role for border-t-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour) */}
           <div className="absolute inset-0 animate-spin rounded-full border-4 border-separator border-t-zinc-400"></div>

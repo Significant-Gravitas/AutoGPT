@@ -6,11 +6,11 @@ export const createCompletionSteps = (tour: any): StepOptions[] => [
     title: "Congratulations! 🎉",
     // TODO(tokens): no exact role: ring-green-200 #94D5AC
     text: `
-      <div class="text-sm leading-5.5 text-foreground-emphasis">
-        <p class="text-sm font-normal leading-5.5 text-foreground-emphasis m-0">You have successfully created and run your first workflow!</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">You have successfully created and run your first workflow!</p>
         
         <div class="mt-3 p-3 bg-success-surface ring-1 ring-green-200 rounded-2xl">
-          <p class="text-sm font-medium text-success m-0">You learned how to:</p>
+          <p class="text-body leading-5 font-medium text-success m-0">You learned how to:</p>
           <ul class="text-body-sm leading-inherit text-success m-0 pl-4 mt-2 space-y-1">
             <li>• Add blocks from the Block Menu</li>
             <li>• Understand input and output handles</li>
@@ -21,7 +21,7 @@ export const createCompletionSteps = (tour: any): StepOptions[] => [
           </ul>
         </div>
         
-        <p class="text-sm font-medium leading-5.5 text-foreground-emphasis m-0" style="margin-top: 0.75rem;">Happy building! 🚀</p>
+        <p class="text-body font-medium text-foreground-emphasis m-0" style="margin-top: 0.75rem;">Happy building! 🚀</p>
       </div>
     `,
     when: {
