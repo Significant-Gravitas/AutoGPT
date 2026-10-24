@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { delay, http, HttpResponse } from "msw";
+import { expect, userEvent, within } from "storybook/test";
 import { SubscriptionTierSection } from "./SubscriptionTierSection";
 import { PendingChangeBanner } from "./components/PendingChangeBanner/PendingChangeBanner";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
@@ -149,6 +150,19 @@ export const TierChangeError: Story = {
         ),
       ],
     },
+  },
+  // The upgrade asks for confirmation first; confirming sends the POST that
+  // fails, and the section shows the error.
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(canvasElement.ownerDocument.body);
+    await userEvent.click(
+      await canvas.findByRole("button", { name: /upgrade to pro/i }),
+    );
+    await userEvent.click(
+      await page.findByRole("button", { name: /continue to checkout/i }),
+    );
+    await expect(await canvas.findByRole("alert")).toBeVisible();
   },
 };
 
