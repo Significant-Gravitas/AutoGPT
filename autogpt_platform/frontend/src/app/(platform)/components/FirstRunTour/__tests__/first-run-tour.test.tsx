@@ -354,6 +354,34 @@ describe("first-run walkthrough", () => {
     await waitFor(() => expect(document.activeElement).toBe(composer));
   });
 
+  it("does not focus the composer on a touch screen, where that opens the keyboard", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({
+          matches: query.includes("coarse"),
+          media: query,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      renderTour();
+      const composer = screen.getByRole("textbox", { name: "Message Otto" });
+      openTour();
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Skip tour" }),
+      );
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(document.activeElement).not.toBe(composer);
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
   it("keeps keyboard focus inside the walkthrough and starts it on Next", async () => {
     renderTour();
     openTour();

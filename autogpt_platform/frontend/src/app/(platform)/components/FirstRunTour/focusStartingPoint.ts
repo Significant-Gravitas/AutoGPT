@@ -1,3 +1,4 @@
+import { isTouchDevice } from "@/lib/platform";
 import { findTourTarget } from "./helpers";
 
 // "Start here" lands the user on the first thing they can act on: the first
@@ -34,7 +35,10 @@ function firstTask() {
   );
 }
 
+// Not on a touch screen: focus there opens the keyboard over half the page,
+// so the composer waits for a tap, as it does everywhere else.
 function composer() {
+  if (isTouchDevice()) return null;
   return (
     findTourTarget("composer")?.querySelector<HTMLElement>(
       "textarea:not([disabled])",
