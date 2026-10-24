@@ -49,17 +49,12 @@ async def list_airtable_bases(
     cred_id: Annotated[str, Path(title="The Airtable credential to list with")],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> AirtableBasesResponse:
-    credential = (
-        None if is_sdk_default(cred_id) else await creds_manager.get(user_id, cred_id)
-    )
-    if credential is None or not provider_matches(credential.provider, "airtable"):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
-        )
     try:
+        # Getting an OAuth credential may refresh it, which Airtable can refuse.
+        credential = await _airtable_credential(user_id, cred_id)
         bases, truncated = await _all_bases(credential)
     except HTTPClientError as e:
-        logger.warning(f"Airtable refused to list bases ({e.status_code})")
+        logger.warning(f"Airtable refused this connection ({e.status_code})")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -71,6 +66,17 @@ async def list_airtable_bases(
         bases=sorted(bases, key=lambda b: (not b.can_edit, b.name.casefold())),
         truncated=truncated,
     )
+
+
+async def _airtable_credential(user_id: str, cred_id: str) -> Credentials:
+    credential = (
+        None if is_sdk_default(cred_id) else await creds_manager.get(user_id, cred_id)
+    )
+    if credential is None or not provider_matches(credential.provider, "airtable"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
+        )
+    return credential
 
 
 async def _all_bases(credential: Credentials) -> tuple[list[AirtableBase], bool]:

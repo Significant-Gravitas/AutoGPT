@@ -100,3 +100,16 @@ def test_a_refused_connection_says_to_reconnect():
     assert resp.json()["detail"] == (
         "Airtable didn't accept this connection. Reconnect Airtable and try again."
     )
+
+
+def test_a_refused_token_refresh_also_says_to_reconnect():
+    """Getting an OAuth credential can refresh it; Airtable refusing that
+    refresh (a revoked grant) is the same fix for the user."""
+    refused = HTTPClientError("invalid_grant", 400)
+    with patch(_CREDS) as creds, patch(_LIST, AsyncMock()) as list_bases:
+        creds.get = AsyncMock(side_effect=refused)
+        resp = client.get("/airtable/credentials/cred-1/bases")
+
+    assert resp.status_code == 409
+    assert "Reconnect Airtable" in resp.json()["detail"]
+    list_bases.assert_not_awaited()

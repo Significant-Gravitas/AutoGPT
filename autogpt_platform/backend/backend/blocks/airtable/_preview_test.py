@@ -1,7 +1,10 @@
 """What the Airtable blocks show before they change a user's base, and how
 they ask for one."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks._base import BlockEffect
 from backend.blocks.airtable.bases import AirtableCreateBaseBlock
@@ -18,6 +21,7 @@ from backend.blocks.airtable.schema import (
     AirtableUpdateTableBlock,
 )
 from backend.blocks.airtable.triggers import AirtableWebhookTriggerBlock
+from backend.data.model import APIKeyCredentials
 
 ORDER_FIELDS = [
     {"name": "Order number", "type": "singleLineText"},
@@ -177,3 +181,38 @@ def test_a_base_is_picked_from_the_account_never_typed(block):
         "editable_only": block not in READ_ONLY_BLOCKS,
     }
     assert schema["title"] == "Airtable base"
+
+
+@pytest.mark.asyncio
+async def test_a_new_field_is_made_with_the_options_the_card_showed():
+    """The card shows a field's description and options; the call must send
+    them, or the user approves one field and gets another."""
+    block = AirtableCreateFieldBlock()
+    credentials = APIKeyCredentials(
+        provider="airtable", title="Airtable", api_key=SecretStr("k")
+    )
+    inputs = block.Input.model_validate(
+        {
+            "credentials": {
+                "id": credentials.id,
+                "provider": "airtable",
+                "type": "api_key",
+            },
+            "base_id": "appX",
+            "table_id": "tblX",
+            "name": "Time spent",
+            "field_type": "duration",
+            "description": "Hours on the order",
+            "options": {"durationFormat": "h:mm"},
+        }
+    )
+    with patch(
+        "backend.blocks.airtable.schema.create_field",
+        AsyncMock(return_value={"id": "fld1"}),
+    ) as create_field:
+        [_ async for _ in block.run(inputs, credentials=credentials)]
+
+    assert create_field.await_args.args[5:] == (
+        "Hours on the order",
+        {"durationFormat": "h:mm"},
+    )

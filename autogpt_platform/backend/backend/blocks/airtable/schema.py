@@ -244,6 +244,8 @@ class AirtableCreateFieldBlock(Block):
             input_data.table_id,
             input_data.field_type,
             input_data.name,
+            input_data.description,
+            input_data.options,
         )
 
         yield "field", field_data
