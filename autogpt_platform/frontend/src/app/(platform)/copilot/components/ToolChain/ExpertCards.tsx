@@ -23,7 +23,7 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
-import { useTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
+import { useLiveTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 import { asObject, str } from "./resultHelpers";
 
 interface Props {
@@ -560,7 +560,11 @@ export function ExpertChangeGroup({
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
   // Otto proposing an expert is the moment to say experts can own tasks.
-  useTipMoment("first-expert", !readOnly && visible.some(isOpenExpertProposal));
+  // Only live: a decided proposal still reads as open in an old chat.
+  useLiveTipMoment("first-expert", {
+    happened: !readOnly && visible.some(isOpenExpertProposal),
+    isLive: isCurrentlyStreaming,
+  });
   if (visible.length === 0) return null;
 
   const current = Math.min(step, visible.length - 1);

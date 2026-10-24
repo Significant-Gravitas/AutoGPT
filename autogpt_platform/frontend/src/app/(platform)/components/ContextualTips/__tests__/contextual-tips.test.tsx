@@ -184,12 +184,22 @@ describe("contextual tips — when an expert is proposed", () => {
     } as ToolUIPart;
   }
 
-  it("asks for the tip when Otto proposes an expert", () => {
-    render(<ExpertChangeGroup parts={[proposal("hire")]} />);
+  it("asks for the tip when Otto proposes an expert in front of the user", () => {
+    render(
+      <ExpertChangeGroup parts={[proposal("hire")]} isCurrentlyStreaming />,
+    );
 
     expect(useContextualTipStore.getState().requested).toEqual([
       "first-expert",
     ]);
+  });
+
+  it("stays quiet on a proposal read back from an old chat", () => {
+    // A decided proposal keeps applied: false in the transcript, so an old
+    // chat would otherwise look like a fresh proposal every time it opens.
+    render(<ExpertChangeGroup parts={[proposal("hire")]} />);
+
+    expect(useContextualTipStore.getState().requested).toEqual([]);
   });
 
   it("stays quiet on a read-only transcript", () => {
@@ -205,6 +215,32 @@ describe("contextual tips — the first second chat", () => {
     expect(isFirstSecondChat(null, 2)).toBe(false);
     expect(isFirstSecondChat(0, 1)).toBe(false);
     expect(isFirstSecondChat(5, 6)).toBe(false);
+  });
+
+  it("does not count the list dropping to one and coming back to two", async () => {
+    // A delete that fails puts the chat back; deleting down to one and
+    // starting another is not someone's first second chat either.
+    for (const counts of [
+      [2, 1, 2],
+      [3, 1, 2],
+    ]) {
+      act(() => useContextualTipStore.setState({ requested: [] }));
+      const sessionsOf = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({ id: `s${i}` }));
+      sessionList.current = {
+        sessions: sessionsOf(counts[0]),
+        isLoading: false,
+      };
+      const { rerender, unmount } = render(<Page />);
+      for (const count of counts.slice(1)) {
+        sessionList.current = { sessions: sessionsOf(count), isLoading: false };
+        rerender(<Page />);
+      }
+      await act(async () => {});
+
+      expect(useContextualTipStore.getState().requested).toEqual([]);
+      unmount();
+    }
   });
 
   it("points at the chat list when a second chat appears", async () => {

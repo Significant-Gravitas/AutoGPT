@@ -12,6 +12,26 @@ export function useTipMoment(id: TipID, happened: boolean) {
   }, [id, happened]);
 }
 
+interface LiveMomentArgs {
+  happened: boolean;
+  /** The turn that shows it is streaming in front of the user right now. */
+  isLive: boolean;
+}
+
+// For a moment that also sits in chat history: it counts only once it has
+// arrived live in this view, never when an old chat is read back.
+export function useLiveTipMoment(
+  id: TipID,
+  { happened, isLive }: LiveMomentArgs,
+) {
+  const sawLive = useRef(false);
+
+  useEffect(() => {
+    if (isLive) sawLive.current = true;
+    if (happened && sawLive.current) requestTip(id);
+  }, [id, happened, isLive]);
+}
+
 interface MessageLike {
   role: string;
   parts: ReadonlyArray<{ type: string }>;

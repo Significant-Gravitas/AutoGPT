@@ -26,8 +26,8 @@ export function setTipSeen(id: TipID, userID: string | null | undefined) {
 }
 
 // The chat list just went from one chat to two: the first second thread.
-export function isFirstSecondChat(previousCount: number | null, count: number) {
-  return previousCount === 1 && count >= 2;
+export function isFirstSecondChat(mostSeen: number | null, count: number) {
+  return mostSeen === 1 && count >= 2;
 }
 
 // A tip measured like a walkthrough step, so it follows its target the same

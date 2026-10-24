@@ -95,18 +95,19 @@ export function useContextualTips() {
   };
 }
 
-// The chat list going from one chat to two is the first second thread. It is
-// watched here rather than where chats are created, so every way of starting
-// one counts: the composer, a suggested task, an expert's own chat.
+// The chat list growing to two for the first time is the first second
+// thread. It is watched here rather than where chats are created, so every
+// way of starting one counts: the composer, a suggested task, an expert's
+// own chat. It goes by the most chats seen, not the last count, so a list
+// that dips back to one (a failed delete, deleting down) does not count.
 function useSecondChatMoment(isLoggedIn: boolean) {
   const { sessions, isLoading } = useSessionList({ enabled: isLoggedIn });
-  const previousCount = useRef<number | null>(null);
+  const mostSeen = useRef<number | null>(null);
   const count = sessions.length;
 
   useEffect(() => {
     if (!isLoggedIn || isLoading) return;
-    if (isFirstSecondChat(previousCount.current, count))
-      requestTip("second-chat");
-    previousCount.current = count;
+    if (isFirstSecondChat(mostSeen.current, count)) requestTip("second-chat");
+    mostSeen.current = Math.max(mostSeen.current ?? 0, count);
   }, [isLoggedIn, isLoading, count]);
 }
