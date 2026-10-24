@@ -11,6 +11,7 @@ export function AutoGPTLogoWhite({
 }: Props) {
   return (
     <svg
+      data-slot="autogpt-logo"
       viewBox={hideText ? "63 0 57 54" : "0 0 119 54"}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

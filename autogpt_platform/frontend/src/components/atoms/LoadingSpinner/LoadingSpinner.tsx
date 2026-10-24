@@ -22,6 +22,7 @@ export function LoadingSpinner(props: LoadingSpinnerProps) {
 
   const spinner = (
     <Icon
+      data-slot="loading-spinner"
       icon={Loading03Icon}
       className={cn(
         "animate-spin text-inherit",
@@ -34,7 +35,10 @@ export function LoadingSpinner(props: LoadingSpinnerProps) {
 
   if (cover) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        data-slot="loading-spinner-cover"
+        className="fixed inset-0 z-50 flex items-center justify-center"
+      >
         {spinner}
       </div>
     );

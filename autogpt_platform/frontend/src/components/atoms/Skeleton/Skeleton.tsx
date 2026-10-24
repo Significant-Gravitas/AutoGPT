@@ -16,6 +16,7 @@ const variantClassName = {
 export function Skeleton({ className, variant = "solid", ...props }: Props) {
   return (
     <div
+      data-slot="skeleton"
       className={cn(
         "animate-pulse rounded-md",
         variantClassName[variant],

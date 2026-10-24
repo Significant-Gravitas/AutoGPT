@@ -17,14 +17,25 @@ export function StorageBar() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text variant="body-medium" className="text-neutral-700">
+        <Text
+          // TODO(tokens): no exact role for text-neutral-700
+          variant="body-medium"
+          className="text-neutral-700"
+        >
           File storage
         </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
+        <Text
+          // TODO(tokens): no exact role for text-neutral-500
+          variant="body"
+          className="tabular-nums text-neutral-500"
+        >
           {percentLabel}
         </Text>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div
+        // TODO(tokens): no exact role for bg-neutral-200
+        className="h-2 w-full overflow-hidden rounded-full bg-neutral-200"
+      >
         <div
           role="progressbar"
           aria-label="File storage usage"
@@ -32,12 +43,17 @@ export function StorageBar() {
           aria-valuemax={100}
           aria-valuenow={percent}
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
-            isHigh ? "bg-orange-500" : "bg-blue-500"
+            // TODO(tokens): no exact role for bg-orange-500
+            isHigh ? "bg-orange-500" : "bg-info"
           }`}
           style={{ width: `${Math.max(used_bytes > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
-      <Text variant="small" className="text-neutral-400">
+      <Text
+        // TODO(tokens): no exact role for text-neutral-400
+        variant="small"
+        className="text-neutral-400"
+      >
         {formatBytes(used_bytes)} of {formatBytes(limit_bytes)} &middot;{" "}
         {file_count} {file_count === 1 ? "file" : "files"}
       </Text>
