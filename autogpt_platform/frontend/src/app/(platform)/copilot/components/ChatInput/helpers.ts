@@ -155,3 +155,13 @@ export function insertIntegrationMention(
 
 /** Phone-sized send button: the default 32px target is too small for a thumb. */
 export const MOBILE_SEND_BUTTON_CLASS = "max-md:size-10";
+
+const OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"]';
+
+// Whether focus sits in a menu or dialog the composer is not part of: one
+// the user opened while the page was still loading. Taking focus from it
+// would close it (Radix dismisses on focus-out).
+export function isFocusInOtherOverlay(input: HTMLElement | null) {
+  const overlay = document.activeElement?.closest(OVERLAY_SELECTOR);
+  return Boolean(overlay && input && !overlay.contains(input));
+}

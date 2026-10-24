@@ -1,6 +1,6 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The store imports a chain of modules (server actions, auth helpers,
 // react-query). Stub them so we can exercise `setCurrentRequestContext`
@@ -218,6 +218,69 @@ describe("useAuthStore.logOut", () => {
     await loggingOut;
 
     expect(serverLogout).toHaveBeenCalledOnce();
+  });
+});
+
+describe("useAuthStore onboarding handoff", () => {
+  // The wizard's handoff to Home lives in this tab's sessionStorage, which
+  // outlives a sign-out: the next account to sign in here must not inherit
+  // "just finished onboarding" (and get the first-run walkthrough).
+  const WELCOME = "autogpt:onboarding-welcome-pending";
+  const INTRO = "autogpt:onboarding-intro-path";
+
+  beforeEach(() => {
+    window.sessionStorage.setItem(WELCOME, "1");
+    window.sessionStorage.setItem(INTRO, "A");
+  });
+
+  afterEach(async () => {
+    window.sessionStorage.clear();
+    useAuthStore.setState({ user: null, hasLoadedUser: false });
+    await vi.dynamicImportSettled();
+    vi.clearAllMocks();
+  });
+
+  it("is cleared when the user signs out", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    await useAuthStore.getState().logOut();
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
+    expect(window.sessionStorage.getItem(INTRO)).toBeNull();
+  });
+
+  it("is cleared when another account takes over the tab", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
+  });
+
+  it("is cleared when the next account signs in after a session ended some other way", () => {
+    // A sign-out in another tab or a failed session check drops the user
+    // without logOut(); the next sign-in still must not inherit the flags.
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
+    expect(window.sessionStorage.getItem(INTRO)).toBeNull();
+  });
+
+  it("survives the same user signing back in after a dropped session", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBe("1");
+  });
+
+  it("survives the same user being refreshed", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBe("1");
+    expect(window.sessionStorage.getItem(INTRO)).toBe("A");
   });
 });
 

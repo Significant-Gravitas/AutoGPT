@@ -11,6 +11,7 @@ import { AccountMenuActivityRow } from "./components/AccountMenuActivityRow";
 import { AccountMenuFeedbackRow } from "./components/AccountMenuFeedbackRow";
 import { AccountMenuHeader } from "./components/AccountMenuHeader";
 import { AccountMenuRow } from "./components/AccountMenuRow";
+import { AccountMenuTourRow } from "./components/AccountMenuTourRow";
 import { InitialAvatar } from "./components/InitialAvatar";
 import { getAccountMenuIcon } from "./helpers";
 
@@ -93,6 +94,13 @@ export function AccountMenu({
               )}
               <div className="px-2 py-1">
                 <ul className="flex flex-col gap-0.5">
+                  {/* Help lives in the last group: replaying the first-run
+                      walkthrough sits with "What's new" and the docs. */}
+                  {isLogoutGroup && (
+                    <li>
+                      <AccountMenuTourRow />
+                    </li>
+                  )}
                   {group.items.map((item, itemIndex) => {
                     const key = `${groupIndex}-${itemIndex}-${item.text}`;
                     const icon = getAccountMenuIcon(item.icon);

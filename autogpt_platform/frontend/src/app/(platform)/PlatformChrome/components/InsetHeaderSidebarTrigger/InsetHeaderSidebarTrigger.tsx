@@ -1,5 +1,6 @@
 "use client";
 
+import { tourTarget } from "@/lib/tour-targets";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 import { useIsChatSession } from "../../useIsChatSession";
@@ -15,7 +16,7 @@ export function InsetHeaderSidebarTrigger() {
   if (isChatSession) return null;
 
   return (
-    <div className="pointer-events-auto md:hidden">
+    <div className="pointer-events-auto md:hidden" {...tourTarget("menu")}>
       <SidebarTrigger className={mobileTriggerClassName} />
     </div>
   );

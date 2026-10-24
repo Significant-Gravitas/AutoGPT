@@ -5,6 +5,7 @@ import { ReplayRouteGuard } from "@/components/monitor/ReplayRouteGuard";
 import { SentryUserTracker } from "@/components/monitor/SentryUserTracker";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { useClearOnAccountChange } from "@/lib/react-query/useClearOnAccountChange";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
 import OrgTeamProvider from "@/providers/org-team/OrgTeamProvider";
@@ -23,6 +24,7 @@ import { Suspense } from "react";
 
 export function Providers({ children, ...props }: ThemeProviderProps) {
   const queryClient = getQueryClient();
+  useClearOnAccountChange(queryClient);
   return (
     <QueryClientProvider client={queryClient}>
       <NuqsAdapter>

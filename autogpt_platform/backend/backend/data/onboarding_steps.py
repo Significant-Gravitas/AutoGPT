@@ -55,9 +55,20 @@ class OnboardingStep(StrEnum):
     # No longer rewarded but exist for analytical purposes
     BUILDER_OPEN = "BUILDER_OPEN"
     BUILDER_RUN_AGENT = "BUILDER_RUN_AGENT"
-    # Copilot home first-run: the capability-cards modal was completed or
-    # skipped. Unrewarded; recorded so it shows only once per user.
+    # Legacy copilot home first-run: the capability-cards modal was completed
+    # or skipped. Unrewarded. Counts as having had the first-run intro, and
+    # must stay accepted: a tab still running an older frontend records it.
     CAPABILITY_CARDS = "CAPABILITY_CARDS"
+    # The guided first run over the real sidebar (chats, Team, Files, the
+    # wallet, the first tasks), finished or skipped. Unrewarded; recorded so
+    # it opens by itself only once per user. Replayable from the profile menu.
+    FIRST_RUN_TOUR = "FIRST_RUN_TOUR"
+    # One-time contextual tips, each shown the first time its surface matters:
+    # a second chat appears, Otto brings up a cost, Otto proposes an expert.
+    # Unrewarded; recorded so each tip shows once per user.
+    CHATS_TIP = "CHATS_TIP"
+    COST_TIP = "COST_TIP"
+    EXPERT_TIP = "EXPERT_TIP"
     # First-visit intro card for a tab, dismissed via its CTA or otherwise.
     # Unrewarded; recorded so each tab introduces itself only once per user.
     AGENTS_TAB_INTRO = "AGENTS_TAB_INTRO"
@@ -77,6 +88,10 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.ONBOARDING_COMPLETE,
     OnboardingStep.BUILDER_OPEN,
     OnboardingStep.CAPABILITY_CARDS,
+    OnboardingStep.FIRST_RUN_TOUR,
+    OnboardingStep.CHATS_TIP,
+    OnboardingStep.COST_TIP,
+    OnboardingStep.EXPERT_TIP,
     OnboardingStep.AGENTS_TAB_INTRO,
     OnboardingStep.MARKETPLACE_TAB_INTRO,
     OnboardingStep.BUILD_TAB_INTRO,

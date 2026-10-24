@@ -64,23 +64,6 @@ export function clearWelcomePending() {
   window.sessionStorage.removeItem(WELCOME_PENDING_KEY);
 }
 
-// The capability-cards first-run modal was completed or skipped. The
-// backend's CAPABILITY_CARDS onboarding step is the source of truth;
-// this is its local cache so the modal never reshows even if that call
-// failed or hasn't been checked. Value is the user id, same reasoning
-// as the greeting flag below.
-const CAPABILITY_CARDS_KEY = "autogpt:copilot-capability-cards-seen";
-
-export function peekCapabilityCardsSeen(userId: string | null | undefined) {
-  if (typeof window === "undefined" || !userId) return false;
-  return window.localStorage.getItem(CAPABILITY_CARDS_KEY) === userId;
-}
-
-export function setCapabilityCardsSeen(userId: string | null | undefined) {
-  if (typeof window === "undefined" || !userId) return;
-  window.localStorage.setItem(CAPABILITY_CARDS_KEY, userId);
-}
-
 // The greeting is retired for good the first time the user sends a
 // message. localStorage rather than sessionStorage because it must
 // survive new tabs and restarts; the backend flag is the source of
@@ -98,6 +81,44 @@ export function peekGreetingDone(userId: string | null | undefined) {
 export function setGreetingDone(userId: string | null | undefined) {
   if (typeof window === "undefined" || !userId) return;
   window.localStorage.setItem(GREETING_DONE_KEY, userId);
+}
+
+// Everything above lives in this tab's sessionStorage, which outlives a
+// sign-out. The next account to sign in here must not inherit it: a
+// pending welcome would open the first-run walkthrough for someone who
+// finished onboarding long ago.
+export function clearOnboardingHandoff() {
+  if (typeof window === "undefined") return;
+  try {
+    for (const key of [
+      INTRO_PATH_KEY,
+      MIC_GLOW_KEY,
+      AWAITING_FOLLOWUP_KEY,
+      PENDING_LATER_DUMP_KEY,
+      WELCOME_PENDING_KEY,
+    ])
+      window.sessionStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable (private mode); nothing to clear then.
+  }
+}
+
+// The account this tab last had signed in. Kept beside the flags (and so
+// across reloads) because a session can end without logOut(): a sign-out
+// in another tab, a failed session check.
+const HANDOFF_OWNER_KEY = "autogpt:onboarding-handoff-owner";
+
+// Called for each account that signs in here: a different one than this
+// tab last had starts with no handoff. The same one keeps it.
+export function claimOnboardingHandoff(userID: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const owner = window.sessionStorage.getItem(HANDOFF_OWNER_KEY);
+    if (owner && owner !== userID) clearOnboardingHandoff();
+    window.sessionStorage.setItem(HANDOFF_OWNER_KEY, userID);
+  } catch {
+    // Storage can be unavailable (private mode); then there is no handoff.
+  }
 }
 
 function setFlag(key: string) {

@@ -3,6 +3,10 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { setAnalyticsIdentitySignedIn } from "@/services/analytics/anonymous-id";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
+import {
+  claimOnboardingHandoff,
+  clearOnboardingHandoff,
+} from "@/services/onboarding/brain-dump-handoff";
 import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
@@ -156,6 +160,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     }
 
     broadcastLogout();
+    clearOnboardingHandoff();
 
     // Clear React Query cache to prevent stale data from old user
     if (typeof window !== "undefined") {
@@ -314,6 +319,12 @@ useAuthStore.subscribe((state, previousState) => {
     resetAnalyticsIdentity();
     clearCopilotCompletedSessions();
   }
+  // Whoever signs in claims the onboarding handoff: a different account
+  // than this tab last had starts without it, however the last session
+  // ended. Not on a sign-out itself: a failed refresh also drops the user,
+  // and a brand-new one must keep their walkthrough.
+  if (state.user && state.user.id !== previousState.user?.id)
+    claimOnboardingHandoff(state.user.id);
 });
 
 // Loaded lazily: the copilot store pulls in React hooks the auth store

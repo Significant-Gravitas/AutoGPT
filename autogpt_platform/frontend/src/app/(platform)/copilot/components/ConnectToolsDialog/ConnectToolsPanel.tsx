@@ -16,6 +16,9 @@ import { isKey } from "@/lib/keyboard";
 interface Props {
   onBack: () => void;
   onNext: () => void;
+  /** Footer wording; the defaults read as a step in a longer flow. */
+  backLabel?: string;
+  nextLabel?: string;
 }
 
 const stepVariants = {
@@ -35,7 +38,12 @@ const STEP_TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
 // The provider picker embedded in the welcome dialog: same list → detail
 // flow as ConnectServiceDialog, but connecting never closes the dialog —
 // success slides back to the list so more tools can be wired up in one go.
-export function ConnectToolsPanel({ onBack, onNext }: Props) {
+export function ConnectToolsPanel({
+  onBack,
+  onNext,
+  backLabel = "Back",
+  nextLabel = "Next",
+}: Props) {
   const {
     query,
     setQuery,
@@ -63,8 +71,8 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
 
-  // Escape steps back one level (detail → list → cards) instead of
-  // reaching the dialog's skip handler, which would end onboarding.
+  // Escape steps back one level (detail → list → out) instead of closing
+  // whatever hosts the panel, which would drop a half-typed API key.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (!isKey(event, "Escape")) return;
@@ -235,10 +243,10 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
         ) : (
           <>
             <Button variant="outline" size="xs" onClick={onBack}>
-              Back
+              {backLabel}
             </Button>
             <Button variant="primary" size="xs" onClick={onNext}>
-              Next
+              {nextLabel}
             </Button>
           </>
         )}
