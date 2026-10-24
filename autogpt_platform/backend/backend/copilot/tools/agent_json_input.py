@@ -33,6 +33,7 @@ from backend.copilot.sdk.file_ref import (
     parse_file_ref,
     read_file_bytes,
 )
+from backend.data.workspace_internal import WORKING_FILE_METADATA
 
 from .models import ErrorResponse
 
@@ -243,7 +244,8 @@ async def write_agent_json_to_workspace(
             content=json.dumps(agent_json, indent=2).encode("utf-8"),
             filename=write_to,
             overwrite=True,
-            metadata={"origin": "agent-created"},
+            # A handoff to the next tool, not something the user asked for.
+            metadata={"origin": "agent-created", **WORKING_FILE_METADATA},
         )
     except Exception as e:
         logger.warning(f"Failed to write agent JSON to {write_to!r}: {e}")

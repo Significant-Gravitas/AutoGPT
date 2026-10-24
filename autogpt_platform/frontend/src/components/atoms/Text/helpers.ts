@@ -20,39 +20,48 @@ export type As =
 // and the `label` size/tracking have no role yet and stay raw.
 export const variants = {
   // Headings
-  h1: "font-poppins text-display font-semibold tracking-[-0.033rem] text-black",
-  h2: "font-poppins text-title font-medium text-black tracking-[-0.02rem]",
-  h3: "font-poppins text-heading font-medium text-black tracking-[-0.01313rem]",
-  h4: "font-poppins text-heading-sm font-medium text-black",
-  h5: "font-poppins text-body-lg font-medium leading-6 text-black",
+  h1: "font-poppins text-display font-semibold tracking-[-0.033rem] text-foreground-base",
+  h2: "font-poppins text-title font-medium text-foreground-base tracking-[-0.02rem]",
+  h3: "font-poppins text-heading font-medium text-foreground-base tracking-[-0.01313rem]",
+  h4: "font-poppins text-heading-sm font-medium text-foreground-base",
+  h5: "font-poppins text-body-lg font-medium leading-6 text-foreground-base",
 
   // Body Text
-  lead: "font-sans text-lead font-normal text-black",
-  "lead-medium": "font-sans text-lead font-medium text-black",
-  "lead-semibold": "font-sans text-lead font-semibold text-black",
-  large: "font-sans text-body-lg font-normal text-black",
-  "large-medium": "font-sans text-body-lg font-medium text-black",
-  "large-semibold": "font-sans text-body-lg font-semibold text-black",
-  body: "font-sans text-body font-normal text-black",
-  "body-medium": "font-sans text-body font-medium text-black",
-  small: "font-sans text-caption font-normal text-black",
-  "small-medium": "font-sans text-caption font-medium text-black",
+  lead: "font-sans text-lead font-normal text-foreground-base",
+  "lead-medium": "font-sans text-lead font-medium text-foreground-base",
+  "lead-semibold": "font-sans text-lead font-semibold text-foreground-base",
+  large: "font-sans text-body-lg font-normal text-foreground-base",
+  "large-medium": "font-sans text-body-lg font-medium text-foreground-base",
+  "large-semibold": "font-sans text-body-lg font-semibold text-foreground-base",
+  body: "font-sans text-body font-normal text-foreground-base",
+  "body-medium": "font-sans text-body font-medium text-foreground-base",
+  small: "font-sans text-caption font-normal text-foreground-base",
+  "small-medium": "font-sans text-caption font-medium text-foreground-base",
 
   // Label Text
   label:
-    "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-black",
+    "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
   eyebrow:
-    "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-zinc-500",
+    "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-foreground-tertiary",
 } as const;
 
 export type Variant = keyof typeof variants;
 
-/** Semantic colours. Omit for the variant's own colour (black). */
+/**
+ * Semantic colours, each a colour role at the hex it rendered before the
+ * roles existed. Omit for the variant's own colour (foreground-base #141414).
+ */
 export const tones = {
-  primary: "text-zinc-900",
-  secondary: "text-zinc-600",
-  muted: "text-zinc-500",
-  danger: "text-red-600",
+  primary: "text-foreground-strong", // #2C2C30
+  emphasis: "text-foreground-emphasis", // #3E3E43
+  body: "text-foreground-body", // #505057
+  secondary: "text-foreground-secondary", // #68686F
+  muted: "text-foreground-tertiary", // #83838C
+  subtle: "text-foreground-subtle", // #ADADB3
+  danger: "text-error-hover", // #D93636
+  error: "text-error", // #EF4444
+  warning: "text-warning-foreground", // #B45309
+  success: "text-success", // #149443
 } as const;
 
 export type Tone = keyof typeof tones;
