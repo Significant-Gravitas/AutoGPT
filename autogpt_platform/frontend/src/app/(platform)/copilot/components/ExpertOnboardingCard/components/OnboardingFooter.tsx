@@ -19,10 +19,10 @@ interface Props {
   onNext: () => void;
 }
 
-// Shortcut cues only help where there is a keyboard; on touch screens they
-// are noise, so they show only where the pointer can hover.
+// Keyboard cues show only where the pointer can hover and the footer fits them
+// with each button on one line, which the Team panel's card does not.
 const KEY_HINT =
-  "hidden rounded border border-border-base px-1 text-caption-sm font-medium leading-4 text-foreground-subtle [@media(hover:hover)]:inline";
+  "hidden rounded border border-border-base px-1 text-caption-sm font-medium leading-4 text-foreground-subtle [@media(hover:hover)]:[@container(min-width:24.5rem)]:inline";
 
 export function OnboardingFooter({
   canGoBack,
@@ -43,7 +43,7 @@ export function OnboardingFooter({
       : "Next question";
 
   return (
-    <div className="flex items-center justify-between gap-2 px-4 pb-4 pt-4 sm:px-5">
+    <div className="flex items-center justify-between gap-2 px-4 pb-4 pt-4 [container-type:inline-size] sm:px-5">
       <button
         type="button"
         aria-label="Previous question"
@@ -55,14 +55,14 @@ export function OnboardingFooter({
       >
         <Icon icon={ArrowLeft01Icon} size={16} />
       </button>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <button
           type="button"
           aria-keyshortcuts="Escape"
           onClick={onSkip}
           disabled={isSending}
           // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-          className="flex h-8 items-center gap-2 rounded-md border border-border-base bg-surface px-3.5 text-sm font-medium text-foreground-body outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 enabled:hover:border-border-strong enabled:hover:bg-surface-muted disabled:opacity-50 [@media(hover:none)]:h-11"
+          className="flex h-8 items-center gap-2 whitespace-nowrap rounded-md border border-border-base bg-surface px-3.5 text-sm font-medium text-foreground-body outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 enabled:hover:border-border-strong enabled:hover:bg-surface-muted disabled:opacity-50 [@media(hover:none)]:h-11"
         >
           Skip questions
           <kbd aria-hidden="true" className={KEY_HINT}>
@@ -81,7 +81,7 @@ export function OnboardingFooter({
           onClick={onNext}
           className={cn(
             // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-            "flex h-8 items-center gap-1.5 rounded-md px-4 text-sm font-medium outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 enabled:active:scale-95 [@media(hover:none)]:h-11",
+            "flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-4 text-sm font-medium outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 enabled:active:scale-95 [@media(hover:none)]:h-11",
             isEnabled
               ? "bg-action-hover text-action-foreground hover:bg-action"
               : "bg-surface-hover text-foreground-subtle",

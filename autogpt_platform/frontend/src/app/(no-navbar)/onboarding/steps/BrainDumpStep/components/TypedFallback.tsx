@@ -30,7 +30,7 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
             label="Your brain dump"
             hideLabel
             rows={6}
-            className="rounded-xl border-zinc-200"
+            className="rounded-xl border-border-base"
             placeholder="What repeats every week? What would you hand off first?"
             value={value}
             onChange={(e) => onChange(e.target.value)}
