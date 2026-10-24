@@ -63,3 +63,37 @@ def test_everything_else_is_a_deliverable(name: str, path: str, metadata: dict) 
 
 def test_no_metadata_reads_as_none() -> None:
     assert not is_internal_workspace_file(name="a.png", path="/a.png", metadata=None)
+
+
+@pytest.mark.parametrize(
+    "name, path, metadata",
+    [
+        # A hired expert's skill package, installed from the marketplace.
+        (
+            "SKILL.md",
+            "/experts/e1/skills/copywriting/SKILL.md",
+            {"kind": "copilot_skill", "skill_origin": "marketplace"},
+        ),
+        ("LICENSE", "/experts/e1/skills/copywriting/LICENSE", {}),
+        ("sendgrid.md", "/experts/e1/skills/email/references/sendgrid.md", {}),
+        # The account's own skills, which personal Otto uses.
+        ("SKILL.md", "/skills/deep-research/SKILL.md", {"skill_origin": "user"}),
+        ("run.py", "/skills/deep-research/scripts/run.py", {"executable": True}),
+    ],
+)
+def test_skill_packages_are_internal(name: str, path: str, metadata: dict) -> None:
+    assert is_internal_workspace_file(name=name, path=path, metadata=metadata)
+
+
+@pytest.mark.parametrize(
+    "name, path",
+    [
+        # Only the skill folders are; a file merely named like one is not.
+        ("SKILL.md", "/SKILL.md"),
+        ("SKILL.md", "/my-skills/copywriting/SKILL.md"),
+        ("skills.md", "/sessions/s1/skills/skills.md"),
+        ("plan.md", "/experts/e1/notes/skills/plan.md"),
+    ],
+)
+def test_files_outside_skill_folders_are_not(name: str, path: str) -> None:
+    assert not is_internal_workspace_file(name=name, path=path, metadata={})

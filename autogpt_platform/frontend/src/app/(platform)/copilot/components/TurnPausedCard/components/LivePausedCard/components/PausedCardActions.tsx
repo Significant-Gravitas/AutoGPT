@@ -27,11 +27,11 @@ export function PausedCardActions({ card, onStop }: Props) {
     chatGpt.isSwitching;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 px-5 py-3">
+    <div className="flex flex-wrap items-center gap-2 border-t border-separator px-5 py-3">
       {resume.resumesAt && (
         <div className="flex items-center gap-1.5 pr-1">
-          <Icon icon={Clock01Icon} size={14} className="text-purple-500" />
-          <Text variant="small-medium" className="!text-zinc-700">
+          <Icon icon={Clock01Icon} size={14} className="text-brand" />
+          <Text variant="small-medium" className="!text-foreground-body">
             Resumes {resetAt(resume.resumesAt, card.now)}
           </Text>
           <Button
