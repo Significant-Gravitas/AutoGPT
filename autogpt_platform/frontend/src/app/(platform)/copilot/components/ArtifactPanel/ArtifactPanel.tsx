@@ -116,6 +116,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
               we render our own backdrop with click-to-close. */}
           <div
             onClick={clearArtifactPreview}
+            // TODO(tokens): no fitting role for bg-black/20 #141414; #141414 is foreground-base (a text colour)
             className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[2px]"
             aria-hidden="true"
           />

@@ -5,7 +5,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/__legacy__/ui/button";

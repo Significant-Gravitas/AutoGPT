@@ -12,6 +12,7 @@ const Checkbox = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CheckboxPrimitive.Root
     ref={ref}
+    data-slot="checkbox"
     className={cn(
       // TODO(tokens): no role is neutral-900 #171717.
       "peer h-4 w-4 shrink-0 rounded-sm border border-neutral-900 shadow data-[state=checked]:bg-neutral-900 data-[state=checked]:text-primary-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
@@ -19,10 +20,13 @@ const Checkbox = React.forwardRef<
     )}
     {...props}
   >
-    <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
+    <CheckboxPrimitive.Indicator
+      data-slot="checkbox-indicator"
+      className="flex items-center justify-center text-current"
+    >
       {/* TODO: Hugeicons' tick is drawn differently; swapping it changes the
           pixels, so the Radix icon stays until a design pass. */}
-      <CheckIcon className="h-4 w-4" />
+      <CheckIcon data-slot="checkbox-icon" className="h-4 w-4" />
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ));

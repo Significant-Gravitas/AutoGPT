@@ -11,7 +11,7 @@ interface Props {
 
 export function ActivationTerms({ terms }: Props) {
   return (
-    <div className="space-y-5">
+    <div data-slot="activation-terms" className="space-y-5">
       <Text variant="body" tone="secondary" className="leading-relaxed">
         {trialEndNotice(terms)}
       </Text>
