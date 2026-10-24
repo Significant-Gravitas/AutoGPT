@@ -457,6 +457,38 @@ describe("ChatContainer", () => {
     expect(onSend.mock.calls[0][0]).toBe("Continue from where you left off.");
   });
 
+  it("resumes a failed turn a card decision started instead of answering the card again", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "ask",
+            role: "user",
+            parts: [{ type: "text", text: "hire someone for marketing" }],
+          },
+          {
+            id: "decision",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "Approved: hire Maya (confirmation_id: c-1).",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend.mock.calls[0][0]).toBe("Continue from where you left off.");
+  });
+
   it.each([false, true])(
     "shows an error when retrying fails (held call: %s)",
     async (isHeldCall) => {

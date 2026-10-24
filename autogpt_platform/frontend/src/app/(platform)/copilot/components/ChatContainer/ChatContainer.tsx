@@ -57,6 +57,7 @@ import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
+import { getCardDecisions } from "../../cardDecisions";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -437,8 +438,10 @@ export const ChatContainer = ({
     async function resend() {
       const lastRow = [...messages].reverse().find((m) => m.role === "user");
       // A turn an answered card started failed after the call ran: resuming it
-      // must not re-send the request that led to the call.
-      if (lastRow && isHeldCallRow(lastRow)) {
+      // must not re-send the request that led to the call. Nor must a turn a
+      // proposal card's decision started answer that card again: the answer
+      // is in the chat, and the server refuses a second one.
+      if (lastRow && (isHeldCallRow(lastRow) || getCardDecisions(lastRow))) {
         await guardedOnSend(CONTINUE_AFTER_HELD_CALL);
         return;
       }
