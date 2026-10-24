@@ -64,7 +64,7 @@ export function StorageUsage() {
         <Text
           variant="small"
           as="span"
-          className="hidden text-zinc-400 lg:inline"
+          className="hidden text-foreground-subtle lg:inline"
         >
           {`${formatFileSize(internalBytes)} is your team's skills and working files`}
         </Text>
