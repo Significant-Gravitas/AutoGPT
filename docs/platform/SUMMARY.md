@@ -53,6 +53,7 @@
 
 ## Contributing
 
+* [Contributing to the Docs](contributing/contributing-to-the-docs.md)
 * [Managing LLM Models](contributing/managing-llm-models.md)
 * [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
 
