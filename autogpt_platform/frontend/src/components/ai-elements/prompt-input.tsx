@@ -24,7 +24,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   Tooltip,
   TooltipContent,
@@ -260,7 +260,7 @@ export function PromptInputTextarea({
       ref={textareaRef}
       rows={1}
       className={cn(
-        "max-h-48 min-h-0 text-base leading-6 md:text-base",
+        "max-h-48 min-h-0 text-body-lg leading-6 md:text-body-lg md:leading-6",
         className,
       )}
       name="message"
@@ -356,7 +356,7 @@ export function PromptInputSubmit({
   let Icon = <UIIcon icon={ArrowUp02Icon} className="size-4" />;
 
   if (status === "submitted") {
-    Icon = <Spinner />;
+    Icon = <LoadingSpinner size="small" role="status" aria-label="Loading" />;
   } else if (status === "streaming") {
     Icon = <UIIcon icon={StopIcon} className="size-4" />;
   }
