@@ -16,7 +16,7 @@ interface Props extends SubscriptionPlansProps {
 export function OfferActions(props: Props) {
   const { trial, offer, action } = getPlanPresentation(props.plan, props);
   return (
-    <div className="mt-auto space-y-2">
+    <div data-slot="offer-actions" className="mt-auto space-y-2">
       {trial ? (
         <Button
           type="button"
@@ -32,7 +32,7 @@ export function OfferActions(props: Props) {
       ) : (
         <PaidPlanAction {...props} />
       )}
-      <div className="min-h-10 text-center">
+      <div data-slot="offer-actions-details" className="min-h-10 text-center">
         {trial ? (
           <TrialActionDetails {...props} />
         ) : offer ? (
@@ -46,7 +46,11 @@ export function OfferActions(props: Props) {
         )}
       </div>
       {offer && props.trialError && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          data-slot="offer-actions-error"
+          className="text-sm text-destructive"
+        >
           {props.trialError}
         </p>
       )}
@@ -119,7 +123,7 @@ function AlternativeTrial({
   }
 
   return (
-    <div>
+    <div data-slot="alternative-trial">
       <Button
         type="button"
         variant="link"
