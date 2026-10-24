@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { Text } from "../Text/Text";
 import { Separator } from "./Separator";
 
 const meta: Meta<typeof Separator> = {
@@ -23,9 +24,13 @@ export const Horizontal: Story = {
   render: function HorizontalStory() {
     return (
       <div className="w-64">
-        <p className="py-2">Above</p>
+        <Text variant="body" className="py-2">
+          Above
+        </Text>
         <Separator />
-        <p className="py-2">Below</p>
+        <Text variant="body" className="py-2">
+          Below
+        </Text>
       </div>
     );
   },
@@ -35,9 +40,13 @@ export const Vertical: Story = {
   render: function VerticalStory() {
     return (
       <div className="flex h-8 items-center gap-3">
-        <span>Left</span>
+        <Text variant="body" as="span">
+          Left
+        </Text>
         <Separator orientation="vertical" />
-        <span>Right</span>
+        <Text variant="body" as="span">
+          Right
+        </Text>
       </div>
     );
   },
