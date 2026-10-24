@@ -67,7 +67,11 @@ export const ViewMoreData = ({
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="h4" className="text-slate-900">
+          <Text
+            // TODO(tokens): no exact role: text-slate-900 #2A313A
+            variant="h4"
+            className="text-slate-900"
+          >
             Complete {dataType === "input" ? "Input" : "Output"} Data
           </Text>
 
@@ -76,14 +80,20 @@ export const ViewMoreData = ({
               {reversedExecutionResults.map((result) => (
                 <div
                   key={result.node_exec_id}
-                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+                  // TODO(tokens): no fitting role for border-slate-200 #CFD4DB; #CFD4DB is node-border (the builder node ring), node-selected (the selected builder node ring)
+                  className="rounded-3xl border border-slate-200 bg-surface p-4 shadow-sm"
                 >
                   <div className="flex items-center gap-2">
-                    <Text variant="body" className="text-slate-600">
+                    <Text
+                      // TODO(tokens): no exact role: text-slate-600 #5B6A7E
+                      variant="body"
+                      className="text-slate-600"
+                    >
                       Execution ID:
                     </Text>
                     <Text
                       variant="body-medium"
+                      // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
                       className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
                     >
                       {result.node_exec_id}
@@ -107,12 +117,14 @@ export const ViewMoreData = ({
                             <div className="flex items-center gap-2">
                               <Text
                                 variant="body-medium"
+                                // TODO(tokens): no exact role: text-slate-600 #5B6A7E
                                 className="!font-semibold text-slate-600"
                               >
                                 Pin:
                               </Text>
                               <Text
                                 variant="body-medium"
+                                // TODO(tokens): no exact role: text-slate-700 #475263
                                 className="text-slate-700"
                               >
                                 {beautifyString(key)}
@@ -121,6 +133,7 @@ export const ViewMoreData = ({
                             <div className="w-full space-y-2">
                               <Text
                                 variant="body-medium"
+                                // TODO(tokens): no exact role: text-slate-600 #5B6A7E
                                 className="!font-semibold text-slate-600"
                               >
                                 Data:
@@ -153,9 +166,11 @@ export const ViewMoreData = ({
                                       )
                                     }
                                     className={cn(
-                                      "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
+                                      // TODO(tokens): no exact role: hover:text-slate-900 #2A313A
+                                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900",
                                       copiedKey ===
                                         `${result.node_exec_id}-${key}` &&
+                                        // TODO(tokens): no exact role: border-green-400 #45B56E, bg-green-100 #B7E2C7, hover:border-green-400 #45B56E, hover:bg-green-200 #94D5AC
                                         "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
                                     )}
                                   >
@@ -164,7 +179,7 @@ export const ViewMoreData = ({
                                       <Icon
                                         icon={Tick02Icon}
                                         size={16}
-                                        className="text-green-600"
+                                        className="text-success"
                                       />
                                     ) : (
                                       <Icon icon={Copy01Icon} size={16} />

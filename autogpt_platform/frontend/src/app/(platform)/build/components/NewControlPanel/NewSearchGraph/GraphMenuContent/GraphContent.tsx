@@ -8,6 +8,7 @@ import { getNodeInputOutputSummary } from "./helpers";
 import { useGraphContent } from "./useGraphContent";
 import { CornerUpRightIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   searchQuery: string;
@@ -39,11 +40,11 @@ export function GraphSearchContent({
         onKeyDown={handleKeyDown}
       />
 
-      <Separator className="h-[1px] w-full text-zinc-300" />
+      <Separator className="h-[1px] w-full text-foreground-disabled" />
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
-          <div className="px-4 pt-3 text-xs text-zinc-500">
+          <div className="px-4 pt-3 text-xs text-foreground-tertiary">
             Found {filteredNodes.length} node
             {filteredNodes.length !== 1 ? "s" : ""}
           </div>
@@ -51,7 +52,7 @@ export function GraphSearchContent({
         <ScrollArea className="h-full w-full">
           <div role="listbox" className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
-              <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
+              <div className="flex h-32 items-center justify-center text-sm text-foreground-tertiary">
                 {trimmedQuery
                   ? "No nodes found matching your search"
                   : "Start typing to search nodes"}
@@ -83,34 +84,46 @@ export function GraphSearchContent({
                     aria-selected={index === selectedIndex}
                     tabIndex={index === selectedIndex ? 0 : -1}
                     className={cn(
-                      "flex h-16 w-full cursor-pointer items-center gap-3 rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem]",
+                      "flex h-16 w-full cursor-pointer items-center gap-3 rounded-[0.75rem] bg-surface-muted px-[0.875rem] py-[0.625rem]",
                       index === selectedIndex
-                        ? "bg-zinc-100 ring-1 ring-zinc-300"
-                        : "hover:bg-zinc-100",
+                        ? "bg-surface-hover ring-1 ring-border-strong"
+                        : "hover:bg-surface-hover",
                     )}
                     onClick={() => onNodeSelect(node.id)}
                     onMouseEnter={() => setSelectedIndex(index)}
                   >
                     <div className="flex flex-1 flex-col items-start gap-0.5 overflow-hidden">
                       <div className="flex items-center gap-2">
-                        <span className="line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+                        <Text
+                          variant="body-medium"
+                          as="span"
+                          className="line-clamp-1 text-foreground-emphasis"
+                        >
                           {nodeTitle}
-                        </span>
+                        </Text>
                         {hasCustomName && (
-                          <span className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500">
+                          <span className="shrink-0 rounded-[0.75rem] bg-surface-active px-2 font-sans text-xs leading-5 text-foreground-tertiary">
                             {nodeType}
                           </span>
                         )}
                       </div>
                       {description && (
-                        <span className="line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500">
+                        <Text
+                          variant="small"
+                          as="span"
+                          className="line-clamp-1 leading-5 text-foreground-tertiary"
+                        >
                           {description}
-                        </span>
+                        </Text>
                       )}
                     </div>
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.5rem] bg-zinc-700">
+                    <div
+                      // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.5rem] bg-zinc-700"
+                    >
                       <Icon
                         icon={CornerUpRightIcon}
+                        // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
                         className="h-4 w-4 text-zinc-50"
                       />
                     </div>

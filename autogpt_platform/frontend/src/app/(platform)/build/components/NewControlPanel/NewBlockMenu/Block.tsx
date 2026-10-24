@@ -15,6 +15,7 @@ import {
 } from "@/app/(platform)/build/components/MCPToolDialog";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -120,8 +121,8 @@ function BlockCard({
         draggable={!isMCPBlock}
         data-id={blockDataId}
         className={cn(
-          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
-          "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
+          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-surface-muted px-[0.875rem] py-[0.625rem] text-start shadow-none",
+          "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
           isMCPBlock && "hover:cursor-pointer",
           className,
         )}
@@ -131,33 +132,42 @@ function BlockCard({
       >
         <div className="flex flex-1 flex-col items-start gap-0.5">
           {title && (
-            <span
+            <Text
+              variant="body-medium"
+              as="span"
               className={cn(
-                "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+                "line-clamp-1 text-foreground-emphasis group-disabled:text-foreground-subtle",
               )}
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
                 highlightedText,
               )}
-            </span>
+            </Text>
           )}
           {description && (
-            <span
+            <Text
+              variant="small"
+              as="span"
               className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+                "line-clamp-1 leading-5 text-foreground-tertiary group-disabled:text-foreground-subtle",
               )}
             >
               {highlightText(description, highlightedText)}
-            </span>
+            </Text>
           )}
         </div>
         <div
           className={cn(
+            // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body (a text colour); no fitting role for group-disabled:bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
             "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
           )}
         >
-          <Icon icon={PlusSignIcon} className="h-5 w-5 text-zinc-50" />
+          <Icon
+            // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
+            icon={PlusSignIcon}
+            className="h-5 w-5 text-zinc-50"
+          />
         </div>
       </Button>
       {isMCPBlock && (
@@ -173,12 +183,12 @@ function BlockCard({
 
 const BlockSkeleton = () => {
   return (
-    <Skeleton className="flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]">
+    <Skeleton className="flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-surface-hover px-[0.875rem] py-[0.625rem]">
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
-        <Skeleton className="h-5 w-32 rounded bg-zinc-200" />
+        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
+        <Skeleton className="h-5 w-32 rounded bg-surface-active" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-surface-active" />
     </Skeleton>
   );
 };

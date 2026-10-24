@@ -30,13 +30,14 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   return (
     <div
       data-tutorial-id={`node-output`}
-      className="rounded-b-xl border-t border-zinc-200 px-4 py-2"
+      className="rounded-b-xl border-t border-border-base px-4 py-2"
     >
       <Accordion type="single" collapsible defaultValue="node-output">
         <AccordionItem value="node-output" className="border-none">
           <AccordionTrigger className="py-2 hover:no-underline">
             <Text
               variant="body-medium"
+              // TODO(tokens): no exact role: text-slate-700 #475263
               className="!font-semibold text-slate-700"
             >
               Node Output
@@ -61,8 +62,10 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     size="small"
                     onClick={() => handleCopy("input", latestInputData)}
                     className={cn(
-                      "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
+                      // TODO(tokens): no exact role: hover:text-slate-900 #2A313A
+                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900",
                       copiedKey === "input" &&
+                        // TODO(tokens): no exact role: border-green-400 #45B56E, bg-green-100 #B7E2C7, hover:border-green-400 #45B56E, hover:bg-green-200 #94D5AC
                         "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
                     )}
                   >
@@ -70,7 +73,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                       <Icon
                         icon={Tick02Icon}
                         size={12}
-                        className="text-green-600"
+                        className="text-success"
                       />
                     ) : (
                       <Icon icon={Copy01Icon} size={12} />
@@ -87,17 +90,23 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                       <div className="flex items-center gap-2">
                         <Text
                           variant="small-medium"
+                          // TODO(tokens): no exact role: text-slate-600 #5B6A7E
                           className="!font-semibold text-slate-600"
                         >
                           Pin:
                         </Text>
-                        <Text variant="small" className="text-slate-700">
+                        <Text
+                          // TODO(tokens): no exact role: text-slate-700 #475263
+                          variant="small"
+                          className="text-slate-700"
+                        >
                           {beautifyString(key)}
                         </Text>
                       </div>
                       <div className="w-full space-y-2">
                         <Text
                           variant="small"
+                          // TODO(tokens): no exact role: text-slate-600 #5B6A7E
                           className="!font-semibold text-slate-600"
                         >
                           Data:
@@ -123,8 +132,10 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                               size="small"
                               onClick={() => handleCopy(key, value)}
                               className={cn(
-                                "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
+                                // TODO(tokens): no exact role: hover:text-slate-900 #2A313A
+                                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900",
                                 copiedKey === key &&
+                                  // TODO(tokens): no exact role: border-green-400 #45B56E, bg-green-100 #B7E2C7, hover:border-green-400 #45B56E, hover:bg-green-200 #94D5AC
                                   "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
                               )}
                             >
@@ -132,7 +143,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                                 <Icon
                                   icon={Tick02Icon}
                                   size={12}
-                                  className="text-green-600"
+                                  className="text-success"
                                 />
                               ) : (
                                 <Icon icon={Copy01Icon} size={12} />

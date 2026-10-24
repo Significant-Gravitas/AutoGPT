@@ -50,7 +50,11 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
         </Alert>
       </div>
 
-      <Text variant="small" className="mb-4 ml-6 !text-purple-700">
+      <Text
+        // TODO(tokens): no exact role: !text-purple-700 #5424AE
+        variant="small"
+        className="mb-4 ml-6 !text-purple-700"
+      >
         Below inputs are only for display purposes and cannot be edited.
       </Text>
     </>

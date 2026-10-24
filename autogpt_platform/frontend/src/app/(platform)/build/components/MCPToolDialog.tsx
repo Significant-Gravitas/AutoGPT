@@ -431,7 +431,8 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                // TODO(tokens): no exact role: text-gray-500 #6B7280, hover:text-gray-700 #374151
+                className="text-xs text-gray-500 underline hover:text-gray-700"
               >
                 or enter an API credential manually
               </button>
@@ -467,7 +468,11 @@ export function MCPToolDialog({
                   disabled={loading || oauthLoading}
                   autoFocus
                 />
-                <p id="mcp-auth-token-hint" className="text-xs text-gray-500">
+                <p
+                  // TODO(tokens): no exact role: text-gray-500 #6B7280
+                  id="mcp-auth-token-hint"
+                  className="text-xs text-gray-500"
+                >
                   {mcpAuthTokenHint(manualAuthScheme)}
                 </p>
               </div>
@@ -477,7 +482,7 @@ export function MCPToolDialog({
               <p
                 role="alert"
                 aria-live="polite"
-                className="text-sm text-red-700 dark:text-red-400"
+                className="text-sm text-error-foreground"
               >
                 {error}
               </p>
@@ -602,17 +607,16 @@ function MCPToolCard({
       onClick={onSelect}
       className={`group flex flex-col rounded-lg border text-left transition-colors ${
         selected
-          ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950"
-          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+          ? "border-info bg-info-surface"
+          : // TODO(tokens): no exact role: hover:border-gray-300 #D1D5DB, hover:bg-gray-50 #F9FAFB; no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border (a border colour)
+            "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <span className="flex-1 text-sm font-semibold dark:text-white">
-          {tool.name}
-        </span>
+        <span className="flex-1 text-sm font-semibold">{tool.name}</span>
         {paramNames.length > 0 && (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-tiny leading-inherit">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
           </Badge>
         )}
@@ -620,7 +624,10 @@ function MCPToolCard({
 
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
-        <p className="px-3 pb-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <p
+          // TODO(tokens): no exact role: text-gray-500 #6B7280
+          className="px-3 pb-1 text-xs leading-relaxed text-gray-500"
+        >
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
         </p>
       )}
@@ -632,16 +639,24 @@ function MCPToolCard({
             <Badge
               key={name}
               variant="outline"
-              className="text-[10px] font-normal"
+              className="text-tiny font-normal leading-inherit"
             >
               {name}
               {required.has(name) && (
-                <span className="ml-0.5 text-red-400">*</span>
+                <span
+                  // TODO(tokens): no exact role: text-red-400 #F26969
+                  className="ml-0.5 text-red-400"
+                >
+                  *
+                </span>
               )}
             </Badge>
           ))}
           {paramNames.length > 6 && (
-            <Badge variant="outline" className="text-[10px] font-normal">
+            <Badge
+              variant="outline"
+              className="text-tiny font-normal leading-inherit"
+            >
               +{paramNames.length - 6} more
             </Badge>
           )}
@@ -650,17 +665,32 @@ function MCPToolCard({
 
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
-        <div className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-800/50">
+        <div
+          // TODO(tokens): no exact role: border-gray-100 #F3F4F6, bg-gray-50/50 #F9FAFB
+          className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50"
+        >
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-100 dark:border-slate-700">
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+              <tr
+                // TODO(tokens): no exact role: border-gray-100 #F3F4F6
+                className="border-b border-gray-100"
+              >
+                <th
+                  // TODO(tokens): no exact role: text-gray-500 #6B7280
+                  className="px-2 py-1 text-left font-medium text-gray-500"
+                >
                   Parameter
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                <th
+                  // TODO(tokens): no exact role: text-gray-500 #6B7280
+                  className="px-2 py-1 text-left font-medium text-gray-500"
+                >
                   Type
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                <th
+                  // TODO(tokens): no exact role: text-gray-500 #6B7280
+                  className="px-2 py-1 text-left font-medium text-gray-500"
+                >
                   Description
                 </th>
               </tr>
@@ -671,18 +701,33 @@ function MCPToolCard({
                 return (
                   <tr
                     key={name}
-                    className="border-b border-gray-50 last:border-0 dark:border-slate-700/50"
+                    // TODO(tokens): no exact role: border-gray-50 #F9FAFB
+                    className="border-b border-gray-50 last:border-0"
                   >
-                    <td className="px-2 py-1 font-mono text-[11px] text-gray-700 dark:text-gray-300">
+                    <td
+                      // TODO(tokens): no exact role: text-gray-700 #374151
+                      className="px-2 py-1 font-mono text-caption-sm leading-inherit text-gray-700"
+                    >
                       {name}
                       {required.has(name) && (
-                        <span className="ml-0.5 text-red-400">*</span>
+                        <span
+                          // TODO(tokens): no exact role: text-red-400 #F26969
+                          className="ml-0.5 text-red-400"
+                        >
+                          *
+                        </span>
                       )}
                     </td>
-                    <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
+                    <td
+                      // TODO(tokens): no exact role: text-gray-500 #6B7280
+                      className="px-2 py-1 text-gray-500"
+                    >
                       {schemaTypeLabel(prop)}
                     </td>
-                    <td className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400">
+                    <td
+                      // TODO(tokens): no exact role: text-gray-500 #6B7280
+                      className="max-w-[200px] truncate px-2 py-1 text-gray-500"
+                    >
                       {prop.description ?? "—"}
                     </td>
                   </tr>
@@ -701,7 +746,8 @@ function MCPToolCard({
             e.stopPropagation();
             setExpanded((prev) => !prev);
           }}
-          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-[10px] text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
+          // TODO(tokens): no exact role: border-gray-100 #F3F4F6, hover:text-gray-600 #4B5563; no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
+          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-tiny leading-inherit text-gray-400 hover:text-gray-600"
         >
           {expanded ? "Hide details" : "Show details"}
           <Icon
