@@ -18,11 +18,104 @@ publish its private advisories.
 3. Preserve researcher names, consent and duplicate-report contributions. Use
    GitHub's Credits field and the researcher's chosen handle/profile link. Do not
    put email addresses in public acknowledgments without explicit consent.
-4. After publication, update `SECURITY.md` with accepted reporter, finder and
-   analyst credits. Count distinct published advisories per person, not credit
-   roles or duplicate submissions. Preserve existing historical acknowledgments.
-   Pending or declined invitations and unpublished reports are not inputs to the
-   public backfill.
+4. After publication, the public sync opens a PR updating `SECURITY.md` with
+   accepted reporter, finder and analyst credits. It lists handles and profile
+   links without maintaining counts. Historical acknowledgments stay outside
+   the generated block. Pending or declined invitations and unpublished reports
+   are never inputs to the public backfill.
+
+## Public-only automation
+
+`.github/workflows/security-advisory-sync.yml` runs every six hours and supports
+manual dispatch on `master`. A schedule catches advisories published after their
+fixing release, credit acceptance, corrections and withdrawals. It reconciles
+all existing public releases, not just the latest one. The baseline is
+`.github/security-advisories.public.json`, built entirely from anonymous public
+API responses. Never initialize it from a private report inventory or export.
+
+The snapshot contains only four fields per advisory: GHSA ID, optional CVE ID,
+accepted researcher handles, and verified release tags. Every value must match
+a restricted identifier format. Bodies, titles, discussions, attachments,
+private-fork metadata, emails and pending credits are not stored or emitted.
+The advisory body is examined in memory only to validate package-to-release
+attribution. A changed snapshot produces added/updated/removed counts and a PR
+diff; neither logs nor artifacts contain the raw response.
+
+The reader uses standard-library HTTPS with no authentication, credentials,
+proxy inheritance, redirects or authenticated retry. Pagination stays on this
+repository's public endpoint, with page, response-size and timeout limits.
+API failure, schema failure, incomplete pagination or ambiguous package
+attribution stops the run. There is no fallback to stale snapshots.
+
+The jobs have separate permissions and no shared report artifacts:
+
+1. The read-only job checks out trusted `master` code and produces only a
+   snapshot digest and source commit. It also checks release reconciliation
+   without writing.
+2. The credits job uses that exact code commit, re-fetches anonymous public
+   records, and requires the digest to agree. It treats `dev` as data, generates
+   the two allowed files, and opens or updates one PR against `dev`. The existing
+   bot PR branch is never executed. Only the PR action receives its write token.
+3. The release job independently re-fetches and compares public records, then
+   rechecks the projection after reading release metadata. It reads each target
+   release anonymously immediately before updating its managed section. Drafts
+   and immutable releases are not edited. It preserves all other notes from that
+   fresh read. GitHub does not document conditional PATCH support for releases:
+   an edit racing the final read and write can still be overwritten. Avoid manual
+   release-note edits during this short job, and inspect concurrent changes before
+   rerunning. Updates are serialized but are not a cross-release transaction.
+
+The release writer uses only the repository's short-lived `GITHUB_TOKEN` with
+`contents: write`. The credits writer additionally needs `pull-requests: write`.
+No personal access token or advisory-write credential is used. The authenticated
+transport can only PATCH the body of an existing release; there is no operation
+that creates or publishes an advisory or release. GitHub does not start release
+workflows for release edits made with this token. Do not replace it with a PAT:
+older release tags may retain workflows that build images on `release.edited`.
+The current Classic workflow also limits itself to published Classic tags.
+
+Public release sections contain advisory links, CVEs and accepted credits, not
+arbitrary report text or titles. When a mapping or published advisory is removed,
+the next reconciliation removes its generated entry. If no entries remain, the
+managed section says none are currently linked. Historical snapshots and release
+history remain public history; withdrawal cannot erase previously published data.
+
+### Enable after review
+
+1. Merge the implementation through `dev` to `master`; the schedule and trusted
+   code both run from `master`. Keep `PUBLIC_SECURITY_SYNC_ENABLED` unset initially.
+2. Dispatch **Security - Public advisory sync** on `master` with `dry_run: true`.
+   Check that it succeeds and the changed-release/immutable-release counts are
+   expected. Local dry runs can use the same commands below.
+3. Set the repository Actions variable `PUBLIC_SECURITY_SYNC_ENABLED` to `true`,
+   then dispatch with `dry_run: false`. This enables the six-hourly PR and release
+   writers. Leaving the variable unset disables both writers even when dispatch
+   asks to apply changes.
+4. Review the generated credits PR. GitHub may require a maintainer to approve
+   CI workflows for a PR created with `GITHUB_TOKEN`; this automation does not
+   approve or merge its own PRs. The repository must allow Actions to create PRs.
+
+To stop writes, unset the variable. To recover from an API limit, changed digest,
+concurrent edit or failed update, rerun the workflow; generation is idempotent.
+Some release updates may already have succeeded before a later request fails.
+Immutable release notes need a separate distribution channel, such as a link to
+the repository's public advisories, because the workflow cannot edit them.
+
+```sh
+digest=$(python .github/workflows/scripts/security_public_sync.py digest)
+python .github/workflows/scripts/security_public_publish.py --expected-digest "$digest"
+```
+
+Publication, verifying first fixed versions, duplicate consolidation and consent
+remain maintainer decisions in the private advisory process. This workflow
+cannot make them public. It also cannot prevent a person from accidentally
+publishing sensitive content on GitHub; only approved, already public identifiers
+are copied. Review changes to the workflow and generator as privileged code.
+
+GitHub documents [unauthenticated access to public repository advisories](https://docs.github.com/en/rest/security-advisories/repository-advisories#list-repository-security-advisories),
+[token permissions and event behavior](https://docs.github.com/en/actions/concepts/security/github_token),
+and [scheduled workflow behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+See also the REST API's [conditional-request limitations](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests).
 
 ## Consolidate duplicate reports
 
@@ -69,7 +162,7 @@ in both the package metadata and the description.
 
 ## Link published advisories from a release
 
-The helper reads only published advisories and checks that both the patched
+The manual helper reads published advisories anonymously and checks that both the patched
 version and an exact release link match. Withdrawn reports are excluded. It
 includes accepted researcher credits and the CVE when assigned; a CVE is not
 required for a link.
@@ -104,7 +197,7 @@ Review the diff, then an authorized maintainer can apply it:
 gh release edit autogpt-platform-beta-v0.9.0 --repo Significant-Gravitas/AutoGPT --notes-file release-notes-updated.md
 ```
 
-The helper does not edit GitHub or publish advisories. It replaces only its
+The manual helper does not edit GitHub or publish advisories. It replaces only its
 `security-advisories` marker block, preserving other release notes. With no
 matching published advisories, or malformed markers, it fails without writing
 the output. Rerun it after additional advisories are published, including those
@@ -114,5 +207,9 @@ before applying notes to an existing release.
 Run its fixture checks with:
 
 ```sh
-python -m unittest discover -s .github/workflows/scripts -p test_security_release_notes.py
+python -m unittest discover -s .github/workflows/scripts -p 'test_security_*.py'
 ```
+
+The tests use synthetic records and private-data canaries. They check generated
+files, stdout/stderr, pagination, rejected authentication/redirect paths, credit
+consent, revalidation, preservation of unrelated notes, and repeated-run behavior.

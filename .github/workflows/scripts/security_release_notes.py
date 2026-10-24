@@ -3,8 +3,9 @@
 import argparse
 import json
 import re
-import subprocess
 from pathlib import Path
+
+from security_public_api import public_pages
 
 REPOSITORY = "Significant-Gravitas/AutoGPT"
 BASE_URL = f"https://github.com/{REPOSITORY}"
@@ -42,7 +43,8 @@ def accepted_researchers(advisory):
 
 def version_number(value):
     match = re.fullmatch(
-        r"(?:>=\s*)?(?:autogpt-platform-beta-v|v)?(\d+\.\d+\.\d+)",
+        r"(?:>=\s*)?(?:autogpt-platform-beta-v|agpt-platform-beta-v|autogpt-v|v)?"
+        r"(\d+\.\d+\.\d+)",
         (value or "").strip(),
     )
     return match[1] if match else None
@@ -99,7 +101,17 @@ def fixed_in(advisory, tag):
                 f"{advisory['ghsa_id']} needs a package-specific release reference "
                 f"for {tag}; notes unchanged"
             )
-        matching = [v for v in matching if v.get("package") in packages]
+        matching = [
+            v
+            for v in matching
+            if any(
+                all(
+                    (v.get("package") or {}).get(key) == p[key]
+                    for key in ("ecosystem", "name")
+                )
+                for p in packages
+            )
+        ]
     return bool(matching)
 
 
@@ -146,20 +158,7 @@ def release_notes(advisories, tag, existing=""):
 
 
 def fetch_advisories():
-    result = subprocess.run(
-        [
-            "gh",
-            "api",
-            "--paginate",
-            "--slurp",
-            f"repos/{REPOSITORY}/security-advisories?state=published&per_page=100",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    return [advisory for page in json.loads(result.stdout) for advisory in page]
+    return public_pages("security-advisories", "state=published")
 
 
 def main():

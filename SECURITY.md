@@ -177,47 +177,59 @@ This policy:
 
 We thank the following security researchers for contributing responsibly to improving the security of AutoGPT.
 
-Counts reflect distinct published advisories with accepted reporter, finder, or analyst credit. Historical acknowledgments are retained. See the [advisory release-note procedure](docs/engineering/security-advisory-release-notes.md) for future updates.
+Credits are synchronized from public GitHub advisories after researchers accept them. See the [advisory release-note procedure](docs/engineering/security-advisory-release-notes.md).
 
-- [@lukas-eu](https://github.com/lukas-eu) – 3 advisories
-- [@AgentSec](https://github.com/AgentSec) – 11 advisories
-- Joshua Rogers ([@MegaManSec](https://github.com/MegaManSec)) – 2 advisories
-- Gecko Security ([@geckosecurity](https://github.com/geckosecurity)) – 1 advisory
-- JJ ([@jjjutla](https://github.com/jjjutla)) – 1 advisory
-- Artemiy ([@nkoorty](https://github.com/nkoorty)) – 1 advisory
-- [@rahulgovind](https://github.com/rahulgovind) – 1 advisory
-- Panuganti Siva Aditya ([@sivaadityacoder](https://github.com/sivaadityacoder)) – 1 advisory
-- Sunwoo Lee ([@programsurf](https://github.com/programsurf)) – 4 advisories
-- [@daeungdaeung](https://github.com/daeungdaeung) – 4 advisories
-- Seunghyun Yoon ([@yoonsh](https://github.com/yoonsh)) – 2 advisories
-- @lubroai – 2 advisories
-- [@ltduc147](https://github.com/ltduc147) – 1 advisory
-- [@222n5](https://github.com/222n5) – 3 advisories
-- [@ygboy777-alt](https://github.com/ygboy777-alt) – 1 advisory
-- [@S4nso](https://github.com/S4nso) – 1 advisory
-- [@CYC4D](https://github.com/CYC4D) – 1 advisory
-- [@Mirr2](https://github.com/Mirr2) – 1 advisory
-- Minjoon Gregorio Kim ([@Greg-Kim](https://github.com/Greg-Kim)) – 1 advisory
-- Dirstibone ([@1024wlsdud](https://github.com/1024wlsdud)) – 1 advisory
-- [@johnatzeropath](https://github.com/johnatzeropath) – 1 advisory
-- [@LeftenantZero](https://github.com/LeftenantZero) – 1 advisory
-- [@dxlerYT](https://github.com/dxlerYT) – 1 advisory
-- Jiaqi Luo ([@lhahah](https://github.com/lhahah)) – 1 advisory
-- Pavan Nallamothu ([@pavanchow](https://github.com/pavanchow)) – 1 advisory
-- Johnathan ([@TrebledJ](https://github.com/TrebledJ)) – 1 advisory
-- [@sai-sh](https://github.com/sai-sh) – 1 advisory
-- [@Acce1erator-R](https://github.com/Acce1erator-R) – 1 advisory
-- Edward-x ([@YLChen-007](https://github.com/YLChen-007)) – 1 advisory
-- 狗and猫 ([@Fushuling](https://github.com/Fushuling)) – 1 advisory
-- RacerZ ([@RacerZ-fighting](https://github.com/RacerZ-fighting)) – 1 advisory
-- Ace ([@Fried-Squid](https://github.com/Fried-Squid)) – 1 advisory
-- David Carliez ([@DavidCarliez](https://github.com/DavidCarliez)) – 1 advisory
-- [@long2809-exploi](https://github.com/long2809-exploi) – 1 advisory
-- [@360AlphaLab](https://github.com/360AlphaLab) – 1 advisory
-- [@kcze](https://github.com/kcze) – 1 advisory
-- [@ljq-sec](https://github.com/ljq-sec) – 1 advisory
-- [@Pwuts](https://github.com/Pwuts) – 1 advisory
-- [@REYu6](https://github.com/REYu6) – 1 advisory
-- [@sfwani](https://github.com/sfwani) – 2 advisories
+<!-- security-credits:start -->
+### Published advisory credits
+
+Accepted reporter, finder and analyst credits on published advisories:
+
+- [@1024wlsdud](https://github.com/1024wlsdud)
+- [@222n5](https://github.com/222n5)
+- [@360AlphaLab](https://github.com/360AlphaLab)
+- [@Acce1erator-R](https://github.com/Acce1erator-R)
+- [@AgentSec](https://github.com/AgentSec)
+- [@CYC4D](https://github.com/CYC4D)
+- [@daeungdaeung](https://github.com/daeungdaeung)
+- [@DavidCarliez](https://github.com/DavidCarliez)
+- [@dxlerYT](https://github.com/dxlerYT)
+- [@Fried-Squid](https://github.com/Fried-Squid)
+- [@Fushuling](https://github.com/Fushuling)
+- [@geckosecurity](https://github.com/geckosecurity)
+- [@Greg-Kim](https://github.com/Greg-Kim)
+- [@jjjutla](https://github.com/jjjutla)
+- [@johnatzeropath](https://github.com/johnatzeropath)
+- [@kcze](https://github.com/kcze)
+- [@LeftenantZero](https://github.com/LeftenantZero)
+- [@ljq-sec](https://github.com/ljq-sec)
+- [@long2809-exploi](https://github.com/long2809-exploi)
+- [@ltduc147](https://github.com/ltduc147)
+- [@lubroai](https://github.com/lubroai)
+- [@lukas-eu](https://github.com/lukas-eu)
+- [@MegaManSec](https://github.com/MegaManSec)
+- [@Mirr2](https://github.com/Mirr2)
+- [@nkoorty](https://github.com/nkoorty)
+- [@pavanchow](https://github.com/pavanchow)
+- [@programsurf](https://github.com/programsurf)
+- [@Pwuts](https://github.com/Pwuts)
+- [@RacerZ-fighting](https://github.com/RacerZ-fighting)
+- [@rahulgovind](https://github.com/rahulgovind)
+- [@REYu6](https://github.com/REYu6)
+- [@S4nso](https://github.com/S4nso)
+- [@sai-sh](https://github.com/sai-sh)
+- [@sfwani](https://github.com/sfwani)
+- [@sivaadityacoder](https://github.com/sivaadityacoder)
+- [@TrebledJ](https://github.com/TrebledJ)
+- [@ygboy777-alt](https://github.com/ygboy777-alt)
+- [@YLChen-007](https://github.com/YLChen-007)
+- [@yoonsh](https://github.com/yoonsh)
+
+<!-- security-credits:end -->
+
+### Historical acknowledgments
+
+These previously published acknowledgments are retained separately from the generated list.
+
+- Jiaqi Luo ([@lhahah](https://github.com/lhahah))
 
 **Last updated: October 2026**
