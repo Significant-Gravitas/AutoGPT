@@ -47,6 +47,8 @@ export interface ChainRow {
   needsYou?: boolean;
   /** The hand-off this row opened, with its live status, when it is one. */
   delegation?: ChainDelegationInfo;
+  /** A lookup that found nothing, which the label already says. */
+  emptyResult?: boolean;
 }
 
 export interface ChainDelegationInfo {
@@ -240,6 +242,24 @@ function narrationText(part: MessagePart): string | null {
   return text;
 }
 
+/** Chats saved before the engines named a dispatched tool after itself store
+ *  `run_capability(id: "tool:<name>")`; those rows are labelled as the tool
+ *  that ran. A `connect` call only checks sign-in, so it keeps its own. */
+function getRowCatalogLabel(
+  row: ChainRow,
+  context: { displayName: unknown; output: unknown },
+) {
+  const target = capabilityTargetRow(row);
+  const viaDispatch =
+    target.tool && target !== row && asObject(target.input)?.connect !== true
+      ? getCatalogLabel(target.tool, target.input, row.state, context)
+      : null;
+  return (
+    viaDispatch ??
+    getCatalogLabel(row.tool ?? "", row.input, row.state, context)
+  );
+}
+
 export function toChainRow(part: MessagePart, index: number): ChainRow | null {
   const narration = narrationText(part);
   if (narration !== null) {
@@ -296,10 +316,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
-      displayName: tool.title,
-      output: tool.output,
-    });
+    const catalogLabel = getRowCatalogLabel(
+      { key: tool.toolCallId, category: "other", text: "", state, ...data },
+      { displayName: tool.title, output: tool.output },
+    );
     if (catalogLabel) {
       return {
         key: tool.toolCallId,

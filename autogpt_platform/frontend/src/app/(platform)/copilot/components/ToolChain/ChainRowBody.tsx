@@ -123,7 +123,7 @@ export function ChainRowBody({ row, isLast, readOnly = false }: Props) {
     ? !!row.reasoningText
     : !row.supersededSubSession &&
       !isDelegatedRow(row) &&
-      ((row.output !== undefined && row.output !== "") ||
+      ((row.output !== undefined && row.output !== "" && !row.emptyResult) ||
         liveSubSession ||
         !!row.held?.card ||
         heldShowsOwnCall(row));
