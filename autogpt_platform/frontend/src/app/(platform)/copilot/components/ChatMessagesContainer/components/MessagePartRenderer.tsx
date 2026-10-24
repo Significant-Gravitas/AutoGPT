@@ -37,10 +37,13 @@ import {
 } from "../../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
+  defaultWorkspaceFileUrl,
   extractWorkspaceArtifacts,
   isRetiredCompactionRow,
   resolveWorkspaceUrls,
+  workspaceLinkFileID,
 } from "../helpers";
+import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 
 /**
@@ -52,6 +55,10 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   const { src, alt, ...rest } = props;
 
   if (!src) return null;
+
+  const linkedFileID =
+    typeof src === "string" ? workspaceLinkFileID(src) : null;
+  if (linkedFileID) return <WorkspaceLink fileID={linkedFileID} label={alt} />;
 
   if (alt?.startsWith("video:") && typeof src === "string") {
     return (
@@ -106,12 +113,20 @@ function TextWithArtifactCards({
   // Text reads first, with the artifact cards trailing.
   return (
     <>
-      <CredentialMentionMarkdown
-        components={STREAMDOWN_COMPONENTS}
-        className="[&_li]:py-0"
+      <WorkspaceLinksContext
+        value={{
+          artifacts,
+          readOnly,
+          fileURL: fileUrlBuilder ?? defaultWorkspaceFileUrl,
+        }}
       >
-        {resolved}
-      </CredentialMentionMarkdown>
+        <CredentialMentionMarkdown
+          components={STREAMDOWN_COMPONENTS}
+          className="[&_li]:py-0"
+        >
+          {resolved}
+        </CredentialMentionMarkdown>
+      </WorkspaceLinksContext>
       {artifacts.length > 0 && (
         <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {artifacts.map((artifact) => (
