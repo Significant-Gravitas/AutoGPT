@@ -8,7 +8,10 @@ interface Props {
 
 export function Card({ children, className }: Props) {
   return (
-    <div className={cn("rounded-large bg-surface p-6 shadow-md", className)}>
+    <div
+      data-slot="card"
+      className={cn("rounded-large bg-surface p-6 shadow-md", className)}
+    >
       {children}
     </div>
   );

@@ -37,7 +37,11 @@ export function SelectedTriggerAgentActions({
           aria-label="View in library"
         >
           <Button variant="icon" size="icon" aria-label="View in library">
-            <Icon icon={LinkSquare01Icon} size={18} className="text-zinc-700" />
+            <Icon
+              icon={LinkSquare01Icon}
+              size={18}
+              className="text-foreground-body"
+            />
           </Button>
         </Link>
         <Link
@@ -45,7 +49,11 @@ export function SelectedTriggerAgentActions({
           aria-label="Open in builder"
         >
           <Button variant="icon" size="icon" aria-label="Open in builder">
-            <Icon icon={PencilIcon} size={18} className="text-zinc-700" />
+            <Icon
+              icon={PencilIcon}
+              size={18}
+              className="text-foreground-body"
+            />
           </Button>
         </Link>
         <Button

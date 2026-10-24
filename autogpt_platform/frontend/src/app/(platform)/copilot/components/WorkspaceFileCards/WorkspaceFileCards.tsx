@@ -67,7 +67,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
                 onClick={handleDownloadAll}
                 loading={isZipping}
                 aria-label="Download all"
-                className="size-6 rounded-lg !p-0 text-zinc-400"
+                className="size-6 rounded-lg !p-0 text-foreground-subtle"
               >
                 <Icon icon={Download01Icon} size={14} />
               </Button>

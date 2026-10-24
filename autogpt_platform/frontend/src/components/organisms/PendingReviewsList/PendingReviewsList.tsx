@@ -205,7 +205,10 @@ export function PendingReviewsList({
 
   if (reviews.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div
+        data-slot="pending-reviews-list-empty"
+        className="flex flex-col items-center justify-center py-12 text-center"
+      >
         <Icon
           icon={Clock01Icon}
           size={48}
@@ -224,11 +227,15 @@ export function PendingReviewsList({
 
   return (
     <div
+      data-slot="pending-reviews-list"
       // TODO(tokens): no role for the yellow-150 border or yellow-25 surface.
       className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6"
     >
-      <div className="space-y-6">
-        <div className="flex items-start gap-2">
+      <div data-slot="pending-reviews-list-header" className="space-y-6">
+        <div
+          data-slot="pending-reviews-list-title"
+          className="flex items-start gap-2"
+        >
           <Icon
             icon={Alert01Icon}
             size={28}
@@ -249,7 +256,7 @@ export function PendingReviewsList({
         </Text>
       </div>
 
-      <div className="space-y-7">
+      <div data-slot="pending-reviews-list-groups" className="space-y-7">
         {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
           const isCollapsed = collapsedGroups[nodeId] ?? false;
           const reviewCount = nodeReviews.length;
@@ -267,9 +274,14 @@ export function PendingReviewsList({
           };
 
           return (
-            <div key={nodeId} className="space-y-4">
+            <div
+              key={nodeId}
+              data-slot="pending-reviews-list-group"
+              className="space-y-4"
+            >
               <button
                 onClick={() => toggleGroupCollapse(nodeId)}
+                data-slot="pending-reviews-list-group-toggle"
                 className="flex w-full items-center gap-2 text-left"
               >
                 {isCollapsed ? (
@@ -289,7 +301,10 @@ export function PendingReviewsList({
                     className="text-gray-600"
                   />
                 )}
-                <div className="flex-1">
+                <div
+                  data-slot="pending-reviews-list-group-heading"
+                  className="flex-1"
+                >
                   <Text
                     // TODO(tokens): no role for Tailwind's default gray-900; the
                     // zinc roles are a different grey.
@@ -313,6 +328,7 @@ export function PendingReviewsList({
                   )}
                 </div>
                 <span
+                  data-slot="pending-reviews-list-group-count"
                   // TODO(tokens): no role for Tailwind's default gray-600; the
                   // zinc roles are a different grey.
                   className="text-xs text-gray-600"
@@ -322,7 +338,10 @@ export function PendingReviewsList({
               </button>
 
               {!isCollapsed && (
-                <div className="space-y-4">
+                <div
+                  data-slot="pending-reviews-list-group-body"
+                  className="space-y-4"
+                >
                   {nodeReviews.map((review) => (
                     <PendingReviewCard
                       key={review.node_exec_id}
@@ -335,7 +354,10 @@ export function PendingReviewsList({
                   ))}
 
                   {!isGateReview(nodeId) && (
-                    <div className="flex items-center gap-3 pt-2">
+                    <div
+                      data-slot="pending-reviews-list-auto-approve"
+                      className="flex items-center gap-3 pt-2"
+                    >
                       <Switch
                         checked={autoApproveFutureMap[nodeId] || false}
                         onCheckedChange={(enabled: boolean) =>
@@ -353,7 +375,10 @@ export function PendingReviewsList({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2 pt-2">
+                  <div
+                    data-slot="pending-reviews-list-actions"
+                    className="flex flex-wrap gap-2 pt-2"
+                  >
                     <Button
                       onClick={() => processGroup(nodeId, true)}
                       disabled={isProcessing}

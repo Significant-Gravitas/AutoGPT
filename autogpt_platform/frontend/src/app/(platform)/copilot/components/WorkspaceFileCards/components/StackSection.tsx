@@ -33,8 +33,13 @@ export function StackSection({
       {/* px-3 matches the card's own padding, so the title starts exactly
           where the row content inside does. */}
       <div className="mb-1.5 flex items-center gap-1.5 px-3">
-        <Icon icon={icon} size={14} className="text-zinc-500" aria-hidden />
-        <Text variant="small-medium" className="!text-zinc-700">
+        <Icon
+          icon={icon}
+          size={14}
+          className="text-foreground-tertiary"
+          aria-hidden
+        />
+        <Text variant="small-medium" className="!text-foreground-body">
           {title}
           {count === undefined ? "" : ` (${count})`}
         </Text>
@@ -43,7 +48,7 @@ export function StackSection({
       {plain ? (
         <div className="px-3">{children}</div>
       ) : (
-        <div className="rounded-lg bg-white/90 px-3 py-1 backdrop-blur smooth-shadow-ring-sm">
+        <div className="rounded-lg bg-surface/90 px-3 py-1 backdrop-blur smooth-shadow-ring-sm">
           {children}
         </div>
       )}

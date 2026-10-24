@@ -41,6 +41,7 @@ export function ToggleChip({
     <Tooltip>
       <TooltipTrigger asChild>
         <button
+          data-slot="toggle-chip"
           type="button"
           aria-pressed={pressed}
           aria-disabled={locked}
@@ -52,8 +53,12 @@ export function ToggleChip({
             className,
           )}
         >
-          <span className="relative inline-flex size-3.5 items-center justify-center">
+          <span
+            data-slot="toggle-chip-icon"
+            className="relative inline-flex size-3.5 items-center justify-center"
+          >
             <span
+              data-slot="toggle-chip-icon-default"
               className={cn(
                 "transition-opacity duration-150 ease-out",
                 !locked && "group-hover:opacity-0",
@@ -63,6 +68,7 @@ export function ToggleChip({
             </span>
             {!locked && (
               <Icon
+                data-slot="toggle-chip-icon-hover"
                 icon={ArrowDataTransferVerticalIcon}
                 size={14}
                 className="absolute opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100"
@@ -72,6 +78,7 @@ export function ToggleChip({
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={label}
+              data-slot="toggle-chip-label"
               initial={{ filter: blurred, opacity: 0 }}
               animate={{ filter: "blur(0px)", opacity: 1 }}
               exit={{ filter: blurred, opacity: 0 }}
@@ -83,7 +90,7 @@ export function ToggleChip({
           </AnimatePresence>
         </button>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipContent data-slot="toggle-chip-tooltip">{tooltip}</TooltipContent>
     </Tooltip>
   );
 }
