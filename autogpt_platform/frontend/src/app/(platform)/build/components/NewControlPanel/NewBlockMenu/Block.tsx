@@ -147,7 +147,7 @@ function BlockCard({
           )}
           {description && (
             <Text
-              variant="small-lh-5"
+              variant="small-loose"
               as="span"
               className={cn(
                 "line-clamp-1 text-zinc-500 group-disabled:text-zinc-400",

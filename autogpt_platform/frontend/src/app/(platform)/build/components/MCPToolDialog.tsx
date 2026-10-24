@@ -648,7 +648,7 @@ function MCPToolCard({
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
         <Text
-          variant="small-lh-relaxed"
+          variant="small-relaxed"
           as="p"
           className="px-3 pb-1 text-gray-500 dark:text-gray-400"
         >
