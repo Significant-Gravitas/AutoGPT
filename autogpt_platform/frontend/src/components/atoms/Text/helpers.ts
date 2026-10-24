@@ -40,6 +40,10 @@ export const variants = {
     "font-sans text-body font-normal leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs) at 600; caption plus
+  // leading-4, semibold like the badge it labels.
+  "small-semibold-tight":
+    "font-sans text-caption font-semibold leading-4 text-foreground-base",
 
   // Label Text
   label:
@@ -88,6 +92,7 @@ export const variantElementMap: Record<Variant, As> = {
   "body-tight": "p",
   small: "p",
   "small-medium": "p",
+  "small-semibold-tight": "p",
   label: "span",
   eyebrow: "span",
 };
