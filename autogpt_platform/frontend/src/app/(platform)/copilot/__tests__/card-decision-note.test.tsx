@@ -405,4 +405,26 @@ describe("a proposal card the chat already answered", () => {
     await waitFor(() => expect(onBackendTurn).toHaveBeenCalledTimes(1));
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  it("drops a refused answer once the saved one is on screen", () => {
+    render(
+      <Chat
+        messages={[
+          ask,
+          hireCard,
+          TAGGED_APPROVAL,
+          {
+            ...userRow(
+              `Not approved: do not hire Maya, discard that proposal (confirmation_id: ${CONFIRMATION_ID}).`,
+            ),
+            id: "optimistic-1",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Approved")).toBeDefined();
+    expect(screen.getByText("You approved hiring Maya")).toBeDefined();
+    expect(screen.queryByText("You declined hiring Maya")).toBeNull();
+  });
 });

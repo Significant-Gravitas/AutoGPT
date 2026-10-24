@@ -7,6 +7,8 @@ export interface AnsweredCardState {
   verdict: Decision;
   /** When the row holding the decision was saved; null until it is. */
   at: string | null;
+  /** The row that holds the decision. */
+  messageID: string;
 }
 
 /** Proposal cards the chat already answered, by confirmation id. A card

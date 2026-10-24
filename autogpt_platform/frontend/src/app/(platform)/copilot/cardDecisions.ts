@@ -1,4 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 
 export type Decision = "approved" | "declined";
 
@@ -126,20 +127,40 @@ function parseLine(line: string): CardDecision[] {
 /** Every card the user's rows answered, by confirmation id. A card's buttons
  *  read this, not local state, so a reload, a reopened chat or another tab
  *  never asks again. Any decision line counts, as it does for the gate, and a
- *  later line overrides an earlier one, as a decline withdrew an approval. */
+ *  later line overrides an earlier one, as a decline withdrew an approval. A
+ *  saved answer wins over one only on screen: the server refuses a second
+ *  answer, so an unsaved one that disagrees was never taken. */
 export function getAnsweredCards(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ): Map<string, AnsweredCard> {
-  const answered = new Map<string, AnsweredCard>();
+  const saved = new Map<string, AnsweredCard>();
+  const unsaved = new Map<string, AnsweredCard>();
   for (const message of messages) {
     if (message.role !== "user") continue;
+    const answered = extractDbSequence(message) === null ? unsaved : saved;
     const decisions = rowDecisions(message.metadata, messageText(message));
     for (const { verdict, confirmationId } of decisions) {
       if (confirmationId)
         answered.set(confirmationId, { verdict, messageID: message.id });
     }
   }
-  return answered;
+  for (const [id, card] of unsaved) {
+    if (!saved.has(id)) saved.set(id, card);
+  }
+  return saved;
+}
+
+/** An unsaved decision row whose every card a saved row answered: the server
+ *  refused it, so it is not shown as an answer. */
+export function isRefusedAnswer(
+  messageID: string,
+  decisions: CardDecision[],
+  answered: ReadonlyMap<string, { messageID: string }>,
+): boolean {
+  return decisions.every(({ confirmationId }) => {
+    const holder = confirmationId ? answered.get(confirmationId) : undefined;
+    return holder !== undefined && holder.messageID !== messageID;
+  });
 }
 
 function messageText(

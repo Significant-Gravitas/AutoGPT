@@ -97,6 +97,7 @@ function toAnsweredCardStates(
     states.set(id, {
       verdict: card.verdict,
       at: turnStats?.get(card.messageID)?.createdAt ?? null,
+      messageID: card.messageID,
     });
   }
   return states;

@@ -242,4 +242,25 @@ describe("answered cards", () => {
       ]),
     );
   });
+
+  it("lets a saved answer win over a refused one still on screen", () => {
+    const rows: Message[] = [
+      {
+        ...userRow("Approved: hire Maya (confirmation_id: c-1)."),
+        id: "s1-seq-4",
+      },
+      // A send the server refused: never saved, still shown by the client.
+      {
+        ...userRow(
+          "Not approved: do not hire Maya, discard that proposal (confirmation_id: c-1).",
+        ),
+        id: "optimistic-1",
+      },
+    ];
+
+    expect(getAnsweredCards(rows).get("c-1")).toEqual({
+      verdict: "approved",
+      messageID: "s1-seq-4",
+    });
+  });
 });

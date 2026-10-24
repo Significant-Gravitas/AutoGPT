@@ -16,7 +16,10 @@ import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
-import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import {
+  extractDbSequence,
+  type TurnStatsMap,
+} from "../../helpers/convertChatSessionToUiMessages";
 import { getCardDecisions } from "../../cardDecisions";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
@@ -464,6 +467,7 @@ export function ChatMessagesContainer({
           decisions={cardDecisions}
           sessionID={sessionID}
           readOnly={readOnly}
+          saved={extractDbSequence(message) !== null}
           showQueueBadge={
             !readOnly &&
             sessionChatStatus === "queued" &&
