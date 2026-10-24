@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
@@ -64,12 +65,14 @@ function AccountMentionComposer({ expertId }: Props) {
         )}
         <InputGroup className="flex-col gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:ring-0">
           {attachments.map((name) => (
-            <span
+            <Text
               key={name}
-              className="rounded-lg bg-surface-hover px-2 py-1 text-body leading-5"
+              variant="body"
+              as="span"
+              className="rounded-lg bg-surface-hover px-2 py-1 leading-5 text-foreground"
             >
               {name}
-            </span>
+            </Text>
           ))}
           <CredentialMentionEditor
             value={value}
