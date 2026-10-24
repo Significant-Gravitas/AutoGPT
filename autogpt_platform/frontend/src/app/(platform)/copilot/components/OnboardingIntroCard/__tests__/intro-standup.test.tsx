@@ -78,7 +78,10 @@ function makeExpert(overrides: Partial<Expert> & { id: string; name: string }) {
   } satisfies Expert;
 }
 
-function makeTemplate(id: string, dayOne: string[]): ExpertTemplate {
+function makeTemplate(
+  id: string,
+  dayOne: { title: string; timing?: string }[],
+): ExpertTemplate {
   return {
     ...makeExpert({
       id,
@@ -86,7 +89,7 @@ function makeTemplate(id: string, dayOne: string[]): ExpertTemplate {
       is_template: true,
       source_template_id: null,
     }),
-    day_one: dayOne.map((title) => ({ title })),
+    day_one: dayOne,
   };
 }
 
@@ -117,10 +120,14 @@ const robin = makeExpert({ id: "robin", name: "Robin" });
 const frankie = makeExpert({ id: "frankie", name: "Frankie" });
 const TEMPLATES = [
   makeTemplate("tpl-nadia", [
-    "Drafts Monday's newsletter from last week's posts",
+    { title: "Drafts Monday's newsletter from last week's posts" },
   ]),
-  makeTemplate("tpl-robin", ["Triages the support inbox each morning"]),
-  makeTemplate("tpl-frankie", ["Sends you a booking link and a daily agenda"]),
+  makeTemplate("tpl-robin", [
+    { title: "Triages the support inbox each morning", timing: "day 1" },
+  ]),
+  makeTemplate("tpl-frankie", [
+    { title: "Sends you a booking link and a daily agenda" },
+  ]),
 ];
 
 function serve(args: {
@@ -763,8 +770,11 @@ describe("Otto's first turn on Home — the one ask", () => {
 
     const ask = await findAsk();
     expect(ask.textContent).toContain("Which should the team start on first?");
+    // The template's timing is a promise; a pick starts the job now.
     await userEvent.click(
-      within(ask).getByRole("button", { name: /^Robin: Triages/ }),
+      within(ask).getByRole("button", {
+        name: "Robin: Triages the support inbox each morning",
+      }),
     );
 
     expect(onStartTask).toHaveBeenCalledWith(

@@ -127,15 +127,15 @@ function getRunningSchedule(expert: Expert) {
   return workflow.name ? `${workflow.name} · ${when}` : when;
 }
 
-// The template's day-one job, offered for the user to pick; a hire whose
-// template has none offers the first workflow it installed.
+// The template's day-one job, offered for the user to pick; its timing is
+// dropped because a pick starts it now. A hire whose template has none offers
+// the first workflow it installed.
 function getDayOneOffer(
   expert: Expert,
   dayOne: NonNullable<ExpertTemplate["day_one"]>,
 ) {
   const first = dayOne[0];
-  if (first)
-    return first.timing ? `${first.title} · ${first.timing}` : first.title;
+  if (first) return first.title;
   return expert.workflows.find((workflow) => workflow.name)?.name ?? null;
 }
 
