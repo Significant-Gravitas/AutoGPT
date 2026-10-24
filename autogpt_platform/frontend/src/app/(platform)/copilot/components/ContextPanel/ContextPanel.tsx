@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
@@ -55,9 +56,14 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
       {showTitle && (
-        <h2 className="shrink-0 px-6 pb-1 pt-6 text-base font-semibold text-foreground-strong">
+        <Text
+          variant="large-semibold"
+          as="h2"
+          tone="primary"
+          className="shrink-0 px-6 pb-1 pt-6 leading-6"
+        >
           {TAB_TITLES[activeTab]}
-        </h2>
+        </Text>
       )}
       {activeTab === "artifacts" ? (
         <ArtifactsTab sessionId={sessionId} />
@@ -84,7 +90,10 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
           <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
-            <SheetTitle className="text-lg font-semibold text-foreground-strong">
+            <SheetTitle
+              // TODO(tokens): no role holds 18px (text-lg); the type scale goes 16px (body-lg) to 20px (lead). SECRT-3152
+              className="text-lg font-semibold text-foreground-strong"
+            >
               {TAB_TITLES[activeTab]}
             </SheetTitle>
           </SheetHeader>
