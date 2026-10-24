@@ -297,6 +297,7 @@ OPEN_WHILE_PAYWALLED = {
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
     "POST /api/auth/email/send",
+    "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
     "GET /api/chat/schema/tool-responses",

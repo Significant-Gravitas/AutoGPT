@@ -42,10 +42,10 @@ function ArtifactContentLoader({
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <Text variant="body" as="p" tone="muted" className="leading-5">
+        <Text variant="body-tight" as="p" tone="muted">
           Failed to load content
         </Text>
-        <Text variant="small" as="p" tone="subtle" className="leading-4">
+        <Text variant="small-tight" as="p" tone="subtle">
           {error}
         </Text>
         <button
@@ -98,7 +98,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <Text variant="body" as="p" tone="muted" className="leading-5">
+        <Text variant="body-tight" as="p" tone="muted">
           Failed to load image
         </Text>
         <button
@@ -148,7 +148,7 @@ function ArtifactVideo({ src }: { src: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <Text variant="body" as="p" tone="muted" className="leading-5">
+        <Text variant="body-tight" as="p" tone="muted">
           Failed to load video
         </Text>
         <button

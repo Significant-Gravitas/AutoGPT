@@ -108,9 +108,9 @@ export function ContextPanelToggle({
               />
               {documentCount > 0 && (
                 <Text
-                  variant="small-medium"
+                  variant="small-medium-tight"
                   as="span"
-                  className="tabular-nums leading-4 text-sidebar-foreground/90"
+                  className="tabular-nums text-sidebar-foreground/90"
                 >
                   {documentCount}
                 </Text>

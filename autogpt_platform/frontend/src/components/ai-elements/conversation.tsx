@@ -66,16 +66,12 @@ export const ConversationEmptyState = ({
       <>
         {icon && <div className="text-neutral-500">{icon}</div>}
         <div className="space-y-1">
-          <Text
-            variant="body-medium"
-            as="h3"
-            className="leading-5 text-inherit"
-          >
+          <Text variant="body-medium-tight" tone="inherit" as="h3">
             {title}
           </Text>
           {description && (
             // TODO(tokens): no role holds neutral-500 #737373.
-            <Text variant="body" as="p" className="leading-5 text-neutral-500">
+            <Text variant="body-tight" as="p" className="text-neutral-500">
               {description}
             </Text>
           )}
