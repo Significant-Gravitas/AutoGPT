@@ -46,6 +46,13 @@ class Mem0Base:
 
         return MemoryClient(api_key=credentials.api_key.get_secret_value())
 
+    @staticmethod
+    def _results(response: Any) -> list[dict[str, Any]]:
+        """mem0ai 1.x returns search and list results as ``{"results": [...]}``."""
+        if isinstance(response, dict):
+            return response.get("results", [])
+        return response
+
 
 Filter = dict[str, list[dict[str, str | dict[str, list[str]]]]]
 
@@ -160,8 +167,11 @@ class AddMemoryBlock(Block, Mem0Base):
                 params["agent_id"] = graph_id
 
             # Use the client to add memory
+            # mem0ai 1.x queues an add by default and answers before the memory
+            # exists; wait for it so the block can output what was stored.
             result = client.add(
                 messages,
+                async_mode=False,
                 **params,
             )
 
@@ -264,9 +274,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            result: list[dict[str, Any]] = client.search(
-                input_data.query, version="v2", filters=filters
-            )
+            result = self._results(client.search(input_data.query, filters=filters))
             yield "memories", result
 
         except Exception as e:
@@ -349,10 +357,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            memories: list[dict[str, Any]] = client.get_all(
-                filters=filters,
-                version="v2",
-            )
+            memories = self._results(client.get_all(filters=filters))
 
             yield "memories", memories
 
@@ -444,10 +449,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            memories: list[dict[str, Any]] = client.get_all(
-                filters=filters,
-                version="v2",
-            )
+            memories = self._results(client.get_all(filters=filters))
 
             if memories:
                 # Return the latest memory (first in the list as they're sorted by recency)
@@ -469,8 +471,8 @@ class MockMemoryClient:
     def add(self, *args, **kwargs):
         return {"results": [{"event": "CREATED", "memory": "test memory"}]}
 
-    def search(self, *args, **kwargs) -> list[dict[str, Any]]:
-        return [{"id": "test-memory", "content": "test content"}]
+    def search(self, *args, **kwargs) -> dict[str, Any]:
+        return {"results": [{"id": "test-memory", "content": "test content"}]}
 
-    def get_all(self, *args, **kwargs) -> list[dict[str, str]]:
-        return [{"id": "test-memory", "content": "test content"}]
+    def get_all(self, *args, **kwargs) -> dict[str, Any]:
+        return {"results": [{"id": "test-memory", "content": "test content"}]}
