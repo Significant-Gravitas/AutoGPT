@@ -197,6 +197,19 @@ async def _seed(user_id: str, expert_id: str, otto: str) -> dict[str, str]:
             "metadata": SafeJson({"origin": "agent-created"}),
         }
     )
+    # The thread's own scratchpad: written by the agent, but not its output.
+    await UserWorkspaceFile.prisma().create(
+        data={
+            "workspaceId": workspace.id,
+            "name": "build_state.json",
+            "path": f"/sessions/{done}/build_state.json",
+            "storagePath": "y",
+            "mimeType": "application/json",
+            "sizeBytes": 10,
+            "isInternal": True,
+            "metadata": SafeJson({"origin": "agent-created"}),
+        }
+    )
     await PendingHumanReview.prisma().create(
         data={
             "nodeExecId": f"{HELD_HANDOFF_PREFIX}{uuid.uuid4().hex[:16]}",

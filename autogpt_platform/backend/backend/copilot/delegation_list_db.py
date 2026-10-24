@@ -63,7 +63,9 @@ async def get_thread_messages(
 
 
 async def count_session_files(user_id: str, session_ids: list[str]) -> dict[str, int]:
-    """How many live files each thread wrote to the user's workspace."""
+    """How many live files each thread wrote to the user's workspace, leaving
+    out Otto's own working files (``isInternal``), as every list a person
+    sees does."""
     if not session_ids:
         return {}
     rows = await db.query_raw_with_schema(
@@ -71,6 +73,8 @@ async def count_session_files(user_id: str, session_ids: list[str]) -> dict[str,
         'FROM {schema_prefix}"UserWorkspaceFile" f '
         'JOIN {schema_prefix}"UserWorkspace" w ON w."id" = f."workspaceId" '
         'WHERE w."userId" = $1 AND NOT f."isDeleted" '
+        # Otto's own working files are not what the hand-off produced.
+        'AND NOT f."isInternal" '
         "AND f.\"metadata\" ->> 'origin' = 'agent-created' "
         "AND split_part(f.\"path\", '/', 3) = ANY($2::text[]) "
         "GROUP BY 1",
