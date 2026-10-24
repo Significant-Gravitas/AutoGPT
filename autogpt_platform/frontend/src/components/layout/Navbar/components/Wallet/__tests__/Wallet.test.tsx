@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getGetV1GetAutoTopUpMockHandler } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { server } from "@/mocks/mock-server";
 import {
@@ -339,10 +340,14 @@ describe("Wallet onboarding notifications", () => {
 describe("Wallet explains what pays for what", () => {
   afterEach(() => setTrialUser(null));
 
-  function mockTrial(overrides: Parameters<typeof trialResponse>[0] = {}) {
+  function mockTrial(
+    overrides: Parameters<typeof trialResponse>[0] = {},
+    autoRefill = { amount: 0, threshold: 0 },
+  ) {
     setTrialUser();
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(trialResponse(overrides)),
+      getGetV1GetAutoTopUpMockHandler(autoRefill),
     );
   }
 
@@ -372,6 +377,23 @@ describe("Wallet explains what pays for what", () => {
       dialog.getAttribute("aria-describedby") ?? "",
     );
     expect(description?.contains(note)).toBe(true);
+  });
+
+  it("does not promise an untouched card when auto-refill is on", async () => {
+    mockTrial(
+      { ends_at: new Date("2030-09-17T15:00:00Z") },
+      { amount: 1000, threshold: 500 },
+    );
+    await openWallet();
+
+    expect(
+      await screen.findByText(
+        "Your card is only charged for credits during your trial",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("Nothing is charged to your card during your trial"),
+    ).toBeNull();
   });
 
   it("says in one line what each part of the wallet pays for", async () => {

@@ -1,3 +1,5 @@
+import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
+import type { AutoTopUpConfig } from "@/app/api/__generated__/models/autoTopUpConfig";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { formatTrialEndDate } from "@/components/organisms/TrialCard/helpers";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
@@ -167,21 +169,32 @@ export function getEarnGroups(
   });
 }
 
-// The card is charged for the plan when an active trial ends, and for credits
-// the person buys; spending the trial allowance or credits never charges it.
-export function getTrialCardNote(trial: TrialStatusResponse | undefined) {
-  if (!trial?.active) return null;
+// The card is charged for the plan when an active trial ends and for credits
+// the person buys, which includes auto-refill: spending credits below its
+// threshold tops them up from the card (credit.py spend_credits), trial or not.
+// Until auto-refill's setting is known, nothing is said: the note could
+// otherwise promise an untouched card to someone whose refill is on.
+export function getTrialCardNote(
+  trial: TrialStatusResponse | undefined,
+  autoRefill: AutoTopUpConfig | undefined,
+) {
+  if (!trial?.active || !autoRefill) return null;
+  const refills = Boolean(autoRefill.threshold);
   if (trial.cancel_at_period_end) {
     return {
       title: "Your card won't be charged for a plan",
-      body: "You canceled, so your trial won't turn into a paid plan. Only credits you buy are charged.",
+      body: `You canceled, so your trial won't turn into a paid plan. Only credits you buy${refills ? ", including auto-refill," : ""} are charged.`,
     };
   }
-  const start = trial.ends_at
-    ? `on ${formatTrialEndDate(trial.ends_at)}`
-    : "at the end of your trial";
+  const date = trial.ends_at ? formatTrialEndDate(trial.ends_at) : null;
+  if (refills) {
+    return {
+      title: "Your card is only charged for credits during your trial",
+      body: `Auto-refill is on, so it buys ${formatCents(autoRefill.amount)} of credits when your balance drops below ${formatCents(autoRefill.threshold)}. Your plan starts ${date ? `on ${date}` : "at the end of your trial"}.`,
+    };
+  }
   return {
     title: "Nothing is charged to your card during your trial",
-    body: `Your card is first charged when your plan starts ${start}, or if you buy credits.`,
+    body: `Your card is first charged when your plan starts ${date ? `on ${date}` : "at the end of your trial"}, or if you buy credits.`,
   };
 }

@@ -1,3 +1,4 @@
+import type { AutoTopUpConfig } from "@/app/api/__generated__/models/autoTopUpConfig";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -7,10 +8,11 @@ import { getTrialCardNote } from "../helpers";
 interface Props {
   id: string;
   trial: TrialStatusResponse | undefined;
+  autoRefill: AutoTopUpConfig | undefined;
 }
 
-export function WalletTrialNote({ id, trial }: Props) {
-  const note = getTrialCardNote(trial);
+export function WalletTrialNote({ id, trial, autoRefill }: Props) {
+  const note = getTrialCardNote(trial, autoRefill);
   if (!note) return null;
 
   return (

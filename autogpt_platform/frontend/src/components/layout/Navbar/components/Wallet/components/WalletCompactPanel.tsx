@@ -1,5 +1,7 @@
 "use client";
 
+import { useGetV1GetAutoTopUp } from "@/app/api/__generated__/endpoints/credits/credits";
+import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -29,10 +31,13 @@ export function WalletCompactPanel({
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const creditsHeadingID = useId();
   const { data: trial } = useTrialStatus();
+  const { data: autoRefill } = useGetV1GetAutoTopUp({
+    query: { select: okData },
+  });
 
   return (
     <div className="flex flex-col">
-      <WalletTrialNote id={trialNoteID} trial={trial} />
+      <WalletTrialNote id={trialNoteID} trial={trial} autoRefill={autoRefill} />
       <div className="px-5 py-4">
         <WalletCopilotUsage />
       </div>

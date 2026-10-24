@@ -289,29 +289,63 @@ describe("getTrialCardNote", () => {
     ends_at: new Date("2030-09-17T15:00:00Z"),
   };
 
+  const noRefill = { amount: 0, threshold: 0 };
+
   it("names the day the card is first charged during an active trial", () => {
-    expect(getTrialCardNote(trial)).toEqual({
+    expect(getTrialCardNote(trial, noRefill)).toEqual({
       title: "Nothing is charged to your card during your trial",
       body: "Your card is first charged when your plan starts on Sep 17, or if you buy credits.",
     });
   });
 
   it("falls back to the end of the trial when the date is unknown", () => {
-    expect(getTrialCardNote({ ...trial, ends_at: null })?.body).toBe(
+    expect(getTrialCardNote({ ...trial, ends_at: null }, noRefill)?.body).toBe(
       "Your card is first charged when your plan starts at the end of your trial, or if you buy credits.",
     );
   });
 
   it("only mentions bought credits once the trial is canceled", () => {
-    expect(getTrialCardNote({ ...trial, cancel_at_period_end: true })).toEqual({
+    expect(
+      getTrialCardNote({ ...trial, cancel_at_period_end: true }, noRefill),
+    ).toEqual({
       title: "Your card won't be charged for a plan",
       body: "You canceled, so your trial won't turn into a paid plan. Only credits you buy are charged.",
     });
   });
 
+  // Auto-refill tops up from the card as soon as spending drops the balance
+  // under its threshold, trial or not, so the note must not promise otherwise.
+  const autoRefill = { amount: 1000, threshold: 500 };
+
+  it("names auto-refill as a card charge during an active trial", () => {
+    expect(getTrialCardNote(trial, autoRefill)).toEqual({
+      title: "Your card is only charged for credits during your trial",
+      body: "Auto-refill is on, so it buys $10.00 of credits when your balance drops below $5.00. Your plan starts on Sep 17.",
+    });
+  });
+
+  it("counts auto-refill among the credits a canceled trial still pays for", () => {
+    expect(
+      getTrialCardNote({ ...trial, cancel_at_period_end: true }, autoRefill)
+        ?.body,
+    ).toBe(
+      "You canceled, so your trial won't turn into a paid plan. Only credits you buy, including auto-refill, are charged.",
+    );
+  });
+
+  it("treats auto-refill without a threshold as off, as the backend does", () => {
+    expect(getTrialCardNote(trial, { amount: 1000, threshold: 0 })?.title).toBe(
+      "Nothing is charged to your card during your trial",
+    );
+  });
+
   it("says nothing without an active trial", () => {
-    expect(getTrialCardNote({ ...trial, active: false })).toBeNull();
-    expect(getTrialCardNote({})).toBeNull();
-    expect(getTrialCardNote(undefined)).toBeNull();
+    expect(getTrialCardNote({ ...trial, active: false }, noRefill)).toBeNull();
+    expect(getTrialCardNote({}, noRefill)).toBeNull();
+    expect(getTrialCardNote(undefined, noRefill)).toBeNull();
+  });
+
+  it("says nothing until it knows whether auto-refill is on", () => {
+    expect(getTrialCardNote(trial, undefined)).toBeNull();
   });
 });
