@@ -1,4 +1,3 @@
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { HTMLAttributes, ReactNode } from "react";
 
@@ -49,19 +48,19 @@ export function CardTitle({
   );
 }
 
+// Not <Text>: the description inherits its font family and weight from the
+// card, which Text would set explicitly.
 export function CardDescription({
   className,
-  children,
+  ...props
 }: HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <Text
+    <p
       data-slot="card-description"
-      variant="body"
       // TODO(tokens): no exact role: text-neutral-500 #737373.
-      className={cn("leading-5 text-neutral-500", className)}
-    >
-      {children}
-    </Text>
+      className={cn("text-body leading-5 text-neutral-500", className)}
+      {...props}
+    />
   );
 }
 
