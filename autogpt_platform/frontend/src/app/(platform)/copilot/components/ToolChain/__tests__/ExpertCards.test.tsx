@@ -417,7 +417,6 @@ describe("expert approval", () => {
     renderGroup([expertPart("output-available", gatedProposal)]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
     // The line gate/card_approval.py takes as the answer to the confirm.
     expect(onSend).toHaveBeenCalledWith(
@@ -509,8 +508,9 @@ describe("expert approval", () => {
     const user = userEvent.setup();
     renderGroup([proposal("Otto", "a")]);
 
+    // A lone proposal's answer is the send: no separate Send click.
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
 
     expect(onSend).toHaveBeenCalledWith(
       "Approved: create Otto (confirmation_id: c-a).",
@@ -523,7 +523,6 @@ describe("expert approval", () => {
     renderGroup([proposal("Otto", "a")]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
@@ -554,7 +553,6 @@ describe("expert approval", () => {
     ]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
     expect(onSend).toHaveBeenCalledWith(
       "Approved: update Otto (confirmation_id: c-u).",
