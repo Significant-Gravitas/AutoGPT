@@ -177,7 +177,12 @@ class S3FileStorage(FileStorage):
         folder_names = set()
 
         # List objects with the specified prefix and delimiter
-        for obj_summary in self._bucket.objects.filter(Prefix=str(path)):
+        objects = (
+            self._bucket.objects.all()
+            if path == Path(".")
+            else self._bucket.objects.filter(Prefix=f"{path}/")
+        )
+        for obj_summary in objects:
             # Remove path prefix and the object name (last part)
             folder = Path(obj_summary.key).relative_to(path).parent
             if not folder or folder == Path("."):
