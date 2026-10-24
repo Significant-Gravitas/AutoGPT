@@ -81,11 +81,11 @@ export function SearchCommandResultItem({
           className="min-w-0 flex-1"
         >
           <Text
-            variant="body"
+            variant="body-tight"
             as="div"
             data-slot="search-command-result-item-title"
             className={cn(
-              "truncate leading-5 transition-colors duration-150",
+              "truncate transition-colors duration-150",
               isHighlighted ? "text-foreground" : "text-foreground-emphasis",
             )}
           >
