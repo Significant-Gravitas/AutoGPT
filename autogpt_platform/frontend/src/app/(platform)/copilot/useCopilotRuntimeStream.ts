@@ -14,6 +14,7 @@ import {
 
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
+import { isDecisionOnlyText } from "./cardDecisions";
 import {
   clearKickoffPending,
   getKickoffAttemptTokenFromMetadata,
@@ -137,7 +138,10 @@ export function useCopilotRuntimeStream({
     // and drop the bubble.
     function restoreUnsentSend() {
       if (!coord.lastSubmittedMessageText) return;
-      if (kickoffExpertId) clearRecovery();
+      // A proposal card's decision line is the card's protocol, id and all:
+      // the card asks again instead.
+      if (kickoffExpertId || isDecisionOnlyText(coord.lastSubmittedMessageText))
+        clearRecovery();
       else if (isComposerEmpty()) {
         setInitialPrompt(coord.lastSubmittedMessageText);
         clearRecovery();

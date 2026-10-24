@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import fastapi
 import fastapi.testclient
@@ -12,6 +13,7 @@ import httpx
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from fastapi import HTTPException
 from pydantic import SecretStr
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
@@ -22,11 +24,14 @@ from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.copilot.gate.card_approval import approved_on_card, card_decision_metadata
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
+from backend.data import redis_client
 from backend.data.model import OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
 from backend.integrations.codex.auth_bundle import (
@@ -40,6 +45,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.settings import BehaveAs
+from backend.util.testing import is_tcp_port_reachable
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -330,6 +336,12 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    # A card decision checks the chat and Redis for an earlier answer.
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
         new_callable=AsyncMock,
@@ -603,6 +615,484 @@ def test_stream_chat_records_card_decisions_only_from_the_users_message(
         record.assert_awaited_once_with(test_user_id, "sess-1", line)
     else:
         record.assert_not_awaited()
+
+
+def test_stream_chat_tags_a_message_made_only_of_card_decisions(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The chat shows such a row as a note of what was decided, not the line."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    message = (
+        "Approved: hire Maya (confirmation_id: c-1).\n"
+        "Not approved: do not create Ada, discard that proposal "
+        "(confirmation_id: c-2)."
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": message})
+
+    assert response.status_code == 200
+    call = mocks.enqueue.await_args.kwargs
+    # The model and the gate still read the line itself.
+    assert call["message"] == message
+    assert call["message_metadata"] == {
+        "kind": "card_decision",
+        "decisions": [
+            {
+                "verdict": "approved",
+                "confirmation_id": "c-1",
+                "verb": "hire",
+                "name": "Maya",
+            },
+            {
+                "verdict": "declined",
+                "confirmation_id": "c-2",
+                "verb": "create",
+                "name": "Ada",
+            },
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "message": "Approved: hire Maya (confirmation_id: c-1).\nStart today.",
+        },
+        {"message": "Approved: hire Maya, she looks great."},
+        {
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "is_user_message": False,
+        },
+    ],
+    ids=["with-the-users-own-words", "no-decision-line", "not-a-user-message"],
+)
+def test_stream_chat_leaves_other_messages_untagged(
+    mocker: pytest_mock.MockerFixture, payload: dict
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json=payload)
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
+
+
+def test_stream_chat_drops_a_second_answer_to_an_answered_card(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A stale tab or a double click must not post or record a second decision."""
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    answered = mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="answered",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Not approved: do not hire Maya, discard that proposal "
+            "(confirmation_id: c-1).",
+            "message_id": "click-2",
+        },
+    )
+
+    assert response.status_code == 200
+    answered.assert_awaited_once_with(
+        test_user_id,
+        "sess-1",
+        ["c-1"],
+        owner=chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-2"),
+    )
+    record.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_keeps_the_users_words_but_not_a_second_answer(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A typed line on an answered card is not recorded; the rest is still sent."""
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    answered = mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="answered",
+    )
+    message = (
+        "Not approved: do not hire Maya, discard that proposal "
+        "(confirmation_id: c-1).\nAnd let's talk about pricing."
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": message})
+
+    assert response.status_code == 200
+    assert answered.await_args.args[2] == ["c-1"]
+    record.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+    assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
+    # The answered card's line is not saved either: a later reader (the chat,
+    # or the model) must not take it as a second answer.
+    assert mocks.enqueue.await_args.kwargs["message"] == "And let's talk about pricing."
+
+
+def test_stream_chat_asks_to_retry_while_another_answer_is_being_sent(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Neither "answered" nor sent: if the other request then fails, this
+    retry is the answer that lands."""
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="pending",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Approved: hire Maya (confirmation_id: c-1)."},
+    )
+
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After")
+    record.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_marks_a_saved_answer_accepted(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
+    accept = mocker.patch(
+        "backend.api.features.chat.routes.accept_claim",
+        new_callable=AsyncMock,
+        create=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "message_id": "click-1",
+        },
+    )
+
+    assert response.status_code == 200
+    accept.assert_awaited_once_with(
+        "sess-1",
+        ["c-1"],
+        chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1"),
+    )
+
+
+@pytest.mark.parametrize(
+    "status", [None, 429], ids=["queued", "rate-limited-after-the-push"]
+)
+def test_queue_pending_message_marks_a_queued_answer_accepted(
+    mocker: pytest_mock.MockerFixture, status: int | None
+) -> None:
+    from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
+
+    _mock_stream_queue_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
+    queued = QueuePendingMessageResponse(
+        buffer_length=1, max_buffer_length=10, turn_in_flight=True
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+        side_effect=(
+            HTTPException(status_code=status, detail="slow down") if status else None
+        ),
+        return_value=queued,
+    )
+    accept = mocker.patch(
+        "backend.api.features.chat.routes.accept_claim",
+        new_callable=AsyncMock,
+        create=True,
+    )
+
+    client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "Approved: hire Maya (confirmation_id: c-1)."},
+    )
+
+    accept.assert_awaited_once()
+
+
+def test_stream_chat_sends_the_first_answer_to_a_card(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+
+    response = client.post("/sessions/sess-1/stream", json={"message": line})
+
+    assert response.status_code == 200
+    record.assert_awaited_once_with(test_user_id, "sess-1", line)
+    mocks.enqueue.assert_awaited_once()
+
+
+def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A retry after a failure must not find its own card already claimed."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = HTTPException(status_code=429, detail="busy")
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+    withdraw = mocker.patch(
+        "backend.api.features.chat.routes.withdraw_card_approvals",
+        new_callable=AsyncMock,
+        create=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "message_id": "click-1",
+        },
+    )
+
+    assert response.status_code == 429
+    release.assert_awaited_once_with(
+        "sess-1",
+        ["c-1"],
+        chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1"),
+    )
+    # Nothing was saved: the approval it recorded must not let a confirm pass.
+    withdraw.assert_awaited_once_with(test_user_id, "sess-1", ["c-1"])
+
+
+def test_queue_pending_message_queues_the_users_words_but_not_a_second_answer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="answered",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={
+            "message": "Not approved: do not hire Maya, discard that proposal "
+            "(confirmation_id: c-1).\nAnd let's talk about pricing."
+        },
+    )
+
+    assert response.status_code == 200
+    record.assert_not_awaited()
+    pushed = push.await_args.args[1]
+    assert pushed.content == "And let's talk about pricing."
+    assert pushed.metadata is None
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize("saved", [False, True], ids=["failed", "saved"])
+async def test_a_card_approval_stands_only_once_its_answer_is_saved(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, saved: bool
+) -> None:
+    """The gate's approval follows the answer: a send that saved nothing
+    takes it back, so a later confirm cannot pass on it."""
+    session_id = f"s-{uuid4()}"
+    mocker.patch(
+        "backend.copilot.gate.card_decided.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    admission, _ = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, card_decision_metadata(line), "click-1"
+    )
+    assert admission == "claimed"
+
+    if saved:
+        await chat_routes._accept_card_answer(session_id, line, "click-1")
+    else:
+        await chat_routes._release_card_answer(
+            test_user_id, session_id, line, "click-1", admission
+        )
+
+    assert (
+        await approved_on_card(
+            "confirm_expert_change",
+            {"confirmation_id": "c-1"},
+            test_user_id,
+            session_id,
+        )
+        is saved
+    )
+
+
+def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A copy of a send still in flight must not give back the original's claim."""
+    _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="held",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_client_message",
+        new_callable=AsyncMock,
+        return_value="reserved",
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "message_id": "click-1",
+        },
+    )
+
+    assert response.status_code == 503
+    release.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "status, released",
+    [(400, True), (429, False)],
+    ids=["refused-before-the-push", "rate-limited-after-the-push"],
+)
+def test_queue_pending_message_gives_back_a_card_claim_only_when_not_queued(
+    mocker: pytest_mock.MockerFixture, status: int, released: bool
+) -> None:
+    """A 429 comes after the push: the decision stays queued, so its claim stays."""
+    _mock_stream_queue_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+        side_effect=HTTPException(status_code=status, detail="no"),
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "Approved: hire Maya (confirmation_id: c-1)."},
+    )
+
+    assert response.status_code == status
+    assert release.await_count == (1 if released else 0)
+
+
+@pytest.mark.parametrize("attachment", ["file_ids", "folder_ids"])
+def test_stream_chat_leaves_a_decision_with_attachments_untagged(
+    mocker: pytest_mock.MockerFixture, attachment: str
+) -> None:
+    """A note would hide what was attached, so the row stays the user's message."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.resolve_attachments_for_http",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.resolve_attachable_workspace_folders",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            attachment: ["00000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
 
 
 # ─── A sent message cancels the pending resume at the budget reset ────
@@ -1021,6 +1511,85 @@ def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
         new_callable=AsyncMock,
         return_value=1,
     )
+
+
+_QUEUED_DECISION = "Approved: hire Maya (confirmation_id: c-1)."
+_QUEUED_DECISION_METADATA = {
+    "kind": "card_decision",
+    "decisions": [
+        {
+            "verdict": "approved",
+            "confirmation_id": "c-1",
+            "verb": "hire",
+            "name": "Maya",
+        }
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    "message, metadata",
+    [
+        (_QUEUED_DECISION, _QUEUED_DECISION_METADATA),
+        (_QUEUED_DECISION + "\nAnd start on Monday.", None),
+    ],
+    ids=["decision", "with-the-users-own-words"],
+)
+def test_stream_chat_tags_a_decision_it_queues_behind_a_running_turn(
+    mocker: pytest_mock.MockerFixture, message: str, metadata: dict | None
+) -> None:
+    """The row the queue saves later is tagged like one /stream saves now."""
+    _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": message})
+
+    assert response.status_code == 200
+    assert push.await_args.args[1].metadata == metadata
+
+
+@pytest.mark.parametrize(
+    "message, metadata",
+    [
+        (_QUEUED_DECISION, _QUEUED_DECISION_METADATA),
+        (_QUEUED_DECISION + "\nAnd start on Monday.", None),
+    ],
+    ids=["decision", "with-the-users-own-words"],
+)
+def test_queue_pending_message_tags_a_queued_decision(
+    mocker: pytest_mock.MockerFixture, message: str, metadata: dict | None
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": message}
+    )
+
+    assert response.status_code == 200
+    assert push.await_args.args[1].metadata == metadata
 
 
 def test_stream_chat_retransmits_of_a_started_turn_queue_nothing(
@@ -2888,6 +3457,41 @@ def test_queue_pending_message_returns_200_when_turn_in_flight(
     assert "turn_in_flight" in data
 
 
+@pytest.mark.parametrize("answered", [False, True])
+def test_queue_pending_message_answers_a_card_once(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, answered: bool
+) -> None:
+    """A decision queued behind a running turn is recorded, and refused once
+    the card was answered, as on POST /stream."""
+    _mock_stream_queue_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="answered" if answered else "claimed",
+    )
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+
+    response = client.post("/sessions/sess-1/messages/pending", json={"message": line})
+
+    assert response.status_code == 200
+    assert response.json()["turn_in_flight"] is True
+    if answered:
+        record.assert_not_awaited()
+        push.assert_not_awaited()
+    else:
+        record.assert_awaited_once_with(test_user_id, "sess-1", line)
+        push.assert_awaited_once()
+
+
 def test_queue_pending_message_on_the_platform_route_needs_a_plan(
     mocker: pytest_mock.MockerFixture, paywalled_user
 ) -> None:
@@ -4017,8 +4621,9 @@ def test_cancel_session_clears_pending_buffer(
         new=AsyncMock(return_value=True),
     )
     mock_clear = mocker.patch(
-        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        "backend.api.features.chat.routes.drain_pending_messages",
         new_callable=AsyncMock,
+        return_value=[],
     )
 
     response = client.post("/sessions/sess-1/cancel")
@@ -4026,6 +4631,63 @@ def test_cancel_session_clears_pending_buffer(
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
     mock_clear.assert_awaited_once_with("sess-1")
+
+
+def test_cancel_session_forgets_every_card_answer_it_drops(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A decision queued behind the stopped turn is never saved, so the card
+    is the user's to answer again. One pushed while the cancel clears the
+    queue is either left queued or forgotten, never dropped and kept."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=True),
+    )
+    first = PendingMessage(content="Approved: hire Maya (confirmation_id: c-1).")
+    racing = PendingMessage(content="Approved: hire Theo (confirmation_id: c-2).")
+    buffer = [first]
+    removed: list[PendingMessage] = []
+
+    async def peek(_session_id: str) -> list[PendingMessage]:
+        snapshot = list(buffer)
+        buffer.append(racing)  # lands right after the read
+        return snapshot
+
+    async def clear(_session_id: str) -> None:
+        removed.extend(buffer)
+        buffer.clear()
+
+    async def drain(_session_id: str, **_: object) -> list[PendingMessage]:
+        taken = list(buffer)
+        buffer.clear()
+        removed.extend(taken)
+        return taken
+
+    mocker.patch(
+        "backend.api.features.chat.routes.peek_pending_messages", peek, create=True
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        clear,
+        create=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.drain_pending_messages", drain, create=True
+    )
+    forget = mocker.patch(
+        "backend.api.features.chat.routes.forget_unsaved_answers",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    forgotten = {line for call in forget.await_args_list for line in call.args[2]}
+    assert {m.content for m in removed} <= forgotten
+    assert all(
+        call.args[:2] == (test_user_id, "sess-1") for call in forget.await_args_list
+    )
 
 
 def test_cancel_session_survives_pending_clear_failure(
@@ -4039,7 +4701,7 @@ def test_cancel_session_survives_pending_clear_failure(
         new=AsyncMock(return_value=True),
     )
     mocker.patch(
-        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        "backend.api.features.chat.routes.drain_pending_messages",
         new=AsyncMock(side_effect=RuntimeError("redis down")),
     )
 
@@ -4090,8 +4752,9 @@ def test_cancel_session_reclears_pending_buffer_after_running_settles(
         new_callable=AsyncMock,
     )
     mock_clear = mocker.patch(
-        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        "backend.api.features.chat.routes.drain_pending_messages",
         new_callable=AsyncMock,
+        return_value=[],
     )
 
     response = client.post("/sessions/sess-1/cancel")

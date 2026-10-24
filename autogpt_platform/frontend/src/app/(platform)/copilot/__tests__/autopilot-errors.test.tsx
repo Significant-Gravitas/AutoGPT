@@ -265,6 +265,36 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       expect(userRows).toHaveLength(0);
     });
 
+    it("keeps a refused card decision, with its id, out of the composer", async () => {
+      server.use(
+        copilotStreamErrorHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          status: 429,
+          body: { detail: "You've reached your usage limit. Try again later." },
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("Approved: hire Maya (confirmation_id: c-1).");
+
+      expect(
+        await screen.findByText(/We couldn’t check your usage/i, undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+      await waitFor(() =>
+        expect(
+          useCopilotStreamStore.getState().getCoord(TEST_SESSION_ID)
+            .lastSubmittedMessageText,
+        ).toBeNull(),
+      );
+      const composer =
+        screen.getByLabelText<HTMLTextAreaElement>(/chat message input/i);
+      expect(composer.value).not.toContain("confirmation_id");
+      expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+    });
+
     it("surfaces an HTTP 500 response as a visible error", async () => {
       server.use(
         copilotStreamErrorHandler({
