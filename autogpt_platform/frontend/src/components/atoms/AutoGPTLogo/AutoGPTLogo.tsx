@@ -19,6 +19,7 @@ export function AutoGPTLogo({
 
   return (
     <svg
+      data-slot="autogpt-logo"
       viewBox="0 0 89 40"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
