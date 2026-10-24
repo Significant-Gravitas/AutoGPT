@@ -27,7 +27,7 @@ function resolveDisplaySeconds(
   elapsedSeconds: number | undefined,
   stats: TurnStats | undefined,
 ): number | undefined {
-  if (stats?.durationMs && stats.durationMs > 0) {
+  if (stats?.durationMs !== undefined) {
     return Math.round(stats.durationMs / 1000);
   }
   if (elapsedSeconds !== undefined && elapsedSeconds > 0) return elapsedSeconds;
