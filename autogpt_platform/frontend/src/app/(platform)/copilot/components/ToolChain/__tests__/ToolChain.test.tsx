@@ -404,6 +404,49 @@ describe("ToolChain", () => {
     });
   });
 
+  // Two ask_question calls in one message are one card. Each lifted row used
+  // to host its own form, so Skip dismissed one copy and the other brought the
+  // card straight back.
+  it("skips the questions of every ask_question call in the message", async () => {
+    const user = userEvent.setup();
+    const questions = [
+      { question: "Which region?", keyword: "region" },
+      { question: "Which plan?", keyword: "plan" },
+    ];
+    const askPart = (callId: string, index: number) =>
+      toolPart("ask_question", "output-available", {
+        toolCallId: callId,
+        output: {
+          type: "agent_builder_clarification_needed",
+          questions: [questions[index]],
+        },
+      });
+    const pending: PendingQuestions = {
+      dockId: "m1:ask-a+ask-b",
+      callIds: ["ask-a", "ask-b"],
+      questions,
+    };
+
+    render(
+      <PendingQuestionsContext.Provider value={pending}>
+        <ToolChain
+          parts={[askPart("ask-a", 0), askPart("ask-b", 1)]}
+          isStreaming={false}
+        />
+      </PendingQuestionsContext.Provider>,
+    );
+
+    expect(screen.getAllByText("Answer a few questions")).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("Answer a few questions")).toBeNull(),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.queryByText("Answer a few questions")).toBeNull();
+  });
+
   it("keeps the caret where the user is editing an answer", async () => {
     // The answer used to reach the field one render late, and React writing
     // the old value back in between threw the caret to the end and broke
