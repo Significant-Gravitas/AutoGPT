@@ -118,7 +118,12 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
   },
 
   isOutputConnected: (nodeId, handle) =>
-    get().edges.some((e) => e.source === nodeId && e.sourceHandle === handle),
+    get().edges.some(
+      (e) =>
+        e.source === nodeId &&
+        (e.sourceHandle === handle ||
+          (e.sourceHandle && e.sourceHandle.startsWith(handle + "_#_"))),
+    ),
 
   getBackendLinks: () => get().edges.map(customEdgeToLink),
 
