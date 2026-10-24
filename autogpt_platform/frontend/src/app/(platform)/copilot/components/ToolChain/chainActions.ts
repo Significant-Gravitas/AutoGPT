@@ -59,8 +59,8 @@ export interface ChainActions {
 
 export const ChainActionsContext = createContext<ChainActions | null>(null);
 
-/** One entry per card, the latest registration winning when two copies of
- *  the same card are mounted. */
+/** One entry per card. While two copies of a card are mounted, the copy
+ *  that mounted last is the one shown. */
 export function uniqueChainEntries(
   registrations: ReadonlyMap<string, ChainActionEntry>,
 ): ChainActionEntry[] {
