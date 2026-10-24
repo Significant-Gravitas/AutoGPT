@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { DesktopStreamPreview } from "./DesktopStreamRenderer";
+import { DesktopStreamPreview } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
 
 const meta: Meta<typeof DesktopStreamPreview> = {
-  title: "Renderers/OutputRenderers/Desktop Stream",
+  title: "Copilot/DesktopStreamPreview",
   component: DesktopStreamPreview,
   tags: ["autodocs"],
   parameters: {
