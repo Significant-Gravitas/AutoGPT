@@ -7,9 +7,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.copilot.gate.headline import gated_tools, headline_for
-from backend.copilot.gate.policy import PARKABLE, Effect, classified_tools, effect_for
+from backend.copilot.gate.policy import (
+    PARKABLE,
+    Effect,
+    Verdict,
+    classified_tools,
+    effect_for,
+    verdict_for_effect,
+)
 from backend.copilot.gate.review import (
     find_decision,
     node_id_for,
@@ -264,6 +272,90 @@ def test_a_block_subject_names_the_card_marks_it_and_labels_its_fields():
     assert payload["headline"]["object"] == "Gmail Send"
     assert payload["reason_kind"] == "subject"
     assert payload["arguments"] == {"to": ["dana@acme.com"]}
+
+
+def test_a_new_table_in_a_connected_account_is_shown_before_it_is_made():
+    """Kristy's Airtable got new tables before anything said what they were:
+    Auto now asks, and the card names the table and each field in plain words
+    instead of a JSON toggle."""
+    block = AirtableCreateTableBlock()
+    inputs = {
+        "base_id": "appX",
+        "table_name": "Orders",
+        "table_fields": [
+            {"name": "Order number", "type": "singleLineText"},
+            {"name": "Total", "type": "currency"},
+        ],
+    }
+    subject = block_subject(block, inputs, priced=False)
+
+    assert verdict_for_effect("auto", subject.effect) is Verdict.ASK
+    assert subject.reason == "Nothing changes in your account until you approve."
+    payload = review_payload(
+        "run_capability", {"id": f"block:{block.id}", "input": inputs}, subject
+    )
+    assert payload["headline"] == {
+        "ask": "Add a table to your Airtable:",
+        "object": "Orders",
+        "object_key": None,
+    }
+    assert payload["preview"] == {
+        "ask": "Add a table to your Airtable:",
+        "object": "Orders",
+        "tables": [
+            {
+                "name": "Orders",
+                "description": "",
+                "fields": [
+                    {"name": "Order number", "kind": "Text", "detail": ""},
+                    {"name": "Total", "kind": "Money", "detail": ""},
+                ],
+            }
+        ],
+        "covers": ["table_name", "table_fields"],
+    }
+    # The approval binds every argument, so the raw ones stay on the row.
+    assert payload["arguments"] == inputs
+
+
+def test_the_preview_shows_what_the_defaults_will_create():
+    """A call that leaves table_fields out still creates the block's default
+    field, so the card must show it rather than an empty table."""
+    subject = block_subject(
+        AirtableCreateTableBlock(),
+        {"base_id": "appX", "table_name": "Orders"},
+        priced=False,
+    )
+
+    assert subject.preview is not None
+    assert [t.model_dump() for t in subject.preview.tables] == [
+        {
+            "name": "Orders",
+            "description": "",
+            "fields": [{"name": "Name", "kind": "Text", "detail": ""}],
+        }
+    ]
+
+
+def test_a_block_with_nothing_to_preview_keeps_its_run_headline():
+    block = GmailSendBlock()
+    payload = review_payload(
+        "run_capability",
+        {"id": block.id, "input": {"to": ["dana@acme.com"]}},
+        block_subject(block, {}),
+    )
+    assert payload["preview"] is None
+    assert payload["headline"]["ask"] == "Run"
+
+
+def test_a_preview_that_fails_never_stops_the_card():
+    block = AirtableCreateTableBlock()
+    with patch.object(
+        AirtableCreateTableBlock, "change_preview", side_effect=ValueError("bad")
+    ):
+        subject = block_subject(block, {"table_name": "Orders"}, priced=False)
+    assert subject.preview is None
+    assert subject.effect is Effect.EXTERNAL
 
 
 @pytest.mark.parametrize(

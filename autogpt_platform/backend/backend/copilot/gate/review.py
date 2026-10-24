@@ -17,6 +17,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.blocks._preview import ChangePreview
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
@@ -99,6 +100,9 @@ class GateReviewPayload(BaseModel):
     # A money card's estimate, spend so far and ceiling.
     spend: dict[str, int] | None = None
     workflow: WorkflowStep | None = None
+    # What the block will create or change in a connected account; the card
+    # shows it in place of the arguments it covers.
+    preview: ChangePreview | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
@@ -170,14 +174,24 @@ def review_payload(
         reason_kind=reason_kind,
         decided_by=decided_by,
         chat_rules_allowed=_rules_offered(tool_name, subject, spend, reason_kind),
-        headline=(
-            Headline(ask="Run", object=subject.name)
-            if subject is not None
-            else headline_for(tool_name, args, references)
-        ),
+        headline=_headline(tool_name, args, subject, references),
         spend=spend,
         workflow=workflow,
+        preview=subject.preview if subject is not None else None,
     ).model_dump()
+
+
+def _headline(
+    tool_name: str,
+    args: dict[str, Any],
+    subject: "GateSubject | None",
+    references: list[Reference] | None,
+) -> Headline:
+    if subject is None:
+        return headline_for(tool_name, args, references)
+    if subject.preview is not None:
+        return Headline(ask=subject.preview.ask, object=subject.preview.object)
+    return Headline(ask="Run", object=subject.name)
 
 
 def is_spend_card(review: PendingHumanReviewModel) -> bool:

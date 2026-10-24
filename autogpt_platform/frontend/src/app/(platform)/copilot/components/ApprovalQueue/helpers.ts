@@ -27,6 +27,20 @@ export interface ApprovalSpend {
   unit: number;
 }
 
+export interface PreviewTable {
+  name: string;
+  description: string;
+  // `detail`: the field's note and any setting its kind doesn't say.
+  fields: { name: string; kind: string; detail: string }[];
+}
+
+// What a step will add to or change in a connected account, in the user's words.
+export interface ChangePreview {
+  tables: PreviewTable[];
+  // The arguments it already shows, which the card does not list again.
+  covers: string[];
+}
+
 export type ChatRule = "allow" | "judge";
 export type RuleScope = "chat" | "expert" | "team";
 
@@ -59,6 +73,8 @@ export interface ApprovalItem {
   headline: { ask: string; object: string | null };
   // The argument the headline already names.
   headlineKeys: string[];
+  // Rows written before previews existed have none, and keep their fields.
+  preview: ChangePreview | null;
 }
 
 export function isGateReview(review: PendingHumanReviewModel) {
@@ -73,6 +89,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
   const subject = asObject(payload.subject) ?? {};
   const headline = asObject(payload.headline) ?? {};
   const objectKey = str(headline, "object_key");
+  const preview = toPreview(payload.preview);
   return {
     reviewId: review.node_exec_id,
     scope: {
@@ -102,13 +119,39 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
       (r): r is ChatRule => r === "allow" || r === "judge",
     ),
     headline:
-      subject.kind === "block"
+      subject.kind === "block" && !preview
         ? { ask: "Run", object: str(subject, "name") }
         : {
             ask: str(headline, "ask") ?? fallbackAsk(toolName),
             object: str(headline, "object"),
           },
     headlineKeys: objectKey ? [objectKey] : [],
+    preview,
+  };
+}
+
+export function toPreview(raw: unknown): ChangePreview | null {
+  const preview = asObject(raw);
+  if (!preview) return null;
+  return {
+    tables: asArray(preview.tables).map((t) => {
+      const table = asObject(t) ?? {};
+      return {
+        name: str(table, "name") ?? "",
+        description: str(table, "description") ?? "",
+        fields: asArray(table.fields).map((f) => {
+          const field = asObject(f) ?? {};
+          return {
+            name: str(field, "name") ?? "",
+            kind: str(field, "kind") ?? "",
+            detail: str(field, "detail") ?? "",
+          };
+        }),
+      };
+    }),
+    covers: asArray(preview.covers).filter(
+      (key): key is string => typeof key === "string",
+    ),
   };
 }
 
@@ -194,16 +237,22 @@ export function shownFieldKeys(item: ApprovalItem) {
   return visibleKeys({
     keys: [...item.fields.map((f) => f.key), ...Object.keys(item.args)],
     values: item.args,
-    hiddenKeys: item.headlineKeys,
+    hiddenKeys: hiddenFieldKeys(item),
     idsWhenAlone: !item.headline.object,
     references: item.references,
   });
+}
+
+// The headline's object and whatever the preview already shows.
+export function hiddenFieldKeys(item: ApprovalItem) {
+  return [...item.headlineKeys, ...(item.preview?.covers ?? [])];
 }
 
 // Nothing to read beyond the headline, so a compact line may answer it in place.
 export function isBare(item: ApprovalItem) {
   return (
     shownFieldKeys(item).length === 0 &&
+    !item.preview?.tables.length &&
     !reasonLine(item) &&
     !item.subject.irreversible &&
     !item.spend

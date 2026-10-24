@@ -7,6 +7,7 @@ import {
   type ApprovalItem,
   type ChatRule,
   type RuleScope,
+  hiddenFieldKeys,
   isBare,
   isHeldRead,
   reasonLine,
@@ -14,6 +15,7 @@ import {
 } from "../../helpers";
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
+import { ChangePreview } from "./ChangePreview";
 import { HeldPassage } from "./HeldPassage";
 import { MoneyBlock } from "./MoneyBlock";
 import { useApprovalFields } from "./useApprovalFields";
@@ -90,6 +92,7 @@ export function ApprovalCard({
           <p className="-mt-1 text-sm text-foreground-tertiary">{reason}</p>
         )}
         {item.spend && <MoneyBlock spend={item.spend} />}
+        {item.preview && <ChangePreview tables={item.preview.tables} />}
         {read ? (
           item.passage && <HeldPassage passage={item.passage} />
         ) : (
@@ -97,7 +100,7 @@ export function ApprovalCard({
             fields={fields.labels}
             values={fields.values}
             clipped={item.clipped}
-            hiddenKeys={item.headlineKeys}
+            hiddenKeys={hiddenFieldKeys(item)}
             idsWhenAlone={!item.headline.object}
             references={item.blockId ? [] : item.references}
             referenceTotals={item.referenceTotals}
