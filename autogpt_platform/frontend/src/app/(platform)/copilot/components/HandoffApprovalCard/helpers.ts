@@ -116,9 +116,22 @@ export interface HandoffEdits {
   expert_id?: string;
 }
 
-/** Edited args ride on the review's existing edit field; only sent when
- *  the review says it accepts edits. */
-export function editedReview(item: ApprovalItem, edits: HandoffEdits) {
-  if (!edits.prompt && !edits.expert_id) return {};
-  return { reviewed_data: { ...item.args, ...edits } };
+/** The edit rides back as the review's own payload with its hand-off card
+ *  changed: the backend reads the new brief and teammate from
+ *  `payload.handoff` (`edited_args`), so plain tool args would be ignored.
+ *  Only sent when the review says it accepts edits. */
+export function editedReview(payload: unknown, edits: HandoffEdits) {
+  const card = asObject(payload);
+  const handoff = asObject(card?.handoff);
+  if (!card || !handoff || (!edits.prompt && !edits.expert_id)) return {};
+  return {
+    reviewed_data: {
+      ...card,
+      handoff: {
+        ...handoff,
+        ...(edits.prompt ? { brief: edits.prompt } : {}),
+        ...(edits.expert_id ? { expert_id: edits.expert_id } : {}),
+      },
+    },
+  };
 }

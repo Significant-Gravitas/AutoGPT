@@ -111,12 +111,32 @@ describe("capLine / editedReview", () => {
     ).toBe("$2.00 of $5.00");
   });
 
-  it("sends edits on top of the call's args, or nothing", () => {
-    expect(editedReview(item(), {})).toEqual({});
-    expect(editedReview(item(), { expert_id: "exp-bea" })).toEqual({
+  it("sends an edit as the review payload with its hand-off card changed", () => {
+    const payload = {
+      tool: "delegate_to_expert",
+      headline: { text: "Hand off to Alex" },
+      handoff: {
+        expert_id: "exp-alex",
+        expert_name: "Alex",
+        brief: "Draft the PRD",
+        why: "Alex owns PRDs",
+      },
+    };
+    expect(editedReview(payload, {})).toEqual({});
+    expect(editedReview({ tool: "x" }, { expert_id: "exp-bea" })).toEqual({});
+    // The backend's edited_args reads payload.handoff.brief / expert_id.
+    expect(
+      editedReview(payload, { expert_id: "exp-bea", prompt: "Q4 only" }),
+    ).toEqual({
       reviewed_data: {
-        expert_id: "exp-bea",
-        prompt: "Draft the PRD\nwith criteria",
+        ...payload,
+        handoff: { ...payload.handoff, expert_id: "exp-bea", brief: "Q4 only" },
+      },
+    });
+    expect(editedReview(payload, { prompt: "Q4 only" })).toEqual({
+      reviewed_data: {
+        ...payload,
+        handoff: { ...payload.handoff, brief: "Q4 only" },
       },
     });
   });

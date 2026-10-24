@@ -22,6 +22,11 @@ import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/Cop
 import { ToolChain } from "../ToolChain";
 
 const REVIEW_ID = "copilot-node-gate-delegate_to_expert:h1";
+const HANDOFF_CARD = {
+  expert_id: "Alex",
+  expert_name: "Alex",
+  brief: "Draft the PRD",
+};
 
 const HELD_HANDOFF: MessagePart = {
   type: "tool-delegate_to_expert",
@@ -187,6 +192,7 @@ describe("a hand-off held for approval", () => {
               id: "h1",
               tool: "delegate_to_expert",
               args: { expert_id: "Alex", prompt: "Draft the PRD" },
+              extra: { handoff: HANDOFF_CARD },
             }),
             editable: true,
           },
@@ -219,9 +225,13 @@ describe("a hand-off held for approval", () => {
         reviews: [
           {
             approved: true,
+            // The backend reads the edit from the card (edited_args).
             reviewed_data: {
-              expert_id: "Alex",
-              prompt: "Draft the PRD, scope only",
+              tool: "delegate_to_expert",
+              handoff: {
+                ...HANDOFF_CARD,
+                brief: "Draft the PRD, scope only",
+              },
             },
           },
         ],
