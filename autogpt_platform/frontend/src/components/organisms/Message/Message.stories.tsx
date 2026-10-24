@@ -80,7 +80,7 @@ export const LinkSafetyModal: Story = {
   name: "LinkSafetyModal",
   render: () => (
     <div className="flex flex-col gap-4">
-      <Text variant="body" as="p" className="leading-5 text-muted-foreground">
+      <Text variant="body-tight" as="p" className="text-muted-foreground">
         Click the external link below to trigger the link safety modal. Verify
         that both &quot;Copy link&quot; and &quot;Open link&quot; buttons are
         visible.
