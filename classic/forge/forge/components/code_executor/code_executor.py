@@ -280,6 +280,21 @@ class CodeExecutorComponent(
         logger.debug("App is not running in a Docker container")
         return self._run_python_code_in_docker(file_path, args, timeout, env_vars)
 
+    @staticmethod
+    def _command_name_variants(command_token: str) -> set[str]:
+        """Return the spellings of an executable that a name list should match.
+
+        The program that actually runs is determined by the OS from the first
+        token of ``shlex.split(command_line)``. A denylist of bare command names
+        (e.g. ``rm``) must therefore be compared against both the raw first
+        token and its basename, so that a path- or ``./``-qualified spelling of
+        the same program (``/bin/rm``, ``/usr/bin/rm``, ``./rm``) cannot slip
+        past the filter. Returns the raw token and its basename.
+        """
+        variants = {command_token, os.path.basename(command_token)}
+        variants.discard("")
+        return variants
+
     def validate_command(self, command_line: str) -> tuple[bool, bool]:
         """Check whether a command is allowed and whether it may be executed in a shell.
 
@@ -297,12 +312,27 @@ class CodeExecutorComponent(
         if not command_line:
             return False, False
 
-        command_name = shlex.split(command_line)[0]
+        try:
+            tokens = shlex.split(command_line)
+        except ValueError:
+            # Unparsable command line (e.g. unbalanced quotes); fail closed.
+            return False, False
+        if not tokens:
+            return False, False
+
+        command_name = tokens[0]
 
         if self.config.shell_command_control == "allowlist":
+            # Allowlist stays a strict, fail-closed exact match on the invoked
+            # token: an operator must list exactly what they permit.
             return command_name in self.config.shell_allowlist, False
         elif self.config.shell_command_control == "denylist":
-            return command_name not in self.config.shell_denylist, False
+            # Match the denylist against both the raw first token and its
+            # basename, so a path-prefixed / "./"-qualified spelling of a denied
+            # program (e.g. "/bin/rm" vs "rm") cannot bypass the denylist.
+            command_names = self._command_name_variants(command_name)
+            denied = bool(command_names & set(self.config.shell_denylist))
+            return not denied, False
         else:
             return True, True
 
