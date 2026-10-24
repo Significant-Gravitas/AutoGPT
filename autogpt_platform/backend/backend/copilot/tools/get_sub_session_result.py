@@ -20,7 +20,6 @@ re-verified on every call by loading the ChatSession and comparing its
 import json
 import logging
 import time
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend.copilot import stream_registry
@@ -293,11 +292,6 @@ class GetSubSessionResultTool(BaseTool):
         )
 
 
-# How long a broker that accepted a publish whose confirm was lost could
-# still take to deliver it. Past this an empty thread was never sent.
-_DELIVERY_GRACE = timedelta(minutes=2)
-
-
 def _nothing_reached(sub: ChatSession) -> bool:
     """An idle thread with no messages and no stream meta: no turn was ever
     dispatched to it, or the dispatch failed at the publish (the meta is
@@ -310,19 +304,18 @@ def _nothing_reached_response(
     sub: ChatSession, inner_session_id: str, parent_session_id: str | None, actor: str
 ) -> SubSessionStatusResponse:
     """Polling a thread nothing reached would otherwise read "running"
-    forever, though no turn is coming unless a late delivery arrives."""
-    age = datetime.now(UTC) - sub.started_at
-    young = age < _DELIVERY_GRACE
+    forever. From here a task the broker never got cannot be told from one it
+    still holds (a lost confirm, a stopped executor), so it is "unconfirmed"
+    at any age and never advice to send again, which could run it twice."""
     return SubSessionStatusResponse(
         message=(
-            f"Nothing has reached {actor}'s thread yet. A send can take a "
-            "moment to arrive: check again in a minute before sending it again."
-            if young
-            else f"Nothing ever reached {actor}'s thread: the task was not "
-            "sent, so it is safe to send it again."
+            f"Nothing has reached {actor}'s thread, and from here it can't be "
+            "confirmed whether the task was delivered: it may still arrive. "
+            "Don't send it again on this basis. Tell the user it may not have "
+            "started and point them to the thread."
         ),
         session_id=parent_session_id,
-        status="queued" if young else "error",
+        status="unconfirmed",
         sub_session_id=inner_session_id,
         sub_autopilot_session_id=inner_session_id,
         sub_autopilot_session_link=_sub_session_link(inner_session_id),

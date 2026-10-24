@@ -1417,11 +1417,19 @@ class TestAThreadNothingReached:
             no_stream,
         )
 
+    @pytest.mark.parametrize(
+        "age", [timedelta(seconds=20), timedelta(minutes=10), timedelta(days=2)]
+    )
     @pytest.mark.asyncio
-    async def test_a_young_empty_thread_is_not_picked_up_yet(
-        self, monkeypatch, mock_waiter
+    async def test_an_empty_thread_is_unconfirmed_and_never_resent(
+        self, monkeypatch, mock_waiter, age
     ):
-        self._empty_thread(monkeypatch, timedelta(seconds=20))
+        """From an empty thread alone a task the broker never got cannot be
+        told from one it still holds (a lost confirm, a stopped executor), so
+        whatever its age it is "unconfirmed", never "safe to send again", and
+        never "queued", whose live view turns an idle session into
+        "completed" (CodeRabbit)."""
+        self._empty_thread(monkeypatch, age)
         r = await GetSubSessionResultTool()._execute(
             user_id="alice",
             session=_session("alice"),
@@ -1429,22 +1437,7 @@ class TestAThreadNothingReached:
             wait_if_running=30,
         )
         assert isinstance(r, SubSessionStatusResponse)
-        assert r.status == "queued"
-        assert "Nothing has reached" in r.message
-        assert "check again" in r.message
-        mock_waiter.result_mock.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_an_old_empty_thread_was_never_sent(self, monkeypatch, mock_waiter):
-        self._empty_thread(monkeypatch, timedelta(minutes=10))
-        r = await GetSubSessionResultTool()._execute(
-            user_id="alice",
-            session=_session("alice"),
-            sub_session_id="inner-7",
-            wait_if_running=30,
-        )
-        assert isinstance(r, SubSessionStatusResponse)
-        assert r.status == "error"
-        assert "Nothing ever reached" in r.message
-        assert "safe to send it again" in r.message
+        assert r.status == "unconfirmed"
+        assert "Don't send it again" in r.message
+        assert "safe to send" not in r.message
         mock_waiter.result_mock.assert_not_awaited()

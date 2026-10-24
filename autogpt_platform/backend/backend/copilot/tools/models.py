@@ -471,7 +471,13 @@ class SubSessionStatusResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
     status: Literal[
-        "running", "completed", "cancelled", "error", "queued", "transferred"
+        "running",
+        "completed",
+        "cancelled",
+        "error",
+        "queued",
+        "transferred",
+        "unconfirmed",
     ] = Field(
         description=(
             "Current state of the child session.  ``queued`` means the "
@@ -480,7 +486,9 @@ class SubSessionStatusResponse(ToolResponseBase):
             "existing turn on its next drain.  ``transferred`` is terminal "
             "for the caller: ``handoff_to_expert`` gave the task away, so no "
             "result is coming back and there is nothing to poll — the "
-            "receiving expert now owns it and reports to the user directly."
+            "receiving expert now owns it and reports to the user directly.  "
+            "``unconfirmed``: nothing has reached the thread and delivery "
+            "can't be confirmed; it must not be sent again on that basis."
         ),
     )
     sub_session_id: str = Field(
