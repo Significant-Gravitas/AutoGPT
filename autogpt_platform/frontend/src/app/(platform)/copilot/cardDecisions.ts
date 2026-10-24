@@ -72,6 +72,12 @@ export function getCardDecisions(
   return decisions;
 }
 
+/** Text made only of card decision lines: the card's protocol, which is never
+ *  put back in the composer for the user to edit. */
+export function isDecisionOnlyText(text: string): boolean {
+  return decisionsFromText(text) !== null;
+}
+
 function decisionsFromMetadata(metadata: unknown): CardDecision[] | null {
   if (!metadata || typeof metadata !== "object") return null;
   const { kind, decisions } = metadata as Record<string, unknown>;

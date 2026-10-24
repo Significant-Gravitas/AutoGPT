@@ -427,4 +427,20 @@ describe("a proposal card the chat already answered", () => {
     expect(screen.getByText("You approved hiring Maya")).toBeDefined();
     expect(screen.queryByText("You declined hiring Maya")).toBeNull();
   });
+
+  it("asks again when the decision could not be sent", async () => {
+    const user = userEvent.setup();
+    const failed = Promise.reject(new Error("refused"));
+    void failed.catch(() => undefined);
+    const onSend = vi.fn(() => failed);
+    render(<Chat messages={[ask, hireCard]} onSend={onSend} />);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Send decisions" }),
+    ).toBeDefined();
+    expect(screen.queryByText("Sent")).toBeNull();
+  });
 });

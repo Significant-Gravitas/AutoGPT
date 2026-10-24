@@ -457,37 +457,47 @@ describe("ChatContainer", () => {
     expect(onSend.mock.calls[0][0]).toBe("Continue from where you left off.");
   });
 
-  it("resumes a failed turn a card decision started instead of answering the card again", () => {
-    const onSend = vi.fn();
-    render(
-      <ChatContainer
-        {...baseProps}
-        onSend={onSend}
-        messages={[
-          {
-            id: "ask",
-            role: "user",
-            parts: [{ type: "text", text: "hire someone for marketing" }],
-          },
-          {
-            id: "decision",
-            role: "user",
-            parts: [
-              {
-                type: "text",
-                text: "Approved: hire Maya (confirmation_id: c-1).",
-              },
-            ],
-          },
-        ]}
-      />,
-    );
+  it.each([
+    ["saved", "s1-seq-3", "Continue from where you left off."],
+    [
+      "never saved",
+      "optimistic-1",
+      "Approved: hire Maya (confirmation_id: c-1).",
+    ],
+  ])(
+    "retries a turn a card decision started: %s decision",
+    (_, decisionID, expected) => {
+      const onSend = vi.fn();
+      render(
+        <ChatContainer
+          {...baseProps}
+          onSend={onSend}
+          messages={[
+            {
+              id: "s1-seq-1",
+              role: "user",
+              parts: [{ type: "text", text: "hire someone for marketing" }],
+            },
+            {
+              id: decisionID,
+              role: "user",
+              parts: [
+                {
+                  type: "text",
+                  text: "Approved: hire Maya (confirmation_id: c-1).",
+                },
+              ],
+            },
+          ]}
+        />,
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+      fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
 
-    expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend.mock.calls[0][0]).toBe("Continue from where you left off.");
-  });
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onSend.mock.calls[0][0]).toBe(expected);
+    },
+  );
 
   it.each([false, true])(
     "shows an error when retrying fails (held call: %s)",

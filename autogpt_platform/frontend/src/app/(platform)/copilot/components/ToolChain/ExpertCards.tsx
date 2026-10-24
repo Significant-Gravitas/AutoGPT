@@ -654,17 +654,19 @@ export function ExpertChangeGroup({
         decisionLine({ ...proposal, decision: decisions[proposal.toolCallId] }),
       )
       .join("\n");
-    // The card stays marked sent because the message is already in the
-    // thread for Retry — the failure only needs saying.
-    void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
-      toastSendFailure({
-        title: "Couldn't send message",
-        error,
-        recovery: "it is still in the thread, use Retry to send it again",
-        paywallRecovery:
-          "it is still in the thread, use Retry once you have a plan",
-      }),
-    );
+    // Once sent, the card shows the answer the chat holds; a send that never
+    // landed (refused before it was saved) leaves the card asking again.
+    void Promise.resolve(actions.onSend(message))
+      .catch((error: unknown) =>
+        toastSendFailure({
+          title: "Couldn't send message",
+          error,
+          recovery: "it is still in the thread, use Retry to send it again",
+          paywallRecovery:
+            "it is still in the thread, use Retry once you have a plan",
+        }),
+      )
+      .finally(() => setSent(false));
   }
 
   const pager = visible.length > 1 && (
