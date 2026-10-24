@@ -394,20 +394,43 @@ class PublicProjectionTests(unittest.TestCase):
         self.assertNotIn(CANARY, stderr.getvalue())
 
     def test_repository_data_cannot_redirect_generated_files_through_symlinks(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            outside = root / "must-not-change.txt"
-            outside.write_text(CANARY, encoding="utf-8")
-            try:
-                (root / "SECURITY.md").symlink_to(outside)
-            except OSError:
-                self.skipTest("Symlink creation is not available on this host")
-            with patch.object(sync, "fetch_advisories") as fetch, self.assertRaises(
-                api.PublicDataError
-            ):
-                sync.prepare_credits(root, "0" * 64)
-            fetch.assert_not_called()
-            self.assertEqual(outside.read_text(encoding="utf-8"), CANARY)
+        item = advisory()
+        digest = sync.snapshot_digest(sync.public_snapshot([item]))
+        original = {
+            Path("SECURITY.md"): POLICY,
+            sync.SNAPSHOT_PATH: sync.snapshot_text(EMPTY),
+        }
+        for relative in (Path("."), Path(".github"), *original):
+            with self.subTest(path=str(relative)), TemporaryDirectory() as directory:
+                root = Path(directory) / "checkout"
+                outside = Path(directory) / "outside"
+                (outside / ".github").mkdir(parents=True)
+                for path, content in original.items():
+                    (outside / path).write_text(content, encoding="utf-8")
+                link = root / relative
+                link.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    link.symlink_to(
+                        outside / relative,
+                        target_is_directory=relative in (Path("."), Path(".github")),
+                    )
+                except OSError:
+                    self.skipTest("Symlink creation is not available on this host")
+                (root / ".github").mkdir(exist_ok=True)
+                for path, content in original.items():
+                    if not (root / path).exists():
+                        (root / path).write_text(content, encoding="utf-8")
+                with patch.object(
+                    sync, "fetch_advisories", return_value=[item]
+                ) as fetch, self.assertRaises(api.PublicDataError) as raised:
+                    sync.prepare_credits(root, digest)
+                self.assertIs(raised.exception.code, api.PublicErrorCode.FILE_SYMLINK)
+                fetch.assert_not_called()
+                for location in (root, outside):
+                    for path, content in original.items():
+                        self.assertEqual(
+                            (location / path).read_text(encoding="utf-8"), content
+                        )
 
 
 class ReleaseWriterTests(unittest.TestCase):
