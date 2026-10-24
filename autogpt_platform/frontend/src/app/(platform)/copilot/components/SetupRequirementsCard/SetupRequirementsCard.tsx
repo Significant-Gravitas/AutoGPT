@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useContext, useEffect, useId, useMemo, useState } from "react";
+import { useContext, useEffect, useId, useState } from "react";
 import {
   ChainActionsContext,
   type ChainActions,
@@ -99,13 +99,10 @@ export function SetupRequirementsCard({
     (requirements as Record<string, unknown>)?.inputs,
   );
 
-  // Stabilised on the raw prop: `expectedInputs` is rebuilt every render.
-  const initialValues = useMemo(
-    () =>
-      extractInitialValues(
-        coerceExpectedInputs((requirements as Record<string, unknown>)?.inputs),
-      ),
-    [requirements],
+  // Derived from the raw prop, so the compiler caches it on `requirements`:
+  // `expectedInputs` is rebuilt every render.
+  const initialValues = extractInitialValues(
+    coerceExpectedInputs((requirements as Record<string, unknown>)?.inputs),
   );
 
   const [inputValues, setInputValues] =
@@ -132,16 +129,12 @@ export function SetupRequirementsCard({
   // Build siblingInputs for credential modal host prefill. In edit mode we also
   // include the live form values; in preview mode there is no form so only
   // discriminator-derived values contribute.
-  const siblingInputs = useMemo(() => {
-    const fromCreds = buildSiblingInputsFromCredentials(
-      output.setup_info.user_readiness?.missing_credentials,
-    );
-    return isEditMode ? { ...inputValues, ...fromCreds } : fromCreds;
-  }, [
+  const fromCreds = buildSiblingInputsFromCredentials(
     output.setup_info.user_readiness?.missing_credentials,
-    inputValues,
-    isEditMode,
-  ]);
+  );
+  const siblingInputs = isEditMode
+    ? { ...inputValues, ...fromCreds }
+    : fromCreds;
 
   function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
@@ -342,7 +335,10 @@ export function SetupRequirementsCard({
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text
+            variant="small"
+            className="w-fit border-b text-foreground-tertiary"
+          >
             {credentialsLabel ??
               (isEditMode ? "Credentials" : "Workflow credentials")}
           </Text>
@@ -362,7 +358,10 @@ export function SetupRequirementsCard({
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text
+            variant="small"
+            className="w-fit border-b text-foreground-tertiary"
+          >
             Inputs
           </Text>
           {inputSchema && (

@@ -197,6 +197,10 @@ model User {
   defaultChatCredentialId String?
 
   subscriptionTier  SubscriptionTier   @default(NO_TIER)
+  // When the tier last dropped from a plan or trial to NO_TIER, through
+  // set_subscription_tier or the trial reconcile, which clear it when they set
+  // a tier again. Product mail keeps reaching the account for 7 days.
+  subscriptionEndedAt DateTime?
   subscriptionTrial SubscriptionTrial?
   paidUsageActivation PaidUsageActivation?
   proActivationAttempt ProActivationAttempt?
@@ -760,6 +764,11 @@ model UserWorkspaceFile {
   deletedAt DateTime?
 
   metadata Json @default("{}")
+
+  // Otto's own working file (a parked tool output, its build scratchpad),
+  // kept out of the user's file lists. Decided once at write time; see
+  // backend/data/workspace_internal.py.
+  isInternal Boolean @default(false)
 
   // User-level organization. Null = root. The folder API soft-deletes
   // folders and reparents files to root; SetNull is a hard-delete safety net.

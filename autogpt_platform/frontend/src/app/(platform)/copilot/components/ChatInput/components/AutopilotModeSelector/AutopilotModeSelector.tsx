@@ -50,14 +50,16 @@ export function AutopilotModeSelector({
             aria-label={`Approval mode: ${current.label}. Change mode`}
             title={`Approval mode: ${current.label}`}
             className={cn(
+              // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
               "inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
               isDefault
-                ? "w-8 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+                ? "w-8 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
                 : "px-2.5",
               mode === "ask_first" &&
-                "bg-zinc-100 text-zinc-700 hover:bg-zinc-200",
+                "bg-surface-hover text-foreground-body hover:bg-surface-active",
               mode === "unsupervised" &&
-                "bg-amber-50 text-amber-700 hover:bg-amber-100",
+                // TODO(tokens): no exact role for hover:bg-amber-100
+                "bg-warning-surface text-warning-foreground hover:bg-amber-100",
               disabled && "opacity-40",
             )}
           >
@@ -66,7 +68,7 @@ export function AutopilotModeSelector({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel className="text-xs font-medium text-zinc-500">
+          <DropdownMenuLabel className="text-xs font-medium text-foreground-tertiary">
             Approvals in this chat
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={mode} onValueChange={selectMode}>
@@ -77,10 +79,10 @@ export function AutopilotModeSelector({
                 className="items-start"
               >
                 <span className="flex flex-col gap-0.5">
-                  <span className="font-medium text-zinc-900">
+                  <span className="font-medium text-foreground-strong">
                     {option.label}
                   </span>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-foreground-tertiary">
                     {option.description}
                   </span>
                 </span>

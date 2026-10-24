@@ -43,20 +43,24 @@ export const TimeInput: React.FC<TimeInputProps> = ({
 
   const baseStyles = cn(
     // Base styles
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black",
-    "placeholder:font-normal placeholder:text-zinc-500",
+    "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base",
+    "placeholder:font-normal placeholder:text-placeholder",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     className,
   );
 
   const errorStyles =
-    error && "!border !border-red-500 focus:border-red-500 focus:ring-red-500";
+    error && "!border !border-error focus:border-error focus:ring-error";
 
   const input = (
-    <div className={cn("relative", wrapperClassName)}>
+    <div
+      data-slot="time-input-wrapper"
+      className={cn("relative", wrapperClassName)}
+    >
       <input
+        data-slot="time-input-control"
         type="time"
         value={value}
         onChange={handleChange}
@@ -65,10 +69,10 @@ export const TimeInput: React.FC<TimeInputProps> = ({
           errorStyles,
           // Size variants
           size === "small" && [
-            "h-[2.25rem]", // 36px
+            "h-9", // 36px
             "py-2",
-            "text-sm leading-[22px]", // 14px font, 22px line height
-            "placeholder:text-sm placeholder:leading-[22px]",
+            "text-body", // 14px font, 22px line height
+            "placeholder:text-body",
           ],
           size === "medium" && [
             "h-[2.875rem]", // 46px (current default)
@@ -86,13 +90,18 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   );
 
   const inputWithError = (
-    <div className={cn("relative mb-6", wrapperClassName)}>
+    <div
+      data-slot="time-input-field"
+      className={cn("relative mb-6", wrapperClassName)}
+    >
       {input}
       <Text
+        data-slot="time-input-error"
         variant="small-medium"
         as="span"
+        tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+          "absolute left-0 top-full mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -105,13 +114,21 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   return hideLabel || !label ? (
     inputWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+    <label data-slot="time-input" htmlFor={id} className="flex flex-col gap-2">
+      <div
+        data-slot="time-input-header"
+        className="flex items-center justify-between"
+      >
+        <Text data-slot="time-input-label" variant="body-medium" as="span">
           {label}
         </Text>
         {hint ? (
-          <Text variant="small" as="span" className="!text-zinc-400">
+          <Text
+            data-slot="time-input-hint"
+            variant="small"
+            as="span"
+            tone="subtle"
+          >
             {hint}
           </Text>
         ) : null}

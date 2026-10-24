@@ -14,8 +14,17 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import posthog from "posthog-js";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import OnboardingPage from "../page";
 import { NO_PAYWALL_STEPS, PAYWALL_LAST_STEPS } from "../store";
 import { useOnboardingWizardStore } from "../store";
@@ -83,6 +92,10 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
       ? recordingStoreState.meta
       : null,
   clearRecording: async () => {
+    recordingStoreState.parts = [];
+    recordingStoreState.meta = null;
+  },
+  clearSkippedRecordings: async () => {
     recordingStoreState.parts = [];
     recordingStoreState.meta = null;
   },
@@ -482,6 +495,39 @@ describe("onboarding brain dump — typed fallback", () => {
     // has already refused the microphone.
     expect(screen.queryByRole("button", { name: "record instead" })).toBeNull();
   });
+
+  // No microphone, or one another app holds: Talk used to do nothing at all.
+  it.each([
+    new DOMException("", "NotFoundError"),
+    new DOMException("", "NotReadableError"),
+    new TypeError("navigator.mediaDevices is undefined"),
+  ])(
+    "says the microphone couldn't open and offers Write when it fails with $name",
+    async (failure) => {
+      vi.mocked(posthog.capture).mockClear();
+      getUserMedia.mockRejectedValue(failure);
+      landOnPainPointsStep();
+
+      render(<OnboardingPage />);
+      await screen.findByText(DUMP_HEADLINE);
+      await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+
+      expect(
+        await screen.findByText(
+          "We couldn't open your microphone. You can write it instead.",
+        ),
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
+      // Unlike a denial, this can be fixed on the device, so Talk stays.
+      expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
+      expect(posthog.capture).toHaveBeenCalledWith("brain_dump_mic_failed", {
+        error_name: failure.name,
+      });
+      expect(
+        vi.mocked(posthog.capture).mock.calls.map(([event]) => event),
+      ).not.toContain("brain_dump_permission_denied");
+    },
+  );
 
   it("opens the typed composer from the rest state via Write", async () => {
     landOnPainPointsStep();
@@ -1040,10 +1086,53 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
-    // Already gone while the record is unanswered, so Back to the step
-    // cannot offer the abandoned take again.
-    expect(recordingStoreState.parts).toHaveLength(0);
+    // The take stays for Back, and the skip is recorded as a take of its
+    // own, so sending the recording later is not read as already done.
+    expect(recordingStoreState.parts).toHaveLength(1);
+    expect(skip.skipBodies[0]).not.toMatchObject({
+      recording_id: recordingStoreState.parts[0].recordingId,
+    });
     skip.release();
+  });
+
+  it("says why a take failed, and still offers the recording after skipping and going Back", async () => {
+    finalizeReturns({ status: "failed", error_code: "storage_failed" });
+    const objectURLs = [
+      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:dump"),
+      vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined),
+    ];
+    const downloads: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
+    onTestFinished(() => {
+      click.mockRestore();
+      objectURLs.forEach((spy) => spy.mockRestore());
+    });
+
+    await recordAndSend();
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(
+      screen.getByText("We couldn't store your recording on our side."),
+    ).toBeDefined();
+    const recordingID = recordingStoreState.parts[0].recordingId;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continue without it" }),
+    );
+    await screen.findByTestId("step-hire");
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(
+      await screen.findByText("Pick up where you left off?"),
+    ).toBeDefined();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Download recording" }),
+    );
+    await waitFor(() =>
+      expect(downloads).toEqual([`brain-dump-${recordingID}.webm`]),
+    );
   });
 
   it("opens the typed composer from the recovery screen", async () => {

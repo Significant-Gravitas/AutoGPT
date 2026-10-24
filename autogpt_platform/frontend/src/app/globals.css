@@ -269,3 +269,128 @@ body[data-google-picker-open="true"] [data-dialog-content] {
   font-size: 15px;
   line-height: 1.5rem;
 }
+
+/* DS2b keyframes */
+
+/* GlassOrb (molecules/GlassOrb): each blob turns on its own spinner and
+   drifts inside it. */
+@keyframes glass-orb-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes glass-orb-drift-1 {
+  from {
+    transform: rotate(-10deg) translate(0%, 0%) scale(1);
+  }
+  to {
+    transform: rotate(32deg) translate(8%, 12%) scale(1.12);
+  }
+}
+
+@keyframes glass-orb-drift-2 {
+  from {
+    transform: rotate(14deg) translate(0%, 0%) scale(1.05);
+  }
+  to {
+    transform: rotate(-24deg) translate(-10%, 6%) scale(0.92);
+  }
+}
+
+@keyframes glass-orb-drift-3 {
+  from {
+    transform: rotate(4deg) translate(-4%, 0%) scale(0.95);
+  }
+  to {
+    transform: rotate(-30deg) translate(10%, -12%) scale(1.15);
+  }
+}
+
+@keyframes glass-orb-drift-4 {
+  from {
+    transform: rotate(-22deg) translate(6%, -6%) scale(1.1);
+  }
+  to {
+    transform: rotate(18deg) translate(-6%, 10%) scale(0.9);
+  }
+}
+
+@keyframes glass-orb-drift-5 {
+  from {
+    transform: rotate(26deg) translate(-8%, 4%) scale(1);
+  }
+  to {
+    transform: rotate(-14deg) translate(6%, -8%) scale(1.18);
+  }
+}
+
+/* DS5g keyframes */
+/* Copilot loaders, moved unchanged from the OrbitLoader, PixelGridLoader and
+   ScaleLoader CSS modules. The modules scoped the names, so they are prefixed
+   here. */
+@keyframes orbit-loader-rotate {
+  0% {
+    transform: rotate(0deg) scale(0.8);
+  }
+  50% {
+    transform: rotate(360deg) scale(1.2);
+  }
+  100% {
+    transform: rotate(720deg) scale(0.8);
+  }
+}
+
+@keyframes orbit-loader-ball1 {
+  0% {
+    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+  }
+  50% {
+    box-shadow: 0 0 0 #18181b;
+    margin-bottom: 0;
+    transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
+  }
+  100% {
+    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+    margin-bottom: calc(var(--gap));
+  }
+}
+
+@keyframes orbit-loader-ball2 {
+  0% {
+    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+  }
+  50% {
+    box-shadow: 0 0 0 #a1a1aa;
+    margin-top: calc(var(--ball-size) * -1);
+    transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
+  }
+  100% {
+    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+    margin-top: 0;
+  }
+}
+
+@keyframes pixel-grid-loader-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-loader-grow {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}

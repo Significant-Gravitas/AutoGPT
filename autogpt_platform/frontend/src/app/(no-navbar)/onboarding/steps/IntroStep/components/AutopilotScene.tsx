@@ -35,7 +35,7 @@ export function AutopilotScene() {
               <Icon
                 icon={ArrowRight01Icon}
                 size={16}
-                className="shrink-0 text-purple-500"
+                className="shrink-0 text-brand"
               />
               <Text variant="body" as="span">
                 {point}

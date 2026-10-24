@@ -103,6 +103,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const [actionEntries, setActionEntries] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
+  // Kept as memos with the compiler on: the cards' register effects depend on
+  // this context value, and re-running them would re-register every card.
   const register = useCallback((entry: ChainActionEntry) => {
     setActionEntries((prev) => {
       const next = new Map(prev);
@@ -213,6 +215,10 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   useCredentialFailureCounters({ entries: actionEntries });
 
+  // Kept as a memo: the compiler folds this into the scope of everything
+  // rendered below the early return, so without it the rows would be rebuilt
+  // whenever the chain expands, starts or stops streaming, or a card
+  // registers.
   const rows = useMemo(
     () =>
       markSupersededSubSessionRows(
@@ -304,21 +310,23 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               onClick={() => setManualExpanded(!open)}
               aria-expanded={panelOpen}
               aria-controls={panelId}
-              className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-zinc-100"
+              className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-surface-hover"
             >
               <SwapText
                 text={heading}
                 shimmer={isStreaming && !expanded}
                 className={
                   "min-w-0 text-sm font-normal " +
-                  (hasError && !isStreaming ? "text-red-500" : "text-zinc-700")
+                  (hasError && !isStreaming
+                    ? "text-error"
+                    : "text-foreground-body")
                 }
               />
               <Icon
                 icon={ArrowDown01Icon}
                 size={12}
                 className={
-                  "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
+                  "shrink-0 text-foreground-subtle transition-transform duration-300 ease-out-quint " +
                   (open ? "rotate-180" : "")
                 }
               />
@@ -406,14 +414,14 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                   </AnimatePresence>
                   {showDone && (
                     <div className="flex items-stretch gap-2.5">
-                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
                         <Icon
                           icon={Tick02Icon}
                           size={14}
-                          className="text-zinc-600"
+                          className="text-foreground-secondary"
                         />
                       </div>
-                      <div className="flex h-7 items-center text-sm text-zinc-600">
+                      <div className="flex h-7 items-center text-sm text-foreground-secondary">
                         Done
                       </div>
                     </div>
@@ -466,8 +474,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             still need somewhere to send from. */}
         {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
-            <span className="flex items-center gap-1.5 text-sm text-zinc-600">
-              <Icon icon={SentIcon} size={16} className="text-zinc-400" />
+            <span className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+              <Icon
+                icon={SentIcon}
+                size={16}
+                className="text-foreground-subtle"
+              />
               {allActionsReady
                 ? "Everything's filled in"
                 : "Complete the steps above to continue"}

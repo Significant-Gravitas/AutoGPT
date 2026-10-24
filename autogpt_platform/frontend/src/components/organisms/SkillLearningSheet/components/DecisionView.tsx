@@ -36,7 +36,8 @@ export function DecisionView({
   return (
     <section
       aria-label="Needs your decision"
-      className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3"
+      data-slot="skill-learning-sheet-decision"
+      className="flex flex-col gap-3 rounded-xl border border-warning-border bg-warning-surface/60 p-3"
     >
       <Text variant="small-medium" tone="primary">
         Needs your decision
@@ -44,9 +45,17 @@ export function DecisionView({
       <Text variant="small" tone="secondary">
         {proposal.summary || proposal.description} — {proposal.state_reason}
       </Text>
-      <ul className="flex flex-col gap-2" aria-label="Proposed changes by step">
+      <ul
+        data-slot="skill-learning-sheet-decision-list"
+        className="flex flex-col gap-2"
+        aria-label="Proposed changes by step"
+      >
         {changes.map((change) => (
-          <li key={change.step} className="rounded-md bg-white p-2">
+          <li
+            key={change.step}
+            data-slot="skill-learning-sheet-decision-item"
+            className="rounded-md bg-surface p-2"
+          >
             <Text variant="small-medium" tone="primary">
               {change.step}
             </Text>
@@ -63,7 +72,10 @@ export function DecisionView({
       </ul>
       <PackageFiles before={current?.files} after={proposal.files} />
       {hasPreviousDraft && !draft ? (
-        <div className="flex flex-col gap-2">
+        <div
+          data-slot="skill-learning-sheet-decision-recovery"
+          className="flex flex-col gap-2"
+        >
           <Text variant="small" tone="secondary">
             A newer proposal replaced the one you were editing. Your earlier
             draft is saved.
@@ -89,7 +101,10 @@ export function DecisionView({
         placeholder={stripFrontmatter(proposal.body ?? "").slice(0, 120)}
         onChange={(event) => onDraftChange(event.target.value)}
       />
-      <div className="flex flex-wrap gap-2">
+      <div
+        data-slot="skill-learning-sheet-decision-actions"
+        className="flex flex-wrap gap-2"
+      >
         <Button
           variant="secondary"
           size="small"

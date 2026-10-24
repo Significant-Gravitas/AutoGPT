@@ -36,7 +36,7 @@ export function MCPPresetPanel({ server, onSuccess, actions }: Props) {
   const methods = server.auth_methods;
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-zinc-600">
+      <Text variant="body" className="text-foreground-secondary">
         {server.setup_instructions}
       </Text>
       <Link href={server.documentation_url} isExternal variant="secondary">

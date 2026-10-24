@@ -94,6 +94,8 @@ interface Props {
   className?: string;
   inputId?: string;
   draftKey?: string;
+  /** Off leaves keyboard focus where it is, on mount and when re-enabled. */
+  autoFocus?: boolean;
   /** Files dropped onto the chat window by the parent. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
@@ -135,8 +137,10 @@ interface Props {
   atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
-// Memoised: the chat page re-renders on every streamed flush, and the
-// composer's props stay the same while the reply streams in.
+// memo-boundary: the chat page re-renders on every streamed flush, and the
+// composer's props stay the same while the reply streams in. The builder,
+// memory and team chats render it from folders the compiler does not cover,
+// so their parents do not cache its element.
 export const ChatInput = memo(function ChatInput({
   onSend,
   disabled = false,
@@ -150,6 +154,7 @@ export const ChatInput = memo(function ChatInput({
   className,
   inputId = "chat-input",
   draftKey,
+  autoFocus = true,
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
@@ -266,6 +271,7 @@ export const ChatInput = memo(function ChatInput({
       canSendEmpty: hasAttachments && !atReset,
       inputId,
       draftKey,
+      autoFocus,
       failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
 
@@ -450,14 +456,18 @@ export const ChatInput = memo(function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
+          // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)]
+          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
-            "gap-3 !rounded-3xl border-zinc-200 px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300",
+            // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)]
+            "gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
-            "!rounded-xl border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
+            // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.04)]; no fitting role for has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+            "!rounded-xl border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
           isRecording &&
+            // TODO(tokens): no exact role for border-red-400, ring-red-400, has-[[data-slot=input-group-control]:focus-visible]:border-red-400, has-[[data-slot=input-group-control]:focus-visible]:ring-red-400
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
@@ -606,7 +616,7 @@ export const ChatInput = memo(function ChatInput({
                   hasAttachments ? undefined : () => void handleEnqueue()
                 }
                 className={cn(
-                  "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+                  "size-[2.625rem] rounded-full border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
                   sendButtonClass,
                 )}
               >

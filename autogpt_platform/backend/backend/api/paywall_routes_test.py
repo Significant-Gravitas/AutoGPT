@@ -61,6 +61,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/memory/facts",
     "DELETE /api/memory/facts/{fact_uuid}",
     "GET /api/memory/overview",
+    "DELETE /api/memory/understanding",
+    "GET /api/memory/understanding",
     "GET /api/oauth/app/{client_id}",
     "PATCH /api/oauth/apps/{app_id}/logo",
     "PATCH /api/oauth/apps/{app_id}/status",
@@ -295,6 +297,7 @@ OPEN_WHILE_PAYWALLED = {
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
     "POST /api/auth/email/send",
+    "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
     "GET /api/chat/schema/tool-responses",

@@ -17,7 +17,10 @@ export default function GlobalError({ error, reset }: Props) {
   return (
     <html>
       <body>
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
+        <div
+          // TODO(tokens): no exact role for bg-gray-50 (#F9FAFB)
+          className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8"
+        >
           <div className="relative w-full max-w-xl lg:bottom-[4rem]">
             <ErrorCard
               responseError={{

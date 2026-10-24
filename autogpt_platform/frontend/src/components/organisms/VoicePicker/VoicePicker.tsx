@@ -50,15 +50,22 @@ export function VoicePicker({
   } = useVoicePicker({ onPick });
 
   return (
-    <div className={cn("flex flex-col", compact ? "gap-4" : "gap-6")}>
+    <div
+      data-slot="voice-picker"
+      className={cn("flex flex-col", compact ? "gap-4" : "gap-6")}
+    >
       {hideHeader ? null : (
-        <header className={cn("flex flex-col", compact ? "gap-1" : "gap-1.5")}>
+        <header
+          data-slot="voice-picker-header"
+          className={cn("flex flex-col", compact ? "gap-1" : "gap-1.5")}
+        >
           <h2
+            data-slot="voice-picker-title"
             className={cn(
               "text-foreground",
               compact
                 ? "text-base font-medium"
-                : "text-2xl font-semibold tracking-[-0.02em]",
+                : "text-2xl font-semibold tracking-heading",
             )}
           >
             {name
@@ -66,6 +73,7 @@ export function VoicePicker({
               : "How should this expert write?"}
           </h2>
           <p
+            data-slot="voice-picker-description"
             className={cn(
               "text-muted-foreground",
               compact ? "text-sm" : "text-base",
@@ -77,8 +85,13 @@ export function VoicePicker({
         </header>
       )}
 
-      <fieldset className={cn("flex flex-col", compact ? "gap-2" : "gap-3")}>
-        <legend className="sr-only">Writing voice</legend>
+      <fieldset
+        data-slot="voice-picker-options"
+        className={cn("flex flex-col", compact ? "gap-2" : "gap-3")}
+      >
+        <legend data-slot="voice-picker-legend" className="sr-only">
+          Writing voice
+        </legend>
         {samples.slice(0, 2).map((sample, index) => {
           const choice = index === 0 ? "a" : "b";
           return (
@@ -109,7 +122,10 @@ export function VoicePicker({
         />
       </fieldset>
 
-      <footer className="flex items-center justify-between gap-3">
+      <footer
+        data-slot="voice-picker-footer"
+        className="flex items-center justify-between gap-3"
+      >
         <Button
           variant="ghost"
           size={compact ? "small" : undefined}

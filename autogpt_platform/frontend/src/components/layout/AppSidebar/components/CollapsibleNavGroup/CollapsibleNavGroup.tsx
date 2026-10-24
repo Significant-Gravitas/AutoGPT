@@ -37,7 +37,7 @@ export function CollapsibleNavGroup({
       <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
-          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden max-md:h-11 max-md:text-sm"
+          className="text-body-sm font-medium leading-inherit text-foreground-tertiary group-data-[collapsible=icon]:hidden max-md:h-11 max-md:text-sm"
         >
           <CollapsibleTrigger>
             {label}

@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { motion, useReducedMotion } from "framer-motion";
-import { memo, useMemo, useState } from "react";
+import { memo, useState } from "react";
 import {
   haveSameMinimapRows,
   tickColor,
@@ -28,13 +28,15 @@ interface Props {
  * one reveals that turn's opening line, and clicking scrolls the transcript to
  * it, so a long thread stays navigable without dragging the scrollbar.
  */
+// memo-boundary: `messages` is a new array on every streamed flush, and the
+// comparator below renders the rail again only when the user rows change.
 export const ChatMinimap = memo(function ChatMinimap({
   messages,
   onJumpToUnmounted,
 }: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const reducedMotion = useReducedMotion();
-  const entries = useMemo(() => toMinimapEntries(messages), [messages]);
+  const entries = toMinimapEntries(messages);
 
   if (entries.length < 3) return null;
 
@@ -85,13 +87,13 @@ export const ChatMinimap = memo(function ChatMinimap({
                 }
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={reducedMotion ? { duration: 0 } : CARD_TRANSITION}
-                className="absolute left-[40px] top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm"
+                className="absolute left-[40px] top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm"
               >
-                <p className="truncate text-[15px] text-zinc-900">
+                <p className="truncate text-body-md leading-inherit text-foreground-strong">
                   {entry.title}
                 </p>
                 {entry.body && (
-                  <p className="mt-1 line-clamp-3 text-[15px] leading-relaxed text-zinc-400">
+                  <p className="mt-1 line-clamp-3 text-body-md leading-relaxed text-foreground-subtle">
                     {entry.body}
                   </p>
                 )}
