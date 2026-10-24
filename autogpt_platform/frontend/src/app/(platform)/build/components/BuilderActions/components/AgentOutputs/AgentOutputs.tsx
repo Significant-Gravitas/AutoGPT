@@ -10,7 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/__legacy__/ui/sheet";
+} from "@/components/molecules/Dialog/components/SheetPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
