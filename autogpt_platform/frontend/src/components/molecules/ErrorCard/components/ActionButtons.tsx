@@ -34,7 +34,7 @@ export function ActionButtons({
           onClick={onRetry}
           variant="outline"
           size="small"
-          className={textSize === "body-md" ? "text-body-md" : undefined}
+          textSize={textSize}
           data-slot="error-card-retry"
         >
           <Icon
@@ -50,7 +50,7 @@ export function ActionButtons({
         onClick={() => handleReportError(responseError, httpError, context)}
         variant="ghost"
         size="small"
-        className={textSize === "body-md" ? "text-body-md" : undefined}
+        textSize={textSize}
         data-slot="error-card-report"
       >
         <Icon data-slot="error-card-report-icon" icon={Bug01Icon} size={16} />
@@ -61,7 +61,7 @@ export function ActionButtons({
         as="NextLink"
         variant="ghost"
         size="small"
-        className={textSize === "body-md" ? "text-body-md" : undefined}
+        textSize={textSize}
         href="https://discord.gg/autogpt"
         target="_blank"
         rel="noopener noreferrer"

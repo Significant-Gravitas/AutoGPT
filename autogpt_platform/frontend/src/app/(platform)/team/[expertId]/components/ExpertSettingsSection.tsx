@@ -145,7 +145,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
         <Button
           variant="destructive"
           size="small"
-          className="text-body-md"
+          textSize="body-md"
           onClick={onFire}
           data-testid="expert-fire-button"
         >

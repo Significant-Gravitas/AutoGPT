@@ -110,7 +110,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
               <Button
                 variant="secondary"
                 size="small"
-                className="text-body-md"
+                textSize="body-md"
                 loading={isOpening}
                 disabled={!computer.e2b_active}
                 onClick={openDesktop}

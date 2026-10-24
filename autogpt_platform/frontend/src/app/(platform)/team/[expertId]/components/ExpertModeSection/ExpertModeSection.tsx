@@ -79,10 +79,10 @@ function ExpertModeOptions({ expert }: Props) {
                 aria-hidden="true"
               />
               <span className="flex flex-col gap-0.5">
-                <span className="text-body-md font-medium text-foreground-strong">
+                <Text variant="body-md-medium" as="span" tone="primary">
                   {option.label}
                   {option.value === DEFAULT_AUTOPILOT_MODE ? " (default)" : ""}
-                </span>
+                </Text>
                 <span className="text-xs text-foreground-tertiary">
                   {option.description}
                 </span>

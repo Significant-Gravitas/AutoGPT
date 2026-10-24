@@ -68,7 +68,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
                 <Button
                   variant="secondary"
                   size="small"
-                  className="text-body-md"
+                  textSize="body-md"
                   leadingIcon={Share01Icon}
                   disabled={
                     grantable.length === 0 || isError || isGrantableError
@@ -96,7 +96,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           <Button
             variant="secondary"
             size="small"
-            className="text-body-md"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >
@@ -134,7 +134,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           <Button
             variant="primary"
             size="small"
-            className="text-body-md"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >
@@ -144,7 +144,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
             <Button
               variant="secondary"
               size="small"
-              className="text-body-md"
+              textSize="body-md"
               leadingIcon={Share01Icon}
               onClick={openUseExisting}
             >

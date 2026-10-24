@@ -73,7 +73,7 @@ export function RecentConversations({
           <Button
             variant="primary"
             size="small"
-            className="text-body-md"
+            textSize="body-md"
             leadingIcon={BubbleChatIcon}
             onClick={onChat}
           >

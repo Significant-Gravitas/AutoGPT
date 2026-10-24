@@ -6,6 +6,7 @@ import {
   ComputerIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -71,10 +72,13 @@ export function DesktopStreamPreview({
   return (
     <div className="overflow-hidden rounded-lg border border-border-base">
       <div className="flex items-center justify-between border-b border-border-base bg-surface-muted px-3 py-2">
-        <div
+        <Text
+          variant={textSize}
+          as="div"
+          // text-sm's 20px line height, which text-body (22px) would change
           className={cn(
             "flex items-center gap-2 text-foreground-body",
-            textSize === "body-md" ? "text-body-md" : "text-sm",
+            textSize === "body" && "leading-5",
           )}
         >
           <Icon icon={ComputerIcon} size={16} />
@@ -82,7 +86,7 @@ export function DesktopStreamPreview({
           <span className="rounded bg-surface-active px-1.5 py-0.5 text-xs uppercase text-foreground-secondary">
             {value.provider}
           </span>
-        </div>
+        </Text>
         {!ownerOnly && (
           <div className="flex items-center gap-2">
             <button
@@ -107,14 +111,16 @@ export function DesktopStreamPreview({
         )}
       </div>
       {ownerOnly ? (
-        <div
+        <Text
+          variant={textSize}
+          as="div"
           className={cn(
             "flex aspect-video w-full items-center justify-center bg-action-hover px-6 text-center text-foreground-subtle",
-            textSize === "body-md" ? "text-body-md" : "text-sm",
+            textSize === "body" && "leading-5",
           )}
         >
           The live desktop is only visible to the owner of this chat.
-        </div>
+        </Text>
       ) : (
         <iframe
           ref={frameRef}

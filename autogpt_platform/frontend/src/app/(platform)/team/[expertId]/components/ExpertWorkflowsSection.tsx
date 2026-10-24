@@ -68,7 +68,7 @@ export function ExpertWorkflowsSection({
             <Button
               variant="secondary"
               size="small"
-              className="text-body-md"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >
@@ -128,7 +128,7 @@ export function ExpertWorkflowsSection({
             <Button
               variant="primary"
               size="small"
-              className="text-body-md"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >

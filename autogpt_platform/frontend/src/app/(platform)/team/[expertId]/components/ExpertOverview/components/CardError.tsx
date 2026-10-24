@@ -17,7 +17,7 @@ export function CardError({ message, onRetry }: Props) {
       <Button
         variant="secondary"
         size="small"
-        className="text-body-md"
+        textSize="body-md"
         onClick={() => void onRetry()}
       >
         Retry

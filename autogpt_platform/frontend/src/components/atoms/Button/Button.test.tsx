@@ -150,3 +150,22 @@ describe("Button slots", () => {
     expect(el.querySelector("[data-slot=button-icon]")).not.toBeNull();
   });
 });
+
+describe("Button textSize", () => {
+  it("keeps the size's text-body by default", () => {
+    renderButton({ size: "small", children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("text-body");
+    expect(el.className).not.toContain("text-body-md");
+  });
+
+  it("sets the label at text-body-md for body-md", () => {
+    renderButton({ size: "small", textSize: "body-md", children: "Save" });
+    const classes = screen
+      .getByRole("button", { name: "Save" })
+      .className.split(" ");
+    expect(classes).toContain("text-body-md");
+    expect(classes).not.toContain("text-body");
+    expect(classes).not.toContain("leading-5");
+  });
+});

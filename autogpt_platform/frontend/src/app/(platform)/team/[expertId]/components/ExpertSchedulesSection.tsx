@@ -67,7 +67,7 @@ export function ExpertSchedulesSection({
             <Button
               variant="secondary"
               size="small"
-              className="text-body-md"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
@@ -123,7 +123,7 @@ export function ExpertSchedulesSection({
             <Button
               variant="primary"
               size="small"
-              className="text-body-md"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >

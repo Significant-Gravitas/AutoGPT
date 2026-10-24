@@ -65,7 +65,7 @@ export function ExpertSkillsSection({
           <Button
             variant="secondary"
             size="small"
-            className="text-body-md"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
@@ -135,7 +135,7 @@ export function ExpertSkillsSection({
           <Button
             variant="primary"
             size="small"
-            className="text-body-md"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >

@@ -51,12 +51,8 @@ export function ToolbarSearch({
         value={value}
         onChange={handleChange}
         placeholder={label}
-        // The Input applies its size's text-body after className, so the
-        // profile-tab size needs the important modifier to win.
-        className={cn(
-          "rounded-full pl-10",
-          textSize === "body-md" && "!text-body-md",
-        )}
+        textSize={textSize}
+        className="rounded-full pl-10"
         wrapperClassName="!mb-0 w-full"
       />
     </div>

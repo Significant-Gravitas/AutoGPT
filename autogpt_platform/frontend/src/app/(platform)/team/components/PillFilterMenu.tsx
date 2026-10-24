@@ -50,6 +50,7 @@ export function PillFilterMenu<T extends string>({
           type="button"
           variant="secondary"
           size="small"
+          textSize={textSize}
           aria-label={`${label}: ${current.label}`}
           leadingIcon={current.icon}
           rightIcon={
@@ -61,7 +62,6 @@ export function PillFilterMenu<T extends string>({
           }
           className={cn(
             "group shrink-0 gap-1.5 font-medium",
-            textSize === "body-md" && "text-body-md",
             isActive &&
               "border-action-hover bg-action-hover text-action-foreground hover:border-action hover:bg-action [&_svg]:text-action-foreground",
           )}
