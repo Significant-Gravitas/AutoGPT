@@ -123,7 +123,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
             </div>
             <div
               // TODO(tokens): no exact role: border-slate-300 #B8BFCA, bg-slate-100 #EFF1F4
-              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs font-medium text-foreground-base"
+              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-caption font-medium leading-4 text-foreground-base"
             >
               {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
               item
@@ -139,7 +139,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
           </div>
           <div
             // TODO(tokens): no exact role: text-gray-600 #4B5563
-            className="text-sm text-gray-600"
+            className="text-body leading-5 text-gray-600"
           >
             {shouldGroupExecutions ? (
               <div>
@@ -159,7 +159,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   <Text
                     variant="body-medium"
                     // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                    className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                    className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-caption leading-4"
                   >
                     {execId}
                   </Text>
@@ -204,7 +204,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       <Text
                         variant="body-medium"
                         // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                        className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                        className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-caption leading-4"
                       >
                         {execution.execId}
                       </Text>

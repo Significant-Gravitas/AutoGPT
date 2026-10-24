@@ -91,7 +91,7 @@ export function ResolutionModeBar({
           // TODO(tokens): no exact role: text-amber-600 #D97706
           className="h-4 w-4 text-amber-600"
         />
-        <span className="text-sm text-warning-foreground">
+        <span className="text-body leading-5 text-warning-foreground">
           Remove incompatible connections
         </span>
         <Tooltip>
@@ -103,10 +103,12 @@ export function ResolutionModeBar({
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <p className="mb-2 font-semibold">Incompatible changes:</p>
-            <div className="text-xs">{renderIncompatibilities()}</div>
+            <div className="text-caption leading-4">
+              {renderIncompatibilities()}
+            </div>
             <p
               // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-              className="mt-2 text-xs text-gray-400"
+              className="mt-2 text-caption leading-4 text-gray-400"
             >
               {(incompatibilities?.newRequiredInputs.length ?? 0) > 0
                 ? "Replace / delete"

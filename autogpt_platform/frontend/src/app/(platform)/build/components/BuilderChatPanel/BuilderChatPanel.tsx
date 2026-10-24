@@ -83,7 +83,7 @@ export function BuilderChatPanel({ className }: Props) {
               ) : activeError && activeRetry ? (
                 <div
                   // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                  className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-slate-600"
+                  className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-body leading-5 text-slate-600"
                 >
                   <p
                     // TODO(tokens): no exact role: text-slate-800 #475263
@@ -101,7 +101,7 @@ export function BuilderChatPanel({ className }: Props) {
                     type="button"
                     onClick={activeRetry}
                     // TODO(tokens): no exact role: border-slate-300 #B8BFCA, text-slate-700 #475263, hover:bg-slate-50 #F7F8F9, focus-visible:ring-violet-400 #A78BFA
-                    className="rounded-md border border-slate-300 bg-surface px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                    className="rounded-md border border-slate-300 bg-surface px-3 py-1.5 text-body font-medium leading-5 text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                   >
                     Retry
                   </button>
@@ -109,7 +109,7 @@ export function BuilderChatPanel({ className }: Props) {
               ) : isBootstrapping ? (
                 <div
                   // TODO(tokens): no exact role: text-slate-500 #64748B
-                  className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500"
+                  className="flex flex-1 items-center justify-center px-4 py-6 text-body leading-5 text-slate-500"
                 >
                   Preparing builder chat…
                 </div>
@@ -145,7 +145,7 @@ export function BuilderChatPanel({ className }: Props) {
               ) : (
                 <div
                   // TODO(tokens): no exact role: text-slate-500 #64748B
-                  className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500"
+                  className="flex flex-1 items-center justify-center px-4 py-6 text-body leading-5 text-slate-500"
                 >
                   Open a workflow to start chatting with the builder.
                 </div>

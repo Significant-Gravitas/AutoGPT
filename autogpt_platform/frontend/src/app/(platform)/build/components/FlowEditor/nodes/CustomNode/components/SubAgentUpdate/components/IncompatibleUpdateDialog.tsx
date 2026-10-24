@@ -61,7 +61,7 @@ export function IncompatibleUpdateDialog({
         <div className="space-y-4">
           <p
             // TODO(tokens): no exact role: text-gray-600 #4B5563
-            className="text-sm text-gray-600"
+            className="text-body leading-5 text-gray-600"
           >
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
@@ -183,17 +183,14 @@ function TwoColumnSection({
   rightItems,
 }: TwoColumnSectionProps) {
   return (
-    <div
-      // TODO(tokens): no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border (a border colour)
-      className="rounded-md border border-gray-200 p-3"
-    >
+    <div className="rounded-md border border-sidebar-border p-3">
       <span className="font-medium">{title}</span>
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
           <div
             // TODO(tokens): no exact role: text-gray-500 #6B7280
-            className="flex items-center gap-1.5 text-sm text-gray-500"
+            className="flex items-center gap-1.5 text-body leading-5 text-gray-500"
           >
             {leftIcon}
             <span>{leftTitle}</span>
@@ -204,9 +201,9 @@ function TwoColumnSection({
                 <li
                   key={item}
                   // TODO(tokens): no exact role: text-gray-700 #374151
-                  className="text-sm text-gray-700"
+                  className="text-body leading-5 text-gray-700"
                 >
-                  <code className="rounded bg-error-surface px-1 py-0.5 font-mono text-xs text-error-foreground">
+                  <code className="rounded bg-error-surface px-1 py-0.5 font-mono text-caption leading-4 text-error-foreground">
                     {item}
                   </code>
                 </li>
@@ -214,7 +211,7 @@ function TwoColumnSection({
             ) : (
               <li
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="text-sm italic text-gray-400"
+                className="text-body italic leading-5 text-gray-400"
               >
                 None
               </li>
@@ -226,7 +223,7 @@ function TwoColumnSection({
         <div className="min-w-0">
           <div
             // TODO(tokens): no exact role: text-gray-500 #6B7280
-            className="flex items-center gap-1.5 text-sm text-gray-500"
+            className="flex items-center gap-1.5 text-body leading-5 text-gray-500"
           >
             {rightIcon}
             <span>{rightTitle}</span>
@@ -237,9 +234,9 @@ function TwoColumnSection({
                 <li
                   key={item}
                   // TODO(tokens): no exact role: text-gray-700 #374151
-                  className="text-sm text-gray-700"
+                  className="text-body leading-5 text-gray-700"
                 >
-                  <code className="rounded bg-success-surface px-1 py-0.5 font-mono text-xs text-success-foreground">
+                  <code className="rounded bg-success-surface px-1 py-0.5 font-mono text-caption leading-4 text-success-foreground">
                     {item}
                   </code>
                 </li>
@@ -247,7 +244,7 @@ function TwoColumnSection({
             ) : (
               <li
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="text-sm italic text-gray-400"
+                className="text-body italic leading-5 text-gray-400"
               >
                 None
               </li>
@@ -273,17 +270,14 @@ function SingleColumnSection({
   items,
 }: SingleColumnSectionProps) {
   return (
-    <div
-      // TODO(tokens): no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border (a border colour)
-      className="rounded-md border border-gray-200 p-3"
-    >
+    <div className="rounded-md border border-sidebar-border p-3">
       <div className="flex items-center gap-2">
         {icon}
         <span className="font-medium">{title}</span>
       </div>
       <p
         // TODO(tokens): no exact role: text-gray-500 #6B7280
-        className="mt-1 text-sm text-gray-500"
+        className="mt-1 text-body leading-5 text-gray-500"
       >
         {description}
       </p>
@@ -292,11 +286,11 @@ function SingleColumnSection({
           <li
             key={item}
             // TODO(tokens): no exact role: text-gray-700 #374151
-            className="ml-4 list-disc text-sm text-gray-700"
+            className="ml-4 list-disc text-body leading-5 text-gray-700"
           >
             <code
               // TODO(tokens): no exact role: bg-gray-100 #F3F4F6
-              className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs"
+              className="rounded bg-gray-100 px-1 py-0.5 font-mono text-caption leading-4"
             >
               {item}
             </code>

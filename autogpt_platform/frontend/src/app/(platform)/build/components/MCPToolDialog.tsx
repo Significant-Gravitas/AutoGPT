@@ -432,7 +432,7 @@ export function MCPToolDialog({
               <button
                 onClick={() => setShowManualToken(true)}
                 // TODO(tokens): no exact role: text-gray-500 #6B7280, hover:text-gray-700 #374151
-                className="text-xs text-gray-500 underline hover:text-gray-700"
+                className="text-caption leading-4 text-gray-500 underline hover:text-gray-700"
               >
                 or enter an API credential manually
               </button>
@@ -446,11 +446,11 @@ export function MCPToolDialog({
                   onChange={selectScheme}
                   disabled={loading || oauthLoading}
                   className="flex flex-col gap-2"
-                  labelClassName="text-sm font-medium"
-                  selectClassName="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  labelClassName="text-body leading-5 font-medium"
+                  selectClassName="h-10 rounded-md border border-input bg-background px-3 text-body leading-5"
                 />
 
-                <Label htmlFor="mcp-auth-token" className="text-sm">
+                <Label htmlFor="mcp-auth-token" className="text-body leading-5">
                   {mcpAuthTokenLabel(manualAuthScheme)}
                 </Label>
                 <Input
@@ -471,7 +471,7 @@ export function MCPToolDialog({
                 <p
                   // TODO(tokens): no exact role: text-gray-500 #6B7280
                   id="mcp-auth-token-hint"
-                  className="text-xs text-gray-500"
+                  className="text-caption leading-4 text-gray-500"
                 >
                   {mcpAuthTokenHint(manualAuthScheme)}
                 </p>
@@ -482,7 +482,7 @@ export function MCPToolDialog({
               <p
                 role="alert"
                 aria-live="polite"
-                className="text-sm text-error-foreground"
+                className="text-body leading-5 text-error-foreground"
               >
                 {error}
               </p>
@@ -608,13 +608,15 @@ function MCPToolCard({
       className={`group flex flex-col rounded-lg border text-left transition-colors ${
         selected
           ? "border-info bg-info-surface"
-          : // TODO(tokens): no exact role: hover:border-gray-300 #D1D5DB, hover:bg-gray-50 #F9FAFB; no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border (a border colour)
-            "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+          : // TODO(tokens): no exact role: hover:border-gray-300 #D1D5DB, hover:bg-gray-50 #F9FAFB
+            "border-sidebar-border hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <span className="flex-1 text-sm font-semibold">{tool.name}</span>
+        <span className="flex-1 text-body font-semibold leading-5">
+          {tool.name}
+        </span>
         {paramNames.length > 0 && (
           <Badge variant="secondary" className="text-tiny leading-inherit">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
@@ -626,7 +628,7 @@ function MCPToolCard({
       {cleanDescription && (
         <p
           // TODO(tokens): no exact role: text-gray-500 #6B7280
-          className="px-3 pb-1 text-xs leading-relaxed text-gray-500"
+          className="px-3 pb-1 text-caption leading-relaxed text-gray-500"
         >
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
         </p>
@@ -669,7 +671,7 @@ function MCPToolCard({
           // TODO(tokens): no exact role: border-gray-100 #F3F4F6, bg-gray-50/50 #F9FAFB
           className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50"
         >
-          <table className="w-full text-xs">
+          <table className="w-full text-caption leading-4">
             <thead>
               <tr
                 // TODO(tokens): no exact role: border-gray-100 #F3F4F6

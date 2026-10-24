@@ -33,7 +33,7 @@ export function PanelHeader({
         />
         <span
           // TODO(tokens): no exact role: text-slate-800 #475263
-          className="text-sm font-semibold text-slate-800"
+          className="text-body font-semibold leading-5 text-slate-800"
         >
           Chat with Builder
         </span>

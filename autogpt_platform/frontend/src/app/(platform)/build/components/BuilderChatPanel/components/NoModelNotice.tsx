@@ -11,7 +11,7 @@ export function NoModelNotice() {
         role="status"
         aria-label="No AI connection"
         // TODO(tokens): no exact role: text-amber-900 #78350F
-        className="flex w-full items-start gap-2 rounded-2xl bg-warning-surface px-3 py-2 text-left text-sm text-amber-900"
+        className="flex w-full items-start gap-2 rounded-2xl bg-warning-surface px-3 py-2 text-left text-body leading-5 text-amber-900"
       >
         <Icon
           icon={Alert02Icon}
