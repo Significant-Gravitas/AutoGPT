@@ -832,9 +832,15 @@ def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     release.assert_not_awaited()
 
 
-def test_queue_pending_message_gives_back_a_card_claim_when_not_queued(
-    mocker: pytest_mock.MockerFixture,
+@pytest.mark.parametrize(
+    "status, released",
+    [(400, True), (429, False)],
+    ids=["refused-before-the-push", "rate-limited-after-the-push"],
+)
+def test_queue_pending_message_gives_back_a_card_claim_only_when_not_queued(
+    mocker: pytest_mock.MockerFixture, status: int, released: bool
 ) -> None:
+    """A 429 comes after the push: the decision stays queued, so its claim stays."""
     _mock_stream_queue_internals(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.record_card_decisions",
@@ -848,7 +854,7 @@ def test_queue_pending_message_gives_back_a_card_claim_when_not_queued(
     mocker.patch(
         "backend.api.features.chat.routes.queue_pending_for_http",
         new_callable=AsyncMock,
-        side_effect=HTTPException(status_code=429, detail="too many"),
+        side_effect=HTTPException(status_code=status, detail="no"),
     )
     release = mocker.patch(
         "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
@@ -859,8 +865,8 @@ def test_queue_pending_message_gives_back_a_card_claim_when_not_queued(
         json={"message": "Approved: hire Maya (confirmation_id: c-1)."},
     )
 
-    assert response.status_code == 429
-    release.assert_awaited_once()
+    assert response.status_code == status
+    assert release.await_count == (1 if released else 0)
 
 
 @pytest.mark.parametrize("attachment", ["file_ids", "folder_ids"])

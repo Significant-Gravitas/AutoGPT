@@ -353,6 +353,14 @@ async def _release_card_answer(
         await release_claim(session_id, _card_ids(message), owner)
 
 
+async def _was_queued(session_id: str, client_message_id: str | None) -> bool:
+    """Whether a queue attempt that raised still pushed its message, which
+    the client key records once the push lands, cancelled or not."""
+    if client_message_id is None:
+        return False
+    return await client_message_state(session_id, client_message_id) == "accepted"
+
+
 def _card_ids(message: str) -> list[str]:
     return [d.confirmation_id for d in parse_card_decisions(message)]
 
@@ -2092,11 +2100,14 @@ async def stream_chat_post(
             )
             return _empty_ui_message_stream_response(follow_up_queued=True)
         except HTTPException as exc:
-            await _release_card_answer(session_id, message, card_owner, admission)
+            # A 429 comes after the push: the decision stays queued.
+            if exc.status_code != 429:
+                await _release_card_answer(session_id, message, card_owner, admission)
             if exc.status_code != 409:
                 raise
         except BaseException:
-            await _release_card_answer(session_id, message, card_owner, admission)
+            if not await _was_queued(session_id, client_message_id):
+                await _release_card_answer(session_id, message, card_owner, admission)
             raise
 
     if request.expert_kickoff and persisted_kickoff_has_reply is not None:
@@ -2535,8 +2546,18 @@ async def queue_pending_message(
             expert_id=session.expert_id,
             client_message_id=client_message_id,
         )
+    except HTTPException as exc:
+        # A 429 comes after the push: the decision stays queued.
+        if exc.status_code != 429:
+            await _release_card_answer(
+                session_id, request.message, card_owner, admission
+            )
+        raise
     except BaseException:
-        await _release_card_answer(session_id, request.message, card_owner, admission)
+        if not await _was_queued(session_id, client_message_id):
+            await _release_card_answer(
+                session_id, request.message, card_owner, admission
+            )
         raise
 
 
