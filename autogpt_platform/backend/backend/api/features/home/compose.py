@@ -48,12 +48,12 @@ def compose_home_dashboard(
         if not expert.is_template and not expert.is_archived
     ]
     expert_by_id = {expert.id: expert for expert in hired}
-    agent_by_graph = agent_refs_by_graph(hired, library_refs)
     graph_schedules = [
         schedule
         for schedule in schedules
         if isinstance(schedule, GraphExecutionJobInfo)
     ]
+    agent_by_graph = agent_refs_by_graph(hired, library_refs, graph_schedules)
     expert_by_schedule = experts_by_schedule(hired, graph_schedules)
     running_expert_ids = {
         execution.expert_id
