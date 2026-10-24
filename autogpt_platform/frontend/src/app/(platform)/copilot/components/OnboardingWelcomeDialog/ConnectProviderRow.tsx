@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Add01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
@@ -36,14 +37,14 @@ export function ConnectProviderRow({
       type="button"
       onClick={() => onSelect(provider.id)}
       className={cn(
-        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-zinc-200 bg-white px-3 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 active:bg-zinc-100",
+        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-border-base bg-surface px-3 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-action-hover active:bg-surface-hover",
         className,
       )}
     >
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-[12px] font-semibold uppercase text-zinc-600"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-hover text-caption font-semibold uppercase leading-inherit text-foreground-secondary"
         >
           {provider.name?.charAt(0) ?? provider.id.charAt(0)}
         </div>
@@ -60,28 +61,38 @@ export function ConnectProviderRow({
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
+          <Text
+            variant="body-medium"
+            as="span"
+            className="truncate text-foreground-emphasis"
+          >
             {provider.name}
-          </span>
+          </Text>
           {/* Connected mark beside the title — the + stays because a
               provider can hold multiple credentials. */}
           {isConnected && (
             <Icon
               icon={CheckmarkCircle02Icon}
               size={15}
+              // TODO(tokens): no exact role for text-emerald-500
               className="shrink-0 text-emerald-500"
             />
           )}
         </span>
         {description && (
-          <span className="truncate text-[12px] leading-[16px] text-zinc-500">
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="truncate leading-4"
+          >
             {description}
-          </span>
+          </Text>
         )}
       </span>
       <span
         aria-hidden
-        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-500 transition-colors group-hover:bg-zinc-200 group-hover:text-zinc-700"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-hover text-foreground-tertiary transition-colors group-hover:bg-surface-active group-hover:text-foreground-body"
       >
         <Icon icon={Add01Icon} size={14} />
       </span>

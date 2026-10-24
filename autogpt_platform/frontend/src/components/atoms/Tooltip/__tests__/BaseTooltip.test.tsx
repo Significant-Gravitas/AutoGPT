@@ -76,3 +76,35 @@ describe.each([
     ).toBeNull();
   });
 });
+
+describe("atom tooltip trigger slot", () => {
+  it("names the button it renders", () => {
+    const { TooltipProvider, Tooltip, TooltipTrigger } = AtomTooltip;
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>Trigger</TooltipTrigger>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Trigger" }).getAttribute("data-slot"),
+    ).toBe("tooltip-trigger");
+  });
+
+  it("leaves an asChild child's slot alone", () => {
+    const { TooltipProvider, Tooltip, TooltipTrigger } = AtomTooltip;
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button data-slot="toggle-chip">Chip</button>
+          </TooltipTrigger>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Chip" }).getAttribute("data-slot"),
+    ).toBe("toggle-chip");
+  });
+});
