@@ -101,11 +101,11 @@ export function SearchCommandResultItem({
           </Text>
           {item.subtitle ? (
             <Text
-              variant="small"
+              variant="small-tight"
               as="div"
               tone="muted"
               data-slot="search-command-result-item-subtitle"
-              className="mt-0.5 truncate leading-4"
+              className="mt-0.5 truncate"
             >
               {item.subtitle}
             </Text>
