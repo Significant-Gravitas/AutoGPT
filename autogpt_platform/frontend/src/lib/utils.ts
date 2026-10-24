@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import _isEmpty from "lodash/isEmpty";
-import { extendTailwindMerge, validators } from "tailwind-merge";
 
+import { twMerge } from "@/lib/tw-merge";
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
@@ -9,68 +9,6 @@ import {
   GraphInputSubSchema,
   GraphOutputSubSchema,
 } from "@/lib/autogpt-server-api/types";
-
-// Teach tailwind-merge the text token names in tailwind.config.ts, so that
-// `text-body` is read as a font size rather than a colour (and survives next
-// to `text-zinc-500`) and conflicting sizes, line-heights and letter-spacings
-// collapse to the last one. The radius names do the same for every
-// `rounded-*` corner group, so `rounded-xl` and `rounded-2xlarge` no longer
-// both survive and leave the winner to stylesheet order.
-//
-// The overrides keep tailwind-merge 3 merging the way 2 did for classes that
-// still render as in Tailwind 3 (see postcss.tailwind3-compat.cjs): a bare
-// `outline` sets only the style, so it survives next to `outline-2`, and the
-// `scrollbar-*` classes are tailwind.scrollbar.ts's, not Tailwind 4's
-// scrollbar utilities, so none of them replaces another.
-const twMerge = extendTailwindMerge({
-  override: {
-    classGroups: {
-      "outline-w": [
-        {
-          outline: [
-            validators.isNumber,
-            validators.isArbitraryVariableLength,
-            validators.isArbitraryLength,
-          ],
-        },
-      ],
-      "scrollbar-thumb-color": [],
-      "scrollbar-track-color": [],
-      "scrollbar-w": [],
-      "scrollbar-gutter": [],
-    },
-  },
-  extend: {
-    theme: {
-      radius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
-    },
-    classGroups: {
-      "font-size": [
-        {
-          text: [
-            "tiny",
-            "caption-sm",
-            "caption",
-            "body-sm",
-            "body",
-            "body-md",
-            "body-lg",
-            "lead",
-            "heading-sm",
-            "heading",
-            "title",
-            "display",
-          ],
-        },
-      ],
-      leading: [{ leading: ["inherit"] }],
-      "outline-style": [{ outline: [""] }],
-      tracking: [
-        { tracking: ["display", "heading", "title", "caps", "eyebrow"] },
-      ],
-    },
-  },
-});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
