@@ -89,10 +89,9 @@ def get_stt_client() -> AsyncOpenAI | None:
 
     Built per call rather than ``@cached``: ``AsyncOpenAI`` binds its
     connection pool to the first event loop that uses it, so a process-wide
-    cache poisons itself across loops. ``backend/util/architecture_test.py``
-    enforces this — the cached helpers in ``util/clients.py`` are a
-    grandfathered allowlist that is being burned down, not the pattern to
-    copy. Finalize runs once per user, so the pool churn is negligible.
+    cache poisons itself across loops. ``.github/scripts/check_loop_bound_clients.py``
+    enforces this; ``per_loop_cached`` is the cached alternative. Finalize
+    runs once per user, so the pool churn is negligible.
     """
     api_key = (
         settings.secrets.openai_internal_api_key or settings.secrets.openai_api_key

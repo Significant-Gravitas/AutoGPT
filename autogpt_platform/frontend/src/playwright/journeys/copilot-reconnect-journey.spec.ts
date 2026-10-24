@@ -125,5 +125,5 @@ async function loseConnectionMidAnswer({
   const journal = await readJournal(run.nonce);
   expectEachTurnOnce(journal, SCRIPT);
   if (!journeyUser.id) throw new Error("the journey user should have an id");
-  await expectChargedWhatWasBilled(journeyUser.id, journal);
+  await expectChargedWhatWasBilled(journeyUser.id, [run.nonce]);
 }
