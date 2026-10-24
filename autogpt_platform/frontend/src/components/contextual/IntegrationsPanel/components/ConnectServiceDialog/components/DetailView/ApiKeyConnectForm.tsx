@@ -12,17 +12,20 @@ import {
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 
+import { ApiKeyHelpLink } from "../ApiKeyHelpLink";
 import { useApiKeyConnectForm } from "./useApiKeyConnectForm";
 
 interface Props {
   provider: string;
   providerName: string;
+  apiKeyUrl?: string | null;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function ApiKeyConnectForm({
   provider,
   providerName,
+  apiKeyUrl,
   onSuccess,
 }: Props) {
   const { form, handleSubmit, isPending } = useApiKeyConnectForm({
@@ -73,6 +76,7 @@ export function ApiKeyConnectForm({
           </FormItem>
         )}
       />
+      <ApiKeyHelpLink providerName={providerName} href={apiKeyUrl} />
 
       <FormField
         control={form.control}

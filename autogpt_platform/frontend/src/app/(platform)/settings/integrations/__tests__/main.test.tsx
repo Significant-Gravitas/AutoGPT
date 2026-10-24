@@ -677,3 +677,55 @@ describe("SettingsIntegrationsPage — delete error path", () => {
     expect(screen.getByText("Personal")).toBeDefined();
   });
 });
+
+describe("SettingsIntegrationsPage — where to find an API key", () => {
+  async function openApiKeyForm(provider: ProviderMetadata) {
+    server.use(
+      getGetV1ListCredentialsMockHandler([]),
+      getGetV1ListProvidersMockHandler([provider]),
+    );
+    render(<SettingsIntegrationsPage />);
+    const connectButtons = await screen.findAllByRole("button", {
+      name: /connect.*service/i,
+    });
+    fireEvent.click(connectButtons[0]);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByText(provider.description!));
+    await within(dialog).findByPlaceholderText(/^sk-\.\.\./);
+    return dialog;
+  }
+
+  test("links to the vendor's key page when the provider names one", async () => {
+    const dialog = await openApiKeyForm(
+      makeProvider({
+        name: "printify",
+        description: "Print-on-demand products, mockups and publishing",
+        supported_auth_types: ["api_key"],
+        api_key_url: "https://printify.com/app/account/api", // pragma: allowlist secret
+      }),
+    );
+
+    const link = within(dialog).getByRole("link", {
+      name: /where do i find my printify key/i,
+    });
+    expect(link.getAttribute("href")).toBe(
+      "https://printify.com/app/account/api",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+  });
+
+  test("shows no link for a provider without one", async () => {
+    const dialog = await openApiKeyForm(
+      makeProvider({
+        name: "openai",
+        description: "GPT models",
+        supported_auth_types: ["api_key"],
+      }),
+    );
+
+    expect(
+      within(dialog).queryByRole("link", { name: /where do i find/i }),
+    ).toBeNull();
+  });
+});

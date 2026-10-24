@@ -53,7 +53,12 @@ def test_an_unclassified_tool_is_a_platform_edit():
 
 @pytest.mark.parametrize(
     "tool",
-    ["connect_integration", "request_credential_grant", "resume_capability"],
+    [
+        "connect_integration",
+        "request_credential_grant",
+        "request_integration",
+        "resume_capability",
+    ],
 )
 def test_questions_to_the_user_and_completions_are_never_gated(tool):
     assert effect_for(tool) is Effect.UNGATED

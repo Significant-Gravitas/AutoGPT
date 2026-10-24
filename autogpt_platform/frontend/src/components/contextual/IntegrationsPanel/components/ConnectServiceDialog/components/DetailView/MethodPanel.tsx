@@ -51,6 +51,7 @@ export function MethodPanel({ method, provider, onSuccess }: Props) {
       <ApiKeyConnectForm
         provider={authProvider}
         providerName={provider.name}
+        apiKeyUrl={provider.apiKeyUrl}
         onSuccess={onSuccess}
       />
     );

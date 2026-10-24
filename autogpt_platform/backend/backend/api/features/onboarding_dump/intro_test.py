@@ -19,7 +19,12 @@ TRANSCRIPT = "I run a bakery and want the weekly order emails handled."
 GENERATION = {
     "greeting": "You mentioned the weekly order emails.",
     "prompts": [
-        {"title": f"Automation number {i}", "prompt": "Do it.", "icon": "sparkle"}
+        {
+            "title": f"Automation number {i}",
+            "prompt": "Do it.",
+            "icon": "sparkle",
+            "integrations": [],
+        }
         for i in range(5)
     ],
 }
@@ -50,13 +55,15 @@ async def test_greeting_prompt_carries_the_provider_registry(
     client: MagicMock, mocker: MockerFixture
 ):
     mocker.patch(
-        "backend.api.features.onboarding_dump.intro.known_providers",
-        return_value={"slack": "Team chat", "github": None},
+        "backend.api.features.onboarding_dump.intro.connectable_lines",
+        return_value="- slack: Team chat\n- github",
     )
 
     greeting, prompts = await intro.generate_intro(TRANSCRIPT)
 
-    content = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
+    content = client.chat.completions.create.await_args.kwargs["messages"][-1][
+        "content"
+    ]
     assert "- slack: Team chat" in content
     assert "- github" in content
     # Registry first, then the instructions, then the transcript they end
@@ -71,13 +78,15 @@ async def test_greeting_prompt_survives_an_empty_registry(
     client: MagicMock, mocker: MockerFixture
 ):
     mocker.patch(
-        "backend.api.features.onboarding_dump.intro.known_providers",
-        return_value={},
+        "backend.api.features.onboarding_dump.intro.connectable_lines",
+        return_value="",
     )
 
     greeting, _ = await intro.generate_intro(TRANSCRIPT)
 
-    content = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
+    content = client.chat.completions.create.await_args.kwargs["messages"][-1][
+        "content"
+    ]
     assert content.startswith(intro._LOCAL_PROMPT[:40])
     assert greeting == GENERATION["greeting"]
 
@@ -118,3 +127,96 @@ def test_the_fallback_greeting_names_nobody():
         assert "Head of AI" in greeting
         assert not any(name in greeting for name in ("Maria", "Max", "Frankie"))
         assert suggested == intro.fallback_prompts()
+
+
+def _generation_with(prompts: list[dict]) -> SimpleNamespace:
+    body = {"greeting": "You sell stickers.", "prompts": prompts}
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(body)))]
+    )
+
+
+@pytest.mark.asyncio
+async def test_each_prompt_keeps_the_integrations_it_names(client: MagicMock):
+    named = {"title": "List each sticker", "prompt": "Do it.", "icon": "sparkle"}
+    client.chat.completions.create.return_value = _generation_with(
+        [{**named, "integrations": ["printify", " Shopify ", 7, ""]}]
+        + [{**named, "integrations": []}] * 4
+    )
+
+    _, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert [p.integrations for p in prompts] == [
+        ["printify", "Shopify"],
+        [],
+        [],
+        [],
+        [],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_that_does_not_say_what_it_connects_to_is_never_kept(
+    client: MagicMock,
+):
+    """Stored without its integrations, nothing could warn the user that a
+    task needs a service we lack, so such a generation is asked for again."""
+    named = {"title": "List each sticker on Big Cartel", "prompt": "Do it."}
+    client.chat.completions.create.side_effect = [
+        _generation_with([named] * 5),
+        _generation_with([{**named, "integrations": ["Big Cartel"]}] * 5),
+    ]
+
+    _, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert client.chat.completions.create.await_count == 2
+    assert [p.integrations for p in prompts] == [["Big Cartel"]] * 5
+
+
+@pytest.mark.asyncio
+async def test_without_integrations_twice_the_generic_prompts_are_used(
+    client: MagicMock,
+):
+    named = {"title": "List each sticker on Big Cartel", "prompt": "Do it."}
+    client.chat.completions.create.return_value = _generation_with([named] * 5)
+
+    greeting, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == "You sell stickers."
+    assert prompts == intro.fallback_prompts()
+    assert all(p.integrations is not None for p in prompts)
+
+
+@pytest.mark.parametrize("unreadable", [[7], [""], [None, "  "]])
+def test_integrations_with_no_usable_name_say_nothing(unreadable: list):
+    """Only an empty array means "no sign-in"; one whose every entry is
+    unusable stood for some service, so the prompt is not kept."""
+    named = {"title": "List each sticker", "prompt": "Do it."}
+    assert intro._parse_prompts([{**named, "integrations": unreadable}]) == []
+    assert intro._parse_prompts([{**named, "integrations": []}])[0].integrations == []
+
+
+def test_the_generic_prompts_say_they_connect_to_nothing():
+    assert [p.integrations for p in intro.fallback_prompts()] == [[]] * len(
+        intro.fallback_prompts()
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_integrations_ask_does_not_depend_on_the_langfuse_copy(
+    client: MagicMock, mocker: MockerFixture
+):
+    """Langfuse's copy of the instructions wins in prod and may predate the
+    field, so the ask for it is sent from code, in the system message."""
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro._fetch_langfuse_prompt",
+        new=AsyncMock(return_value="Older instructions.\n\nTranscript:\n"),
+    )
+
+    await intro.generate_intro(TRANSCRIPT)
+
+    system, user = client.chat.completions.create.await_args.kwargs["messages"]
+    assert system["role"] == "system"
+    assert '"integrations"' in system["content"]
+    assert "not on the list" in system["content"]
+    assert user["content"].endswith(TRANSCRIPT)

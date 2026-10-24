@@ -35,7 +35,11 @@ import {
   type CompactionPhase,
   type CompactionStats,
 } from "../../CompactionCard/helpers";
-import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
+import {
+  COMPACTION_PART_TYPE,
+  isIntegrationRequestPart,
+} from "../../ToolChain/helpers";
+import { IntegrationRequestCard } from "../../../tools/IntegrationRequest/IntegrationRequestCard";
 import {
   defaultWorkspaceFileUrl,
   extractWorkspaceArtifacts,
@@ -271,9 +275,14 @@ export function MessagePartRenderer({
       return <FindBlocksTool key={key} part={part as ToolUIPart} />;
     case "tool-find_capability":
       return <FindCapabilitiesTool key={key} part={part as ToolUIPart} />;
+    case "tool-request_integration":
+      return <IntegrationRequestCard key={key} part={part as ToolUIPart} />;
     case "tool-describe_capability":
     case "tool-run_capability":
     case "tool-resume_capability":
+      if (isIntegrationRequestPart(part)) {
+        return <IntegrationRequestCard key={key} part={part as ToolUIPart} />;
+      }
       return <RunCapabilityTool key={key} part={part as ToolUIPart} />;
     case "tool-find_agent":
     case "tool-find_library_agent":

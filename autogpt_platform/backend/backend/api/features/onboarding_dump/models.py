@@ -115,6 +115,19 @@ class SuggestedPrompt(BaseModel):
     title: str
     prompt: str
     icon: str = "sparkle"
+    integrations: list[str] | None = None
+    """What the task connects to, as the generator named it: registry ids,
+    or a tool's own name when we have no connector. ``None`` on rows stored
+    before it was asked for."""
+    unsupported: list[str] = Field(default_factory=list)
+    """The tools in ``integrations`` (or, on an older row, named in its
+    text) that cannot be connected here. Worked out on every read against
+    the live registry and never stored, so a connector that ships later
+    clears the label on rows already saved."""
+
+    def stored(self) -> dict:
+        """The row as it is saved: everything but the computed label."""
+        return self.model_dump(mode="json", exclude={"unsupported"})
 
 
 SuggestedTaskState = Literal["open", "sent", "dismissed"]

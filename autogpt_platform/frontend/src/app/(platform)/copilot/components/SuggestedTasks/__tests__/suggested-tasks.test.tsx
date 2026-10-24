@@ -406,3 +406,39 @@ describe("Suggested first tasks — Home after the first message", () => {
     ).toBeNull();
   });
 });
+
+describe("Suggested first tasks — a tool Otto can't connect yet", () => {
+  it("says so on the task before it is picked, on the greeting page", async () => {
+    withGreeting();
+    stored[0] = { ...stored[0], unsupported: ["Shopify"] };
+    renderHome();
+
+    const row = await screen.findByRole("button", {
+      name: /^Chase unpaid Shopify invoices/,
+    });
+    expect(
+      within(row).getByText("Needs Shopify, which isn't supported yet"),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: TASKS[1].title })).toBeDefined();
+  });
+
+  it("names every missing tool, and keeps the note once the task is started", async () => {
+    stored[0] = {
+      ...stored[0],
+      state: "sent",
+      session_id: "session-1",
+      unsupported: ["Shopify", "Printful", "Gelato"],
+    };
+    renderHome();
+
+    const block = await findBlock();
+    const started = within(block).getByRole("link", {
+      name: /Chase unpaid Shopify invoices/,
+    });
+    expect(
+      within(started).getByText(
+        "Needs Shopify, Printful and Gelato, which aren't supported yet",
+      ),
+    ).toBeDefined();
+  });
+});
