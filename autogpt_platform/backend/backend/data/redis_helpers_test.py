@@ -39,9 +39,13 @@ class _Fake:
         self.counters[key] = self.counters.get(key, 0) + 1
         return self.counters[key]
 
-    async def expire(self, key: str, seconds: int, nx: bool = False) -> int:
+    async def expire(
+        self, key: str, seconds: int, nx: bool = False, gt: bool = False
+    ) -> int:
         self.expire_calls.append((key, seconds, nx))
         if nx and key in self.ttls:
+            return 0
+        if gt and self.ttls.get(key, seconds) >= seconds:
             return 0
         self.ttls[key] = seconds
         return 1
