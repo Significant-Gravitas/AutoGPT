@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as Atom from "@/components/atoms/Tooltip/BaseTooltip";
-import * as UI from "@/components/ui/tooltip";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import "@/app/globals.css";
@@ -12,8 +11,7 @@ function TooltipFixture({ variant }: { variant: string }) {
       <InformationTooltip description="Read the [setup guide](/tooltip-link-destination) before continuing." />
     );
   }
-  const { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } =
-    variant === "ui" ? UI : Atom;
+  const { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } = Atom;
   const content = (
     <TooltipContent side="bottom">An overlapping tooltip</TooltipContent>
   );
@@ -21,7 +19,9 @@ function TooltipFixture({ variant }: { variant: string }) {
     <TooltipProvider>
       <Tooltip open>
         <TooltipTrigger>Tooltip trigger</TooltipTrigger>
-        {variant === "atom-portal" ? (
+        {/* "ui" is what the deleted components/ui/tooltip rendered: the
+            atom's content in a portal. */}
+        {variant === "ui" || variant === "atom-portal" ? (
           <Atom.TooltipPortal>{content}</Atom.TooltipPortal>
         ) : (
           content

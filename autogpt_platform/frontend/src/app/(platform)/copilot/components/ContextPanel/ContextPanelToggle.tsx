@@ -5,7 +5,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore, type ContextPanelExpert } from "../../store";
 import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
@@ -80,7 +81,7 @@ export function ContextPanelToggle({
         <IntegrationsToggle expert={expert} className={toggleClass} />
       )}
       {showFilesToggle && (
-        <Tooltip>
+        <Tooltip inheritDelay>
           <TooltipTrigger asChild>
             <Button
               type="button"
@@ -111,13 +112,15 @@ export function ContextPanelToggle({
               )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {isFilesOpen ? "Hide files" : "Files"}
-          </TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="bottom">
+              {isFilesOpen ? "Hide files" : "Files"}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       )}
       {showComputerToggle && (
-        <Tooltip>
+        <Tooltip inheritDelay>
           <TooltipTrigger asChild>
             <Button
               type="button"
@@ -138,9 +141,11 @@ export function ContextPanelToggle({
               />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {isComputerOpen ? "Hide computer" : "Computer"}
-          </TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="bottom">
+              {isComputerOpen ? "Hide computer" : "Computer"}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       )}
     </div>

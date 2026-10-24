@@ -21,7 +21,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -168,14 +169,16 @@ export function LibraryAgentCard({
 
   if (hasError && statusInfo.lastError) {
     return (
-      <Tooltip>
+      <Tooltip inheritDelay>
         <TooltipTrigger asChild>{card}</TooltipTrigger>
-        <TooltipContent
-          // TODO(tokens): no exact role for text-red-300 (#F69999)
-          className="max-w-xs text-red-300"
-        >
-          {statusInfo.lastError}
-        </TooltipContent>
+        <TooltipPortal>
+          <TooltipContent
+            // TODO(tokens): no exact role for text-red-300 (#F69999)
+            className="max-w-xs text-red-300"
+          >
+            {statusInfo.lastError}
+          </TooltipContent>
+        </TooltipPortal>
       </Tooltip>
     );
   }

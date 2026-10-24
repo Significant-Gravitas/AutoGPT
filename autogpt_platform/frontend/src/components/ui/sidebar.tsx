@@ -18,7 +18,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
@@ -641,14 +642,16 @@ const SidebarMenuButton = React.forwardRef<
     }
 
     return (
-      <Tooltip>
+      <Tooltip inheritDelay>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent
-          side="right"
-          align="center"
-          hidden={state !== "collapsed" || isMobile}
-          {...tooltip}
-        />
+        <TooltipPortal>
+          <TooltipContent
+            side="right"
+            align="center"
+            hidden={state !== "collapsed" || isMobile}
+            {...tooltip}
+          />
+        </TooltipPortal>
       </Tooltip>
     );
   },

@@ -9,7 +9,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import {
   AlertCircleIcon,
   ArrowDown01Icon,
@@ -186,9 +187,13 @@ export function ConnectionPicker({
   return (
     <Popover>
       {showsTier ? (
-        <Tooltip>
+        <Tooltip inheritDelay>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          <TooltipContent side="top">{tierLabel(active, tier)}</TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="top">
+              {tierLabel(active, tier)}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       ) : (
         trigger

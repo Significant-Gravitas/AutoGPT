@@ -1,14 +1,29 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as UITooltip from "@/components/ui/tooltip";
+import type { ComponentProps } from "react";
 import * as AtomTooltip from "../BaseTooltip";
+
+// What the deleted components/ui/tooltip rendered: the atom's content in a
+// portal, with the provider's delay.
+const PortalTooltip = {
+  ...AtomTooltip,
+  TooltipContent: function PortalTooltipContent(
+    props: ComponentProps<typeof AtomTooltip.TooltipContent>,
+  ) {
+    return (
+      <AtomTooltip.TooltipPortal>
+        <AtomTooltip.TooltipContent {...props} />
+      </AtomTooltip.TooltipPortal>
+    );
+  },
+};
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe.each([
-  ["UI", UITooltip],
+  ["atom (portal)", PortalTooltip],
   ["atom", AtomTooltip],
 ] as const)("%s tooltip pointer transit", (_, components) => {
   it("shows the next button's tooltip when moving beneath the previous tooltip", async () => {
