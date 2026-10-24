@@ -54,7 +54,11 @@ export function EditScheduleModal({
       <Dialog.Trigger>
         {iconOnly ? (
           <Button variant="icon" size="icon" aria-label="Edit schedule">
-            <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-700" />
+            <Icon
+              icon={PencilEdit02Icon}
+              size={18}
+              className="text-foreground-body"
+            />
           </Button>
         ) : (
           <Button

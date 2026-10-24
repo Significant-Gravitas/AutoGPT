@@ -26,7 +26,7 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
         size="icon"
         onClick={() => onDownload(file)}
         aria-label={`Download ${item.name}`}
-        className="size-7 rounded-lg !p-0 text-zinc-500"
+        className="size-7 rounded-lg !p-0 text-foreground-tertiary"
       >
         <Icon icon={Download01Icon} size={14} />
       </Button>
@@ -36,7 +36,7 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
           size="icon"
           onClick={() => onRequestDelete(file)}
           aria-label={`Delete ${item.name}`}
-          className="size-7 rounded-lg !p-0 text-zinc-500"
+          className="size-7 rounded-lg !p-0 text-foreground-tertiary"
         >
           <Icon icon={Delete02Icon} size={14} />
         </Button>

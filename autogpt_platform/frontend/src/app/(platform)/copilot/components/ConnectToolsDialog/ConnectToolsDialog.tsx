@@ -65,7 +65,7 @@ export function ConnectToolsDialog({ isOpen, onClose }: Props) {
         aria-modal="true"
         aria-label="Connect your tools"
         tabIndex={-1}
-        className="w-full max-w-[30rem] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg outline-none"
+        className="w-full max-w-[30rem] overflow-hidden rounded-xl border border-border-base bg-surface shadow-lg outline-none"
       >
         <ConnectToolsPanel
           onBack={onClose}

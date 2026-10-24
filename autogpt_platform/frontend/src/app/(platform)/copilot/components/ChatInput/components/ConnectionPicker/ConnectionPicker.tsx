@@ -153,7 +153,7 @@ export function ConnectionPicker({
         }
         className={cn(
           showsTier
-            ? "size-8 p-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            ? "size-8 p-0 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
             : "h-9 min-w-0 gap-1.5 px-2.5 py-1 text-sm",
           className,
         )}
@@ -197,8 +197,8 @@ export function ConnectionPicker({
       <PopoverContent
         align="end"
         className={cn(
-          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
-          showMaxUpgrade && "bg-white",
+          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-border-base bg-surface-muted p-3 pt-4 text-foreground-strong shadow-lg",
+          showMaxUpgrade && "bg-surface",
         )}
       >
         <ConnectionPickerPanel

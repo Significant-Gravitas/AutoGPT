@@ -5,9 +5,9 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 // real cards land. A single flat block would settle at the wrong height.
 export function ExpertTeamCardSkeleton() {
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
+    <div className="flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm">
       <div className="flex flex-col items-start p-2 pb-4">
-        <div className="h-28 w-full rounded-lg bg-zinc-100" />
+        <div className="h-28 w-full rounded-lg bg-surface-hover" />
         <div className="flex w-full items-start gap-3 px-2">
           <Skeleton className="-mt-11 ml-1 size-[5.75rem] shrink-0 rounded-full" />
           <div className="mt-2 flex flex-1 flex-col gap-1">
@@ -23,7 +23,7 @@ export function ExpertTeamCardSkeleton() {
           <Skeleton className="h-4 w-1/2 rounded-full" />
         </div>
 
-        <div className="mx-2 mt-3 flex rounded-lg bg-zinc-50 px-2 py-2 ring-1 ring-inset ring-zinc-100">
+        <div className="mx-2 mt-3 flex rounded-lg bg-surface-muted px-2 py-2 ring-1 ring-inset ring-separator">
           {[0, 1, 2, 3].map((stat) => (
             <div
               key={stat}
