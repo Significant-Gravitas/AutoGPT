@@ -136,21 +136,41 @@ def test_the_summary_counts_every_outcome():
     )
 
 
-def test_the_run_fails_unless_both_kinds_were_scored_and_nothing_broke():
-    otto_passed = score(OTTO_CASE, _turn(delegated=["Plan it for Priya."]))
-    otto_undelegated = score(OTTO_CASE, _turn("I'll do it myself."))
-    expert_passed = score(EXPERT_CASE, _turn("Priya, can you send it?"))
-    expert_failed = score(EXPERT_CASE, _turn("Can he send it?"))
-    expert_errored = score(EXPERT_CASE, _turn(""))
-    assert expert_errored.outcome == "error"
-    assert otto_undelegated.outcome == "no_delegation"
-    assert exit_code([otto_passed, otto_undelegated, expert_passed]) == 0
-    assert exit_code([otto_passed, expert_passed, expert_failed]) == 1
-    assert exit_code([otto_passed, expert_passed, expert_errored]) == 1
-    # Otto never delegated, so nothing Otto wrote about the user was checked.
-    assert exit_code([otto_undelegated, expert_passed]) == 1
-    assert exit_code([otto_passed]) == 1
+def _passing(case) -> object:
+    """A clean, scored result for ``case``."""
+    if case.kind == "otto_brief":
+        return score(case, _turn(delegated=["Plan it for the owner."]))
+    return score(case, _turn("Can you send the photo?"))
+
+
+def test_a_run_passes_only_when_every_case_was_scored_clean():
+    results = [_passing(case) for case in CASES]
+    assert {r.outcome for r in results} == {"pass"}
+    assert exit_code(results) == 0
+    failed = score(EXPERT_CASE, _turn("Can he send it?"))
+    errored = score(EXPERT_CASE, _turn(""))
+    assert exit_code([*results, failed]) == 1
+    assert exit_code([*results, errored]) == 1
     assert exit_code([]) == 1
+
+
+def test_a_persona_that_was_never_scored_fails_the_run():
+    """Astra: one pass per kind let the run pass with Sam and the unnamed
+    owner never exercised. Every persona and case must be scored."""
+    priya_only = [_passing(c) for c in CASES if c.persona.id == "priya-dewleaf"]
+    assert {r.kind for r in priya_only} == {"otto_brief", "expert_task"}
+    assert exit_code(priya_only) == 1
+    assert "sam-harbor-bikes/otto_brief-1" in summarize(priya_only)
+
+
+def test_a_case_that_never_delegated_leaves_the_run_incomplete():
+    results = [_passing(case) for case in CASES]
+    undelegated = score(OTTO_CASE, _turn("I'll do it myself."))
+    assert undelegated.outcome == "no_delegation"
+    rest = [r for r in results if r.case_id != OTTO_CASE.id]
+    assert exit_code([*rest, undelegated]) == 1
+    # A clean pass on another repeat of the same case completes it.
+    assert exit_code([*rest, undelegated, _passing(OTTO_CASE)]) == 0
 
 
 @pytest.mark.parametrize("value", ["0", "-2"])

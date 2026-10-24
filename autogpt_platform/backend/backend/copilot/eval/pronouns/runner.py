@@ -15,8 +15,9 @@ Checked text:
 - ``expert_task``: the expert's report back to Otto.
 
 Any he/she/him/her/his/hers there fails the case. The run exits 1 on any
-failed or errored case, and unless both kinds have at least one passing case:
-a run whose Otto briefs never delegated has not checked Otto at all.
+failed or errored case, and unless every persona's every brief and task has at
+least one passing result: an owner whose cases never ran, or whose Otto briefs
+never delegated, has not been checked at all.
 """
 
 import argparse
@@ -147,6 +148,9 @@ def summarize(results: list[CaseResult]) -> str:
         for r in results
     ]
     totals = ", ".join(f"{counts[o]} {o}" for o in get_args(Outcome))
+    unscored = unscored_cases(results)
+    if unscored:
+        lines.append(f"not scored ({len(unscored)}): {', '.join(unscored)}")
     return "\n".join([*lines, f"{len(results)} runs: {totals}"])
 
 
@@ -171,13 +175,26 @@ def main() -> None:
     sys.exit(exit_code(results))
 
 
-def exit_code(results: list[CaseResult]) -> int:
-    """1 when any case failed or errored, or when either kind has no passing
-    case: Otto briefs that never delegated, or an empty run, prove nothing."""
+def exit_code(results: list[CaseResult], cases: list[PronounCase] | None = None) -> int:
+    """0 only when nothing failed or errored and every case was scored clean.
+
+    ``cases`` defaults to every persona against every brief and task in
+    ``cases.json``. A case with no passing result (never run, or only ever
+    ``no_delegation``) leaves the run incomplete: an owner the eval never
+    exercised has proved nothing about how they are referred to.
+    """
     if any(r.outcome in ("fail", "error") for r in results):
         return 1
-    passed = {r.kind for r in results if r.outcome == "pass"}
-    return 0 if passed == set(get_args(CaseKind)) else 1
+    return 1 if unscored_cases(results, cases) else 0
+
+
+def unscored_cases(
+    results: list[CaseResult], cases: list[PronounCase] | None = None
+) -> list[str]:
+    """The ids of expected cases with no passing result, in case order."""
+    expected = cases if cases is not None else expand_cases(load_case_file())
+    passed = {r.case_id for r in results if r.outcome == "pass"}
+    return [case.id for case in expected if case.id not in passed]
 
 
 def _positive_int(value: str) -> int:
