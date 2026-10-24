@@ -1,5 +1,6 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { formatNodeDisplayTitle } from "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/helpers";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { beautifyString, cn } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
@@ -43,19 +44,29 @@ export function GraphSearchContent({
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
-          <div className="px-4 pt-3 text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="div"
+            tone="muted"
+            className="px-4 pt-3 leading-4"
+          >
             Found {filteredNodes.length} node
             {filteredNodes.length !== 1 ? "s" : ""}
-          </div>
+          </Text>
         )}
         <ScrollArea className="h-full w-full">
           <div role="listbox" className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
-              <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
+              <Text
+                variant="body"
+                as="div"
+                tone="muted"
+                className="flex h-32 items-center justify-center leading-5"
+              >
                 {trimmedQuery
                   ? "No nodes found matching your search"
                   : "Start typing to search nodes"}
-              </div>
+              </Text>
             ) : (
               filteredNodes.map((node, index) => {
                 if (!node?.data) return null;
@@ -93,19 +104,34 @@ export function GraphSearchContent({
                   >
                     <div className="flex flex-1 flex-col items-start gap-0.5 overflow-hidden">
                       <div className="flex items-center gap-2">
-                        <span className="line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+                        <Text
+                          variant="body-medium"
+                          as="span"
+                          tone="emphasis"
+                          className="line-clamp-1"
+                        >
                           {nodeTitle}
-                        </span>
+                        </Text>
                         {hasCustomName && (
-                          <span className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500">
+                          <Text
+                            variant="small"
+                            as="span"
+                            tone="muted"
+                            className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2 leading-5"
+                          >
                             {nodeType}
-                          </span>
+                          </Text>
                         )}
                       </div>
                       {description && (
-                        <span className="line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500">
+                        <Text
+                          variant="small"
+                          as="span"
+                          tone="muted"
+                          className="line-clamp-1 leading-5"
+                        >
                           {description}
-                        </span>
+                        </Text>
                       )}
                     </div>
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.5rem] bg-zinc-700">
