@@ -159,13 +159,40 @@ describe("Button textSize", () => {
     expect(el.className).not.toContain("text-body-md");
   });
 
-  it("sets the label at text-body-md for body-md", () => {
-    renderButton({ size: "small", textSize: "body-md", children: "Save" });
+  it.each([
+    ["small", "button"],
+    ["large", "button"],
+    ["small", "loading"],
+    ["large", "loading"],
+    ["small", "NextLink"],
+    ["large", "NextLink"],
+  ] as const)(
+    "replaces the %s size's text-body and leading with text-body-md (%s)",
+    (size, kind) => {
+      renderButton({
+        size,
+        textSize: "body-md",
+        children: "Save",
+        ...(kind === "loading" ? { loading: true } : {}),
+        ...(kind === "NextLink" ? { as: "NextLink", href: "/x" } : {}),
+      } as Partial<ButtonProps>);
+      const el =
+        kind === "NextLink"
+          ? screen.getByRole("link", { name: "Save" })
+          : screen.getByRole("button", { name: "Save" });
+      const classes = el.className.split(" ");
+      expect(classes).toContain("text-body-md");
+      for (const stale of ["text-body", "leading-5", "leading-snug"])
+        expect(classes).not.toContain(stale);
+    },
+  );
+
+  it("replaces text-body with text-body-md on the link variant", () => {
+    renderButton({ variant: "link", textSize: "body-md", children: "Save" });
     const classes = screen
       .getByRole("button", { name: "Save" })
       .className.split(" ");
     expect(classes).toContain("text-body-md");
     expect(classes).not.toContain("text-body");
-    expect(classes).not.toContain("leading-5");
   });
 });
