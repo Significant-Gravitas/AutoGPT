@@ -342,7 +342,7 @@ async def _summary_counts(
 ) -> DelegationCounts:
     today = start_of_utc_day()
     spent = await delegation_db.get_delegation_spend_since(
-        user_id, today, scope.expert_id
+        user_id, today, scope.expert_id, scope.parent_session_id
     )
     started = await count_threads_started_since(user_id, scope, today)
     held_today = await delegation_list_db.count_held_handoffs(

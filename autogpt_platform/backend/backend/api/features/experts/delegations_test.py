@@ -327,6 +327,21 @@ async def test_a_group_filter_takes_every_status_its_chip_shows(team):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_scoped_summary_counts_only_its_own_spend(team):
+    """Filtered to one chat or one expert, today's spend is theirs alone."""
+    user_id, expert_id, otto = team
+    await _seed(user_id, expert_id, otto)
+
+    this_chat = await list_delegations(user_id, parent_session_id=otto)
+    other_chat = await list_delegations(user_id, parent_session_id="another-chat")
+    other_expert = await list_delegations(user_id, expert_id="someone-else")
+
+    assert this_chat.summary.spent_today_usd == 0.31
+    assert other_chat.summary.spent_today_usd == 0
+    assert other_expert.summary.spent_today_usd == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_the_summary_counts_the_hand_offs_started_today(team):
     """Counted in SQL, so a long history does not hide today's."""
     user_id, expert_id, otto = team
