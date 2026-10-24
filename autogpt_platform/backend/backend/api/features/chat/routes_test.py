@@ -24,8 +24,9 @@ from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.copilot.gate import card_decided
 from backend.copilot.gate.card_approval import approved_on_card, card_decision_metadata
-from backend.copilot.model import AutopilotMode, ChatSession
+from backend.copilot.model import AutopilotMode, ChatMessage, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
@@ -341,6 +342,12 @@ def _mock_stream_internals(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
         return_value="claimed",
+    )
+    # A failed send reads the chat for its answer: nothing was saved.
+    mocker.patch(
+        "backend.api.features.chat.routes.unsaved_ids",
+        new_callable=AsyncMock,
+        side_effect=lambda user_id, session_id, ids: set(ids),
     )
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -987,6 +994,57 @@ async def test_a_card_approval_stands_only_once_its_answer_is_saved(
             session_id,
         )
         is saved
+    )
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+async def test_a_turn_that_fails_after_saving_its_answer_keeps_the_approval(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """schedule_chat_turn saves the row, then dispatch fails. The chat holds
+    the answer, so the card is answered: its approval must stand for the
+    confirm, and no other tab may answer it again."""
+    session_id = f"s-{uuid4()}"
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    get_session = mocker.patch(
+        "backend.copilot.gate.card_decided.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    admission, _ = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, card_decision_metadata(line), "click-1"
+    )
+    # The row was saved before the turn failed to dispatch.
+    get_session.return_value = MagicMock(
+        messages=[
+            ChatMessage(
+                id="row-1",
+                role="user",
+                content=line,
+                metadata=card_decision_metadata(line),
+            )
+        ]
+    )
+
+    await chat_routes._release_card_answer(
+        test_user_id, session_id, line, "click-1", admission
+    )
+
+    assert await approved_on_card(
+        "confirm_expert_change",
+        {"confirmation_id": "c-1"},
+        test_user_id,
+        session_id,
+    )
+    get_session.return_value = None
+    assert (
+        await card_decided.claim_answer(
+            test_user_id, session_id, ["c-1"], owner="tab-b"
+        )
+        == "answered"
     )
 
 
@@ -3436,6 +3494,12 @@ def _mock_stream_queue_internals(
         "backend.copilot.pending_message_helpers.get_active_session_meta",
         new_callable=AsyncMock,
         return_value=None,
+    )
+    # A failed send reads the chat for its answer: nothing was saved.
+    mocker.patch(
+        "backend.api.features.chat.routes.unsaved_ids",
+        new_callable=AsyncMock,
+        side_effect=lambda user_id, session_id, ids: set(ids),
     )
     return mock_session if session_exists else None
 

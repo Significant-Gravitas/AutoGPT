@@ -62,6 +62,7 @@ from backend.copilot.gate.card_decided import (
     claim_answer,
     forget_unsaved_answers,
     release_claim,
+    unsaved_ids,
 )
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
@@ -372,11 +373,23 @@ async def _release_card_answer(
     user_id: str, session_id: str, message: str, owner: str, admission: CardAdmission
 ) -> None:
     """Give back the claim of a request that took it and saved nothing, and
-    the approvals it recorded, so a later confirm cannot pass on them."""
-    if admission == "claimed":
-        ids = _card_ids(message)
-        await withdraw_card_approvals(user_id, session_id, ids)
-        await release_claim(session_id, ids, owner)
+    the approvals it recorded, so a later confirm cannot pass on them.
+
+    Whether it saved is read from the chat, not from where it failed: a turn
+    that failed to dispatch has already saved its row, so it answered the
+    card, and that answer's claim and approvals stand.
+    """
+    if admission != "claimed":
+        return
+    ids = _card_ids(message)
+    unsaved = await unsaved_ids(user_id, session_id, ids)
+    # Unread, the answer may not be saved: no confirm may pass on it.
+    gone = ids if unsaved is None else [cid for cid in ids if cid in unsaved]
+    if saved := [cid for cid in ids if cid not in gone]:
+        await accept_claim(session_id, saved, owner)
+    if gone:
+        await withdraw_card_approvals(user_id, session_id, gone)
+        await release_claim(session_id, gone, owner)
 
 
 async def _was_queued(session_id: str, client_message_id: str | None) -> bool:

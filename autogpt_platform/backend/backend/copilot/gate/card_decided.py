@@ -142,15 +142,7 @@ async def forget_unsaved_answers(
     ids = {d.confirmation_id for m in messages for d in parse_card_decisions(m)}
     if not ids:
         return
-    try:
-        session = await get_chat_session(session_id, user_id)
-    except Exception:
-        logger.warning(
-            f"Could not read session {session_id} for card answers", exc_info=True
-        )
-        return
-    if session:
-        ids -= decided_ids(session.messages, None)
+    ids = await unsaved_ids(user_id, session_id, ids)
     if not ids:
         return
     await withdraw_card_approvals(user_id, session_id, ids)
@@ -161,6 +153,23 @@ async def forget_unsaved_answers(
         logger.warning(
             f"Could not forget card answers for session {session_id}", exc_info=True
         )
+
+
+async def unsaved_ids(
+    user_id: str, session_id: str, confirmation_ids: Iterable[str]
+) -> set[str] | None:
+    """The ids among these the chat holds no answer for, or None when the
+    chat could not be read. A request that failed may have saved its row
+    first (a turn that failed to dispatch), and then it answered the card."""
+    try:
+        session = await get_chat_session(session_id, user_id)
+    except Exception:
+        logger.warning(
+            f"Could not read session {session_id} for card answers", exc_info=True
+        )
+        return None
+    ids = set(confirmation_ids)
+    return ids - decided_ids(session.messages, None) if session else ids
 
 
 def decided_ids(
