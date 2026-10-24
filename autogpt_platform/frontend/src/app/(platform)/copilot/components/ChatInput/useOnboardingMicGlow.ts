@@ -3,6 +3,7 @@ import {
   takeMicGlow,
   takePendingLaterDump,
 } from "@/services/onboarding/brain-dump-handoff";
+import { useComposerVoiceRequest } from "@/services/onboarding/composer-voice-request";
 import { useEffect, useRef, useState } from "react";
 
 // Long enough to survive Otto's intro streaming in, short enough that
@@ -11,10 +12,24 @@ const GLOW_DURATION_MS = 30_000;
 
 export function useOnboardingMicGlow({
   isTranscribing,
+  canRecord,
+  startRecording,
 }: {
   isTranscribing: boolean;
+  canRecord: boolean;
+  startRecording: () => void | Promise<void>;
 }) {
   const [isGlowing, setIsGlowing] = useState(false);
+  const voiceRequest = useComposerVoiceRequest((state) => state.count);
+  const seenVoiceRequestRef = useRef(voiceRequest);
+
+  useEffect(() => {
+    if (voiceRequest === seenVoiceRequestRef.current) return;
+    seenVoiceRequestRef.current = voiceRequest;
+    if (!canRecord) return;
+    setIsGlowing(false);
+    void startRecording();
+  }, [voiceRequest, canRecord, startRecording]);
 
   useEffect(() => {
     if (!takeMicGlow()) return;

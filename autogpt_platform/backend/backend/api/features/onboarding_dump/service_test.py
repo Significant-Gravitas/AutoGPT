@@ -1056,6 +1056,34 @@ async def test_intro_card_takes_path_b_when_the_user_skipped(dumps: DumpStore):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user_role, expected",
+    [
+        ("Founder/CEO", "You told me your role is Founder / CEO, but"),
+        ("I run a small bakery.", prompts.PATH_B_GREETING),
+    ],
+)
+async def test_path_b_greeting_reflects_the_role_the_wizard_asked_for(
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+    user_role: str,
+    expected: str,
+):
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role=user_role)
+    )
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
+    await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.path == "B"
+    assert expected in card.greeting
+    assert user_role not in card.greeting
+    assert "?" not in card.greeting
+
+
+@pytest.mark.asyncio
 async def test_intro_card_takes_path_b_when_the_transcript_is_empty(dumps: DumpStore):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
     await dumps.update_dump(

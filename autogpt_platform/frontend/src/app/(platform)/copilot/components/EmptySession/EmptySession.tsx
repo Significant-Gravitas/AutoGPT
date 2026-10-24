@@ -135,6 +135,8 @@ export function EmptySession({
               suggestions={suggestions}
               transcript={intro.transcript}
               disabled={isComposerDisabled || !!atReset}
+              path={intro.path}
+              onAnswer={onStartTask ?? onSend}
             />
           ) : intro.isAwaitingGreeting ? (
             // Behind the welcome modal's blur and for as long as the
@@ -159,13 +161,13 @@ export function EmptySession({
               <div
                 className={cn(
                   "text-left transition-colors duration-300 ease-out",
-                  // The greeting's prompt card bleeds 1.25rem past the text
-                  // (-mx-5); the composer stretches the same amount so their
+                  // From md the greeting's cards bleed 1.25rem past the text
+                  // (md:-mx-5); the composer stretches the same amount so their
                   // edges line up. No chrome of its own: the composer card is
                   // the only outline on screen. The regular hero keeps it
                   // centered.
                   intro.isVisible
-                    ? "-mx-5 max-w-[50.5rem]"
+                    ? "max-w-[50.5rem] md:-mx-5"
                     : "mx-auto w-full max-w-[42rem]",
                 )}
               >

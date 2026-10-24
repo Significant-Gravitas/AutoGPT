@@ -753,9 +753,10 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
 
     team, team_pending = await _team_for_intro(user_id, dump)
     if dump is None or _nothing_to_reflect(dump):
+        user_role, _ = await _safe_understanding(user_id)
         return IntroCardResponse(
             path="B",
-            greeting=prompts.PATH_B_GREETING,
+            greeting=prompts.path_b_greeting(user_role),
             prompts=intro.fallback_prompts(),
             team=team,
             team_pending=team_pending,

@@ -20,6 +20,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { IntroStandup } from "./components/IntroStandup/IntroStandup";
 
 interface Props {
   name: string;
@@ -27,6 +28,9 @@ interface Props {
   suggestions: ReturnType<typeof useSuggestedTasks>;
   transcript?: string;
   disabled?: boolean;
+  path: string;
+  /** Sends the ask's answer to Otto as an ordinary message. */
+  onAnswer: (message: string) => unknown;
 }
 
 // The orb travels into this card's heading from the loader, so the
@@ -57,6 +61,8 @@ export function OnboardingIntroCard({
   suggestions,
   transcript = "",
   disabled = false,
+  path,
+  onAnswer,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
@@ -155,10 +161,14 @@ export function OnboardingIntroCard({
         </Text>
       </motion.div>
 
+      <motion.div {...reveal(promptsStart)}>
+        <IntroStandup path={path} disabled={disabled} onAnswer={onAnswer} />
+      </motion.div>
+
       {suggestions.tasks.length > 0 && (
         // Negative margins let the list's border breathe outward while the
         // row content (px-4) stays aligned with the text above it.
-        <motion.div {...reveal(promptsStart)} className="-mx-5 mt-5">
+        <motion.div {...reveal(promptsStart)} className="mt-5 md:-mx-5">
           <SuggestedTaskList
             tasks={suggestions.tasks}
             sendingId={suggestions.sendingId}
