@@ -77,7 +77,7 @@ export function ConnectionPicker({
       <span
         aria-label="AI connections unavailable"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-xs font-medium text-destructive",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-caption leading-4 font-medium text-destructive",
           className,
         )}
       >
@@ -93,7 +93,7 @@ export function ConnectionPicker({
         href="/settings/integrations"
         aria-label="Set up an AI connection"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-caption leading-4 font-medium text-foreground transition-colors hover:bg-muted/80",
           className,
         )}
       >
@@ -155,7 +155,7 @@ export function ConnectionPicker({
         className={cn(
           showsTier
             ? "size-8 p-0 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
-            : "h-9 min-w-0 gap-1.5 px-2.5 py-1 text-sm",
+            : "h-9 min-w-0 gap-1.5 px-2.5 py-1",
           className,
         )}
       >
