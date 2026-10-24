@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
-import { Label } from "@/components/__legacy__/ui/label";
+import { Label } from "@/components/atoms/Label/Label";
 import {
   Select,
   SelectContent,
