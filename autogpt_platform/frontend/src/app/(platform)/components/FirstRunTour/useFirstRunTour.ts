@@ -8,7 +8,7 @@ import { trackFirstRun } from "@/services/onboarding/first-run-analytics";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { useEffect } from "react";
 import { setFirstRunTourSeen } from "./helpers";
-import { focusStartingPoint } from "./focusStartingPoint";
+import { focusComposer, focusStartingPoint } from "./focusStartingPoint";
 import { findStepIndex, getAvailableSteps, getStepBody } from "./steps";
 import { useFirstRunTourStore } from "./store";
 import type { MeasuredStop } from "./useTourStops";
@@ -99,7 +99,10 @@ export function useFirstRunTour() {
       getStepBody(steps[index], stop?.target ?? null, context),
     next: () => (isLastStep ? startHere() : goTo(steps[safeIndex + 1].id)),
     back: () => goTo(steps[Math.max(safeIndex - 1, 0)].id),
-    skip: () => finish("skipped"),
+    skip: () => {
+      finish("skipped");
+      focusComposer();
+    },
     startHere,
     connectToolsFirst,
   };

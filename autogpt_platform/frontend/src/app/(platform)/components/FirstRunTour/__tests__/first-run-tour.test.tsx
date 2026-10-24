@@ -62,6 +62,11 @@ function Targets({ only }: { only?: TourTarget[] }) {
       {show("wallet") && <div {...tourTarget("wallet")}>Wallet</div>}
       {show("account") && <div {...tourTarget("account")}>Account</div>}
       {show("menu") && <div {...tourTarget("menu")}>Menu</div>}
+      {show("composer") && (
+        <div {...tourTarget("composer")}>
+          <textarea aria-label="Message Otto" />
+        </div>
+      )}
       {show("first-tasks") && (
         <ol {...tourTarget("first-tasks")}>
           <li>
@@ -296,6 +301,24 @@ describe("first-run walkthrough", () => {
       step_index: 0,
       via: null,
     });
+  });
+
+  it("hands focus to the composer when it is skipped, by button or Escape", async () => {
+    // The composer mounts under the walkthrough, whose focus trap keeps it
+    // from taking focus; nothing else would give it focus afterwards.
+    renderTour();
+    const composer = screen.getByRole("textbox", { name: "Message Otto" });
+    openTour();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip tour" }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(composer));
+
+    composer.blur();
+    openTour("menu");
+    await screen.findByRole("dialog", { name: "Work happens in chats" });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(document.activeElement).toBe(composer));
   });
 
   it("keeps keyboard focus inside the walkthrough and starts it on Next", async () => {
