@@ -13,6 +13,8 @@ import pathlib
 
 import pytest
 
+from backend.copilot.delegation_preamble import strip_teammate_preamble
+
 from .delegate_to_expert import _handoff_message
 from .handoff_to_expert import _transfer_message
 
@@ -49,3 +51,19 @@ def test_every_builder_has_a_case_with_and_without_a_user_name():
     assert {(c["kind"], bool(c["user"])) for c in _CASES} == {
         (kind, named) for kind in _BUILDERS for named in (True, False)
     }
+
+
+@pytest.mark.parametrize(
+    "case",
+    _CASES,
+    ids=[
+        f"{c['kind']}-{c['user'] or 'unnamed'}-{'context' if c['context'] else 'bare'}"
+        for c in _CASES
+    ],
+)
+def test_the_backend_hides_the_preamble_exactly_as_the_frontend_does(
+    case: dict[str, str],
+):
+    """The public share sanitizer strips the preamble on the server, so it
+    must agree with the frontend matcher on every shared case."""
+    assert strip_teammate_preamble(case["message"]) == case["visible"]

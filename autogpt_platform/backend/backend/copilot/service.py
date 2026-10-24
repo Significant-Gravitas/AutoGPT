@@ -33,6 +33,7 @@ from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLLMModel
+from .delegation_preamble import strip_teammate_preamble
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
@@ -1111,8 +1112,14 @@ async def _update_title_async(
     persistence and cost recording are run as independent best-effort
     steps — a failure in one does not cancel the other, so a flaky
     Prisma call on cost recording never costs us the generated title.
+
+    A delegated or handed-off thread is titled from its task, not from the
+    preamble in front of it, which names the user and would otherwise reach
+    the title of a publicly shared thread.
     """
-    title, response = await _generate_session_title(message, user_id, session_id)
+    title, response = await _generate_session_title(
+        strip_teammate_preamble(message), user_id, session_id
+    )
 
     if user_id:
         try:
