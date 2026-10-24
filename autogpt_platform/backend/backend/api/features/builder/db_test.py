@@ -373,3 +373,44 @@ def test_block_searchable_text_includes_field_descriptions():
         ),
     )
     assert db._block_searchable_text(block) == "my block keyword: a searchable keyword"
+
+
+@pytest.mark.asyncio
+async def test_builder_library_search_escapes_underscore_exactly_once(mocker):
+    """The route no longer pre-escapes, and the library DB layer escapes once,
+    so `send_email` is a literal `send\\_email` LIKE pattern (#15660)."""
+    from backend.api.features.builder.routes import sanitize_query
+
+    mocker.patch("prisma.models.AgentGraph.prisma").return_value.find_many = AsyncMock(
+        return_value=[]
+    )
+    find_many = AsyncMock(return_value=[])
+    library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_agent.return_value.find_many = find_many
+    library_agent.return_value.count = AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=AsyncMock(return_value={}),
+    )
+
+    query = sanitize_query("  send_email  ")
+    assert query == "send_email"
+    await db._search_library("user-1", query, query.lower())
+
+    where = find_many.call_args.kwargs["where"]
+    assert {"name": {"contains": r"send\_email", "mode": "insensitive"}} in where["OR"]
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, None),
+        ("  send_email ", "send_email"),
+        ("it's 50% [x]", "it's 50% [x]"),
+        ("a" * 150, "a" * 100),
+    ],
+)
+def test_builder_sanitize_query_only_trims_and_caps(raw, expected):
+    from backend.api.features.builder.routes import sanitize_query
+
+    assert sanitize_query(raw) == expected

@@ -40,6 +40,7 @@ from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
+from backend.util.sql import escape_like
 
 from . import model as library_model
 from ._add_to_library import (
@@ -179,22 +180,21 @@ async def list_library_agents(
 
     # Build search filter if applicable
     if search_term:
+        pattern = escape_like(search_term)
         # Match both the snapshotted marketplace name/description (shown on the
         # card for downloaded agents) and the underlying graph's own values, so
         # searching the displayed title always finds the agent.
         where_clause["OR"] = [
-            {"name": {"contains": search_term, "mode": "insensitive"}},
-            {"description": {"contains": search_term, "mode": "insensitive"}},
+            {"name": {"contains": pattern, "mode": "insensitive"}},
+            {"description": {"contains": pattern, "mode": "insensitive"}},
             {
                 "AgentGraph": {
-                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
+                    "is": {"name": {"contains": pattern, "mode": "insensitive"}}
                 }
             },
             {
                 "AgentGraph": {
-                    "is": {
-                        "description": {"contains": search_term, "mode": "insensitive"}
-                    }
+                    "is": {"description": {"contains": pattern, "mode": "insensitive"}}
                 }
             },
         ]

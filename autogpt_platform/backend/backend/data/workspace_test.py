@@ -152,3 +152,26 @@ async def _write(workspace_id: str, path: str) -> str:
         size_bytes=3,
     )
     return stored.id
+
+
+@pytest.mark.asyncio
+async def test_list_workspace_files_name_and_path_filters_are_literal(mocker):
+    """`_`/`%` in the name filter and path prefixes match literally (#15660)."""
+    find_many = mocker.AsyncMock(return_value=[])
+    mocker.patch("prisma.models.UserWorkspaceFile.prisma").return_value.find_many = (
+        find_many
+    )
+
+    await workspace_db.list_workspace_files(
+        "ws-1",
+        path_prefix="/my_dir/",
+        path_not_starts_with="/50%/",
+        name_contains="a_b",
+        allowed_path_prefixes=["/sessions/s_1/"],
+    )
+
+    where = find_many.call_args.kwargs["where"]
+    assert where["name"] == {"contains": r"a\_b", "mode": "insensitive"}
+    assert where["path"] == {"startswith": r"/my\_dir/"}
+    assert where["NOT"] == [{"path": {"startswith": r"/50\%/"}}]
+    assert where["AND"] == [{"OR": [{"path": {"startswith": r"/sessions/s\_1/"}}]}]

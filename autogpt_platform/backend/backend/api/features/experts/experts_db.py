@@ -130,6 +130,7 @@ from backend.util.exceptions import (
 )
 from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.posthog_events import PostHogEvent
+from backend.util.sql import escape_like
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -380,7 +381,7 @@ def _template_where(
         # Not `category_filter_values`: with the canonical-category setting
         # on, that one hides uncategorised experts from the unfiltered roster.
         where["categories"] = {"has_some": category_match_values(category)}
-    if search_query and (needle := search_query.strip()):
+    if search_query and (needle := escape_like(search_query.strip())):
         where["OR"] = [
             {"name": {"contains": needle, "mode": "insensitive"}},
             {"role": {"contains": needle, "mode": "insensitive"}},

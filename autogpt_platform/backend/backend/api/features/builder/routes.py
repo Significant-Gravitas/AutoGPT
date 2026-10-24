@@ -25,24 +25,16 @@ router = fastapi.APIRouter(
 )
 
 
-# Taken from backend/api/features/store/db.py
 def sanitize_query(query: str | None) -> str | None:
+    """Trim and cap the search text; no LIKE escaping here.
+
+    The same text feeds block scoring, marketplace hybrid search and the saved
+    search history, which all want it verbatim. The library DB search escapes
+    it itself (``escape_like``), so escaping here would do it twice.
+    """
     if query is None:
         return query
-    query = query.strip()[:100]
-    return (
-        query.replace("\\", "\\\\")
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("'", "\\'")
-        .replace('"', '\\"')
-        .replace(";", "\\;")
-        .replace("--", "\\--")
-        .replace("/*", "\\/*")
-        .replace("*/", "\\*/")
-    )
+    return query.strip()[:100]
 
 
 @router.get(

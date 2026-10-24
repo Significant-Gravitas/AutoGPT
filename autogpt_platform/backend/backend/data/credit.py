@@ -73,6 +73,7 @@ from backend.util.models import Pagination
 from backend.util.posthog_events import PostHogEvent
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
+from backend.util.sql import escape_like
 
 if TYPE_CHECKING:
     from backend.blocks._base import Block, BlockCost
@@ -3559,10 +3560,11 @@ async def admin_get_user_history(
     if transaction_filter:
         where_clause["type"] = transaction_filter
     if search:
+        pattern = escape_like(search)
         where_clause["OR"] = [
-            {"userId": {"contains": search, "mode": "insensitive"}},
-            {"User": {"is": {"email": {"contains": search, "mode": "insensitive"}}}},
-            {"User": {"is": {"name": {"contains": search, "mode": "insensitive"}}}},
+            {"userId": {"contains": pattern, "mode": "insensitive"}},
+            {"User": {"is": {"email": {"contains": pattern, "mode": "insensitive"}}}},
+            {"User": {"is": {"name": {"contains": pattern, "mode": "insensitive"}}}},
         ]
     transactions = await CreditTransaction.prisma().find_many(
         where=where_clause,

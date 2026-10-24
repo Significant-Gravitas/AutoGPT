@@ -1809,3 +1809,46 @@ async def test_reject_completes_when_the_reactivated_version_fails_to_load(
 
     assert result.status == prisma.enums.SubmissionStatus.REJECTED
     publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_search_escapes_like_wildcards(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=0, approved=0, pending=0, total_runs=0, average_rating=0
+                )
+            ]
+        ),
+    )
+
+    await db.get_store_submissions(
+        user_id="user-id", page=1, page_size=20, search_query="my_agent%"
+    )
+
+    where = mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+    assert where["OR"][0] == {
+        "name": {"contains": r"my\_agent\%", "mode": "insensitive"}
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_admin_listings_user_lookup_is_escaped_and_capped(mocker):
+    find_users = mocker.patch("prisma.models.User.prisma")
+    find_users.return_value.find_many = AsyncMock(return_value=[])
+    listings = mocker.patch("prisma.models.StoreListing.prisma")
+    listings.return_value.find_many = AsyncMock(return_value=[])
+    listings.return_value.count = AsyncMock(return_value=0)
+
+    await db.get_admin_listings_with_versions(search_query="___")
+
+    kwargs = find_users.return_value.find_many.call_args.kwargs
+    assert kwargs["where"] == {"email": {"contains": r"\_\_\_", "mode": "insensitive"}}
+    assert kwargs["take"] == db.ADMIN_LISTINGS_USER_MATCH_LIMIT
+    where = listings.return_value.find_many.call_args.kwargs["where"]
+    assert where["OR"][0] == {"slug": {"contains": r"\_\_\_", "mode": "insensitive"}}

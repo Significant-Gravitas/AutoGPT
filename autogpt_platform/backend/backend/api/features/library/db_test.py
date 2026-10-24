@@ -2209,3 +2209,35 @@ async def test_cleanup_trigger_agents_processes_each_independently(mocker):
     recursive_delete.assert_awaited_once_with(
         library_agent_id="sole", user_id="test-user", soft_delete=True
     )
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_search_escapes_like_wildcards(mocker):
+    """`_` in the search term reaches Prisma's `contains` escaped exactly once,
+    so it matches a literal underscore (#15660)."""
+    mocker.patch("prisma.models.AgentGraph.prisma").return_value.find_many = (
+        mocker.AsyncMock(return_value=[])
+    )
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", search_term="send_email")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    assert {"name": {"contains": r"send\_email", "mode": "insensitive"}} in where["OR"]
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_search_rejects_nul(mocker):
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    with pytest.raises(ValueError, match="NUL"):
+        await db.list_library_agents("test-user", search_term="a\x00b")
+    mock_library_agent.return_value.find_many.assert_not_called()
