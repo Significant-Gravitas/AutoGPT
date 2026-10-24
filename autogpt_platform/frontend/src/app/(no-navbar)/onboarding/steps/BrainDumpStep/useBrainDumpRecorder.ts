@@ -130,15 +130,7 @@ export function useBrainDumpRecorder() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
-      trackBrainDump("brain_dump_mic_failed", {
-        error_name: microphoneErrorName(error),
-      });
-      if (isMicrophonePermissionDenied(error)) {
-        setPermissionDenied(true);
-        trackBrainDump("brain_dump_permission_denied");
-      } else {
-        setMicUnavailable(true);
-      }
+      reportMicFailure(error);
       return false;
     }
     setMicUnavailable(false);
@@ -177,18 +169,39 @@ export function useBrainDumpRecorder() {
       return false;
     }
 
-    const recorder = new MediaRecorder(stream, { mimeType });
-    recorder.ondataavailable = function handleChunk(event) {
-      if (event.data.size === 0) return;
-      pendingWritesRef.current.push(persistChunk(recordingId, event.data));
-    };
-    recorder.start(TIMESLICE_MS);
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = function handleChunk(event) {
+        if (event.data.size === 0) return;
+        pendingWritesRef.current.push(persistChunk(recordingId, event.data));
+      };
+      recorder.start(TIMESLICE_MS);
+    } catch (error) {
+      // The mic opened but the browser won't record from it (an encoder it
+      // refuses, a track that ended): let the mic go and say so.
+      stopTracks();
+      reportMicFailure(error);
+      return false;
+    }
     recorderRef.current = recorder;
 
     timerRef.current = setInterval(tick, 250);
     setPhase("recording");
     trackBrainDump("brain_dump_started");
     return true;
+  }
+
+  function reportMicFailure(error: unknown) {
+    trackBrainDump("brain_dump_mic_failed", {
+      error_name: microphoneErrorName(error),
+    });
+    if (isMicrophonePermissionDenied(error)) {
+      setPermissionDenied(true);
+      trackBrainDump("brain_dump_permission_denied");
+    } else {
+      setMicUnavailable(true);
+    }
   }
 
   async function persistChunk(recordingId: string, blob: Blob) {
