@@ -102,7 +102,7 @@ export function FilterSheet({
             {/* Created by section */}
             <div className="space-y-4 px-5">
               <Text
-                variant="large-medium-lh-6"
+                variant="large-medium-tight"
                 as="p"
                 className="text-zinc-800"
               >
