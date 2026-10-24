@@ -185,7 +185,9 @@ function useUncheckedHires(args: {
       .filter((id) => id && !installing.includes(id));
     setSeenKey(installingKey);
     if (left.length > 0) {
-      current = { ids: [...finished.ids, ...left], at: args.hiresUpdatedAt };
+      // Hires a re-read has already covered stay checked.
+      const pending = args.setupUpdatedAt >= finished.at ? [] : finished.ids;
+      current = { ids: [...pending, ...left], at: args.hiresUpdatedAt };
       setFinished(current);
     }
   }

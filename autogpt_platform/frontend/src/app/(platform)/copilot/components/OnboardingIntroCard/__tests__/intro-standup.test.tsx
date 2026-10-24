@@ -307,7 +307,12 @@ describe("Otto's first turn on Home — the team", () => {
         : undefined;
       if (status) painted.push(status);
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
     renderHome();
 
     const team = await findTeam();
@@ -500,7 +505,12 @@ describe("Otto's first turn on Home — the one ask", () => {
         : "";
       painted.push(`${statuses}|${ask?.textContent ?? ""}`);
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
     renderHome();
 
     const team = await screen.findByRole(
@@ -547,6 +557,37 @@ describe("Otto's first turn on Home — the one ask", () => {
       screen.queryByRole("region", { name: "One thing I need from you" }),
     ).toBeNull();
   });
+
+  it("keeps a hire that was already checked when a later install's re-read fails", async () => {
+    serve({
+      hires: (read) => [
+        { ...nadia, setup_status: read === 1 ? "installing" : "ready" },
+        { ...robin, setup_status: read <= 2 ? "installing" : "ready" },
+      ],
+    });
+    let setupReads = 0;
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => {
+        setupReads += 1;
+        // The first read and the re-read after Nadia's install answer.
+        return setupReads <= 2
+          ? HttpResponse.json([])
+          : HttpResponse.json({ detail: "down" }, { status: 500 });
+      }),
+    );
+    renderHome();
+
+    const team = await findTeam();
+    function statusOf(index: number) {
+      const row = within(team).queryAllByRole("listitem")[index];
+      return row ? within(row).queryByRole("status")?.textContent : undefined;
+    }
+    await waitFor(() => expect(statusOf(0)).toBe("Ready"), { timeout: 5_000 });
+    await waitFor(() => expect(statusOf(1)).toBe("Couldn't check setup"), {
+      timeout: 20_000,
+    });
+    expect(statusOf(0)).toBe("Ready");
+  }, 30_000);
 
   it("waits for the day-one jobs before asking, so the choices never change under the cursor", async () => {
     serve({
