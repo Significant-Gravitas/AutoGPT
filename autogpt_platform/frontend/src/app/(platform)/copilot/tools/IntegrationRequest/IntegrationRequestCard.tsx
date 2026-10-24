@@ -42,7 +42,7 @@ export function IntegrationRequestCard({ part }: Props) {
           for you.{" "}
           {recorded
             ? "We've added your request to the list of connections people want next."
-            : "Otto will suggest another way below."}
+            : "Otto can still help with the rest of the task."}
         </Text>
       </div>
     </div>

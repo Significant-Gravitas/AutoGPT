@@ -46,7 +46,7 @@ describe("IntegrationRequestCard", () => {
     renderPart(viaRunCapability({ ...RECORDED, recorded: false }));
 
     expect(
-      screen.getByText(/Otto will suggest another way below/),
+      screen.getByText(/Otto can still help with the rest of the task/),
     ).toBeDefined();
     expect(screen.queryByText(/added your request/)).toBeNull();
   });
