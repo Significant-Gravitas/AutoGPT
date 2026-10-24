@@ -7,7 +7,7 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "./components/SelectPrimitives";
 import { cn } from "@/lib/utils";
 import * as React from "react";
 import { ReactNode } from "react";
@@ -89,28 +89,42 @@ export function Select({
   const select = (
     <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger
+        data-slot="select-trigger"
         className={triggerStyles}
         aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         id={id}
       >
-        <SelectValue placeholder={placeholder || label} />
+        <SelectValue
+          data-slot="select-value"
+          placeholder={placeholder || label}
+        />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent data-slot="select-popup">
         {options.map((option, idx) => {
-          if (option.separator) return <SelectSeparator key={`sep-${idx}`} />;
+          if (option.separator)
+            return (
+              <SelectSeparator
+                key={`sep-${idx}`}
+                data-slot="select-separator"
+              />
+            );
           const content = renderItem ? (
             renderItem(option)
           ) : (
-            <div className="flex items-center gap-2">
+            <div
+              data-slot="select-item-content"
+              className="flex items-center gap-2"
+            >
               {option.icon}
-              <span>{option.label}</span>
+              <span data-slot="select-item-label">{option.label}</span>
             </div>
           );
           return (
             <SelectItem
               key={option.value}
+              data-slot="select-item"
               value={option.value}
               disabled={option.disabled}
               onMouseDown={(e) => {
@@ -129,9 +143,13 @@ export function Select({
   );
 
   const selectWithError = (
-    <div className={cn("relative mb-6", wrapperClassName)}>
+    <div
+      data-slot="select-field"
+      className={cn("relative mb-6", wrapperClassName)}
+    >
       {select}
       <Text
+        data-slot="select-error"
         variant="small-medium"
         as="span"
         tone="error"
@@ -149,10 +167,14 @@ export function Select({
   return hideLabel ? (
     selectWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
+    <label data-slot="select" htmlFor={id} className="flex flex-col gap-2">
+      <div
+        data-slot="select-header"
+        className="flex items-center justify-between gap-2"
+      >
+        <div data-slot="select-label-group" className="flex items-center gap-1">
           <Text
+            data-slot="select-label"
             variant={labelVariant}
             as="span"
             className={cn("text-foreground-base", labelClassName)}
