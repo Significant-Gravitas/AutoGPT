@@ -27,6 +27,11 @@ class ReleaseNotesTest(unittest.TestCase):
         public["credits_detailed"] += [
             {"user": {"login": "pending"}, "state": "pending", "type": "reporter"},
             {"user": {"login": "declined"}, "state": "declined", "type": "reporter"},
+            {
+                "user": {"login": "maintainer"},
+                "state": "accepted",
+                "type": "remediation_developer",
+            },
         ]
         excluded = []
         for state in ("triage", "draft", "closed"):
@@ -41,8 +46,30 @@ class ReleaseNotesTest(unittest.TestCase):
         result = release_notes([public, *excluded], TAG)
         self.assertIn("Example fix", result)
         self.assertIn("@researcher", result)
-        for forbidden in ("SECRET", "@pending", "@declined"):
+        for forbidden in ("SECRET", "@pending", "@declined", "@maintainer"):
             self.assertNotIn(forbidden, result)
+
+    def test_deleted_credit_users_and_missing_ids_do_not_hide_valid_advisories(self):
+        valid = advisory()
+        valid["credits_detailed"] += [
+            {"user": None, "state": "accepted", "type": "reporter"},
+            {"state": "accepted", "type": "reporter"},
+        ]
+        missing_id = advisory()
+        del missing_id["ghsa_id"]
+        null_id = advisory(None)
+        result = release_notes([missing_id, valid, null_id], TAG)
+        self.assertEqual(result.count("Example fix"), 1)
+        self.assertIn("@researcher", result)
+
+    def test_only_valid_cve_identifiers_are_rendered(self):
+        item = advisory()
+        item["cve_id"] = "CVE-2026-12345"
+        self.assertIn("(CVE-2026-12345)", release_notes([item], TAG))
+        for cve in (None, "CVE-2026-12", "CVE-2026-12345<script>"):
+            with self.subTest(cve=cve):
+                item["cve_id"] = cve
+                self.assertNotIn("CVE-", release_notes([item], TAG))
 
     def test_requires_matching_fixed_version_and_exact_release_reference(self):
         good = advisory()

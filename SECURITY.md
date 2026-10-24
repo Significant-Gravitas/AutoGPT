@@ -177,7 +177,7 @@ This policy:
 
 We thank the following security researchers for contributing responsibly to improving the security of AutoGPT.
 
-Counts reflect distinct published advisories with accepted reporter, finder, or analyst credit. Historical acknowledgments are retained. See the [advisory release-note procedure](docs/engineering/security-advisory-release-notes.md) for future updates:
+Counts reflect distinct published advisories with accepted reporter, finder, or analyst credit. Historical acknowledgments are retained. See the [advisory release-note procedure](docs/engineering/security-advisory-release-notes.md) for future updates.
 
 - [@lukas-eu](https://github.com/lukas-eu) – 3 advisories
 - [@AgentSec](https://github.com/AgentSec) – 11 advisories

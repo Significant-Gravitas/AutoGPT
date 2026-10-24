@@ -20,18 +20,21 @@ def published_advisories(advisories):
         if advisory.get("state") == "published"
         and advisory.get("published_at")
         and not advisory.get("withdrawn_at")
-        and re.fullmatch(r"GHSA-[a-z0-9]{4}(?:-[a-z0-9]{4}){2}", advisory["ghsa_id"])
+        and re.fullmatch(
+            r"GHSA-[a-z0-9]{4}(?:-[a-z0-9]{4}){2}", advisory.get("ghsa_id") or ""
+        )
     ]
 
 
 def accepted_researchers(advisory):
     return sorted(
         {
-            credit["user"]["login"]
+            login
             for credit in advisory.get("credits_detailed") or []
             if credit.get("state") == "accepted"
             and credit.get("type") in RESEARCH_ROLES
-            and re.fullmatch(r"[A-Za-z0-9-]+", credit["user"]["login"])
+            and (login := (credit.get("user") or {}).get("login"))
+            and re.fullmatch(r"[A-Za-z0-9-]+", login)
         },
         key=str.casefold,
     )
