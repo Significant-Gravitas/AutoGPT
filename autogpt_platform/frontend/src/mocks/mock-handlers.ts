@@ -23,7 +23,10 @@ import {
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
-import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getExpertsMock,
+  getGetExpertOnboardingMockHandler200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
@@ -85,6 +88,9 @@ export const mockHandlers = [
   ...getExecutionsMock(),
   // Nobody is enrolled by default, so every test sees the control experience.
   getGetExperimentsGetExperimentAssignmentMockHandler(null),
+  // No setup questions waiting unless a test sets some up; a random chat id
+  // would pull every empty expert chat into that chat.
+  getGetExpertOnboardingMockHandler200(null),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),

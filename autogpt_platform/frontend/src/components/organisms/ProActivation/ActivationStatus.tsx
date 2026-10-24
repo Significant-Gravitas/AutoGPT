@@ -39,7 +39,7 @@ export function ActivationStatus({
   );
   return (
     <div className="space-y-6">
-      <div className="rounded-xlarge border border-zinc-200 bg-zinc-50 p-5">
+      <div className="rounded-xlarge border border-border-base bg-surface-muted p-5">
         <Icon
           icon={
             isReady
@@ -51,11 +51,13 @@ export function ActivationStatus({
           size={24}
           className={
             !isReady && !payment && !failed && !notApplicable
-              ? "mb-4 animate-spin text-violet-600"
+              ? // TODO(tokens): no role for violet-600 (accent-strong is
+                // violet-700).
+                "mb-4 animate-spin text-violet-600"
               : "mb-4 text-violet-600"
           }
         />
-        <Text variant="body" className="text-zinc-700">
+        <Text variant="body" className="text-foreground-body">
           {isReady
             ? hasFreshUsage
               ? `Your ${plan} plan is active with fresh daily and weekly allowances. Your conversations and work are right where you left them.`

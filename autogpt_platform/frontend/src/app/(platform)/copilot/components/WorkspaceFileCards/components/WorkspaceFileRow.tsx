@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { FileThumbnail } from "@/app/(platform)/artifacts/components/ArtifactsList/ArtifactsTable/FileThumbnail";
 import {
   formatDayLabel,
@@ -26,9 +27,11 @@ export function WorkspaceFileRow({
   onRequestDelete,
 }: Props) {
   const { item } = file;
+  // Relative to the clock, so read on every render rather than cached.
+  const dayLabel = useReadEveryRender(() => formatDayLabel(item.created_at));
 
   return (
-    <div className="group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-zinc-100/70">
+    <div className="group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-hover/70">
       <button
         type="button"
         onClick={() => onOpen(file)}
@@ -40,18 +43,17 @@ export function WorkspaceFileRow({
           <Text
             variant="body-medium"
             as="span"
-            className="truncate text-zinc-900"
+            className="truncate text-foreground-strong"
           >
             {item.name}
           </Text>
           <Text
             variant="small"
             as="span"
-            className="text-zinc-500"
+            className="text-foreground-tertiary"
             title={formatFullDate(item.created_at)}
           >
-            {formatDayLabel(item.created_at)} ·{" "}
-            {formatFileSize(item.size_bytes)}
+            {dayLabel} · {formatFileSize(item.size_bytes)}
           </Text>
         </span>
       </button>

@@ -85,8 +85,9 @@ export function DrawerWrap({
             hasVisibleTitle ? (
               closeBtn
             ) : (
+              // TODO(tokens): no role for gray-200 (#E5E7EB).
               <div
-                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700`}
+                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-gray-200`}
               >
                 {closeBtn}
               </div>

@@ -62,7 +62,7 @@ export function WorkspaceFilePicker({
               icon={Search01Icon}
               width={18}
               height={18}
-              className="absolute left-4 top-1/2 z-20 -translate-y-1/2 text-zinc-500"
+              className="absolute left-4 top-1/2 z-20 -translate-y-1/2 text-foreground-tertiary"
             />
             <Input
               label="Search workspace files"
@@ -89,13 +89,13 @@ export function WorkspaceFilePicker({
                   <Text
                     variant="small-medium"
                     as="span"
-                    className="text-zinc-700"
+                    className="text-foreground-body"
                   >
                     Only {who}&rsquo;s files
                   </Text>
                 </label>
               </div>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-foreground-tertiary">
                 {picker.expertOnly
                   ? `From your chats with ${who}`
                   : "Plus your own files and folders"}

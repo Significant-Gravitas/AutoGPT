@@ -94,14 +94,20 @@ export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
 
   return (
     <div
-      className="max-w-md rounded-2xl bg-white p-4 ring-1 ring-inset ring-zinc-200/60"
+      className="max-w-md rounded-2xl bg-surface p-4 ring-1 ring-inset ring-border-base/60"
       data-testid="scheduled-chat-notice"
     >
       <div className="flex items-start gap-3">
-        <Icon icon={icon} size={18} className="mt-0.5 shrink-0 text-zinc-400" />
+        <Icon
+          icon={icon}
+          size={18}
+          className="mt-0.5 shrink-0 text-foreground-subtle"
+        />
         <div className="min-w-0">
-          <p className="text-sm font-medium text-zinc-900">{notice.headline}</p>
-          <p className="mt-1 text-sm text-zinc-500">{notice.body}</p>
+          <p className="text-sm font-medium text-foreground-strong">
+            {notice.headline}
+          </p>
+          <p className="mt-1 text-sm text-foreground-tertiary">{notice.body}</p>
           {showActions ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {notice.actions.map(renderAction)}

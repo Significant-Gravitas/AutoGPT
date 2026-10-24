@@ -70,7 +70,7 @@ export function BrainDumpStep() {
               variant="ghost"
               size="xs"
               onClick={dump.handleSkip}
-              className="text-zinc-400 hover:text-zinc-700"
+              className="text-foreground-subtle hover:text-foreground-body"
             >
               Skip for now
             </Button>
@@ -158,6 +158,7 @@ export function BrainDumpStep() {
             <RecoveryPrompt
               durationSecs={dump.recoverable.durationSecs}
               onResume={dump.handleResumeRecovered}
+              onDownload={dump.handleDownloadRecording}
               onDiscard={dump.handleDiscardRecovered}
             />
           </RevealItem>
@@ -167,6 +168,7 @@ export function BrainDumpStep() {
           <RevealItem>
             <FailureState
               mode={dump.submittedMode}
+              reason={dump.failureReason}
               onDownload={dump.handleDownloadRecording}
               onSkip={dump.handleSkip}
             />

@@ -34,6 +34,8 @@ export interface ToolMeta {
   category: ChainCategory;
   running: string;
   done: string;
+  /** Appended to the done label when a lookup finds nothing ("none yet"). */
+  empty?: string;
   subject?: (input: ToolInput, context: ToolDisplayContext) => string | null;
   /** The call's own plain-language description of the step ("Updating your
    *  launch brief"). When present it is the whole label, in place of

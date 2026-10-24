@@ -163,7 +163,7 @@ export const CredentialsField = (props: FieldProps) => {
         <Text
           id={unavailableNoteId}
           variant="small"
-          className="text-zinc-500"
+          className="text-foreground-tertiary"
           aria-live="polite"
         >
           Not available on your account.
@@ -195,6 +195,7 @@ export const CredentialsField = (props: FieldProps) => {
             />
             <label
               htmlFor={optionalToggleId}
+              // TODO(tokens): no exact role for text-gray-500 #6b7280
               className="cursor-pointer text-xs text-gray-500"
             >
               Optional - skip block if not configured

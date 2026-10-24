@@ -84,7 +84,10 @@ export const RefundModal = ({
             )}
 
             {transactions.length === 0 ? (
-              <p className="text-sm text-gray-500">
+              <p
+                // TODO(tokens): no exact role (text-gray-500 #6B7280)
+                className="text-sm text-gray-500"
+              >
                 No eligible transactions found for refund.
               </p>
             ) : (
