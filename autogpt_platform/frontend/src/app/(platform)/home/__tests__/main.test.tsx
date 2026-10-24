@@ -242,14 +242,16 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByText("Spanish practice plan")).toBeDefined();
 });
 
-test("a team of one links to it as one expert", async () => {
-  mockDashboard({ ...dashboard, team: { ...dashboard.team, total: 1 } });
+test.each([
+  [1, "Open team"],
+  [3, "Open team"],
+  [5, "View all 5 experts"],
+])("a team of %i links to it as %s", async (total, name) => {
+  mockDashboard({ ...dashboard, team: { ...dashboard.team, total } });
 
   render(<HomeRecap />);
 
-  expect(
-    await screen.findByRole("link", { name: "View all 1 expert" }),
-  ).toBeDefined();
+  expect(await screen.findByRole("link", { name })).toBeDefined();
 });
 
 test("says which workflow is running now and shows its picture", async () => {
