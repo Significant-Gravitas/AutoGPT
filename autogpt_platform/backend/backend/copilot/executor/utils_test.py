@@ -688,3 +688,27 @@ async def test_a_failure_before_the_publish_keeps_its_own_type() -> None:
         )
 
     queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_queue_client_that_cannot_connect_is_not_a_publish() -> None:
+    """Getting the queue client happens before anything is published, so its
+    failure proves nothing was sent (Sentry, CodeRabbit on #16101)."""
+    with (
+        patch.object(
+            utils,
+            "_admitted_turn_envelope",
+            new=AsyncMock(return_value=root_envelope("t1")),
+        ),
+        patch.object(utils, "release_turn", new=AsyncMock()),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch("backend.copilot.stream_registry.delete_session_meta", new=AsyncMock()),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(side_effect=ConnectionError("broker unreachable")),
+        ),
+        pytest.raises(ConnectionError),
+    ):
+        await utils.dispatch_turn(
+            MagicMock(), session_id="s1", user_id="u1", turn_id="t1", message="hi"
+        )
