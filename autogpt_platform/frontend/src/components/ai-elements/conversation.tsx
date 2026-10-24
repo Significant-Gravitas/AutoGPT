@@ -66,10 +66,12 @@ export const ConversationEmptyState = ({
         {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
         {icon && <div className="text-neutral-500">{icon}</div>}
         <div className="space-y-1">
-          <h3 className="text-sm font-medium">{title}</h3>
+          <h3 className="text-body font-medium leading-5">{title}</h3>
           {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
           {description && (
-            <p className="text-sm text-neutral-500">{description}</p>
+            <p className="text-body leading-5 text-neutral-500">
+              {description}
+            </p>
           )}
         </div>
       </>
