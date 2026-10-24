@@ -139,6 +139,7 @@ class AddMemoryBlock(Block, Mem0Base):
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
+        cancellation: asyncio.CancelledError | None = None
         try:
             client = await asyncio.to_thread(self._get_client, credentials)
 
@@ -161,12 +162,17 @@ class AddMemoryBlock(Block, Mem0Base):
             if input_data.limit_memory_to_agent:
                 params["agent_id"] = graph_id
 
-            # Use the client to add memory
-            result = await asyncio.to_thread(
-                client.add,
-                messages,
-                **params,
+            pending_add = asyncio.create_task(
+                asyncio.to_thread(client.add, messages, **params)
             )
+            while True:
+                try:
+                    result = await asyncio.shield(pending_add)
+                    break
+                except asyncio.CancelledError as exc:
+                    if pending_add.cancelled():
+                        raise
+                    cancellation = exc
 
             results = result.get("results", [])
             yield "results", results
@@ -180,6 +186,9 @@ class AddMemoryBlock(Block, Mem0Base):
 
         except Exception as e:
             yield "error", str(e)
+
+        if cancellation is not None:
+            raise cancellation
 
 
 class SearchMemoryBlock(Block, Mem0Base):

@@ -15,6 +15,8 @@ from backend.blocks.mem0 import (
     GetLatestMemoryBlock,
     SearchMemoryBlock,
 )
+from backend.data.execution import ExecutionContext
+from backend.util.exceptions import BlockExecutionError
 
 MEMORIES = [{"id": "memory-1", "memory": "I am a vegetarian"}]
 
@@ -204,3 +206,83 @@ async def test_read_memory_preserves_outputs_and_scope(
         ]
     else:
         assert outputs == [("memories", memories)]
+
+
+@pytest.mark.parametrize("interruption", ["cancel", "cancel_twice", "timeout"])
+@pytest.mark.parametrize("accepted", [False, True])
+async def test_interrupted_add_settles_once_before_reporting_failure(
+    mem0_transport, interruption: str, accepted: bool
+):
+    loop = asyncio.get_running_loop()
+    entered = asyncio.Event()
+    release = Event()
+    deadline = asyncio.timeout(None)
+    results = [{"event": "ADD", "memory": "I am a vegetarian"}]
+    persisted = []
+    outputs = []
+    calls = 0
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        assert request.url.path == "/v1/memories/"
+        assert json.loads(request.content)["async_mode"] is False
+        loop.call_soon_threadsafe(entered.set)
+        if not release.wait(timeout=10):
+            raise TimeoutError("Mem0 request was never released")
+        if not accepted:
+            return httpx.Response(400, json={"detail": "Memory rejected"})
+        persisted.extend(results)
+        return httpx.Response(200, json={"results": results})
+
+    mem0_transport(handle)
+
+    async def collect_outputs():
+        async with deadline:
+            async for item in AddMemoryBlock().execute(
+                {"credentials": TEST_CREDENTIALS_INPUT},
+                execution_context=ExecutionContext(),
+                credentials=TEST_CREDENTIALS,
+                user_id="user-1",
+                graph_id="workflow-1",
+                graph_exec_id="run-1",
+            ):
+                outputs.append(item)
+
+    task = asyncio.create_task(collect_outputs())
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=15)
+        if interruption == "timeout":
+            deadline.reschedule(loop.time())
+            while not deadline.expired():
+                await asyncio.sleep(0)
+        else:
+            task.cancel()
+        await asyncio.sleep(0)
+        if interruption == "cancel_twice":
+            task.cancel()
+            await asyncio.sleep(0)
+        assert not task.done()
+        assert outputs == []
+        assert persisted == []
+    finally:
+        release.set()
+        outcome = (await asyncio.gather(task, return_exceptions=True))[0]
+
+    assert calls == 1
+    if accepted:
+        assert isinstance(
+            outcome,
+            TimeoutError if interruption == "timeout" else asyncio.CancelledError,
+        )
+        assert persisted == results
+        assert outputs == [
+            ("results", results),
+            ("action", "ADD"),
+            ("memory", "I am a vegetarian"),
+        ]
+    else:
+        assert persisted == []
+        assert outputs == []
+        assert isinstance(outcome, BlockExecutionError)
+        assert "Memory rejected" in str(outcome)
