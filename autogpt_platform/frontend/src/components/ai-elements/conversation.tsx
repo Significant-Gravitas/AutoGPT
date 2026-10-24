@@ -33,7 +33,7 @@ export const ConversationContent = ({
     scrollClassName={cn(
       // Contain the overscroll so a fling past either end bounces the thread
       // instead of dragging the page, composer and all, with it.
-      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong",
       scrollClassName,
     )}
     {...props}
@@ -63,9 +63,11 @@ export const ConversationEmptyState = ({
   >
     {children ?? (
       <>
+        {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
         {icon && <div className="text-neutral-500">{icon}</div>}
         <div className="space-y-1">
           <h3 className="text-sm font-medium">{title}</h3>
+          {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
           {description && (
             <p className="text-sm text-neutral-500">{description}</p>
           )}

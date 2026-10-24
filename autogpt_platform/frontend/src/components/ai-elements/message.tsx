@@ -55,6 +55,8 @@ export const MessageContent = ({
     className={cn(
       "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
       "group-[.is-user]:w-fit",
+      // TODO(tokens): no exact role for bg-neutral-100 #F5F5F5; no fitting
+      // role for text-neutral-950 #0A0A0A, which is focus (a focus-ring colour)
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-neutral-950",
       "group-[.is-assistant]:text-neutral-950",
       className,
@@ -305,6 +307,7 @@ export const MessageBranchPage = ({
   return (
     <ButtonGroupText
       className={cn(
+        // TODO(tokens): no exact role for text-neutral-500 #737373
         "border-none bg-transparent text-neutral-500 shadow-none",
         className,
       )}
@@ -347,6 +350,7 @@ function ExternalLinkModal({
         <Text variant="body">
           You&apos;re about to visit an external website:
         </Text>
+        {/* TODO(tokens): no exact role for bg-neutral-100 #F5F5F5 */}
         <Text
           variant="small"
           className="mt-2 break-all rounded-md bg-neutral-100 p-3 font-mono"
@@ -388,7 +392,7 @@ function MessageTable({ children, ...tableProps }: ComponentProps<"table">) {
   // Wrap in an overflow-x-auto div so the page never grows past the
   // chat container — the table scrolls internally instead.
   return (
-    <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-message-table">
+    <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-border-base bg-surface shadow-message-table">
       <table {...tableProps}>{children}</table>
     </div>
   );
@@ -434,19 +438,20 @@ export const MessageResponse = memo(function MessageResponse({
   return (
     <Streamdown
       className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
-        "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
+        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-surface",
+        "[&_a]:text-info [&_a]:no-underline hover:[&_a]:underline",
         // Raycast-style markdown tables: a rounded card with a quiet small-caps
         // header, hairline row separators and tabular figures.
-        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-[13px] [&_table]:tabular-nums",
+        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-body-sm [&_table]:tabular-nums [&_table]:leading-inherit",
         "[&_tbody]:bg-transparent [&_thead]:bg-message-table-header",
-        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-[0.06em] [&_th]:text-indigo-950/70",
+        // TODO(tokens): no exact role for [&_th]:text-indigo-950/70 #1E1B4B
+        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-caption-sm [&_th]:font-medium [&_th]:uppercase [&_th]:leading-5 [&_th]:tracking-eyebrow [&_th]:text-indigo-950/70",
         "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
-        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-[13px] [&_td]:leading-5 [&_td]:text-zinc-700 [&_td]:transition-colors",
-        "[&_td_strong]:font-medium [&_td_strong]:text-zinc-950",
-        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-[12px] [&_td_code]:text-zinc-700",
+        "[&_td]:border-b [&_td]:border-separator [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-body-sm [&_td]:leading-5 [&_td]:text-foreground-body [&_td]:transition-colors",
+        "[&_td_strong]:font-medium [&_td_strong]:text-foreground",
+        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-surface-hover [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-caption [&_td_code]:leading-5 [&_td_code]:text-foreground-body",
         "[&_tbody_tr:last-child_td]:border-b-0",
-        "[&_tbody_tr:hover_td]:bg-zinc-50",
+        "[&_tbody_tr:hover_td]:bg-surface-muted",
         className,
       )}
       components={mergedComponents}
