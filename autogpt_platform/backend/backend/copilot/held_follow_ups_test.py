@@ -104,6 +104,43 @@ async def test_a_follow_up_another_turn_read_meanwhile_is_read_not_unknown(
     assert await follow_up_state("sess-1", status) == "read"
 
 
+async def _redis_goes_away(*args: object, **kwargs: object) -> None:
+    raise ConnectionError("redis went away")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text_only", [False, True])
+async def test_a_drained_follow_up_reads_as_read_even_if_redis_fails_after_the_pop(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, text_only: bool
+) -> None:
+    [status] = await _queued("status?")
+    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+    # Any further call after the pop fails: a turn that read the message must
+    # still leave it marked read, or a Retry would run it a second time.
+    for call in ("sadd", "expire", "delete", "set"):
+        monkeypatch.setattr(fake_redis, call, _redis_goes_away)
+
+    drained = await drain_pending_messages("sess-1", text_only=text_only)
+
+    assert [m.id for m in drained] == [status]
+    assert await follow_up_state("sess-1", status) == "read"
+    assert await held_follow_up_reason("sess-1") is None
+
+
+@pytest.mark.asyncio
+async def test_a_taken_follow_up_reads_as_read_even_if_redis_fails_after_the_take(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    [status] = await _queued("status?")
+    for call in ("sadd", "expire"):
+        monkeypatch.setattr(fake_redis, call, _redis_goes_away)
+
+    taken = await take_follow_up("sess-1", status)
+
+    assert taken is not None and taken.id == status
+    assert await follow_up_state("sess-1", status) == "read"
+
+
 @pytest.mark.asyncio
 async def test_a_follow_up_that_expired_unread_is_unknown(
     fake_redis: _FakeRedis,

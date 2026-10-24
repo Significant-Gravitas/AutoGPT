@@ -30,12 +30,12 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.pending_reads import pop_recording_reads, take_recording_read
 from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
-    pop_matching_list_prefix,
     string_compare_and_set,
 )
 
@@ -393,14 +393,16 @@ async def drain_pending_messages(
 
     Returns them in enqueue order (oldest first). Text-only consumers
     stop before the first image, atomically removing just the inspected
-    prefix if it has not changed. Other consumers drain with ``LPOP``.
+    prefix if it has not changed. Other consumers drain from the head. The
+    same step records what it read and ends any hold.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
+    prefix: list[str] | None = None
 
     if text_only:
         items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
-        prefix: list[str] = []
+        prefix = []
         for item in items:
             payload = _decode_redis_item(item)
             try:
@@ -411,22 +413,16 @@ async def drain_pending_messages(
             if message.model_image is not None:
                 break
             prefix.append(payload)
-        lpop_result = await pop_matching_list_prefix(redis, key, prefix)
-    else:
-        lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
-    if not lpop_result:
+    raw_popped = await pop_recording_reads(
+        redis,
+        queue_key=key,
+        read_key=_read_key(session_id),
+        held_key=held_marker_key(session_id),
+        count=MAX_PENDING_MESSAGES,
+        prefix=prefix,
+    )
+    if not raw_popped:
         return []
-    # Best effort: the messages are already popped, and losing them would be
-    # worse than a stale hold, which the next turn's end rewrites anyway.
-    try:
-        await redis.delete(held_marker_key(session_id))
-    except Exception as e:
-        logger.warning(
-            "pending_messages: could not clear the held marker for %s: %s",
-            session_id,
-            e,
-        )
-    raw_popped: list[Any] = list(lpop_result)
 
     # redis-py may return bytes or str depending on decode_responses.
     decoded: list[str] = [_decode_redis_item(item) for item in raw_popped]
@@ -443,7 +439,6 @@ async def drain_pending_messages(
             )
 
     if messages:
-        await _remember_read(redis, session_id, [m.id for m in messages])
         logger.info(
             "pending_messages: drained %d messages for session=%s",
             len(messages),
@@ -502,7 +497,8 @@ async def take_pending_message_by_id(
     None when it no longer waits (read by a turn, taken already, or expired).
 
     Removes the exact stored payload (``LREM``), so of two callers racing for
-    the same message only one gets it, and nothing else in the queue moves.
+    the same message only one gets it, and nothing else in the queue moves;
+    the same step records it as read.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
@@ -515,10 +511,14 @@ async def take_pending_message_by_id(
             continue
         if message.id != pending_id:
             continue
-        if not await cast("Any", redis.lrem(key, 1, payload)):
-            return None
-        await _remember_read(redis, session_id, [message.id])
-        return message
+        taken = await take_recording_read(
+            redis,
+            queue_key=key,
+            read_key=_read_key(session_id),
+            payload=payload,
+            pending_id=message.id,
+        )
+        return message if taken else None
     return None
 
 
@@ -526,21 +526,6 @@ async def was_pending_message_read(session_id: str, pending_id: str) -> bool:
     """Whether a turn (or a resend) has taken *pending_id* off the queue."""
     redis = await get_redis_async()
     return bool(await cast("Any", redis.sismember(_read_key(session_id), pending_id)))
-
-
-async def _remember_read(redis: Any, session_id: str, ids: list[str]) -> None:
-    # Best effort: it only tells a resend of a message already read apart
-    # from one that expired, and must never cost the caller what it popped.
-    try:
-        key = _read_key(session_id)
-        await cast("Any", redis.sadd(key, *ids))
-        await cast("Any", redis.expire(key, PENDING_TTL_SECONDS))
-    except Exception as e:
-        logger.warning(
-            "pending_messages: could not record read messages for %s: %s",
-            session_id,
-            e,
-        )
 
 
 async def clear_pending_messages_unsafe(session_id: str) -> None:

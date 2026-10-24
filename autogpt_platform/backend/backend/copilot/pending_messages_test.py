@@ -139,17 +139,14 @@ class _FakeRedis:
         self,
         script: str,
         numkeys: int,
-        key: str,
-        *args: Any,
+        *keys_and_args: Any,
     ) -> int | list[str | bytes]:
-        if "LRANGE" in script:
-            current = self.lists.get(key, [])[: len(args)]
-            decoded = [
-                item.decode() if isinstance(item, bytes) else item for item in current
-            ]
-            if decoded != list(args):
-                return []
-            return await self.lpop(key, len(args)) or []
+        keys, args = keys_and_args[:numkeys], keys_and_args[numkeys:]
+        if "cjson.decode" in script:
+            return self._pop_recording_reads(*keys, *args)
+        if "LREM" in script:
+            return self._take_recording_read(*keys, *args)
+        [key] = keys
         expected, new, ttl_seconds, or_missing = args
         current = self.strings.get(key)
         if current != expected and not (current is None and or_missing == "1"):
@@ -159,6 +156,42 @@ class _FakeRedis:
             self.ttls[key] = int(ttl_seconds)
         else:
             self.strings.pop(key, None)
+        return 1
+
+    def _pop_recording_reads(
+        self, key: str, read_key: str, held_key: str, count: int, ttl: int, *prefix: str
+    ) -> list[str | bytes]:
+        """``pending_reads.pop_recording_reads``, in one step like the Lua."""
+        current = self.lists.get(key, [])
+        decoded = [i.decode() if isinstance(i, bytes) else i for i in current]
+        if prefix and decoded[: len(prefix)] != list(prefix):
+            return []
+        taken = len(prefix) if prefix else int(count)
+        popped, self.lists[key] = current[:taken], current[taken:]
+        if not popped:
+            return []
+        for item in popped:
+            try:
+                entry = json.loads(item)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+                self.sets.setdefault(read_key, set()).add(entry["id"])
+                self.ttls[read_key] = int(ttl)
+        self.strings.pop(held_key, None)
+        return popped
+
+    def _take_recording_read(
+        self, key: str, read_key: str, payload: str, pending_id: str, ttl: int
+    ) -> int:
+        """``pending_reads.take_recording_read``, in one step like the Lua."""
+        current = self.lists.get(key, [])
+        decoded = [i.decode() if isinstance(i, bytes) else i for i in current]
+        if payload not in decoded:
+            return 0
+        del current[decoded.index(payload)]
+        self.sets.setdefault(read_key, set()).add(pending_id)
+        self.ttls[read_key] = int(ttl)
         return 1
 
     async def exists(self, key: str) -> int:
@@ -845,10 +878,12 @@ async def test_text_hook_drops_corrupt_prefix_without_consuming_images(
 
 async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeypatch):
     await push_pending_message("images", PendingMessage(content="before"))
+    working_eval = fake_redis.eval
     monkeypatch.setattr(
         fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
     )
     assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    monkeypatch.setattr(fake_redis, "eval", working_eval)
     assert [message.content for message in await drain_pending_messages("images")] == [
         "before"
     ]
