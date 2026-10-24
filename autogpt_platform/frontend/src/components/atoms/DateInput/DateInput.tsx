@@ -9,7 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateString(d: Date) {
   const year = d.getFullYear();
