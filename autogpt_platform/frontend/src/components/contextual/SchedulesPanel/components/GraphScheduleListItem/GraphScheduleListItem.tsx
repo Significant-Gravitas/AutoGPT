@@ -243,18 +243,15 @@ function ScheduleMetaRow({
       <dt className="flex-shrink-0 text-body-sm leading-inherit text-foreground-tertiary">
         {label}
       </dt>
-      <dd
-        className={cn(
-          "min-w-0 truncate text-right text-body-sm font-medium leading-inherit text-foreground-emphasis",
-          mono &&
-            // Text has no body-sm variant for the other branch, so this <dd>
-            // keeps role classes: caption at text-xs's 16px line height.
-            "font-mono text-caption font-normal leading-4 tracking-tight text-foreground-secondary",
-        )}
+      <Text
+        as="dd"
+        variant={mono ? "small-mono-tight-tracking" : "body-sm-medium-inherit"}
+        tone={mono ? "secondary" : "emphasis"}
+        className="min-w-0 truncate text-right"
         title={title ?? value}
       >
         {value}
-      </dd>
+      </Text>
     </div>
   );
 }

@@ -43,6 +43,9 @@ export const variants = {
     "font-sans text-body font-medium leading-5 text-foreground-base",
   "body-md": "font-sans text-body-md font-normal text-foreground-base",
   "body-md-medium": "font-sans text-body-md font-medium text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  "body-sm-medium-inherit":
+    "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
@@ -57,6 +60,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-mono-tight":
     "font-mono text-caption font-normal leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-mono-tight-tracking":
+    "font-mono text-caption font-normal leading-4 tracking-tight text-foreground-base",
 
   // Label Text
   label:
@@ -83,6 +89,8 @@ export const tones = {
   warning: "text-warning-foreground", // #B45309
   success: "text-success", // #149443
   disabled: "text-foreground-disabled", // #C5C5C9
+  // The parent's colour, for copy inside a control that changes it on hover.
+  inherit: "text-inherit",
   // TODO(tokens): no role for text-emerald-300 #6EE7B7 (on a dark fill).
   "success-light": "text-emerald-300",
   // TODO(tokens): no role for text-emerald-700 #047857.
@@ -111,12 +119,14 @@ export const variantElementMap: Record<Variant, As> = {
   "body-medium-tight": "p",
   "body-md": "p",
   "body-md-medium": "p",
+  "body-sm-medium-inherit": "p",
   small: "p",
   "small-medium": "p",
   "small-tight": "p",
   "small-medium-tight": "p",
   "small-uppercase-tight": "span",
   "small-mono-tight": "code",
+  "small-mono-tight-tracking": "code",
   label: "span",
   eyebrow: "span",
 };

@@ -88,9 +88,11 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
             <button
               type="button"
               onClick={() => void retryPreview()}
-              className="mt-1 text-body-md font-medium text-foreground-body underline underline-offset-2 hover:text-foreground"
+              className="mt-1 inline-flex text-foreground-body underline underline-offset-2 hover:text-foreground"
             >
-              Retry
+              <Text variant="body-md-medium" as="span" tone="inherit">
+                Retry
+              </Text>
             </button>
           ) : null}
           {pauseNames.length > 0 ? (
