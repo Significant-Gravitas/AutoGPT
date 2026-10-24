@@ -1,4 +1,5 @@
 "use client";
+import { Text } from "@/components/atoms/Text/Text";
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -53,14 +54,17 @@ export function SubscriptionTierSection() {
   if (error) {
     return (
       <div className="space-y-4">
+        {/* TODO(tokens): no role holds 18px/28px (text-lg). */}
         <h3 className="text-lg font-medium">Subscription Plan</h3>
-        <p
+        <Text
+          variant="body"
+          as="p"
           role="alert"
           // TODO(tokens): no exact role (border-red-200 #FAC5C5, dark:border-red-800, dark:bg-red-900/20, dark:text-red-400)
-          className="rounded-md border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+          className="rounded-md border border-red-200 bg-error-surface px-3 py-2 leading-5 text-error-foreground dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
         >
           {error}
-        </p>
+        </Text>
       </div>
     );
   }
@@ -72,6 +76,7 @@ export function SubscriptionTierSection() {
   if (currentTier === "ENTERPRISE") {
     return (
       <div className="space-y-4">
+        {/* TODO(tokens): no role holds 18px/28px (text-lg). */}
         <h3 className="text-lg font-medium">Subscription Plan</h3>
         <div
           // TODO(tokens): no exact role (border-violet-500 #8B5CF6, dark:bg-violet-900/20)
@@ -83,13 +88,15 @@ export function SubscriptionTierSection() {
           >
             Enterprise Plan
           </p>
-          <p
+          <Text
+            variant="body"
+            as="p"
             // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-            className="mt-1 text-sm text-neutral-600 dark:text-neutral-400"
+            className="mt-1 leading-5 text-neutral-600 dark:text-neutral-400"
           >
             Your Enterprise plan is managed by your administrator. Contact your
             account team for changes.
-          </p>
+          </Text>
         </div>
       </div>
     );
@@ -137,13 +144,14 @@ export function SubscriptionTierSection() {
 
   return (
     <div className="space-y-4">
+      {/* TODO(tokens): no role holds 18px/28px (text-lg). */}
       <h3 className="text-lg font-medium">Subscription Plan</h3>
 
       {needsSubscription && (
         <div
           role="status"
           // TODO(tokens): no exact role (border-violet-300 #C4B5FD, text-violet-900 #4C1D95, dark:bg-violet-900/20, dark:text-violet-200); no fitting role for dark:border-violet-700 #6D28D9; #6D28D9 is accent-strong, a text colour
-          className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-sm text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
+          className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-body leading-5 text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
         >
           <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
           <p className="mt-1">
@@ -154,13 +162,15 @@ export function SubscriptionTierSection() {
       )}
 
       {tierError && (
-        <p
+        <Text
+          variant="body"
+          as="p"
           role="alert"
           // TODO(tokens): no exact role (border-red-200 #FAC5C5, dark:border-red-800, dark:bg-red-900/20, dark:text-red-400)
-          className="rounded-md border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+          className="rounded-md border border-red-200 bg-error-surface px-3 py-2 leading-5 text-error-foreground dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
         >
           {tierError}
-        </p>
+        </Text>
       )}
 
       {hasPendingChange && pendingTierFromSubscription ? (
@@ -206,32 +216,39 @@ export function SubscriptionTierSection() {
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-semibold">{tier.label}</span>
                 {isCurrent && (
-                  <span
+                  <Text
+                    variant="small-medium"
+                    as="span"
                     // TODO(tokens): no exact role (bg-violet-100 #EDE9FE, dark:bg-violet-800, dark:text-violet-200)
-                    className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-accent-strong dark:bg-violet-800 dark:text-violet-200"
+                    className="rounded-full bg-violet-100 px-2 py-0.5 leading-4 text-accent-strong dark:bg-violet-800 dark:text-violet-200"
                   >
                     Current
-                  </span>
+                  </Text>
                 )}
               </div>
 
+              {/* TODO(tokens): no role holds 24px/32px (text-2xl). */}
               <p className="mb-1 text-2xl font-bold">
                 {formatCost(cost, tier.key)}
               </p>
               {rateLimitLabel && (
-                <p
+                <Text
+                  variant="body-medium"
+                  as="p"
                   // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-                  className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400"
+                  className="mb-1 leading-5 text-neutral-600 dark:text-neutral-400"
                 >
                   {rateLimitLabel}
-                </p>
+                </Text>
               )}
-              <p
+              <Text
+                variant="body"
+                as="p"
                 // TODO(tokens): no exact role (text-neutral-500 #737373, dark:text-neutral-400)
-                className="mb-4 text-sm text-neutral-500 dark:text-neutral-400"
+                className="mb-4 leading-5 text-neutral-500 dark:text-neutral-400"
               >
                 {tier.description}
-              </p>
+              </Text>
 
               {!isCurrent && isPaymentEnabled && (
                 <Button
@@ -259,20 +276,22 @@ export function SubscriptionTierSection() {
 
       {currentTier !== "NO_TIER" && isPaymentEnabled && (
         <div className="flex items-center justify-between gap-3">
-          <p
+          <Text
+            variant="body"
+            as="p"
             // TODO(tokens): no exact role (text-neutral-500 #737373)
-            className="text-sm text-neutral-500"
+            className="leading-5 text-neutral-500"
           >
             Your subscription is managed through Stripe. Upgrades take effect
             immediately. Downgrades take effect at the end of your current
             billing period.
-          </p>
+          </Text>
           {!hasPendingChange && (
             <Button
               variant="compact-ghost"
               size="compact"
               // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400); no fitting role for hover:text-red-600 #D93636; #D93636 is error-hover, a hover fill
-              className="shrink-0 text-sm text-neutral-600 hover:text-red-600 dark:text-neutral-400"
+              className="shrink-0 text-neutral-600 hover:text-red-600 dark:text-neutral-400"
               disabled={isPending}
               onClick={() => setConfirmDowngradeTo("NO_TIER")}
             >
@@ -292,15 +311,17 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <p
+          <Text
+            variant="body"
+            as="p"
             // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-            className="text-sm text-neutral-600 dark:text-neutral-400"
+            className="leading-5 text-neutral-600 dark:text-neutral-400"
           >
             {confirmDowngradeTo === "NO_TIER"
               ? `Cancelling your subscription schedules it to end at the close of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
               : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate.`}{" "}
             Are you sure?
-          </p>
+          </Text>
           <Dialog.Footer>
             <Button
               variant="compact-outline"
@@ -330,9 +351,11 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <p
+          <Text
+            variant="body"
+            as="p"
             // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-            className="text-sm text-neutral-600 dark:text-neutral-400"
+            className="leading-5 text-neutral-600 dark:text-neutral-400"
           >
             You have a pending change to{" "}
             {getTierLabel(pendingTierFromSubscription ?? "")}
@@ -341,7 +364,7 @@ export function SubscriptionTierSection() {
               : ""}
             . Switching to {getTierLabel(confirmReplacePendingTo ?? "")} will
             replace it. Continue?
-          </p>
+          </Text>
           <Dialog.Footer>
             <Button
               variant="compact-outline"
@@ -371,14 +394,16 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <p
+          <Text
+            variant="body"
+            as="p"
             // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-            className="text-sm text-neutral-600 dark:text-neutral-400"
+            className="leading-5 text-neutral-600 dark:text-neutral-400"
           >
             {subscription.has_active_stripe_subscription
               ? `Your subscription is upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. On your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, your saved card is charged for the upgrade proration since today plus the next month at the new rate, with the unused portion of your current plan automatically deducted.`
               : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription.`}
-          </p>
+          </Text>
           <Dialog.Footer>
             <Button
               variant="compact-outline"
