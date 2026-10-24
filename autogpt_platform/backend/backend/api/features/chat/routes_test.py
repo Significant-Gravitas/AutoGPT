@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import fastapi
 import fastapi.testclient
@@ -23,12 +24,14 @@ from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.copilot.gate.card_approval import approved_on_card, card_decision_metadata
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
+from backend.data import redis_client
 from backend.data.model import OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
 from backend.integrations.codex.auth_bundle import (
@@ -42,6 +45,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.settings import BehaveAs
+from backend.util.testing import is_tcp_port_reachable
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -743,6 +747,9 @@ def test_stream_chat_keeps_the_users_words_but_not_a_second_answer(
     record.assert_not_awaited()
     mocks.enqueue.assert_awaited_once()
     assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
+    # The answered card's line is not saved either: a later reader (the chat,
+    # or the model) must not take it as a second answer.
+    assert mocks.enqueue.await_args.kwargs["message"] == "And let's talk about pricing."
 
 
 def test_stream_chat_asks_to_retry_while_another_answer_is_being_sent(
@@ -885,6 +892,11 @@ def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
     release = mocker.patch(
         "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
     )
+    withdraw = mocker.patch(
+        "backend.api.features.chat.routes.withdraw_card_approvals",
+        new_callable=AsyncMock,
+        create=True,
+    )
 
     response = client.post(
         "/sessions/sess-1/stream",
@@ -899,6 +911,82 @@ def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
         "sess-1",
         ["c-1"],
         chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1"),
+    )
+    # Nothing was saved: the approval it recorded must not let a confirm pass.
+    withdraw.assert_awaited_once_with(test_user_id, "sess-1", ["c-1"])
+
+
+def test_queue_pending_message_queues_the_users_words_but_not_a_second_answer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="answered",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={
+            "message": "Not approved: do not hire Maya, discard that proposal "
+            "(confirmation_id: c-1).\nAnd let's talk about pricing."
+        },
+    )
+
+    assert response.status_code == 200
+    record.assert_not_awaited()
+    pushed = push.await_args.args[1]
+    assert pushed.content == "And let's talk about pricing."
+    assert pushed.metadata is None
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize("saved", [False, True], ids=["failed", "saved"])
+async def test_a_card_approval_stands_only_once_its_answer_is_saved(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, saved: bool
+) -> None:
+    """The gate's approval follows the answer: a send that saved nothing
+    takes it back, so a later confirm cannot pass on it."""
+    session_id = f"s-{uuid4()}"
+    mocker.patch(
+        "backend.copilot.gate.card_decided.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    admission, _ = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, card_decision_metadata(line), "click-1"
+    )
+    assert admission == "claimed"
+
+    if saved:
+        await chat_routes._accept_card_answer(session_id, line, "click-1")
+    else:
+        await chat_routes._release_card_answer(
+            test_user_id, session_id, line, "click-1", admission
+        )
+
+    assert (
+        await approved_on_card(
+            "confirm_expert_change",
+            {"confirmation_id": "c-1"},
+            test_user_id,
+            session_id,
+        )
+        is saved
     )
 
 

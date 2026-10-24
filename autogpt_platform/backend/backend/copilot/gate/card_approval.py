@@ -91,6 +91,13 @@ def parse_card_decisions(message: str) -> list[CardDecision]:
     ]
 
 
+def strip_card_decisions(message: str) -> str:
+    """The message without its decision lines: what is left of a user's own
+    words once the cards those lines answer turn out to be answered already."""
+    kept = [line for line in message.splitlines() if not _parse_line(line)]
+    return "\n".join(kept).strip()
+
+
 def card_decision_metadata(message: str) -> dict[str, Any] | None:
     """Metadata for a user message made only of card decision lines.
 
