@@ -23,7 +23,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Label } from "@/components/__legacy__/ui/label";
 import {
   Select,
@@ -330,7 +330,7 @@ export function ExecutionAnalyticsForm() {
             <Label htmlFor="graph_id">
               Graph ID <span className="text-error">*</span>
             </Label>
-            <Input
+            <BaseInput
               id="graph_id"
               value={formData.graph_id}
               onChange={(e) => handleInputChange("graph_id", e.target.value)}
@@ -341,7 +341,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="graph_version">Graph Version</Label>
-            <Input
+            <BaseInput
               id="graph_version"
               type="number"
               value={formData.graph_version || ""}
@@ -357,7 +357,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="user_id">User ID</Label>
-            <Input
+            <BaseInput
               id="user_id"
               value={formData.user_id || ""}
               onChange={(e) => handleInputChange("user_id", e.target.value)}
@@ -367,7 +367,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="created_after">Created After</Label>
-            <Input
+            <BaseInput
               id="created_after"
               type="datetime-local"
               value={formData.created_after || ""}

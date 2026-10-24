@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
 import { Button } from "@/components/__legacy__/ui/button";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Label } from "@/components/__legacy__/ui/label";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { Badge } from "@/components/__legacy__/ui/badge";
@@ -397,7 +397,7 @@ export function MCPToolDialog({
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="mcp-server-url">Server URL</Label>
-              <Input
+              <BaseInput
                 id="mcp-server-url"
                 type="url"
                 placeholder="https://mcp.example.com/mcp"
@@ -452,7 +452,7 @@ export function MCPToolDialog({
                 <Label htmlFor="mcp-auth-token" className="text-sm">
                   {mcpAuthTokenLabel(manualAuthScheme)}
                 </Label>
-                <Input
+                <BaseInput
                   id="mcp-auth-token"
                   aria-describedby="mcp-auth-token-hint"
                   type="password"

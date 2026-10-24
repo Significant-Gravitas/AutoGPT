@@ -10,7 +10,7 @@ import {
 } from "@/components/__legacy__/ui/dialog";
 import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { Button } from "@/components/__legacy__/ui/button";
 
@@ -46,7 +46,7 @@ export const APIKeysModals = () => {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Name</Label>
-              <Input
+              <BaseInput
                 id="name"
                 value={keyState.newKeyName}
                 onChange={(e) =>
@@ -60,7 +60,7 @@ export const APIKeysModals = () => {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">Description (Optional)</Label>
-              <Input
+              <BaseInput
                 id="description"
                 value={keyState.newKeyDescription}
                 onChange={(e) =>

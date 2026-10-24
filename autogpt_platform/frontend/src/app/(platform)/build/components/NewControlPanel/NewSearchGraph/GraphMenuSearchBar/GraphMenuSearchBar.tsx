@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Button } from "@/components/__legacy__/ui/button";
 import { useGraphMenuSearchBarComponent } from "./useGraphMenuSearchBarComponent";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -37,7 +37,7 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
           strokeWidth={2}
         />
       </div>
-      <Input
+      <BaseInput
         ref={inputRef}
         type="text"
         value={searchQuery}

@@ -7,7 +7,7 @@ import {
   SelectValue,
 } from "@/components/__legacy__/ui/select";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Button } from "@/components/__legacy__/ui/button";
 import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
 
@@ -265,7 +265,7 @@ export function CronScheduler({
         {frequency === "custom" && (
           <div className="flex items-center gap-2">
             <Label>Every</Label>
-            <Input
+            <BaseInput
               type="number"
               min="1"
               className="w-20"
@@ -482,7 +482,7 @@ export function CronScheduler({
         !(frequency === "custom" && customInterval.unit !== "days") && (
           <div className="flex items-center gap-4 space-y-2">
             <Label className="pt-2">At</Label>
-            <Input
+            <BaseInput
               type="time"
               value={selectedTime}
               onChange={(e) => setSelectedTime(e.target.value)}

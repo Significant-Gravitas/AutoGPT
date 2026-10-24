@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { useBlockMenuSearchBar } from "./useBlockMenuSearchBar";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -36,7 +36,7 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
           strokeWidth={2}
         />
       </div>
-      <Input
+      <BaseInput
         ref={inputRef}
         type="text"
         value={localQuery}

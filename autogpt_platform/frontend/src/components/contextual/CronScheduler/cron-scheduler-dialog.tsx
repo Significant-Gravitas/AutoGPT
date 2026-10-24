@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Button } from "@/components/__legacy__/ui/button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CronScheduler } from "@/components/contextual/CronScheduler/cron-scheduler";
@@ -101,7 +101,7 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
           {props.mode === "with-name" && (
             <div className="flex max-w-[448px] flex-col space-y-2">
               <label className="text-sm font-medium">Schedule Name</label>
-              <Input
+              <BaseInput
                 value={scheduleName}
                 onChange={(e) => setScheduleName(e.target.value)}
                 placeholder="Enter a name for this schedule"
