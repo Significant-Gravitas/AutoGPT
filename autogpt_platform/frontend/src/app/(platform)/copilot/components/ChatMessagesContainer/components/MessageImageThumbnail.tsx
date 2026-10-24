@@ -12,7 +12,8 @@ import { LocalFileImage } from "../../LocalFileImage/LocalFileImage";
 
 // A fixed size, not the image's own width, so the frame doesn't move while
 // the sent image downloads or when it replaces the pending one.
-const FRAME = "overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100";
+const FRAME =
+  "overflow-hidden rounded-2xl border border-border-base bg-surface-hover";
 const IMAGE = "block size-40 object-cover";
 
 interface Props {
@@ -34,6 +35,7 @@ export function MessageImageThumbnail({ artifact, readOnly }: Props) {
       aria-label={`Open ${artifact.title}`}
       className={cn(
         FRAME,
+        // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
         "transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
       )}
     >
@@ -82,11 +84,14 @@ export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
         />
       )}
       {attachment.isUploading && (
-        <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+        <span
+          // TODO(tokens): no fitting role for bg-black/20 #141414; #141414 is foreground-base (a text colour)
+          className="absolute inset-0 flex items-center justify-center bg-black/20"
+        >
           <Icon
             icon={Loading03Icon}
             size={20}
-            className="animate-spin text-white"
+            className="animate-spin text-action-foreground"
           />
         </span>
       )}
