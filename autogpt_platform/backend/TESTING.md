@@ -288,6 +288,29 @@ Snapshot tests work in CI by:
 2. CI compares against committed snapshots
 3. Fails if snapshots don't match
 
+### Flake gate
+
+On a pull request to `dev`, the advisory `flake gate (backend)` job re-runs each backend test file you add or change: once as usual, then up to 10 times while busy processes load every CPU core, each time in a new random order. A test that passes in some runs and fails in others is reported as flaky in the job summary, with the seed of each failing run and the command that reproduces it. These are the tests that pass on a PR and then fail in the merge queue or on `dev`, usually a wall-clock bound (`assert elapsed < 1.5`) or a test that depends on another running first. Assert what the code did (attempts, call counts, order) rather than how fast it did it, and give each test its own state. The gate never blocks a merge.
+
+The gate starts Postgres, the Redis cluster and RabbitMQ, but not ClamAV or FalkorDB, and it has no secrets. A test that fails even in the run without load is listed as not counted rather than flagged.
+
+Reproduce a failing run, from `autogpt_platform/backend` (`poetry run test` brings the test stack up):
+
+```bash
+PYTHONHASHSEED=1234 python3 ../../.github/scripts/flake_gate.py stress -- \
+  poetry run test -p flake_gate_pytest --flake-gate-seed=1234 backend/path/to/x_test.py
+```
+
+`-p flake_gate_pytest --flake-gate-seed=N` replays the gate's test order for seed N. To repeat the whole gate on a file:
+
+```bash
+python3 ../../.github/scripts/flake_gate.py run --suite backend backend/path/to/x_test.py
+# for tests that need the test stack, bring it up for each run:
+python3 ../../.github/scripts/flake_gate.py run --suite backend --command "poetry run test" backend/path/to/x_test.py
+```
+
+The load is three busy processes per core; `--load N` changes it.
+
 ### Running backend CI on demand
 
 The backend CI workflow (`.github/workflows/platform-backend-ci.yml`) also supports a
