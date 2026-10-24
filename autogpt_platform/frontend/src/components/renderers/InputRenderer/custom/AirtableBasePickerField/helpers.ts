@@ -1,0 +1,36 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+
+export const AIRTABLE_PICKER_FORMAT = "airtable-base-picker";
+export const AIRTABLE_HOME_URL = "https://airtable.com/";
+
+// The search box appears once the list is too long to scan.
+export const SEARCH_THRESHOLD = 8;
+
+// The copilot fills in the account the run will use; without one (the builder)
+// there is nothing to list, so the field stays a plain text input.
+export function pickerCredentialsID(schema: unknown): string | null {
+  if (!isRecord(schema) || schema.format !== AIRTABLE_PICKER_FORMAT) {
+    return null;
+  }
+  const picker = schema.resource_picker;
+  if (!isRecord(picker)) return null;
+  const id = picker.credentials_id;
+  return typeof id === "string" && id ? id : null;
+}
+
+export function isAirtableBasePickerSchema(schema: unknown): boolean {
+  return pickerCredentialsID(schema) !== null;
+}
+
+export function loadErrorText(error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) return error.message;
+  return "Couldn't load your Airtable bases. Try again.";
+}
+
+export function matchesSearch(name: string, search: string): boolean {
+  return name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
