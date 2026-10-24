@@ -85,13 +85,13 @@ export function WalletRefill() {
   return (
     <div className="mx-1 border-b border-border-strong">
       <Text
-        variant="small-medium"
+        variant="small-medium-tight"
         as="p"
-        className="mx-0 mt-4 leading-4 text-accent-strong"
+        className="mx-0 mt-4 text-accent-strong"
       >
         Add credits to your balance
       </Text>
-      <Text variant="small" as="p" tone="muted" className="mx-0 my-1 leading-4">
+      <Text variant="small-tight" as="p" tone="muted" className="mx-0 my-1">
         Choose a one-time top-up or set up automatic refills
       </Text>
       <TabsLine
@@ -106,18 +106,18 @@ export function WalletRefill() {
         <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-border-base">
           <TabsLineContent value="top-up" className="flex flex-col">
             <Text
-              variant="body-medium"
+              variant="body-medium-lh-snug"
               as="div"
               tone="primary"
-              className="mt-2 justify-start leading-snug"
+              className="mt-2 justify-start"
             >
               One-time top-up
             </Text>
             <Text
-              variant="small"
+              variant="small-lh-tight"
               as="div"
               tone="muted"
-              className="mt-1 justify-start leading-tight"
+              className="mt-1 justify-start"
             >
               Enter an amount (min. $5) and add credits instantly.
             </Text>
@@ -125,18 +125,18 @@ export function WalletRefill() {
           </TabsLineContent>
           <TabsLineContent value="auto-refill" className="flex flex-col">
             <Text
-              variant="body-medium"
+              variant="body-medium-lh-snug"
               as="div"
               tone="primary"
-              className="justify-start leading-snug"
+              className="justify-start"
             >
               Auto-refill
             </Text>
             <Text
-              variant="small"
+              variant="small-lh-tight"
               as="div"
               tone="muted"
-              className="mt-1 justify-start leading-tight"
+              className="mt-1 justify-start"
             >
               Choose a one-time top-up or set up automatic refills.
             </Text>
@@ -192,9 +192,10 @@ export function WalletRefill() {
             </FormProvider>
           </TabsLineContent>
           <Text
-            variant="small"
+            variant="small-lh-tight"
             as="div"
-            className="mb-3 justify-start leading-tight text-inherit"
+            tone="inherit"
+            className="mb-3 justify-start"
           >
             <span className="text-foreground-tertiary">
               To update your billing details, head to{" "}

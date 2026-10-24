@@ -15,7 +15,6 @@ import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { cn } from "@/lib/utils";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import * as React from "react";
 import { StepHeader } from "../StepHeader";
@@ -186,9 +185,9 @@ export function AgentInfoStep({
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
-                  variant="body-medium"
+                  variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 leading-5 text-textBlack"
+                  className="flex items-center gap-2 text-textBlack"
                 >
                   <Icon
                     icon={Store01Icon}
@@ -296,9 +295,9 @@ export function AgentInfoStep({
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
-                  variant="body-medium"
+                  variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 leading-5 text-textBlack"
+                  className="flex items-center gap-2 text-textBlack"
                 >
                   <Icon
                     icon={Album01Icon}
@@ -336,9 +335,9 @@ export function AgentInfoStep({
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
-                  variant="body-medium"
+                  variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 leading-5 text-textBlack"
+                  className="flex items-center gap-2 text-textBlack"
                 >
                   <Icon
                     icon={SparklesIcon}
@@ -469,23 +468,23 @@ export function AgentInfoStep({
                         type="button"
                         onClick={() => setCronScheduleDialogOpen(true)}
                         // TODO(tokens): no exact role for focus:border-purple-400 #925cf7, focus:ring-purple-400 #925cf7
-                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-body font-normal leading-5 text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
                       >
                         <Icon
                           icon={Calendar03Icon}
                           size={16}
                           className="shrink-0 text-foreground-tertiary"
                         />
-                        <span
-                          className={cn(
-                            "truncate",
-                            !field.value && "text-foreground-subtle",
-                          )}
+                        <Text
+                          variant="body-tight"
+                          as="span"
+                          tone={field.value ? "inherit" : "subtle"}
+                          className="truncate"
                         >
                           {field.value
                             ? humanizeCronExpression(field.value)
                             : "Set schedule"}
-                        </span>
+                        </Text>
                       </button>
                     </div>
                   )}

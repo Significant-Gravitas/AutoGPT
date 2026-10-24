@@ -55,12 +55,7 @@ export function APIKeyCredentialsModal({
     >
       <Dialog.Content>
         {schemaDescription && (
-          <Text
-            variant="body"
-            as="p"
-            tone="secondary"
-            className="mb-4 leading-5"
-          >
+          <Text variant="body-tight" as="p" tone="secondary" className="mb-4">
             {schemaDescription}
           </Text>
         )}
@@ -103,9 +98,9 @@ export function APIKeyCredentialsModal({
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>
                               <Text
-                                variant="small"
+                                variant="small-mono-bold-tight"
                                 as="code"
-                                className="font-mono font-bold leading-4 text-inherit"
+                                tone="inherit"
                               >
                                 {s}
                               </Text>

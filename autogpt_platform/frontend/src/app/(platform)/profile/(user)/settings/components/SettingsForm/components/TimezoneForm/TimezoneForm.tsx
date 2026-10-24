@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import type { User } from "@/lib/auth/types";
 import * as React from "react";
 import { TIMEZONES } from "./helpers";
@@ -64,8 +65,14 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
               name="timezone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-body font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Select your timezone
+                  <FormLabel className="peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    <Text
+                      variant="body-medium-lh-none"
+                      as="span"
+                      tone="inherit"
+                    >
+                      Select your timezone
+                    </Text>
                   </FormLabel>
                   <Select
                     onValueChange={field.onChange}

@@ -154,9 +154,9 @@ export function EditAgentForm({
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
-                  variant="body-medium"
+                  variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 leading-5 text-textBlack"
+                  className="flex items-center gap-2 text-textBlack"
                 >
                   <Icon
                     icon={Store01Icon}
@@ -247,9 +247,9 @@ export function EditAgentForm({
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
-                  variant="body-medium"
+                  variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 leading-5 text-textBlack"
+                  className="flex items-center gap-2 text-textBlack"
                 >
                   <Icon
                     icon={Album01Icon}
@@ -289,9 +289,9 @@ export function EditAgentForm({
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
-                  variant="body-medium"
+                  variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 leading-5 text-textBlack"
+                  className="flex items-center gap-2 text-textBlack"
                 >
                   <Icon
                     icon={SparklesIcon}

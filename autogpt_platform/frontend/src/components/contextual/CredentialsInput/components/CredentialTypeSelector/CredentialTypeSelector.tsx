@@ -144,7 +144,7 @@ type OAuthTabContentProps = {
 function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
   return (
     <div className="space-y-4">
-      <Text variant="body" as="p" tone="secondary" className="leading-5">
+      <Text variant="body-tight" as="p" tone="secondary">
         Sign in with your {providerName} account using OAuth.
       </Text>
       <Button
@@ -200,7 +200,7 @@ function APIKeyTabContent({
   return (
     <div className="space-y-4">
       {schemaDescription && (
-        <Text variant="body" as="p" tone="secondary" className="leading-5">
+        <Text variant="body-tight" as="p" tone="secondary">
           {schemaDescription}
         </Text>
       )}
@@ -239,9 +239,9 @@ function APIKeyTabContent({
                       {schema.credentials_scopes?.map((s, i, a) => (
                         <span key={i}>
                           <Text
-                            variant="small"
+                            variant="small-mono-bold-tight"
                             as="code"
-                            className="font-mono font-bold leading-4 text-inherit"
+                            tone="inherit"
                           >
                             {s}
                           </Text>
@@ -298,7 +298,7 @@ function SimpleActionTab({
 }: SimpleActionTabProps) {
   return (
     <div className="space-y-4">
-      <Text variant="body" as="p" tone="secondary" className="leading-5">
+      <Text variant="body-tight" as="p" tone="secondary">
         {description}
       </Text>
       <Button variant="primary" size="small" onClick={onClick} type="button">
