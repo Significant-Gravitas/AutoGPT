@@ -8,6 +8,7 @@ import {
 } from "@/components/atoms/Select/components/SelectPrimitives";
 import { Label } from "@/components/__legacy__/ui/label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
 
@@ -225,7 +226,7 @@ export function CronScheduler({
   return (
     <div className="max-w-md space-y-6">
       <div className="space-y-4">
-        <Label className="text-base font-medium">Repeat</Label>
+        <Label className="text-body-lg font-medium leading-6">Repeat</Label>
 
         <Select
           value={frequency}
@@ -302,7 +303,7 @@ export function CronScheduler({
             <Label>On</Label>
             <Button
               variant="legacy-outline"
-              className="h-8 px-2 py-1 text-xs"
+              className="h-8 px-2 py-1 text-caption leading-4"
               onClick={() => {
                 if (selectedWeekDays.length === weekDays.length) {
                   setSelectedWeekDays([]);
@@ -317,14 +318,14 @@ export function CronScheduler({
             </Button>
             <Button
               variant="legacy-outline"
-              className="h-8 px-2 py-1 text-xs"
+              className="h-8 px-2 py-1 text-caption leading-4"
               onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
               Weekdays
             </Button>
             <Button
               variant="legacy-outline"
-              className="h-8 px-2 py-1 text-xs"
+              className="h-8 px-2 py-1 text-caption leading-4"
               onClick={() => setSelectedWeekDays([0, 6])}
             >
               Weekends
@@ -353,9 +354,9 @@ export function CronScheduler({
             ))}
           </div>
           {selectedWeekDays.length === 0 && (
-            <p className="text-sm text-error">
+            <Text variant="body" tone="error" className="leading-5">
               Please select at least one day of the week
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -427,9 +428,9 @@ export function CronScheduler({
             </div>
           )}
           {selectedMonthDays.length === 0 && (
-            <p className="text-sm text-error">
+            <Text variant="body" tone="error" className="leading-5">
               Please select at least one day of the month
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -439,7 +440,7 @@ export function CronScheduler({
           <div className="flex gap-2">
             <Button
               variant="legacy-outline"
-              className="h-8 px-2 py-1 text-xs"
+              className="h-8 px-2 py-1 text-caption leading-4"
               onClick={() => {
                 if (selectedMonths.length === months.length) {
                   setSelectedMonths([]);
@@ -481,9 +482,9 @@ export function CronScheduler({
             })}
           </div>
           {selectedMonths.length === 0 && (
-            <p className="text-sm text-error">
+            <Text variant="body" tone="error" className="leading-5">
               Please select at least one month
-            </p>
+            </Text>
           )}
         </div>
       )}

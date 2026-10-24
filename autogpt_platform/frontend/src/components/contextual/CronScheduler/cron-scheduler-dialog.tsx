@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CronScheduler } from "@/components/contextual/CronScheduler/cron-scheduler";
@@ -100,7 +101,13 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
         <div className="flex flex-col gap-4">
           {props.mode === "with-name" && (
             <div className="flex max-w-[448px] flex-col space-y-2">
-              <label className="text-sm font-medium">Schedule Name</label>
+              <Text
+                variant="body-medium"
+                as="label"
+                className="leading-5 text-inherit"
+              >
+                Schedule Name
+              </Text>
               <BaseInput
                 value={scheduleName}
                 onChange={(e) => setScheduleName(e.target.value)}
@@ -122,23 +129,24 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
                 // TODO(tokens): no exact role for text-amber-600 #d97706
                 className="h-4 w-4 text-amber-600"
               />
-              <p
+              <Text
+                variant="body"
                 // TODO(tokens): no exact role for text-amber-800 #92400e
-                className="text-sm text-amber-800"
+                className="leading-5 text-amber-800"
               >
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
                   Set your timezone
                 </a>
-              </p>
+              </Text>
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3">
               <InfoIcon className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
+              <Text variant="body" className="leading-5 text-muted-foreground">
                 Schedule will run in your timezone:{" "}
                 <span className="font-medium">{timezoneDisplay}</span>
-              </p>
+              </Text>
             </div>
           )}
         </div>

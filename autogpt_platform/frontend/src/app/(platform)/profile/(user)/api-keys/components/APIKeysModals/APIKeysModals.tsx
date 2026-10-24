@@ -11,6 +11,7 @@ import {
 import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/__legacy__/ui/label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { Button } from "@/components/atoms/Button/Button";
 
@@ -123,9 +124,13 @@ export const APIKeysModals = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center space-x-2">
-            <code className="ph-no-capture flex-1 rounded-md bg-secondary p-2 text-sm">
+            <Text
+              variant="body"
+              as="code"
+              className="ph-no-capture flex-1 rounded-md bg-secondary p-2 font-mono leading-5 text-inherit"
+            >
               {keyState.newApiKey}
-            </code>
+            </Text>
             <Button
               size="legacy-icon"
               variant="legacy-outline"
