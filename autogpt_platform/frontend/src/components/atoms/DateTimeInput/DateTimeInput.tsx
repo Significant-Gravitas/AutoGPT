@@ -176,10 +176,14 @@ export const DateTimeInput = ({
   );
 
   const inputWithError = (
-    <div className={cn("relative", error ? "mb-6" : "", wrapperClassName)}>
+    <div
+      data-slot="date-time-input-field"
+      className={cn("relative", error ? "mb-6" : "", wrapperClassName)}
+    >
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            data-slot="date-time-input-trigger"
             type="button"
             variant="ghost"
             className={triggerStyles}
@@ -191,17 +195,24 @@ export const DateTimeInput = ({
             aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
+              data-slot="date-time-input-date-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             <Clock
+              data-slot="date-time-input-time-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" sideOffset={6}>
-          <div className="p-3">
+        <PopoverContent
+          data-slot="date-time-input-popup"
+          className="w-auto p-0"
+          sideOffset={6}
+        >
+          <div data-slot="date-time-input-popup-body" className="p-3">
             <Calendar
+              data-slot="date-time-input-calendar"
               mode="single"
               selected={selected}
               onSelect={setDate}
@@ -210,15 +221,20 @@ export const DateTimeInput = ({
                 disabled: "pointer-events-none opacity-50",
               }}
             />
-            <div className="mt-3 border-t pt-3">
+            <div
+              data-slot="date-time-input-time"
+              className="mt-3 border-t pt-3"
+            >
               {/* TODO(tokens): no role is gray-700 #374151. */}
               <label
+                data-slot="date-time-input-time-label"
                 htmlFor={timeInputId}
                 className="mb-2 block text-body font-medium leading-5 text-gray-700"
               >
                 Time
               </label>
               <input
+                data-slot="date-time-input-time-control"
                 id={timeInputId}
                 type="time"
                 value={timeValue}
@@ -233,6 +249,7 @@ export const DateTimeInput = ({
       </Popover>
       {error && (
         <Text
+          data-slot="date-time-input-error"
           variant="small-medium"
           as="span"
           tone="error"
@@ -250,13 +267,25 @@ export const DateTimeInput = ({
   return hideLabel || !label ? (
     inputWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span">
+    <label
+      data-slot="date-time-input"
+      htmlFor={id}
+      className="flex flex-col gap-2"
+    >
+      <div
+        data-slot="date-time-input-header"
+        className="flex items-center justify-between"
+      >
+        <Text data-slot="date-time-input-label" variant="body-medium" as="span">
           {label}
         </Text>
         {hint ? (
-          <Text variant="small" as="span" tone="subtle">
+          <Text
+            data-slot="date-time-input-hint"
+            variant="small"
+            as="span"
+            tone="subtle"
+          >
             {hint}
           </Text>
         ) : null}

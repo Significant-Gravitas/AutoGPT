@@ -55,7 +55,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
       {showTitle && (
-        <h2 className="shrink-0 px-6 pb-1 pt-6 text-base font-semibold text-zinc-900">
+        <h2 className="shrink-0 px-6 pb-1 pt-6 text-base font-semibold text-foreground-strong">
           {TAB_TITLES[activeTab]}
         </h2>
       )}
@@ -84,7 +84,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
           <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
-            <SheetTitle className="text-lg font-semibold text-zinc-900">
+            <SheetTitle className="text-lg font-semibold text-foreground-strong">
               {TAB_TITLES[activeTab]}
             </SheetTitle>
           </SheetHeader>
@@ -111,6 +111,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width: contextPanelWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
+          // TODO(tokens): no exact role for border-l-[#80808017]
           className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
         >
           {/* Sibling of the clip, not a child of it: the handle is

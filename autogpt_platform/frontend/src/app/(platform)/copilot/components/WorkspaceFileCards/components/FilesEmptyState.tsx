@@ -18,18 +18,21 @@ export function FilesEmptyState() {
           key="image"
           icon={Image01Icon}
           size={22}
+          // TODO(tokens): no exact role for text-sky-500
           className="text-sky-500"
         />,
         <Icon
           key="table"
           icon={Table01Icon}
           size={22}
+          // TODO(tokens): no exact role for text-emerald-500
           className="text-emerald-500"
         />,
         <Icon
           key="doc"
           icon={File02Icon}
           size={22}
+          // TODO(tokens): no exact role for text-violet-500
           className="text-violet-500"
         />,
       ]}

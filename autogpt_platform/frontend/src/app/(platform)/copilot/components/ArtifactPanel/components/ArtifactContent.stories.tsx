@@ -54,7 +54,7 @@ const meta: Meta<typeof ArtifactContent> = {
   decorators: [
     (Story) => (
       <div
-        className="flex h-[500px] w-[600px] flex-col overflow-hidden border border-zinc-200"
+        className="flex h-[500px] w-[600px] flex-col overflow-hidden border border-border-base"
         style={{ resize: "both" }}
       >
         <Story />
