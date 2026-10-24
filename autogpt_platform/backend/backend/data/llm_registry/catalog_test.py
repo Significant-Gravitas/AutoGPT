@@ -170,6 +170,7 @@ def test_kimi_k3_1_pro_bills_at_authored_rates():
         "cache_creation": 0.0,
     }
     entry = next(m for m in CATALOG.models if m.slug == "moonshotai/kimi-k3.1-pro")
+    assert entry.cost.provider_cache_read_usd_per_1m == 0.20
     assert entry.price_tier == 3
     assert entry.context_window == 1048576
     assert entry.max_output_tokens == 943718

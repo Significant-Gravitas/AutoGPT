@@ -1227,6 +1227,7 @@ def _build_catalog() -> CatalogPayload:
                     cache_read_credits_per_1m=30.0,
                     provider_input_usd_per_1m=2.00,
                     provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.20,
                 ),
             ),
             CatalogModel(
