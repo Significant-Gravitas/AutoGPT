@@ -38,6 +38,19 @@ query SearchFeatureRequests($term: String!, $filter: IssueFilter, $first: Int) {
 }
 """
 
+# An exact, case-insensitive title match: a ranked full-text search returns
+# the top few hits, and with many "Integration request: ..." issues the one
+# wanted can rank outside them.
+FIND_ISSUE_BY_TITLE_QUERY = """
+query FindFeatureRequestByTitle($filter: IssueFilter) {
+  issues(filter: $filter, first: 1) {
+    nodes {
+      id
+    }
+  }
+}
+"""
+
 CUSTOMER_UPSERT_MUTATION = """
 mutation CustomerUpsert($input: CustomerUpsertInput!) {
   customerUpsert(input: $input) {
@@ -312,18 +325,16 @@ async def find_feature_request(title: str) -> str | None:
     """
     client, project_id, _team_id = _get_linear_config()
     data = await client.query(
-        SEARCH_ISSUES_QUERY,
+        FIND_ISSUE_BY_TITLE_QUERY,
         {
-            "term": title,
-            "filter": {"project": {"id": {"eq": project_id}}},
-            "first": MAX_SEARCH_RESULTS,
+            "filter": {
+                "project": {"id": {"eq": project_id}},
+                "title": {"eqIgnoreCase": title},
+            }
         },
     )
-    nodes = data.get("searchIssues", {}).get("nodes", [])
-    wanted = title.casefold()
-    return next(
-        (node["id"] for node in nodes if node["title"].casefold() == wanted), None
-    )
+    nodes = data.get("issues", {}).get("nodes", [])
+    return nodes[0]["id"] if nodes else None
 
 
 async def file_feature_request(

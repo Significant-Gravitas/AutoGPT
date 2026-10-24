@@ -643,3 +643,35 @@ async def test_a_sustained_linear_outage_gives_up_after_a_few_attempts():
         )
 
     assert sent.await_count == LINEAR_MAX_ATTEMPTS
+
+
+class _LinearWithManyIntegrationRequests:
+    """Linear holding the wanted request plus ten more with the same prefix,
+    which out-rank it in a full-text search."""
+
+    WANTED = "Integration request: Big Cartel"
+
+    def __init__(self):
+        self.issues = [
+            {"id": f"issue-{i}", "title": f"Integration request: Big {i}"}
+            for i in range(10)
+        ] + [{"id": "issue-wanted", "title": self.WANTED}]
+
+    async def query(self, query: str, variables: dict) -> dict:
+        title = variables.get("filter", {}).get("title", {}).get("eqIgnoreCase")
+        if "issues(" in query and title is not None:
+            matches = [i for i in self.issues if i["title"].lower() == title.lower()]
+            return {"issues": {"nodes": [{"id": i["id"]} for i in matches[:1]]}}
+        first = variables.get("first", 50)
+        return {"searchIssues": {"nodes": self.issues[:first]}}
+
+
+async def test_the_request_is_found_however_many_share_its_prefix():
+    linear = _LinearWithManyIntegrationRequests()
+    with patch(
+        "backend.copilot.tools.feature_requests._get_linear_config",
+        return_value=(linear, _FAKE_PROJECT_ID, _FAKE_TEAM_ID),
+    ):
+        found = await find_feature_request("integration request: big cartel")
+
+    assert found == "issue-wanted"
