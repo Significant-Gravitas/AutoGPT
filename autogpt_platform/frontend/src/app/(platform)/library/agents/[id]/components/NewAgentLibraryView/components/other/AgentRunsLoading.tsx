@@ -1,5 +1,5 @@
 import React from "react";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 export function AgentRunsLoading() {
   return (

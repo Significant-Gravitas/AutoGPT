@@ -7,7 +7,7 @@ import { Select } from "../../../../atoms/Select/Select";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
@@ -402,13 +402,15 @@ function PaginationBar({
         </button>
         {pages.map((entry, idx) =>
           entry === "…" ? (
-            <span
+            <Text
+              variant="body"
+              as="span"
               key={`gap-${idx}`}
-              className="px-1 text-sm text-foreground-subtle"
+              className="px-1 leading-5 text-foreground-subtle"
               aria-hidden
             >
               …
-            </span>
+            </Text>
           ) : (
             <button
               key={entry}
@@ -416,7 +418,7 @@ function PaginationBar({
               onClick={() => onChange(entry)}
               aria-current={entry === page ? "page" : undefined}
               className={cn(
-                "relative flex size-9 items-center justify-center rounded-full text-sm font-medium transition",
+                "relative flex size-9 items-center justify-center rounded-full text-body font-medium leading-5 transition",
                 entry === page
                   ? "text-action-foreground"
                   : "border border-border-base text-foreground-body hover:border-border-strong",

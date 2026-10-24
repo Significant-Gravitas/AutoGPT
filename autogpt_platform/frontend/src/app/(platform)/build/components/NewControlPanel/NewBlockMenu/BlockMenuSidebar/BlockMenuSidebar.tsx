@@ -1,7 +1,7 @@
 import React from "react";
 import { MenuItem } from "../MenuItem";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { DefaultStateType } from "../types";

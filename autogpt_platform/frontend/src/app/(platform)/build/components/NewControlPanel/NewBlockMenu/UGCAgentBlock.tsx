@@ -1,5 +1,6 @@
 import { Button } from "@/components/__legacy__/ui/button";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Text } from "@/components/atoms/Text/Text";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
@@ -59,42 +60,50 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       )}
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
-          <span
+          <Text
+            variant="body-medium"
+            as="span"
             className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+              "line-clamp-1 leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(title, highlightedText)}
-          </span>
+          </Text>
         )}
         <div className="flex items-center space-x-1.5">
           {edited_time && (
-            <span
+            <Text
+              variant="small"
+              as="span"
               className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+                "line-clamp-1 leading-5 text-zinc-500 group-disabled:text-zinc-400",
               )}
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
-            </span>
+            </Text>
           )}
 
           <span className="font-sans text-zinc-400">•</span>
 
-          <span
+          <Text
+            variant="small"
+            as="span"
             className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "line-clamp-1 leading-5 text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             Version {version}
-          </span>
+          </Text>
 
-          <span
+          <Text
+            variant="small-medium"
+            as="span"
             className={cn(
-              "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
+              "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] leading-[1.25rem] text-zinc-500",
             )}
           >
             Your Workflow
-          </span>
+          </Text>
         </div>
       </div>
       <div
