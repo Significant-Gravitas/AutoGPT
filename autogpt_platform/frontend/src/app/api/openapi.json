@@ -18641,7 +18641,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.\n\nThe listing is of the user's files: skill packages and Otto's working\nfiles (``isInternal``, decided when each file is written) are left out in\nthe query, so paging stays correct. ``include_internal`` lists them too,\nfor a view that shows them apart.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -18753,6 +18753,18 @@
               "title": "Include User Files"
             },
             "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id."
+          },
+          {
+            "name": "include_internal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also return the files the Files page leaves out: the skill packages hired experts read (under /skills/ and /experts/{id}/skills/) and Otto's own working files. Each such file is listed with is_internal set.",
+              "default": false,
+              "title": "Include Internal"
+            },
+            "description": "Also return the files the Files page leaves out: the skill packages hired experts read (under /skills/ and /experts/{id}/skills/) and Otto's own working files. Each such file is listed with is_internal set."
           }
         ],
         "responses": {
@@ -34772,7 +34784,12 @@
           "used_bytes": { "type": "integer", "title": "Used Bytes" },
           "limit_bytes": { "type": "integer", "title": "Limit Bytes" },
           "used_percent": { "type": "number", "title": "Used Percent" },
-          "file_count": { "type": "integer", "title": "File Count" }
+          "file_count": { "type": "integer", "title": "File Count" },
+          "internal_bytes": {
+            "type": "integer",
+            "title": "Internal Bytes",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["used_bytes", "limit_bytes", "used_percent", "file_count"],
@@ -38903,6 +38920,11 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "is_internal": {
+            "type": "boolean",
+            "title": "Is Internal",
+            "default": false
           }
         },
         "type": "object",

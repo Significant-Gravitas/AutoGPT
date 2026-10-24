@@ -23,22 +23,24 @@ const RUN_STATUS: Record<
 > = {
   COMPLETED: {
     icon: CheckmarkCircle02Icon,
-    className: "text-green-600",
+    className: "text-success",
     spin: false,
   },
-  FAILED: { icon: CancelCircleIcon, className: "text-red-500", spin: false },
+  FAILED: { icon: CancelCircleIcon, className: "text-error", spin: false },
+  // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
   RUNNING: { icon: Loading03Icon, className: "text-purple-600", spin: true },
+  // TODO(tokens): no exact role for text-amber-600
   QUEUED: { icon: ClockIcon, className: "text-amber-600", spin: false },
 };
 
 const FALLBACK_STATUS = {
   icon: PlayIcon,
-  className: "text-zinc-400",
+  className: "text-foreground-subtle",
   spin: false,
 };
 
 const LIST =
-  "-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200";
+  "-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active";
 
 /** Runs this chat triggered. Chrome-free (the section title lives outside the
  *  card) so the floating stack and the popover can each frame it. */
@@ -93,8 +95,10 @@ function RunRow({ run }: { run: SessionRun }) {
         )}
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-800">{name}</p>
-        {meta && <p className="truncate text-xs text-zinc-400">{meta}</p>}
+        <p className="truncate text-sm text-foreground-emphasis">{name}</p>
+        {meta && (
+          <p className="truncate text-xs text-foreground-subtle">{meta}</p>
+        )}
       </div>
     </>
   );
@@ -102,7 +106,7 @@ function RunRow({ run }: { run: SessionRun }) {
   // padding so row content lands on the card's content edge, with the hover
   // background spilling into the gutter.
   const rowClass =
-    "-mx-2.5 flex items-center gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-zinc-50";
+    "-mx-2.5 flex items-center gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-surface-muted";
 
   if (run.href) {
     return (
@@ -123,21 +127,23 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
     ? `Next ${formatWhen(schedule.nextRunTime)}`
     : null;
   return (
-    <div className="-mx-2.5 flex items-start gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-zinc-50">
+    <div className="-mx-2.5 flex items-start gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-surface-muted">
       <Icon
         icon={schedule.isRecurring ? RepeatIcon : ClockIcon}
         size={16}
-        className="mt-0.5 shrink-0 text-zinc-700"
+        className="mt-0.5 shrink-0 text-foreground-body"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-800">{schedule.name}</p>
+        <p className="truncate text-sm text-foreground-emphasis">
+          {schedule.name}
+        </p>
         {schedule.detail && (
-          <p className="line-clamp-2 text-xs text-zinc-500">
+          <p className="line-clamp-2 text-xs text-foreground-tertiary">
             {schedule.detail}
           </p>
         )}
         {(when || schedule.cron) && (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-400">
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-foreground-subtle">
             {when && <span className="truncate">{when}</span>}
             {when && schedule.cron && <span aria-hidden>·</span>}
             {schedule.cron && (

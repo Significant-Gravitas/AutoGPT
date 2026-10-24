@@ -57,6 +57,9 @@ export function buildReactArtifactSrcDoc(
   const safeTitle = escapeHtml(title);
   const runtime = JSON.stringify(compiledCode).replace(/</g, "\\u003c");
 
+  // TODO(tokens): no exact role for the raw colours and font stacks in this
+  // document (#f8fafc, #18181b, #fecaca, #fff1f2, #991b1b): it renders in the
+  // sandboxed artifact iframe, which does not load the app's tokens.
   return `<!doctype html>
 <html lang="en">
   <head>

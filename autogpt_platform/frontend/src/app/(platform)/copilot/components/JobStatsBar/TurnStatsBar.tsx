@@ -50,7 +50,10 @@ function TimeLabel({
 
   if (!localDate) {
     return (
-      <span className="text-[11px] tabular-nums text-neutral-500">
+      <span
+        // TODO(tokens): no exact role for text-neutral-500
+        className="text-caption-sm tabular-nums leading-inherit text-neutral-500"
+      >
         {labelText}
       </span>
     );
@@ -60,7 +63,8 @@ function TimeLabel({
     <span
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="cursor-default text-[11px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-700"
+      // TODO(tokens): no exact role for text-neutral-500, hover:text-neutral-700
+      className="cursor-default text-caption-sm tabular-nums leading-inherit text-neutral-500 transition-colors hover:text-neutral-700"
     >
       <span
         key={hovered ? "date" : "label"}
@@ -91,9 +95,17 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
         return (
           <span key={counter.category} className="flex items-center gap-1">
             {needsDot && (
-              <span className="text-xs text-neutral-300">&middot;</span>
+              <span
+                // TODO(tokens): no exact role for text-neutral-300
+                className="text-xs text-neutral-300"
+              >
+                &middot;
+              </span>
             )}
-            <span className="text-[11px] tabular-nums text-neutral-500">
+            <span
+              // TODO(tokens): no exact role for text-neutral-500
+              className="text-caption-sm tabular-nums leading-inherit text-neutral-500"
+            >
               {counter.count} {counter.label}
             </span>
           </span>
