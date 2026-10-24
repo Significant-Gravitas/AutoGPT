@@ -14,7 +14,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Label } from "@/components/__legacy__/ui/label";

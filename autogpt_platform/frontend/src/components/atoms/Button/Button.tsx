@@ -51,6 +51,7 @@ export function Button(props: ButtonProps) {
   const shouldShowTooltip = isIconOnly && ariaLabel && !loading && withTooltip;
   const resolvedLeftIcon = leadingIcon ? (
     <Icon
+      data-slot="button-icon"
       icon={leadingIcon}
       size={BUTTON_ICON_SIZE[size ?? "large"]}
       aria-hidden
@@ -65,7 +66,9 @@ export function Button(props: ButtonProps) {
       return (
         <Tooltip>
           <TooltipTrigger asChild>{buttonElement}</TooltipTrigger>
-          <TooltipContent>{ariaLabel}</TooltipContent>
+          <TooltipContent data-slot="button-tooltip">
+            {ariaLabel}
+          </TooltipContent>
         </Tooltip>
       );
     }
@@ -75,10 +78,16 @@ export function Button(props: ButtonProps) {
   const buttonContent = (
     <>
       {loading && (
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
+        <Icon
+          data-slot="button-spinner"
+          icon={Loading03Icon}
+          className="h-4 w-4 animate-spin"
+        />
       )}
       {!loading && resolvedLeftIcon}
-      <span className="contents">{children}</span>
+      <span data-slot="button-label" className="contents">
+        {children}
+      </span>
       {!loading && rightIcon}
     </>
   );
@@ -92,6 +101,7 @@ export function Button(props: ButtonProps) {
 
     const linkButton = (
       <button
+        data-slot="button"
         className={applyUnmask(
           extendedButtonVariants({ variant: "link", className }),
           loading && "pointer-events-none opacity-60",
@@ -122,6 +132,7 @@ export function Button(props: ButtonProps) {
     if (as === "NextLink") {
       return (
         <NextLink
+          data-slot="button"
           {...(restProps as LinkProps)}
           className={loadingClassName}
           aria-disabled="true"
@@ -137,6 +148,7 @@ export function Button(props: ButtonProps) {
     // into loading, which is exactly when a click listener needs to read them.
     const loadingButton = (
       <button
+        data-slot="button"
         {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         className={loadingClassName}
         disabled
@@ -151,6 +163,7 @@ export function Button(props: ButtonProps) {
   if (as === "NextLink") {
     const nextLinkButton = (
       <NextLink
+        data-slot="button"
         {...(restProps as LinkProps)}
         className={applyUnmask(
           extendedButtonVariants({ variant, size, className }),
@@ -168,6 +181,7 @@ export function Button(props: ButtonProps) {
 
   const regularButton = (
     <button
+      data-slot="button"
       className={applyUnmask(
         extendedButtonVariants({ variant, size, className }),
         loading && "pointer-events-none",

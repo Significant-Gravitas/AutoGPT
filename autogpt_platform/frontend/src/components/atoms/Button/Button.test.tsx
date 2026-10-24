@@ -164,4 +164,55 @@ describe("Button legacy variants", () => {
     expect(node).toBe(el);
     expect(el).toHaveProperty("disabled", true);
   });
+
+  it("adds no slot of its own, like the old component, and keeps the caller's", () => {
+    render(
+      <>
+        <Button variant="legacy-outline">Plain</Button>
+        <Button variant="legacy-ghost" data-slot="date-input-trigger">
+          Pick
+        </Button>
+      </>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Plain" }).hasAttribute("data-slot"),
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
+    ).toBe("date-input-trigger");
+  });
+});
+
+describe("Button slots", () => {
+  it("names the button and its label", () => {
+    renderButton({ children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-label]")?.textContent).toBe(
+      "Save",
+    );
+  });
+
+  it("keeps a slot the caller passes", () => {
+    render(
+      <TooltipProvider>
+        <Button data-slot="date-input-trigger">Pick</Button>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
+    ).toBe("date-input-trigger");
+  });
+
+  it("keeps its own slot inside the tooltip trigger of an icon button", () => {
+    renderButton({
+      variant: "icon",
+      "aria-label": "Edit",
+      leadingIcon: PencilEdit02Icon,
+      children: null,
+    });
+    const el = screen.getByRole("button", { name: "Edit" });
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-icon]")).not.toBeNull();
+  });
 });

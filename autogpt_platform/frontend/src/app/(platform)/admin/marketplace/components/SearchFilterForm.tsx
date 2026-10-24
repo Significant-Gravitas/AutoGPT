@@ -11,7 +11,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { isKey } from "@/lib/keyboard";
 
