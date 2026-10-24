@@ -8,6 +8,13 @@ export interface CardDecision {
   verdict: Decision;
   verb: DecisionVerb | null;
   name: string | null;
+  confirmationId: string | null;
+}
+
+/** The decision the chat holds for one card, and the row that holds it. */
+export interface AnsweredCard {
+  verdict: Decision;
+  messageID: string;
 }
 
 interface DecisionLineArgs {
@@ -41,7 +48,7 @@ function verbFor(kind: DecisionLineArgs["kind"]): DecisionVerb {
 }
 
 const DECISION_RE =
-  /^(Approved|Not approved): (.+) \(confirmation_id: [^\s()]+\)\.$/;
+  /^(Approved|Not approved): (.+) \(confirmation_id: ([^\s()]+)\)\.$/;
 const APPROVED_SUBJECT_RE = /^(hire|create|update) (.+)$/;
 const DECLINED_SUBJECT_RE =
   /^do not (hire|create|update) (.+), discard that proposal$/;
@@ -71,7 +78,10 @@ function decisionsFromMetadata(metadata: unknown): CardDecision[] | null {
 
 function toCardDecision(item: unknown): CardDecision[] {
   if (!item || typeof item !== "object") return [];
-  const { verdict, verb, name } = item as Record<string, unknown>;
+  const { verdict, verb, name, confirmation_id } = item as Record<
+    string,
+    unknown
+  >;
   if (verdict !== "approved" && verdict !== "declined") return [];
   return [
     {
@@ -79,6 +89,10 @@ function toCardDecision(item: unknown): CardDecision[] {
       verb:
         verb === "hire" || verb === "create" || verb === "update" ? verb : null,
       name: typeof name === "string" && name ? name : null,
+      confirmationId:
+        typeof confirmation_id === "string" && confirmation_id
+          ? confirmation_id
+          : null,
     },
   ];
 }
@@ -101,8 +115,30 @@ function parseLine(line: string): CardDecision[] {
       verdict,
       verb: subject ? (subject[1] as DecisionVerb) : null,
       name: subject ? subject[2] : null,
+      confirmationId: match[3],
     },
   ];
+}
+
+/** Every card the user's rows answered, by confirmation id. A card's buttons
+ *  read this, not local state, so a reload, a reopened chat or another tab
+ *  never asks again. Any decision line counts, as it does for the gate, and a
+ *  later line overrides an earlier one, as a decline withdrew an approval. */
+export function getAnsweredCards(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): Map<string, AnsweredCard> {
+  const answered = new Map<string, AnsweredCard>();
+  for (const message of messages) {
+    if (message.role !== "user") continue;
+    const decisions =
+      decisionsFromMetadata(message.metadata) ??
+      messageText(message).split("\n").flatMap(parseLine);
+    for (const { verdict, confirmationId } of decisions) {
+      if (confirmationId)
+        answered.set(confirmationId, { verdict, messageID: message.id });
+    }
+  }
+  return answered;
 }
 
 function messageText(

@@ -13,24 +13,33 @@ import { getPendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { CurrentPauseContext } from "../../TurnPausedCard/CurrentPauseContext";
 import { getCurrentPause } from "../../TurnPausedCard/helpers";
+import {
+  AnsweredCardsContext,
+  type AnsweredCardState,
+} from "../../ToolChain/AnsweredCardsContext";
+import { getAnsweredCards } from "../../../cardDecisions";
+import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   children: React.ReactNode;
   readOnly?: boolean;
+  /** When each row was saved, for the time an answered card shows. */
+  turnStats?: TurnStatsMap;
 }
 
 const NO_HELD_OUTCOMES: ReadonlyMap<string, HeldOutcome> = new Map();
 
 /** What the session is still waiting on the user for: the clarifying-question
- *  dock, the hire's onboarding card, a held call's row and a Paused card each
- *  decide from here whether they are live or already history, rather than
- *  from local state a reload would lose. A question card that is history
- *  reads the user's answers from here too. */
+ *  dock, the hire's onboarding card, a held call's row, a Paused card and a
+ *  proposal card each decide from here whether they are live or already
+ *  history, rather than from local state a reload would lose. A question card
+ *  that is history reads the user's answers from here too. */
 export function PendingAnswerContexts({
   messages,
   children,
   readOnly = false,
+  turnStats,
 }: Props) {
   // The questions and held outcomes are rebuilt as new objects on every call,
   // and `messages` changes on every streamed flush, so each one keeps the
@@ -50,10 +59,18 @@ export function PendingAnswerContexts({
       return outcomes.size === 0 ? NO_HELD_OUTCOMES : outcomes;
     }, [messages]),
   );
+  const answeredCards = useEqualValue(
+    useMemo(
+      () => toAnsweredCardStates(messages, turnStats),
+      [messages, turnStats],
+    ),
+  );
   if (readOnly) {
     return (
       <AnsweredQuestionsContext.Provider value={answeredQuestions}>
-        {children}
+        <AnsweredCardsContext.Provider value={answeredCards}>
+          {children}
+        </AnsweredCardsContext.Provider>
       </AnsweredQuestionsContext.Provider>
     );
   }
@@ -65,13 +82,29 @@ export function PendingAnswerContexts({
         >
           <HeldOutcomesContext.Provider value={heldOutcomes}>
             <CurrentPauseContext.Provider value={getCurrentPause(messages)}>
-              {children}
+              <AnsweredCardsContext.Provider value={answeredCards}>
+                {children}
+              </AnsweredCardsContext.Provider>
             </CurrentPauseContext.Provider>
           </HeldOutcomesContext.Provider>
         </PendingOnboardingContext.Provider>
       </AnsweredQuestionsContext.Provider>
     </PendingQuestionsContext.Provider>
   );
+}
+
+function toAnsweredCardStates(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  turnStats: TurnStatsMap | undefined,
+): ReadonlyMap<string, AnsweredCardState> {
+  const states = new Map<string, AnsweredCardState>();
+  for (const [id, card] of getAnsweredCards(messages)) {
+    states.set(id, {
+      verdict: card.verdict,
+      at: turnStats?.get(card.messageID)?.createdAt ?? null,
+    });
+  }
+  return states;
 }
 
 // Kept in state, not a ref: a render React throws away cannot change it.

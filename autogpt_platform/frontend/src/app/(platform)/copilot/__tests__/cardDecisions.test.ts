@@ -4,6 +4,7 @@ import {
   type Decision,
   decisionLine,
   decisionNotes,
+  getAnsweredCards,
   getCardDecisions,
 } from "../cardDecisions";
 import cases from "./cardDecisionLines.json";
@@ -47,7 +48,12 @@ describe("card decision lines", () => {
     const decisions = getCardDecisions(userRow(c.line));
 
     expect(decisions).toEqual([
-      { verdict: c.verdict, verb: c.verb, name: c.name },
+      {
+        verdict: c.verdict,
+        verb: c.verb,
+        name: c.name,
+        confirmationId: c.confirmation_id,
+      },
     ]);
     expect(decisionNotes(decisions ?? []).map((n) => n.text)).toEqual([c.note]);
   });
@@ -68,7 +74,12 @@ describe("card decision lines", () => {
     );
 
     expect(decisions).toEqual([
-      { verdict: "declined", verb: "hire", name: "Maya" },
+      {
+        verdict: "declined",
+        verb: "hire",
+        name: "Maya",
+        confirmationId: "c-1",
+      },
     ]);
   });
 
@@ -135,5 +146,39 @@ describe("card decision lines", () => {
     };
 
     expect(getCardDecisions(reply)).toBeNull();
+  });
+});
+
+describe("answered cards", () => {
+  it("knows every card the user's rows answered, the last answer standing", () => {
+    const rows: Message[] = [
+      { ...userRow("Approved: hire Maya (confirmation_id: c-1)."), id: "u1" },
+      {
+        ...userRow(
+          "Approved: hire Ada (confirmation_id: c-2).\nAnd start on Monday.",
+        ),
+        id: "u2",
+      },
+      {
+        ...userRow(
+          "Not approved: do not hire Maya, discard that proposal (confirmation_id: c-1).",
+        ),
+        id: "u3",
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Approved: hire Bo (confirmation_id: c-3)." },
+        ],
+      },
+    ];
+
+    expect(getAnsweredCards(rows)).toEqual(
+      new Map([
+        ["c-1", { verdict: "declined", messageID: "u3" }],
+        ["c-2", { verdict: "approved", messageID: "u2" }],
+      ]),
+    );
   });
 });

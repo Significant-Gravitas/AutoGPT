@@ -178,3 +178,114 @@ describe("a proposal card's decision in the chat", () => {
     expect(document.body.textContent).toContain("Also, start with Instagram.");
   });
 });
+
+function Chat({
+  messages,
+  onSend = vi.fn(),
+}: {
+  messages: Message[];
+  onSend?: (text: string) => void;
+}) {
+  return (
+    <ChatContainer
+      messages={messages}
+      status="ready"
+      error={undefined}
+      sessionId={SESSION_ID}
+      isLoadingSession={false}
+      isCreatingSession={false}
+      onCreateSession={vi.fn()}
+      onSend={onSend}
+      onStop={vi.fn()}
+    />
+  );
+}
+
+const TAGGED_APPROVAL = userRow(
+  `Approved: hire Maya (confirmation_id: ${CONFIRMATION_ID}).`,
+  {
+    kind: "card_decision",
+    decisions: [
+      {
+        verdict: "approved",
+        confirmation_id: CONFIRMATION_ID,
+        verb: "hire",
+        name: "Maya",
+      },
+    ],
+  },
+);
+
+function expectNoDecisionButtons() {
+  expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Unapprove" })).toBeNull();
+}
+
+describe("a proposal card the chat already answered", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    server.use(getGetV2GetPendingReviewsForChatSessionMockHandler([]));
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows its decision and asks nothing after a reload", () => {
+    render(<Chat messages={[ask, hireCard, TAGGED_APPROVAL]} />);
+
+    expectNoDecisionButtons();
+    expect(screen.getByText("Approved")).toBeDefined();
+  });
+
+  it("reads a decline saved before rows were tagged", () => {
+    render(
+      <Chat
+        messages={[
+          ask,
+          hireCard,
+          userRow(
+            `Not approved: do not hire Maya, discard that proposal (confirmation_id: ${CONFIRMATION_ID}).`,
+          ),
+        ]}
+      />,
+    );
+
+    expectNoDecisionButtons();
+    expect(screen.getByText("Declined")).toBeDefined();
+  });
+
+  it("resolves as soon as the decision is sent", async () => {
+    const user = userEvent.setup();
+    render(<Thread initial={[ask, hireCard]} />);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    expectNoDecisionButtons();
+    expect(await screen.findByText("Approved")).toBeDefined();
+  });
+
+  it("stops asking when another tab's answer arrives", () => {
+    const { rerender } = render(<Chat messages={[ask, hireCard]} />);
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
+
+    rerender(<Chat messages={[ask, hireCard, TAGGED_APPROVAL]} />);
+
+    expectNoDecisionButtons();
+    expect(screen.getByText("Approved")).toBeDefined();
+  });
+
+  it("posts one decision however fast Send is pressed", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<Chat messages={[ask, hireCard]} onSend={onSend} />);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.dblClick(screen.getByRole("button", { name: "Send decisions" }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+});
