@@ -652,6 +652,31 @@ class ExpertChangePreview(BaseModel):
     color: str = ""
 
 
+class ExpertHandoffTask(BaseModel):
+    """The task a hire was proposed for, handed over when the user approves.
+
+    ``title`` is how the user would name it and labels the card's primary
+    button; ``brief`` is the task written for the expert, who cannot see the
+    chat it came from.
+    """
+
+    title: str
+    brief: str
+
+
+class ExpertHandoffOutcome(BaseModel):
+    """Whether the task a hire was approved for reached the new expert.
+
+    ``link`` opens the expert's thread, where the work is happening; it is
+    unset when the task could not start.
+    """
+
+    title: str
+    status: Literal["started", "failed"]
+    sub_session_id: str | None = None
+    link: str | None = None
+
+
 class ExpertSummary(BaseModel):
     """The expert ``confirm_expert_change`` created — same charter fields as
     the preview, so the card can show the whole thing after the fact."""
@@ -811,6 +836,11 @@ class ExpertChangeProposedResponse(ToolResponseBase):
     applied: bool = False
     preview: ExpertChangePreview
     confirmation_id: str
+    # Set when the hire was proposed for a task already in the chat: the card
+    # then offers "hire and hand off" under ``handoff_confirmation_id`` beside
+    # "hire only" under ``confirmation_id``.
+    handoff: ExpertHandoffTask | None = None
+    handoff_confirmation_id: str | None = None
 
 
 class ExpertChangeAppliedResponse(ToolResponseBase):
@@ -821,6 +851,8 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     kind: ExpertChangeKind
     expert: ExpertSummary
     failed_workflows: list[str] = Field(default_factory=list)
+    # Only for a hire approved together with its task.
+    handoff: ExpertHandoffOutcome | None = None
 
 
 # Agent generation models

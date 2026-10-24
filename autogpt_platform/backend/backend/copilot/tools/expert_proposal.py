@@ -39,6 +39,7 @@ from .models import (
     ExpertChangeAppliedResponse,
     ExpertChangeKind,
     ExpertChangePreview,
+    ExpertHandoffTask,
     ExpertSummary,
     ToolResponseBase,
 )
@@ -52,6 +53,9 @@ _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
 # answered with "already done" instead of the same message an expired
 # preview gets.
 _CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
+# Claimed by whichever of a hire's two ids (hire only / hire and hand off) is
+# confirmed first, so one approval can never hire twice.
+_CLAIM_KEY_PREFIX = "copilot:expert_change_claim:"
 _LOG_ID_PREFIX_LENGTH = 12
 _PREVIEW_TOOLS = "tool:hire_expert, tool:raise_expert or tool:update_expert"
 
@@ -87,6 +91,12 @@ class ExpertChangeProposal(BaseModel):
     # gate refuses it rather than reading it as "answered at -1", which any
     # session with one sequenced user message would clear.
     user_turn_watermark: int | None = None
+    # Only for a hire proposed for a task already in the chat (see
+    # ``hire_expert``): the task, whether confirming this id hands it over,
+    # and the id of the other choice for the same hire.
+    handoff: ExpertHandoffTask | None = None
+    hand_off: bool = False
+    sibling_confirmation_id: str | None = None
 
 
 def proposal_key(confirmation_id: str) -> str:
@@ -95,6 +105,10 @@ def proposal_key(confirmation_id: str) -> str:
 
 def _consumed_key(confirmation_id: str) -> str:
     return f"{_CONSUMED_KEY_PREFIX}{confirmation_id}"
+
+
+def _claim_key(confirmation_id: str, sibling_confirmation_id: str) -> str:
+    return f"{_CLAIM_KEY_PREFIX}{min(confirmation_id, sibling_confirmation_id)}"
 
 
 def _stale_preview_error(session_id: str) -> ErrorResponse:
@@ -292,6 +306,10 @@ async def load_bound_proposal(
     if user_turn_watermark(session) <= proposal.user_turn_watermark:
         return _unapproved_preview_error(session.session_id)
 
+    sibling = proposal.sibling_confirmation_id
+    if sibling is not None and not await _claim_pair(redis, confirmation_id, sibling):
+        return _already_confirmed_error(session.session_id)
+
     # GET and DEL are intentionally separate: binding must be checked before
     # consumption so a mismatched caller cannot invalidate a legitimate
     # proposal.
@@ -299,6 +317,27 @@ async def load_bound_proposal(
         return _stale_preview_error(session.session_id)
     await redis.setex(_consumed_key(confirmation_id), PROPOSAL_TTL_SECONDS, "1")
     return proposal
+
+
+async def _claim_pair(
+    redis: AsyncRedisClient, confirmation_id: str, sibling_confirmation_id: str
+) -> bool:
+    """Take a hire offered two ways for this id, burning the other choice.
+
+    A SET NX on one key shared by both ids, rather than one multi-key DEL:
+    the two proposal keys can sit on different cluster slots.
+    """
+    claimed = await redis.set(
+        _claim_key(confirmation_id, sibling_confirmation_id),
+        confirmation_id,
+        nx=True,
+        ex=PROPOSAL_TTL_SECONDS,
+    )
+    if not claimed:
+        return False
+    await redis.delete(proposal_key(sibling_confirmation_id))
+    await redis.setex(_consumed_key(sibling_confirmation_id), PROPOSAL_TTL_SECONDS, "1")
+    return True
 
 
 async def apply_proposal(
@@ -344,14 +383,14 @@ async def _apply_hire(
     except Exception as e:
         return _hire_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=_hire_message(result.expert.name),
+        message=hire_message(result.expert.name),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
     )
 
 
-def _hire_message(name: str) -> str:
+def hire_message(name: str) -> str:
     return (
         f"{name} is hired and on the team; their workflows and skills finish "
         "installing in the background. Tell the user who joined and what they own."

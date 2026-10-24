@@ -3,6 +3,11 @@
 Step 1 of the confirm-gated hire flow: resolve the template, check the team
 has room, and park the exact proposal under a one-time ``confirmation_id``.
 ``confirm_expert_change`` applies it once the user approves.
+
+A hire proposed for a task the user already described carries that task, and
+is parked twice: "hire only" under ``confirmation_id`` and "hire and hand
+off" under ``handoff_confirmation_id``. The card offers both, so the user's
+one click both hires and starts the work (see ``hire_handoff``).
 """
 
 import uuid
@@ -27,14 +32,28 @@ from .models import (
     ErrorResponse,
     ExpertChangePreview,
     ExpertChangeProposedResponse,
+    ExpertHandoffTask,
     ToolResponseBase,
 )
 
+# Long enough to name a task the way the user would, short enough to sit in
+# a button beside the expert's name.
+HANDOFF_TITLE_MAX_LENGTH = 80
+HANDOFF_TASK_MAX_LENGTH = 4000
+
 
 class _HireParams(BaseModel):
-    """The rename field, bounded the same way as raise_expert's ``name``."""
+    """The rename field, bounded the same way as raise_expert's ``name``,
+    and the task the hire is for."""
 
     name: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    handoff_title: str = Field(default="", max_length=HANDOFF_TITLE_MAX_LENGTH)
+    handoff_task: str = Field(default="", max_length=HANDOFF_TASK_MAX_LENGTH)
+
+    def handoff(self) -> ExpertHandoffTask | None:
+        if not self.handoff_task:
+            return None
+        return ExpertHandoffTask(title=self.handoff_title, brief=self.handoff_task)
 
 
 class HireExpertTool(BaseTool):
@@ -56,8 +75,11 @@ class HireExpertTool(BaseTool):
             "The user sees who would join on a card with Approve and Decline "
             "buttons, so do not describe them in text — one short line at "
             "most, then wait. Only after they approve, call "
-            "tool:confirm_expert_change with that id. Use tool:raise_expert when no "
-            "template fits."
+            "tool:confirm_expert_change with that id. When the hire is for a "
+            "task the user already described, pass it as handoff_title and "
+            "handoff_task: the card then hires and hands it off in one click, "
+            "so never ask in text whether to hand it over. Use "
+            "tool:raise_expert when no template fits."
         )
 
     @property
@@ -73,6 +95,23 @@ class HireExpertTool(BaseTool):
                     "type": "string",
                     "description": "Rename the hire; omit to keep the template name.",
                 },
+                "handoff_title": {
+                    "type": "string",
+                    "description": (
+                        "The task as the user would name it, a few words, "
+                        "e.g. 'the Printify order pipeline'. Shown on the "
+                        "card's button. Required with handoff_task."
+                    ),
+                },
+                "handoff_task": {
+                    "type": "string",
+                    "description": (
+                        "The task the user already described that this hire "
+                        "is for, written for the expert with the context "
+                        "they need; they cannot see this chat. Omit when "
+                        "there is no concrete task yet."
+                    ),
+                },
             },
             "required": ["template_id"],
         }
@@ -84,6 +123,8 @@ class HireExpertTool(BaseTool):
         *,
         template_id: str = "",
         name: str = "",
+        handoff_title: str = "",
+        handoff_task: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -97,10 +138,19 @@ class HireExpertTool(BaseTool):
             )
 
         try:
-            params = _HireParams(name=" ".join(name.split()))
+            params = _HireParams(
+                name=" ".join(name.split()),
+                handoff_title=" ".join(handoff_title.split()),
+                handoff_task=handoff_task.strip(),
+            )
         except ValidationError as e:
             return ErrorResponse(
-                message=f"Invalid expert name — {_validation_detail(e)}",
+                message=f"Invalid hire — {_validation_detail(e)}",
+                session_id=session_id,
+            )
+        if bool(params.handoff_title) != bool(params.handoff_task):
+            return ErrorResponse(
+                message="Pass handoff_title and handoff_task together, or neither.",
                 session_id=session_id,
             )
 
@@ -128,29 +178,58 @@ class HireExpertTool(BaseTool):
             avatar_url=template.avatar_url,
             color=template.color,
         )
+        handoff = params.handoff()
         confirmation_id = str(uuid.uuid4())
-        await store_proposal(
-            await get_redis_async(),
-            confirmation_id,
-            ExpertChangeProposal(
-                user_id=user_id,
-                session_id=session_id,
-                preview=preview,
-                user_turn_watermark=user_turn_watermark(session),
-            ),
+        handoff_confirmation_id = str(uuid.uuid4()) if handoff else None
+        proposal = ExpertChangeProposal(
+            user_id=user_id,
+            session_id=session_id,
+            preview=preview,
+            user_turn_watermark=user_turn_watermark(session),
+            handoff=handoff,
+            sibling_confirmation_id=handoff_confirmation_id,
         )
+        redis = await get_redis_async()
+        await store_proposal(redis, confirmation_id, proposal)
+        if handoff_confirmation_id is not None:
+            await store_proposal(
+                redis,
+                handoff_confirmation_id,
+                proposal.model_copy(
+                    update={
+                        "hand_off": True,
+                        "sibling_confirmation_id": confirmation_id,
+                    }
+                ),
+            )
         return ExpertChangeProposedResponse(
-            message=(
-                "Nothing hired yet. The user is looking at this expert on a "
-                "card with Approve and Decline buttons — do not describe "
-                "them in text. Reply with one short line at most and wait. "
-                "Only after they explicitly approve, call "
-                "tool:confirm_expert_change with this confirmation_id."
-            ),
+            message=_proposed_message(handoff is not None),
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,
+            handoff=handoff,
+            handoff_confirmation_id=handoff_confirmation_id,
         )
+
+
+def _proposed_message(with_handoff: bool) -> str:
+    if not with_handoff:
+        return (
+            "Nothing hired yet. The user is looking at this expert on a "
+            "card with Approve and Decline buttons — do not describe "
+            "them in text. Reply with one short line at most and wait. "
+            "Only after they explicitly approve, call "
+            "tool:confirm_expert_change with this confirmation_id."
+        )
+    return (
+        "Nothing hired yet. The user is looking at this expert on a card "
+        "with three buttons: hire and hand off the task, hire only, or "
+        "decline — do not describe them in text or ask which. Reply with one "
+        "short line at most and wait. Their answer names one id: call "
+        "tool:confirm_expert_change with exactly that one, "
+        "handoff_confirmation_id to hire and start the task, confirmation_id "
+        "to hire only."
+    )
 
 
 async def _find_template(template_id: str) -> Expert | None:
