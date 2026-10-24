@@ -282,16 +282,18 @@ function CompactDemo() {
           </TabsLineTrigger>
         </TabsLineList>
         <TabsLineContent value="basics">
-          <div className="text-sm text-zinc-600">Basics panel</div>
+          <div className="text-sm text-foreground-secondary">Basics panel</div>
         </TabsLineContent>
         <TabsLineContent value="work">
-          <div className="text-sm text-zinc-600">Work panel</div>
+          <div className="text-sm text-foreground-secondary">Work panel</div>
         </TabsLineContent>
         <TabsLineContent value="schedules">
-          <div className="text-sm text-zinc-600">Schedules panel</div>
+          <div className="text-sm text-foreground-secondary">
+            Schedules panel
+          </div>
         </TabsLineContent>
         <TabsLineContent value="skills">
-          <div className="text-sm text-zinc-600">Skills panel</div>
+          <div className="text-sm text-foreground-secondary">Skills panel</div>
         </TabsLineContent>
       </TabsLine>
     </div>

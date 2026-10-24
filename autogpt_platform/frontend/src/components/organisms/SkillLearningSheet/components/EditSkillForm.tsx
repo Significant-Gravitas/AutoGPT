@@ -44,7 +44,7 @@ export function EditSkillForm({
       {hasNewerVersion && currentVersion ? (
         <section
           aria-label="Newer version available"
-          className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+          className="rounded-lg border border-warning-border bg-warning-surface p-3"
         >
           <Text variant="small" tone="primary">
             v{currentVersion.version} was saved while you were editing. Your
@@ -59,7 +59,11 @@ export function EditSkillForm({
                 Current description: {currentVersion.description}
               </Text>
             ) : null}
-            <pre className="my-3 overflow-x-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-100">
+            <pre
+              // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the
+              // dark code surface.
+              className="my-3 overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-zinc-100"
+            >
               {lineDiff(currentVersion.body ?? "", draft.body) ||
                 "Your procedure matches the current version."}
             </pre>

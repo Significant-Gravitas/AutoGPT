@@ -12,7 +12,7 @@ describe("CharCountedTextarea", () => {
 
     const badge = screen.getByTestId("char-count");
     expect(badge.textContent).toBe("5 / 100");
-    expect(badge.className).toMatch(/text-zinc-400/);
+    expect(badge.className).toMatch(/text-foreground-subtle/);
     expect(screen.getByRole("textbox")).toBeDefined();
   });
 

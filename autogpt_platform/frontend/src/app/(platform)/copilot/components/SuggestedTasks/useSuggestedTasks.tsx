@@ -103,7 +103,7 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
       surface,
       remaining: countOpenTasks(tasks) - 1,
     });
-    try {
+    async function startChat() {
       const sessionId = await onSend(task.prompt);
       // No chat came of it (a locked composer, say): the row stays open.
       if (!sessionId) return;
@@ -113,15 +113,18 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
       mutate({
         data: { task_ids: [task.id], state: "sent", session_id: sessionId },
       });
-    } catch (error) {
-      toastSendFailure({
-        title: "Could not start that task",
-        error,
-        recovery: "it is still in your suggestions",
-      });
-    } finally {
-      setSendingId(null);
     }
+    await startChat()
+      .catch((error) => {
+        toastSendFailure({
+          title: "Could not start that task",
+          error,
+          recovery: "it is still in your suggestions",
+        });
+      })
+      .finally(() => {
+        setSendingId(null);
+      });
   }
 
   function hideTasks(hidden: SuggestedTask[], scope: "one" | "all") {

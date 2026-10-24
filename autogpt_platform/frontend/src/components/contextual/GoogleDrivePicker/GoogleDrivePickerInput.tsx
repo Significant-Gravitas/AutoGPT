@@ -114,9 +114,10 @@ export function GoogleDrivePickerInput({
               key={file.id || idx}
               className={cn(
                 "flex items-center gap-2",
+                // TODO(tokens): no exact role for border-gray-300 #d1d5db, bg-gray-50 #f9fafb, text-gray-600 #4b5563
                 showRemoveButton
-                  ? "justify-between rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                  : "text-sm text-gray-600 dark:text-gray-400",
+                  ? "justify-between rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+                  : "text-sm text-gray-600",
               )}
             >
               <div className="flex items-center gap-2 overflow-hidden">
@@ -149,10 +150,8 @@ export function GoogleDrivePickerInput({
       )}
 
       {/* Error Messages */}
-      {error && <span className="text-sm text-red-500">{error}</span>}
-      {pickerError && (
-        <span className="text-sm text-red-500">{pickerError}</span>
-      )}
+      {error && <span className="text-sm text-error">{error}</span>}
+      {pickerError && <span className="text-sm text-error">{pickerError}</span>}
     </div>
   );
 }

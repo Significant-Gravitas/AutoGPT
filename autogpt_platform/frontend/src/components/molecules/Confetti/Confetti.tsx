@@ -127,7 +127,6 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
       <ConfettiContext.Provider value={api}>
         <canvas
           ref={canvasElRef}
-          style={{ width: "100%", height: "100%" }}
           className={cn(
             "pointer-events-none fixed inset-0 z-50 h-full w-full",
             className,

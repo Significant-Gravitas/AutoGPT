@@ -1,5 +1,16 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-100 #F3F4F6, bg-red-100 #FDECEC, text-blue-700 #1D4ED8,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-700 #374151,
+// text-orange-600 #E77B00, text-purple-600 #6C2EDF, text-red-600 #D93636,
+// text-red-800 #832525.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill),
+// text-purple-600 = brand-hover (a hover fill).
+// TODO(tokens): chart and canvas colours, which have no tokens yet: #3B82F6,
+// #10B981, #F59E0B, #8B5CF6.
+
 import { useState, useEffect } from "react";
 import {
   LineChart,
@@ -306,7 +317,7 @@ export function ExecutionAnalyticsForm() {
   if (configError || !config) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-red-500">Failed to load configuration</div>
+        <div className="text-error">Failed to load configuration</div>
       </div>
     );
   }
@@ -317,7 +328,7 @@ export function ExecutionAnalyticsForm() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="graph_id">
-              Graph ID <span className="text-red-500">*</span>
+              Graph ID <span className="text-error">*</span>
             </Label>
             <Input
               id="graph_id"
@@ -538,7 +549,7 @@ export function ExecutionAnalyticsForm() {
         <div className="space-y-4">
           <div className="flex items-start justify-between">
             <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
-            <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            <div className="rounded-md bg-info-surface px-3 py-2 text-xs text-blue-700">
               <p className="font-medium">
                 Chart Filters (matches monitoring system):
               </p>
@@ -552,14 +563,14 @@ export function ExecutionAnalyticsForm() {
 
           {/* Alert Section */}
           {trendsData.alert && (
-            <div className="rounded-lg border-l-4 border-red-500 bg-red-50 p-4">
+            <div className="rounded-lg border-l-4 border-error bg-error-surface p-4">
               <div className="flex items-start">
                 <span className="text-2xl">🚨</span>
                 <div className="ml-3 space-y-2">
                   <h4 className="text-lg font-semibold text-red-800">
                     Accuracy Alert Detected
                   </h4>
-                  <p className="text-red-700">
+                  <p className="text-error-foreground">
                     <strong>
                       {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
                     </strong>{" "}
@@ -597,25 +608,25 @@ export function ExecutionAnalyticsForm() {
 
           {/* Latest Data Summary */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="rounded-lg border bg-white p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">
+            <div className="rounded-lg border bg-surface p-4 text-center">
+              <div className="text-2xl font-bold text-info-foreground">
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
               </div>
               <div className="text-sm text-gray-600">Daily Score</div>
             </div>
-            <div className="rounded-lg border bg-white p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">
+            <div className="rounded-lg border bg-surface p-4 text-center">
+              <div className="text-2xl font-bold text-success">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
               </div>
               <div className="text-sm text-gray-600">3-Day Avg</div>
             </div>
-            <div className="rounded-lg border bg-white p-4 text-center">
+            <div className="rounded-lg border bg-surface p-4 text-center">
               <div className="text-2xl font-bold text-orange-600">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
               </div>
               <div className="text-sm text-gray-600">7-Day Avg</div>
             </div>
-            <div className="rounded-lg border bg-white p-4 text-center">
+            <div className="rounded-lg border bg-surface p-4 text-center">
               <div className="text-2xl font-bold text-purple-600">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
               </div>
@@ -629,7 +640,7 @@ export function ExecutionAnalyticsForm() {
               <h4 className="mb-4 text-lg font-semibold">
                 Execution Accuracy Trends Chart
               </h4>
-              <div className="rounded-lg border bg-white p-6">
+              <div className="rounded-lg border bg-surface p-6">
                 <AccuracyChart data={trendsData.historical_data} />
               </div>
             </div>
