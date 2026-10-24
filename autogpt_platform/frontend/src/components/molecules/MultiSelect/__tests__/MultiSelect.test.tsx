@@ -5,7 +5,7 @@ import {
   MultiSelectorContent,
   MultiSelectorInput,
   MultiSelectorTrigger,
-} from "./multiselect";
+} from "../MultiSelect";
 
 function renderMultiSelector({
   dir,
