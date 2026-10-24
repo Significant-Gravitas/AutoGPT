@@ -3,6 +3,7 @@ queue, promotion and completion path, with only the executor's queue publish
 stubbed."""
 
 import asyncio
+import contextvars
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -258,6 +259,47 @@ async def test_a_tool_revoked_while_a_sub_session_waited_stays_revoked(
     assert "web_fetch" not in granted
     assert "web_search" in granted
     assert not promoted["envelope"].permits("web_fetch")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_graph_nested_spawn_queued_for_a_slot_starts_in_its_callers_tree(
+    user: "_User",
+):
+    """An AutoPilotBlock's turn starts in the graph executor, where no turn's
+    context is set; the spawner it rebuilds from the execution has to reach the
+    queue, or the queued turn is refused as having lost its context."""
+    spawner = await user.running_chat()
+    subs = await user.spawn(spawner, 3)
+    assert [o for o, _ in subs] == ["running"] * 3
+    nested = await create_chat_session(
+        user.id,
+        dry_run=False,
+        origin="automation",
+        delegated_by_session_id=spawner.session_id,
+    )
+
+    outcome, result = await asyncio.create_task(
+        run_copilot_turn_via_queue(
+            session_id=nested.session_id,
+            user_id=user.id,
+            message="run the graph's task",
+            timeout=0,
+            tool_call_id="autopilot_block",
+            tool_name="AutoPilotBlock",
+            spawn=SpawnRequest(may_spawn=True),
+            spawner_envelope=spawner.envelope,
+        ),
+        context=contextvars.Context(),
+    )
+    assert outcome == "queued_for_slot", result.refusal
+
+    await user.end(spawner.session_id)
+    for _, sub in subs:
+        await user.end(sub)
+
+    envelope = user.dispatch_of(nested.session_id)["envelope"]
+    assert (envelope.tree_id, envelope.depth) == (spawner.tree_id, 1)
+    assert envelope.spend_session_id == spawner.session_id
 
 
 class _Spawner(BaseModel):

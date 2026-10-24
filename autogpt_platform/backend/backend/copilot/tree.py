@@ -42,7 +42,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from backend.copilot.active_turns import MAX_TURN_LIFETIME_SECONDS
 from backend.copilot.config import ChatConfig
@@ -143,6 +143,17 @@ end
 return redis.call("HSETNX", KEYS[1], "wrapup", "1")
 """
 
+# Rebuilds an expired ledger and never touches a live one, which may hold spend
+# a sibling run charged after the saved copy was taken.
+_RESTORE_TREE_SCRIPT = """
+if redis.call("EXISTS", KEYS[1]) == 1 then
+    return 0
+end
+redis.call("HSET", KEYS[1], unpack(ARGV, 2))
+redis.call("EXPIRE", KEYS[1], ARGV[1])
+return 1
+"""
+
 
 class TreeRefusal(Exception):
     """A turn may not start; ``message`` is written for the model."""
@@ -207,6 +218,16 @@ class SpawnRequest(BaseModel):
     shares_memory: bool = False
     max_seconds: int | None = Field(default=None, ge=1)
     born_tainted: bool = False
+
+
+class SavedLedger(BaseModel):
+    """A tree's ledger as a paused run saves it, for a resume that outlives it."""
+
+    ceiling: int
+    spent: int
+    nodes: int
+    max_nodes: int
+    wrapup: int | None = None
 
 
 def root_envelope(
@@ -435,6 +456,26 @@ class TreeLedger:
         )
         return {k: int(v) for k, v in raw.items()}
 
+    async def restore(self, tree_id: str, saved: SavedLedger) -> bool:
+        """Recreate an expired ledger from ``saved``; False when one is live."""
+        fields = [
+            str(part)
+            for item in saved.model_dump(exclude_none=True).items()
+            for part in item
+        ]
+        return bool(
+            await cast(
+                Awaitable[int],
+                self._redis.eval(
+                    _RESTORE_TREE_SCRIPT,
+                    1,
+                    self.key(tree_id),
+                    str(self._ttl),
+                    *fields,
+                ),
+            )
+        )
+
     # redis-py types the async client's hash commands as ``Awaitable[T] | T``;
     # the narrowing cast is the pattern the rest of the backend uses.
     async def _hincrby(self, key: str, field: str, amount: int) -> int:
@@ -630,6 +671,36 @@ async def readmit_turn(envelope: TurnEnvelope, *, user_id: str | None) -> None:
         raise TreeRefusal(
             "Could not account for this work right now; try again shortly."
         ) from e
+
+
+async def ledger_to_save(tree_id: str) -> SavedLedger | None:
+    """The tree's live ledger, for a run pausing inside it; None if there is none."""
+    snapshot = await (await get_tree_ledger()).snapshot(tree_id)
+    return SavedLedger.model_validate(snapshot) if "ceiling" in snapshot else None
+
+
+async def restore_tree_ledger(tree_id: str, saved: JsonValue, *, run_id: str) -> None:
+    """Rebuild an expired ledger from the one ``run_id`` saved when it paused,
+    so a late resume spends what was left rather than a fresh ceiling. Never
+    raises: without a ledger the next spawn opens a fresh one, as before."""
+    try:
+        ledger = await get_tree_ledger()
+        if saved is None:
+            if not await ledger.exists(tree_id):
+                logger.info(
+                    f"Run {run_id} resumed tree {tree_id} with no saved ledger; "
+                    "its next spawn opens a fresh one"
+                )
+            return
+        snapshot = SavedLedger.model_validate(saved)
+        if await ledger.restore(tree_id, snapshot):
+            logger.info(
+                f"Run {run_id} restored tree {tree_id}'s ledger: spent "
+                f"{snapshot.spent} of {snapshot.ceiling} microdollars, "
+                f"{snapshot.nodes} of {snapshot.max_nodes} nodes"
+            )
+    except Exception as e:
+        logger.warning(f"Could not restore tree {tree_id}'s ledger for {run_id}: {e}")
 
 
 async def _open_metered_root(
