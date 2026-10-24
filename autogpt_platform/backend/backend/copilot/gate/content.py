@@ -112,6 +112,8 @@ class ContentVerdict(BaseModel):
     held: bool
     passage: str = ""
     judged: bool = True
+    # What a first-stage hold flagged, for the card when no passage could be quoted.
+    excerpt: str = ""
     decided_by: Literal["jev", "llm"] | None = None
     # The verdict as a fixed code: clean, failed, instructions (an LLM hold), or
     # the question Jev rated likeliest on a hold.
@@ -137,7 +139,11 @@ async def judge_content(
     if quoted.held and quoted.judged and quoted.passage != _NO_PASSAGE:
         return quoted.model_copy(update={"decided_by": "jev", "code": first.code})
     return ContentVerdict(
-        held=True, passage=_FLAGGED_UNQUOTED, decided_by="jev", code=first.code
+        held=True,
+        passage=_FLAGGED_UNQUOTED,
+        excerpt=first.chunk,
+        decided_by="jev",
+        code=first.code,
     )
 
 
