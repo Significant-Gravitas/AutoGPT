@@ -347,14 +347,14 @@ class TestGetOrCreateSandbox:
                     _SESSION_ID,
                     _API_KEY,
                     timeout=_TIMEOUT,
-                    template="agpt-desktop-1x2-004d6e73",
+                    template="agpt-desktop-1x2-cfc276e0",
                 )
             )
 
         # The build can take longer than the creation slot's TTL, so it must
         # finish before the slot is claimed.
         assert order == [
-            f"ensure:agpt-desktop-1x2-004d6e73:{_API_KEY}",
+            f"ensure:agpt-desktop-1x2-cfc276e0:{_API_KEY}",
             "claim",
             "create",
         ]
