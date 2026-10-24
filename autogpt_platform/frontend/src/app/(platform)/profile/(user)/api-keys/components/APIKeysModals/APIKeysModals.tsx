@@ -11,7 +11,7 @@ import {
 import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Input } from "@/components/__legacy__/ui/input";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Button } from "@/components/__legacy__/ui/button";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";
