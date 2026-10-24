@@ -28,7 +28,12 @@ export interface SidebarProps {
 const getDefaultIconForLink = () => {
   // Default icon
   return (
-    <Icon icon={DashboardLayoutGlyph} strokeWidth={1.25} className="h-6 w-6" />
+    <Icon
+      icon={DashboardLayoutGlyph}
+      aria-label="Icon"
+      strokeWidth={1.25}
+      className="h-6 w-6"
+    />
   );
 };
 

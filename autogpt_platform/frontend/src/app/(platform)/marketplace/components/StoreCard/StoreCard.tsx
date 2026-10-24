@@ -136,6 +136,7 @@ export function StoreCard({
                 <Icon
                   key={star}
                   icon={star <= rating ? StarFilledGlyph : StarGlyph}
+                  aria-label="Icon"
                   className="size-4 text-foreground-base"
                 />
               ))}

@@ -93,6 +93,7 @@ export const AgentTableCard = ({
         >
           <Icon
             icon={MoreVerticalGlyph}
+            aria-label="Icon"
             viewBox="0 0 20 20"
             strokeWidth={1.5}
             // TODO(tokens): no exact role (text-neutral-800 #262626, dark:text-neutral-200)
@@ -124,6 +125,7 @@ export const AgentTableCard = ({
           </span>
           <Icon
             icon={StarFilledGlyph}
+            aria-label="Icon"
             // TODO(tokens): no exact role (text-neutral-800 #262626, dark:text-neutral-200)
             className="h-4 w-4 text-neutral-800 dark:text-neutral-200"
           />

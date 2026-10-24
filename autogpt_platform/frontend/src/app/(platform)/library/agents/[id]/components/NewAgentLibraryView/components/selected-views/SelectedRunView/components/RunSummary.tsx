@@ -71,6 +71,7 @@ export function RunSummary({ run }: Props) {
               <TooltipTrigger asChild>
                 <Icon
                   icon={CircleAlertGlyph}
+                  aria-label="Icon"
                   // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3), hover:text-neutral-600 (#525252)
                   className="size-4 cursor-help text-neutral-400 hover:text-neutral-600"
                 />
