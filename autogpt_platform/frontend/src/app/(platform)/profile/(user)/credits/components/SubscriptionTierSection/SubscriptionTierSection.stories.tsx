@@ -24,14 +24,16 @@ function subscription(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const flagsHandler = http.get(FLAGS_URL, () =>
+  HttpResponse.json({
+    flags: { "enable-platform-payment": true },
+    configured: true,
+  }),
+);
+
 function handlers(data: Record<string, unknown>) {
   return [
-    http.get(FLAGS_URL, () =>
-      HttpResponse.json({
-        flags: { "enable-platform-payment": true },
-        configured: true,
-      }),
-    ),
+    flagsHandler,
     http.get(SUBSCRIPTION_URL, () => HttpResponse.json(data)),
     // A tier change never answers, so a click shows the busy state.
     http.post(SUBSCRIPTION_URL, async () => {
@@ -104,6 +106,48 @@ export const ProWithPendingCancellation: Story = {
           pending_tier_effective_at: "2026-02-15T00:00:00Z",
         }),
       ),
+    },
+  },
+};
+
+export const LoadError: Story = {
+  parameters: {
+    msw: {
+      handlers: [
+        flagsHandler,
+        http.get(SUBSCRIPTION_URL, () =>
+          HttpResponse.json({ detail: "boom" }, { status: 500 }),
+        ),
+      ],
+    },
+  },
+};
+
+export const Enterprise: Story = {
+  parameters: {
+    msw: { handlers: handlers(subscription({ tier: "ENTERPRISE" })) },
+  },
+};
+
+export const NoTier: Story = {
+  parameters: {
+    msw: { handlers: handlers(subscription({ tier: "NO_TIER" })) },
+  },
+};
+
+export const TierChangeError: Story = {
+  parameters: {
+    msw: {
+      handlers: [
+        flagsHandler,
+        http.get(SUBSCRIPTION_URL, () => HttpResponse.json(subscription())),
+        http.post(SUBSCRIPTION_URL, () =>
+          HttpResponse.json(
+            { detail: "Payment method declined" },
+            { status: 500 },
+          ),
+        ),
+      ],
     },
   },
 };
