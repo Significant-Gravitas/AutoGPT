@@ -1,11 +1,12 @@
 """The Claude Code CLI a run starts holds no backend secret beyond its route's
 credential and the network settings it needs.
 
-A copilot turn (``stream_chat_completion_sdk``) and an orchestrator block run in
-SDK mode each drive the Claude Code CLI against the billing suite's fake
-provider, with secrets in this process's environment. While the CLI waits on
-each model request, the provider reads that CLI process's environment as the
-operating system holds it, so what is checked is what the CLI was started with.
+A copilot turn (``stream_chat_completion_sdk``), on a CLI it starts at launch or
+one it started ahead of its query, and an orchestrator block run in SDK mode
+each drive the Claude Code CLI against the billing suite's fake provider, with
+secrets in this process's environment. While the CLI waits on each model
+request, the provider reads that CLI process's environment as the operating
+system holds it, so what is checked is what the CLI was started with.
 
 The Linux SDK wheel bundles the CLI, so without one the tests fail there; on
 other platforms, whose wheels ship without it, they skip. CI runs them on Linux.
@@ -13,11 +14,14 @@ other platforms, whose wheels ship without it, they skip. CI runs them on Linux.
 
 import platform
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import psutil
 import pytest
 from aiohttp import web
+from claude_agent_sdk import ClaudeAgentOptions
+from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 from pydantic import SecretStr
 
 from backend.blocks.orchestrator import OrchestratorBlock
@@ -31,6 +35,7 @@ from backend.data.model import APIKeyCredentials
 
 from . import service as sdk_service
 from .cli_openrouter_compat_test import _resolve_cli_path
+from .cli_prelaunch import CLIPrelaunch
 
 _SECRET_NAME = "SOME_PLATFORM_SECRET"
 _SECRET = "sk-FAKE-platform-secret"
@@ -78,6 +83,28 @@ async def test_a_copilot_turns_cli_holds_only_its_routes_credential(
 
 
 @pytest.mark.asyncio(loop_scope="function")
+async def test_the_cli_a_copilot_turn_starts_ahead_of_its_query_holds_only_its_routes_credential(
+    ledger: PlatformLedger, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _require_cli()
+    monkeypatch.setenv(_SECRET_NAME, _SECRET)
+    monkeypatch.setattr(sdk_service, "CLIPrelaunch", _HarnessPrelaunch)
+    _HarnessPrelaunch.claimed = []
+    async with _CliEnvironments() as provider:
+        turns = SdkTurns(tmp_path, monkeypatch, provider, _config())
+        session = _session()
+        session.messages.append(ChatMessage(role="user", content="hello"))
+        await turns(session, "hello", new_pod=False)
+        await ledger.settle()
+
+    assert _HarnessPrelaunch.claimed, "the turn didn't run on the CLI it started"
+    assert provider.seen, "the CLI made no model request"
+    for env in provider.seen:
+        assert not _holds(env, _SECRET)
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant-billing-e2e"
+
+
+@pytest.mark.asyncio(loop_scope="function")
 async def test_an_orchestrator_runs_cli_holds_only_the_users_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -111,6 +138,30 @@ async def test_an_orchestrator_runs_cli_holds_only_the_users_key(
         assert not _holds(env, _SECRET)
         assert not _holds(env, _PLATFORM_KEY)
         assert env["ANTHROPIC_API_KEY"] == _USER_KEY
+
+
+class _HarnessPrelaunch(CLIPrelaunch):
+    """The real prelaunch, with the stand-ins ``SdkTurns`` puts in place of the
+    copilot's own tools and hooks taken off first, as it takes them off the
+    client's options: a real CLI can't be started with them."""
+
+    claimed: ClassVar[list[object]] = []
+
+    @classmethod
+    async def start(
+        cls, options: ClaudeAgentOptions, log_prefix: str
+    ) -> CLIPrelaunch | None:
+        options.mcp_servers = {}
+        options.hooks = None
+        options.allowed_tools = []
+        options.disallowed_tools = []
+        return await super().start(options, log_prefix)
+
+    def claim(self, options: ClaudeAgentOptions) -> SubprocessCLITransport | None:
+        transport = super().claim(options)
+        if transport is not None:
+            _HarnessPrelaunch.claimed.append(transport)
+        return transport
 
 
 class _CliEnvironments(FakeProvider):
