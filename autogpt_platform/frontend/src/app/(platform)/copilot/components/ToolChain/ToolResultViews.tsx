@@ -14,7 +14,10 @@ import { CARD, HALF } from "./ResultCards";
 import {
   asItems,
   asObject,
+  displayValue,
   formatBytes,
+  isBlankOutput,
+  NOTHING_FOUND,
   humanizeKey,
   inline,
   parseTruncatedOutput,
@@ -266,7 +269,7 @@ export function OutputList({ items }: ItemsProps) {
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
           </p>
           <p className="mt-0.5 whitespace-pre-wrap break-words text-body-sm leading-inherit text-foreground-emphasis">
-            {inline(item.value ?? item)}
+            {displayValue(item.value ?? item)}
           </p>
         </div>
       ))}
@@ -275,6 +278,7 @@ export function OutputList({ items }: ItemsProps) {
 }
 
 export function KeyValueList({ value }: ValueProps) {
+  if (isBlankOutput(value)) return <KeyValueList value={NOTHING_FOUND} />;
   const obj = asObject(value);
   if (!obj || Object.keys(obj).length === 0) {
     if (typeof value !== "string" || !value.trim()) return null;
@@ -298,9 +302,13 @@ export function KeyValueList({ value }: ValueProps) {
       </div>
     );
   }
+  const entries = Object.entries(obj).filter(
+    ([, entryValue]) => entryValue !== null && entryValue !== undefined,
+  );
+  if (entries.length === 0) return <KeyValueList value={NOTHING_FOUND} />;
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      {Object.entries(obj).map(([key, entryValue]) => (
+      {entries.map(([key, entryValue]) => (
         <div
           key={key}
           className="flex items-baseline gap-3 py-1 text-xs first:pt-0 last:pb-0"
@@ -309,7 +317,7 @@ export function KeyValueList({ value }: ValueProps) {
             {humanizeKey(key)}
           </span>
           <span className="ml-auto min-w-0 break-words text-right font-medium text-foreground-body">
-            {inline(entryValue)}
+            {displayValue(entryValue)}
           </span>
         </div>
       ))}

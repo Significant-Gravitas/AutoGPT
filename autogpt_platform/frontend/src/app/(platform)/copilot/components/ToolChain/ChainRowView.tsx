@@ -127,7 +127,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
-      ((row.output !== undefined && row.output !== "") ||
+      ((row.output !== undefined && row.output !== "" && !row.emptyResult) ||
         liveSubSession ||
         !!row.held?.card ||
         heldShowsOwnCall(row));

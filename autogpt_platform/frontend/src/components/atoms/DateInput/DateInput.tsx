@@ -84,32 +84,35 @@ export const DateInput = ({
 
   const triggerStyles = cn(
     // Base styles matching other form components
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full text-sm",
-    "placeholder:font-normal !placeholder:text-zinc-500",
+    "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base w-full text-body leading-5",
+    "placeholder:font-normal !placeholder:text-placeholder",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    error && "border-1.5 border-error focus:border-error focus:ring-error",
     // Placeholder styling
-    !selected && "text-zinc-400",
+    !selected && "text-foreground-subtle",
     "justify-start text-left",
     // Size variants
     size === "default" && "h-[2.875rem] py-2.5",
     className,
     size === "small" && [
-      "min-h-[2.25rem]", // 36px minimum
+      "min-h-9", // 36px minimum
       "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
+      "text-body",
+      "placeholder:text-body",
     ],
   );
 
   return (
     <div className="flex flex-col gap-1">
       {label && !hideLabel && (
-        <label htmlFor={id} className="text-sm font-medium text-gray-700">
+        // TODO(tokens): no role is gray-700 #374151.
+        <label
+          htmlFor={id}
+          className="text-body font-medium leading-5 text-gray-700"
+        >
           {label}
         </label>
       )}
@@ -145,7 +148,7 @@ export const DateInput = ({
           />
         </PopoverContent>
       </Popover>
-      {error && <span className="text-sm text-red-500">{error}</span>}
+      {error && <span className="text-body leading-5 text-error">{error}</span>}
     </div>
   );
 };

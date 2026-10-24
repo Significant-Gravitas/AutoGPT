@@ -36,8 +36,16 @@ export function ScheduleListItem({
       onClick={onClick}
       selected={selected}
       icon={
-        <IconWrapper className="border-slate-50 bg-yellow-50">
-          <Icon icon={TimeScheduleIcon} size={16} className="text-yellow-700" />
+        <IconWrapper
+          // TODO(tokens): no exact role for border-slate-50 (#F7F8F9), bg-yellow-50 (#FEF9E6)
+          className="border-slate-50 bg-yellow-50"
+        >
+          <Icon
+            // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
+            icon={TimeScheduleIcon}
+            size={16}
+            className="text-yellow-700"
+          />
         </IconWrapper>
       }
       actions={
