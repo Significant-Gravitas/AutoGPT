@@ -1,6 +1,10 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { LiveStep } from "./components/ToolChain/SubSessionLive";
 import { asObject, str } from "./components/ToolChain/resultHelpers";
+import {
+  COPILOT_ERROR_PREFIX,
+  COPILOT_RETRYABLE_ERROR_PREFIX,
+} from "./helpers/messageMarkers";
 import type { DelegationAnswer } from "./delegationAnswerStore";
 import type {
   ChatDelegation,
@@ -98,5 +102,26 @@ export function resolveLiveStatus({
     return answer?.question === question ? "running" : "needs-input";
   // Sent, but the teammate's turn has not picked it up yet.
   if (answer && now - answer.sentAt < ANSWER_GRACE_MS) return "running";
+  return settledStatusOf(session);
+}
+
+const CANCELLED_TEXT = "Operation cancelled";
+
+/** How an idle thread's last turn ended, read the way Otto's Delegations
+ *  list reads it: a turn that died before replying, or ended on an error,
+ *  failed, and one that ended on the cancel marker was stopped. With no
+ *  transcript to read, the poll still says it finished. */
+export function settledStatusOf(
+  session: SessionDetailResponse,
+): "completed" | "failed" | "cancelled" {
+  const last = session.messages?.at(-1);
+  if (!last) return "completed";
+  if (last.role !== "assistant") return "failed";
+  const content = typeof last.content === "string" ? last.content : "";
+  if (
+    content.startsWith(COPILOT_ERROR_PREFIX) ||
+    content.startsWith(COPILOT_RETRYABLE_ERROR_PREFIX)
+  )
+    return content.includes(CANCELLED_TEXT) ? "cancelled" : "failed";
   return "completed";
 }

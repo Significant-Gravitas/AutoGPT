@@ -1,8 +1,9 @@
 // Special message prefixes for text-based markers (set by backend).
 // The hex suffix makes it virtually impossible for an LLM to accidentally
 // produce these strings in normal conversation.
-const COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]";
-const COPILOT_RETRYABLE_ERROR_PREFIX = "[__COPILOT_RETRYABLE_ERROR_a9c2__]";
+export const COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]";
+export const COPILOT_RETRYABLE_ERROR_PREFIX =
+  "[__COPILOT_RETRYABLE_ERROR_a9c2__]";
 const COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]";
 
 export type MarkerType = "error" | "retryable_error" | "system" | null;

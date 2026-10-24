@@ -63,6 +63,35 @@ describe("resolveLiveStatus", () => {
     ).toBe("completed");
   });
 
+  it("reads a thread stopped from the Work panel as stopped, not done", () => {
+    function settled(...messages: Record<string, unknown>[]) {
+      return resolve("running", {
+        session: { chat_status: "idle", messages } as SessionDetailResponse,
+      });
+    }
+    const brief = { role: "user", content: "Draft the PRD" };
+    expect(
+      settled(brief, {
+        role: "assistant",
+        content: "[__COPILOT_ERROR_f7a1__] Operation cancelled",
+      }),
+    ).toBe("cancelled");
+    expect(
+      settled(brief, {
+        role: "assistant",
+        content: "[__COPILOT_RETRYABLE_ERROR_a9c2__] The provider is busy",
+      }),
+    ).toBe("failed");
+    // The turn died before writing a reply.
+    expect(settled(brief)).toBe("failed");
+    expect(
+      settled(brief, {
+        role: "assistant",
+        content: "The PRD is in your files.",
+      }),
+    ).toBe("completed");
+  });
+
   it("follows the polled session over the frozen transcript", () => {
     expect(resolve("running")).toBe("completed");
     expect(resolve("needs-input", { isLive: true })).toBe("running");
