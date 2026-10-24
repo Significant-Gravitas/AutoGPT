@@ -5,6 +5,7 @@ import pytest
 import urllib3.connectionpool
 from posthog import Posthog
 from prisma.enums import SubscriptionTier
+from prisma.errors import PrismaError
 
 import backend.util.feature_flag.posthog as ph
 from backend.data import subscription_trial_checkout as checkout
@@ -404,6 +405,18 @@ async def test_a_users_first_arm_is_kept_when_posthog_buckets_them_elsewhere(
 
     assert "custom_text" in stripe_session_create.await_args.kwargs
     stored_arms.create.assert_not_awaited()
+
+
+async def test_a_failed_assignment_still_opens_todays_checkout(
+    trial, stripe_session_create, stored_arms, posthog_flags
+):
+    stored_arms.find_unique.side_effect = PrismaError("assignments unavailable")
+    posthog_flags.feature_flags = [_no_charge_experiment(everyone_in="no-charge-copy")]
+
+    url = await checkout._resume_checkout(trial)
+
+    assert url == "https://checkout.test/cs_1"
+    assert "custom_text" not in stripe_session_create.await_args.kwargs
 
 
 @pytest.fixture

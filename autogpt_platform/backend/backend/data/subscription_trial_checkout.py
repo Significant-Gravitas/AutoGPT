@@ -1,9 +1,11 @@
 """Card-only Checkout using the durable, server-selected trial offer."""
 
+import logging
 from typing import Any
 
 import stripe
 from prisma.enums import SubscriptionTier
+from prisma.errors import PrismaError
 from prisma.models import SubscriptionTrial
 
 from backend.data import experiments
@@ -38,6 +40,8 @@ from backend.data.subscription_trial_config import (
 from backend.data.subscription_trial_eligibility import (
     verify_trial_eligibility as _verify_eligibility,
 )
+
+logger = logging.getLogger(__name__)
 
 # The arm of Experiment.TRIAL_CHECKOUT_NO_CHARGE_COPY that shows the line; any
 # other arm, or no enrolment, keeps today's page.
@@ -260,9 +264,16 @@ def trial_checkout_params(trial: TrialState, *, no_charge_copy: bool) -> dict:
 
 async def _shows_no_charge_copy(user_id: str) -> bool:
     # Assigned before the route sends checkout_started, so that event carries the arm.
-    assignment = await experiments.assign(
-        user_id, experiments.Experiment.TRIAL_CHECKOUT_NO_CHARGE_COPY
-    )
+    try:
+        assignment = await experiments.assign(
+            user_id, experiments.Experiment.TRIAL_CHECKOUT_NO_CHARGE_COPY
+        )
+    except PrismaError:
+        # An experiment never blocks a trial: today's page, and nothing stored.
+        logger.warning(
+            f"Trial checkout experiment not assigned for user {user_id}", exc_info=True
+        )
+        return False
     return assignment is not None and assignment.variant == NO_CHARGE_COPY_ARM
 
 
