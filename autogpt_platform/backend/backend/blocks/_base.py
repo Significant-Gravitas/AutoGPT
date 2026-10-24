@@ -224,6 +224,8 @@ class BlockInfo(BaseModel):
     contributors: list[dict[str, Any]]
     staticOutput: bool
     uiType: str
+    disabled: bool = False
+    disabledReason: str | None = None
 
 
 class BlockSchema(BaseModel):
@@ -611,6 +613,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         test_mock: dict[str, Any] | None = None,
         test_credentials: Optional[Credentials | dict[str, Credentials]] = None,
         disabled: bool = False,
+        disabled_reason: str | None = None,
+        hidden: bool = False,
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
@@ -634,6 +638,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_output: The list or single expected output if the test_input is run.
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
+            disabled_reason: Explanation shown when a block is disabled.
+            hidden: If the block is hidden, it will not appear in Builder block lists.
             static_output: Whether the output links of the block are static by default.
             is_irreversible_action: The effect has reached someone outside the platform
                 by the time the block returns (a send, public post, payment or order,
@@ -659,6 +665,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.categories = categories or set()
         self.contributors = contributors or set()
         self.disabled = disabled
+        self.disabled_reason = disabled_reason
+        self.hidden = hidden
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
@@ -714,6 +722,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             # Disable webhook-triggered block if webhook functionality not available
             if not app_config.platform_base_url:
                 self.disabled = True
+                self.disabled_reason = (
+                    self.disabled_reason
+                    or "Webhook blocks require a configured platform base URL."
+                )
 
     @abstractmethod
     async def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
@@ -830,6 +842,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ],
             staticOutput=self.static_output,
             uiType=self.block_type.value,
+            disabled=self.disabled,
+            disabledReason=self.disabled_reason,
         )
 
     async def execute(
