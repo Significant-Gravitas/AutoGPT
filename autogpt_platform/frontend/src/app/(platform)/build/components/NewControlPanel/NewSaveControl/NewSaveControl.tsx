@@ -1,5 +1,6 @@
+import { FormProvider } from "react-hook-form";
 import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Popover,
   PopoverContent,
@@ -55,7 +56,7 @@ export const NewSaveControl = () => {
         className="w-96 max-w-[400px] rounded-xlarge"
       >
         <Card className="border-none dark:bg-slate-900">
-          <Form {...form}>
+          <FormProvider {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
                 <div className="space-y-3">
@@ -126,7 +127,7 @@ export const NewSaveControl = () => {
                 </Button>
               </CardFooter>
             </form>
-          </Form>
+          </FormProvider>
         </Card>
       </PopoverContent>
     </Popover>

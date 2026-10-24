@@ -1,7 +1,8 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import { CronExpressionDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Accordion,
   AccordionContent,
@@ -126,7 +127,7 @@ export function AgentInfoStep({
     <div className="mx-auto flex w-full flex-col">
       <StepHeader title={title} description={description} currentStep="info" />
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 pb-5">
           {isMarketplaceUpdate && (
             <section className="rounded-[18px] border border-warning-border bg-warning-surface p-4">
@@ -184,7 +185,11 @@ export function AgentInfoStep({
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="flex items-center gap-2 leading-5 text-textBlack"
+                >
                   <Icon
                     icon={Store01Icon}
                     size={18}
@@ -205,7 +210,7 @@ export function AgentInfoStep({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <div className="grid gap-x-4 sm:grid-cols-2">
@@ -290,7 +295,11 @@ export function AgentInfoStep({
 
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="flex items-center gap-2 leading-5 text-textBlack"
+                >
                   <Icon
                     icon={Album01Icon}
                     size={18}
@@ -311,7 +320,7 @@ export function AgentInfoStep({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <ThumbnailImages
@@ -326,7 +335,11 @@ export function AgentInfoStep({
 
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="flex items-center gap-2 leading-5 text-textBlack"
+                >
                   <Icon
                     icon={SparklesIcon}
                     size={18}
@@ -347,7 +360,7 @@ export function AgentInfoStep({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <FormField
@@ -456,7 +469,7 @@ export function AgentInfoStep({
                         type="button"
                         onClick={() => setCronScheduleDialogOpen(true)}
                         // TODO(tokens): no exact role for focus:border-purple-400 #925cf7, focus:ring-purple-400 #925cf7
-                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-sm font-normal text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-body font-normal leading-5 text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
                       >
                         <Icon
                           icon={Calendar03Icon}
@@ -506,7 +519,7 @@ export function AgentInfoStep({
             }
           />
         </form>
-      </Form>
+      </FormProvider>
 
       <CronExpressionDialog
         open={cronScheduleDialogOpen}

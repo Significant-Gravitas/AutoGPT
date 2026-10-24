@@ -1,11 +1,11 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import {
-  Form,
   FormControl,
   FormField,
   FormItem,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Select } from "@/components/atoms/Select/Select";
@@ -48,7 +48,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
         Billing and account messages are always sent — they are about your
         account, not a promotion.
       </Text>
-      <Form {...form}>
+      <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
           className="mt-6 flex flex-col gap-10"
@@ -158,7 +158,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
             </Button>
           </div>
         </form>
-      </Form>
+      </FormProvider>
     </div>
   );
 }
