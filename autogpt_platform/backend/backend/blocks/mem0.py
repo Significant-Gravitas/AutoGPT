@@ -162,18 +162,8 @@ class AddMemoryBlock(Block, Mem0Base):
             if input_data.limit_memory_to_agent:
                 params["agent_id"] = graph_id
 
-            pending_add = asyncio.create_task(
-                asyncio.to_thread(client.add, messages, **params)
-            )
-            while True:
-                try:
-                    result = await asyncio.shield(pending_add)
-                    break
-                except asyncio.CancelledError as exc:
-                    if pending_add.cancelled():
-                        raise
-                    cancellation = exc
-
+            pending_add, cancellation = await self._settle_add(client, messages, params)
+            result = pending_add.result()
             results = result.get("results", [])
             yield "results", results
 
@@ -189,6 +179,27 @@ class AddMemoryBlock(Block, Mem0Base):
 
         if cancellation is not None:
             raise cancellation
+
+    @staticmethod
+    async def _settle_add(
+        client: "MemoryClient", messages: list[dict[str, str]], params: dict[str, Any]
+    ) -> tuple[asyncio.Task[dict[str, Any]], asyncio.CancelledError | None]:
+        pending_add = asyncio.create_task(
+            asyncio.to_thread(client.add, messages, **params)
+        )
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                await asyncio.shield(pending_add)
+                break
+            except asyncio.CancelledError as exc:
+                if pending_add.cancelled():
+                    raise
+                cancellation = exc
+            except Exception:
+                # Let run retrieve the error after recording any cancellation.
+                break
+        return pending_add, cancellation
 
 
 class SearchMemoryBlock(Block, Mem0Base):
