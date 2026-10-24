@@ -404,6 +404,8 @@ describe("a proposal card the chat already answered", () => {
 
     await waitFor(() => expect(onBackendTurn).toHaveBeenCalledTimes(1));
     expect(onSend).not.toHaveBeenCalled();
+    // Nothing is in flight: the card waits for the refetch, not on "Sent".
+    await waitFor(() => expect(screen.queryByText("Sent")).toBeNull());
   });
 
   it("drops a refused answer once the saved one is on screen", () => {

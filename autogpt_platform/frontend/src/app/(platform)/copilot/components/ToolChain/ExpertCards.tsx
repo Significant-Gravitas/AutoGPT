@@ -646,6 +646,8 @@ export function ExpertChangeGroup({
       ? open.filter((proposal) => !answeredNow.has(proposal.confirmationId))
       : open;
     if (toSend.length === 0) {
+      // Nothing to send: the refetch shows the answers that stand.
+      setSent(false);
       actions.onBackendTurn?.();
       return;
     }
