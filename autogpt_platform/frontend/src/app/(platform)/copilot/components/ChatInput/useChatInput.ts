@@ -1,6 +1,7 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { isTouchDevice } from "@/lib/platform";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
+import { isFocusInOtherOverlay } from "./helpers";
 import { useChatDraft } from "./useChatDraft";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
@@ -77,7 +78,7 @@ export function useChatInput({
   useEffect(
     function focusOnMount() {
       if (!autoFocus || isTouchDevice()) return;
-      document.getElementById(inputId)?.focus();
+      takeFocus(inputId);
     },
     [autoFocus, inputId],
   );
@@ -85,7 +86,7 @@ export function useChatInput({
   useEffect(
     function focusWhenEnabled() {
       if (!autoFocus || disabled || isTouchDevice()) return;
-      document.getElementById(inputId)?.focus();
+      takeFocus(inputId);
     },
     [autoFocus, disabled, inputId],
   );
@@ -197,4 +198,10 @@ export function useChatInput({
 function restoreFailedDraft(current: string, failed: string) {
   if (!current.trim() || current === failed) return failed;
   return `${failed}\n\n${current}`;
+}
+
+function takeFocus(inputId: string) {
+  const input = document.getElementById(inputId);
+  if (isFocusInOtherOverlay(input)) return;
+  input?.focus();
 }
