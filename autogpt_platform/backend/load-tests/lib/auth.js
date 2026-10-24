@@ -27,7 +27,9 @@ const AUTH_BURST = 3;
 const AUTH_PAUSE_SECONDS = 11;
 const MAX_ATTEMPTS = 5;
 
-const DEFAULT_THROWAWAY_ACCOUNTS = 5;
+// Copilot caps running turns per user (5) and queued ones (15), so turns are
+// spread over enough accounts that the load, not the cap, sets the pace.
+const DEFAULT_THROWAWAY_ACCOUNTS = 8;
 const MAX_THROWAWAY_ACCOUNTS = 100;
 // Previews allow sign-up for this domain, and nothing is mailed to it.
 const THROWAWAY_EMAIL_DOMAIN = "previews.agpt.co";
@@ -37,6 +39,7 @@ const THROWAWAY_EMAIL_DOMAIN = "previews.agpt.co";
 const REFRESH_MARGIN_MS = 10 * 60 * 1000;
 const REFRESH_SPREAD_MS = 10 * 60 * 1000;
 const REFRESH_RETRY_MS = 60 * 1000;
+const ACCOUNT_TOKEN_MARGIN_MS = 5 * 60 * 1000;
 
 const ACCOUNTS_FORMAT = 'a JSON array of {"email": "...", "password": "..."}';
 
@@ -74,6 +77,51 @@ export function setupAuth() {
   return { auth: sessions };
 }
 
+// How many accounts a run signs in, from LOAD_TEST_ACCOUNTS or
+// LOAD_TEST_ACCOUNT_COUNT; usable in the init context.
+export function accountCount() {
+  const listed = readAccounts();
+  return listed ? listed.length : readAccountCount();
+}
+
+// Headers for one account by index, for setup() and teardown(), which run
+// outside any VU. A token within five minutes of expiring is renewed with
+// the account's session first, so the teardown of a long run gets through.
+export function accountHeaders(data, index) {
+  const sessions = data && data.auth;
+  if (!sessions || sessions.length === 0) {
+    throw new Error("No sessions: setupAuth() must run first");
+  }
+  const session = sessions[index % sessions.length];
+  if (
+    !session.renewFailed &&
+    session.expiresAt - Date.now() < ACCOUNT_TOKEN_MARGIN_MS
+  ) {
+    renewAccountToken(session, `account ${(index % sessions.length) + 1}`);
+  }
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session.token}`,
+  };
+}
+
+function renewAccountToken(session, label) {
+  const res = requestToken(session.cookies);
+  if (res.status === 200) {
+    try {
+      session.token = readToken(res);
+      session.expiresAt = tokenExpiry(session.token);
+      return;
+    } catch (e) {
+      // Reported below, like any other failed renewal.
+    }
+  }
+  session.renewFailed = true;
+  console.warn(
+    `Renewing the token of ${label} failed (HTTP ${res.status}); its requests use the old one`,
+  );
+}
+
 // Headers for the current VU's account, from setupAuth()'s data.
 export function authHeaders(data) {
   if (vuSession === null) {
@@ -83,7 +131,9 @@ export function authHeaders(data) {
         "No sessions: the test's setup() must return setupAuth()'s result",
       );
     }
-    const session = sessions[(__VU - 1) % sessions.length];
+    // VUs are numbered from 1; setup() and teardown() run as VU 0 and use
+    // the first account.
+    const session = sessions[Math.max(__VU - 1, 0) % sessions.length];
     vuSession = {
       cookies: session.cookies,
       token: session.token,
@@ -141,12 +191,16 @@ function readAccountCount() {
   return count;
 }
 
+// Accounts are named after the run (RUN_ID from k6.sh, else a random tag),
+// so everything a run creates can be found under its own accounts.
 function throwawayAccounts(count) {
-  const runId = randomHex(4);
+  const runTag = (__ENV.RUN_ID || randomHex(4))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
   const accounts = [];
   for (let i = 1; i <= count; i++) {
     accounts.push({
-      email: `loadtest-${runId}-${i}@${THROWAWAY_EMAIL_DOMAIN}`,
+      email: `loadtest-${runTag}-${i}@${THROWAWAY_EMAIL_DOMAIN}`,
       password: randomHex(24),
     });
   }
