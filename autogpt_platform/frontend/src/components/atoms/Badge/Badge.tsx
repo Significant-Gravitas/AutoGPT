@@ -54,7 +54,10 @@ export function Badge({
 }: BadgeProps) {
   if (isChip(variant)) {
     return (
-      <div className={cn(chipBase, chipVariants[variant], className)}>
+      <div
+        data-slot="badge"
+        className={cn(chipBase, chipVariants[variant], className)}
+      >
         {children}
       </div>
     );
