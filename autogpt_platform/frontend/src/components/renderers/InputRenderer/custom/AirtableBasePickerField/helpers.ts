@@ -29,8 +29,13 @@ export function isAirtableBasePickerSchema(schema: unknown): boolean {
   return pickerCredentialsID(schema) !== null;
 }
 
+// The server words these for the user: reconnect, busy, or try again.
+const WORDED_STATUSES = new Set([409, 502, 503]);
+
 export function loadErrorText(error: unknown): string {
-  if (error instanceof ApiError && error.status === 409) return error.message;
+  if (error instanceof ApiError && WORDED_STATUSES.has(error.status)) {
+    return error.message;
+  }
   return "Couldn't load your Airtable bases. Try again.";
 }
 

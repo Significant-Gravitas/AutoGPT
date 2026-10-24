@@ -113,3 +113,23 @@ def test_a_refused_token_refresh_also_says_to_reconnect():
     assert resp.status_code == 409
     assert "Reconnect Airtable" in resp.json()["detail"]
     list_bases.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "status, expected, words",
+    [
+        (403, 409, "Reconnect Airtable"),
+        (429, 503, "Airtable is busy"),
+        (422, 502, "Couldn't load your Airtable bases"),
+    ],
+)
+def test_only_a_refusal_says_reconnect(status, expected, words):
+    """Reconnecting fixes a refused connection, not a rate limit or a bad
+    request, so each says what actually helps."""
+    error = HTTPClientError("nope", status)
+    with patch(_CREDS) as creds, patch(_LIST, AsyncMock(side_effect=error)):
+        creds.get = AsyncMock(return_value=_airtable())
+        resp = client.get("/airtable/credentials/cred-1/bases")
+
+    assert resp.status_code == expected
+    assert words in resp.json()["detail"]

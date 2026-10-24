@@ -52,19 +52,42 @@ async def list_airtable_bases(
     try:
         # Getting an OAuth credential may refresh it, which Airtable can refuse.
         credential = await _airtable_credential(user_id, cred_id)
+    except HTTPClientError as e:
+        logger.warning(f"Airtable refused to refresh this connection ({e.status_code})")
+        raise _reconnect()
+    try:
         bases, truncated = await _all_bases(credential)
     except HTTPClientError as e:
-        logger.warning(f"Airtable refused this connection ({e.status_code})")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Airtable didn't accept this connection. Reconnect Airtable "
-                "and try again."
-            ),
-        )
+        logger.warning(f"Airtable refused to list bases ({e.status_code})")
+        raise _listing_error(e.status_code)
     return AirtableBasesResponse(
         bases=sorted(bases, key=lambda b: (not b.can_edit, b.name.casefold())),
         truncated=truncated,
+    )
+
+
+def _reconnect() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=(
+            "Airtable didn't accept this connection. Reconnect Airtable and try "
+            "again."
+        ),
+    )
+
+
+def _listing_error(airtable_status: int) -> HTTPException:
+    """Only a refused connection is fixed by reconnecting; say what helps."""
+    if airtable_status in (401, 403):
+        return _reconnect()
+    if airtable_status == 429:
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Airtable is busy right now. Try again in a minute.",
+        )
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Couldn't load your Airtable bases. Try again.",
     )
 
 

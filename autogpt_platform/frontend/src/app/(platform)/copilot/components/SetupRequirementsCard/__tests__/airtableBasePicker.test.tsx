@@ -186,6 +186,21 @@ describe("Airtable base picker in the setup card", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
   });
 
+  it("a busy Airtable says to wait, not to reconnect", async () => {
+    server.use(
+      http.get(BASES_URL, () =>
+        HttpResponse.json(
+          { detail: "Airtable is busy right now. Try again in a minute." },
+          { status: 503 },
+        ),
+      ),
+    );
+    render(<SetupRequirementsCard output={pickerCard()} />);
+
+    expect(await screen.findByText(/Airtable is busy right now/)).toBeDefined();
+    expect(screen.queryByText(/Reconnect/)).toBeNull();
+  });
+
   it("without the account the run uses, the field stays a plain input", () => {
     expect(isAirtableBasePickerSchema(PICKER)).toBe(true);
     expect(
