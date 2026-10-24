@@ -10,6 +10,7 @@ const Switch = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
 >(({ className, ...props }, ref) => (
   <SwitchPrimitives.Root
+    data-slot="switch"
     className={cn(
       // TODO(tokens): no role is neutral-900 #171717. The dark: classes never
       // apply (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
@@ -20,6 +21,7 @@ const Switch = React.forwardRef<
     ref={ref}
   >
     <SwitchPrimitives.Thumb
+      data-slot="switch-thumb"
       className={cn(
         "pointer-events-none block h-4 w-4 rounded-full bg-surface shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0 dark:bg-neutral-950",
       )}

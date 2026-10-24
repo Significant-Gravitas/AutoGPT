@@ -7,7 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { ArrowDownNarrowWideIcon } from "lucide-react";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 

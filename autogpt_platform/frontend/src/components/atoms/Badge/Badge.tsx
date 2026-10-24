@@ -62,6 +62,7 @@ export function Badge({
 
   return (
     <span
+      data-slot="badge"
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md font-sans font-medium ring-1 ring-inset",
         "overflow-hidden text-ellipsis",
