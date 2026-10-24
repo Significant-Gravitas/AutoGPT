@@ -141,7 +141,7 @@ describe("Airtable base picker in the setup card", () => {
 
     const tracker = await screen.findByRole("radio", { name: /Team tracker/ });
     expect(tracker.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("Can't add tables")).toBeDefined();
+    expect(screen.getByText("Needs creator access")).toBeDefined();
   });
 
   it("arrow keys move the pick past a view-only base", async () => {

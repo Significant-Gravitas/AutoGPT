@@ -326,3 +326,28 @@ def test_field_settings_and_notes_are_on_the_card_in_words():
     total, status = preview.tables[0].fields
     assert total.detail == "Order total with tax · precision 2 · symbol $"
     assert status.detail == ""
+
+
+def test_a_choice_setting_beyond_its_name_is_on_the_card():
+    preview = AirtableCreateTableBlock().change_preview(
+        {
+            "table_name": "Orders",
+            "table_fields": [
+                {
+                    "name": "Status",
+                    "type": "singleSelect",
+                    "options": {
+                        "choices": [
+                            {"name": "New", "color": "greenBright"},
+                            {"name": "Shipped"},
+                        ]
+                    },
+                }
+            ],
+        }
+    )
+
+    assert preview is not None
+    [status] = preview.tables[0].fields
+    assert status.kind == "Choice of New, Shipped"
+    assert status.detail == "New: color greenBright"

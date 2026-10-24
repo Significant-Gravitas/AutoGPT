@@ -86,15 +86,16 @@ def tables_preview(tables: Any) -> list[PreviewTable]:
 def field_detail(description: Any, options: Any) -> str:
     """The field's note, then each setting its kind doesn't already say, in
     words: ``{"precision": 2}`` reads "precision 2"."""
-    settings = (
-        [
+    if not isinstance(options, dict):
+        options = {}
+    settings = [
+        *_choice_settings(options.get("choices")),
+        *(
             f"{_words(key)} {_value(value)}"
             for key, value in options.items()
             if key != "choices"
-        ]
-        if isinstance(options, dict)
-        else []
-    )
+        ),
+    ]
     return " · ".join([str(description), *settings] if description else settings)
 
 
@@ -107,6 +108,19 @@ def preview(
         tables=tables,
         covers=covers,
     )
+
+
+def _choice_settings(choices: Any) -> list[str]:
+    """A choice's name is in the kind; anything else about it (a color) is
+    said here: "New: color greenBright"."""
+    return [
+        f"{choice.get('name')}: "
+        + ", ".join(
+            f"{_words(k)} {_value(v)}" for k, v in choice.items() if k != "name"
+        )
+        for choice in _dicts(choices)
+        if set(choice) - {"name"}
+    ]
 
 
 def _words(key: str) -> str:

@@ -35,14 +35,15 @@ export function allows(access: BaseAccess, needed: BaseAccess): boolean {
 }
 
 // Why a base is listed but can't be picked for this step.
-export function lockedReason(access: BaseAccess): string {
-  return access === "read" ? "View only" : "Can't add tables";
+export function lockedReason(access: BaseAccess, needed: BaseAccess): string {
+  if (access === "read") return "View only";
+  return needed === "create" ? "Needs creator access" : "View only";
 }
 
 // What to do when no base allows the step.
 export function noUsableBaseText(needed: BaseAccess): string {
   return needed === "create"
-    ? "Otto needs to add tables, which Airtable lets only a base's creators do. Ask the owner to make you a creator, or start a new one."
+    ? "This step needs creator access to a base, which Airtable gives to the people who set it up. Ask the owner to make you a creator, or start a new one."
     : "You can only view these bases, so Otto can't add to them. Ask the owner to make you an editor, or start a new one.";
 }
 

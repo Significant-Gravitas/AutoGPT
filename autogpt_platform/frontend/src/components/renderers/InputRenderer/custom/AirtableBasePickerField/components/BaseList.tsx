@@ -77,7 +77,7 @@ export function BaseList({ bases, value, labelID, needed, onChange }: Props) {
             <span className="min-w-0 flex-1 break-words">{base.name}</span>
             {locked && (
               <span className="shrink-0 text-xs text-zinc-500">
-                {lockedReason(base.access)}
+                {lockedReason(base.access, needed)}
               </span>
             )}
             {isSelected && (
