@@ -23,6 +23,7 @@ export function useFirstRunTour() {
     isMobile,
     open: isSidebarOpen,
     setOpen: setSidebarOpen,
+    setOpenMobile,
   } = useSidebar();
   const { experience } = useUsageExperience();
   const isBillingEnabled = useIsBillingEnabled();
@@ -47,6 +48,18 @@ export function useFirstRunTour() {
   useEffect(() => {
     if (isOpen && !isMobile && !isSidebarOpen) setSidebarOpen(true);
   }, [isOpen, isMobile, isSidebarOpen, setSidebarOpen]);
+
+  // On a phone the sidebar is a sheet over the page. Pointing at its menu
+  // button would ask for a tap the scrim and focus trap do not allow, so the
+  // walkthrough opens the sheet itself for the steps that live there, and
+  // puts it away for the rest and once it ends.
+  const wantsSheet = isOpen && isMobile && step?.inSidebar === true;
+  useEffect(() => {
+    if (isMobile && isOpen) setOpenMobile(wantsSheet);
+  }, [isMobile, isOpen, wantsSheet, setOpenMobile]);
+  useEffect(() => {
+    if (isMobile) return () => setOpenMobile(false);
+  }, [isMobile, setOpenMobile]);
 
   useEffect(() => {
     if (source) trackFirstRun("first_run_tour_shown", { source });

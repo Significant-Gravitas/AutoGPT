@@ -1,4 +1,4 @@
-import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import { Sidebar, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,8 +83,13 @@ function Targets({ only }: { only?: TourTarget[] }) {
 }
 
 function SidebarState() {
-  const { open } = useSidebar();
-  return <p data-testid="sidebar-state">{open ? "open" : "collapsed"}</p>;
+  const { open, openMobile } = useSidebar();
+  return (
+    <>
+      <p data-testid="sidebar-state">{open ? "open" : "collapsed"}</p>
+      <p data-testid="sheet-state">{openMobile ? "open" : "closed"}</p>
+    </>
+  );
 }
 
 function renderTour(only?: TourTarget[]) {
@@ -316,6 +321,87 @@ describe("first-run walkthrough", () => {
     await waitFor(() =>
       expect(screen.getByTestId("sidebar-state").textContent).toBe("open"),
     );
+  });
+
+  it("opens the phone's sidebar for the steps that live there, so the real controls are lit", async () => {
+    // Pointing at the menu button and saying "open the menu" asked for a tap
+    // the walkthrough's scrim and focus trap do not allow.
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    try {
+      renderTour();
+      openTour();
+      await screen.findByRole("dialog", { name: "Work happens in chats" });
+      await waitFor(() =>
+        expect(screen.getByTestId("sheet-state").textContent).toBe("open"),
+      );
+
+      act(() => useFirstRunTourStore.getState().goTo("start"));
+      await waitFor(() =>
+        expect(screen.getByTestId("sheet-state").textContent).toBe("closed"),
+      );
+
+      act(() => useFirstRunTourStore.getState().goTo("files"));
+      await waitFor(() =>
+        expect(screen.getByTestId("sheet-state").textContent).toBe("open"),
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: "Skip tour" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("sheet-state").textContent).toBe("closed"),
+      );
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: width,
+      });
+    }
+  });
+
+  it("stays reachable over the phone's sidebar sheet, for screen readers too", async () => {
+    // The sheet is a modal dialog of its own: it hides everything outside
+    // it from assistive tech and takes focus. The card has to end up above it.
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    try {
+      render(
+        <SidebarProvider defaultOpen={false}>
+          <Sidebar>
+            <div {...tourTarget("chats")}>Recent chats</div>
+            <div {...tourTarget("team")}>Team</div>
+          </Sidebar>
+          <FirstRunTour />
+        </SidebarProvider>,
+      );
+      openTour();
+
+      const card = await screen.findByRole("dialog", {
+        name: "Work happens in chats",
+      });
+      await waitFor(() =>
+        expect(card.closest("[aria-hidden=true]")).toBeNull(),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole("dialog", { name: "Work happens in chats" }),
+        ).toBeDefined(),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const next = screen.getByRole("button", { name: "Next" });
+      expect(next.closest("[aria-hidden=true]")).toBeNull();
+      expect(document.activeElement).toBe(next);
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: width,
+      });
+    }
   });
 
   it("points a phone at the menu button for anything in the sidebar", async () => {

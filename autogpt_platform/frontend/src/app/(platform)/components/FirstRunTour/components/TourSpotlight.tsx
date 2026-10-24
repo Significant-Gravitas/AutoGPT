@@ -5,8 +5,9 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/molecules/Popover/Popover";
+import { useSidebar } from "@/components/ui/sidebar";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { isPartlyOffScreen, withMenuHint, type Box } from "../helpers";
 import type { TourTarget } from "@/lib/tour-targets";
 import { stepListOf } from "../steps";
@@ -61,6 +62,9 @@ export function TourSpotlight({ tour }: Props) {
   const titleID = useId();
   const bodyID = useId();
 
+  const { isMobile, openMobile } = useSidebar();
+  const isOverSheet = isMobile && openMobile;
+  const layer = useLayerAboveSheet(isOverSheet);
   const body = withMenuHint(
     tour.bodyFor(tour.stepIndex, stop),
     stop?.viaMenu ?? false,
@@ -93,10 +97,12 @@ export function TourSpotlight({ tour }: Props) {
   return (
     <>
       <TourScrim boxes={box ? [box] : []} />
-      <Popover open modal>
+      <Popover open modal key={layer}>
         <PopoverAnchor virtualRef={virtualRef} />
         <PopoverContent
-          side={sideFor(target)}
+          // Over the phone's sheet there is no room beside it: below the
+          // item (above it, near the bottom) keeps the card on screen.
+          side={isOverSheet ? "bottom" : sideFor(target)}
           align={target === null ? "center" : "start"}
           sideOffset={14}
           collisionPadding={16}
@@ -148,4 +154,21 @@ export function TourSpotlight({ tour }: Props) {
       </Popover>
     </>
   );
+}
+
+// The phone's sidebar sheet is a modal dialog too: one opened after the card
+// takes its focus and taps and hides it from assistive tech. So the card
+// mounts again once the sheet has opened (or closed), a couple of frames on,
+// after the sheet's own effects have run in the same commit as its content.
+function useLayerAboveSheet(isOverSheet: boolean) {
+  const [layer, setLayer] = useState(isOverSheet ? "over-sheet" : "over-page");
+  useEffect(() => {
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() =>
+        setLayer(isOverSheet ? "over-sheet" : "over-page"),
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isOverSheet]);
+  return layer;
 }
