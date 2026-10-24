@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Command,
   CommandItem,
@@ -175,7 +176,7 @@ const MultiSelectorTrigger = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-sm",
+        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-body leading-5",
         className,
       )}
       {...props}
@@ -189,7 +190,13 @@ const MultiSelectorTrigger = forwardRef<
           )}
           variant={"secondary"}
         >
-          <span className="text-xs">{item}</span>
+          <Text
+            variant="small"
+            as="span"
+            className="font-semibold leading-4 text-inherit"
+          >
+            {item}
+          </Text>
           <button
             aria-label={`Remove ${item} option`}
             aria-roledescription="button to remove option"
