@@ -10,7 +10,7 @@ each fit one call, and the LLM runs only on a hold, to quote it.
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from prometheus_client import Counter
 from pydantic import BaseModel, ConfigDict
@@ -56,6 +56,12 @@ _CHUNK_OVERLAP = 2_000
 _MAX_JEV_CHUNKS = 10
 _JEV_CONCURRENCY = 4
 _JEV_NOULS = ("must_hold", "q1", "q2", "q3")
+# Each question's fixed name, for the shadow gate's events.
+_JEV_QUESTION_CODES = {
+    "q1": "instructs_agent",
+    "q2": "claims_authority",
+    "q3": "assigns_task",
+}
 JEV_QUESTIONS: dict[str, Choice | Score | Noul] = {
     "verdict": Choice(
         instructions="Does the fetched content carry instructions addressed to an"
@@ -106,6 +112,10 @@ class ContentVerdict(BaseModel):
     held: bool
     passage: str = ""
     judged: bool = True
+    decided_by: Literal["jev", "llm"] | None = None
+    # The verdict as a fixed code: clean, failed, instructions (an LLM hold), or
+    # the question Jev rated likeliest on a hold.
+    code: str = ""
 
 
 async def judge_content(
@@ -122,17 +132,25 @@ async def judge_content(
     if first is None:
         return await _llm_verdict(source, text, images)
     if not first.held:
-        return ContentVerdict(held=False)
+        return ContentVerdict(held=False, decided_by="jev", code="clean")
     quoted = await _llm_verdict(source, first.chunk, (), flagged=True)
     if quoted.held and quoted.judged and quoted.passage != _NO_PASSAGE:
-        return quoted
-    return ContentVerdict(held=True, passage=_FLAGGED_UNQUOTED)
+        return quoted.model_copy(update={"decided_by": "jev", "code": first.code})
+    return ContentVerdict(
+        held=True, passage=_FLAGGED_UNQUOTED, decided_by="jev", code=first.code
+    )
+
+
+_UNJUDGED = ContentVerdict(
+    held=True, passage=_UNCHECKED, judged=False, decided_by="llm", code="failed"
+)
 
 
 class JevContentVerdict(BaseModel):
     held: bool
     # The chunk Jev held (the whole text when it fits one call): what the LLM quotes from.
     chunk: str = ""
+    code: str = ""
 
 
 async def _jev_verdict(source: str, text: str) -> JevContentVerdict | None:
@@ -156,7 +174,10 @@ async def _jev_verdict(source: str, text: str) -> JevContentVerdict | None:
         if result is not None and result[0]:
             FIRST_STAGE.labels(outcome="hold").inc()
             logger.info(f"Content first stage hold on {source[:80]}: {result[1]}")
-            return JevContentVerdict(held=True, chunk=chunk)
+            top = max(_JEV_QUESTION_CODES, key=lambda name: result[1][name])
+            return JevContentVerdict(
+                held=True, chunk=chunk, code=_JEV_QUESTION_CODES[top]
+            )
     if any(result is None for result in results):
         return None
     FIRST_STAGE.labels(outcome="clean").inc()
@@ -259,7 +280,7 @@ async def _llm_verdict(
             raw = await _ask(messages)
         except Exception:
             logger.warning(f"Content judge failed on {source[:80]}", exc_info=True)
-            return ContentVerdict(held=True, passage=_UNCHECKED, judged=False)
+            return _UNJUDGED
         verdict = parse_answer(_normalised(raw), ("clean", "hold"), "passage")
         if verdict is not None:
             break
@@ -269,13 +290,15 @@ async def _llm_verdict(
             )
     if verdict is None:
         logger.warning(f"Content judge returned an unusable body for {source[:80]}")
-        return ContentVerdict(held=True, passage=_UNCHECKED, judged=False)
+        return _UNJUDGED
     if verdict[0] == "clean":
-        return ContentVerdict(held=False)
+        return ContentVerdict(held=False, decided_by="llm", code="clean")
     passage = verdict[1].strip().strip('"')
     if not passage or passage.lower() == "none":
         passage = _NO_PASSAGE
-    return ContentVerdict(held=True, passage=passage)
+    return ContentVerdict(
+        held=True, passage=passage, decided_by="llm", code="instructions"
+    )
 
 
 async def _ask(messages: list[dict[str, Any]]) -> str:
