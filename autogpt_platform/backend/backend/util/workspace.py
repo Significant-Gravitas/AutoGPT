@@ -318,16 +318,16 @@ class WorkspaceManager:
 
         # Enforce per-user workspace storage quota (tier-based).
         # For overwrites, subtract the existing file's size so replacing a file
-        # with a same-size or smaller file is not rejected near the cap.
-        storage_limit, current_usage = await asyncio.gather(
+        # with a same-size or smaller file is not rejected near the cap. The
+        # file at the path is read beside the quota, since both checks use it.
+        db = workspace_db()
+        storage_limit, current_usage, existing = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
-            workspace_db().get_workspace_total_size(self.workspace_id),
+            db.get_workspace_total_size(self.workspace_id),
+            db.get_workspace_file_by_path(self.workspace_id, path),
         )
-        if overwrite:
-            db = workspace_db()
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
-            if existing is not None:
-                current_usage = max(0, current_usage - existing.size_bytes)
+        if overwrite and existing is not None:
+            current_usage = max(0, current_usage - existing.size_bytes)
 
         projected_usage = current_usage + len(content)
         if storage_limit > 0 and projected_usage > storage_limit:
@@ -338,15 +338,11 @@ class WorkspaceManager:
                 f"Delete some files or upgrade your plan for more storage."
             )
 
-        # Check if file exists at path (only error for non-overwrite case).
-        # Done before virus scanning so a cheap duplicate-path check isn't
+        # A file at the path is only an error for the non-overwrite case.
+        # Checked before virus scanning so a cheap duplicate-path check isn't
         # blocked by a potentially slow or unavailable scanner.
-        db = workspace_db()
-
-        if not overwrite:
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
-            if existing is not None:
-                raise ValueError(f"File already exists at path: {path}")
+        if not overwrite and existing is not None:
+            raise ValueError(f"File already exists at path: {path}")
 
         # Scan here — callers must NOT duplicate this scan.
         # WorkspaceManager owns virus scanning for all persisted files.

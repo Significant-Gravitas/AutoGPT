@@ -2,6 +2,7 @@
 team it can hand work to, found through ``find_capability`` and run as
 ``hire_expert`` / ``delegate_to_expert``."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -234,6 +235,31 @@ def test_the_roster_shows_exactly_where_the_engines_let_hire_expert_run(
     assert may_hire(session) == ("hire_expert" not in hidden)
     # Teammates show whenever the flag is on, as delegate_to_expert does.
     assert "delegate_to_expert" not in hidden
+
+
+async def test_the_team_and_the_roster_are_read_side_by_side(team):
+    """Each read returns only once both are in flight, so reading the roster
+    after the team (or the team after the roster) times out."""
+    started: list[str] = []
+    both = asyncio.Event()
+
+    def in_flight(name: str, value: list):
+        async def read(*_args, **_kwargs):
+            started.append(name)
+            if len(started) == 2:
+                both.set()
+            await asyncio.wait_for(both.wait(), timeout=1)
+            return value
+
+        return read
+
+    team.list_experts.side_effect = in_flight("team", [HIRED_VERA])
+    team.list_templates.side_effect = in_flight("roster", [JULES, VERA])
+
+    entries = await session_expert_entries(USER, make_session(USER))
+
+    assert sorted(started) == ["roster", "team"]
+    assert {e.id for e in entries} == {"expert:tpl-jules", "teammate:exp-vera"}
 
 
 async def test_an_expert_session_sees_its_teammates_and_no_roster(team):
