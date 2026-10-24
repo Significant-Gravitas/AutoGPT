@@ -184,11 +184,11 @@ export function SearchCommandModal({
             >
               {isError ? (
                 <Text
-                  variant="body"
+                  variant="body-tight"
                   as="div"
                   tone="error"
                   data-slot="search-command-modal-error"
-                  className="px-3 py-8 text-center leading-5"
+                  className="px-3 py-8 text-center"
                 >
                   {errorLabel}
                 </Text>
@@ -212,11 +212,11 @@ export function SearchCommandModal({
                 <SearchCommandSkeleton />
               ) : showEmptyState ? (
                 <Text
-                  variant="body"
+                  variant="body-tight"
                   as="div"
                   tone="muted"
                   data-slot="search-command-modal-empty"
-                  className="px-3 py-8 text-center leading-5"
+                  className="px-3 py-8 text-center"
                 >
                   {isSearching ? searchingEmptyLabel : idleEmptyLabel}
                 </Text>

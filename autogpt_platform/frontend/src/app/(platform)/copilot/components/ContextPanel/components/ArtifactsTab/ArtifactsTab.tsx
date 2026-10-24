@@ -58,10 +58,10 @@ export function ArtifactsTab({ sessionId }: Props) {
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto px-4 py-8">
       <div className="flex flex-col items-center gap-3">
         <Text
-          variant="body"
+          variant="body-tight"
           as="p"
           tone="muted"
-          className="max-w-[17rem] text-center leading-5"
+          className="max-w-[17rem] text-center"
         >
           {files.length === 0
             ? "Nothing to preview yet."
