@@ -20,12 +20,18 @@ re-verified on every call by loading the ChatSession and comparing its
 import json
 import logging
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
-from backend.copilot.model import CHAT_STATUS_QUEUED, ChatSession, get_chat_session
+from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
+    ChatSession,
+    get_chat_session,
+)
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
@@ -214,6 +220,13 @@ class GetSubSessionResultTool(BaseTool):
         refusal = None if turn_in_flight else queued_turn_refusal(sub)
         outcome: SessionOutcome
         result: SessionResult
+        if registry_session is None and _nothing_reached(sub):
+            return apply_delegated_expert(
+                _nothing_reached_response(
+                    sub, inner_session_id, session.session_id, actor
+                ),
+                delegate,
+            )
         if queued:
             outcome, result = await wait_for_queued_session(
                 session_id=inner_session_id, user_id=user_id, timeout=effective_wait
@@ -278,6 +291,43 @@ class GetSubSessionResultTool(BaseTool):
             ),
             delegate,
         )
+
+
+# How long a broker that accepted a publish whose confirm was lost could
+# still take to deliver it. Past this an empty thread was never sent.
+_DELIVERY_GRACE = timedelta(minutes=2)
+
+
+def _nothing_reached(sub: ChatSession) -> bool:
+    """An idle thread with no messages and no stream meta: no turn was ever
+    dispatched to it, or the dispatch failed at the publish (the meta is
+    removed then). A dispatched turn always has meta until it ends, and an
+    ended one has messages."""
+    return sub.chat_status == CHAT_STATUS_IDLE and not sub.messages
+
+
+def _nothing_reached_response(
+    sub: ChatSession, inner_session_id: str, parent_session_id: str | None, actor: str
+) -> SubSessionStatusResponse:
+    """Polling a thread nothing reached would otherwise read "running"
+    forever, though no turn is coming unless a late delivery arrives."""
+    age = datetime.now(UTC) - sub.started_at
+    young = age < _DELIVERY_GRACE
+    return SubSessionStatusResponse(
+        message=(
+            f"Nothing has reached {actor}'s thread yet. A send can take a "
+            "moment to arrive: check again in a minute before sending it again."
+            if young
+            else f"Nothing ever reached {actor}'s thread: the task was not "
+            "sent, so it is safe to send it again."
+        ),
+        session_id=parent_session_id,
+        status="queued" if young else "error",
+        sub_session_id=inner_session_id,
+        sub_autopilot_session_id=inner_session_id,
+        sub_autopilot_session_link=_sub_session_link(inner_session_id),
+        elapsed_seconds=0.0,
+    ).from_outside()
 
 
 def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:

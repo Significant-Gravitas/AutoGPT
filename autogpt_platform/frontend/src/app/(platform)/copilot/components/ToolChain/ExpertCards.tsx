@@ -24,6 +24,17 @@ import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
+import {
+  type HandoffTask,
+  handoffOutcomeOf,
+  handoffSubject,
+  handoffTaskOf,
+} from "./expertHandoff";
+import {
+  HandoffActions,
+  HandoffStatusRow,
+  HandoffTaskBlock,
+} from "./ExpertHandoffParts";
 
 interface Props {
   output: Record<string, unknown>;
@@ -37,8 +48,14 @@ interface Props {
   /** Offered while the proposal is still open; absent once applied, on a
    *  read-only transcript, or when the output carries no confirmation. */
   onDecide?: (decision: Decision) => void;
+  /** Offered beside Approve when the hire was proposed for a task: hires
+   *  and starts that task in one answer. */
+  onHandOff?: () => void;
   /** Takes the decision back so Approve/Decline can be chosen again. */
   onUndo?: () => void;
+  /** The turn is still streaming: answers wait until the proposals are all
+   *  in, so a click always does what its button says. */
+  waiting?: boolean;
   /** Footer control the group adds once every proposal is decided, or
    *  the sent note after. */
   action?: ReactNode;
@@ -99,6 +116,8 @@ interface Proposal {
   kind: ExpertKind | "soul" | null;
   name: string;
   confirmationId: string;
+  /** The "hire and hand off" choice, when the hire is for a task. */
+  handoff: { confirmationId: string; subject: string } | null;
 }
 
 /** A hire/raise/Soul preview the user can still say yes or no to. */
@@ -112,16 +131,49 @@ function proposalOf(part: ToolUIPart): Proposal | null {
       kind: "soul",
       name: "your Soul",
       confirmationId,
+      handoff: null,
     };
   }
   const preview = asObject(output.preview);
   if (!confirmationId || !preview) return null;
+  const name = str(preview, "name") ?? "this expert";
+  const task = handoffTaskOf(output);
+  const handoffConfirmationId = str(output, "handoff_confirmation_id");
   return {
     toolCallId: part.toolCallId,
     kind: kindOf(output),
-    name: str(preview, "name") ?? "this expert",
+    name,
     confirmationId,
+    handoff:
+      task && handoffConfirmationId
+        ? {
+            confirmationId: handoffConfirmationId,
+            subject: handoffSubject(name, task),
+          }
+        : null,
   };
+}
+
+/** The line for one answer. Hire and hand off is an approval of the
+ *  proposal's other id, which confirm_expert_change reads as "also start
+ *  the task". */
+function answerLine(proposal: Proposal, answer: Answer): string {
+  if (answer.decision === "approved" && answer.handOff && proposal.handoff) {
+    return decisionLine(
+      {
+        ...proposal,
+        name: proposal.handoff.subject,
+        confirmationId: proposal.handoff.confirmationId,
+      },
+      "approved",
+    );
+  }
+  return decisionLine(proposal, answer.decision);
+}
+
+interface Answer {
+  decision: Decision;
+  handOff: boolean;
 }
 
 // gate/card_approval.py reads the Approved line as the answer to the confirm.
@@ -189,9 +241,11 @@ export function ExpertChangeCard({
   pager,
   decision = null,
   onDecide,
+  onHandOff,
   onUndo,
   action,
   stepDirection,
+  waiting = false,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -218,7 +272,10 @@ export function ExpertChangeCard({
   const hasCharter = (!!tagline && !!about) || !!boundaries;
   const showDetails = panelAvailable || hasCharter;
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
-  const header = headerFor(kindOf(output), output.applied === true);
+  const applied = output.applied === true;
+  const header = headerFor(kindOf(output), applied);
+  const task = applied ? null : handoffTaskOf(output);
+  const outcome = applied ? handoffOutcomeOf(output) : null;
 
   return (
     <div className={SHELL}>
@@ -292,7 +349,9 @@ export function ExpertChangeCard({
             )}
           </div>
         )}
+        {task && <HandoffTaskBlock task={task} />}
       </div>
+      {outcome && <HandoffStatusRow outcome={outcome} expertName={name} />}
       {showFooter && (
         <DecisionFooter
           pager={pager}
@@ -300,6 +359,12 @@ export function ExpertChangeCard({
           onDecide={onDecide}
           onUndo={onUndo}
           action={action}
+          waiting={waiting}
+          handoff={
+            task && onDecide && onHandOff
+              ? { name, task, onHandOff, onDecide }
+              : undefined
+          }
         />
       )}
     </div>
@@ -322,6 +387,7 @@ function SoulChangeCard({
   onDecide,
   onUndo,
   action,
+  waiting = false,
 }: Props) {
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
   return (
@@ -360,6 +426,7 @@ function SoulChangeCard({
           onDecide={onDecide}
           onUndo={onUndo}
           action={action}
+          waiting={waiting}
         />
       )}
     </div>
@@ -368,8 +435,15 @@ function SoulChangeCard({
 
 type FooterProps = Pick<
   Props,
-  "pager" | "decision" | "onDecide" | "onUndo" | "action"
->;
+  "pager" | "decision" | "onDecide" | "onUndo" | "action" | "waiting"
+> & {
+  handoff?: {
+    name: string;
+    task: HandoffTask;
+    onHandOff: () => void;
+    onDecide: (decision: Decision) => void;
+  };
+};
 
 function DecisionFooter({
   pager,
@@ -377,7 +451,24 @@ function DecisionFooter({
   onDecide,
   onUndo,
   action,
+  handoff,
+  waiting = false,
 }: FooterProps) {
+  if (handoff && !decision) {
+    return (
+      <div className={cn(FOOTER, "flex-wrap")}>
+        <div className="min-w-0">{pager}</div>
+        <HandoffActions
+          name={handoff.name}
+          task={handoff.task}
+          onHandOff={handoff.onHandOff}
+          onHireOnly={() => handoff.onDecide("approved")}
+          onDecline={() => handoff.onDecide("declined")}
+          disabled={waiting}
+        />
+      </div>
+    );
+  }
   return (
     <div className={FOOTER}>
       <div className="min-w-0">{pager}</div>
@@ -398,6 +489,7 @@ function DecisionFooter({
             <Button
               variant="ghost"
               size="small"
+              disabled={waiting}
               onClick={() => onDecide("declined")}
               className="h-8 !min-w-0 px-3"
             >
@@ -406,6 +498,7 @@ function DecisionFooter({
             <Button
               variant="primary"
               size="small"
+              disabled={waiting}
               onClick={() => onDecide("approved")}
               className="h-8 !min-w-0 px-3"
             >
@@ -475,9 +568,11 @@ interface PartProps {
   pager?: ReactNode;
   decision?: Decision | null;
   onDecide?: (decision: Decision) => void;
+  onHandOff?: () => void;
   onUndo?: () => void;
   action?: ReactNode;
   stepDirection?: StepDirection;
+  waiting?: boolean;
 }
 
 /** The expert is still being written while the row has no output — hold
@@ -490,9 +585,11 @@ export function ExpertChangePart({
   pager,
   decision,
   onDecide,
+  onHandOff,
   onUndo,
   action,
   stepDirection,
+  waiting,
 }: PartProps) {
   if (part.state === "output-error") return <GenericTool part={part} />;
   const output = asObject(part.output);
@@ -505,9 +602,11 @@ export function ExpertChangePart({
         pager={pager}
         decision={decision}
         onDecide={onDecide}
+        onHandOff={onHandOff}
         onUndo={onUndo}
         action={action}
         stepDirection={stepDirection}
+        waiting={waiting}
       />
     );
   }
@@ -548,6 +647,7 @@ export function ExpertChangeGroup({
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<StepDirection | undefined>();
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [handOffs, setHandOffs] = useState<Record<string, boolean>>({});
   const [sent, setSent] = useState(false);
   const actions = useContext(CopilotChatActionsContext);
   const visible = parts.filter((part) =>
@@ -565,27 +665,31 @@ export function ExpertChangeGroup({
     proposals.length > 0 &&
     proposals.every((proposal) => decisions[proposal.toolCallId]);
   const currentProposal = readOnly ? null : proposalOf(part);
+  // While the turn is still streaming another proposal part can land in
+  // this group, so the send waits for the stream to settle.
+  const sendable = !readOnly && !!actions && !isCurrentlyStreaming;
+  // A lone proposal has nothing to review before the send, so its answer
+  // is the send: one click hires (and hands off), not Approve then Send.
+  const answerSends =
+    sendable && visible.length === 1 && proposals.length === 1;
 
   function goTo(next: number) {
     setDirection(next > current ? "forward" : "back");
     setStep(next);
   }
 
-  function decide(decision: Decision) {
-    if (!currentProposal) return;
-    setDecisions({ ...decisions, [currentProposal.toolCallId]: decision });
-    if (!isLast) goTo(current + 1);
-  }
-
-  function undo() {
-    if (!currentProposal) return;
-    setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
-  }
-
-  function send() {
+  function send(
+    answered: Record<string, Decision>,
+    handedOff: Record<string, boolean>,
+  ) {
     if (!actions) return;
     const message = proposals
-      .map((proposal) => decisionLine(proposal, decisions[proposal.toolCallId]))
+      .map((proposal) =>
+        answerLine(proposal, {
+          decision: answered[proposal.toolCallId],
+          handOff: !!handedOff[proposal.toolCallId],
+        }),
+      )
       .join("\n");
     // The card stays marked sent because the message is already in the
     // thread for Retry — the failure only needs saying.
@@ -599,6 +703,25 @@ export function ExpertChangeGroup({
       }),
     );
     setSent(true);
+  }
+
+  function decide(decision: Decision, handOff: boolean) {
+    if (!currentProposal || isCurrentlyStreaming) return;
+    const id = currentProposal.toolCallId;
+    const nextDecisions = { ...decisions, [id]: decision };
+    const nextHandOffs = { ...handOffs, [id]: handOff };
+    setDecisions(nextDecisions);
+    setHandOffs(nextHandOffs);
+    if (answerSends) {
+      send(nextDecisions, nextHandOffs);
+      return;
+    }
+    if (!isLast) goTo(current + 1);
+  }
+
+  function undo() {
+    if (!currentProposal) return;
+    setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
   }
 
   const pager = visible.length > 1 && (
@@ -652,9 +775,7 @@ export function ExpertChangeGroup({
     </div>
   );
 
-  // While the turn is still streaming another proposal part can land in
-  // this group, so the send waits for the stream to settle.
-  const canSend = !readOnly && !!actions && allDecided && !isCurrentlyStreaming;
+  const canSend = sendable && allDecided;
   const action = sent ? (
     <span className="flex items-center gap-1 text-xs text-foreground-subtle">
       <Icon icon={Tick02Icon} size={14} />
@@ -665,7 +786,7 @@ export function ExpertChangeGroup({
       variant="primary"
       size="icon"
       aria-label="Send decisions"
-      onClick={send}
+      onClick={() => send(decisions, handOffs)}
       className="size-8 p-0"
     >
       <Icon icon={SentIcon} size={15} />
@@ -682,10 +803,20 @@ export function ExpertChangeGroup({
         isCurrentlyStreaming={isCurrentlyStreaming}
         pager={pager || undefined}
         decision={decisions[part.toolCallId] ?? null}
-        onDecide={currentProposal && !sent ? decide : undefined}
+        onDecide={
+          currentProposal && !sent
+            ? (decision: Decision) => decide(decision, false)
+            : undefined
+        }
+        onHandOff={
+          currentProposal?.handoff && !sent
+            ? () => decide("approved", true)
+            : undefined
+        }
         onUndo={currentProposal && !sent ? undo : undefined}
         action={action || undefined}
         stepDirection={direction}
+        waiting={isCurrentlyStreaming}
       />
     </div>
   );
