@@ -24,12 +24,15 @@ from backend.copilot.gate import review as review_store
 from backend.copilot.gate import shadow
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads_test import _Fetch, _plain_output, _Rows
+from backend.copilot.gate.tool_images_test import _ImageRead, image
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.tree import TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.util.feature_flag import Flag
 from backend.util.posthog_events import PostHogEvent
+
+__all__ = ["image"]
 
 _READS = "backend.copilot.gate.reads"
 _REQUEST = "please summarise quarterly-secret-7f3a"
@@ -199,6 +202,23 @@ async def test_shadow_hands_every_read_over_whole(rows, events, verdict):
 
     assert result.output == _plain_output(_PAGE) and result.success
     assert judge.await_args.kwargs["text"] == _plain_output(_PAGE)
+    assert rows.rows == {} and rows.held == []
+    (event,) = _recorded(events)
+    assert event["verdict"] == ("hold" if verdict.held else "allow")
+
+
+@pytest.mark.parametrize("verdict", [_HELD, _CLEAN])
+async def test_shadow_judges_an_image_read_by_its_pixels_and_hands_it_over(
+    rows, events, image, verdict
+):
+    judge = AsyncMock(return_value=verdict)
+    tool = _ImageRead(image)
+    with _flags("shadow"), patch(f"{_READS}.judge_content", judge):
+        result = await tool.execute("user-1", _session(), "call-1", file_id="f")
+        await _settled()
+
+    assert result.success and result.image == image
+    assert judge.await_args.kwargs["images"][0].data_base64 == image.data_base64
     assert rows.rows == {} and rows.held == []
     (event,) = _recorded(events)
     assert event["verdict"] == ("hold" if verdict.held else "allow")
