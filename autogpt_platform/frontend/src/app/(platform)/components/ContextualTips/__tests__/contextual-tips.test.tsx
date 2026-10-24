@@ -92,7 +92,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => useFirstRunTourStore.getState().close());
+  act(() => {
+    useFirstRunTourStore.getState().close();
+    useFirstRunTourStore.getState().setConnectToolsOpen(false);
+  });
   vi.restoreAllMocks();
 });
 
@@ -292,6 +295,20 @@ describe("contextual tips — showing one", () => {
     expect(screen.queryByTestId("contextual-tip")).toBeNull();
 
     act(() => useFirstRunTourStore.getState().close());
+    expect(await screen.findByText("Where costs come from")).toBeDefined();
+  });
+
+  it("gets out of the way of the connect-your-tools dialog, even once it is showing", async () => {
+    render(<Page />);
+    act(() => requestTip("first-cost"));
+    expect(await screen.findByText("Where costs come from")).toBeDefined();
+
+    act(() => useFirstRunTourStore.getState().setConnectToolsOpen(true));
+    await waitFor(() =>
+      expect(screen.queryByTestId("contextual-tip")).toBeNull(),
+    );
+
+    act(() => useFirstRunTourStore.getState().setConnectToolsOpen(false));
     expect(await screen.findByText("Where costs come from")).toBeDefined();
   });
 

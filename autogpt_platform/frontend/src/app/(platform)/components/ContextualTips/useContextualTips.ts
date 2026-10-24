@@ -58,11 +58,14 @@ export function useContextualTips() {
             !isSeen(id) && (!TIPS[id].requiresBilling || isBillingEnabled),
         ) ?? null)
       : null;
+  // Admission sticks once granted, so a dialog opening over a tip that is
+  // already showing has to take it down here too.
+  const isBlocked = isTourOpen || isConnectToolsOpen;
   const isAdmitted = useNoticeAdmission(
-    candidate !== null && !isTourOpen && !isConnectToolsOpen,
+    candidate !== null && !isBlocked,
     userID,
   );
-  const active = isAdmitted && !isTourOpen ? candidate : null;
+  const active = isAdmitted && !isBlocked ? candidate : null;
 
   function dismiss() {
     if (!active) return;
