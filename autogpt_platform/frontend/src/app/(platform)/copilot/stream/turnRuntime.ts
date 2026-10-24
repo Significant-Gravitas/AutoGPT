@@ -6,6 +6,7 @@ import type { FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { streamRequestBody } from "../copilotStreamTransport";
+import { getKickoffExpertIdFromMetadata } from "../expertKickoff";
 import {
   CopilotAuthError,
   getCopilotAuthHeaders,
@@ -152,6 +153,8 @@ interface Connection {
   followUp: boolean;
   /** The backend stored this send's prompt; its turn waits for a free slot. */
   turnQueued: boolean;
+  /** An expert's hidden kickoff, which the kickoff hook recovers itself. */
+  kickoff: boolean;
 }
 
 /** What the classification needs to know about a connection that is gone. */
@@ -160,7 +163,10 @@ type Lost = Pick<
   "turnId" | "openedAt" | "syntheticError" | "prompt"
 > &
   Partial<
-    Pick<Connection, "followUp" | "turnQueued" | "frames" | "closedByClient">
+    Pick<
+      Connection,
+      "followUp" | "turnQueued" | "frames" | "closedByClient" | "kickoff"
+    >
   >;
 
 type ConnectionEnd =
@@ -295,6 +301,7 @@ export class TurnRuntime {
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
       prompt: message.id,
+      kickoff: getKickoffExpertIdFromMetadata(message.metadata) !== null,
     });
   }
 
@@ -463,6 +470,7 @@ export class TurnRuntime {
       body?: string;
       extraHeaders?: object;
       prompt?: string;
+      kickoff?: boolean;
     } = {},
     asRotation = false,
   ) {
@@ -478,6 +486,7 @@ export class TurnRuntime {
       closedByClient: false,
       syntheticError: null,
       prompt: init.prompt ?? null,
+      kickoff: init.kickoff ?? false,
       followUp: false,
       turnQueued: false,
     };
@@ -833,6 +842,8 @@ export class TurnRuntime {
     return (
       end.kind === "closed" &&
       !lost.closedByClient &&
+      // A kickoff already stored is answered with a bare stream too.
+      !lost.kickoff &&
       (lost.frames ?? 0) > 0 &&
       lost.prompt !== null &&
       !lost.followUp &&

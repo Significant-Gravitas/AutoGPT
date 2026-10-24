@@ -151,14 +151,9 @@ export function useCopilotRuntimeStream({
       }).catch(() => undefined);
     }
     // The banner says it didn't go through; that send's text goes back to
-    // resend, never a newer send's, and its bubble is already gone. A
-    // kickoff's prompt is hidden, so it only frees the kickoff to run again.
+    // resend, never a newer send's, and its bubble is already gone. (A
+    // kickoff never lands here: the runtime leaves it to the kickoff hook.)
     if (error instanceof SendNotDeliveredError) {
-      if (kickoffExpertId) {
-        releaseKickoffPending();
-        clearRecovery();
-        return;
-      }
       if (error.text && isComposerEmpty()) setInitialPrompt(error.text);
       if (coord.lastSubmittedMessageText === error.text) clearRecovery();
       return;

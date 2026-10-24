@@ -645,13 +645,13 @@ describe.each(STREAM_PATHS)(
   },
 );
 
-// The AI SDK chat has no "went nowhere" state: its send stays a sent bubble.
-describe("on the stream runtime path, a kickoff that went nowhere", () => {
+// Only the stream runtime has a "didn't go through" state for a send.
+describe("on the stream runtime path, a stored kickoff answered with a bare stream", () => {
   beforeEach(() => {
     streamPath.runtime = true;
   });
 
-  it("frees a kickoff whose send went nowhere, without showing its hidden prompt", async () => {
+  it("does not report a kickoff the server already stored as undelivered", async () => {
     const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000002";
     server.use(
       http.get("*/api/experts/identities", () =>
@@ -690,20 +690,17 @@ describe("on the stream runtime path, a kickoff that went nowhere", () => {
       sessionOverride: { expert_id: expertId },
     });
 
+    // Past the runtime's recovery probes (about 4 s after the stream closed).
     await waitFor(
       () =>
-        expect(getTurnRuntime(TEST_SESSION_ID).getSnapshot().error?.name).toBe(
-          "SendNotDeliveredError",
+        expect(getTurnRuntime(TEST_SESSION_ID).getSnapshot().phase).not.toBe(
+          "connecting",
         ),
       { timeout: 10_000 },
     );
-    await waitFor(() =>
-      expect(getKickoffStatus("test-user", expertId)).toBe("idle"),
-    );
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    expect(getTurnRuntime(TEST_SESSION_ID).getSnapshot().error).toBeNull();
+    // The hidden kickoff prompt never surfaces in the composer.
     expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
-    expect(
-      useCopilotStreamStore.getState().getCoord(TEST_SESSION_ID)
-        .lastSubmittedKickoffExpertId,
-    ).toBeNull();
   }, 20_000);
 });
