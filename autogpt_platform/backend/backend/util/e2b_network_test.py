@@ -95,6 +95,13 @@ class TestOff:
         assert redis.store == {}
 
     @pytest.mark.asyncio
+    async def test_a_caller_can_still_turn_internet_access_off(self):
+        box = _box()
+        cls = _sdk(box)
+        with _configured(None):
+            await create_sandbox(cls, _OWNER, template="t", allow_internet_access=False)
+        cls.create.assert_awaited_once_with(template="t", allow_internet_access=False)
+
     async def test_create_and_connect_are_passed_through_untouched(self):
         box, cls, redis = _box(), None, _redis()
         cls = _sdk(box)
@@ -106,7 +113,9 @@ class TestOff:
                 await connect_sandbox(cls, "sb-1", _OWNER, api_key="k", timeout=9)
                 is box
             )
-        cls.create.assert_awaited_once_with(template="t", api_key="k")
+        cls.create.assert_awaited_once_with(
+            template="t", api_key="k", allow_internet_access=True
+        )
         cls.connect.assert_awaited_once_with("sb-1", api_key="k", timeout=9)
         box.update_network.assert_not_awaited()
         assert redis.store == {}
