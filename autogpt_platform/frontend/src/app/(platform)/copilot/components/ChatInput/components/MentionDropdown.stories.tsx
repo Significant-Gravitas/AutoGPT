@@ -2,7 +2,10 @@ import type { Meta, StoryObj } from "@storybook/nextjs";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
-import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+} from "@/components/molecules/InputGroup/InputGroup";
 import { CredentialMentionEditor } from "../../CredentialMention/CredentialMentionEditor";
 import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMentionMarkdown";
 import { CARD_SEND_BUTTON_CLASS } from "../helpers";
