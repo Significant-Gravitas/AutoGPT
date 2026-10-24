@@ -4,7 +4,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import {
@@ -47,12 +47,15 @@ export const NewSaveControl = () => {
         </TooltipTrigger>
         <TooltipContent side="right">Save</TooltipContent>
       </Tooltip>
+      {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
+          #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
+          not a text colour (SECRT-3154). */}
       <PopoverContent
         side="right"
         sideOffset={15}
         align="start"
         data-id="save-control-popover-content"
-        className="w-96 max-w-[400px] rounded-xlarge"
+        className="w-96 max-w-[400px] rounded-xlarge border-neutral-200 text-neutral-950"
       >
         <Card className="border-none dark:bg-slate-900">
           <Form {...form}>
