@@ -1,9 +1,12 @@
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { BubbleChatIcon } from "@hugeicons/core-free-icons";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { expect, waitFor, within } from "storybook/test";
 
 import {
   Conversation,
   ConversationContent,
+  ConversationEmptyState,
   ConversationScrollButton,
 } from "./conversation";
 import { Message, MessageContent, MessageResponse } from "./message";
@@ -68,4 +71,21 @@ export const ScrolledUp: Story = {
       { timeout: 5000 },
     );
   },
+};
+
+export const EmptyState: Story = {
+  name: "Empty state",
+  render: () => (
+    <div className="flex h-[420px] max-w-2xl flex-col rounded-large border border-border-base">
+      <Conversation className="min-h-0 flex-1">
+        <ConversationContent className="h-full">
+          <ConversationEmptyState
+            title="No messages yet"
+            description="Ask Otto anything to start the conversation"
+            icon={<Icon icon={BubbleChatIcon} size={32} />}
+          />
+        </ConversationContent>
+      </Conversation>
+    </div>
+  ),
 };
