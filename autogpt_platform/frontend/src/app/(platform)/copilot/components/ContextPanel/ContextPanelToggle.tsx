@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -105,9 +106,13 @@ export function ContextPanelToggle({
                 className="!size-4 text-sidebar-foreground/90"
               />
               {documentCount > 0 && (
-                <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+                <Text
+                  variant="small-medium"
+                  as="span"
+                  className="tabular-nums leading-4 text-sidebar-foreground/90"
+                >
                   {documentCount}
-                </span>
+                </Text>
               )}
             </Button>
           </TooltipTrigger>
