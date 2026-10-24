@@ -260,7 +260,7 @@ export function PromptInputTextarea({
       ref={textareaRef}
       rows={1}
       className={cn(
-        "max-h-48 min-h-0 text-base leading-6 md:text-base",
+        "max-h-48 min-h-0 text-body-lg leading-6 md:text-body-lg md:leading-6",
         className,
       )}
       name="message"
@@ -378,7 +378,7 @@ export function PromptInputSubmit({
     <InputGroupButton
       aria-label={canStop ? "Stop" : "Submit"}
       className={cn(
-        "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+        "size-[2.625rem] rounded-full border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
         className,
       )}
       disabled={isDisabled}
