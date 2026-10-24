@@ -192,13 +192,11 @@ const MultiSelectorTrigger = forwardRef<
           )}
           variant={"secondary"}
         >
-          {/* Text at the label's own line height; colour and weight stay
-              inherited from the badge, as the plain span's were. */}
           <Text
-            variant="small"
+            variant="small-semibold-tight"
             as="span"
+            tone="inherit"
             data-slot="multi-select-badge-label"
-            className="leading-4 text-inherit [font-weight:inherit]"
           >
             {item}
           </Text>
