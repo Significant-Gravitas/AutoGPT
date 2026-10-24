@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { PopoverClose } from "@radix-ui/react-popover";
 
