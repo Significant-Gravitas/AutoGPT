@@ -10,7 +10,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
 

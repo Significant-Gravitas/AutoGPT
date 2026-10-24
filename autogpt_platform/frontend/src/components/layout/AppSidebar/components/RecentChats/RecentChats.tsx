@@ -6,7 +6,7 @@ import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { SidebarMenu } from "@/components/ui/sidebar";
+import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
