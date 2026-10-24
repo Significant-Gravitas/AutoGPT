@@ -6,7 +6,8 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { trackFirstRun } from "@/services/onboarding/first-run-analytics";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
-import { useEffect } from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { useEffect, useRef } from "react";
 import { setFirstRunTourSeen } from "./helpers";
 import { focusComposer, focusStartingPoint } from "./focusStartingPoint";
 import { findStepIndex, getAvailableSteps, getStepBody } from "./steps";
@@ -42,12 +43,21 @@ export function useFirstRunTour() {
   const isLastStep = safeIndex === steps.length - 1;
   const context = { isTrial: experience.isActiveTrial };
 
-  // Every step but the last points at the sidebar. A new account starts with
-  // it collapsed to icons, where the wallet is not shown at all, so open it
-  // for the walkthrough and leave it open: that is where these things live.
+  // Every step but the last points at the sidebar, so a collapsed one is
+  // opened for the walkthrough. It is only borrowed: not saved as the
+  // person's preference, and collapsed again once the walkthrough ends.
+  const openedSidebar = useRef(false);
   useEffect(() => {
-    if (isOpen && !isMobile && !isSidebarOpen) setSidebarOpen(true);
+    if (!isOpen || isMobile || isSidebarOpen) return;
+    openedSidebar.current = true;
+    setSidebarOpen(true, { persist: false });
   }, [isOpen, isMobile, isSidebarOpen, setSidebarOpen]);
+  // The setter changes with the sidebar's state, so the hand-back reads the
+  // latest one and runs only when the walkthrough goes.
+  const giveSidebarBack = useStableCallback(() => {
+    if (openedSidebar.current) setSidebarOpen(false, { persist: false });
+  });
+  useEffect(() => giveSidebarBack, [giveSidebarBack]);
 
   // On a phone the sidebar is a sheet over the page. Pointing at its menu
   // button would ask for a tap the scrim and focus trap do not allow, so the

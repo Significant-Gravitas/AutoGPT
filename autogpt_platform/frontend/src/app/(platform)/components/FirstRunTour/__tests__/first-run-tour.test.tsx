@@ -330,6 +330,33 @@ describe("first-run walkthrough", () => {
     );
   });
 
+  it("borrows a collapsed sidebar for the walkthrough and gives it back, without saving it open", async () => {
+    // Someone who keeps the sidebar collapsed and asks for "Show me around"
+    // must not find their saved preference overwritten afterwards.
+    document.cookie = "sidebar_open=false; path=/";
+    render(
+      <SidebarProvider defaultOpen={false} persistState>
+        <SidebarState />
+        <Targets />
+        <FirstRunTour />
+      </SidebarProvider>,
+    );
+    openTour("menu");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("sidebar-state").textContent).toBe("open"),
+    );
+    expect(document.cookie).toContain("sidebar_open=false");
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip tour" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("sidebar-state").textContent).toBe("collapsed"),
+    );
+    expect(document.cookie).toContain("sidebar_open=false");
+  });
+
   it("opens the phone's sidebar for the steps that live there, so the real controls are lit", async () => {
     // Pointing at the menu button and saying "open the menu" asked for a tap
     // the walkthrough's scrim and focus trap do not allow.
