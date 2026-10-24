@@ -37,13 +37,13 @@ import {
 } from "../../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
+  defaultWorkspaceFileUrl,
   extractWorkspaceArtifacts,
-  findLinkedArtifact,
   isRetiredCompactionRow,
   resolveWorkspaceUrls,
+  workspaceLinkFileID,
 } from "../helpers";
-import { classifyArtifact } from "../../ArtifactPanel/helpers";
-import { useCopilotUIStore } from "../../../store";
+import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 
 /**
@@ -55,6 +55,10 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   const { src, alt, ...rest } = props;
 
   if (!src) return null;
+
+  const linkedFileID =
+    typeof src === "string" ? workspaceLinkFileID(src) : null;
+  if (linkedFileID) return <WorkspaceLink fileID={linkedFileID} label={alt} />;
 
   if (alt?.startsWith("video:") && typeof src === "string") {
     return (
@@ -105,45 +109,24 @@ function TextWithArtifactCards({
     () => resolveWorkspaceUrls(text, fileUrlBuilder),
     [text, fileUrlBuilder],
   );
-  const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-
-  // An inline link to a file opens it in the panel, as its card does; the
-  // rewritten URL is a download, which a modified click and the share view keep.
-  function openLinkedArtifact(event: React.MouseEvent<HTMLDivElement>) {
-    if (readOnly || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-      return;
-    if (!(event.target instanceof Element)) return;
-    const link = event.target.closest('[data-streamdown="link"]');
-    if (!link) return;
-    const artifact = findLinkedArtifact(
-      link.textContent?.trim() ?? "",
-      text,
-      artifacts,
-    );
-    if (!artifact) return;
-    const { openable } = classifyArtifact(
-      artifact.mimeType,
-      artifact.title,
-      artifact.sizeBytes,
-    );
-    if (!openable) return;
-    event.preventDefault();
-    event.stopPropagation();
-    openArtifact(artifact);
-  }
 
   // Text reads first, with the artifact cards trailing.
   return (
     <>
-      <div className="contents" onClickCapture={openLinkedArtifact}>
+      <WorkspaceLinksContext
+        value={{
+          artifacts,
+          readOnly,
+          fileURL: fileUrlBuilder ?? defaultWorkspaceFileUrl,
+        }}
+      >
         <CredentialMentionMarkdown
           components={STREAMDOWN_COMPONENTS}
           className="[&_li]:py-0"
         >
           {resolved}
         </CredentialMentionMarkdown>
-      </div>
+      </WorkspaceLinksContext>
       {artifacts.length > 0 && (
         <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {artifacts.map((artifact) => (

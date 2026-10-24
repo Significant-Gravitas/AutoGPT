@@ -4,7 +4,6 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@/tests/integrations/test-utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useCopilotUIStore } from "../../../../store";
@@ -19,6 +18,7 @@ vi.mock("../../../ArtifactCard/ArtifactCard", () => ({
 }));
 
 const FILE_ID = "0b3f1c2a-1111-4a2b-9c3d-123456789abc";
+const DOC = `workspace://${FILE_ID}#text/markdown`;
 
 function renderText(text: string, readOnly = false) {
   const part = { type: "text", text } as Part;
@@ -32,46 +32,76 @@ function renderText(text: string, readOnly = false) {
   );
 }
 
-describe("an inline workspace link in a chat message", () => {
-  let openSpy: ReturnType<typeof vi.spyOn>;
+// The element a link's whole label reads from, whatever formatting is inside it.
+function isLinkReading(label: string) {
+  return (_: string, element: Element | null) =>
+    element?.textContent === label &&
+    (element.tagName === "A" || element.tagName === "BUTTON");
+}
 
+function openedFileID() {
+  return useCopilotUIStore.getState().artifactPanel.activeArtifact?.id;
+}
+
+describe("an inline workspace link in a chat message", () => {
   beforeEach(() => {
     useCopilotUIStore.getState().closeArtifactPanel();
-    openSpy = vi.spyOn(window, "open").mockReturnValue(null);
   });
 
   afterEach(() => {
-    openSpy.mockRestore();
     cleanup();
   });
 
   it("opens the file in the artifact panel instead of downloading it", async () => {
-    renderText(
-      `Here is your doc: [Weekly research](workspace://${FILE_ID}#text/markdown).`,
-    );
+    renderText(`Here is your doc: [Weekly research](${DOC}).`);
 
-    fireEvent.click(await screen.findByText("Weekly research"));
+    const link = await screen.findByRole("link", { name: "Weekly research" });
+    const downloaded = fireEvent.click(link);
 
-    const { activeArtifact } = useCopilotUIStore.getState().artifactPanel;
-    expect(activeArtifact?.id).toBe(FILE_ID);
-    // Streamdown opens a link after an await, so give a leaked click its turn.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(openSpy).not.toHaveBeenCalled();
+    expect(openedFileID()).toBe(FILE_ID);
+    expect(downloaded).toBe(false);
+  });
+
+  it("leaves an external link with the same label to its own destination", async () => {
+    renderText(`[Report](https://example.com/report) and [Report](${DOC})`);
+
+    const [external, file] = await screen.findAllByText("Report");
+
+    fireEvent.click(external);
+    expect(await screen.findByText("Open external link")).toBeDefined();
+    expect(openedFileID()).toBeUndefined();
+
+    fireEvent.click(file);
+    expect(openedFileID()).toBe(FILE_ID);
+  });
+
+  it("opens a file whose link label has formatting", async () => {
+    renderText(`[**Weekly** \`research\`](${DOC})`);
+
+    fireEvent.click(await screen.findByText(isLinkReading("Weekly research")));
+
+    expect(openedFileID()).toBe(FILE_ID);
+  });
+
+  it("keeps a download link to a file the message also shows as an image", async () => {
+    const image = `workspace://${FILE_ID}#image/png`;
+    renderText(`![Chart](${image}) Full size: [Chart file](${image})`);
+
+    const link = await screen.findByRole("link", { name: "Chart file" });
+
+    expect(link.getAttribute("href")).toContain(`/files/${FILE_ID}/download`);
   });
 
   it("keeps the download in the read-only share view and on a modified click", async () => {
-    renderText(`[Weekly research](workspace://${FILE_ID}#text/markdown)`, true);
-    fireEvent.click(await screen.findByText("Weekly research"));
-    await waitFor(() => expect(openSpy).toHaveBeenCalledTimes(1));
+    renderText(`[Weekly research](${DOC})`, true);
+    const shared = await screen.findByRole("link", { name: "Weekly research" });
+    expect(fireEvent.click(shared)).toBe(true);
     cleanup();
-    renderText(`[Weekly research](workspace://${FILE_ID}#text/markdown)`);
-    fireEvent.click(await screen.findByText("Weekly research"), {
-      metaKey: true,
-    });
+    renderText(`[Weekly research](${DOC})`);
+    const link = await screen.findByRole("link", { name: "Weekly research" });
 
-    await waitFor(() => expect(openSpy).toHaveBeenCalledTimes(2));
-    expect(
-      useCopilotUIStore.getState().artifactPanel.activeArtifact,
-    ).toBeNull();
+    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    expect(openedFileID()).toBeUndefined();
+    expect(link.getAttribute("href")).toContain(`/files/${FILE_ID}/download`);
   });
 });
