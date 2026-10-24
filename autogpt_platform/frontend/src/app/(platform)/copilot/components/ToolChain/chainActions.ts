@@ -48,10 +48,8 @@ export interface ChainActionEntry {
 }
 
 /** A registration belongs to the component that made it (`owner`, its
- *  `useId()`), not to the card's id. One card can be mounted twice for a
- *  moment — a chain row animating out while its lifted copy takes over — and
- *  both register the same id; keyed by id, the leaving copy's cleanup deleted
- *  the entry the staying copy still owned, and the card vanished. */
+ *  `useId()`), not to the card's id, so one mounted copy of a card unmounting
+ *  can never remove an entry another copy still owns. */
 export interface ChainActions {
   register: (owner: string, entry: ChainActionEntry) => void;
   unregister: (owner: string) => void;
@@ -59,8 +57,9 @@ export interface ChainActions {
 
 export const ChainActionsContext = createContext<ChainActions | null>(null);
 
-/** One entry per card. While two copies of a card are mounted, the copy
- *  that mounted last is the one shown. */
+/** One entry per card id. Only the question card shares its id (the dock id)
+ *  between copies, and only for a moment; when two are mounted, the copy that
+ *  mounted last is shown. Setup and MCP cards use per-instance ids. */
 export function uniqueChainEntries(
   registrations: ReadonlyMap<string, ChainActionEntry>,
 ): ChainActionEntry[] {
