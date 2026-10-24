@@ -56,9 +56,13 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
   ) {
     const hasValue = value.length > 0;
     return (
-      <div className={cn("relative w-full", className)}>
+      <div
+        data-slot="search-input"
+        className={cn("relative w-full", className)}
+      >
         <Icon
           icon={Search01Icon}
+          data-slot="search-input-icon"
           size={size === "medium" ? 20 : size === "small" ? 16 : 14}
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
@@ -68,6 +72,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
         <input
           ref={ref}
           type="search"
+          data-slot="search-input-control"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
@@ -87,6 +92,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           <span
             role="status"
             aria-label="Searching"
+            data-slot="search-input-spinner"
             className={cn(
               "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground",
               iconOffset[size].right,
@@ -94,6 +100,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           >
             <Icon
               icon={Loading03Icon}
+              data-slot="search-input-spinner-icon"
               size={size === "medium" ? 16 : 14}
               className="animate-spin"
             />
@@ -103,12 +110,17 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             type="button"
             onClick={() => onChange("")}
             aria-label="Clear search"
+            data-slot="search-input-clear"
             className={cn(
               "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               iconOffset[size].right,
             )}
           >
-            <Icon icon={Cancel01Icon} size={size === "medium" ? 14 : 12} />
+            <Icon
+              data-slot="search-input-clear-icon"
+              icon={Cancel01Icon}
+              size={size === "medium" ? 14 : 12}
+            />
           </button>
         ) : null}
       </div>

@@ -6,9 +6,9 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Accordion = AccordionPrimitive.Root;
+const BaseAccordion = AccordionPrimitive.Root;
 
-const AccordionItem = React.forwardRef<
+const BaseAccordionItem = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
 >(({ className, ...props }, ref) => (
@@ -18,9 +18,9 @@ const AccordionItem = React.forwardRef<
     {...props}
   />
 ));
-AccordionItem.displayName = "AccordionItem";
+BaseAccordionItem.displayName = "AccordionItem";
 
-const AccordionTrigger = React.forwardRef<
+const BaseAccordionTrigger = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
 >(({ className, children, ...props }, ref) => (
@@ -38,9 +38,9 @@ const AccordionTrigger = React.forwardRef<
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
 ));
-AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName;
+BaseAccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName;
 
-const AccordionContent = React.forwardRef<
+const BaseAccordionContent = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
@@ -52,6 +52,36 @@ const AccordionContent = React.forwardRef<
     <div className={cn("pb-4 pt-0", className)}>{children}</div>
   </AccordionPrimitive.Content>
 ));
-AccordionContent.displayName = AccordionPrimitive.Content.displayName;
+BaseAccordionContent.displayName = AccordionPrimitive.Content.displayName;
+
+const Accordion = React.forwardRef<
+  React.ElementRef<typeof BaseAccordion>,
+  React.ComponentPropsWithoutRef<typeof BaseAccordion>
+>((props, ref) => <BaseAccordion ref={ref} data-slot="accordion" {...props} />);
+Accordion.displayName = "Accordion";
+
+const AccordionItem = React.forwardRef<
+  React.ElementRef<typeof BaseAccordionItem>,
+  React.ComponentPropsWithoutRef<typeof BaseAccordionItem>
+>((props, ref) => (
+  <BaseAccordionItem ref={ref} data-slot="accordion-item" {...props} />
+));
+AccordionItem.displayName = "AccordionItem";
+
+const AccordionTrigger = React.forwardRef<
+  React.ElementRef<typeof BaseAccordionTrigger>,
+  React.ComponentPropsWithoutRef<typeof BaseAccordionTrigger>
+>((props, ref) => (
+  <BaseAccordionTrigger ref={ref} data-slot="accordion-trigger" {...props} />
+));
+AccordionTrigger.displayName = "AccordionTrigger";
+
+const AccordionContent = React.forwardRef<
+  React.ElementRef<typeof BaseAccordionContent>,
+  React.ComponentPropsWithoutRef<typeof BaseAccordionContent>
+>((props, ref) => (
+  <BaseAccordionContent ref={ref} data-slot="accordion-panel" {...props} />
+));
+AccordionContent.displayName = "AccordionContent";
 
 export { Accordion, AccordionContent, AccordionItem, AccordionTrigger };
