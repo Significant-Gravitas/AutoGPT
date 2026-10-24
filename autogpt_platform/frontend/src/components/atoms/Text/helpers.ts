@@ -87,20 +87,20 @@ export const variants = {
   // Keeps the parent's line height, like the raw size it replaced.
   "tiny-inherit":
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
-  // TODO(tokens): no role is 0.75rem/1.625 (text-xs leading-relaxed); caption plus leading-relaxed.
-  "small-lh-relaxed":
+  // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
+  "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
   // Keeps the parent's line height, like the raw size it replaced.
   "caption-sm-mono-inherit":
     "font-mono text-caption-sm font-normal leading-inherit text-foreground-base",
-  // TODO(tokens): no role is 0.75rem/1.25rem (text-xs leading-5); caption plus leading-5.
-  "small-lh-5":
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-loose":
     "font-sans text-caption font-normal leading-5 text-foreground-base",
-  // TODO(tokens): no role is 0.75rem/1.25rem (text-xs leading-5); caption plus leading-5.
-  "small-medium-lh-5":
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
-  "large-medium-lh-6":
+  "large-medium-tight":
     "font-sans text-body-lg font-medium leading-6 text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1 (text-sm leading-none); body plus leading-none.
   "body-medium-lh-none":
@@ -176,11 +176,11 @@ export const variantElementMap: Record<Variant, As> = {
   "small-semibold-tight": "p",
   "small-mono-bold-tight": "code",
   "tiny-inherit": "span",
-  "small-lh-relaxed": "p",
+  "small-relaxed": "p",
   "caption-sm-mono-inherit": "span",
-  "small-lh-5": "p",
-  "small-medium-lh-5": "p",
-  "large-medium-lh-6": "p",
+  "small-loose": "p",
+  "small-medium-loose": "p",
+  "large-medium-tight": "p",
   "body-medium-lh-none": "span",
   "body-medium-lh-snug": "p",
   "small-lh-tight": "p",

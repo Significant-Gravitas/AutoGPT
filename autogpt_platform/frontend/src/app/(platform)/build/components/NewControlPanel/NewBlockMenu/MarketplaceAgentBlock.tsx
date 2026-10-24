@@ -78,7 +78,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
         <div className="flex items-center space-x-2.5">
           <Text
-            variant="small-lh-5"
+            variant="small-loose"
             as="span"
             className={cn(
               "truncate text-zinc-500 group-disabled:text-zinc-400",
@@ -90,7 +90,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <span className="font-sans text-zinc-400">•</span>
 
           <Text
-            variant="small-lh-5"
+            variant="small-loose"
             as="span"
             className={cn(
               "truncate text-zinc-500 group-disabled:text-zinc-400",
@@ -105,7 +105,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             onClick={(e) => e.stopPropagation()}
           >
             <Text
-              variant="small-medium-lh-5"
+              variant="small-medium-loose"
               as="span"
               className="text-blue-700 underline"
             >
