@@ -15,7 +15,7 @@ import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from pydantic import SecretStr
@@ -1559,7 +1559,10 @@ class TestExpertTurnsCheckTheirExpert:
                 _make_entry(), threading.Event(), MagicMock(), _make_log()
             )
 
-        assert store.check_private_expert.await_count == 2
+        assert store.check_private_expert.await_args_list == [
+            call("user-1", "expert-1"),
+            call("user-1", "expert-1"),
+        ]
         assert len(identities) == 1
         assert "For this session you are Maria after setup" in identities[0]
         assert outputs == ["hi"]
