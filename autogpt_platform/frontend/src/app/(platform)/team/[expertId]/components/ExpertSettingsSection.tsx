@@ -96,18 +96,25 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
           {pauseNames.length > 0 ? (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {pauseNames.map((item) => (
-                <span
+                <Text
                   key={item.id}
+                  variant="small"
+                  as="span"
                   // TODO(tokens): no exact role: text-amber-800 #92400E
-                  className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 text-xs text-amber-800"
+                  className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 leading-4 text-amber-800"
                 >
                   {item.name}
-                </span>
+                </Text>
               ))}
               {hiddenPauseCount > 0 ? (
-                <span className="px-1 py-0.5 text-xs text-foreground-tertiary">
+                <Text
+                  variant="small"
+                  as="span"
+                  tone="muted"
+                  className="px-1 py-0.5 leading-4"
+                >
                   +{hiddenPauseCount} more
-                </span>
+                </Text>
               ) : null}
             </div>
           ) : null}
@@ -191,9 +198,11 @@ function Consequence({
             {title}
           </Text>
           {tag ? (
-            <span
+            <Text
+              variant="small-medium"
+              as="span"
               className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                "shrink-0 rounded-full px-2 py-0.5 leading-4",
                 isWarn
                   ? "bg-warning-surface text-warning-foreground"
                   : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
@@ -201,7 +210,7 @@ function Consequence({
               )}
             >
               {tag}
-            </span>
+            </Text>
           ) : null}
         </div>
         {children}

@@ -106,13 +106,15 @@ export function GraphScheduleListItem({
               {recurrenceLabel}
             </Text>
             <span className="text-foreground-disabled">•</span>
-            <span
+            <Text
+              variant="small"
+              as="span"
               // TODO(tokens): no exact role for bg-emerald-100 #d1fae5, text-emerald-700 #047857
-              className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
+              className="rounded-md bg-emerald-100 px-2 py-0.5 leading-4 text-emerald-700"
               data-testid="schedule-kind-badge"
             >
               Workflow run
-            </span>
+            </Text>
           </div>
         </div>
       </Link>
@@ -245,7 +247,9 @@ function ScheduleMetaRow({
         className={cn(
           "min-w-0 truncate text-right text-body-sm font-medium leading-inherit text-foreground-emphasis",
           mono &&
-            "font-mono text-xs font-normal tracking-tight text-foreground-secondary",
+            // Text has no body-sm variant for the other branch, so this <dd>
+            // keeps role classes: caption at text-xs's 16px line height.
+            "font-mono text-caption font-normal leading-4 tracking-tight text-foreground-secondary",
         )}
         title={title ?? value}
       >

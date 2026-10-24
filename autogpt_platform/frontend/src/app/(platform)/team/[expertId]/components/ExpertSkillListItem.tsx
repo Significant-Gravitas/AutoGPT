@@ -90,17 +90,25 @@ export function ExpertSkillListItem({
       {shown.length > 0 ? (
         <div className="mt-auto flex flex-wrap gap-1.5">
           {shown.map((trigger) => (
-            <span
+            <Text
               key={trigger}
-              className="max-w-full truncate rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5 text-xs text-foreground-secondary"
+              variant="small"
+              as="span"
+              tone="secondary"
+              className="max-w-full truncate rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5 leading-4"
             >
               {trigger}
-            </span>
+            </Text>
           ))}
           {hiddenCount > 0 ? (
-            <span className="rounded-full px-1.5 py-0.5 text-xs text-foreground-tertiary">
+            <Text
+              variant="small"
+              as="span"
+              tone="muted"
+              className="rounded-full px-1.5 py-0.5 leading-4"
+            >
               +{hiddenCount}
-            </span>
+            </Text>
           ) : null}
         </div>
       ) : null}

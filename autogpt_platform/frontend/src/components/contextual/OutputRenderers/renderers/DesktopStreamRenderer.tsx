@@ -72,28 +72,35 @@ export function DesktopStreamPreview({
   return (
     <div className="overflow-hidden rounded-lg border border-border-base">
       <div className="flex items-center justify-between border-b border-border-base bg-surface-muted px-3 py-2">
-        <div className="flex items-center gap-2 text-foreground-body">
+        <Text
+          variant={textSize}
+          as="div"
+          tone="body"
+          // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus
+          // leading-5 keeps that line height.
+          className={cn(
+            "flex items-center gap-2",
+            textSize === "body" && "leading-5",
+          )}
+        >
           <Icon icon={ComputerIcon} size={16} />
+          <span className="font-medium">Interactive Desktop</span>
           <Text
-            variant={textSize === "body-md" ? "body-md-medium" : "body-medium"}
+            variant="small"
             as="span"
-            tone="body"
-            // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus
-            // leading-5 keeps that line height.
-            className={cn(textSize === "body" && "leading-5")}
+            tone="secondary"
+            className="rounded bg-surface-active px-1.5 py-0.5 uppercase leading-4"
           >
-            Interactive Desktop
-          </Text>
-          <span className="rounded bg-surface-active px-1.5 py-0.5 text-xs uppercase text-foreground-secondary">
             {value.provider}
-          </span>
-        </div>
+          </Text>
+        </Text>
         {!ownerOnly && (
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleFullscreen}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-foreground-secondary hover:bg-surface-active"
+              // A <button> Text cannot render: caption at text-xs's 16px.
+              className="flex items-center gap-1 rounded px-2 py-1 text-caption leading-4 text-foreground-secondary hover:bg-surface-active"
               aria-label="Fullscreen"
             >
               <Icon icon={ArrowExpandIcon} size={14} />
@@ -103,7 +110,8 @@ export function DesktopStreamPreview({
               href={value.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-foreground-secondary hover:bg-surface-active"
+              // An <a> Text cannot render: caption at text-xs's 16px.
+              className="flex items-center gap-1 rounded px-2 py-1 text-caption leading-4 text-foreground-secondary hover:bg-surface-active"
             >
               <Icon icon={ArrowUpRight01Icon} size={14} />
               Open in new tab
@@ -112,18 +120,19 @@ export function DesktopStreamPreview({
         )}
       </div>
       {ownerOnly ? (
-        <div className="flex aspect-video w-full items-center justify-center bg-action-hover px-6 text-center">
-          <Text
-            variant={textSize}
-            as="span"
-            tone="subtle"
-            // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus
-            // leading-5 keeps that line height.
-            className={cn(textSize === "body" && "leading-5")}
-          >
-            The live desktop is only visible to the owner of this chat.
-          </Text>
-        </div>
+        <Text
+          variant={textSize}
+          as="div"
+          tone="subtle"
+          // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus
+          // leading-5 keeps that line height.
+          className={cn(
+            "flex aspect-video w-full items-center justify-center bg-action-hover px-6 text-center",
+            textSize === "body" && "leading-5",
+          )}
+        >
+          The live desktop is only visible to the owner of this chat.
+        </Text>
       ) : (
         <iframe
           ref={frameRef}
@@ -134,13 +143,18 @@ export function DesktopStreamPreview({
           title={`Interactive desktop (${value.sandbox_id})`}
         />
       )}
-      <p className="border-t border-border-base bg-surface-muted px-3 py-2 text-xs font-medium text-foreground-body">
+      <Text
+        variant="small-medium"
+        as="p"
+        tone="body"
+        className="border-t border-border-base bg-surface-muted px-3 py-2 leading-4"
+      >
         {value.requires_auth
           ? "Only the owner of this chat can view the live desktop. "
           : ""}
         The AI works on this desktop with full access, so anything signed in
         here is visible to it. Do not sign into personal accounts.
-      </p>
+      </Text>
     </div>
   );
 }

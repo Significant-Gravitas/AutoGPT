@@ -128,9 +128,11 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
               aria-hidden
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(var(--color-card)/0.08),transparent_60%)]"
             />
-            <span
+            <Text
+              variant="small-medium"
+              as="span"
               className={cn(
-                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1 leading-4",
                 running
                   ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981, text-emerald-300 #6EE7B7
                     "bg-emerald-500/15 text-emerald-300"
@@ -146,7 +148,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                 )}
               />
               {status}
-            </span>
+            </Text>
             <Text
               variant="body-md"
               className="relative max-w-md !text-foreground-disabled"
@@ -192,14 +194,24 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   <Icon icon={Folder01Icon} size={15} aria-hidden />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <code className="text-xs text-foreground-emphasis">
+                  <Text
+                    variant="small"
+                    as="code"
+                    tone="emphasis"
+                    className="font-mono leading-4"
+                  >
                     {path}
-                  </code>
+                  </Text>
                   <Text variant="small" className="!text-foreground-tertiary">
                     {describeMount(path, computer)}{" "}
-                    <span className="font-mono text-xs text-foreground-subtle">
+                    <Text
+                      variant="small"
+                      as="span"
+                      tone="subtle"
+                      className="font-mono leading-4"
+                    >
                       {name}
-                    </span>
+                    </Text>
                   </Text>
                 </span>
               </li>

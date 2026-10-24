@@ -83,9 +83,14 @@ function ExpertModeOptions({ expert }: Props) {
                   {option.label}
                   {option.value === DEFAULT_AUTOPILOT_MODE ? " (default)" : ""}
                 </Text>
-                <span className="text-xs text-foreground-tertiary">
+                <Text
+                  variant="small"
+                  as="span"
+                  tone="muted"
+                  className="leading-4"
+                >
                   {option.description}
-                </span>
+                </Text>
               </span>
             </label>
           );
