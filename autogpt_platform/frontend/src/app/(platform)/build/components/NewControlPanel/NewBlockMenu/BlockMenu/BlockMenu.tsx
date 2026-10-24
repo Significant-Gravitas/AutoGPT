@@ -28,14 +28,15 @@ export const BlockMenu = () => {
     >
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
-          <PopoverTrigger className="hover:cursor-pointer">
+          <PopoverTrigger asChild>
             <ControlPanelButton
+              aria-label="Blocks"
               data-id="blocks-control-popover-trigger"
               data-testid="blocks-control-blocks-button"
               selected={blockMenuOpen}
               className="rounded-none"
             >
-              <Icon icon={ToyBrickIcon} className="size-5" />
+              <Icon icon={ToyBrickIcon} className="size-5" aria-hidden />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
