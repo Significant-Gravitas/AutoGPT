@@ -422,6 +422,10 @@ async def _queue_for_slot(
             f"inflight cap (tool={tool_name})"
         )
         return "rejected_concurrent_turn_cap", SessionResult()
+    if timeout <= 0:
+        # Stored, so it runs when a slot frees; as after a dispatch, a read
+        # with nothing to wait for could only fail and read as "not queued".
+        return "queued_for_slot", SessionResult(queued=True)
     return await wait_for_queued_session(
         session_id=session_id, user_id=user_id, timeout=timeout
     )

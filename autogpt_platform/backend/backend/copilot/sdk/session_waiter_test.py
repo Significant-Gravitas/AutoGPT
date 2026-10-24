@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import active_turns
+from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.response_model import (
     StreamFinish,
     StreamStart,
@@ -653,3 +654,43 @@ async def test_a_dispatched_turn_with_no_wait_returns_without_reading_its_stream
     assert result == SessionResult()
     scheduled.assert_awaited_once()
     stream_read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_turn_queued_for_a_slot_with_no_wait_returns_without_reading_it(
+    mock_session_lookup,
+):
+    """Once queue_spawned_turn has stored the turn it will run when a slot
+    frees, so with nothing to wait for a status read can only fail, and a
+    failure there would read as "not queued" (SECRT-3138 review)."""
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    queued = AsyncMock()
+    status_read = AsyncMock(side_effect=RuntimeError("db blip"))
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("full")),
+        ),
+        patch("backend.copilot.sdk.session_waiter.queue_spawned_turn", new=queued),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_queued_session",
+            new=status_read,
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-slot",
+            user_id="u1",
+            message="own the Printify pipeline",
+            timeout=0,
+            tool_call_id="delegate:parent",
+            tool_name="delegate_to_expert",
+        )
+
+    assert outcome == "queued_for_slot"
+    assert result.queued is True
+    queued.assert_awaited_once()
+    status_read.assert_not_awaited()
