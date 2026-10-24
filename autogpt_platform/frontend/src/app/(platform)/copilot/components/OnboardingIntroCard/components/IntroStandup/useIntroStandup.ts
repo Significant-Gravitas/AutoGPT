@@ -74,19 +74,23 @@ export function useIntroStandup({
     refetchSetup: setupQuery.refetch,
   });
   const setupItems = setupQuery.data ?? [];
-  const team = buildTeam({
-    hires: hiresQuery.data ?? [],
-    templates: templatesQuery.data ?? [],
-    setupItems,
-    unchecked,
-  });
-  // Nothing is asked until every source has answered, and nothing at all
-  // once a finished install's setup gaps could not be read.
+  // No status is shown before the setup gaps have been read, so none reads
+  // Ready only to change; a read that failed shows as unchecked instead.
+  const team = setupQuery.isFetched
+    ? buildTeam({
+        hires: hiresQuery.data ?? [],
+        templates: templatesQuery.data ?? [],
+        setupItems: setupQuery.data ?? null,
+        unchecked,
+      })
+    : [];
+  // Nothing is asked until hires, setup gaps and providers have been read,
+  // and nothing once a finished install's setup gaps could not be.
   const isSettled =
-    hiresQuery.isFetched &&
-    setupQuery.isFetched &&
+    hiresQuery.data !== undefined &&
+    setupQuery.data !== undefined &&
     templatesQuery.isFetched &&
-    !providersQuery.isPending &&
+    providersQuery.data !== undefined &&
     !unchecked.failed;
   const ask = useHeldAsk(
     isSettled

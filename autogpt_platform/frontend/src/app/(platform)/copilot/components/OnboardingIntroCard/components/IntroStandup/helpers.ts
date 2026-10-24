@@ -9,6 +9,7 @@ export type MemberStatus =
   | "unchecked"
   | "failed"
   | "needs_connection"
+  | "needs_setup"
   | "working"
   | "ready";
 
@@ -43,18 +44,15 @@ const MAX_CHOICES = 3;
 export function buildTeam(args: {
   hires: Expert[];
   templates: ExpertTemplate[];
-  setupItems: ExpertSetupItem[];
+  /** `null` when the setup gaps could not be read. */
+  setupItems: ExpertSetupItem[] | null;
   /** Hires whose setup gaps are not known yet; `failed` once reading them has. */
   unchecked?: { ids: string[]; failed: boolean };
 }): TeamMember[] {
   const dayOneByTemplate = new Map(
     args.templates.map((template) => [template.id, template.day_one ?? []]),
   );
-  const needsConnection = new Set(
-    args.setupItems
-      .filter((item) => item.resolution === "connect")
-      .map((item) => item.expert_id),
-  );
+  const gaps = getSetupGaps(args.setupItems ?? []);
   return args.hires.map((expert) => ({
     expert,
     area: expert.job_title || getExpertRoleLabel(expert.role),
@@ -66,17 +64,21 @@ export function buildTeam(args: {
       ? args.unchecked.failed
         ? "unchecked"
         : "installing"
-      : getMemberStatus(expert, needsConnection.has(expert.id)),
+      : getMemberStatus(
+          expert,
+          args.setupItems ? (gaps.get(expert.id) ?? null) : "unknown",
+        ),
   }));
 }
 
-export function getMemberStatus(
-  expert: Expert,
-  needsConnection: boolean,
-): MemberStatus {
+type SetupGap = "connection" | "setup" | "unknown" | null;
+
+export function getMemberStatus(expert: Expert, gap: SetupGap): MemberStatus {
   if (expert.setup_status === "installing") return "installing";
   if (expert.setup_status === "failed") return "failed";
-  if (needsConnection) return "needs_connection";
+  if (gap === "unknown") return "unchecked";
+  if (gap === "connection") return "needs_connection";
+  if (gap === "setup") return "needs_setup";
   const runStatus = expert.last_run_status?.toUpperCase();
   if (runStatus === "RUNNING" || runStatus === "QUEUED") return "working";
   return "ready";
@@ -88,9 +90,24 @@ export function getMemberStatusLabel(status: MemberStatus) {
     unchecked: "Couldn't check setup",
     failed: "Setup didn't finish",
     needs_connection: "Needs a connection",
+    needs_setup: "Needs setup",
     working: "Working",
     ready: "Ready",
   }[status];
+}
+
+// Every setup item is a scheduled workflow with no schedule yet, so each one
+// leaves the hire work to do; a missing connection is named because Otto asks for it.
+function getSetupGaps(setupItems: ExpertSetupItem[]) {
+  const gaps = new Map<string, SetupGap>();
+  setupItems.forEach((item) => {
+    if (gaps.get(item.expert_id) === "connection") return;
+    gaps.set(
+      item.expert_id,
+      item.resolution === "connect" ? "connection" : "setup",
+    );
+  });
+  return gaps;
 }
 
 // The template's day-one promise, as its creator wrote it; a hire whose
@@ -114,6 +131,7 @@ export function getTeamSummary(team: TeamMember[]) {
     "working",
     "installing",
     "needs_connection",
+    "needs_setup",
     "unchecked",
     "failed",
     "ready",

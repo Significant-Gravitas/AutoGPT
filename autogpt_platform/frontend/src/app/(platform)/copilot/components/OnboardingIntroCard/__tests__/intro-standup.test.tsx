@@ -259,6 +259,67 @@ describe("Otto's first turn on Home — the team", () => {
     expect(within(team).getByText("Lead list")).toBeDefined();
   });
 
+  it.each(["allow", "inputs", "workflow"] as const)(
+    "shows a hire whose schedule waits on %s as needing setup, not ready",
+    async (resolution) => {
+      serve({
+        hires: [nadia, robin],
+        setup: [makeSetupItem("nadia", { resolution, providers: [] })],
+      });
+      renderHome();
+
+      const team = await findTeam();
+      const rows = within(team).getAllByRole("listitem");
+      expect(within(rows[0]).getByRole("status").textContent).toBe(
+        "Needs setup",
+      );
+      expect(within(rows[1]).getByRole("status").textContent).toBe("Ready");
+    },
+  );
+
+  it("names the connection when a hire waits on one and on other setup", async () => {
+    serve({
+      hires: [nadia],
+      setup: [
+        makeSetupItem("nadia"),
+        makeSetupItem("nadia", { resolution: "inputs", providers: [] }),
+      ],
+    });
+    renderHome();
+
+    const team = await findTeam();
+    expect(within(team).getByRole("status").textContent).toBe(
+      "Needs a connection",
+    );
+  });
+
+  it("shows no status until the setup gaps have been read", async () => {
+    serve({
+      hires: [nadia],
+      setup: [makeSetupItem("nadia")],
+      setupDelayMs: 300,
+    });
+    const painted: string[] = [];
+    const observer = new MutationObserver(() => {
+      const team = screen.queryByRole("region", { name: "Your team" });
+      const status = team
+        ? within(team).queryByRole("status")?.textContent
+        : undefined;
+      if (status) painted.push(status);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    renderHome();
+
+    const team = await findTeam();
+    observer.disconnect();
+    expect(within(team).getByRole("status").textContent).toBe(
+      "Needs a connection",
+    );
+    expect(painted.filter((status) => status !== "Needs a connection")).toEqual(
+      [],
+    );
+  });
+
   it("follows a hire's setup until it is ready", async () => {
     serve({
       hires: (read) => [
@@ -415,6 +476,77 @@ describe("Otto's first turn on Home — the one ask", () => {
     expect(painted.some((text) => text.startsWith("Ready|"))).toBe(false);
     expect(painted.some((text) => text.includes("Lead list"))).toBe(false);
   }, 20_000);
+
+  it("shows no Ready and no ask when the first read of setup gaps keeps failing", async () => {
+    serve({ hires: [nadia, robin] });
+    let setupReads = 0;
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => {
+        setupReads += 1;
+        return HttpResponse.json({ detail: "down" }, { status: 500 });
+      }),
+    );
+    const painted: string[] = [];
+    const observer = new MutationObserver(() => {
+      const team = screen.queryByRole("region", { name: "Your team" });
+      const ask = screen.queryByRole("region", {
+        name: "One thing I need from you",
+      });
+      const statuses = team
+        ? within(team)
+            .queryAllByRole("status")
+            .map((status) => status.textContent)
+            .join(",")
+        : "";
+      painted.push(`${statuses}|${ask?.textContent ?? ""}`);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    renderHome();
+
+    const team = await screen.findByRole(
+      "region",
+      { name: "Your team" },
+      { timeout: 12_000 },
+    );
+    observer.disconnect();
+    expect(
+      within(team)
+        .getAllByRole("status")
+        .map((status) => status.textContent),
+    ).toEqual(["Couldn't check setup", "Couldn't check setup"]);
+    expect(setupReads).toBeGreaterThan(1);
+    expect(
+      screen.queryByRole("region", { name: "One thing I need from you" }),
+    ).toBeNull();
+    expect(painted.some((text) => text.includes("Ready"))).toBe(false);
+    expect(painted.some((text) => text.includes("Triages"))).toBe(false);
+  }, 20_000);
+
+  it("asks nothing while the connectable services could not be read", async () => {
+    serve({
+      hires: [nadia, robin],
+      setup: [makeSetupItem("nadia")],
+    });
+    let providerReads = 0;
+    server.use(
+      http.get("/api/proxy/api/integrations/providers", () => {
+        providerReads += 1;
+        return HttpResponse.json({ detail: "down" }, { status: 500 });
+      }),
+    );
+    renderHome();
+
+    const team = await findTeam();
+    expect(
+      within(within(team).getAllByRole("listitem")[0]).getByRole("status")
+        .textContent,
+    ).toBe("Needs a connection");
+    await waitFor(() => expect(providerReads).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(
+      screen.queryByRole("region", { name: "One thing I need from you" }),
+    ).toBeNull();
+  });
 
   it("waits for the day-one jobs before asking, so the choices never change under the cursor", async () => {
     serve({
@@ -590,6 +722,25 @@ describe("Otto's first turn on Home — the one ask", () => {
     expect(
       within(ask).getByRole("button", { name: "Type it instead" }),
     ).toBeDefined();
+  });
+
+  it("asks nothing when the team could not be read", async () => {
+    serve({ hires: [], path: "B" });
+    let rosterReads = 0;
+    server.use(
+      http.get("/api/proxy/api/experts", () => {
+        rosterReads += 1;
+        return HttpResponse.json({ detail: "down" }, { status: 500 });
+      }),
+    );
+    stubMicrophone(true);
+    renderHome();
+
+    await waitFor(() => expect(rosterReads).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(
+      screen.queryByRole("region", { name: "One thing I need from you" }),
+    ).toBeNull();
   });
 
   it("asks a user who skipped the dump to talk through their week", async () => {

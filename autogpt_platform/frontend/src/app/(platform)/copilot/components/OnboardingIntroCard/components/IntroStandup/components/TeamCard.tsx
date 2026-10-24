@@ -15,6 +15,7 @@ const STATUS_DOTS: Record<MemberStatus, string> = {
   unchecked: "bg-amber-500",
   failed: "bg-red-500",
   needs_connection: "bg-amber-500",
+  needs_setup: "bg-amber-500",
   working: "bg-primary animate-pulse",
   ready: "bg-emerald-500",
 };

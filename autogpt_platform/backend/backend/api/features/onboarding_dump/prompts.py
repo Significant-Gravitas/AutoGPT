@@ -14,7 +14,9 @@ PATH_B_GREETING = (
 
 
 def path_b_greeting(user_role: str | None) -> str:
-    role = (user_role or "").strip()
+    # An "Other" role is free text that need not read as a role, so only the
+    # wizard's own choices go into the sentence.
+    role = _WIZARD_ROLE_LABELS.get((user_role or "").strip())
     if not role:
         return PATH_B_GREETING
     return (
@@ -22,3 +24,15 @@ def path_b_greeting(user_role: str | None) -> str:
         f"don't want to. You told me your role is {role}, but I haven't "
         "heard what your week looks like yet."
     )
+
+
+# The role step's ids (what the wizard stores) and the labels it shows.
+_WIZARD_ROLE_LABELS = {
+    "Founder/CEO": "Founder / CEO",
+    "Operations": "Operations",
+    "Sales/BD": "Sales / BD",
+    "Marketing": "Marketing",
+    "Product/PM": "Product / PM",
+    "Engineering": "Engineering",
+    "HR/People": "HR / People",
+}
