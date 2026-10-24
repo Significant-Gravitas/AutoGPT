@@ -19,6 +19,7 @@ from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
 
 MEMORIES = [{"id": "memory-1", "memory": "I am a vegetarian"}]
+ADDED_MEMORY = {"event": "ADD", "memory": "I am a vegetarian"}
 
 
 @pytest.fixture
@@ -57,9 +58,9 @@ def mem0_transport(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.parametrize("conversation", [False, True])
-async def test_add_memory_returns_completed_results(mem0_transport, conversation: bool):
+@pytest.mark.parametrize("results", [[ADDED_MEMORY], []])
+async def test_add_memory_outputs(mem0_transport, conversation: bool, results):
     messages = [{"role": "user", "content": "I am a vegetarian"}]
-    results = [{"event": "ADD", "memory": "I am a vegetarian"}]
 
     def handle(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
@@ -96,11 +97,11 @@ async def test_add_memory_returns_completed_results(mem0_transport, conversation
         )
     ]
 
-    assert outputs == [
-        ("results", results),
-        ("action", "ADD"),
-        ("memory", "I am a vegetarian"),
-    ]
+    assert outputs == [("results", results)] + (
+        [("action", "ADD"), ("memory", "I am a vegetarian")]
+        if results
+        else [("action", "NO_CHANGE")]
+    )
 
 
 @pytest.mark.parametrize(

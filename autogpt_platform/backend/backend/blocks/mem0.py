@@ -193,6 +193,7 @@ class AddMemoryBlock(Block, Mem0Base):
                 await asyncio.shield(pending_add)
                 break
             except asyncio.CancelledError as exc:
+                # Event-loop shutdown can cancel the worker task directly.
                 if pending_add.cancelled():
                     raise
                 cancellation = exc
