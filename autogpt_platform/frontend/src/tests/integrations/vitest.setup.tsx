@@ -3,8 +3,8 @@ import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup, configure } from "@testing-library/react";
-import { faker } from "@faker-js/faker";
 import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
+import { seedFaker } from "./faker-seed";
 
 // Auth tests send the client IP in X-Forwarded-For, as a trusted proxy would
 // (lib/auth/client-ip.ts).
@@ -42,9 +42,10 @@ const openRequests = new Set<Promise<unknown>>();
 const QUIET_TICKS = 5;
 const MAX_SETTLE_TICKS = 1000;
 const realSetTimeout = globalThis.setTimeout;
-// The generated MSW handlers draw from faker; a fixed seed per test makes a
-// name collision fail every run instead of once in a few hundred.
-const FAKER_SEED = 4504;
+
+// Setup files run before each test file loads, so this seeds data built at
+// module scope, in describe bodies and in beforeAll; beforeEach re-seeds.
+seedFaker();
 
 // CI runners ran these tests 2-3x slower than a dev machine (T494.1), so give
 // findBy/waitFor 3x Testing Library's 1 s default.
@@ -59,7 +60,7 @@ beforeAll(() => {
   trackOpenRequests();
 });
 beforeEach(() => {
-  faker.seed(FAKER_SEED);
+  seedFaker();
 });
 afterEach(async () => {
   cleanup();
