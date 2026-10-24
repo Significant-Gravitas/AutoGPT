@@ -60,6 +60,9 @@ describe("an inline workspace link in a chat message", () => {
 
     expect(openedFileID()).toBe(FILE_ID);
     expect(downloaded).toBe(false);
+    expect(link.parentElement?.textContent).toBe(
+      "Here is your doc: Weekly research.",
+    );
   });
 
   it("leaves an external link with the same label to its own destination", async () => {

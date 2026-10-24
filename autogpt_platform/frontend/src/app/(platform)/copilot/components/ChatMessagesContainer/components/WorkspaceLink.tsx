@@ -49,7 +49,9 @@ export function WorkspaceLink({ fileID, label }: Props) {
       target="_blank"
       rel="noreferrer"
       onClick={handleClick}
-      className="wrap-anywhere font-medium text-primary underline"
+      data-streamdown="link"
+      // Streamdown's own link look; doubled to outrank the chat's `[&_a]` colour.
+      className="wrap-anywhere font-medium [&&]:text-primary [&&]:underline"
     >
       {label}
     </a>
