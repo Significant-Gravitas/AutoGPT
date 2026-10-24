@@ -326,6 +326,10 @@ class NotificationManager(AppService):
             ) from None
 
     @expose
+    async def is_email_suppressed(self, to: str) -> bool:
+        return await asyncio.to_thread(self.email_sender.is_suppressed, to)
+
+    @expose
     async def send_owner_email(
         self,
         user_id: str,
@@ -888,4 +892,5 @@ class NotificationManagerClient(AppServiceClient):
     send_due_briefings = endpoint_to_sync(NotificationManager.send_due_briefings)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
     send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)
+    is_email_suppressed = endpoint_to_sync(NotificationManager.is_email_suppressed)
     send_owner_email = endpoint_to_async(NotificationManager.send_owner_email)

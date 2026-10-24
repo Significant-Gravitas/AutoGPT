@@ -41,6 +41,14 @@ class AuthEmailRequest(BaseModel):
     url: str
 
 
+class AuthEmailSuppressionRequest(BaseModel):
+    to: EmailStr
+
+
+class AuthEmailSuppressionResponse(BaseModel):
+    suppressed: bool
+
+
 @auth_email_router.post(
     "/send",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -91,6 +99,28 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     # Don't log the recipient address — auth emails go to arbitrary users and
     # the address is PII we don't want in application logs.
     logger.info(f"Sent {request.type} auth email")
+
+
+@auth_email_router.post(
+    "/suppression",
+    dependencies=[Security(requires_auth_email_service)],
+    summary="Check whether the mailer has suppressed an address",
+    operation_id="checkAuthEmailSuppression",
+    responses={
+        403: {"description": "Service token is missing the required scope"},
+        503: {"description": "Service-token verification is not configured"},
+    },
+)
+async def check_auth_email_suppression(
+    request: AuthEmailSuppressionRequest,
+) -> AuthEmailSuppressionResponse:
+    """Asked by sign-up and the resend button before they email an address, so
+    one Postmark won't deliver to is refused up front. Not suppressed when the
+    mailer can't tell."""
+    suppressed = await asyncio.to_thread(
+        get_notification_manager_client().is_email_suppressed, request.to
+    )
+    return AuthEmailSuppressionResponse(suppressed=suppressed)
 
 
 def _url_origin_allowed(url: str) -> bool:

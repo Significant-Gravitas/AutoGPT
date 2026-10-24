@@ -3456,6 +3456,54 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/auth/email/suppression": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Check whether the mailer has suppressed an address",
+        "description": "Asked by sign-up and the resend button before they email an address, so\none Postmark won't deliver to is refused up front. Not suppressed when the\nmailer can't tell.",
+        "operationId": "checkAuthEmailSuppression",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthEmailSuppressionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEmailSuppressionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -20348,6 +20396,22 @@
         "type": "object",
         "required": ["type", "to", "url"],
         "title": "AuthEmailRequest"
+      },
+      "AuthEmailSuppressionRequest": {
+        "properties": {
+          "to": { "type": "string", "format": "email", "title": "To" }
+        },
+        "type": "object",
+        "required": ["to"],
+        "title": "AuthEmailSuppressionRequest"
+      },
+      "AuthEmailSuppressionResponse": {
+        "properties": {
+          "suppressed": { "type": "boolean", "title": "Suppressed" }
+        },
+        "type": "object",
+        "required": ["suppressed"],
+        "title": "AuthEmailSuppressionResponse"
       },
       "AuthIPEventKind": {
         "type": "string",

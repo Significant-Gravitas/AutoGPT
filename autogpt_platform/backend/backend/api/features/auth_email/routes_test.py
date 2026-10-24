@@ -80,6 +80,44 @@ def test_an_undeliverable_address_answers_422_without_logging_it(send_mock, capl
     assert VALID_BODY["to"] not in caplog.text
 
 
+def test_suppression_lookup_answers_from_the_mailer(send_mock, monkeypatch):
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(is_email_suppressed=lambda to: to == "bounced@example.com"),
+    )
+
+    answers = [
+        client.post("/api/auth/email/suppression", json={"to": to}).json()
+        for to in ("bounced@example.com", "user@example.com")
+    ]
+
+    assert answers == [{"suppressed": True}, {"suppressed": False}]
+
+
+def test_suppression_lookup_needs_the_frontend_service_token(
+    mocker: MockerFixture, monkeypatch
+):
+    """Without it the route would tell anyone which addresses bounced."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    lookup = MagicMock()
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(is_email_suppressed=lookup),
+    )
+
+    res = client.post("/api/auth/email/suppression", json={"to": "a@example.com"})
+
+    assert res.status_code == 401
+    lookup.assert_not_called()
+
+
 def test_set_password_email_says_why_it_came_and_when_it_expires(send_mock):
     res = _post({**VALID_BODY, "type": "set_password"})
 
