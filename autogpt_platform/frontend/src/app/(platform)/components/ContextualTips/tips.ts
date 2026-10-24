@@ -14,6 +14,8 @@ interface Tip {
   targets: TourTarget[];
   title: string;
   body: string | ((context: TipContext) => string);
+  /** Only where billing is on: a self-hosted install has no wallet. */
+  requiresBilling?: boolean;
 }
 
 // One-line tips for the first time each surface matters, instead of
@@ -28,6 +30,7 @@ export const TIPS: Record<TipID, Tip> = {
   "first-cost": {
     step: "COST_TIP",
     targets: ["wallet", "menu"],
+    requiresBilling: true,
     title: "Where costs come from",
     body: ({ isTrial }) =>
       isTrial

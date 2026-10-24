@@ -1,7 +1,4 @@
-import {
-  latestReplyMentionsCost,
-  useTipMoment,
-} from "@/app/(platform)/components/ContextualTips/useTipMoment";
+import { useCostReplyMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 import { parseSpecialMarkers } from "../../helpers/messageMarkers";
 import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
@@ -402,10 +399,11 @@ export function ChatMessagesContainer({
   })();
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
-  useTipMoment(
-    "first-cost",
-    !readOnly && latestReplyMentionsCost(messages, isActivelyStreaming),
-  );
+  useCostReplyMoment({
+    messages,
+    isStreaming: isActivelyStreaming,
+    enabled: !readOnly,
+  });
 
   // A live compaction narrates itself via CompactionCard — the generic
   // Thinking indicator must not stack a second spinner and timer under it.

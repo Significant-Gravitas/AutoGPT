@@ -1,6 +1,7 @@
 "use client";
 
 import { useSessionList } from "@/app/(platform)/copilot/useSessionList";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { trackFirstRun } from "@/services/onboarding/first-run-analytics";
@@ -19,6 +20,8 @@ export function useContextualTips() {
   const { state, completeStep } = useOnboarding();
   const requested = useContextualTipStore((store) => store.requested);
   const remove = useContextualTipStore((store) => store.remove);
+  const postpone = useContextualTipStore((store) => store.postpone);
+  const isBillingEnabled = useIsBillingEnabled();
   const isTourOpen = useFirstRunTourStore((store) => store.source !== null);
   const isConnectToolsOpen = useFirstRunTourStore(
     (store) => store.isConnectToolsOpen,
@@ -33,29 +36,33 @@ export function useContextualTips() {
     );
   }
 
-  // A moment for a tip this user already has is simply dropped.
+  // A moment for a tip this user already has, or one this install cannot
+  // show (the cost tip points at a wallet that only exists with billing on),
+  // is simply dropped rather than left at the head of the queue.
   useEffect(() => {
     if (!state || !userID) return;
     requested
       .filter(
         (id) =>
+          (TIPS[id].requiresBilling && !isBillingEnabled) ||
           state.completedSteps.includes(TIPS[id].step) ||
           peekTipSeen(id, userID),
       )
       .forEach(remove);
-  }, [requested, state, userID, remove]);
+  }, [requested, state, userID, isBillingEnabled, remove]);
 
   const candidate =
-    state && userID ? (requested.find((id) => !isSeen(id)) ?? null) : null;
+    state && userID
+      ? (requested.find(
+          (id) =>
+            !isSeen(id) && (!TIPS[id].requiresBilling || isBillingEnabled),
+        ) ?? null)
+      : null;
   const isAdmitted = useNoticeAdmission(
     candidate !== null && !isTourOpen && !isConnectToolsOpen,
     userID,
   );
   const active = isAdmitted && !isTourOpen ? candidate : null;
-
-  useEffect(() => {
-    if (active) trackFirstRun("contextual_tip_shown", { tip: active });
-  }, [active]);
 
   function dismiss() {
     if (!active) return;
@@ -65,7 +72,12 @@ export function useContextualTips() {
     remove(active);
   }
 
-  return { active, dismiss };
+  return {
+    active,
+    dismiss,
+    // Nothing on screen to point at yet: let the next tip have its turn.
+    postponeActive: () => active && postpone(active),
+  };
 }
 
 // The chat list going from one chat to two is the first second thread. It is

@@ -6,6 +6,8 @@ interface ContextualTipState {
   requested: TipID[];
   request: (id: TipID) => void;
   remove: (id: TipID) => void;
+  /** Moves a tip with nothing on screen to point at behind the others. */
+  postpone: (id: TipID) => void;
 }
 
 // Surfaces report their moment here (a second chat, a cost, an expert
@@ -23,6 +25,18 @@ export const useContextualTipStore = create<ContextualTipState>((set) => ({
     set((state) => ({
       requested: state.requested.filter((requested) => requested !== id),
     }));
+  },
+  postpone(id) {
+    set((state) =>
+      state.requested.length < 2 || !state.requested.includes(id)
+        ? state
+        : {
+            requested: [
+              ...state.requested.filter((requested) => requested !== id),
+              id,
+            ],
+          },
+    );
   },
 }));
 

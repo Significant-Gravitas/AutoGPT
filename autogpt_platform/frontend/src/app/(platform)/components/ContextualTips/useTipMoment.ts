@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { requestTip } from "./store";
 import { mentionsCost, type TipID } from "./tips";
 
@@ -34,4 +34,32 @@ export function latestReplyMentionsCost(
   const last = messages[messages.length - 1];
   if (!last || last.role !== "assistant") return false;
   return last.parts.some((part) => isTextPart(part) && mentionsCost(part.text));
+}
+
+interface CostReplyArgs {
+  messages: ReadonlyArray<MessageLike>;
+  isStreaming: boolean;
+  enabled: boolean;
+}
+
+// The moment is Otto saying it, so only a reply that finishes streaming in
+// front of the user counts. Opening a chat whose history already mentions a
+// cost is reading back, not the first time it came up.
+export function useCostReplyMoment({
+  messages,
+  isStreaming,
+  enabled,
+}: CostReplyArgs) {
+  const sawReplyStream = useRef(false);
+
+  useEffect(() => {
+    if (isStreaming) {
+      sawReplyStream.current = true;
+      return;
+    }
+    if (!sawReplyStream.current) return;
+    sawReplyStream.current = false;
+    if (enabled && latestReplyMentionsCost(messages, false))
+      requestTip("first-cost");
+  }, [isStreaming, messages, enabled]);
 }

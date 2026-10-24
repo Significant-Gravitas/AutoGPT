@@ -23,6 +23,11 @@ vi.mock("@/providers/onboarding/onboarding-provider", async (original) => ({
   useOnboarding: () => onboarding.current,
 }));
 
+const billing = vi.hoisted(() => ({ enabled: true }));
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => billing.enabled,
+}));
+
 vi.mock("@/services/usageExperience/useUsageExperience", () => ({
   useUsageExperience: () => ({ experience: { isActiveTrial: true } }),
 }));
@@ -43,12 +48,16 @@ import { ContextualTips } from "../ContextualTips";
 import { isFirstSecondChat } from "../helpers";
 import { requestTip, useContextualTipStore } from "../store";
 import { mentionsCost } from "../tips";
-import { latestReplyMentionsCost } from "../useTipMoment";
+import { latestReplyMentionsCost, useCostReplyMoment } from "../useTipMoment";
 
+// jsdom lays nothing out: tagged elements get a box unless listed here
+// (the wallet on an install without billing, the phone's menu on desktop).
+const hidden = new Set<string>();
 function stubLayout() {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
-      return this.hasAttribute("data-tour-target")
+      const target = this.getAttribute("data-tour-target");
+      return target && !hidden.has(target)
         ? DOMRect.fromRect({ x: 10, y: 100, width: 240, height: 40 })
         : DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 });
     },
@@ -61,6 +70,7 @@ function Page() {
       <div {...tourTarget("chats")}>Recent chats</div>
       <div {...tourTarget("team")}>Team</div>
       <div {...tourTarget("wallet")}>Wallet</div>
+      <div {...tourTarget("menu")}>Menu</div>
       <label>
         Message
         <textarea />
@@ -71,6 +81,8 @@ function Page() {
 }
 
 beforeEach(() => {
+  hidden.clear();
+  billing.enabled = true;
   window.localStorage.clear();
   capture.mockReset();
   onboarding.current = { state: { completedSteps: [] }, completeStep: vi.fn() };
@@ -118,6 +130,27 @@ describe("contextual tips — when a cost comes up", () => {
       latestReplyMentionsCost([cost, { role: "user", parts: [] }], false),
     ).toBe(false);
     expect(latestReplyMentionsCost([cost, reply("Done.")], false)).toBe(false);
+  });
+
+  it("only counts a reply that finishes in front of the user, not chat history", () => {
+    const history = [
+      { role: "user", parts: [{ type: "text", text: "Photos please" }] },
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "Each image costs a few cents." }],
+      },
+    ];
+    function Chat({ isStreaming }: { isStreaming: boolean }) {
+      useCostReplyMoment({ messages: history, isStreaming, enabled: true });
+      return null;
+    }
+
+    const { rerender } = render(<Chat isStreaming={false} />);
+    expect(useContextualTipStore.getState().requested).toEqual([]);
+
+    rerender(<Chat isStreaming />);
+    rerender(<Chat isStreaming={false} />);
+    expect(useContextualTipStore.getState().requested).toEqual(["first-cost"]);
   });
 
   it("treats running low on the allowance as the moment too", () => {
@@ -275,6 +308,50 @@ describe("contextual tips — showing one", () => {
     await userEvent.click(screen.getByRole("button", { name: "Got it" }));
 
     expect(await screen.findByText("Where costs come from")).toBeDefined();
+  });
+
+  it("never queues the cost tip where billing is off, so it cannot hold up the others", async () => {
+    billing.enabled = false;
+    hidden.add("wallet");
+    hidden.add("menu");
+    render(<Page />);
+
+    act(() => {
+      requestTip("first-cost");
+      requestTip("first-expert");
+    });
+
+    expect(await screen.findByText("Experts can own tasks")).toBeDefined();
+    await waitFor(() =>
+      expect(useContextualTipStore.getState().requested).toEqual([
+        "first-expert",
+      ]),
+    );
+  });
+
+  it("steps aside when its target is not on screen, letting the next tip show", async () => {
+    hidden.add("wallet");
+    hidden.add("menu");
+    render(<Page />);
+
+    act(() => {
+      requestTip("first-cost");
+      requestTip("first-expert");
+    });
+
+    expect(
+      await screen.findByText("Experts can own tasks", {}, { timeout: 4000 }),
+    ).toBeDefined();
+    expect(screen.queryByText("Where costs come from")).toBeNull();
+    // Still waiting its turn, not dropped: it shows once its target exists.
+    expect(useContextualTipStore.getState().requested).toContain("first-cost");
+    // And it was never counted as shown while it had nothing to point at.
+    expect(capture).toHaveBeenCalledWith("contextual_tip_shown", {
+      tip: "first-expert",
+    });
+    expect(capture).not.toHaveBeenCalledWith("contextual_tip_shown", {
+      tip: "first-cost",
+    });
   });
 
   it("puts the tip away with Escape", async () => {

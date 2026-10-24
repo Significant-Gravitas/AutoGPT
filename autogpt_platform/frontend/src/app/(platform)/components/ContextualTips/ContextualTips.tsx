@@ -7,6 +7,8 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/molecules/Popover/Popover";
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { trackFirstRun } from "@/services/onboarding/first-run-analytics";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { useEffect, useId, useRef } from "react";
 import type { Box } from "../FirstRunTour/helpers";
@@ -18,20 +20,32 @@ import { useContextualTips } from "./useContextualTips";
 
 // Rendered once in the app chrome; shows at most one tip at a time.
 export function ContextualTips() {
-  const { active, dismiss } = useContextualTips();
+  const { active, dismiss, postponeActive } = useContextualTips();
   if (!active) return null;
-  return <ContextualTip key={active} id={active} onDismiss={dismiss} />;
+  return (
+    <ContextualTip
+      key={active}
+      id={active}
+      onDismiss={dismiss}
+      onUnavailable={postponeActive}
+    />
+  );
 }
+
+// How long a tip waits for its target (a sidebar sliding in, a page still
+// loading) before stepping aside for the next one in the queue.
+export const TIP_TARGET_GRACE_MS = 1500;
 
 interface Props {
   id: TipID;
   onDismiss: () => void;
+  onUnavailable: () => void;
 }
 
 // A small card beside the real control, with a ring around it and no dim:
 // the user is in the middle of something, so it never takes focus and never
 // blocks the page. "Got it" or Escape puts it away for good.
-function ContextualTip({ id, onDismiss }: Props) {
+function ContextualTip({ id, onDismiss, onUnavailable }: Props) {
   const tip = TIPS[id];
   const [stop] = useTourStops(tipStepOf(id));
   const box = stop?.box ?? null;
@@ -54,6 +68,23 @@ function ContextualTip({ id, onDismiss }: Props) {
   const titleID = useId();
   const body = getTipBody(id, { isTrial: experience.isActiveTrial });
   const isMenu = stop?.target === "menu";
+  const hasBox = box !== null;
+  const giveWay = useStableCallback(onUnavailable);
+
+  // Counted when the card is on screen beside its target, not when it
+  // takes its turn: a tip still waiting for its target was not seen.
+  const wasShown = useRef(false);
+  useEffect(() => {
+    if (!hasBox || wasShown.current) return;
+    wasShown.current = true;
+    trackFirstRun("contextual_tip_shown", { tip: id });
+  }, [hasBox, id]);
+
+  useEffect(() => {
+    if (hasBox) return;
+    const timer = window.setTimeout(giveWay, TIP_TARGET_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [hasBox, giveWay]);
 
   // Nothing on screen to point at yet: wait rather than float in a corner.
   if (!box) return null;
