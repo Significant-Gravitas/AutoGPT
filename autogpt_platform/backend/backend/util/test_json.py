@@ -1209,3 +1209,29 @@ class TestValidateWithJsonschema:
         except jsonschema.ValidationError as error:
             return str(error)
         return None
+
+
+class TestNestingDepth:
+    @pytest.mark.parametrize(
+        "data,depth",
+        [
+            ("abyss", 0),
+            (1, 0),
+            (None, 0),
+            ([], 1),
+            ({}, 1),
+            ([1, 2], 1),
+            ({"a": [1]}, 2),
+            ([[["x"]]], 3),
+            ({"a": {"b": {"c": 1}}, "d": [1]}, 3),
+            (("t", ["u"]), 2),
+        ],
+    )
+    def test_counts_nested_lists_and_dicts(self, data: Any, depth: int):
+        assert json_util.nesting_depth(data) == depth
+
+    def test_walks_data_deeper_than_the_recursion_limit(self):
+        value: Any = "abyss"
+        for _ in range(5000):
+            value = [value]
+        assert json_util.nesting_depth({"shift_tags": value}) == 5001
