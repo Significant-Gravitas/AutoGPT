@@ -101,8 +101,12 @@ export function PendingReviewCard({
       );
     } else if (typeof data === "boolean") {
       return (
-        <div className="flex items-center gap-3">
+        <div
+          data-slot="pending-review-card-toggle"
+          className="flex items-center gap-3"
+        >
           <span
+            data-slot="pending-review-card-toggle-label"
             // TODO(tokens): no role for Tailwind's default gray-500; the zinc
             // roles are a different grey.
             className="text-sm text-gray-500"
@@ -136,7 +140,7 @@ export function PendingReviewCard({
   };
 
   return (
-    <div className="space-y-4">
+    <div data-slot="pending-review-card" className="space-y-4">
       {nodeId && (
         <Text
           // TODO(tokens): no role for Tailwind's default gray-500; the zinc roles
@@ -148,7 +152,7 @@ export function PendingReviewCard({
         </Text>
       )}
 
-      <div className="space-y-3">
+      <div data-slot="pending-review-card-body" className="space-y-3">
         {instructions && (
           <Text
             // TODO(tokens): no role for Tailwind's default gray-900; the zinc
@@ -166,6 +170,7 @@ export function PendingReviewCard({
           renderDataInput()
         ) : (
           <div
+            data-slot="pending-review-card-readonly"
             // TODO(tokens): no role for Tailwind's default gray-200; the zinc
             // roles are a different grey.
             className="rounded-lg border border-gray-200 bg-surface p-3"
@@ -184,8 +189,14 @@ export function PendingReviewCard({
 
       {/* Auto-approve toggle for this review */}
       {showAutoApprove && onAutoApproveFutureChange && (
-        <div className="space-y-2 pt-2">
-          <div className="flex items-center gap-3">
+        <div
+          data-slot="pending-review-card-auto-approve"
+          className="space-y-2 pt-2"
+        >
+          <div
+            data-slot="pending-review-card-auto-approve-row"
+            className="flex items-center gap-3"
+          >
             <Switch
               checked={autoApproveFuture}
               onCheckedChange={(enabled: boolean) =>
