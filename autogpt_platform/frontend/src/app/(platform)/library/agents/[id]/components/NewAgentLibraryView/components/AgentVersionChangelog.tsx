@@ -70,12 +70,14 @@ export function AgentVersionChangelog({
               v{versionInfo.version}
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span
+              <Text
+                variant="small-medium"
+                as="span"
                 // TODO(tokens): no exact role for bg-blue-100 (#DBEAFE), text-blue-800 (#1E40AF); no dark roles yet for dark:bg-blue-900 (#1E3A8A), dark:text-blue-100 (#DBEAFE)
-                className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100"
+                className="rounded-full bg-blue-100 px-2 py-1 leading-4 text-blue-800 dark:bg-blue-900 dark:text-blue-100"
               >
                 Current
-              </span>
+              </Text>
             )}
           </div>
         </div>
