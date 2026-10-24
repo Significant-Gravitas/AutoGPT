@@ -13,7 +13,7 @@ type UseCarouselParameters = Parameters<typeof useEmblaCarousel>;
 type CarouselOptions = UseCarouselParameters[0];
 type CarouselPlugin = UseCarouselParameters[1];
 
-interface CarouselProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CarouselProps extends React.ComponentProps<"div"> {
   opts?: CarouselOptions;
   plugins?: CarouselPlugin;
   orientation?: "horizontal" | "vertical";
@@ -44,6 +44,7 @@ export function Carousel({
   plugins,
   className,
   children,
+  ref,
   ...props
 }: CarouselProps) {
   const [carouselRef, api] = useEmblaCarousel(
@@ -81,6 +82,7 @@ export function Carousel({
       }}
     >
       <div
+        ref={ref}
         onKeyDownCapture={handleKeyDown}
         data-slot="carousel"
         className={cn("relative", className)}
@@ -96,8 +98,9 @@ export function Carousel({
 
 export function CarouselContent({
   className,
+  ref,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.ComponentProps<"div">) {
   const { carouselRef, orientation } = useCarousel();
 
   return (
@@ -107,6 +110,7 @@ export function CarouselContent({
       className="overflow-hidden"
     >
       <div
+        ref={ref}
         data-slot="carousel-content"
         className={cn(
           "flex",
@@ -121,12 +125,14 @@ export function CarouselContent({
 
 export function CarouselItem({
   className,
+  ref,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.ComponentProps<"div">) {
   const { orientation } = useCarousel();
 
   return (
     <div
+      ref={ref}
       role="group"
       aria-roledescription="slide"
       data-slot="carousel-item"
