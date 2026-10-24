@@ -7,6 +7,7 @@ import feedparser
 import pydantic
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -28,6 +29,8 @@ class RSSEntry(pydantic.BaseModel):
 
 
 class ReadRSSFeedBlock(Block):
+    execution_timeout_seconds: int | None = None
+
     class Input(BlockSchemaInput):
         rss_url: str = SchemaField(
             description="The URL of the RSS feed to read",
@@ -146,7 +149,13 @@ class ReadRSSFeedBlock(Block):
         while keep_going:
             keep_going = input_data.run_continuously
 
-            feed = await self.parse_feed(input_data.rss_url)
+            if input_data.run_continuously:
+                feed = await self.parse_feed(input_data.rss_url)
+            else:
+                feed = await asyncio.wait_for(
+                    self.parse_feed(input_data.rss_url),
+                    timeout=DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
+                )
             all_entries = []
 
             for entry in feed["entries"]:
