@@ -1,12 +1,13 @@
 """What the Airtable blocks show before they change a user's base, and how
 they ask for one."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
 from backend.blocks._base import BlockEffect
+from backend.blocks.airtable._api import create_field
 from backend.blocks.airtable.bases import AirtableCreateBaseBlock
 from backend.blocks.airtable.records import (
     AirtableCreateRecordsBlock,
@@ -259,3 +260,32 @@ def test_a_choice_field_can_be_created_with_its_choices():
     )
 
     assert inputs.options == {"choices": [{"name": "New"}, {"name": "Shipped"}]}
+
+
+@pytest.mark.asyncio
+async def test_a_field_named_like_a_boolean_keeps_its_words():
+    """Names, descriptions and choice names are text even when they read
+    "true" or "false"; only option values were ever meant as booleans."""
+    credentials = APIKeyCredentials(
+        provider="airtable", title="Airtable", api_key=SecretStr("k")
+    )
+    response = MagicMock()
+    response.json.return_value = {"id": "fld1"}
+    with patch("backend.blocks.airtable._api.Requests") as requests:
+        requests.return_value.post = AsyncMock(return_value=response)
+        await create_field(
+            credentials,
+            "appX",
+            "tblX",
+            "singleSelect",
+            "True",
+            "false",
+            {"choices": [{"name": "True"}, {"name": "False"}]},
+        )
+
+    assert requests.return_value.post.await_args.kwargs["json"] == {
+        "type": "singleSelect",
+        "name": "True",
+        "description": "false",
+        "options": {"choices": [{"name": "True"}, {"name": "False"}]},
+    }

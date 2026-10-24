@@ -11,7 +11,7 @@ from backend.copilot.tools.helpers import (
     is_picker_field,
     prepare_block_for_execution,
 )
-from backend.copilot.tools.models import SetupRequirementsResponse
+from backend.copilot.tools.models import ErrorResponse, SetupRequirementsResponse
 from backend.data.model import CredentialsMetaInput
 
 _USER = "picker-user"
@@ -134,3 +134,15 @@ async def test_a_missing_base_opens_the_picker_instead_of_asking_in_chat():
         "your choice."
     )
     assert "base_id" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_an_unwatched_run_says_the_base_must_be_picked_in_a_chat():
+    """A schedule or automation has nobody to answer a card, so the step
+    reports what is missing instead of leaving a card nobody sees."""
+    with patch("backend.copilot.tools.helpers.is_unattended_turn", return_value=True):
+        result = await _prepare({"table_name": "Orders"})
+
+    assert isinstance(result, ErrorResponse)
+    assert "Airtable base" in result.message
+    assert "nobody is watching" in result.message

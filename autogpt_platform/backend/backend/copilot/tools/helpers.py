@@ -186,11 +186,40 @@ def _with_picker_credentials(
     return {**entry, "resource_picker": {**picker, "credentials_id": credentials_id}}
 
 
+def _unattended_picker_error(
+    block_name: str,
+    input_schema: dict[str, Any],
+    fields: list[str],
+    session_id: str,
+) -> ErrorResponse:
+    """A card in a turn nobody watches is never answered, so say what the
+    user must choose, the way a missing credential is reported."""
+    titles = " and ".join(_field_titles(input_schema, fields))
+    logger.warning(
+        "Unattended copilot turn in session %s: %s needs %s picked",
+        session_id,
+        block_name,
+        titles,
+    )
+    return ErrorResponse(
+        message=(
+            f"This step did not run: it needs the user's {titles}, which they "
+            "choose in a card, and nobody is watching this run. Tell them to "
+            "pick it in a chat, then it can run unattended."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _field_titles(input_schema: dict[str, Any], fields: list[str]) -> list[str]:
+    properties = input_schema.get("properties", {})
+    return [str(properties.get(f, {}).get("title") or f) for f in fields]
+
+
 def _picker_message(input_schema: dict[str, Any], fields: list[str]) -> str:
     """The card's line for a pick: shown to the user as well as the model, so
     it names each field by its title, never its key."""
-    properties = input_schema.get("properties", {})
-    titles = [str(properties.get(f, {}).get("title") or f) for f in fields]
+    titles = _field_titles(input_schema, fields)
     return (
         f"Choose your {' and '.join(titles)} in the card below. The step runs "
         "again with your choice."
@@ -1210,6 +1239,10 @@ async def prepare_block_for_execution(
             set(turn_credential_pins()) & missing_providers
         )
         bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
+        if not missing_credentials and is_unattended_turn():
+            return _unattended_picker_error(
+                block.name, input_schema, picker_fields_missing, session_id
+            )
         if missing_credentials and is_unattended_turn():
             unattended = await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
