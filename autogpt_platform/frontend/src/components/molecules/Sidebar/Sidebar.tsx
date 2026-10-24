@@ -25,7 +25,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { parseSidebarCookie, SIDEBAR_COOKIE_NAME } from "./sidebarCookie";
+import { parseSidebarCookie, SIDEBAR_COOKIE_NAME } from "./sidebar-cookie";
 
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = "20rem";
