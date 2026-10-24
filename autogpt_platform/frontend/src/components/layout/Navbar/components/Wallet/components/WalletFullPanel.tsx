@@ -33,13 +33,15 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
           </Text>
         </div>
         <div className="flex shrink-0 items-center text-body leading-5 text-accent-strong">
-          <div
+          <Text
+            variant="body"
+            as="div"
             // TODO(tokens): no exact role for bg-violet-100 (#EDE9FE)
-            className="rounded-lg bg-violet-100 px-3 py-2"
+            className="rounded-lg bg-violet-100 px-3 py-2 leading-5 text-accent-strong"
           >
             Earn credits{" "}
             <span className="font-semibold">{formattedCredits}</span>
-          </div>
+          </Text>
           <PopoverClose aria-label="Close wallet">
             <Icon
               icon={Cancel01Icon}
