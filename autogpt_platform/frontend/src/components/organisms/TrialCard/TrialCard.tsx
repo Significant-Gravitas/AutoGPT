@@ -80,7 +80,11 @@ export function TrialCardContent({
         />
       )}
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-destructive">
+        <p
+          role="alert"
+          data-slot="trial-card-content-error"
+          className="mt-3 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : null}
@@ -98,14 +102,17 @@ export function TrialCardContent({
     return (
       <section
         aria-label="AutoGPT trial"
+        data-slot="trial-card-content"
         className="flex w-full flex-col gap-2 py-4"
       >
-        <div className="sr-only">
+        <div data-slot="trial-card-content-heading" className="sr-only">
           <Text variant="body-medium" as="span" className="text-textBlack">
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>
-        <div className="w-full">{body}</div>
+        <div data-slot="trial-card-content-body" className="w-full">
+          {body}
+        </div>
       </section>
     );
   return (
@@ -115,7 +122,9 @@ export function TrialCardContent({
       density="roomy"
       className="w-full"
     >
-      <section aria-label="AutoGPT trial">{body}</section>
+      <section aria-label="AutoGPT trial" data-slot="trial-card-content">
+        {body}
+      </section>
     </AttentionCard.Root>
   );
 }

@@ -28,8 +28,11 @@ export function RunRow({ item, isHidden = false }: Props) {
           size={28}
         />
       </AttentionCard.Icon>
-      <AttentionCard.Content>
-        <div className="flex items-center gap-2">
+      <AttentionCard.Content data-slot="briefing-card-run-row-body">
+        <div
+          data-slot="briefing-card-run-row-header"
+          className="flex items-center gap-2"
+        >
           {/* Agent names and run summaries are user data: never opt them into
               unmasking in session replays. */}
           <Text variant="body-medium" tone="primary" className="truncate">
@@ -37,6 +40,7 @@ export function RunRow({ item, isHidden = false }: Props) {
           </Text>
           {isFailed ? (
             <span
+              data-slot="briefing-card-run-row-status"
               // TODO(tokens): no text role for red-600 (#D93636); error-hover
               // is the hover fill.
               className="shrink-0 rounded-full bg-error-surface px-2 py-0.5 text-caption-sm font-medium leading-inherit text-red-600"
@@ -50,7 +54,12 @@ export function RunRow({ item, isHidden = false }: Props) {
             {/* Attribution matters once more than one agent reports:
                 mirrors the thread markdown's "**{agent}**: {summary}". */}
             {attribution ? (
-              <span className="text-foreground-subtle">{attribution} · </span>
+              <span
+                data-slot="briefing-card-run-row-attribution"
+                className="text-foreground-subtle"
+              >
+                {attribution} ·{" "}
+              </span>
             ) : null}
             {text}
           </Text>
@@ -68,15 +77,23 @@ export function RunRow({ item, isHidden = false }: Props) {
   // without this they keep their place in the tab order and focus lands on
   // rows the reader cannot see.
   return (
-    <li aria-hidden={isHidden || undefined}>
+    <li data-slot="briefing-card-run-row" aria-hidden={isHidden || undefined}>
       {link ? (
         <AttentionCard.Row asChild align="start" inset interactive>
-          <Link href={link} tabIndex={isHidden ? -1 : undefined}>
+          <Link
+            href={link}
+            tabIndex={isHidden ? -1 : undefined}
+            data-slot="briefing-card-run-row-content"
+          >
             {body}
           </Link>
         </AttentionCard.Row>
       ) : (
-        <AttentionCard.Row align="start" inset>
+        <AttentionCard.Row
+          align="start"
+          inset
+          data-slot="briefing-card-run-row-content"
+        >
           {body}
         </AttentionCard.Row>
       )}

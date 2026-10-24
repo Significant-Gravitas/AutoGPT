@@ -206,7 +206,10 @@ export function PendingReviewsList({
 
   if (reviews.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div
+        data-slot="pending-reviews-list-empty"
+        className="flex flex-col items-center justify-center py-12 text-center"
+      >
         <Icon
           icon={Clock01Icon}
           size={48}
@@ -224,9 +227,13 @@ export function PendingReviewsList({
   }
 
   return (
-    <AttentionCard.Root variant="caution" density="spacious">
-      <div className="space-y-6">
-        <AttentionCard.Row align="start">
+    <AttentionCard.Root
+      variant="caution"
+      density="spacious"
+      data-slot="pending-reviews-list"
+    >
+      <div data-slot="pending-reviews-list-header" className="space-y-6">
+        <AttentionCard.Row align="start" data-slot="pending-reviews-list-title">
           <AttentionCard.Icon>
             <Icon icon={Alert01Icon} size={28} />
           </AttentionCard.Icon>
@@ -244,7 +251,7 @@ export function PendingReviewsList({
         </Text>
       </div>
 
-      <div className="space-y-7">
+      <div data-slot="pending-reviews-list-groups" className="space-y-7">
         {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
           const isCollapsed = collapsedGroups[nodeId] ?? false;
           const reviewCount = nodeReviews.length;
@@ -262,10 +269,15 @@ export function PendingReviewsList({
           };
 
           return (
-            <div key={nodeId} className="space-y-4">
+            <div
+              key={nodeId}
+              data-slot="pending-reviews-list-group"
+              className="space-y-4"
+            >
               <AttentionCard.Row asChild align="center">
                 <button
                   onClick={() => toggleGroupCollapse(nodeId)}
+                  data-slot="pending-reviews-list-group-toggle"
                   className="w-full text-left"
                 >
                   {isCollapsed ? (
@@ -285,7 +297,10 @@ export function PendingReviewsList({
                       className="text-gray-600"
                     />
                   )}
-                  <div className="flex-1">
+                  <div
+                    data-slot="pending-reviews-list-group-heading"
+                    className="flex-1"
+                  >
                     <Text
                       // TODO(tokens): no role for Tailwind's default gray-900; the
                       // zinc roles are a different grey.
@@ -308,14 +323,17 @@ export function PendingReviewsList({
                       </Text>
                     )}
                   </div>
-                  <AttentionCard.Count>
+                  <AttentionCard.Count data-slot="pending-reviews-list-group-count">
                     {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
                   </AttentionCard.Count>
                 </button>
               </AttentionCard.Row>
 
               {!isCollapsed && (
-                <div className="space-y-4">
+                <div
+                  data-slot="pending-reviews-list-group-body"
+                  className="space-y-4"
+                >
                   {nodeReviews.map((review) => (
                     <PendingReviewCard
                       key={review.node_exec_id}
@@ -328,7 +346,10 @@ export function PendingReviewsList({
                   ))}
 
                   {!isGateReview(nodeId) && (
-                    <div className="flex items-center gap-3 pt-2">
+                    <div
+                      data-slot="pending-reviews-list-auto-approve"
+                      className="flex items-center gap-3 pt-2"
+                    >
                       <Switch
                         checked={autoApproveFutureMap[nodeId] || false}
                         onCheckedChange={(enabled: boolean) =>
@@ -346,7 +367,10 @@ export function PendingReviewsList({
                     </div>
                   )}
 
-                  <AttentionCard.Actions placement="footer">
+                  <AttentionCard.Actions
+                    placement="footer"
+                    data-slot="pending-reviews-list-actions"
+                  >
                     <Button
                       onClick={() => processGroup(nodeId, true)}
                       disabled={isProcessing}

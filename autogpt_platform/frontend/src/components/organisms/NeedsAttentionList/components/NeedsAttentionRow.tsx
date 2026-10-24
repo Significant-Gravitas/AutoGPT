@@ -39,7 +39,11 @@ export function NeedsAttentionRow({
   }
 
   return (
-    <AttentionCard.Root variant="default" density="default">
+    <AttentionCard.Root
+      variant="default"
+      density="default"
+      data-slot="needs-attention-row"
+    >
       <AttentionCard.Row align="center">
         <AttentionCard.Icon>
           <ExpertAvatar
@@ -48,7 +52,7 @@ export function NeedsAttentionRow({
           />
         </AttentionCard.Icon>
         <AttentionCard.Content asChild>
-          <Link href={getReviewLink(review)}>
+          <Link href={getReviewLink(review)} data-slot="needs-attention-row-link">
             <Text variant="body-medium" className="truncate">
               {title}
             </Text>
@@ -59,7 +63,10 @@ export function NeedsAttentionRow({
             ) : null}
           </Link>
         </AttentionCard.Content>
-        <AttentionCard.Actions placement="inline">
+        <AttentionCard.Actions
+          placement="inline"
+          data-slot="needs-attention-row-actions"
+        >
           <Button
             variant="primary"
             size="small"
@@ -87,7 +94,11 @@ export function NeedsAttentionRow({
             {isConfirmingDecline ? "Confirm" : "Decline"}
           </Button>
         </AttentionCard.Actions>
-        <span aria-live="polite" className="sr-only">
+        <span
+          aria-live="polite"
+          data-slot="needs-attention-row-announcement"
+          className="sr-only"
+        >
           {isConfirmingDecline ? `Tap again to decline: ${title}` : ""}
         </span>
       </AttentionCard.Row>

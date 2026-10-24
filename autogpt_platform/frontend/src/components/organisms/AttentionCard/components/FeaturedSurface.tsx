@@ -12,6 +12,7 @@ interface FeaturedSurfaceProps extends VariantProps<typeof densityVariants> {
 export function FeaturedSurface({ density, children }: FeaturedSurfaceProps) {
   return (
     <div
+      data-slot="attention-card-featured-surface"
       // TODO(tokens): no radius token for 15px, the 16px card inside its 1px
       // border.
       className={cn(
@@ -21,10 +22,13 @@ export function FeaturedSurface({ density, children }: FeaturedSurfaceProps) {
     >
       <div
         aria-hidden
+        data-slot="attention-card-featured-glow"
         // TODO(tokens): no token for the purple and indigo radial glow.
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(168,85,247,0.10),transparent_60%),radial-gradient(120%_60%_at_100%_100%,rgba(99,102,241,0.06),transparent_60%)]"
       />
-      <div className="relative">{children}</div>
+      <div data-slot="attention-card-featured-body" className="relative">
+        {children}
+      </div>
     </div>
   );
 }
