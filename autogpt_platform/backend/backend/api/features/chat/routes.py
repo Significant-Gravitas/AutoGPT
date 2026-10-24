@@ -54,6 +54,7 @@ from backend.copilot.gate.card_approval import (
     card_decision_metadata,
     record_card_decisions,
 )
+from backend.copilot.gate.card_decided import is_already_answered
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -1936,18 +1937,31 @@ async def stream_chat_post(
         await enforce_codex_access_http(user_id)
 
     message = request.message
-    message_metadata: dict[str, Any] | None = None
-    if request.is_user_message:
-        # The only writer of card approvals: a model can add chat rows, not requests.
-        await record_card_decisions(user_id, session_id, message)
-        # A note in place of the row would hide what was attached to it.
-        if not (request.file_ids or request.folder_ids):
-            message_metadata = card_decision_metadata(message)
     message_id = (
         scoped_client_message_id(user_id, session_id, request.message_id)
         if request.message_id
         else None
     )
+    message_metadata: dict[str, Any] | None = None
+    if request.is_user_message:
+        # A note in place of the row would hide what was attached to it.
+        if not (request.file_ids or request.folder_ids):
+            message_metadata = card_decision_metadata(message)
+        if message_metadata and await is_already_answered(
+            user_id,
+            session_id,
+            [d["confirmation_id"] for d in message_metadata["decisions"]],
+            owner=message_id or uuid4().hex,
+        ):
+            # Answered already, in this tab or another: nothing is recorded or
+            # saved, and the client's refetch shows the answer that stands.
+            logger.info(
+                f"[STREAM] Dropped a second answer to a card in session {session_id}",
+                extra={"json_fields": log_meta},
+            )
+            return _empty_ui_message_stream_response()
+        # The only writer of card approvals: a model can add chat rows, not requests.
+        await record_card_decisions(user_id, session_id, message)
     persisted_kickoff_has_reply: bool | None = None
     resume_persisted_kickoff = False
     if request.expert_kickoff:

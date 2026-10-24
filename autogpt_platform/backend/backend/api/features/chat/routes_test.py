@@ -330,6 +330,12 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    # A card decision checks the chat and Redis for an earlier answer.
+    mocker.patch(
+        "backend.api.features.chat.routes.is_already_answered",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
         new_callable=AsyncMock,
@@ -672,6 +678,63 @@ def test_stream_chat_leaves_other_messages_untagged(
 
     assert response.status_code == 200
     assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
+
+
+def test_stream_chat_drops_a_second_answer_to_an_answered_card(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A stale tab or a double click must not post or record a second decision."""
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    answered = mocker.patch(
+        "backend.api.features.chat.routes.is_already_answered",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Not approved: do not hire Maya, discard that proposal "
+            "(confirmation_id: c-1).",
+            "message_id": "click-2",
+        },
+    )
+
+    assert response.status_code == 200
+    answered.assert_awaited_once_with(
+        test_user_id,
+        "sess-1",
+        ["c-1"],
+        owner=chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-2"),
+    )
+    record.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_sends_the_first_answer_to_a_card(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_already_answered",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+
+    response = client.post("/sessions/sess-1/stream", json={"message": line})
+
+    assert response.status_code == 200
+    record.assert_awaited_once_with(test_user_id, "sess-1", line)
+    mocks.enqueue.assert_awaited_once()
 
 
 @pytest.mark.parametrize("attachment", ["file_ids", "folder_ids"])

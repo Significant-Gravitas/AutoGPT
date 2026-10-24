@@ -45,9 +45,7 @@ class CardDecision(BaseModel):
 
 async def record_card_decisions(user_id: str, session_id: str, message: str) -> None:
     """Called by the chat route for a message the user sent, and by nothing else."""
-    decisions = [
-        decision for line in message.splitlines() if (decision := _parse_line(line))
-    ]
+    decisions = parse_card_decisions(message)
     if not decisions:
         return
     try:
@@ -66,6 +64,13 @@ async def record_card_decisions(user_id: str, session_id: str, message: str) -> 
         logger.warning(
             f"Could not record card decisions for session {session_id}", exc_info=True
         )
+
+
+def parse_card_decisions(message: str) -> list[CardDecision]:
+    """Every decision line in a message, in order; other lines are skipped."""
+    return [
+        decision for line in message.splitlines() if (decision := _parse_line(line))
+    ]
 
 
 def card_decision_metadata(message: str) -> dict[str, Any] | None:
