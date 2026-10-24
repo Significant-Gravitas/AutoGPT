@@ -77,12 +77,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
         <div className="flex items-center space-x-2.5">
           <Text
-            variant="small"
+            variant="small-loose"
             as="span"
             tone="muted"
-            className={cn(
-              "truncate leading-5 group-disabled:text-foreground-subtle",
-            )}
+            className={cn("truncate group-disabled:text-foreground-subtle")}
           >
             By {creator_name}
           </Text>
@@ -90,12 +88,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <span className="font-sans text-foreground-subtle">•</span>
 
           <Text
-            variant="small"
+            variant="small-loose"
             as="span"
             tone="muted"
-            className={cn(
-              "truncate leading-5 group-disabled:text-foreground-subtle",
-            )}
+            className={cn("truncate group-disabled:text-foreground-subtle")}
           >
             {number_of_runs} runs
           </Text>
@@ -106,10 +102,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             onClick={(e) => e.stopPropagation()}
           >
             <Text
-              variant="small-medium"
+              variant="small-medium-loose"
               as="span"
               // TODO(tokens): no exact role: text-blue-700 #1D4ED8
-              className="leading-5 text-blue-700 underline"
+              className="text-blue-700 underline"
             >
               Workflow page
             </Text>

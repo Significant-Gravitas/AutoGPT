@@ -51,8 +51,8 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
     >
       <Text
         // TODO(tokens): no exact role: text-slate-800 #475263
-        variant="h3"
-        className="tracking-tight text-slate-800"
+        variant="h3-tracking-tight"
+        className="text-slate-800"
       >
         Notes #{nodeId.split("-")[0]}
       </Text>

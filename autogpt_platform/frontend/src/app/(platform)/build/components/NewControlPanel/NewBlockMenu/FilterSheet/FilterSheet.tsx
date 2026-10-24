@@ -99,11 +99,7 @@ export function FilterSheet({
 
             {/* Created by section */}
             <div className="space-y-4 px-5">
-              <Text
-                variant="large-medium"
-                tone="emphasis"
-                className="leading-6"
-              >
+              <Text variant="large-medium-tight" tone="emphasis">
                 Created by
               </Text>
               <div className="space-y-2">

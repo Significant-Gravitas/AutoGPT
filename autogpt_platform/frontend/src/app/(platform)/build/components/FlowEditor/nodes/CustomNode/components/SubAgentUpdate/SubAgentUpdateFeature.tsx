@@ -88,10 +88,10 @@ function SubAgentUpdateAvailableBar({
       <div className="flex items-center gap-2">
         <Icon icon={ArrowUp02Icon} className="h-4 w-4 text-info-foreground" />
         <Text
-          variant="body"
+          variant="body-tight"
           as="span"
           // TODO(tokens): no exact role: text-blue-700 #1D4ED8
-          className="leading-5 text-blue-700"
+          className="text-blue-700"
         >
           Update available (v{currentVersion} → v{latestVersion})
         </Text>
@@ -103,9 +103,9 @@ function SubAgentUpdateAvailableBar({
             <TooltipContent className="max-w-xs">
               <p className="font-medium">Incompatible changes detected</p>
               <Text
-                variant="small"
+                variant="small-tight"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="leading-4 text-gray-400"
+                className="text-gray-400"
               >
                 Click Update to see details
               </Text>

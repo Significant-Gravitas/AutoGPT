@@ -72,11 +72,11 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         <div className="flex items-center space-x-1.5">
           {edited_time && (
             <Text
-              variant="small"
+              variant="small-loose"
               as="span"
               tone="muted"
               className={cn(
-                "line-clamp-1 leading-5 group-disabled:text-foreground-subtle",
+                "line-clamp-1 group-disabled:text-foreground-subtle",
               )}
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
@@ -86,23 +86,19 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           <span className="font-sans text-foreground-subtle">•</span>
 
           <Text
-            variant="small"
+            variant="small-loose"
             as="span"
             tone="muted"
-            className={cn(
-              "line-clamp-1 leading-5 group-disabled:text-foreground-subtle",
-            )}
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             Version {version}
           </Text>
 
           <Text
-            variant="small-medium"
+            variant="small-medium-loose"
             as="span"
             tone="muted"
-            className={cn(
-              "rounded-[0.75rem] bg-surface-active px-[0.5rem] leading-5",
-            )}
+            className={cn("rounded-[0.75rem] bg-surface-active px-[0.5rem]")}
           >
             Your Workflow
           </Text>

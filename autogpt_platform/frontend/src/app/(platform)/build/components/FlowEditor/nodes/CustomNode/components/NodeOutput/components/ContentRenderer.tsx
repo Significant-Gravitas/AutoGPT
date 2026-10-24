@@ -17,9 +17,10 @@ export const TextRenderer: React.FC<{
 
   return (
     <Text
-      variant="small"
+      variant="small-tight"
+      tone="inherit"
       as="div"
-      className="break-words bg-surface-muted p-3 leading-4 text-inherit"
+      className="break-words bg-surface-muted p-3"
     >
       {truncated}
     </Text>
