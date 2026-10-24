@@ -17,6 +17,7 @@ from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
+from backend.copilot import held_follow_ups
 from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
@@ -25,6 +26,7 @@ from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.pending_messages import PendingMessage, PendingMessageContext
+from backend.copilot.pending_messages_test import _FakeRedis
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -967,25 +969,22 @@ def test_stream_chat_resend_of_a_follow_up_another_turn_read_runs_nothing(
     assert mocks.claims.keys == set()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("turn_in_flight", [False, True])
-def test_stream_chat_resend_after_another_turn_drained_it_runs_nothing(
+async def test_stream_chat_resend_after_another_turn_drained_it_runs_nothing(
     mocker: pytest_mock.MockerFixture, turn_in_flight: bool
 ) -> None:
     """The interleaving the reviewers named, on the real hold logic: the chip
     shows the follow-up as held, then another tab's turn (or an approval's)
     reads the queue, then the Retry arrives. Nothing may run it twice, and no
     copy may be queued, whether that turn has ended or still runs."""
-    from backend.copilot import held_follow_ups
-    from backend.copilot import pending_messages as pm_module
-    from backend.copilot.pending_messages_test import _FakeRedis
-
     redis = _FakeRedis()
 
     async def _redis() -> _FakeRedis:
         return redis
 
     mocks = _mock_stream_internals(mocker)
-    mocker.patch.object(pm_module, "get_redis_async", _redis)
+    mocker.patch.object(pending_messages_module, "get_redis_async", _redis)
     mocker.patch.object(held_follow_ups, "get_redis_async", _redis)
     mocker.patch(
         "backend.api.features.chat.routes.follow_up_state",
@@ -1005,23 +1004,19 @@ def test_stream_chat_resend_after_another_turn_drained_it_runs_nothing(
         new_callable=AsyncMock,
     )
 
-    async def interleave() -> str:
-        held = PendingMessage(content="Status?")
-        await pm_module.push_pending_message("sess-1", held)
-        await held_follow_ups.hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
-        # Another turn reads the queue between the chip and the Retry.
-        await pm_module.drain_pending_messages("sess-1")
-        return held.id
+    held = PendingMessage(content="Status?")
+    await pending_messages_module.push_pending_message("sess-1", held)
+    await held_follow_ups.hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+    # Another turn reads the queue between the chip and the Retry.
+    await pending_messages_module.drain_pending_messages("sess-1")
 
-    pending_id = asyncio.run(interleave())
-
-    response = _resend(pending_id)
+    response = _resend(held.id)
 
     assert response.status_code == 200
     assert '"type": "data-follow-up-queued"' in response.text
     mocks.enqueue.assert_not_awaited()
     queue_pending.assert_not_awaited()
-    assert asyncio.run(pm_module.peek_pending_messages("sess-1")) == []
+    assert await pending_messages_module.peek_pending_messages("sess-1") == []
 
 
 def test_stream_chat_resend_of_a_follow_up_that_expired_unread_is_sent(
