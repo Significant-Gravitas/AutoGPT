@@ -25,7 +25,7 @@ import asyncio
 import logging
 
 from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
-from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.api.features.experts.models import AI_DISCLOSURE_RULE, Expert
 from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
@@ -44,6 +44,15 @@ OWNED_BLOCK_TAGS = (
     "expert_computer",
     "team_context",
     "standing_work",
+)
+
+
+# The approval-mode section says how outward steps get approved; these add only what
+# delegated work changes.
+GATED_WORK_RULE = "Do the work you are given end to end."
+UNGATED_WORK_RULE = (
+    "Carry the work you are given through to the end. A step the owner asked for "
+    "is already their OK; ask first only before one they did not ask for."
 )
 
 
@@ -70,9 +79,10 @@ async def build_expert_identity_suffix(
     *,
     organization_id: str | None,
     team_id: str | None,
+    gated: bool = False,
 ) -> str:
     """Build the ``<expert_identity>`` system-prompt suffix for an expert
-    session.
+    session. ``gated`` is ``gate.gate_active`` for the session.
 
     Returns ``""`` for plain sessions, keeping the system prompt byte-identical
     for cross-user caching. Expert-scoped sessions fail closed when their
@@ -108,17 +118,18 @@ async def build_expert_identity_suffix(
         raise ExpertSessionUnavailableError(
             "This private expert session must be reopened in its personal workspace."
         )
-    return render_expert_identity_suffix(expert)
+    return render_expert_identity_suffix(expert, gated=gated)
 
 
-def render_expert_identity_suffix(expert: Expert) -> str:
+def render_expert_identity_suffix(expert: Expert, *, gated: bool = False) -> str:
     """Render ``<expert_identity>`` for an already-loaded, already-validated
     expert. Pure, so the style eval can prompt with production rendering."""
     name = escape_prompt_xml_tags(expert.name)
     identity = escape_prompt_xml_tags(expert.identity)
     voice = fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))
     boundaries = escape_prompt_xml_tags(expert.boundaries) or "Not specified."
-    protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
+    work_rule = GATED_WORK_RULE if gated else UNGATED_WORK_RULE
+    protected_rules = f"- {AI_DISCLOSURE_RULE}\n- {work_rule}"
     return f"\n\n<expert_identity>\nFor this session you are {name} — {escape_prompt_xml_tags(expert.role)}, a hired expert on the user's team.\n<identity_and_personality>\n{identity}\n</identity_and_personality>\n<voice_preferences>\n{voice}\n</voice_preferences>\n<boundaries>\n{boundaries}\n</boundaries>\n<protected_rules>\n{protected_rules}\n{EXPERT_COPY_POLICY}\n</protected_rules>\n<standing_work>\nPart of your job is work that repeats. When you notice something in your own area worth doing every week or every morning, offer to take it on. `tool:list_routines` shows the routines you have; `tool:schedule_routine` switches one on or sets up a new one you and the user agreed. Offer only work inside your role as {escape_prompt_xml_tags(expert.role)}. Never say a routine is running until the call that schedules it has succeeded. `tool:list_schedules` shows what is really scheduled.\n</standing_work>\n<first_turn>\nYour first turn after being hired arrives as a hidden instruction that names `expert_onboarding`. On that turn call `expert_onboarding` exactly once and nothing else. Do not use `ask_question` for it. Every question and option on that card must be about your own role as {escape_prompt_xml_tags(expert.role)} and your installed workflows, never a teammate's area. If <routines> lists standing work, use one question to ask which of it to take on. When the answers come back, treat it as a normal turn: settle the details of what they picked and switch it on.\n</first_turn>\nThe base instructions describe Otto, the default assistant. You keep all its tools, but you always speak and act as {name}: never present yourself as Otto, and if asked who you are, you are {name}.\nYour voice preferences shape your tone, not your length: follow the reply style rules above even when your samples do otherwise.\n</expert_identity>"
 
 

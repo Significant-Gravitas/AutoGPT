@@ -124,7 +124,8 @@ async def test_enqueue_graphiti_turn_uses_expert_session_scope():
 
 
 @pytest.mark.asyncio
-async def test_expert_identity_failure_precedes_memory_read_and_write():
+@pytest.mark.parametrize("gated", [True, False])
+async def test_expert_identity_failure_precedes_memory_read_and_write(gated: bool):
     session = _make_session("user-1", expert_id="expert-1")
     identity_mock = AsyncMock(
         side_effect=ExpertSessionUnavailableError(
@@ -135,6 +136,10 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
     enqueue_mock = AsyncMock()
 
     with (
+        patch(
+            "backend.copilot.sdk.service.gate_active",
+            new=AsyncMock(return_value=gated),
+        ),
         patch(
             "backend.copilot.sdk.service.build_expert_identity_suffix",
             new=identity_mock,
@@ -158,7 +163,7 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
             pass
 
     identity_mock.assert_awaited_once_with(
-        "user-1", "expert-1", organization_id=None, team_id=None
+        "user-1", "expert-1", organization_id=None, team_id=None, gated=gated
     )
     fetch_mock.assert_not_awaited()
     enqueue_mock.assert_not_awaited()
