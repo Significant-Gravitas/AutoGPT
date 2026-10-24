@@ -32,7 +32,7 @@ export function PendingChangeBanner({
       role="status"
       aria-live="polite"
       // TODO(tokens): no exact role (border-violet-500 #8B5CF6, text-violet-800 #5B21B6)
-      className="flex flex-col gap-2 rounded-md border border-violet-500 bg-accent-surface px-3 py-2 text-sm text-violet-800 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-2 rounded-md border border-violet-500 bg-accent-surface px-3 py-2 text-body leading-5 text-violet-800 sm:flex-row sm:items-center sm:justify-between"
     >
       <p>
         {isCancellation ? (
