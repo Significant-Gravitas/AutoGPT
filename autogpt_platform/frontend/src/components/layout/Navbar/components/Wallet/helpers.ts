@@ -1,3 +1,5 @@
+import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
+import { formatTrialEndDate } from "@/components/organisms/TrialCard/helpers";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 
 export interface Task {
@@ -163,4 +165,23 @@ export function getEarnGroups(
       rows,
     };
   });
+}
+
+// The card is charged for the plan when an active trial ends, and for credits
+// the person buys; spending the trial allowance or credits never charges it.
+export function getTrialCardNote(trial: TrialStatusResponse | undefined) {
+  if (!trial?.active) return null;
+  if (trial.cancel_at_period_end) {
+    return {
+      title: "Your card won't be charged for a plan",
+      body: "You canceled, so your trial won't turn into a paid plan. Only credits you buy are charged.",
+    };
+  }
+  const start = trial.ends_at
+    ? `on ${formatTrialEndDate(trial.ends_at)}`
+    : "at the end of your trial";
+  return {
+    title: "Nothing is charged to your card during your trial",
+    body: `Your card is first charged when your plan starts ${start}, or if you buy credits.`,
+  };
 }

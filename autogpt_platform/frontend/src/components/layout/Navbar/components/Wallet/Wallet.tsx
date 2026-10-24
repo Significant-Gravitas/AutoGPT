@@ -7,6 +7,7 @@ import {
 import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { cn } from "@/lib/utils";
+import { useId } from "react";
 import { WalletCompactPanel } from "./components/WalletCompactPanel";
 import { WalletFullPanel } from "./components/WalletFullPanel";
 import { useWallet } from "./useWallet";
@@ -34,6 +35,7 @@ export function Wallet({ compact = false }: Props) {
     onAddCredits,
     onTopUpClose,
   } = useWallet();
+  const trialNoteID = useId();
 
   // Do not render until we have both credits and onboarding data
   if (!isBillingEnabled || credits === null || !state) return null;
@@ -51,6 +53,7 @@ export function Wallet({ compact = false }: Props) {
           completedCount={completedCount}
           totalCount={totalCount}
           flash={flash}
+          unseen={!state.walletShown}
         />
         <PopoverContent
           side={compact ? "top" : "bottom"}
@@ -60,6 +63,7 @@ export function Wallet({ compact = false }: Props) {
             if (topUpOpen) event.preventDefault();
           }}
           aria-label={compact ? "Usage and credits" : "Automation credits"}
+          aria-describedby={compact ? trialNoteID : undefined}
           className={cn(
             "z-50",
             compact
@@ -72,6 +76,7 @@ export function Wallet({ compact = false }: Props) {
               groups={groups}
               completedSteps={state.completedSteps}
               formattedCredits={formatCredits(credits)}
+              trialNoteID={trialNoteID}
               onAddCredits={onAddCredits}
             />
           ) : (
