@@ -14,7 +14,7 @@ backstop (see ``governor.cli_budget_usd``).
 
 import math
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
@@ -28,6 +28,10 @@ from backend.copilot.rate_limit import (
     get_usage_status,
 )
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.data.db_accessors import delegation_db
+
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
 
 BudgetWindow = Literal["daily", "weekly", "trial", "task"]
 
@@ -84,6 +88,26 @@ async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
     return TurnBudget(
         usd=remaining, limiting=window, resets_at=resets_at, hard_cap=trial
     )
+
+
+async def within_delegation_cap(
+    budget: TurnBudget | None, user_id: str | None, session: "ChatSession"
+) -> TurnBudget | None:
+    """*budget*, cut to what a delegated thread's per-hand-off cap has left.
+
+    The thread's earlier turns are on the cost log; this turn's spend is the
+    governor's to meter, so it lands the turn with a checkpoint before the
+    cap rather than a later status poll catching the overspend. The cap binds
+    as the task's size limit.
+    """
+    cap = session.metadata.delegation_cap_usd
+    if budget is None or cap is None or not user_id:
+        return budget
+    costs = await delegation_db().get_session_costs(user_id, [session.session_id])
+    left = max(0.0, cap - costs.get(session.session_id, 0) / 1_000_000)
+    if left >= budget.usd:
+        return budget
+    return TurnBudget(usd=left, limiting="task")
 
 
 async def _limiting_window(
