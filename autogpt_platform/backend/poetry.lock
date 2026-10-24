@@ -1500,19 +1500,19 @@ wcmatch = ">=10.1,<12"
 
 [[package]]
 name = "e2b-code-interpreter"
-version = "2.10.0"
+version = "2.10.4"
 description = "E2B Code Interpreter - Stateful code execution"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "e2b_code_interpreter-2.10.0-py3-none-any.whl", hash = "sha256:6ba776122086261875bc6033ef2dc42ac6b6e22cefdffdfd19d30e93bb09786f"},
-    {file = "e2b_code_interpreter-2.10.0.tar.gz", hash = "sha256:57fb7f9b9ad99ebbdf407619786fdb84e31537c2fbc8358c394aa0f0cbc1af28"},
+    {file = "e2b_code_interpreter-2.10.4-py3-none-any.whl", hash = "sha256:552fde8b58189f3341eee6b7775cc154d503e655d06a2420a50874dec10d7992"},
+    {file = "e2b_code_interpreter-2.10.4.tar.gz", hash = "sha256:b1a5f6b4f061dc271f4bdf4c49b6ffd4ff544f200330875fc7178c7c851047c0"},
 ]
 
 [package.dependencies]
 attrs = ">=21.3.0"
-e2b = ">=2.44.0,<3.0.0"
+e2b = ">=2.55.0,<3.0.0"
 httpx = ">=0.20.0,<1.0.0"
 
 [[package]]
