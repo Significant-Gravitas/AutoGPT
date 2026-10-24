@@ -61,6 +61,13 @@ class BehaveAs(str, Enum):
     CLOUD = "cloud"
 
 
+class UserNotificationsAudience(str, Enum):
+    """Who product mail (Briefings, Alerts, Verdicts) may reach."""
+
+    SUBSCRIBERS = "subscribers"
+    EVERYONE = "everyone"
+
+
 class FeatureFlagBackend(str, Enum):
     """Which vendor answers a feature flag read.
 
@@ -702,6 +709,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "deferred. Auth emails and internal ops mail are unaffected."
         ),
     )
+    user_notifications_audience: UserNotificationsAudience = Field(
+        default=UserNotificationsAudience.SUBSCRIBERS,
+        description=(
+            "Who gets Briefings, Alerts and Verdicts: subscribers (a plan or "
+            "trial, or one that ended in the last 7 days) or everyone. "
+            "Subscription and trial mail is sent either way."
+        ),
+    )
+    user_notifications_allowlist: str = Field(
+        default="",
+        description=(
+            "Comma-separated email addresses. When set, only these addresses "
+            "get Briefings, Alerts and Verdicts, whatever the audience: for a "
+            "canary run with team inboxes."
+        ),
+    )
     owner_email_daily_limit: int = Field(
         default=20,
         description=(
@@ -1015,6 +1038,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
         "log every disagreement).",
     )
+
+    @field_validator("user_notifications_audience", mode="before")
+    @classmethod
+    def _default_unknown_notifications_audience(cls, v):
+        """A typo falls back to the narrower audience rather than stopping
+        the process from booting."""
+        if not isinstance(v, str):
+            return v
+        try:
+            return UserNotificationsAudience(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown USER_NOTIFICATIONS_AUDIENCE {v!r}, falling back to "
+                f"{UserNotificationsAudience.SUBSCRIBERS.value}"
+            )
+            return UserNotificationsAudience.SUBSCRIBERS
 
     @field_validator("feature_flag_backend", mode="before")
     @classmethod

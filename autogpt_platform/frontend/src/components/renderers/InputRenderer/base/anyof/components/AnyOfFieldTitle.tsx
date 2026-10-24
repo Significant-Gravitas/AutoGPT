@@ -74,10 +74,11 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
         <Text
           variant="small"
           className={cn(
-            "text-zinc-700",
+            "text-foreground-body",
             isInputBroken && "line-through",
             colorClass,
-            inputMismatch && "rounded-md bg-red-100 px-1 !text-red-500",
+            // TODO(tokens): no exact role for bg-red-100 #FDECEC
+            inputMismatch && "rounded-md bg-red-100 px-1 !text-error",
           )}
         >
           {isOptional ? `(${inputMismatch || displayType})` : "(any)"}

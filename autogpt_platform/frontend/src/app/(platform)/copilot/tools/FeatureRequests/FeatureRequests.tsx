@@ -1,7 +1,6 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import { useMemo } from "react";
 
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -54,10 +53,9 @@ export function SearchFeatureRequestsTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const normalized = useMemo(() => {
-    if (!output) return null;
-    return { title: getAccordionTitle(part.type, output) };
-  }, [output, part.type]);
+  const normalized = output
+    ? { title: getAccordionTitle(part.type, output) }
+    : null;
 
   const isOutputAvailable = part.state === "output-available" && !!output;
 
@@ -93,7 +91,7 @@ export function SearchFeatureRequestsTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
@@ -154,10 +152,9 @@ export function CreateFeatureRequestTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const normalized = useMemo(() => {
-    if (!output) return null;
-    return { title: getAccordionTitle(part.type, output) };
-  }, [output, part.type]);
+  const normalized = output
+    ? { title: getAccordionTitle(part.type, output) }
+    : null;
 
   const isOutputAvailable = part.state === "output-available" && !!output;
 
@@ -186,7 +183,7 @@ export function CreateFeatureRequestTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

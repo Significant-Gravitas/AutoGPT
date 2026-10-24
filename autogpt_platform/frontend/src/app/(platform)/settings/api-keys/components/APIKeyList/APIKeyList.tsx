@@ -81,7 +81,7 @@ export function APIKeyList() {
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-0 z-20 overflow-hidden bg-[#F9F9FA]"
+            className="sticky top-0 z-20 overflow-hidden bg-surface-muted"
           >
             <APIKeySelectionBar
               selectedCount={selection.selectedCount}
@@ -95,7 +95,7 @@ export function APIKeyList() {
       </AnimatePresence>
 
       <motion.div
-        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-white"
+        className="flex flex-col divide-y divide-border-base overflow-hidden rounded-2xl border border-border-base bg-surface"
         initial={reduceMotion ? false : "hidden"}
         animate={reduceMotion ? undefined : "show"}
         variants={reduceMotion ? undefined : LIST_CONTAINER_VARIANTS}

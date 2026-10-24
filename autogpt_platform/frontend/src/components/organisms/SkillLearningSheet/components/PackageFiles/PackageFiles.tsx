@@ -20,7 +20,7 @@ export function PackageFiles({ before, after }: Props) {
       {changes.map((change) => (
         <details
           key={change.path}
-          className="min-w-0 rounded-lg border border-zinc-200 p-3"
+          className="min-w-0 rounded-lg border border-border-base p-3"
         >
           <summary className="cursor-pointer break-all text-sm">
             <span>{change.path}</span>

@@ -33,7 +33,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
           Version
         </Text>
         <select
-          className="rounded-md border border-zinc-200 px-2 py-1 text-sm"
+          className="rounded-md border border-border-base px-2 py-1 text-sm"
           value={version.id}
           onChange={(event) => onSelect(event.target.value)}
           aria-label="Choose a version"
@@ -57,7 +57,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
       ) : (
         <ul className="flex flex-col gap-3" aria-label="Changes by step">
           {changes.map((change) => (
-            <li key={change.step} className="rounded-lg bg-zinc-50 p-3">
+            <li key={change.step} className="rounded-lg bg-surface-muted p-3">
               <Text variant="small-medium" tone="primary">
                 {change.step}
               </Text>
@@ -84,7 +84,11 @@ export function ChangesView({ version, versions, onSelect }: Props) {
       </Button>
       <PackageFiles before={base?.files} after={version.files} />
       {showRaw ? (
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-100">
+        <pre
+          // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the dark
+          // code surface.
+          className="overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-zinc-100"
+        >
           {lineDiff(before, after) || "(no line-level differences)"}
         </pre>
       ) : null}

@@ -35,8 +35,12 @@ export function CheckYourInbox({
 
   return (
     <div className="flex w-full flex-col items-center text-center">
-      <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-violet-50">
-        <Icon icon={Mail01Icon} className="size-7 text-violet-600" />
+      <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-accent-surface">
+        <Icon
+          icon={Mail01Icon}
+          // TODO(tokens): no exact role for text-violet-600 (#7C3AED)
+          className="size-7 text-violet-600"
+        />
       </div>
 
       <Text
@@ -44,6 +48,7 @@ export function CheckYourInbox({
         tabIndex={-1}
         variant="h3"
         as="h1"
+        // TODO(tokens): no exact role for !text-slate-950 (#020617)
         className="!text-slate-950 outline-none"
       >
         {copy.title}
@@ -51,8 +56,13 @@ export function CheckYourInbox({
 
       <Text variant="body" tone="secondary" className="mt-3">
         We sent an email to{" "}
-        <span className="break-all font-medium text-slate-950">{email}</span>.
-        Open the link in it to {copy.action}.
+        <span
+          // TODO(tokens): no exact role for text-slate-950 (#020617)
+          className="break-all font-medium text-slate-950"
+        >
+          {email}
+        </span>
+        . Open the link in it to {copy.action}.
       </Text>
 
       <Text variant="small" tone="muted" className="mt-2">
@@ -71,7 +81,11 @@ export function CheckYourInbox({
       </Button>
 
       <div className="mt-6 inline-flex items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
+        <Text
+          variant="body-medium"
+          // TODO(tokens): no exact role for !text-slate-500 (#64748B)
+          className="!text-slate-500"
+        >
           {copy.backPrompt}
         </Text>
         <Button

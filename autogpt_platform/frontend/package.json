@@ -166,6 +166,7 @@
     "cross-env": "10.1.0",
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.7",
+    "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-storybook": "9.1.5",
     "happy-dom": "20.8.9",
     "import-in-the-middle": "2.0.2",
@@ -179,7 +180,7 @@
     "prettier": "3.6.2",
     "prettier-plugin-tailwindcss": "0.7.1",
     "require-in-the-middle": "8.0.1",
-    "storybook": "9.1.5",
+    "storybook": "9.1.21",
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
     "vite": "7.3.1",
@@ -203,7 +204,8 @@
       "kysely": "0.28.17",
       "protobufjs": "7.6.5",
       "shell-quote": "1.9.0",
-      "ws": "8.21.1"
+      "ws": "8.21.1",
+      "eslint-plugin-react-hooks": "7.0.1"
     }
   },
   "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"
