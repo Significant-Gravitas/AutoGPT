@@ -839,9 +839,6 @@ class AgentServer(backend.util.service.AppProcess):
         """Used for clean-up after a test run"""
         from autogpt_libs.auth.models import RequestContext
 
-        await backend.api.features.library.db.delete_library_agent_by_graph_id(
-            graph_id=graph_id, user_id=user_id
-        )
         # team_id intentionally None: integration tests don't seed a Team
         # row, and the schema enforces a FK from AgentGraph.teamId →
         # Team.id (onDelete: SetNull). Setting a fake team_id here causes
