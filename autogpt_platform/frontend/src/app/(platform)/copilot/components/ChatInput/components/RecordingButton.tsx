@@ -36,14 +36,16 @@ export function RecordingButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+        "border-transparent bg-transparent text-foreground-base shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-base",
         className,
         disabled && "opacity-40",
-        isRecording && "animate-pulse bg-red-500 text-white hover:bg-red-600",
-        isTranscribing && "bg-zinc-100 text-zinc-400",
+        isRecording &&
+          "animate-pulse bg-error text-action-foreground hover:bg-error-hover",
+        isTranscribing && "bg-surface-hover text-foreground-subtle",
         isStreaming && "opacity-40",
         highlight &&
           !isRecording &&
+          // TODO(tokens): no exact role for border-purple-300, ring-purple-100; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
           "border-purple-300 text-purple-600 ring-4 ring-purple-100",
       )}
     >

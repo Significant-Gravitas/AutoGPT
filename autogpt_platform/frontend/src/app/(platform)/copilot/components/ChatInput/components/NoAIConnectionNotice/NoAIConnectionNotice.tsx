@@ -24,7 +24,8 @@ export function NoAIConnectionNotice({ enabled, className }: Props) {
       role="status"
       aria-label="No AI connection"
       className={cn(
-        "mb-2 flex w-full items-start gap-2 rounded-2xl bg-amber-50 px-3 py-2 text-left text-sm text-amber-900",
+        // TODO(tokens): no exact role for text-amber-900
+        "mb-2 flex w-full items-start gap-2 rounded-2xl bg-warning-surface px-3 py-2 text-left text-sm text-amber-900",
         className,
       )}
     >
