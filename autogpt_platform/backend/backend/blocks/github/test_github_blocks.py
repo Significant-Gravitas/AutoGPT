@@ -1,8 +1,11 @@
 import asyncio
+import contextlib
 import copy
 import inspect
+import json
 from datetime import datetime, timezone
 from unittest import mock
+from urllib.parse import urlparse
 
 import pytest
 
@@ -17,6 +20,7 @@ from backend.blocks.github import (
     users,
 )
 from backend.blocks.github._api import (
+    _convert_to_api_url,
     convert_comment_url_to_api_endpoint,
     get_paginated,
 )
@@ -55,9 +59,11 @@ from backend.blocks.github.repo import (
     GithubListTagsBlock,
 )
 from backend.blocks.github.repo_branches import GithubListBranchesBlock
+from backend.blocks.github.repo_files import GithubReadFileBlock, GithubReadFolderBlock
 from backend.blocks.github.reviews import GithubListPRReviewsBlock
 from backend.blocks.github.users import GithubGetUserInfoBlock
 from backend.data.execution import ExecutionContext
+from backend.util import request as request_module
 from backend.util.exceptions import BlockExecutionError
 
 # ── prepare_pr_api_url tests ──
@@ -700,6 +706,75 @@ class TestConvertCommentUrl:
     def test_url_without_a_repo_is_rejected(self):
         with pytest.raises(ValueError):
             convert_comment_url_to_api_endpoint("https://github.com/owner")
+
+
+class TestConvertToApiUrlQuery:
+    @pytest.mark.parametrize("query", ["ref=dev", "ref=release%2Fv0.8"])
+    def test_query_survives_str_input(self, query):
+        assert (
+            _convert_to_api_url(f"https://github.com/owner/repo/contents/x?{query}")
+            == f"https://api.github.com/repos/owner/repo/contents/x?{query}"
+        )
+
+    @pytest.mark.parametrize("query", ["ref=dev", "ref=release%2Fv0.8"])
+    def test_query_survives_parsed_input(self, query):
+        result = _convert_to_api_url(
+            urlparse(f"https://github.com/owner/repo/contents/x?{query}")
+        )
+        assert result.netloc == "api.github.com"
+        assert result.path == "/repos/owner/repo/contents/x"
+        assert result.query == query
+
+
+def _requested_url(call, body: object) -> str:
+    """Run `call` through the real `Requests` stack; return the URL sent."""
+    urls: list[str] = []
+    response = mock.Mock(status=200, headers={}, reason="OK")
+    response.read = mock.AsyncMock(return_value=json.dumps(body).encode())
+
+    @contextlib.asynccontextmanager
+    async def fake_request(method, url, **kwargs):
+        urls.append(url)
+        yield response
+
+    @contextlib.asynccontextmanager
+    async def fake_session(**kwargs):
+        yield mock.Mock(request=fake_request)
+
+    with mock.patch.object(request_module.aiohttp, "ClientSession", fake_session):
+        asyncio.run(call())
+    assert len(urls) == 1
+    return urls[0]
+
+
+class TestReadBranchRef:
+    @pytest.mark.parametrize(
+        "branch, query", [("feature/x", "?ref=feature%2Fx"), ("", ""), ("  ", "")]
+    )
+    def test_read_file_ref(self, branch, query):
+        url = _requested_url(
+            lambda: GithubReadFileBlock.read_file(
+                TEST_CREDENTIALS, "https://github.com/owner/repo", "a.md", branch
+            ),
+            {"type": "file", "content": "eA==", "size": 1},
+        )
+        assert url == f"https://api.github.com/repos/owner/repo/contents/a.md{query}"
+
+    @pytest.mark.parametrize(
+        "branch, query", [("feature/x", "?ref=feature%2Fx"), ("", ""), ("  ", "")]
+    )
+    def test_read_folder_ref(self, branch, query):
+        url = _requested_url(
+            lambda: GithubReadFolderBlock.read_folder(
+                TEST_CREDENTIALS, "https://github.com/owner/repo", "src", branch
+            ),
+            [],
+        )
+        assert url == f"https://api.github.com/repos/owner/repo/contents/src{query}"
+
+    def test_branch_defaults_to_repository_default(self):
+        for block in (GithubReadFileBlock, GithubReadFolderBlock):
+            assert block.Input.model_fields["branch"].default == ""
 
 
 def test_subject_html_url_of_a_repo_root_is_not_rewritten():
