@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { Input } from "@/components/__legacy__/ui/input";
