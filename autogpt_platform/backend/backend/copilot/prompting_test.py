@@ -631,8 +631,16 @@ class TestCostSourceRule:
 
     def test_says_where_a_cost_comes_from_in_the_same_sentence(self):
         notes = prompting.SHARED_TOOL_NOTES
-        assert "of your automation credits, not your card" in notes
+        assert "of your automation credits, not a direct charge to your card" in notes
         assert 'Never invent a name for it, such as "image credits"' in notes
+
+    def test_does_not_promise_an_untouched_card_when_auto_refill_may_be_on(self):
+        # Auto-refill tops credits up from the card once spending drops the
+        # balance under its threshold (credit.py spend_credits), trial or not,
+        # and the model cannot see whether the user turned it on.
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "including an auto-refill they turned on" in notes
+        assert "you can't see whether auto-refill is on" in notes
 
     def test_the_rule_does_not_model_the_dashes_it_forbids(self):
         start = prompting.SHARED_TOOL_NOTES.index("### What things cost")
