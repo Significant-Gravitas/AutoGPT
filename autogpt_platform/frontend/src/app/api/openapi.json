@@ -25069,10 +25069,16 @@
       },
       "Experiment": {
         "type": "string",
-        "enum": ["subscription-pricing-page-initial-state"],
+        "enum": [
+          "subscription-pricing-page-initial-state",
+          "trial-checkout-no-charge-copy"
+        ],
         "title": "Experiment",
-        "description": "Experiments the frontend shows; each is a multivariate PostHog flag.",
-        "x-enum-varnames": ["SUBSCRIPTION_PRICING"]
+        "description": "Experiments, each a multivariate PostHog flag read by the frontend or backend.",
+        "x-enum-varnames": [
+          "SUBSCRIPTION_PRICING",
+          "TRIAL_CHECKOUT_NO_CHARGE_COPY"
+        ]
       },
       "ExperimentAssignment": {
         "properties": {
