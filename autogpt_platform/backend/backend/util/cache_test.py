@@ -12,6 +12,7 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -1377,4 +1378,23 @@ class TestCacheKeyBinding:
 
         lookup("u1", include_org=True)
         assert call_count == 4
+        lookup.cache_clear()
+
+    @pytest.mark.parametrize("shared_cache", [False, True])
+    def test_a_call_that_does_not_bind_raises_instead_of_reading_the_cache(
+        self, shared_cache: bool
+    ):
+        @cached(ttl_seconds=30, shared_cache=shared_cache)
+        def lookup(user_id: str, /) -> str:
+            return user_id
+
+        lookup.cache_clear()
+        assert lookup("u1") == "u1"
+
+        # Keyed by name, this call would match the entry ``lookup("u1")`` stored.
+        by_name: dict[str, Any] = {"user_id": "u1"}
+        with pytest.raises(TypeError):
+            lookup(**by_name)
+        with pytest.raises(TypeError):
+            lookup.cache_delete(**by_name)
         lookup.cache_clear()

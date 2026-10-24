@@ -479,11 +479,9 @@ def _bind_arguments(
     signature: inspect.Signature, args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     """Key a call by parameter name, so ``f("u1")``, ``f(user_id="u1")`` (how the
-    service RPC calls) and an omitted default all share one entry."""
-    try:
-        bound = signature.bind(*args, **kwargs)
-    except TypeError:
-        return args, kwargs
+    service RPC calls) and an omitted default all share one entry. A call that
+    doesn't bind raises its ``TypeError`` before any cache lookup."""
+    bound = signature.bind(*args, **kwargs)
     bound.apply_defaults()
     return (), dict(bound.arguments)
 
