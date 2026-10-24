@@ -119,7 +119,7 @@ export function RaiseFlow() {
               variant="icon"
               size="small"
               aria-label="Back"
-              className="bg-white p-2 hover:bg-zinc-100"
+              className="bg-surface p-2 hover:bg-surface-hover"
               onClick={goBack}
               disabled={!canGoBack}
             >
@@ -129,7 +129,7 @@ export function RaiseFlow() {
               variant="icon"
               size="small"
               aria-label="Start over"
-              className="bg-white p-2 hover:bg-zinc-100"
+              className="bg-surface p-2 hover:bg-surface-hover"
               onClick={() => setIsRestartOpen(true)}
             >
               <Icon icon={RefreshIcon} size={16} />

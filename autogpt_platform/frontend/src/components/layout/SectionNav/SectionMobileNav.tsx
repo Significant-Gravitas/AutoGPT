@@ -26,7 +26,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
   return (
     <div
       className={cn(
-        "bg-[#F9F9FA] px-4 py-3 md:hidden",
+        "bg-surface-muted px-4 py-3 md:hidden",
         showBackLink && "flex items-center gap-2",
       )}
     >
@@ -34,7 +34,8 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
         <Link
           href="/copilot"
           aria-label="Back to home"
-          className="flex items-center gap-1 rounded-[8px] py-1 pr-2 text-[#505057] transition-colors hover:text-[#1F1F20]"
+          // TODO(tokens): no exact role for hover:text-[#1F1F20] (#1F1F20)
+          className="flex items-center gap-1 rounded-[8px] py-1 pr-2 text-foreground-body transition-colors hover:text-[#1F1F20]"
         >
           <UIIcon icon={ArrowLeft02Icon} size={16} />
         </Link>
@@ -43,14 +44,20 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex w-fit items-center gap-2 rounded-full border border-[#DADADC] bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#3E3E43]"
+            // TODO(tokens): no fitting role for focus-visible:ring-[#3E3E43] #3E3E43; #3E3E43 is foreground-emphasis (a text colour) and action (the primary button's fill), not a focus ring
+            className="flex w-fit items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#3E3E43]"
             aria-label={`${sectionName} navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">
-              <UIIcon icon={current.Icon} size={16} className="text-black" />
+              <UIIcon
+                icon={current.Icon}
+                size={16}
+                className="text-foreground-base"
+              />
               <Text
                 variant="body"
                 as="span"
+                // TODO(tokens): no exact role for text-[#1F1F20] (#1F1F20)
                 className="font-medium text-[#1F1F20]"
               >
                 {current.label}
@@ -60,7 +67,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
               icon={ArrowDown01Icon}
               size={16}
               className={cn(
-                "text-[#505057] transition-transform",
+                "text-foreground-body transition-transform",
                 open && "rotate-180",
               )}
             />
@@ -80,13 +87,17 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
                 onClick={() => setOpen(false)}
                 className={cn(
                   "flex h-[38px] items-center gap-2 rounded-[8px] px-3",
-                  isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
+                  // TODO(tokens): no exact role for hover:bg-[#F5F5F6] (#F5F5F6)
+                  isActive ? "bg-surface-hover" : "hover:bg-[#F5F5F6]",
                 )}
               >
                 <UIIcon
                   icon={Icon}
                   size={16}
-                  className={isActive ? "text-black" : "text-[#1F1F20]"}
+                  // TODO(tokens): no exact role for text-[#1F1F20] (#1F1F20)
+                  className={
+                    isActive ? "text-foreground-base" : "text-[#1F1F20]"
+                  }
                 />
                 <Text
                   variant="body"
@@ -94,8 +105,9 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
                   className={cn(
                     "flex-1",
                     isActive
-                      ? "font-medium text-[#1F1F20]"
-                      : "font-normal text-[#505057]",
+                      ? // TODO(tokens): no exact role for text-[#1F1F20] (#1F1F20)
+                        "font-medium text-[#1F1F20]"
+                      : "font-normal text-foreground-body",
                   )}
                 >
                   {label}

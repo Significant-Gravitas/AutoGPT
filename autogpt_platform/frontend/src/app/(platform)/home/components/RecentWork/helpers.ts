@@ -38,7 +38,7 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
   expert: {
     label: "Expert",
     className:
-      "border-blue-200 bg-blue-50 text-blue-700 shadow-[0_0_8px_-1px_rgba(96,165,250,0.7)]",
+      "border-blue-200 bg-info-surface text-blue-700 shadow-[0_0_8px_-1px_rgba(96,165,250,0.7)]",
   },
   workflow: {
     label: "Workflow",
@@ -47,7 +47,7 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
   },
   autopilot: {
     label: "Otto",
-    className: "border-zinc-200 bg-white text-zinc-500",
+    className: "border-border-base bg-surface text-foreground-tertiary",
   },
 };
 

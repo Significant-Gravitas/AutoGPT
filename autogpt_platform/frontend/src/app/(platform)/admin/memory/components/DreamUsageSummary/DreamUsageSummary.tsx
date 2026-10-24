@@ -1,5 +1,9 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, border-gray-100 #F3F4F6, border-gray-200 #E5E7EB,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-800 #1F2937.
+
 import type { DreamPassUsage } from "@/app/api/__generated__/models/dreamPassUsage";
 import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";
@@ -15,7 +19,7 @@ export function DreamUsageSummary({ usage }: Props) {
   if (!usage) {
     return (
       <div
-        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-gray-500"
+        className="rounded-md border border-dashed bg-surface p-4 text-center text-sm text-gray-500"
         data-testid="dream-usage-empty"
       >
         No token usage was recorded for this dream pass.
@@ -28,7 +32,7 @@ export function DreamUsageSummary({ usage }: Props) {
 
   return (
     <div
-      className="rounded-md border bg-white p-3"
+      className="rounded-md border bg-surface p-3"
       data-testid="dream-usage-summary"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -80,7 +84,7 @@ export function DreamUsageSummary({ usage }: Props) {
                   <td className="px-2 py-1 font-medium text-gray-800">
                     {p.phase}
                   </td>
-                  <td className="px-2 py-1 font-mono text-[10px] text-gray-600">
+                  <td className="px-2 py-1 font-mono text-tiny leading-inherit text-gray-600">
                     {p.model}
                   </td>
                   <td className="px-2 py-1 text-right tabular-nums">

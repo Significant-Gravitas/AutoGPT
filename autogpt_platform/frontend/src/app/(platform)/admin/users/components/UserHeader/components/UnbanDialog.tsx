@@ -28,7 +28,7 @@ export function UnbanDialog({ user }: Props) {
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" className="text-foreground-secondary">
           They can sign in again right away.
         </Text>
         <Dialog.Footer>

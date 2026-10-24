@@ -94,6 +94,8 @@ interface Props {
   className?: string;
   inputId?: string;
   draftKey?: string;
+  /** Off leaves keyboard focus where it is, on mount and when re-enabled. */
+  autoFocus?: boolean;
   /** Files dropped onto the chat window by the parent. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
@@ -152,6 +154,7 @@ export const ChatInput = memo(function ChatInput({
   className,
   inputId = "chat-input",
   draftKey,
+  autoFocus = true,
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
@@ -268,6 +271,7 @@ export const ChatInput = memo(function ChatInput({
       canSendEmpty: hasAttachments && !atReset,
       inputId,
       draftKey,
+      autoFocus,
       failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
 

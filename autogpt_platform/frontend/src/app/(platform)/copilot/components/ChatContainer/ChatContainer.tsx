@@ -17,8 +17,8 @@ import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
-import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { getPendingOnboardingCallId } from "../ExpertOnboardingCard/helpers";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
@@ -42,6 +42,7 @@ import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { useOpenPendingOnboarding } from "./useOpenPendingOnboarding";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
 import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
 import { useVoiceMode } from "../../voice/useVoiceMode";
@@ -309,6 +310,21 @@ export const ChatContainer = ({
     silenceTimeoutMs,
     onSend: guardedOnSend,
   });
+  useOpenPendingOnboarding({
+    expertId: expertIdentity?.id ?? null,
+    sessionId,
+    enabled:
+      messages.length === 0 &&
+      !isInputDisabled &&
+      !isLimitReached &&
+      !isStreaming &&
+      !isCreatingSession &&
+      !isUploadingFiles &&
+      !pendingSend &&
+      !isExpertArchived &&
+      !voice.isActive &&
+      !voice.isStarting,
+  });
   const toggleVoice = useStableCallback(voice.toggle);
   const retryVoiceUtterance = useStableCallback(voice.retryFailedUtterance);
   const downloadVoiceUtterance = useStableCallback(
@@ -511,41 +527,29 @@ export const ChatContainer = ({
                   openingText={getOpeningText(messages)}
                 />
               )}
-              <NewChatOnboarding
-                expertId={expertIdentity?.id ?? null}
-                enabled={
-                  messages.length === 0 &&
-                  !isInputDisabled &&
-                  !isLimitReached &&
-                  !isStreaming &&
-                  !isCreatingSession &&
-                  !isExpertArchived
-                }
-              >
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={isLoadingSession}
-                  isRestoringActiveSession={isRestoringActiveSession}
-                  restoreStatusMessage={restoreStatusMessage}
-                  activeStreamStartedAt={activeStreamStartedAt}
-                  sessionID={sessionId}
-                  sessionChatStatus={sessionChatStatus}
-                  sessionSentFrom={sessionSentFrom}
-                  hasMoreMessages={hasMoreMessages}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={onLoadMore}
-                  onRetry={handleRetry}
-                  turnStats={turnStats}
-                  queuedMessages={queuedMessages}
-                  pendingSend={pendingSend}
-                  bottomContentPadding={usageCardHeight + composerTabInset}
-                  expertIdentity={expertIdentity}
-                  isResolvingExpertIdentity={isResolvingExpertIdentity}
-                  floatingControls={floatingControls}
-                />
-              </NewChatOnboarding>
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
+                isLoading={isLoadingSession}
+                isRestoringActiveSession={isRestoringActiveSession}
+                restoreStatusMessage={restoreStatusMessage}
+                activeStreamStartedAt={activeStreamStartedAt}
+                sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
+                sessionSentFrom={sessionSentFrom}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
+                onRetry={handleRetry}
+                turnStats={turnStats}
+                queuedMessages={queuedMessages}
+                pendingSend={pendingSend}
+                bottomContentPadding={usageCardHeight + composerTabInset}
+                expertIdentity={expertIdentity}
+                isResolvingExpertIdentity={isResolvingExpertIdentity}
+                floatingControls={floatingControls}
+              />
               {archivedExpertIdentity ? (
                 <>
                   {hasComposerTab && (
@@ -611,6 +615,10 @@ export const ChatContainer = ({
                         <ChatInput
                           inputId={SESSION_COMPOSER_ID}
                           draftKey={sessionDraftKey(sessionId)}
+                          // An unanswered card takes the keys for its shortcuts.
+                          autoFocus={
+                            getPendingOnboardingCallId(messages) === null
+                          }
                           onSend={guardedOnSend}
                           disabled={isInputDisabled}
                           sendDisabled={isLimitReached && !atReset}

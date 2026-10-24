@@ -14,13 +14,13 @@ export function EmptyState() {
       <Icon
         icon={UserSearch01Icon}
         size={32}
-        className="text-zinc-400"
+        className="text-foreground-subtle"
         aria-hidden
       />
       <Text variant="large-medium" as="h2">
         Look up a user
       </Text>
-      <Text variant="body" className="text-zinc-600">
+      <Text variant="body" className="text-foreground-secondary">
         Paste a user ID or the complete email address.
       </Text>
     </div>
@@ -33,13 +33,13 @@ export function NotFoundState({ query }: { query: string }) {
       <Icon
         icon={UserQuestion01Icon}
         size={32}
-        className="text-zinc-400"
+        className="text-foreground-subtle"
         aria-hidden
       />
       <Text variant="large-medium" as="h2" className="break-all">
         No user matches <span className="font-medium">{query}</span>
       </Text>
-      <Text variant="body" className="text-zinc-600">
+      <Text variant="body" className="text-foreground-secondary">
         Lookup is exact: a full user ID or the complete email address.
       </Text>
       <Link

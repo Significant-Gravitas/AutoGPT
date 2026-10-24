@@ -16,15 +16,15 @@ interface Props {
 }
 
 const ICONS = {
-  approved: [Tick02Icon, "text-green-600"],
-  rejected: [Cancel01Icon, "text-zinc-400"],
-  elsewhere: [InformationCircleIcon, "text-zinc-400"],
+  approved: [Tick02Icon, "text-success"],
+  rejected: [Cancel01Icon, "text-foreground-subtle"],
+  elsewhere: [InformationCircleIcon, "text-foreground-subtle"],
 } as const;
 
 export function HeldReceiptRow({ approval, receipt, heading = false }: Props) {
   const [icon, tone] = ICONS[receipt.outcome];
   return (
-    <div className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-600">
+    <div className="flex items-center gap-2 px-4 py-2 text-sm text-foreground-secondary">
       <Icon icon={icon} size={14} className={tone} aria-hidden />
       {heading ? (
         <h3 className="min-w-0 truncate">
@@ -35,7 +35,7 @@ export function HeldReceiptRow({ approval, receipt, heading = false }: Props) {
           <HeadlineText item={approval} />
         </span>
       )}
-      <span className="shrink-0 text-zinc-400">· {receipt.text}</span>
+      <span className="shrink-0 text-foreground-subtle">· {receipt.text}</span>
     </div>
   );
 }
