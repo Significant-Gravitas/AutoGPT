@@ -175,7 +175,9 @@ This policy:
 
 ## 13. Acknowledgments
 
-We thank the following security researchers for contributing responsibly to improving the security of AutoGPT:
+We thank the following security researchers for contributing responsibly to improving the security of AutoGPT.
+
+Counts reflect distinct published advisories with accepted reporter, finder, or analyst credit. Historical acknowledgments are retained. See the [advisory release-note procedure](docs/engineering/security-advisory-release-notes.md) for future updates:
 
 - [@lukas-eu](https://github.com/lukas-eu) – 3 advisories
 - [@AgentSec](https://github.com/AgentSec) – 11 advisories
@@ -185,9 +187,9 @@ We thank the following security researchers for contributing responsibly to impr
 - Artemiy ([@nkoorty](https://github.com/nkoorty)) – 1 advisory
 - [@rahulgovind](https://github.com/rahulgovind) – 1 advisory
 - Panuganti Siva Aditya ([@sivaadityacoder](https://github.com/sivaadityacoder)) – 1 advisory
-- Sunwoo Lee ([@programsurf](https://github.com/programsurf)) – 2 advisories
-- [@daeungdaeung](https://github.com/daeungdaeung) – 2 advisories
-- Seunghyun Yoon ([@yoonsh](https://github.com/yoonsh)) – 1 advisory
+- Sunwoo Lee ([@programsurf](https://github.com/programsurf)) – 4 advisories
+- [@daeungdaeung](https://github.com/daeungdaeung) – 4 advisories
+- Seunghyun Yoon ([@yoonsh](https://github.com/yoonsh)) – 2 advisories
 - @lubroai – 2 advisories
 - [@ltduc147](https://github.com/ltduc147) – 1 advisory
 - [@222n5](https://github.com/222n5) – 3 advisories
@@ -211,5 +213,11 @@ We thank the following security researchers for contributing responsibly to impr
 - Ace ([@Fried-Squid](https://github.com/Fried-Squid)) – 1 advisory
 - David Carliez ([@DavidCarliez](https://github.com/DavidCarliez)) – 1 advisory
 - [@long2809-exploi](https://github.com/long2809-exploi) – 1 advisory
+- [@360AlphaLab](https://github.com/360AlphaLab) – 1 advisory
+- [@kcze](https://github.com/kcze) – 1 advisory
+- [@ljq-sec](https://github.com/ljq-sec) – 1 advisory
+- [@Pwuts](https://github.com/Pwuts) – 1 advisory
+- [@REYu6](https://github.com/REYu6) – 1 advisory
+- [@sfwani](https://github.com/sfwani) – 2 advisories
 
-**Last updated: September 2026**
+**Last updated: October 2026**
