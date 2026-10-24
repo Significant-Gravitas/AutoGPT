@@ -10,6 +10,7 @@ import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
 import { BubbleChatIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   className?: string;
@@ -81,9 +82,11 @@ export function BuilderChatPanel({ className }: Props) {
               {hasNoModel ? (
                 <NoModelNotice />
               ) : activeError && activeRetry ? (
-                <div
+                <Text
+                  variant="body"
+                  as="div"
                   // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                  className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-body leading-5 text-slate-600"
+                  className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center leading-5 text-slate-600"
                 >
                   <p
                     // TODO(tokens): no exact role: text-slate-800 #475263
@@ -105,14 +108,16 @@ export function BuilderChatPanel({ className }: Props) {
                   >
                     Retry
                   </button>
-                </div>
+                </Text>
               ) : isBootstrapping ? (
-                <div
+                <Text
+                  variant="body"
+                  as="div"
                   // TODO(tokens): no exact role: text-slate-500 #64748B
-                  className="flex flex-1 items-center justify-center px-4 py-6 text-body leading-5 text-slate-500"
+                  className="flex flex-1 items-center justify-center px-4 py-6 leading-5 text-slate-500"
                 >
                   Preparing builder chat…
-                </div>
+                </Text>
               ) : sessionId ? (
                 <>
                   <div className="flex min-h-0 flex-1 flex-col">
@@ -143,12 +148,14 @@ export function BuilderChatPanel({ className }: Props) {
                   </div>
                 </>
               ) : (
-                <div
+                <Text
+                  variant="body"
+                  as="div"
                   // TODO(tokens): no exact role: text-slate-500 #64748B
-                  className="flex flex-1 items-center justify-center px-4 py-6 text-body leading-5 text-slate-500"
+                  className="flex flex-1 items-center justify-center px-4 py-6 leading-5 text-slate-500"
                 >
                   Open a workflow to start chatting with the builder.
-                </div>
+                </Text>
               )}
             </div>
           </div>

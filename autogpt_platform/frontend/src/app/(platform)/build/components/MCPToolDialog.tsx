@@ -50,6 +50,7 @@ import { isKey } from "@/lib/keyboard";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export type MCPToolDialogResult = {
   serverUrl: string;
@@ -468,24 +469,26 @@ export function MCPToolDialog({
                   disabled={loading || oauthLoading}
                   autoFocus
                 />
-                <p
+                <Text
+                  variant="small"
                   // TODO(tokens): no exact role: text-gray-500 #6B7280
                   id="mcp-auth-token-hint"
-                  className="text-caption leading-4 text-gray-500"
+                  className="leading-4 text-gray-500"
                 >
                   {mcpAuthTokenHint(manualAuthScheme)}
-                </p>
+                </Text>
               </div>
             )}
 
             {error && (
-              <p
+              <Text
+                variant="body"
                 role="alert"
                 aria-live="polite"
-                className="text-body leading-5 text-error-foreground"
+                className="leading-5 text-error-foreground"
               >
                 {error}
-              </p>
+              </Text>
             )}
           </div>
         )}
@@ -614,9 +617,13 @@ function MCPToolCard({
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <span className="flex-1 text-body font-semibold leading-5">
+        <Text
+          variant="body"
+          as="span"
+          className="flex-1 font-semibold leading-5 text-inherit"
+        >
           {tool.name}
-        </span>
+        </Text>
         {paramNames.length > 0 && (
           <Badge variant="secondary" className="text-tiny leading-inherit">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
@@ -626,12 +633,13 @@ function MCPToolCard({
 
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
-        <p
+        <Text
+          variant="small"
           // TODO(tokens): no exact role: text-gray-500 #6B7280
-          className="px-3 pb-1 text-caption leading-relaxed text-gray-500"
+          className="px-3 pb-1 leading-relaxed text-gray-500"
         >
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
-        </p>
+        </Text>
       )}
 
       {/* Parameter badges (collapsed view) */}

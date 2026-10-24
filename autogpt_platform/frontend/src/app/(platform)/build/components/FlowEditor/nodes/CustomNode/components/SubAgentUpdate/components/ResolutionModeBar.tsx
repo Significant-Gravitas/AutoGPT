@@ -7,6 +7,7 @@ import {
 import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate/types";
 import { Alert01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type ResolutionModeBarProps = {
   incompatibilities: IncompatibilityInfo | null;
@@ -91,9 +92,13 @@ export function ResolutionModeBar({
           // TODO(tokens): no exact role: text-amber-600 #D97706
           className="h-4 w-4 text-amber-600"
         />
-        <span className="text-body leading-5 text-warning-foreground">
+        <Text
+          variant="body"
+          as="span"
+          className="leading-5 text-warning-foreground"
+        >
           Remove incompatible connections
-        </span>
+        </Text>
         <Tooltip>
           <TooltipTrigger asChild>
             <Icon
@@ -103,18 +108,19 @@ export function ResolutionModeBar({
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <p className="mb-2 font-semibold">Incompatible changes:</p>
-            <div className="text-caption leading-4">
+            <Text variant="small" as="div" className="leading-4 text-inherit">
               {renderIncompatibilities()}
-            </div>
-            <p
+            </Text>
+            <Text
+              variant="small"
               // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-              className="mt-2 text-caption leading-4 text-gray-400"
+              className="mt-2 leading-4 text-gray-400"
             >
               {(incompatibilities?.newRequiredInputs.length ?? 0) > 0
                 ? "Replace / delete"
                 : "Delete"}{" "}
               the red connections to continue
-            </p>
+            </Text>
           </TooltipContent>
         </Tooltip>
       </div>

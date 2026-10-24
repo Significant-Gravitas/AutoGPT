@@ -44,19 +44,29 @@ export function GraphSearchContent({
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
-          <div className="px-4 pt-3 text-caption leading-4 text-foreground-tertiary">
+          <Text
+            variant="small"
+            as="div"
+            tone="muted"
+            className="px-4 pt-3 leading-4"
+          >
             Found {filteredNodes.length} node
             {filteredNodes.length !== 1 ? "s" : ""}
-          </div>
+          </Text>
         )}
         <ScrollArea className="h-full w-full">
           <div role="listbox" className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
-              <div className="flex h-32 items-center justify-center text-body leading-5 text-foreground-tertiary">
+              <Text
+                variant="body"
+                as="div"
+                tone="muted"
+                className="flex h-32 items-center justify-center leading-5"
+              >
                 {trimmedQuery
                   ? "No nodes found matching your search"
                   : "Start typing to search nodes"}
-              </div>
+              </Text>
             ) : (
               filteredNodes.map((node, index) => {
                 if (!node?.data) return null;
@@ -103,9 +113,14 @@ export function GraphSearchContent({
                           {nodeTitle}
                         </Text>
                         {hasCustomName && (
-                          <span className="shrink-0 rounded-[0.75rem] bg-surface-active px-2 font-sans text-caption leading-5 text-foreground-tertiary">
+                          <Text
+                            variant="small"
+                            as="span"
+                            tone="muted"
+                            className="shrink-0 rounded-[0.75rem] bg-surface-active px-2 font-sans leading-5"
+                          >
                             {nodeType}
-                          </span>
+                          </Text>
                         )}
                       </div>
                       {description && (

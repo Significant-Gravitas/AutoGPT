@@ -74,9 +74,13 @@ function SafeModeButton({
           <div className="font-medium">
             {label}: {isEnabled ? "ON" : "OFF"}
           </div>
-          <div className="mt-1 text-caption leading-4 text-muted-foreground">
+          <Text
+            variant="small"
+            as="div"
+            className="mt-1 leading-4 text-muted-foreground"
+          >
             {isEnabled ? tooltipEnabled : tooltipDisabled}
-          </div>
+          </Text>
         </div>
       </TooltipContent>
     </Tooltip>

@@ -96,13 +96,16 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             Version {version}
           </Text>
 
-          <span
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
             className={cn(
-              "rounded-[0.75rem] bg-surface-active px-[0.5rem] font-sans text-caption leading-5 text-foreground-tertiary",
+              "rounded-[0.75rem] bg-surface-active px-[0.5rem] font-sans font-medium leading-5",
             )}
           >
             Your Workflow
-          </span>
+          </Text>
         </div>
       </div>
       <div

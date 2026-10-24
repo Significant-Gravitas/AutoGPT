@@ -5,7 +5,7 @@ import React, { ButtonHTMLAttributes, memo, useState } from "react";
 import { highlightText } from "./helpers";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
-import { blockDragPreviewStyle } from "./style";
+import { blockDragPreviewClassName, blockDragPreviewStyle } from "./style";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useAddBlockToBuilder } from "./hooks/useAddBlockToBuilder";
 import { BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
@@ -100,6 +100,7 @@ function BlockCard({
 
     const dragPreview = document.createElement("div");
     dragPreview.style.cssText = blockDragPreviewStyle;
+    dragPreview.className = blockDragPreviewClassName;
     dragPreview.textContent = beautifyString(title || "").replace(
       / Block$/,
       "",
