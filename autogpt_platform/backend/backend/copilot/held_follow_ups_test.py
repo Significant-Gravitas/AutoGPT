@@ -120,6 +120,23 @@ async def test_a_message_typed_again_after_the_turn_ended_is_not_the_held_one(
 
 
 @pytest.mark.asyncio
+async def test_a_queue_with_a_message_newer_than_the_hold_is_not_reported_held(
+    fake_redis: _FakeRedis,
+) -> None:
+    await _queued("status?")
+    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+    covered = await peek_pending_messages("sess-1")
+    assert await held_follow_up_reason("sess-1", covering=covered) == "error"
+
+    await push_pending_message(
+        "sess-1", PendingMessage(content="also", enqueued_at=time.time() + 60)
+    )
+
+    waiting = await peek_pending_messages("sess-1")
+    assert await held_follow_up_reason("sess-1", covering=waiting) is None
+
+
+@pytest.mark.asyncio
 async def test_a_refused_resend_puts_the_follow_up_back(
     fake_redis: _FakeRedis,
 ) -> None:

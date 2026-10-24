@@ -89,13 +89,22 @@ async def hold_follow_ups_at_turn_end(
     return StreamFollowUpHeld(reason=reason, count=count)
 
 
-async def held_follow_up_reason(session_id: str) -> FollowUpHeldReason | None:
+async def held_follow_up_reason(
+    session_id: str, *, covering: list[PendingMessage] | None = None
+) -> FollowUpHeldReason | None:
     """Why the queued follow-ups were left unread, or None if they were not.
 
-    Only meaningful while no turn runs: a running turn reads the queue.
+    With *covering*, only when the hold covers each of those messages: one
+    queued after the turn ended is not held, and offering it a Retry would
+    send it twice. Only meaningful while no turn runs: a running turn reads
+    the queue.
     """
     hold = await _read_hold(session_id)
-    return hold[0] if hold else None
+    if hold is None:
+        return None
+    if covering is not None and any(m.enqueued_at > hold[1] for m in covering):
+        return None
+    return hold[0]
 
 
 async def _read_hold(session_id: str) -> tuple[FollowUpHeldReason, float] | None:

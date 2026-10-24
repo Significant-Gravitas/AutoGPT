@@ -1822,6 +1822,17 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+def _may_resend_held(request: StreamChatRequest) -> bool:
+    """Retry resends a held follow-up as text alone. A send with its own files
+    or page is new, even when its words match a held one."""
+    return (
+        request.is_user_message
+        and not request.file_ids
+        and not request.folder_ids
+        and not request.context
+    )
+
+
 async def _carry_resent_payload(
     resent: PendingMessage,
     *,
@@ -2040,7 +2051,7 @@ async def stream_chat_post(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
             )
-        if request.is_user_message and await holds_follow_up(session_id, message):
+        if _may_resend_held(request) and await holds_follow_up(session_id, message):
             # A held follow-up resent just as another turn starts: that turn
             # reads the waiting copy, with its files, so a second is not queued.
             return _empty_ui_message_stream_response(follow_up_queued=True)
@@ -2147,7 +2158,7 @@ async def stream_chat_post(
     # would read the waiting copy too, so take it out while the send is made.
     resent = (
         await take_held_follow_up(session_id, request.message)
-        if request.is_user_message and claim != "accepted"
+        if _may_resend_held(request) and claim != "accepted"
         else None
     )
 
@@ -2528,17 +2539,22 @@ async def get_pending_messages(
     return PeekPendingMessagesResponse(
         messages=[m.content for m in pending],
         count=len(pending),
-        held_reason=(await _held_reason_while_idle(session_id) if pending else None),
+        held_reason=(
+            await _held_reason_while_idle(session_id, pending) if pending else None
+        ),
     )
 
 
-async def _held_reason_while_idle(session_id: str) -> FollowUpHeldReason | None:
+async def _held_reason_while_idle(
+    session_id: str, pending: list[PendingMessage]
+) -> FollowUpHeldReason | None:
     """A running turn reads the queue, so its messages are held only while
-    none runs. An unknown registry state reads as running."""
+    none runs, and only when the hold covers every one of them. An unknown
+    registry state reads as running."""
     try:
         if await is_turn_in_flight(session_id):
             return None
-        return await held_follow_up_reason(session_id)
+        return await held_follow_up_reason(session_id, covering=pending)
     except Exception:
         # The hold only labels the strip; the peek itself must still answer.
         logger.warning(

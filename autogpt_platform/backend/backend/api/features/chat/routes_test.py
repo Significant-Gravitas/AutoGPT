@@ -1021,6 +1021,52 @@ def test_stream_chat_resend_while_a_turn_starts_queues_no_second_copy(
     mocks.enqueue.assert_not_awaited()
 
 
+def test_stream_chat_send_with_its_own_page_is_not_taken_for_a_held_one(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Retry sends text alone; matching words with a page attached are new."""
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Status?", "context": {"url": "https://example.org"}},
+    )
+
+    assert response.status_code == 200
+    mocks.take_held.assert_not_awaited()
+    assert mocks.enqueue.await_args.kwargs["context"] == {"url": "https://example.org"}
+
+
+def test_stream_chat_follow_up_with_files_while_a_turn_runs_is_queued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A follow-up carrying files is queued even if its words match a held one."""
+    _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    holds = mocker.patch(
+        "backend.api.features.chat.routes.holds_follow_up",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    queue_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Status?", "file_ids": ["file-1"]},
+    )
+
+    assert response.status_code == 200
+    holds.assert_not_awaited()
+    queue_pending.assert_awaited_once()
+
+
 def test_stream_chat_refused_resend_puts_the_held_follow_up_back(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
