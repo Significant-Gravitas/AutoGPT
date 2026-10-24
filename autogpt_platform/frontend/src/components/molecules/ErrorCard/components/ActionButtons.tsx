@@ -23,10 +23,22 @@ export function ActionButtons({
   context,
 }: ActionButtonsProps) {
   return (
-    <div className="flex flex-col flex-wrap gap-3 pt-2 sm:flex-row">
+    <div
+      data-slot="error-card-actions"
+      className="flex flex-col flex-wrap gap-3 pt-2 sm:flex-row"
+    >
       {onRetry && (
-        <Button onClick={onRetry} variant="outline" size="small">
-          <Icon icon={Refresh01Icon} size={16} />
+        <Button
+          onClick={onRetry}
+          variant="outline"
+          size="small"
+          data-slot="error-card-retry"
+        >
+          <Icon
+            data-slot="error-card-retry-icon"
+            icon={Refresh01Icon}
+            size={16}
+          />
           Try Again
         </Button>
       )}
@@ -35,8 +47,9 @@ export function ActionButtons({
         onClick={() => handleReportError(responseError, httpError, context)}
         variant="ghost"
         size="small"
+        data-slot="error-card-report"
       >
-        <Icon icon={Bug01Icon} size={16} />
+        <Icon data-slot="error-card-report-icon" icon={Bug01Icon} size={16} />
         Report Error
       </Button>
 
@@ -47,8 +60,9 @@ export function ActionButtons({
         href="https://discord.gg/autogpt"
         target="_blank"
         rel="noopener noreferrer"
+        data-slot="error-card-help"
       >
-        <Icon icon={DiscordIcon} size={16} />
+        <Icon data-slot="error-card-help-icon" icon={DiscordIcon} size={16} />
         Get Help
       </Button>
     </div>
