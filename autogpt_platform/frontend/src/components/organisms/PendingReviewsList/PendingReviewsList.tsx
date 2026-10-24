@@ -223,13 +223,17 @@ export function PendingReviewsList({
   }
 
   return (
-    <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
+    <div
+      // TODO(tokens): no role for the yellow-150 border or yellow-25 surface.
+      className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6"
+    >
       <div className="space-y-6">
         <div className="flex items-start gap-2">
           <Icon
             icon={Alert01Icon}
             size={28}
-            className="fill-yellow-600 text-white"
+            // TODO(tokens): no role for the yellow-600 icon fill.
+            className="fill-yellow-600 text-action-foreground"
           />
           <Text
             variant="large-semibold"
@@ -272,29 +276,47 @@ export function PendingReviewsList({
                   <Icon
                     icon={ArrowRight01Icon}
                     size={20}
+                    // TODO(tokens): no role for Tailwind's default gray-600;
+                    // the zinc roles are a different grey.
                     className="text-gray-600"
                   />
                 ) : (
                   <Icon
                     icon={ArrowDown01Icon}
                     size={20}
+                    // TODO(tokens): no role for Tailwind's default gray-600;
+                    // the zinc roles are a different grey.
                     className="text-gray-600"
                   />
                 )}
                 <div className="flex-1">
-                  <Text variant="body" className="font-semibold text-gray-900">
+                  <Text
+                    // TODO(tokens): no role for Tailwind's default gray-900; the
+                    // zinc roles are a different grey.
+                    variant="body"
+                    className="font-semibold text-gray-900"
+                  >
                     {reviewTitle}
                   </Text>
                   {(workflowName ||
                     (!firstReview?.action && !isGateReview(nodeId))) && (
-                    <Text variant="small" className="text-gray-500">
+                    <Text
+                      // TODO(tokens): no role for Tailwind's default gray-500;
+                      // the zinc roles are a different grey.
+                      variant="small"
+                      className="text-gray-500"
+                    >
                       {workflowName
                         ? `In workflow “${workflowName}”`
                         : `Node #${getShortenedNodeId(nodeId)}`}
                     </Text>
                   )}
                 </div>
-                <span className="text-xs text-gray-600">
+                <span
+                  // TODO(tokens): no role for Tailwind's default gray-600; the
+                  // zinc roles are a different grey.
+                  className="text-xs text-gray-600"
+                >
                   {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
                 </span>
               </button>
@@ -320,7 +342,12 @@ export function PendingReviewsList({
                           handleAutoApproveFutureToggle(nodeId, enabled)
                         }
                       />
-                      <Text variant="small" className="text-gray-700">
+                      <Text
+                        // TODO(tokens): no role for Tailwind's default gray-700;
+                        // the zinc roles are a different grey.
+                        variant="small"
+                        className="text-gray-700"
+                      >
                         Auto-approve future executions of this node
                       </Text>
                     </div>
@@ -342,7 +369,7 @@ export function PendingReviewsList({
                       onClick={() => processGroup(nodeId, false)}
                       disabled={isProcessing}
                       variant="destructive"
-                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
+                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-error-hover px-4 py-3"
                       loading={groupAction === "reject" && isProcessing}
                     >
                       {reviewCount === 1

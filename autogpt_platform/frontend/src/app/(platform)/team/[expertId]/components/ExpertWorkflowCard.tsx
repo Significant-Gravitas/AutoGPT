@@ -56,7 +56,7 @@ export function ExpertWorkflowCard({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-white transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-surface transition-colors smooth-shadow-ring-sm hover:bg-surface-muted"
     >
       {libraryHref ? (
         <NextLink
@@ -66,7 +66,7 @@ export function ExpertWorkflowCard({
         />
       ) : null}
 
-      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
+      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
         {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
           <Image
             src={libraryAgent.image_url}
@@ -138,7 +138,7 @@ export function ExpertWorkflowCard({
             variant="small-medium"
             as="span"
             className={cn(
-              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
+              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-border-base/80",
               status.className,
             )}
           >

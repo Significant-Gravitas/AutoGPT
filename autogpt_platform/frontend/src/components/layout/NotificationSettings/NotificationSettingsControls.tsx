@@ -22,7 +22,7 @@ export function NotificationSettingsControls() {
 
   if (!isSupported) {
     return (
-      <Text variant="small" as="p" className="text-zinc-500">
+      <Text variant="small" as="p" className="text-foreground-tertiary">
         This browser doesn&apos;t support notifications.
       </Text>
     );
@@ -51,13 +51,13 @@ export function NotificationSettingsControls() {
       {isBlocked ? (
         <div
           id={blockedExplainerId}
-          className="flex items-start gap-2 rounded-lg bg-zinc-100 px-3 py-2"
+          className="flex items-start gap-2 rounded-lg bg-surface-hover px-3 py-2"
         >
           <Icon
             icon={Alert01Icon}
-            className="mt-0.5 size-4 shrink-0 text-zinc-500"
+            className="mt-0.5 size-4 shrink-0 text-foreground-tertiary"
           />
-          <Text variant="small" as="p" className="text-zinc-600">
+          <Text variant="small" as="p" className="text-foreground-secondary">
             Your browser is blocking notifications for AutoGPT. Allow them in
             its site settings to switch this back on.
           </Text>

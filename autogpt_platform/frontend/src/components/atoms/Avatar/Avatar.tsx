@@ -202,7 +202,7 @@ export function AvatarFallback({
       <span
         aria-hidden="true"
         className={cn(
-          "absolute inset-0 rounded-full bg-zinc-100",
+          "absolute inset-0 rounded-full bg-surface-hover",
           square && "rounded-none",
           className,
         )}
@@ -224,7 +224,9 @@ export function AvatarFallback({
       aria-hidden={accessibleLabel ? undefined : "true"}
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
-        // svg stretched to fill so the marble always matches the avatar size
+        // svg stretched to fill so the marble always matches the avatar size.
+        // TODO(tokens): no text role is 18px/28px (text-lg) and no colour
+        // role is neutral-600 #525252.
         "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
         !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,

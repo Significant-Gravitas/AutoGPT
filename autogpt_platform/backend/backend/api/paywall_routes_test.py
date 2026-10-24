@@ -61,6 +61,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/memory/facts",
     "DELETE /api/memory/facts/{fact_uuid}",
     "GET /api/memory/overview",
+    "DELETE /api/memory/understanding",
+    "GET /api/memory/understanding",
     "GET /api/oauth/app/{client_id}",
     "PATCH /api/oauth/apps/{app_id}/logo",
     "PATCH /api/oauth/apps/{app_id}/status",

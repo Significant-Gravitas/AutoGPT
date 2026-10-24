@@ -74,7 +74,7 @@ describe("Button compact sizes", () => {
   it("softens the outline border at xs", () => {
     renderButton({ variant: "outline", size: "xs", children: "New Pod" });
     const el = screen.getByRole("button", { name: "New Pod" });
-    expect(el.className).toContain("border-zinc-200");
+    expect(el.className).toContain("border-border-base");
     expect(el.className).not.toContain("border-zinc-700");
   });
 
@@ -99,7 +99,7 @@ describe("Button compact sizes", () => {
     });
     const el = screen.getByRole("button", { name: "Edit workflow" });
     expect(el.className).toContain("size-7");
-    expect(el.className).toContain("bg-white/90");
+    expect(el.className).toContain("bg-surface/90");
   });
 
   it("styles toggle by aria-pressed", () => {
@@ -113,6 +113,6 @@ describe("Button compact sizes", () => {
       name: "Needs review",
       pressed: true,
     });
-    expect(el.className).toContain("aria-pressed:bg-zinc-100");
+    expect(el.className).toContain("aria-pressed:bg-surface-hover");
   });
 });

@@ -32,7 +32,7 @@ export function WalletCompactPanel({
       </div>
       <section
         aria-labelledby={creditsHeadingID}
-        className="mx-5 flex flex-col gap-4 border-t border-zinc-100 py-4"
+        className="mx-5 flex flex-col gap-4 border-t border-separator py-4"
       >
         <div className="flex flex-col gap-1.5">
           <div className="flex items-baseline justify-between gap-3">

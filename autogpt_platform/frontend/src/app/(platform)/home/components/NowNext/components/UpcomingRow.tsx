@@ -13,7 +13,7 @@ interface Props {
 export function UpcomingRow({ item }: Props) {
   return (
     <div className="relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4">
-      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
+      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
         <TaskMarker item={item} />
       </span>
       <div className="min-w-0 flex-1">
@@ -24,7 +24,10 @@ export function UpcomingRow({ item }: Props) {
         >
           <span>{item.title}</span>
           {item.kind === "agent" ? (
-            <span className="font-normal text-zinc-500"> workflow</span>
+            <span className="font-normal text-foreground-tertiary">
+              {" "}
+              workflow
+            </span>
           ) : null}
         </Text>
         <Text variant="body" tone="muted" className="truncate">
@@ -58,7 +61,7 @@ function TaskMarker({ item }: Props) {
     );
   }
   return (
-    <span className="flex size-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 ring-2 ring-white">
+    <span className="flex size-9 items-center justify-center rounded-full bg-surface-hover text-foreground-tertiary ring-2 ring-white">
       <Icon icon={Calendar03Icon} size={15} aria-hidden="true" />
     </span>
   );

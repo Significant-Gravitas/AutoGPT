@@ -25,13 +25,13 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         className={picker.isGenerating ? "animate-pulse" : undefined}
       />
       {picker.isGenerating && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="text-body leading-5 text-muted-foreground">
           Creating another avatar. You can keep this one or upload a picture
           while you wait.
         </p>
       )}
       {picker.error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-body leading-5 text-destructive">
           {picker.error}
         </p>
       )}

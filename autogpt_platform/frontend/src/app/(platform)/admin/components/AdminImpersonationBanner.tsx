@@ -1,5 +1,8 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-amber-100 #FEF3C7, border-amber-300 #FCD34D, text-amber-900 #78350F.
+
 import { useAdminImpersonation } from "./useAdminImpersonation";
 
 export function AdminImpersonationBanner() {
@@ -11,7 +14,7 @@ export function AdminImpersonationBanner() {
   }
 
   return (
-    <div className="mb-4 rounded-md border border-amber-500 bg-amber-50 p-4 text-amber-900">
+    <div className="mb-4 rounded-md border border-warning bg-warning-surface p-4 text-amber-900">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <strong className="font-semibold">

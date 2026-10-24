@@ -146,7 +146,7 @@ type OAuthTabContentProps = {
 function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-600">
+      <p className="text-sm text-foreground-secondary">
         Sign in with your {providerName} account using OAuth.
       </p>
       <Button
@@ -202,7 +202,7 @@ function APIKeyTabContent({
   return (
     <div className="space-y-4">
       {schemaDescription && (
-        <p className="text-sm text-zinc-600">{schemaDescription}</p>
+        <p className="text-sm text-foreground-secondary">{schemaDescription}</p>
       )}
 
       <Form {...form}>
@@ -289,7 +289,7 @@ function SimpleActionTab({
 }: SimpleActionTabProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-600">{description}</p>
+      <p className="text-sm text-foreground-secondary">{description}</p>
       <Button variant="primary" size="small" onClick={onClick} type="button">
         {buttonLabel}
       </Button>

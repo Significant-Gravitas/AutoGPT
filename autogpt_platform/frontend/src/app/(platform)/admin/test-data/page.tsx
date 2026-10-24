@@ -1,3 +1,7 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-700 #374151.
+
 import { notFound } from "next/navigation";
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { GenerateTestDataButton } from "./components/GenerateTestDataButton";
@@ -19,7 +23,7 @@ function TestDataDashboard() {
           </div>
         </div>
 
-        <div className="rounded-lg border bg-white p-6 shadow-sm">
+        <div className="rounded-lg border bg-surface p-6 shadow-sm">
           <Text variant="h2" className="mb-4 text-xl">
             Generate Test Data
           </Text>

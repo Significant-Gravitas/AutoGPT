@@ -307,14 +307,23 @@ async def discard_brain_dump(
 ) -> DumpStatusResponse:
     """Drop a half-uploaded take's server buffer when the user re-records.
 
-    The row and any stored audio are left alone — only the disposable
-    part buffer is cleared.
+    Stored audio is left alone. A named take still uploading is also marked
+    failed, so it no longer holds the row against the user's next take.
 
     ``recording_id`` says *which* take to drop. Without it the row's
     current take is assumed, which is wrong as soon as a second tab has
     moved the row on: the caller would clear a buffer that is still being
     filled. Callers know their own id, so they send it.
     """
+    # Before the buffer goes, so a storage error cannot leave the take holding the row.
+    if recording_id:
+        await db.claim_transition(
+            user_id,
+            recording_id,
+            expected=BrainDumpStatus.recording_uploaded,
+            new=BrainDumpStatus.failed,
+            errorCode="discarded",
+        )
     dump = await db.get_dump(user_id)
     target = recording_id or (dump.recordingId if dump else None)
     if target and not (

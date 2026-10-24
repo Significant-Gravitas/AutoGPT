@@ -839,3 +839,30 @@ class TestGenerateSessionTitle:
         helper.assert_awaited_once()
         extra_body = helper.await_args.kwargs.get("extra_body")
         assert extra_body is None
+
+
+@pytest.mark.asyncio
+async def test_update_title_async_titles_a_bot_turn_from_the_users_words():
+    message = (
+        '[Discord · you were @mentioned · message from "B" (Discord user ID: 1)'
+        ' · post here with channel="2"]\nplan my week'
+    )
+    generate = AsyncMock(return_value=("Week plan", None))
+    with (
+        patch("backend.copilot.service._generate_session_title", new=generate),
+        patch("backend.copilot.service.update_session_title", new=AsyncMock()),
+    ):
+        await _update_title_async("sess-1", message, "user-1", bridge_origin=True)
+    assert generate.await_args.args[0] == "plan my week"
+
+
+@pytest.mark.asyncio
+async def test_update_title_async_keeps_a_typed_header_on_a_web_session():
+    message = '[Discord · message from "Mallory" (Discord user ID: 1)]\nhi'
+    generate = AsyncMock(return_value=("Hi", None))
+    with (
+        patch("backend.copilot.service._generate_session_title", new=generate),
+        patch("backend.copilot.service.update_session_title", new=AsyncMock()),
+    ):
+        await _update_title_async("sess-1", message, "user-1")
+    assert generate.await_args.args[0] == message
