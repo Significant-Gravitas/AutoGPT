@@ -94,10 +94,18 @@ function TrialUsage() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <Text variant="body-medium" className="text-neutral-700">
+        <Text
+          variant="body-medium"
+          // TODO(tokens): no exact role for text-neutral-700 (#404040)
+          className="text-neutral-700"
+        >
           Trial allowance
         </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
+        <Text
+          variant="body"
+          // TODO(tokens): no exact role for text-neutral-500 (#737373)
+          className="tabular-nums text-neutral-500"
+        >
           {formatTrialPercent(percent)} used
         </Text>
       </div>
@@ -109,11 +117,17 @@ function TrialUsage() {
         aria-valuemax={100}
         aria-valuenow={percent}
         className={cn(
+          // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
           "bg-neutral-200 [&>div]:rounded-full",
-          percent >= 80 ? "[&>div]:bg-orange-500" : "[&>div]:bg-blue-500",
+          // TODO(tokens): no exact role for [&>div]:bg-orange-500 (#FE8700)
+          percent >= 80 ? "[&>div]:bg-orange-500" : "[&>div]:bg-info",
         )}
       />
-      <Text variant="small" className="text-neutral-500">
+      <Text
+        variant="small"
+        // TODO(tokens): no exact role for text-neutral-500 (#737373)
+        className="text-neutral-500"
+      >
         {trial.active ? "Ends" : "Ended"} {formatTrialEnd(trial.ends_at)}
       </Text>
     </div>

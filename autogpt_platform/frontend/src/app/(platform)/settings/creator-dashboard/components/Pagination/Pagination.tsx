@@ -41,7 +41,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
       className="flex items-center justify-between gap-3 px-4 py-3"
       data-testid="submissions-pagination"
     >
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" className="text-foreground-tertiary">
         Showing {startItem}–{endItem} of {total_items}
       </Text>
       <div className="flex items-center gap-1.5">
@@ -69,8 +69,8 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
                 className={cn(
                   "ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium tabular-nums transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
                   isActive
-                    ? "bg-zinc-900 text-white"
-                    : "text-zinc-700 hover:bg-zinc-100",
+                    ? "bg-action-hover text-action-foreground"
+                    : "text-foreground-body hover:bg-surface-hover",
                 )}
               >
                 {page}

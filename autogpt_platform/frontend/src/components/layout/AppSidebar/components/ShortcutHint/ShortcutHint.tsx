@@ -26,7 +26,8 @@ export function ShortcutHint({ letter, className }: Props) {
       {keys.map((key) => (
         <kbd
           key={key}
-          className="rounded border border-zinc-300 bg-zinc-50 px-1.5 py-1 font-sans text-[0.7rem] leading-none text-zinc-700"
+          // TODO(tokens): SECRT-3152, rare size text-[0.7rem]
+          className="rounded border border-border-strong bg-surface-muted px-1.5 py-1 font-sans text-[0.7rem] leading-none text-foreground-body"
         >
           {key}
         </kbd>

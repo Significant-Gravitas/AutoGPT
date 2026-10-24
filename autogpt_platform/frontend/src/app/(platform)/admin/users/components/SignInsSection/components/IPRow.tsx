@@ -75,7 +75,11 @@ export function IPRow({ ip, ownIP }: Props) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 pl-9">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Text variant="small" as="span" className="text-zinc-600">
+            <Text
+              variant="small"
+              as="span"
+              className="text-foreground-secondary"
+            >
               {summariseUserAgent(ip.last_user_agent)}
             </Text>
           </TooltipTrigger>
@@ -83,10 +87,10 @@ export function IPRow({ ip, ownIP }: Props) {
             {ip.last_user_agent ?? "No user agent"}
           </TooltipContent>
         </Tooltip>
-        <Text variant="small" as="span" className="text-zinc-500">
+        <Text variant="small" as="span" className="text-foreground-tertiary">
           {formatDateTime(ip.last_seen)} (<RelativeTime date={ip.last_seen} />)
         </Text>
-        <Text variant="small" as="span" className="text-zinc-600">
+        <Text variant="small" as="span" className="text-foreground-secondary">
           {ip.other_account_count > 0
             ? pluralize(ip.other_account_count, "other account")
             : "—"}
@@ -98,7 +102,10 @@ export function IPRow({ ip, ownIP }: Props) {
             <li
               key={`${event.kind}-${event.created_at.toISOString()}-${index}`}
             >
-              <Text variant="small" className="break-words text-zinc-500">
+              <Text
+                variant="small"
+                className="break-words text-foreground-tertiary"
+              >
                 {formatDateTime(event.created_at)} ·{" "}
                 {event.kind === "SIGN_UP" ? "Sign-up" : "Sign-in"} ·{" "}
                 {event.user_agent ?? "No user agent"}
@@ -107,7 +114,7 @@ export function IPRow({ ip, ownIP }: Props) {
           ))}
           {hiddenEvents > 0 ? (
             <li>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-foreground-tertiary">
                 and {hiddenEvents.toLocaleString("en-GB")} more
               </Text>
             </li>
@@ -123,7 +130,7 @@ function Address({ ip }: { ip: AccountIP }) {
     <Text
       variant="body"
       as="span"
-      className="font-mono text-[13px]"
+      className="font-mono text-body-sm leading-inherit"
       translate="no"
     >
       {ip.display_address}

@@ -91,7 +91,7 @@ function canRenderCode(value: unknown, metadata?: OutputMetadata): boolean {
 
 function EditorLineNumber({ index }: { index: number }) {
   return (
-    <span className="select-none pr-2 text-right font-mono text-xs text-zinc-600">
+    <span className="select-none pr-2 text-right font-mono text-xs text-foreground-secondary">
       {index + 1}
     </span>
   );
@@ -101,7 +101,10 @@ function PlainCodeLines({ code }: { code: string }) {
   return code.split("\n").map((line, index) => (
     <div key={`${index}-${line}`} className="grid grid-cols-[3rem_1fr] gap-4">
       <EditorLineNumber index={index} />
-      <span className="whitespace-pre font-mono text-sm text-zinc-100">
+      <span
+        // TODO(tokens): no exact role for text-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a fill
+        className="whitespace-pre font-mono text-sm text-zinc-100"
+      >
         {line || " "}
       </span>
     </div>
@@ -170,12 +173,18 @@ function HighlightedCodeBlock({
   }, [code, supportedLanguage]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-900 bg-[#020617] shadow-sm">
-      <div className="flex items-center justify-between border-b border-zinc-800 bg-[#111827] px-3 py-2">
-        <span className="truncate font-mono text-xs text-zinc-400">
+    <div
+      // TODO(tokens): no exact role for bg-[#020617]
+      className="overflow-hidden rounded-lg border border-action-hover bg-[#020617] shadow-sm"
+    >
+      <div
+        // TODO(tokens): no exact role for bg-[#111827]
+        className="flex items-center justify-between border-b border-action bg-[#111827] px-3 py-2"
+      >
+        <span className="truncate font-mono text-xs text-foreground-subtle">
           {filename || "code"}
         </span>
-        <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide text-zinc-300">
+        <span className="rounded bg-action px-2 py-0.5 font-mono text-caption-sm uppercase leading-inherit tracking-wide text-foreground-disabled">
           {supportedLanguage}
         </span>
       </div>

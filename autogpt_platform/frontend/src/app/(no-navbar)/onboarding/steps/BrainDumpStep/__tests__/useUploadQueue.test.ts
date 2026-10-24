@@ -328,6 +328,29 @@ describe("useUploadQueue", () => {
     expect(uploadBrainDumpPart).not.toHaveBeenCalled();
   });
 
+  // A discarded take's part 0 that reaches the server late claims the row
+  // for a take nobody will finalize, holding it against the user's next one.
+  it("stops retrying a part once its take is discarded", async () => {
+    uploadBrainDumpPart.mockRejectedValue(new Error("offline"));
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useUploadQueue());
+
+    await act(async () => {
+      result.current.enqueue(part(0));
+      await Promise.resolve();
+    });
+    expect(uploadBrainDumpPart).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.reset();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(uploadBrainDumpPart).toHaveBeenCalledTimes(1);
+  });
+
   // The upload of the old take's last chunk is usually still on the wire
   // when restart swaps the queue. Removing "the head" once it lands used to
   // take the new take's part 0 with it — a recording with a hole at its

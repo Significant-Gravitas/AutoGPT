@@ -18,6 +18,7 @@ interface Args {
   canSendEmpty?: boolean;
   inputId?: string;
   draftKey?: string;
+  autoFocus?: boolean;
   /** Names what failed in the toast, e.g. a scheduled send. */
   failureTitle?: string | ((error: unknown) => string);
 }
@@ -31,6 +32,7 @@ export function useChatInput({
   canSendEmpty = false,
   inputId = "chat-input",
   draftKey,
+  autoFocus = true,
   failureTitle = "Couldn't send message",
 }: Args) {
   const [value, setValue] = useChatDraft(draftKey);
@@ -74,18 +76,18 @@ export function useChatInput({
   // composer waits for a tap there.
   useEffect(
     function focusOnMount() {
-      if (isTouchDevice()) return;
+      if (!autoFocus || isTouchDevice()) return;
       document.getElementById(inputId)?.focus();
     },
-    [inputId],
+    [autoFocus, inputId],
   );
 
   useEffect(
     function focusWhenEnabled() {
-      if (disabled || isTouchDevice()) return;
+      if (!autoFocus || disabled || isTouchDevice()) return;
       document.getElementById(inputId)?.focus();
     },
-    [disabled, inputId],
+    [autoFocus, disabled, inputId],
   );
 
   async function handleSend(message = value) {

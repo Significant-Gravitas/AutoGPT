@@ -66,7 +66,7 @@ export function BalanceCard({ index = 0 }: Props) {
         <InformationTooltip description={BALANCE_EXPLAINER} iconSize={22} />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-border-base bg-surface p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <Text variant="h2" as="span" className="text-textBlack">
           {formatCents(balanceCents)}
         </Text>
@@ -82,7 +82,11 @@ export function BalanceCard({ index = 0 }: Props) {
           </Dialog.Trigger>
           <Dialog.Content>
             <div className="flex flex-col gap-3">
-              <Text variant="small" as="span" className="text-zinc-500">
+              <Text
+                variant="small"
+                as="span"
+                className="text-foreground-tertiary"
+              >
                 We&apos;ll redirect you to Stripe to complete your purchase.
               </Text>
               <Input

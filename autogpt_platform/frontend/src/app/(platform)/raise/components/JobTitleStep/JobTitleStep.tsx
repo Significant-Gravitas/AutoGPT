@@ -31,7 +31,7 @@ export function JobTitleStep({
     return (
       <div
         className={cn(
-          "ml-auto rounded-2xl border px-4 py-3 text-[15px] leading-relaxed text-foreground",
+          "ml-auto rounded-2xl border px-4 py-3 text-body-md leading-relaxed text-foreground",
           "flex w-fit items-center gap-2",
           bubbleClassFor(color) ?? "border-accent bg-accent/5",
         )}
@@ -74,7 +74,7 @@ export function JobTitleStep({
       {selectedTitle || chips.length === 0 ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+          className="mr-4 text-xs font-medium uppercase tracking-caps text-muted-foreground"
         >
           or
         </span>

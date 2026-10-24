@@ -2986,6 +2986,12 @@ def _mock_stream_queue_internals(
     push_length: int | None = 1,
 ):
     """Mock dependencies for the pending-message queue path."""
+    # No held follow-up: a send while a turn runs is simply queued.
+    mocker.patch(
+        "backend.api.features.chat.routes.holds_follow_up",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     if session_exists:
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
