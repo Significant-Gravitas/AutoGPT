@@ -47,7 +47,7 @@ jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
 launchdarkly-server-sdk = "^9.14.1"
 markdown-it-py = "^4.0.0"
-mem0ai = "^0.1.115"
+mem0ai = "^1.0.11"
 # Pinned to an upstream master commit until a moviepy release allows pillow 13
 # (every release up to 2.2.1 caps pillow below 12). Switch back to the release
 # then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057.
