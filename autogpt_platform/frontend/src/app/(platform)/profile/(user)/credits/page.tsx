@@ -299,7 +299,7 @@ export default function CreditsPage() {
               />
             </div>
 
-            <Text variant="body" className="leading-5 text-inherit">
+            <Text variant="body-tight" tone="inherit">
               <b>Note:</b> For your safety, we will top up your balance{" "}
               <b>at most once</b> per workflow execution to prevent unintended
               excessive charges. Therefore, ensure that the automatic top-up

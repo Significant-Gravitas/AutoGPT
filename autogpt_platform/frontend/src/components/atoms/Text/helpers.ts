@@ -55,6 +55,12 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-loose":
+    "font-sans text-caption font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-medium-loose":
+    "font-sans text-caption font-medium leading-5 text-foreground-base",
 
   // Label Text
   label:
@@ -110,6 +116,8 @@ export const variantElementMap: Record<Variant, As> = {
   "small-medium": "p",
   "small-tight": "p",
   "small-relaxed": "p",
+  "small-loose": "p",
+  "small-medium-loose": "p",
   label: "span",
   eyebrow: "span",
 };

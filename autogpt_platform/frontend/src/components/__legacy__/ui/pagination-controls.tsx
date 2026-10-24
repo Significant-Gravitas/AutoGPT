@@ -36,7 +36,7 @@ export function PaginationControls({
       >
         Previous
       </Button>
-      <Text variant="body" as="span" className="leading-5 text-inherit">
+      <Text variant="body-tight" as="span" tone="inherit">
         Page {currentPage} of {totalPages}
       </Text>
       <Button
