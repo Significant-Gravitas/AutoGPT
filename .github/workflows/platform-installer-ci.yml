@@ -30,7 +30,11 @@ permissions:
 
 jobs:
   shell:
-    name: Shell installer
+    name: Shell installer${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -68,7 +72,11 @@ jobs:
           grep -F 'CMD ["/usr/bin/supervisord", "-n", "-c", "/opt/autogpt/single-container/supervisor/supervisord.conf"]' autogpt_platform/single-container/Dockerfile
 
   macos:
-    name: Shell installer (macOS)
+    name: Shell installer (macOS)${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: macos-14
     steps:
       - name: Check out repository
@@ -92,7 +100,11 @@ jobs:
         run: /bin/bash autogpt_platform/installer/test-single-container-handoff.sh
 
   windows:
-    name: PowerShell installer (Windows)
+    name: PowerShell installer (Windows)${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: windows-2025
     steps:
       - name: Check out repository

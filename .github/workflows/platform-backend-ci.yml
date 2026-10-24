@@ -121,9 +121,14 @@ jobs:
   # job (scoped to autogpt_platform/backend) never collects its tests, so run
   # them here. Pure unit tests — no database or external services needed.
   autogpt-libs-test:
+    name: autogpt-libs-test${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
     permissions:
       contents: read
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -168,7 +173,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: autogpt-libs-test-report
+          name: autogpt-libs-test-report-copy-${{ matrix.test-copy }}
           path: autogpt_platform/autogpt_libs/junit-autogpt-libs.xml
           if-no-files-found: error
 
@@ -225,7 +230,7 @@ jobs:
       PLAIN_OUTPUT: True
 
   test:
-    name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
+    name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
     permissions:
       contents: read
     # Each Python leg preserves the complete suite while its four disjoint path
@@ -236,6 +241,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
         python-version: ["3.11", "3.12", "3.13"]
         test-shard: [data, copilot, util-executor, remainder]
     runs-on: ubuntu-latest
@@ -630,7 +636,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}
+          name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}-copy-${{ matrix.test-copy }}
           path: |
             autogpt_platform/backend/junit-${{ matrix.test-shard }}.xml
             autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
@@ -696,5 +702,6 @@ jobs:
             exit 1
           fi
           python3 .github/scripts/validate_backend_skips.py \
+            --copies ${{ github.event_name == 'pull_request' && 3 || 1 }} \
             --allow-skips-from .github/scripts/backend-allowed-skips.json \
             --reports-dir backend-shard-reports

@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from itertools import product
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -10,13 +11,13 @@ from validate_junit import load_skip_policy, validate_path
 
 
 def validate_shard_reports(
-    directory: Path, version: str, allowed_skips: set[str]
+    directory: Path, version: str, allowed_skips: set[str], copy: int = 1
 ) -> set[str]:
     observed = set()
     for shard in (*SHARDS, "remainder"):
         report = (
             directory
-            / f"backend-test-reports-py{version}-{shard}"
+            / f"backend-test-reports-py{version}-{shard}-copy-{copy}"
             / f"junit-{shard}.xml"
         )
         try:
@@ -36,15 +37,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--allow-skips-from", type=Path, required=True)
     parser.add_argument("--reports-dir", type=Path, required=True)
+    parser.add_argument("--copies", type=int, choices=(1, 3), default=1)
     args = parser.parse_args(argv)
     try:
         policy = load_skip_policy(args.allow_skips_from)
         if policy.python_versions is None:
             raise ValueError("aggregate validation requires explicit python_versions")
         expected = {
-            f"backend-test-reports-py{version}-{shard}"
+            f"backend-test-reports-py{version}-{shard}-copy-{copy}"
             for version in policy.python_versions
             for shard in (*SHARDS, "remainder")
+            for copy in range(1, args.copies + 1)
         }
         actual = {
             path.name for path in args.reports_dir.glob("backend-test-reports-py*")
@@ -57,11 +60,11 @@ def main(argv: list[str] | None = None) -> int:
         problems = []
         # No secrets in this job, so secret-gated IDs are accepted and left out
         # of the staleness sweep; the per-shard step is the strict check.
-        for version in policy.python_versions:
+        for version, copy in product(policy.python_versions, range(1, args.copies + 1)):
             allowed = policy.for_python_version(version)
             try:
                 observed = validate_shard_reports(
-                    args.reports_dir, version, allowed | policy.secret_gated_ids()
+                    args.reports_dir, version, allowed | policy.secret_gated_ids(), copy
                 )
                 if stale := allowed - observed:
                     raise ValueError(
@@ -70,10 +73,11 @@ def main(argv: list[str] | None = None) -> int:
                         "configure legitimate Python-version-specific skips explicitly."
                     )
             except ValueError as exc:
-                problems.append(str(exc))
+                problems.append(f"Copy {copy}: {exc}")
                 continue
             print(
-                f"Python {version}: all four shard reports match {len(allowed)} skip IDs"
+                f"Python {version}, copy {copy}: "
+                f"all four shard reports match {len(allowed)} skip IDs"
             )
         if problems:
             raise ValueError("\n".join(problems))

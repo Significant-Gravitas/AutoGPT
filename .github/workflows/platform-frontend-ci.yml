@@ -42,6 +42,11 @@ defaults:
 
 jobs:
   tooltip-browser:
+    name: tooltip-browser${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 11
     steps:
@@ -66,10 +71,15 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: tooltip-browser-failures
+          name: tooltip-browser-failures-copy-${{ matrix.test-copy }}
           path: autogpt_platform/frontend/test-results/
 
   lint:
+    name: lint${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -90,7 +100,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: frontend-coverage-validator-tests
+          name: frontend-coverage-validator-tests-copy-${{ matrix.test-copy }}
           path: autogpt_platform/frontend/coverage-validator-tests.xml
           if-no-files-found: error
 
@@ -186,11 +196,12 @@ jobs:
           exitOnceUploaded: true
 
   integration_test:
-    name: integration_test (shard ${{ matrix.shard }}/4)
+    name: integration_test (shard ${{ matrix.shard }}/4)${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
         shard: [1, 2, 3, 4]
 
     steps:
@@ -248,7 +259,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: frontend-integration-shard-${{ matrix.shard }}-of-4
+          name: frontend-integration-shard-${{ matrix.shard }}-of-4-copy-${{ matrix.test-copy }}
           path: |
             autogpt_platform/frontend/junit.xml
             autogpt_platform/frontend/coverage/cobertura-coverage.xml
@@ -262,4 +273,4 @@ jobs:
           flags: platform-frontend
           files: ./autogpt_platform/frontend/coverage/cobertura-coverage.xml
           disable_search: true
-          name: frontend-shard-${{ matrix.shard }}-of-4
+          name: frontend-shard-${{ matrix.shard }}-of-4-copy-${{ matrix.test-copy }}

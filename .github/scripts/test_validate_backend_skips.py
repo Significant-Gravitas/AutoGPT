@@ -32,8 +32,8 @@ class AggregateSkipTests(unittest.TestCase):
                 skips = ["test_shared"] if shard == "remainder" else []
                 self.write_report(version, shard, skips)
 
-    def write_report(self, version, shard, skips):
-        report = self.report_path(version, shard)
+    def write_report(self, version, shard, skips, copy=1):
+        report = self.report_path(version, shard, copy)
         report.parent.mkdir(parents=True, exist_ok=True)
         root = ElementTree.Element("testsuite", name=shard)
         ElementTree.SubElement(
@@ -47,18 +47,20 @@ class AggregateSkipTests(unittest.TestCase):
         ElementTree.ElementTree(root).write(report)
         return report
 
-    def report_path(self, version, shard):
+    def report_path(self, version, shard, copy=1):
         return (
             self.reports
-            / f"backend-test-reports-py{version}-{shard}"
+            / f"backend-test-reports-py{version}-{shard}-copy-{copy}"
             / f"junit-{shard}.xml"
         )
 
-    def run_validator(self):
+    def run_validator(self, copies=1):
         self.policy_file.write_text(json.dumps(self.policy))
         with patch("sys.stderr") as stderr:
             result = main(
                 [
+                    "--copies",
+                    str(copies),
                     "--allow-skips-from",
                     str(self.policy_file),
                     "--reports-dir",
@@ -69,6 +71,52 @@ class AggregateSkipTests(unittest.TestCase):
 
     def test_entry_used_only_by_a_different_shard_passes(self):
         self.assertEqual(self.run_validator()[0], 0)
+
+    def write_three_copies(self):
+        for copy in (2, 3):
+            for version in self.policy["python_versions"]:
+                for shard in (*SHARDS, "remainder"):
+                    skips = ["test_shared"] if shard == "remainder" else []
+                    self.write_report(version, shard, skips, copy)
+
+    def test_three_complete_copies_pass(self):
+        self.write_three_copies()
+        self.assertEqual(self.run_validator(copies=3)[0], 0)
+
+    def test_pr_requires_all_three_copies(self):
+        result, diagnostic = self.run_validator(copies=3)
+        self.assertEqual(result, 1)
+        self.assertIn("missing", diagnostic)
+        self.assertIn("copy-2", diagnostic)
+        self.assertIn("copy-3", diagnostic)
+
+    def test_failure_in_one_copy_is_not_hidden_by_two_passing_copies(self):
+        self.write_three_copies()
+        report = self.report_path("3.12", "copilot", copy=2)
+        root = ElementTree.parse(report)
+        case = root.getroot().find("testcase")
+        ElementTree.SubElement(case, "failure", message="intermittent failure")
+        root.write(report)
+        result, diagnostic = self.run_validator(copies=3)
+        self.assertEqual(result, 1)
+        self.assertIn("Copy 2", diagnostic)
+        self.assertIn("copilot", diagnostic)
+
+    def test_missing_report_in_one_copy_fails(self):
+        self.write_three_copies()
+        self.report_path("3.11", "data", copy=3).unlink()
+        result, diagnostic = self.run_validator(copies=3)
+        self.assertEqual(result, 1)
+        self.assertIn("Copy 3", diagnostic)
+        self.assertIn("missing or empty", diagnostic)
+
+    def test_stale_skip_cannot_be_hidden_by_another_copy(self):
+        self.write_three_copies()
+        self.write_report("3.12", "remainder", [], copy=2)
+        result, diagnostic = self.run_validator(copies=3)
+        self.assertEqual(result, 1)
+        self.assertIn("Copy 2", diagnostic)
+        self.assertIn("stale", diagnostic)
 
     def test_entry_used_by_no_shard_fails_with_actionable_diagnostic(self):
         self.policy["common"].append("backend.example.test_removed")
@@ -280,7 +328,10 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
                 artifact = upload.replace(
                     "${{ matrix.python-version }}", version
                 ).replace("${{ matrix.test-shard }}", shard)
-                self.assertEqual(artifact, f"backend-test-reports-py{version}-{shard}")
+                artifact = artifact.replace("${{ matrix.test-copy }}", "1")
+                self.assertEqual(
+                    artifact, f"backend-test-reports-py{version}-{shard}-copy-1"
+                )
                 self.assertTrue(fnmatch.fnmatchcase(artifact, download["pattern"]))
 
     def test_aggregate_step_refuses_partial_reports_from_unsuccessful_jobs(self):
@@ -300,7 +351,17 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
                     invocation = root / "invocation"
                     invocation.unlink(missing_ok=True)
                     run = subprocess.run(
-                        ["bash", "-e", "-o", "pipefail", "-c", validate["run"]],
+                        [
+                            "bash",
+                            "-e",
+                            "-o",
+                            "pipefail",
+                            "-c",
+                            validate["run"].replace(
+                                "${{ github.event_name == 'pull_request' && 3 || 1 }}",
+                                "3",
+                            ),
+                        ],
                         cwd=root,
                         env={
                             **os.environ,
@@ -317,6 +378,7 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
                             arguments[0], ".github/scripts/validate_backend_skips.py"
                         )
                         self.assertEqual(arguments[-1], "backend-shard-reports")
+                        self.assertEqual(arguments[1:3], ["--copies", "3"])
                     else:
                         self.assertNotEqual(run.returncode, 0)
                         self.assertIn("reports may be incomplete", run.stderr)

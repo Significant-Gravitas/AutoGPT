@@ -29,9 +29,14 @@ defaults:
 
 jobs:
   test:
+    name: test${{ github.event_name == 'pull_request' && format(' (forge, copy {0}/3)', matrix.test-copy) || '' }}
     permissions:
       contents: read
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -95,5 +100,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: test-logs
+          name: test-logs-copy-${{ matrix.test-copy }}
           path: classic/logs/

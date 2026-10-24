@@ -84,7 +84,7 @@ class E2EMatrixContractTests(unittest.TestCase):
         self.assertIn("-f docker-compose.journeys.yml", prepare)
         self.assertIn("matrix.scripted_model", prepare)
 
-    def test_journeys_check_is_advisory(self):
+    def test_unrepeated_journeys_check_is_advisory(self):
         checker = (
             Path(__file__).resolve().parents[1]
             / "workflows/scripts/check_actions_status.py"

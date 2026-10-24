@@ -10,6 +10,25 @@ permissions:
   contents: read
 
 jobs:
+  test-ci:
+    name: CI workflow tests${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.10"
+      - name: Install test dependencies
+        run: pip install requests PyYAML
+      - name: Test workflows and status checker
+        run: python -m unittest discover -s .github/workflows/scripts -p "test_*.py"
+
   status-check:
     name: Check PR Status
     runs-on: ubuntu-latest
@@ -26,8 +45,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install requests
-      - name: Test status checker
-        run: python -m unittest discover -s .github/workflows/scripts -p "test_*.py"
       - name: Check PR Status
         run: |
           echo "Current directory before running Python script:"

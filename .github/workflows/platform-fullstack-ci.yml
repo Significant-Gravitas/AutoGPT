@@ -58,7 +58,11 @@ permissions:
 
 jobs:
   check-api-types:
-    name: check API types
+    name: check API types${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -171,16 +175,18 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: fullstack-validator-tests
+          name: fullstack-validator-tests-copy-${{ matrix.test-copy }}
           path: ${{ runner.temp }}/fullstack-validator-results/playwright-validator-tests.xml
           if-no-files-found: error
 
   e2e_test:
-    name: end-to-end tests (${{ matrix.suite }})
+    name: end-to-end tests (${{ matrix.suite }})${{ github.event_name == 'pull_request' && format(' (copy {0}/3)', matrix.test-copy) || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
+        suite: [smoke, journeys]
         include:
           # Today's smoke suite on the self-hosted configuration. The only leg
           # that writes the shared build caches.
@@ -195,8 +201,8 @@ jobs:
             scripted_model: false
             known_failures: false
           # Holistic *-journey.spec.ts flows on the hosted configuration:
-          # hosted feature flags, credits on. Advisory until proven stable
-          # (ADVISORY_CHECK_RUNS in check_actions_status.py). No OpenAI key,
+          # hosted feature flags, credits on. The copy suffix makes PR checks
+          # required; the unsuffixed merge-queue check stays advisory. No OpenAI key,
           # so the seed skips embeddings and finishes in ~30 s.
           - suite: journeys
             config: playwright.journeys.config.ts
@@ -624,7 +630,7 @@ jobs:
       - name: Export Next.js build cache from BuildKit
         id: next-build-cache-export
         # Copying ~3.7 GB competes with the browser tests, so it waits for them
-        if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group' }}
+        if: ${{ !cancelled() && matrix.suite == 'smoke' && matrix.test-copy == 1 && steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group' }}
         continue-on-error: true
         working-directory: /tmp
         background: true
@@ -680,7 +686,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend-e2e
-          name: e2e-${{ matrix.suite }}
+          name: e2e-${{ matrix.suite }}-copy-${{ matrix.test-copy }}
           files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           disable_search: true
 
@@ -688,7 +694,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-${{ matrix.suite }}
+          name: playwright-report-${{ matrix.suite }}-copy-${{ matrix.test-copy }}
           path: autogpt_platform/frontend/playwright-report
           if-no-files-found: ignore
           retention-days: 3
@@ -697,7 +703,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-test-results-${{ matrix.suite }}
+          name: playwright-test-results-${{ matrix.suite }}-copy-${{ matrix.test-copy }}
           path: |
             autogpt_platform/frontend/test-results
             autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
@@ -712,7 +718,7 @@ jobs:
         wait: [next-build-cache-export]
 
       - name: Save Next.js build cache
-        if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache-export.outcome == 'success' }}
+        if: ${{ !cancelled() && matrix.suite == 'smoke' && matrix.test-copy == 1 && steps.next-build-cache-export.outcome == 'success' }}
         continue-on-error: true
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:

@@ -90,6 +90,11 @@ jobs:
         continue-on-error: true
 
   test:
+    name: test${{ github.event_name == 'pull_request' && format(' (classic Docker, copy {0}/3)', matrix.test-copy) || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test-copy: ${{ fromJSON(github.event_name == 'pull_request' && '[1,2,3]' || '[1]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
