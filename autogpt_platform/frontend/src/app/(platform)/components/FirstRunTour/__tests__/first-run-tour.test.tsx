@@ -60,6 +60,7 @@ function Targets({ only }: { only?: TourTarget[] }) {
       {show("team") && <div {...tourTarget("team")}>Team</div>}
       {show("files") && <div {...tourTarget("files")}>Files</div>}
       {show("wallet") && <div {...tourTarget("wallet")}>Wallet</div>}
+      {show("account") && <div {...tourTarget("account")}>Account</div>}
       {show("menu") && <div {...tourTarget("menu")}>Menu</div>}
       {show("first-tasks") && (
         <ol {...tourTarget("first-tasks")}>
@@ -163,6 +164,20 @@ describe("first-run walkthrough", () => {
     expect(
       await screen.findByText(
         "Your trial includes an allowance for chats and experts. See what's left here, and earn extra credits.",
+      ),
+    ).toBeDefined();
+  });
+
+  it("points at the sidebar footer while the wallet has not rendered", async () => {
+    // The wallet draws nothing until credits load, and nothing at all if
+    // they fail; the step still points at where it lives.
+    renderTour(["chats", "team", "files", "account", "first-tasks"]);
+    openTour();
+    act(() => useFirstRunTourStore.getState().goTo("allowance"));
+
+    expect(
+      await screen.findByText(
+        "Your allowance and credits live here, next to your profile.",
       ),
     ).toBeDefined();
   });

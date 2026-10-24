@@ -16,6 +16,7 @@ export type TourTarget =
   | "files"
   | "workspace"
   | "wallet"
+  | "account"
   | "first-tasks"
   | "composer"
   | "menu";
@@ -88,7 +89,12 @@ export const TOUR_STEPS: TourStep[] = [
       isTrial
         ? "Your trial includes an allowance for chats and experts. See what's left here, and earn extra credits."
         : "See how much of your plan's allowance is left here, plus your credits.",
-    targets: ["wallet"],
+    // The wallet draws nothing until credits load (or at all, if they fail),
+    // so the sidebar footer it sits in stands in for it meanwhile.
+    targets: ["wallet", "account"],
+    bodyFor: {
+      account: "Your allowance and credits live here, next to your profile.",
+    },
     inSidebar: true,
     requiresBilling: true,
   },
