@@ -456,7 +456,7 @@ export function ExecutionAnalyticsForm() {
                   rows={6}
                   className="resize-y"
                 />
-                <Text variant="body" className="leading-5 text-gray-600">
+                <Text variant="body-tight" className="text-gray-600">
                   Customize how the AI evaluates execution success and failure.
                   Leave empty to use the default prompt shown above.
                 </Text>
@@ -477,7 +477,7 @@ export function ExecutionAnalyticsForm() {
                   rows={8}
                   className="resize-y"
                 />
-                <Text variant="body" className="leading-5 text-gray-600">
+                <Text variant="body-tight" className="text-gray-600">
                   Customize the analysis instructions. Use{" "}
                   <code className="rounded bg-gray-100 px-1">
                     {"{{GRAPH_NAME}}"}
@@ -556,9 +556,9 @@ export function ExecutionAnalyticsForm() {
             {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
             <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
             <Text
-              variant="small"
+              variant="small-tight"
               as="div"
-              className="rounded-md bg-info-surface px-3 py-2 leading-4 text-blue-700"
+              className="rounded-md bg-info-surface px-3 py-2 text-blue-700"
             >
               <p className="font-medium">
                 Chart Filters (matches monitoring system):
@@ -587,17 +587,18 @@ export function ExecutionAnalyticsForm() {
                     </strong>{" "}
                     detected for agent{" "}
                     <Text
-                      variant="body"
+                      variant="body-mono-tight"
                       as="code"
-                      className="rounded bg-red-100 px-1 font-mono leading-5 text-inherit"
+                      tone="inherit"
+                      className="rounded bg-red-100 px-1"
                     >
                       {formData.graph_id}
                     </Text>
                   </p>
                   <Text
-                    variant="body"
+                    variant="body-tight"
                     as="div"
-                    className="space-y-1 leading-5 text-red-600"
+                    className="space-y-1 text-red-600"
                   >
                     <p>
                       • 3-day average:{" "}
@@ -632,7 +633,7 @@ export function ExecutionAnalyticsForm() {
               <div className="text-2xl font-bold text-info-foreground">
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
               </div>
-              <Text variant="body" as="div" className="leading-5 text-gray-600">
+              <Text variant="body-tight" as="div" className="text-gray-600">
                 Daily Score
               </Text>
             </div>
@@ -640,7 +641,7 @@ export function ExecutionAnalyticsForm() {
               <div className="text-2xl font-bold text-success">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
               </div>
-              <Text variant="body" as="div" className="leading-5 text-gray-600">
+              <Text variant="body-tight" as="div" className="text-gray-600">
                 3-Day Avg
               </Text>
             </div>
@@ -648,7 +649,7 @@ export function ExecutionAnalyticsForm() {
               <div className="text-2xl font-bold text-orange-600">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
               </div>
-              <Text variant="body" as="div" className="leading-5 text-gray-600">
+              <Text variant="body-tight" as="div" className="text-gray-600">
                 7-Day Avg
               </Text>
             </div>
@@ -656,7 +657,7 @@ export function ExecutionAnalyticsForm() {
               <div className="text-2xl font-bold text-purple-600">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
               </div>
-              <Text variant="body" as="div" className="leading-5 text-gray-600">
+              <Text variant="body-tight" as="div" className="text-gray-600">
                 14-Day Avg
               </Text>
             </div>

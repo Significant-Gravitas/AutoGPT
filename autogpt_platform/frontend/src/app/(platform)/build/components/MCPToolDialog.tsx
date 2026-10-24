@@ -469,9 +469,9 @@ export function MCPToolDialog({
                   autoFocus
                 />
                 <Text
-                  variant="small"
+                  variant="small-tight"
                   id="mcp-auth-token-hint"
-                  className="leading-4 text-gray-500"
+                  className="text-gray-500"
                 >
                   {mcpAuthTokenHint(manualAuthScheme)}
                 </Text>
@@ -480,10 +480,10 @@ export function MCPToolDialog({
 
             {error && (
               <Text
-                variant="body"
+                variant="body-tight"
                 role="alert"
                 aria-live="polite"
-                className="leading-5 text-red-700 dark:text-red-400"
+                className="text-red-700 dark:text-red-400"
               >
                 {error}
               </Text>
@@ -620,9 +620,10 @@ function MCPToolCard({
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
         <Text
-          variant="body"
+          variant="body-semibold-tight"
           as="span"
-          className="flex-1 font-semibold leading-5 text-inherit dark:text-white"
+          tone="inherit"
+          className="flex-1 dark:text-white"
         >
           {tool.name}
         </Text>
@@ -636,8 +637,8 @@ function MCPToolCard({
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
         <Text
-          variant="small"
-          className="px-3 pb-1 leading-relaxed text-gray-500 dark:text-gray-400"
+          variant="small-relaxed"
+          className="px-3 pb-1 text-gray-500 dark:text-gray-400"
         >
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
         </Text>

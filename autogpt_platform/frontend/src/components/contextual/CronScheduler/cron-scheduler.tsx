@@ -354,7 +354,7 @@ export function CronScheduler({
             ))}
           </div>
           {selectedWeekDays.length === 0 && (
-            <Text variant="body" tone="error" className="leading-5">
+            <Text variant="body-tight" tone="error">
               Please select at least one day of the week
             </Text>
           )}
@@ -428,7 +428,7 @@ export function CronScheduler({
             </div>
           )}
           {selectedMonthDays.length === 0 && (
-            <Text variant="body" tone="error" className="leading-5">
+            <Text variant="body-tight" tone="error">
               Please select at least one day of the month
             </Text>
           )}
@@ -482,7 +482,7 @@ export function CronScheduler({
             })}
           </div>
           {selectedMonths.length === 0 && (
-            <Text variant="body" tone="error" className="leading-5">
+            <Text variant="body-tight" tone="error">
               Please select at least one month
             </Text>
           )}
