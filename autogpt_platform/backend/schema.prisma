@@ -765,6 +765,11 @@ model UserWorkspaceFile {
 
   metadata Json @default("{}")
 
+  // Otto's own working file (a parked tool output, its build scratchpad),
+  // kept out of the user's file lists. Decided once at write time; see
+  // backend/data/workspace_internal.py.
+  isInternal Boolean @default(false)
+
   // User-level organization. Null = root. The folder API soft-deletes
   // folders and reparents files to root; SetNull is a hard-delete safety net.
   folderId String?

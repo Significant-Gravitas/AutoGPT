@@ -40,11 +40,11 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
     >
       <Dialog.Content>
         <div className="flex flex-col items-center p-6 text-center">
-          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
+          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-info-surface">
             <Icon
               icon={SecurityCheckIcon}
               size={32}
-              className="text-blue-600"
+              className="text-info-foreground"
             />
           </div>
 
@@ -52,12 +52,12 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
             Safety Checks Enabled
           </Text>
 
-          <Text variant="body" className="mb-2 text-zinc-700">
+          <Text variant="body" className="mb-2 text-foreground-body">
             AI-generated workflows may take actions that affect your data or
             external systems.
           </Text>
 
-          <Text variant="body" className="mb-8 text-zinc-700">
+          <Text variant="body" className="mb-8 text-foreground-body">
             AutoGPT includes safety checks so you&apos;ll always have the
             opportunity to review and approve sensitive actions before they
             happen.
