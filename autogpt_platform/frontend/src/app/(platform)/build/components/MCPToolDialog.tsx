@@ -18,9 +18,9 @@ import {
 import { Button } from "@/components/__legacy__/ui/button";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
-import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Badge } from "@/components/__legacy__/ui/badge";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
 import {
@@ -531,7 +531,7 @@ export function MCPToolDialog({
             >
               {loading || oauthLoading ? (
                 <span className="flex items-center gap-2">
-                  <LoadingSpinner className="size-4" />
+                  <LoadingSpinner variant="circle" className="size-4" />
                   {oauthLoading ? "Waiting for sign-in..." : "Connecting..."}
                 </span>
               ) : authRequired && !showManualToken ? (
