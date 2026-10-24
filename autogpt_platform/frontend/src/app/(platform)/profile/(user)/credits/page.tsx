@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -42,6 +43,8 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
+      {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
+
       <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
       <div
         // TODO(tokens): no exact role (border-neutral-200 #E5E5E5)
@@ -183,6 +186,8 @@ export default function CreditsPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}
         <div className="space-y-4">
+          {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
+
           <h3 className="text-lg font-medium">Top-up Credits</h3>
 
           <p
@@ -240,6 +245,8 @@ export default function CreditsPage() {
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="my-6 space-y-4">
+            {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
+
             <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
 
             <div>
@@ -292,12 +299,12 @@ export default function CreditsPage() {
               />
             </div>
 
-            <p className="text-sm">
+            <Text variant="body" className="leading-5 text-inherit">
               <b>Note:</b> For your safety, we will top up your balance{" "}
               <b>at most once</b> per workflow execution to prevent unintended
               excessive charges. Therefore, ensure that the automatic top-up
               amount is sufficient for your workflow&apos;s operation.
-            </p>
+            </Text>
 
             {autoTopUpConfig?.amount ? (
               <>
@@ -333,6 +340,8 @@ export default function CreditsPage() {
 
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
+          {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
+
           <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
           <p
             // TODO(tokens): no exact role (text-neutral-600 #525252)
@@ -351,6 +360,8 @@ export default function CreditsPage() {
           </Button>
 
           {/* Transaction History */}
+          {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
+
           <h3 className="text-lg font-medium">Transaction History</h3>
           {transactionHistory.transactions.length === 0 && (
             <p
@@ -414,6 +425,8 @@ export default function CreditsPage() {
 
           {refundRequests.length > 0 && (
             <>
+              {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
+
               <h3 className="text-lg font-medium">Your Refund Requests</h3>
               <Table>
                 <TableHeader>

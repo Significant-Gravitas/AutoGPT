@@ -21,6 +21,7 @@ import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
@@ -110,7 +111,13 @@ export function ExpandableRow({
         <TableRow>
           <TableCell colSpan={7} className="border-t-0 p-0">
             <div className="bg-muted/30 px-4 py-3">
-              <h4 className="mb-2 text-sm font-semibold">Version History</h4>
+              <Text
+                variant="body"
+                as="h4"
+                className="mb-2 font-semibold leading-5 text-inherit"
+              >
+                Version History
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>

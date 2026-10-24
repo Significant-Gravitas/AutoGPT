@@ -1,4 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -60,42 +61,46 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       )}
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="body-medium"
+            as="span"
+            tone="emphasis"
+            className="line-clamp-1 group-disabled:text-zinc-400"
           >
             {highlightText(title, highlightedText)}
-          </span>
+          </Text>
         )}
         <div className="flex items-center space-x-1.5">
           {edited_time && (
-            <span
-              className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-              )}
+            <Text
+              variant="small"
+              as="span"
+              tone="muted"
+              className="line-clamp-1 leading-5 group-disabled:text-zinc-400"
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
-            </span>
+            </Text>
           )}
 
           <span className="font-sans text-zinc-400">•</span>
 
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="line-clamp-1 leading-5 group-disabled:text-zinc-400"
           >
             Version {version}
-          </span>
+          </Text>
 
-          <span
-            className={cn(
-              "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
-            )}
+          <Text
+            variant="small-medium"
+            as="span"
+            tone="muted"
+            className="rounded-[0.75rem] bg-zinc-200 px-[0.5rem] leading-5"
           >
             Your Workflow
-          </span>
+          </Text>
         </div>
       </div>
       <div

@@ -1,4 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -66,41 +67,48 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       </div>
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="body-medium"
+            as="span"
+            tone="emphasis"
+            className="line-clamp-1 group-disabled:text-zinc-400"
           >
             {highlightText(title, highlightedText)}
-          </span>
+          </Text>
         )}
         <div className="flex items-center space-x-2.5">
-          <span
-            className={cn(
-              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="truncate leading-5 group-disabled:text-zinc-400"
           >
             By {creator_name}
-          </span>
+          </Text>
 
           <span className="font-sans text-zinc-400">•</span>
 
-          <span
-            className={cn(
-              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="truncate leading-5 group-disabled:text-zinc-400"
           >
             {number_of_runs} runs
-          </span>
+          </Text>
           <span className="font-sans text-zinc-400">•</span>
           <Link
             href={`/marketplace/agent/${creator_name}/${slug}`}
             className="flex gap-0.5 truncate"
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="font-sans text-xs leading-5 text-blue-700 underline">
+            <Text
+              variant="small-medium"
+              as="span"
+              className="leading-5 text-blue-700 underline"
+            >
               Workflow page
-            </span>
+            </Text>
             <Icon
               icon={LinkSquare01Icon}
               className="h-4 w-4 text-blue-700"

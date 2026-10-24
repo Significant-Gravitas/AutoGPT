@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Select,
   SelectContent,
@@ -77,22 +78,27 @@ export const RefundModal = ({
         <div className="py-4">
           <div className="space-y-4">
             {error && (
-              <div className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              <Text
+                variant="body"
+                as="div"
+                className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 leading-5 text-destructive"
+              >
                 <AlertCircle className="h-4 w-4" />
                 <p>{error}</p>
-              </div>
+              </Text>
             )}
 
             {transactions.length === 0 ? (
-              <p
+              <Text
+                variant="body"
                 // TODO(tokens): no exact role (text-gray-500 #6B7280)
-                className="text-sm text-gray-500"
+                className="leading-5 text-gray-500"
               >
                 No eligible transactions found for refund.
-              </p>
+              </Text>
             ) : (
               <div className="space-y-2">
-                <label className="text-sm font-medium">
+                <label className="text-body font-medium leading-5">
                   Select Transaction
                 </label>
                 <Select
@@ -127,7 +133,10 @@ export const RefundModal = ({
             )}
 
             <div className="space-y-2">
-              <label htmlFor="refundReason" className="text-sm font-medium">
+              <label
+                htmlFor="refundReason"
+                className="text-body font-medium leading-5"
+              >
                 Reason for Refund
               </label>
               <Textarea

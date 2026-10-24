@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function PaginationControls({
   currentPage,
@@ -35,9 +36,9 @@ export function PaginationControls({
       >
         Previous
       </Button>
-      <span className="text-sm">
+      <Text variant="body" as="span" className="leading-5 text-inherit">
         Page {currentPage} of {totalPages}
-      </span>
+      </Text>
       <Button
         variant="legacy-outline"
         onClick={() => handlePageChange(currentPage + 1)}

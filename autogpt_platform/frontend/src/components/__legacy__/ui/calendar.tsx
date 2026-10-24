@@ -37,7 +37,8 @@ function Calendar({
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        month_caption: "flex  items-center justify-center text-sm font-medium",
+        month_caption:
+          "flex  items-center justify-center text-body font-medium leading-5",
         dropdowns: "flex gap-2 ",
         caption_label: "hidden",
         nav: "hidden",
@@ -46,11 +47,12 @@ function Calendar({
         button_next: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
         month_grid: "w-full border-collapse space-y-1",
         weekdays: "flex",
+        // TODO(tokens): SECRT-3152 fractional rem (text-[0.8rem]).
         weekday:
           "text-neutral-500 rounded-md w-8 font-normal text-[0.8rem] dark:text-neutral-400",
         week: "flex w-full mt-2",
         day: cn(
-          "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-neutral-100 [&:has([aria-selected].day-outside)]:bg-neutral-100/50 [&:has([aria-selected].day-range-end)]:rounded-r-md dark:[&:has([aria-selected])]:bg-neutral-800 dark:[&:has([aria-selected].day-outside)]:bg-neutral-800/50",
+          "relative p-0 text-center text-body leading-5 focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-neutral-100 [&:has([aria-selected].day-outside)]:bg-neutral-100/50 [&:has([aria-selected].day-range-end)]:rounded-r-md dark:[&:has([aria-selected])]:bg-neutral-800 dark:[&:has([aria-selected].day-outside)]:bg-neutral-800/50",
           props.mode === "range"
             ? "[&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
             : "[&:has([aria-selected])]:rounded-md",
@@ -118,7 +120,7 @@ const CustomDropdown = ({
       onValueChange={handleValueChange}
       disabled={disabled}
     >
-      <SelectTrigger className="w-[120px] space-x-2 bg-white text-sm">
+      <SelectTrigger className="w-[120px] space-x-2 bg-white text-body leading-5">
         <SelectValue placeholder="Select" />
       </SelectTrigger>
       <SelectContent className="bg-white">

@@ -1,6 +1,7 @@
 // BLOCK MENU TODO: We need to add a better hover state to it; currently it's not in the design either.
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes } from "react";
 
@@ -31,13 +32,18 @@ export const MenuItem: React.FC<Props> = ({
       )}
       {...rest}
     >
-      <span className="truncate font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+      <Text
+        variant="body-medium"
+        as="span"
+        tone="emphasis"
+        className="truncate"
+      >
         {name}
-      </span>
+      </Text>
       {number !== undefined && (
-        <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-600">
+        <Text variant="body" as="span" tone="secondary">
           {number > 100 ? "100+" : number}
-        </span>
+        </Text>
       )}
     </Button>
   );

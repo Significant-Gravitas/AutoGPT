@@ -22,6 +22,7 @@ export default function Error({
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
           <IconCircleAlert className="size-10" />
         </div>
+        {/* TODO(tokens): no role or Text variant is 24px/32px (text-2xl). */}
         <h1 className="mt-8 text-2xl font-bold tracking-tight text-foreground">
           Oops, something went wrong!
         </h1>

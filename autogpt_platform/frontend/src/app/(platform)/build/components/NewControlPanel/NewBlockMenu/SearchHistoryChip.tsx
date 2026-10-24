@@ -1,4 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ArrowUpRight } from "lucide-react";
@@ -28,9 +29,9 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
       {...rest}
     >
       <ArrowUpRight className="h-6 w-6 text-zinc-500" strokeWidth={1.25} />
-      <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+      <Text variant="body" as="span" tone="emphasis">
         {content}
-      </span>
+      </Text>
     </Button>
   );
 };
