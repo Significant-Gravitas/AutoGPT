@@ -26,7 +26,7 @@ import {
   TableHead,
   TableRow,
   TableCell,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/components/TablePrimitives";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import {
   CardHeader,
