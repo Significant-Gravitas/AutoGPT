@@ -3,6 +3,11 @@
 const SHELL =
   "cat|head|tail|less|wc|sort|uniq|cut|tr|find|xargs|touch|rm|cp|mv|ln|tar|zip|unzip|gzip|wget|curl|ssh|scp|rsync|python3?|node|pip3?|npm|pnpm|yarn|git|docker|make|chmod|chown|mkdir|sudo|sed|awk|grep|bash|sh|ls|cd|echo|printf|export|jq";
 
+// Verbs that put the next word in command position. Prepositions such as
+// "with" are left out: "listings with cat food photos" is prose.
+const RUN_VERB =
+  "(?:[Rr]un(?:s|ning)?|[Rr]an|[Ee]xecut(?:e|es|ed|ing)|[Cc]all(?:s|ed|ing)?)";
+
 const TECHNICAL_PATTERNS = [
   // Paths: "~/x", "./x", "/x", or any token with two slashes in it.
   /(?:^|\s)[~.]?\/\w/,
@@ -19,8 +24,9 @@ const TECHNICAL_PATTERNS = [
   new RegExp(`\\b(?:${SHELL})\\s+(?:-{1,2}\\w|[~./])`),
   /\bgit\s+(?:status|log|diff|add|commit|push|pull|clone|checkout|branch|show|stash|reset|merge|rebase)\b/,
   /\b(?:npm|pnpm|yarn|pip3?)\s+(?:install|run|ci|add)\b/,
-  // A text that opens with a command and its argument: "cat brief".
-  new RegExp(`^(?:${SHELL})\\s+\\S`),
+  // A command and its argument in command position: opening the text ("cat
+  // brief") or right after a run verb ("Running cat brief", "ran head …").
+  new RegExp(`(?:^|\\b${RUN_VERB}\\s+)(?:${SHELL})\\s+\\S`),
   // Tool and argument names: snake_case identifiers.
   /\b[a-z]+_[a-z_]+\b/,
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,

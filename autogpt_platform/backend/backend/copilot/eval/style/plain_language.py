@@ -29,6 +29,21 @@ _COMMAND = re.compile(
     r"|git\s+(?:status|add|commit|push|pull|clone|checkout|diff|log|init)\b"
     r"|(?:pip3?|npm|pnpm|yarn)\s+(?:install|run)\b)"
 )
+_SHELL = (
+    "cat|head|tail|less|wc|sort|uniq|cut|tr|find|xargs|touch|rm|cp|mv|ln|tar|"
+    "zip|unzip|gzip|wget|curl|ssh|scp|rsync|python3?|node|pip3?|npm|pnpm|yarn|"
+    "git|docker|make|chmod|chown|mkdir|sudo|sed|awk|grep|bash|sh|ls|cd|echo|"
+    "printf|export|jq"
+)
+# A command and its argument in command position: opening a line or sentence
+# ("cat brief shows…") or right after a run verb ("I'm running cat brief").
+# Prepositions such as "with" are left out: "listings with cat food" is prose.
+_COMMAND_POSITION = re.compile(
+    r"(?:^|(?<=[.!?]\s)|\b(?:[Rr]un(?:s|ning)?|[Rr]an|[Ee]xecut(?:e|es|ed|ing)"
+    r"|[Cc]all(?:s|ed|ing)?)\s+)"
+    rf"((?:{_SHELL})\s+[\w~/-]+(?:\.[\w~/-]+)*)",
+    re.MULTILINE,
+)
 _UUID = re.compile(
     r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE
 )
@@ -41,7 +56,8 @@ def technical_terms(text: str, tool_names: Iterable[str]) -> list[str]:
     for pattern in (_CAPABILITY_ID, _tool_pattern(tool_names), _PATH, _FILE_NAME):
         found += pattern.findall(remaining)
         remaining = pattern.sub(" ", remaining)
-    found += _COMMAND.findall(remaining) + _UUID.findall(remaining)
+    found += _COMMAND.findall(remaining) + _COMMAND_POSITION.findall(remaining)
+    found += _UUID.findall(remaining)
     return list(dict.fromkeys(found))
 
 

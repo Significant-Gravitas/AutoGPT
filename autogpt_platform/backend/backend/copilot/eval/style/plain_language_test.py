@@ -63,6 +63,17 @@ def test_common_subcommands_are_caught():
     assert technical_terms(reply, _TOOLS) == ["git status", "npm install"]
 
 
+def test_a_command_after_a_run_verb_is_caught():
+    reply = "I'm running cat brief now, then executing python3 report."
+    assert technical_terms(reply, _TOOLS) == ["cat brief", "python3 report"]
+    assert technical_terms("cat brief shows the dates.", _TOOLS) == ["cat brief"]
+
+
+def test_ordinary_words_after_a_run_verb_stay_plain():
+    reply = "Running the cat food promo this week. Ran the head office rota."
+    assert technical_terms(reply, _TOOLS) == []
+
+
 def test_the_registry_names_are_the_ones_checked():
     assert "bash_exec" in TOOL_NAMES and "run_capability" in TOOL_NAMES
 

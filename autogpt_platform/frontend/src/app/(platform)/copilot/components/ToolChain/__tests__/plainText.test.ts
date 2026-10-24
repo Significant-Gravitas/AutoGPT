@@ -19,6 +19,11 @@ describe("looksTechnical", () => {
     "head -n 5 calendar",
     "Counting rows with wc -l orders",
     "python3 report",
+    "Running cat brief",
+    "Ran head calendar",
+    "Now running python3 report",
+    "Executing jq on the export",
+    "Calling node build",
     "npm install",
   ])("flags %j", (text) => {
     expect(looksTechnical(text)).toBe(true);
@@ -34,6 +39,9 @@ describe("looksTechnical", () => {
     "Updating the cat food listings",
     "Checking the head office rota",
     "Writing the status update",
+    "Running the cat food promo",
+    "Ran the head office rota",
+    "Running a check on the cat food stock",
   ])("passes %j", (text) => {
     expect(looksTechnical(text)).toBe(false);
   });
