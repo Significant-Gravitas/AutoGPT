@@ -1434,6 +1434,150 @@ class TestExpertTurnsCheckTheirExpert:
         assert "For this session you are Maria after setup" in identities[0]
 
     @pytest.mark.parametrize(
+        ("setup_statuses", "wait_seconds"),
+        [
+            pytest.param(["installing", "ready"], 1.0, id="ready"),
+            pytest.param(["installing"], 0.0, id="timeout"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_a_waited_unchanged_expert_turn_bills_after_reauthorization(
+        self,
+        setup_statuses: list[ExpertSetupStatus],
+        wait_seconds: float,
+    ) -> None:
+        initial = _checked_expert(
+            "personal-org",
+            "personal-team",
+            expert=_expert(setup_status="installing"),
+        )
+        after_wait = _checked_expert(
+            "personal-org",
+            "personal-team",
+            expert=_expert(name="Maria after setup"),
+        )
+        checks = iter([initial, after_wait])
+        boundary_events: list[str] = []
+
+        async def check_expert(_user_id: str, _expert_id: str):
+            check = next(checks)
+            if check is after_wait:
+                boundary_events.append("reauthorized")
+            return check
+
+        store = self._store(check_expert)
+        store.expert_setup_status = AsyncMock(side_effect=list(setup_statuses))
+        identities: list[str] = []
+        outputs: list[str] = []
+        billing_events: list[str] = []
+        billed_turns: list[object] = []
+        pause = TurnPause(reason="daily", started=False)
+        credit_turn = MagicMock(refusal=pause, cap_credits=5, budget=None)
+        allowance_check = AsyncMock(return_value=pause)
+        credit_check = AsyncMock(return_value=credit_turn)
+
+        @asynccontextmanager
+        async def billing_context(billed_turn):
+            billed_turns.append(billed_turn)
+            billing_events.append("opened")
+            boundary_events.append("billing opened")
+            try:
+                yield
+            finally:
+                billing_events.append("charged")
+                boundary_events.append("billing charged")
+
+        async def engine(*, session: ChatSession, **_kwargs):
+            boundary_events.append("engine")
+            identities.append(
+                await build_expert_identity_suffix(
+                    session.user_id,
+                    session.expert_id,
+                    organization_id=session.organization_id,
+                    team_id=session.team_id,
+                )
+            )
+            yield StreamTextDelta(id="t", delta="hi")
+
+        async def capture_output(*, stream, **_kwargs):
+            async for chunk in stream:
+                if isinstance(chunk, StreamTextDelta):
+                    outputs.append(chunk.delta)
+                    boundary_events.append("output")
+                yield chunk
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                engine,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                side_effect=capture_output,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.publish_chunk",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.executor.processor.close_browser_daemon",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=self._session()),
+            ),
+            patch("backend.data.db_accessors.experts_db", return_value=store),
+            patch("backend.copilot.expert_context.experts_db", return_value=store),
+            patch(
+                "backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS",
+                wait_seconds,
+            ),
+            patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0),
+            patch(
+                "backend.copilot.executor.processor.refusal_for",
+                new=allowance_check,
+            ),
+            patch(
+                "backend.copilot.executor.processor.bill_to_credits",
+                new=credit_check,
+            ),
+            patch(
+                "backend.copilot.executor.processor.credit_billing",
+                new=billing_context,
+            ),
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+        assert store.check_private_expert.await_count == 2
+        assert len(identities) == 1
+        assert "For this session you are Maria after setup" in identities[0]
+        assert outputs == ["hi"]
+        assert billing_events == ["opened", "charged"]
+        assert billed_turns == [credit_turn]
+        assert boundary_events == [
+            "reauthorized",
+            "billing opened",
+            "engine",
+            "output",
+            "billing charged",
+        ]
+        allowance_check.assert_awaited_once_with("user-1")
+        credit_check.assert_awaited_once()
+        assert credit_check.await_args.kwargs["organization_id"] == "personal-org"
+        assert credit_check.await_args.kwargs["team_id"] == "personal-team"
+
+    @pytest.mark.parametrize(
         ("change", "after_wait", "expected_message"),
         [
             pytest.param(
