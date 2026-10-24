@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/molecules/Table/components/TablePrimitives";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,9 +48,13 @@ export function APIKeysSection() {
                 <TableRow key={key.id} data-testid="api-key-row">
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
-                    <div className="rounded-md border p-1 px-2 text-xs">
+                    <Text
+                      variant="small"
+                      as="div"
+                      className="rounded-md border p-1 px-2 leading-4 text-inherit"
+                    >
                       {`${key.head}******************${key.tail}`}
-                    </div>
+                    </Text>
                   </TableCell>
                   <TableCell>
                     <Badge

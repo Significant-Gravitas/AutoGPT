@@ -14,6 +14,7 @@ import {
   TableBody,
 } from "@/components/molecules/Table/components/TablePrimitives";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Text } from "@/components/atoms/Text/Text";
 import { ChevronDown, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
@@ -126,7 +127,13 @@ export function ExpandableRow({
         <TableRow>
           <TableCell colSpan={7} className="border-t-0 p-0">
             <div className="bg-muted/30 px-4 py-3">
-              <h4 className="mb-2 text-sm font-semibold">Version History</h4>
+              <Text
+                variant="body"
+                as="h4"
+                className="mb-2 font-semibold leading-5 text-inherit"
+              >
+                Version History
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>
