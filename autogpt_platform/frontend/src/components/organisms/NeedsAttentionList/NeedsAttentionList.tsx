@@ -18,7 +18,10 @@ export function NeedsAttentionList() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-2">
+      <div
+        data-slot="needs-attention-list-loading"
+        className="flex flex-col gap-2"
+      >
         <Skeleton className="h-5 w-40" />
         <Skeleton className="h-16 w-full" />
       </div>
@@ -38,9 +41,12 @@ export function NeedsAttentionList() {
   if (reviews.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-3">
+    <section data-slot="needs-attention-list" className="flex flex-col gap-3">
       <Text variant="h5">Needs your attention ({countLabel})</Text>
-      <div className="flex flex-col gap-2">
+      <div
+        data-slot="needs-attention-list-items"
+        className="flex flex-col gap-2"
+      >
         {reviews.map((review) => (
           <NeedsAttentionRow
             key={review.node_exec_id}
