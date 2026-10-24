@@ -1,4 +1,5 @@
 import io
+import posixpath
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,10 +9,23 @@ import fastapi.testclient
 import pytest
 from prisma.errors import UniqueViolationError
 
-from backend.api.features.workspace.routes import router
+from backend.api.features.workspace.routes import (
+    RenameFileRequest,
+    delete_workspace_file,
+    rename_workspace_file_route,
+    router,
+)
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    list_user_skills,
+    render_skill_markdown,
+)
+from backend.copilot.tools.skills_test import _cached_skills, _FakeWorkspaceManager
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import Workspace, WorkspaceFile
 from backend.data.workspace_scope import WorkspaceScope
+
+_ROUTES = "backend.api.features.workspace.routes"
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -541,6 +555,7 @@ def test_delete_file_success(mocker):
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
+    mock_manager.get_file_info = mocker.AsyncMock(return_value=_make_file())
     mock_manager.delete_file = mocker.AsyncMock(return_value=True)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
@@ -553,13 +568,17 @@ def test_delete_file_success(mocker):
     mock_manager.delete_file.assert_called_once_with("file-aaa-bbb")
 
 
-def test_delete_file_not_found(mocker):
-    """Deleting a non-existent file should return 404."""
+@pytest.mark.parametrize("found_first", [False, True])
+def test_delete_file_not_found(mocker, found_first):
+    """A file that is missing, or gone by the time it is deleted, is a 404."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace",
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
+    mock_manager.get_file_info = mocker.AsyncMock(
+        return_value=_make_file() if found_first else None
+    )
     mock_manager.delete_file = mocker.AsyncMock(return_value=False)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
@@ -581,6 +600,85 @@ def test_delete_file_no_workspace(mocker):
     response = client.delete("/files/file-aaa-bbb")
     assert response.status_code == 404
     assert "Workspace not found" in response.text
+
+
+class _FilesOverSkills(_FakeWorkspaceManager):
+    """The Files page's view of the fake skills workspace: skill files are
+    plain files there, renamed and deleted by id."""
+
+    async def get_file_info(self, file_id):
+        return next(
+            (
+                _make_file(id=file_id, name=posixpath.basename(path), path=path)
+                for path in self.files
+                if f"id-{path}" == file_id
+            ),
+            None,
+        )
+
+    async def delete_file(self, file_id):
+        found = await self.get_file_info(file_id)
+        await super().delete_file(file_id)
+        return found is not None
+
+    async def rename(self, file_id, workspace_id, name):
+        file = await self.get_file_info(file_id)
+        assert file is not None
+        path = posixpath.join(posixpath.dirname(file.path), name)
+        self.files[path] = self.files.pop(file.path)
+        self.metadata[path] = self.metadata.pop(file.path, {})
+        return _make_file(id=f"id-{path}", name=name, path=path)
+
+
+_EXPERT_SKILL = "/experts/expert-1/skills/brief/SKILL.md"
+
+
+def _files_page_over_skills():
+    files = _FilesOverSkills()
+    files.files[_EXPERT_SKILL] = render_skill_markdown(
+        ParsedSkill(name="brief", description="d", body="steps")
+    ).encode()
+    return files
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_skill_file_reaches_the_owners_cached_skill_index():
+    """The expert's skill index is cached for minutes; a SKILL.md deleted
+    from the Files page must be gone from it on the expert's next turn."""
+    files = _files_page_over_skills()
+    with (
+        _cached_skills(files),
+        patch(
+            f"{_ROUTES}.get_workspace", new=AsyncMock(return_value=_make_workspace())
+        ),
+        patch(f"{_ROUTES}.WorkspaceManager", return_value=files),
+    ):
+        assert [s.name for s in await list_user_skills("u-1", "expert-1")] == ["brief"]
+        await delete_workspace_file(user_id="u-1", file_id=f"id-{_EXPERT_SKILL}")
+
+        assert await list_user_skills("u-1", "expert-1") == []
+
+
+@pytest.mark.asyncio
+async def test_renaming_a_skill_file_reaches_the_owners_cached_skill_index():
+    """Renaming SKILL.md on the Files page unpublishes the skill; the
+    expert's cached index must drop it on the next turn."""
+    files = _files_page_over_skills()
+    with (
+        _cached_skills(files),
+        patch(
+            f"{_ROUTES}.get_workspace", new=AsyncMock(return_value=_make_workspace())
+        ),
+        patch(f"{_ROUTES}.rename_workspace_file", new=files.rename),
+    ):
+        assert [s.name for s in await list_user_skills("u-1", "expert-1")] == ["brief"]
+        await rename_workspace_file_route(
+            user_id="u-1",
+            file_id=f"id-{_EXPERT_SKILL}",
+            payload=RenameFileRequest(name="notes.md"),
+        )
+
+        assert await list_user_skills("u-1", "expert-1") == []
 
 
 def test_upload_write_file_too_large_returns_413(mocker):

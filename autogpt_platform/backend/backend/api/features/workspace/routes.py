@@ -24,6 +24,7 @@ from backend.copilot.rate_limit import (
     enforce_payment_paywall,
     get_workspace_storage_limit_bytes,
 )
+from backend.copilot.tools.skills import invalidate_skills_index_for_path
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
@@ -308,9 +309,10 @@ async def delete_workspace_file(
         raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
 
     manager = WorkspaceManager(user_id, workspace.id)
-    deleted = await manager.delete_file(file_id)
-    if not deleted:
+    file = await manager.get_file_info(file_id)
+    if file is None or not await manager.delete_file(file_id):
         raise fastapi.HTTPException(status_code=404, detail="File not found")
+    await invalidate_skills_index_for_path(user_id, file.path)
 
     return DeleteFileResponse(deleted=True)
 
@@ -343,6 +345,8 @@ async def rename_workspace_file_route(
         raise fastapi.HTTPException(status_code=409, detail=str(exc))
     if renamed is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
+    # A rename stays in its folder, so the new path names the same owner.
+    await invalidate_skills_index_for_path(user_id, renamed.path)
     expert_by_session = await _expert_ids_by_session(user_id, [renamed])
     return _to_file_item(renamed, expert_by_session)
 
