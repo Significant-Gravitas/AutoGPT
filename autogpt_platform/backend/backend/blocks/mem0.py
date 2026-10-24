@@ -1,3 +1,4 @@
+import asyncio
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, SecretStr
@@ -139,7 +140,7 @@ class AddMemoryBlock(Block, Mem0Base):
         **kwargs,
     ) -> BlockOutput:
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             if isinstance(input_data.content, Conversation):
                 messages = input_data.content.messages
@@ -161,7 +162,8 @@ class AddMemoryBlock(Block, Mem0Base):
                 params["agent_id"] = graph_id
 
             # Use the client to add memory
-            result = client.add(
+            result = await asyncio.to_thread(
+                client.add,
                 messages,
                 **params,
             )

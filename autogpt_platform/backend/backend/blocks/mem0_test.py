@@ -1,5 +1,7 @@
+import asyncio
 import json
 from collections.abc import Callable
+from threading import Event
 
 import httpx
 import pytest
@@ -21,8 +23,13 @@ MEMORIES = [{"id": "memory-1", "memory": "I am a vegetarian"}]
 def mem0_transport(monkeypatch: pytest.MonkeyPatch):
     clients: list[httpx.Client] = []
 
-    def install(handler: Callable[[httpx.Request], httpx.Response]):
+    def install(
+        handler: Callable[[httpx.Request], httpx.Response],
+        before_request: Callable[[httpx.Request], None] | None = None,
+    ):
         def handle(request: httpx.Request) -> httpx.Response:
+            if before_request:
+                before_request(request)
             assert request.headers["Authorization"] == "Token mock-mem0-api-key"
             if request.url.path == "/v1/ping/":
                 return httpx.Response(
@@ -86,6 +93,55 @@ async def test_add_memory_returns_completed_results(mem0_transport, conversation
             graph_exec_id="run-1",
         )
     ]
+
+    assert outputs == [
+        ("results", results),
+        ("action", "ADD"),
+        ("memory", "I am a vegetarian"),
+    ]
+
+
+@pytest.mark.parametrize("blocked_path", ["/v1/ping/", "/v1/memories/"])
+async def test_add_memory_keeps_event_loop_responsive(
+    mem0_transport, blocked_path: str
+):
+    loop = asyncio.get_running_loop()
+    entered = asyncio.Event()
+    release = Event()
+    results = [{"event": "ADD", "memory": "I am a vegetarian"}]
+
+    def pause_request(request: httpx.Request) -> None:
+        if request.url.path == blocked_path:
+            loop.call_soon_threadsafe(entered.set)
+            if not release.wait(timeout=10):
+                raise TimeoutError("Event loop could not release the Mem0 request")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/memories/"
+        assert json.loads(request.content)["async_mode"] is False
+        return httpx.Response(200, json={"results": results})
+
+    mem0_transport(handle, before_request=pause_request)
+
+    async def collect_outputs():
+        return [
+            item
+            async for item in AddMemoryBlock().run(
+                AddMemoryBlock.Input(credentials=TEST_CREDENTIALS_INPUT),
+                credentials=TEST_CREDENTIALS,
+                user_id="user-1",
+                graph_id="workflow-1",
+                graph_exec_id="run-1",
+            )
+        ]
+
+    task = asyncio.create_task(collect_outputs())
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=15)
+        assert not task.done()
+    finally:
+        release.set()
+        outputs = await task
 
     assert outputs == [
         ("results", results),
