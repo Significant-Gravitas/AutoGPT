@@ -110,9 +110,16 @@ export function RecentChats() {
       <div className="mt-2 flex flex-col gap-4">
         {pinnedSessions.length > 0 && (
           <div>
-            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-caption font-medium leading-4 text-foreground-tertiary">
+            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-foreground-tertiary">
               <Icon icon={PinIcon} className="size-3.5" />
-              <span className="truncate">Pinned</span>
+              <Text
+                variant="small-medium"
+                as="span"
+                tone="muted"
+                className="truncate leading-4"
+              >
+                Pinned
+              </Text>
             </div>
             <SidebarMenu>{pinnedSessions.map(renderItem)}</SidebarMenu>
           </div>
