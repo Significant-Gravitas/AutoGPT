@@ -2,10 +2,10 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -28,7 +28,7 @@ export function CollapsibleNavGroup({
   onOpenChange,
 }: Props) {
   return (
-    <Collapsible
+    <CollapsibleRoot
       defaultOpen
       open={open}
       onOpenChange={onOpenChange}
@@ -51,6 +51,6 @@ export function CollapsibleNavGroup({
           <SidebarGroupContent>{children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
-    </Collapsible>
+    </CollapsibleRoot>
   );
 }
