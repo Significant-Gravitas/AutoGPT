@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 const STATUS_CONFIG = {
   working: { label: "Working", dot: "bg-primary", pulse: true },
   ready: { label: "Ready", dot: "bg-emerald-500", pulse: false },
-  needs_setup: { label: "Finish setup", dot: "bg-amber-500", pulse: false },
+  needs_setup: { label: "Finish setup", dot: "bg-warning", pulse: false },
   paused: { label: "Paused", dot: "bg-zinc-400", pulse: false },
-  failed: { label: "Failed", dot: "bg-red-500", pulse: false },
+  failed: { label: "Failed", dot: "bg-error", pulse: false },
 };
 
 const UNKNOWN_STATUS_CONFIG = {

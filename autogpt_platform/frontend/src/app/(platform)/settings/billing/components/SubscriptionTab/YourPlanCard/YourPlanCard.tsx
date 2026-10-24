@@ -98,8 +98,10 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
                 plan.isPendingCancel ||
                 plan.isPendingDowngrade ||
                 plan.isPendingCycleSwitch
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-violet-100 text-violet-800"
+                  ? // TODO(tokens): no exact role (bg-amber-100 #FEF3C7, text-amber-800 #92400E)
+                    "bg-amber-100 text-amber-800"
+                  : // TODO(tokens): no exact role (bg-violet-100 #EDE9FE, text-violet-800 #5B21B6)
+                    "bg-violet-100 text-violet-800"
               }
             >
               {!plan.isPaidPlan
@@ -121,18 +123,19 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
             ) : null}
           </div>
           {plan.isAdminManaged ? (
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" className="text-foreground-body">
               Managed by your AutoGPT account team.{" "}
               <a
                 href={ENTERPRISE_CONTACT_URL}
-                className="font-medium text-purple-500 no-underline hover:text-purple-600"
+                // TODO(tokens): no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
+                className="font-medium text-brand no-underline hover:text-purple-600"
               >
                 Contact us
               </a>{" "}
               for changes.
             </Text>
           ) : plan.isPaidPlan ? (
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" className="text-foreground-body">
               {formatCents(plan.monthlyCostCents)}
               {plan.billingCycle === "yearly" ? " / year" : " / month"}
               {plan.isPendingCancel && plan.pendingEffectiveAt
@@ -146,7 +149,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
                       : null}
             </Text>
           ) : (
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" className="text-foreground-body">
               Pick a plan to continue using AutoGPT.
             </Text>
           )}
@@ -154,7 +157,11 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
           plan.isPendingCycleSwitch &&
           plan.pendingEffectiveAt &&
           plan.pendingCycle ? (
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text
+              variant="small"
+              as="span"
+              className="text-foreground-tertiary"
+            >
               Switching to {plan.pendingCycle} {plan.label} on{" "}
               {formatShortDate(plan.pendingEffectiveAt)} · No charge today
             </Text>

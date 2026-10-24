@@ -24,9 +24,9 @@ export function ReceiptRelations({
   )
     return null;
   return (
-    <div className="mt-4 space-y-2 border-t border-zinc-200 pt-3">
+    <div className="mt-4 space-y-2 border-t border-border-base pt-3">
       {transaction.parent_execution_id && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" className="text-foreground-secondary">
           Started by
         </Text>
       )}
@@ -44,7 +44,7 @@ export function ReceiptRelations({
         />
       )}
       {(related.length > 0 || transaction.related_executions_has_more) && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" className="text-foreground-secondary">
           Other workflows used by this run
         </Text>
       )}
@@ -57,14 +57,14 @@ export function ReceiptRelations({
           onSelectRelated={onSelectRelated}
         />
       ))}
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" className="text-foreground-secondary">
         Any credit charges for related runs appear separately.
         {related.length > 0
           ? " The task page includes related runs in its total."
           : ""}
       </Text>
       {transaction.related_executions_has_more && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" className="text-foreground-secondary">
           More related runs are not shown here.
         </Text>
       )}
@@ -104,6 +104,7 @@ function RelatedExecution({
         <Button
           variant="ghost"
           size="small"
+          // TODO(tokens): no exact role (text-purple-700 #5424AE)
           className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-purple-700"
           onClick={() => onSelectRelated(execution.execution_id)}
         >
@@ -112,6 +113,7 @@ function RelatedExecution({
       ) : href ? (
         <Link
           href={href}
+          // TODO(tokens): no exact role (text-purple-700 #5424AE)
           className="inline-flex min-h-11 items-center text-purple-700"
         >
           {name}
