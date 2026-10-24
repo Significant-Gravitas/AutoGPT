@@ -146,3 +146,40 @@ async def test_an_idle_thread_parked_on_a_question_needs_no_wait(monkeypatch):
 
     assert (r.status, r.question) == ("needs_input", "Which repo?")
     wait.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_answer_queued_behind_a_slot_reads_the_turn_it_waited_for(
+    monkeypatch,
+):
+    """The user answered while every slot was busy, so the thread is queued
+    and its question not cleared yet. The poll waits on the queued turn and
+    reports that turn, not the question it answered."""
+    sub = MagicMock(user_id="alice", expert_id=None, chat_status="queued")
+    sub.metadata.delegated_by_session_id = None
+    sub.metadata.delegation_cap_usd = None
+    sub.metadata.pending_question = PendingQuestion(
+        text="Which repo?", asked_at=datetime.now(UTC)
+    )
+    sub.messages = []
+    for target, value in {
+        "get_chat_session": AsyncMock(return_value=sub),
+        "stream_registry.get_session": AsyncMock(return_value=None),
+        "queued_turn_refusal": MagicMock(return_value=None),
+        "wait_for_queued_session": AsyncMock(
+            return_value=("completed", SessionResult(response_text="Done: PR #9"))
+        ),
+        "list_sub_workspace_files": AsyncMock(return_value=[]),
+    }.items():
+        monkeypatch.setattr(
+            f"backend.copilot.tools.get_sub_session_result.{target}", value
+        )
+
+    r = await GetSubSessionResultTool()._execute(
+        user_id="alice",
+        session=MagicMock(session_id="parent", expert_id=None),
+        sub_session_id="inner-1",
+    )
+
+    assert (r.status, r.question) == ("completed", None)
+    assert r.response == "Done: PR #9"

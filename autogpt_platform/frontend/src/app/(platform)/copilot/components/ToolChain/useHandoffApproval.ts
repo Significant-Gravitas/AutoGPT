@@ -51,7 +51,9 @@ export function useHandoffApproval(held: HeldRowInfo) {
       approved,
       rule,
       scope,
-      approvedExtras: review.editable ? editedReview(review.payload, edits) : {},
+      approvedExtras: review.editable
+        ? editedReview(review.payload, edits)
+        : {},
     });
     setStatus("idle");
     if (ok) {

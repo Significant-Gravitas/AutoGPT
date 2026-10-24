@@ -246,12 +246,16 @@ class GetSubSessionResultTool(BaseTool):
             )
         else:
             outcome, result = "running", SessionResult()
+        # Only a result read from the record describes a turn that ended
+        # before this poll. A queued thread can still carry the question its
+        # queued answer is about to clear; the turn it waited on is newer.
+        settled_before = not queued and refusal is None and terminal_result is not None
 
         elapsed = time.monotonic() - started_at
         facts = await run_facts(
             user_id, inner_session_id, outcome, turn_started_at(sub)
         )
-        if terminal_result is not None:
+        if settled_before:
             # The turn ended before this poll: its end is on record.
             facts = facts.model_copy(update={"finished_at": turn_finished_at(sub)})
 
@@ -303,7 +307,7 @@ class GetSubSessionResultTool(BaseTool):
             # question; the copy loaded before a wait predates the turn.
             pending_ask=(
                 ask_from_pending(sub.metadata.pending_question)
-                if terminal_result is not None
+                if settled_before
                 else None
             ),
         )
