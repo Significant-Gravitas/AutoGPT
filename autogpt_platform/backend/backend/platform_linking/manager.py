@@ -10,12 +10,14 @@ from .cards import answer_card, open_card
 from .chat import (
     ensure_chat_session,
     list_user_chats,
+    list_user_experts,
     start_chat_turn,
     upload_workspace_file,
 )
 from .models import (
     BotChatRequest,
     BotEventInput,
+    BotExpert,
     BotGuildInput,
     CardAnswer,
     ChannelCard,
@@ -106,10 +108,20 @@ class PlatformLinkingManager(AppService):
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
+        expert_id: str | None = None,
     ) -> EnsureSessionResult:
         return await ensure_chat_session(
-            platform, platform_user_id, platform_server_id, session_id
+            platform, platform_user_id, platform_server_id, session_id, expert_id
         )
+
+    @expose
+    async def list_user_experts(
+        self,
+        platform: Platform,
+        platform_user_id: str,
+        platform_server_id: str | None,
+    ) -> list[BotExpert]:
+        return await list_user_experts(platform, platform_user_id, platform_server_id)
 
     @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
@@ -219,6 +231,7 @@ class PlatformLinkingManagerClient(AppServiceClient):
         PlatformLinkingManager.refresh_server_link_name
     )
     list_user_chats = endpoint_to_async(PlatformLinkingManager.list_user_chats)
+    list_user_experts = endpoint_to_async(PlatformLinkingManager.list_user_experts)
     fetch_workspace_artifact = endpoint_to_async(
         PlatformLinkingManager.fetch_workspace_artifact
     )

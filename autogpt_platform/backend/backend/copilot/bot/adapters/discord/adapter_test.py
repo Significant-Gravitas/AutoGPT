@@ -18,6 +18,7 @@ from backend.copilot.bot.adapters.discord.adapter import (
 from backend.copilot.bot.adapters.discord.choice_ui import _ChoiceButton
 from backend.copilot.bot.adapters.discord.location import Location, location_of
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.options import TurnOptions
 from backend.copilot.bot.turn_stream import _clarification_message
 
 
@@ -1531,6 +1532,33 @@ class TestReplyContext:
         ctx = callback.await_args.args[0]
         assert "fact about space" in ctx.text
         assert "can you tell me?" in ctx.text
+
+    @pytest.mark.asyncio
+    async def test_options_in_a_reply_are_read_before_the_reply_context(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        replied = self._replied("fact about space", author_name="AutoBoostBot")
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)
+        msg.content = "<@1000> expert=Bolt mode=smart can you tell me?"
+        msg.mentions = [_mention(1000, "AutoGPT")]
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+
+        await handlers["on_message"](msg)
+
+        ctx = callback.await_args.args[0]
+        assert ctx.options == TurnOptions(expert_name="Bolt", model="advanced")
+        assert "expert=" not in ctx.text and "mode=" not in ctx.text
+        assert ctx.text.endswith("can you tell me?")
 
     @pytest.mark.asyncio
     async def test_links_inside_replied_message_are_not_fetched(self):

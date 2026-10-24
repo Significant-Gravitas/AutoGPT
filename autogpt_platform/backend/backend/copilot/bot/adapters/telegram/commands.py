@@ -42,7 +42,10 @@ _HELP_TEXT = (
     "• Message me directly to chat with your personal AutoGPT account.\n"
     "• Add me to a group and run /setup to link it to an AutoGPT account.\n"
     "• Mention me (or reply to my messages) in a group to chat.\n"
-    "• Run /new to start a fresh conversation.\n"
+    "• Run /new to start a fresh conversation (and go back to Otto).\n"
+    "• Start a message with `expert=NAME` to ask one of your experts "
+    '(DMs only; quote names with spaces: `expert="Bolt the Builder"`), '
+    "and/or `mode=fast` or `mode=smart`.\n"
     "• Run /unlink to manage your linked groups and DM."
 )
 

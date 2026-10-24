@@ -33,6 +33,7 @@ from .adapters.base import (
 )
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
+from .options import TurnOptions
 from .prompt import PendingMessage, clamp_thread_name, format_batch
 from .text import iter_chunks, split_at_boundary
 
@@ -146,9 +147,11 @@ class TurnStreamer:
         file_ids: list[str] | None = None,
         session_id: str | None = None,
         turn: ChatTurnHandle | None = None,
+        options: TurnOptions | None = None,
     ) -> None:
         """Start a turn from ``batch`` and stream its reply here; with
         ``turn``, stream that one instead, which something else started."""
+        options = options or TurnOptions()
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
@@ -171,6 +174,9 @@ class TurnStreamer:
                 await redis.set(cache_key, sid, ex=SESSION_TTL)
             except Exception:
                 logger.warning("Failed to cache session id for target %s", target_id)
+
+        async def _on_notice(notice: str) -> None:
+            await adapter.send_message(target_id, notice)
 
         flush_at = adapter.chunk_flush_at
         buffer = ""
@@ -299,7 +305,10 @@ class TurnStreamer:
                     session_id=active_session_id,
                     platform_server_id=ctx.server_id,
                     file_ids=file_ids,
+                    expert_id=options.expert_id,
+                    model=options.model,
                     on_session_id=_on_session_id,
+                    on_notice=_on_notice,
                     on_setup_required=_on_setup_required,
                     on_setup_dropped=_on_setup_dropped,
                     on_clarification_needed=_on_clarification_needed,

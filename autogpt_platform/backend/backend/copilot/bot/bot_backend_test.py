@@ -17,6 +17,7 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.tools.models import ApprovalRequiredResponse
 from backend.platform_linking.models import (
+    BotExpert,
     ChatTurnHandle,
     LinkTokenResponse,
     Platform,
@@ -754,3 +755,58 @@ class TestStreamChatDenial:
                 pass
 
         assert exc_info.value.denial.reason == "paywalled"
+
+
+class TestStreamChatOptions:
+    @pytest.mark.asyncio
+    async def test_expert_and_model_reach_the_request_and_notice_goes_to_its_callback(
+        self, api: BotBackend
+    ):
+        handle = ChatTurnHandle(
+            session_id="sess", turn_id="turn", user_id="u1", notice="Fell back."
+        )
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put((None, StreamTextDelta(id="1", delta="Hi")))
+        await queue.put((None, StreamFinish()))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            notices: list[str] = []
+
+            async def capture(notice: str) -> None:
+                notices.append(notice)
+
+            chunks = [
+                c
+                async for c in api.stream_chat(
+                    platform="discord",
+                    platform_user_id="u1",
+                    message="hi",
+                    expert_id="e1",
+                    model="advanced",
+                    on_notice=capture,
+                )
+            ]
+
+        request = api._client.start_chat_turn.await_args.kwargs["request"]
+        assert request.expert_id == "e1" and request.model == "advanced"
+        assert notices == ["Fell back."]
+        assert "".join(chunks) == "Hi"
+
+    @pytest.mark.asyncio
+    async def test_list_user_experts_passes_through(self, api: BotBackend):
+        experts = [BotExpert(id="e1", name="Bolt", role="Builder")]
+        api._client.list_user_experts = AsyncMock(return_value=experts)
+        assert await api.list_user_experts("telegram", "u1", None) == experts
+        api._client.list_user_experts.assert_awaited_once_with(
+            platform=Platform.TELEGRAM, platform_user_id="u1", platform_server_id=None
+        )
