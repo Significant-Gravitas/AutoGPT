@@ -21,6 +21,7 @@ from langfuse.openai import (
 )
 from openai.types.chat import ChatCompletion
 
+from backend.copilot.chat_platform_header import strip_chat_platform_header
 from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.understanding import (
@@ -205,6 +206,7 @@ SKILLS_CONTEXT_TAG = "available_skills"
 # ``<skills_update>`` block to the current turn's model input (query-only,
 # never persisted) telling the model to re-list. Server-injected only.
 SKILLS_UPDATE_TAG = "skills_update"
+MATCHED_SKILLS_TAG = "matched_skills"
 
 # Tag name for the per-turn "already seen" notice. Lists the capability ids
 # this session already described or ran and the skills it already loaded
@@ -315,6 +317,7 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     SESSION_CONTEXT_TAG,
     SKILLS_CONTEXT_TAG,
     SKILLS_UPDATE_TAG,
+    MATCHED_SKILLS_TAG,
     SEEN_CAPABILITIES_TAG,
     VOICE_TURN_TAG,
     *_EXPERT_BLOCK_TAGS,
@@ -1100,7 +1103,11 @@ async def _record_title_generation_cost(
 
 
 async def _update_title_async(
-    session_id: str, message: str, user_id: str | None = None
+    session_id: str,
+    message: str,
+    user_id: str | None = None,
+    *,
+    bridge_origin: bool = False,
 ) -> None:
     """Generate and persist a session title in the background.
 
@@ -1109,7 +1116,11 @@ async def _update_title_async(
     steps — a failure in one does not cancel the other, so a flaky
     Prisma call on cost recording never costs us the generated title.
     """
-    title, response = await _generate_session_title(message, user_id, session_id)
+    title, response = await _generate_session_title(
+        strip_chat_platform_header(message, bridge_origin=bridge_origin),
+        user_id,
+        session_id,
+    )
 
     if user_id:
         try:

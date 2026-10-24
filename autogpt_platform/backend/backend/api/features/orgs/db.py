@@ -193,6 +193,56 @@ async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]
         return None, None
 
 
+async def resolve_member_tenancy(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> tuple[str | None, str | None]:
+    """The org/team for something ``user_id`` creates or runs, given the ones
+    it would inherit.
+
+    A preset, a trigger or a run takes the org and team of what it comes from
+    (its workflow, preset or parent run), which needn't be an org the user is
+    in. As for a request, the pair is kept only if the user is an active
+    member of the org and, when one is given, the team, checked the way
+    ``get_request_context`` checks them, and is otherwise replaced by the
+    user's own default. Unlike a request, a team
+    the user isn't on doesn't fall back to the org's home: everyone in the org
+    sees that, and what was made for a team mustn't spread to the whole org.
+    Nothing to inherit stays ``(None, None)``.
+    """
+    if not organization_id:
+        return None, None
+    if await _is_active_member(user_id, organization_id, team_id):
+        return organization_id, team_id
+    return await resolve_default_tenancy(user_id)
+
+
+async def _is_active_member(
+    user_id: str, organization_id: str, team_id: str | None
+) -> bool:
+    org_member = await prisma.orgmember.find_unique(
+        where={"orgId_userId": {"orgId": organization_id, "userId": user_id}},
+        include={"Org": True},
+    )
+    if (
+        org_member is None
+        or org_member.status != "ACTIVE"
+        or (org_member.Org is not None and org_member.Org.deletedAt is not None)
+    ):
+        return False
+    if not team_id:
+        return True
+    team_member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
+        include={"Team": True},
+    )
+    return (
+        team_member is not None
+        and team_member.status == "ACTIVE"
+        and team_member.Team is not None
+        and team_member.Team.orgId == organization_id
+    )
+
+
 async def _create_personal_org_for_user(
     user_id: str,
     slug_base: str,

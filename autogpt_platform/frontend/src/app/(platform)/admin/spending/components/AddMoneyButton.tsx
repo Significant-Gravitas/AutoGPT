@@ -1,5 +1,8 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, text-gray-500 #6B7280.
+
 import { useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
 import {
@@ -9,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { Input } from "@/components/__legacy__/ui/input";

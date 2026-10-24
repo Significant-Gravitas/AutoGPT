@@ -34,16 +34,16 @@ export function HomeTile({
     <Component
       aria-label={as === "section" ? title : undefined}
       className={cn(
-        "flex min-w-0 flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm",
+        "flex min-w-0 flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm",
         className,
       )}
     >
-      <div className="flex min-h-10 items-center justify-between gap-3 border-b border-zinc-100 px-4">
+      <div className="flex min-h-10 items-center justify-between gap-3 border-b border-separator px-4">
         <div className="flex min-w-0 items-center gap-2">
           <Icon
             icon={icon}
             size={15}
-            className="shrink-0 text-zinc-400"
+            className="shrink-0 text-foreground-subtle"
             aria-hidden="true"
           />
           <Text
@@ -57,7 +57,7 @@ export function HomeTile({
           {badge}
         </div>
         {meta ? (
-          <div className="flex shrink-0 items-center gap-2 text-xs text-zinc-500">
+          <div className="flex shrink-0 items-center gap-2 text-xs text-foreground-tertiary">
             {meta}
           </div>
         ) : null}

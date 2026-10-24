@@ -13,6 +13,7 @@ import { OpenDecisionsCard } from "./components/OpenDecisionsCard";
 import { RecentMemoriesCard } from "./components/RecentMemoriesCard";
 import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
+import { UnderstandingCard } from "./components/UnderstandingCard/UnderstandingCard";
 import { learningSheetScope } from "./helpers";
 import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
@@ -45,10 +46,13 @@ export default function SettingsMemoryPage() {
   return (
     <div className="flex flex-col gap-4">
       <header className="flex min-w-0 flex-col pb-2 pl-4">
-        <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
+        <Text variant="h4" as="h1" className="leading-7 text-textBlack">
           Memory
         </Text>
-        <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
+        <Text
+          variant="body"
+          className="mt-4 max-w-[600px] text-foreground-body"
+        >
           {"What AutoGPT remembers about you — and who remembers it."}
         </Text>
       </header>
@@ -64,6 +68,8 @@ export default function SettingsMemoryPage() {
         scopeName={scopeName}
         onViewSummary={() => void chatPanel.openWithSeed("summary")}
       />
+
+      {scopeExpertID === null ? <UnderstandingCard /> : null}
 
       {isFactsError ? (
         <ErrorCard

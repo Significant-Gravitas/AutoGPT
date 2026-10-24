@@ -12,11 +12,11 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
+    <div className="flex h-full w-full overflow-hidden bg-surface-muted">
       <SettingsSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <SettingsMobileNav />
-        <main className="flex-1 overflow-hidden bg-[#F9F9FA]">
+        <main className="flex-1 overflow-hidden bg-surface-muted">
           <ScrollArea className="h-full">
             <motion.div
               key={pathname}

@@ -52,7 +52,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             size={48}
           />
         ) : (
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-surface-hover text-foreground-tertiary">
             <Icon icon={ICONS[item.kind]} size={22} aria-hidden="true" />
           </span>
         )}
@@ -65,7 +65,8 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
               <Text
                 variant="small-medium"
                 as="span"
-                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
+                // TODO(tokens): no exact role (ring-amber-600/10 #D97706)
+                className="rounded bg-warning-surface px-1.5 py-px text-warning-foreground ring-1 ring-inset ring-amber-600/10"
               >
                 Waiting
               </Text>
