@@ -19,7 +19,7 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
@@ -612,7 +612,7 @@ function MCPToolCard({
           {tool.name}
         </span>
         {paramNames.length > 0 && (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-tiny leading-inherit">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
           </Badge>
         )}
@@ -632,7 +632,7 @@ function MCPToolCard({
             <Badge
               key={name}
               variant="outline"
-              className="text-[10px] font-normal"
+              className="text-tiny font-normal leading-inherit"
             >
               {name}
               {required.has(name) && (
@@ -641,7 +641,10 @@ function MCPToolCard({
             </Badge>
           ))}
           {paramNames.length > 6 && (
-            <Badge variant="outline" className="text-[10px] font-normal">
+            <Badge
+              variant="outline"
+              className="text-tiny font-normal leading-inherit"
+            >
               +{paramNames.length - 6} more
             </Badge>
           )}

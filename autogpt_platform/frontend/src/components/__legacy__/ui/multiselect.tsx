@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import {
   Command,
   CommandItem,
