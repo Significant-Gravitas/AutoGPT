@@ -401,7 +401,10 @@ class CreateListBlock(Block):
             if (max_tokens and (cur_tokens + tokens > max_tokens)) or (
                 max_size and (cur_size + 1 > max_size)
             ):
-                yield "list", chunk
+                # A first value that alone exceeds the limit leaves nothing to
+                # flush; don't emit an empty list ahead of it.
+                if chunk:
+                    yield "list", chunk
                 chunk = [value]
                 cur_size, cur_tokens = 1, tokens
             else:
