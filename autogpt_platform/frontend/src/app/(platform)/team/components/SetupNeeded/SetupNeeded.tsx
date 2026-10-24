@@ -33,10 +33,11 @@ export function SetupNeeded() {
         <Icon
           icon={Alert01Icon}
           size={14}
+          // TODO(tokens): no exact role: text-amber-600 #D97706
           className="text-amber-600"
           aria-hidden
         />
-        <Text variant="small-medium" as="h2" className="!text-zinc-700">
+        <Text variant="small-medium" as="h2" className="!text-foreground-body">
           Setup needed ({items.length})
         </Text>
       </div>

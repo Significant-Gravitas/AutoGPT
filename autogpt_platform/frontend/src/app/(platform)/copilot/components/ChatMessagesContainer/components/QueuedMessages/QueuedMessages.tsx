@@ -30,23 +30,25 @@ export function QueuedMessages({
     <Message key={idx} from="user">
       <MessageContent
         className={cn(
-          "flex flex-col gap-1 border px-4 py-2.5 text-zinc-900",
+          "flex flex-col gap-1 border px-4 py-2.5 text-foreground-strong",
           isHeld
-            ? "border-red-300 bg-white"
-            : "border-dashed border-zinc-300 bg-zinc-100 opacity-60",
+            ? "border-error bg-surface"
+            : "border-dashed border-border-strong bg-surface-hover opacity-60",
           isCompact
             ? "rounded-xl text-sm leading-6"
-            : "rounded-3xl text-[1rem] leading-relaxed",
+            : "rounded-3xl text-body-lg leading-relaxed",
         )}
       >
         <span>
           <CredentialMentionText text={msg} />
         </span>
         {isHeld ? (
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-red-700">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-error">
             <Icon icon={Alert02Icon} className="size-3" />
             <span>Didn&apos;t go through</span>
-            <span className="text-zinc-500">{HELD_HINTS[heldReason]}</span>
+            <span className="text-foreground-tertiary">
+              {HELD_HINTS[heldReason]}
+            </span>
             <Button
               variant="secondary"
               size="xs"
@@ -57,7 +59,10 @@ export function QueuedMessages({
             </Button>
           </span>
         ) : (
-          <span className="flex items-center gap-1 text-xs text-slate-500">
+          <span
+            // TODO(tokens): no exact role for text-slate-500
+            className="flex items-center gap-1 text-xs text-slate-500"
+          >
             <Icon icon={Clock01Icon} className="size-3" />
             <span>Queued</span>
             <span>· Otto will answer after the current task</span>

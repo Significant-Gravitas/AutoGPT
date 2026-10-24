@@ -74,7 +74,7 @@ describe("Button compact sizes", () => {
   it("softens the outline border at xs", () => {
     renderButton({ variant: "outline", size: "xs", children: "New Pod" });
     const el = screen.getByRole("button", { name: "New Pod" });
-    expect(el.className).toContain("border-zinc-200");
+    expect(el.className).toContain("border-border-base");
     expect(el.className).not.toContain("border-zinc-700");
   });
 
@@ -99,7 +99,7 @@ describe("Button compact sizes", () => {
     });
     const el = screen.getByRole("button", { name: "Edit workflow" });
     expect(el.className).toContain("size-7");
-    expect(el.className).toContain("bg-white/90");
+    expect(el.className).toContain("bg-surface/90");
   });
 
   it("styles toggle by aria-pressed", () => {
@@ -113,6 +113,40 @@ describe("Button compact sizes", () => {
       name: "Needs review",
       pressed: true,
     });
-    expect(el.className).toContain("aria-pressed:bg-zinc-100");
+    expect(el.className).toContain("aria-pressed:bg-surface-hover");
+  });
+});
+
+describe("Button slots", () => {
+  it("names the button and its label", () => {
+    renderButton({ children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-label]")?.textContent).toBe(
+      "Save",
+    );
+  });
+
+  it("keeps a slot the caller passes", () => {
+    render(
+      <TooltipProvider>
+        <Button data-slot="date-input-trigger">Pick</Button>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
+    ).toBe("date-input-trigger");
+  });
+
+  it("keeps its own slot inside the tooltip trigger of an icon button", () => {
+    renderButton({
+      variant: "icon",
+      "aria-label": "Edit",
+      leadingIcon: PencilEdit02Icon,
+      children: null,
+    });
+    const el = screen.getByRole("button", { name: "Edit" });
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-icon]")).not.toBeNull();
   });
 });

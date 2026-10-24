@@ -101,35 +101,37 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
 
   const baseStyles = cn(
     // Base styles
-    "rounded-xl border border-zinc-200 bg-white px-4 shadow-none w-full",
-    "font-normal text-black",
-    "placeholder:font-normal placeholder:text-zinc-500",
+    "rounded-xl border border-border-base bg-surface px-4 shadow-none w-full",
+    "font-normal text-foreground-base",
+    "placeholder:font-normal placeholder:text-placeholder",
     // Focus and hover states
+    // TODO(tokens): no role is purple-400 #925CF7, the focus border and ring.
     "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
     className,
   );
 
   const errorStyles =
-    error && "!border !border-red-500 focus:border-red-500 focus:ring-red-500";
+    error && "!border !border-error focus:border-error focus:ring-error";
 
   const renderInput = () => {
     if (props.type === "textarea") {
       return (
         <textarea
           ref={ref as React.Ref<HTMLTextAreaElement>}
+          data-slot="input-control"
           className={cn(
             baseStyles,
             errorStyles,
             "-mb-1 h-auto min-h-[2.875rem]",
             // Size variants for textarea
             size === "small" && [
-              "min-h-[2.25rem]", // 36px minimum
+              "min-h-9", // 36px minimum
               "py-2",
-              "text-sm leading-[22px]",
-              "placeholder:text-sm placeholder:leading-[22px]",
+              "text-body",
+              "placeholder:text-body",
             ],
             size === "medium" && [
-              "min-h-[2.875rem] text-sm leading-[22px]", // 46px minimum (current default)
+              "min-h-[2.875rem] text-body", // 46px minimum (current default)
               "py-2.5",
             ],
           )}
@@ -155,15 +157,16 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     if (props.type === "amount") {
       return (
         <CurrencyInput
+          data-slot="input-control"
           className={cn(
             baseStyles,
             errorStyles,
             // Size variants
             size === "small" && [
-              "h-[2.25rem]",
+              "h-9",
               "py-2",
-              "text-sm leading-[22px]",
-              "placeholder:text-sm placeholder:leading-[22px]",
+              "text-body",
+              "placeholder:text-body",
             ],
             size === "medium" && ["h-[2.875rem]", "py-2.5"],
           )}
@@ -198,6 +201,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     return (
       <BaseInput
         ref={ref as React.Ref<HTMLInputElement>}
+        data-slot="input-control"
         className={cn(
           baseStyles,
           errorStyles,
@@ -205,10 +209,10 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           isPasswordType && "pr-12",
           // Size variants
           size === "small" && [
-            "h-[2.25rem]", // 36px
+            "h-9", // 36px
             "py-2",
-            "text-sm leading-[22px]", // 14px font, 22px line height
-            "placeholder:text-sm placeholder:leading-[22px]",
+            "text-body", // 14px font, 22px line height
+            "placeholder:text-body",
           ],
           size === "medium" && [
             "h-[2.875rem]", // 46px (current default)
@@ -228,24 +232,34 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
 
   const input = (
     <div
+      data-slot="input-wrapper"
       onBlur={isPasswordType ? handleWrapperBlur : undefined}
       className={cn("relative w-full", wrapperClassName)}
     >
       {renderInput()}
       {isPasswordType && (
         <button
+          data-slot="input-password-toggle"
           type="button"
           onClick={handleTogglePassword}
           disabled={props.disabled}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
           aria-controls={inputId}
         >
           {showPassword ? (
-            <Icon icon={EyeIcon} size={16} />
+            <Icon
+              data-slot="input-password-toggle-icon"
+              icon={EyeIcon}
+              size={16}
+            />
           ) : (
-            <Icon icon={EyeOffIcon} size={16} />
+            <Icon
+              data-slot="input-password-toggle-icon"
+              icon={EyeOffIcon}
+              size={16}
+            />
           )}
         </button>
       )}
@@ -253,13 +267,18 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
   );
 
   const inputWithError = (
-    <div className={cn("relative mb-6 w-full", wrapperClassName)}>
+    <div
+      data-slot="input-field"
+      className={cn("relative mb-6 w-full", wrapperClassName)}
+    >
       {input}
       <Text
+        data-slot="input-error"
         variant="small-medium"
         as="span"
+        tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+          "absolute left-0 top-full mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -272,14 +291,18 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
   return hideLabel ? (
     inputWithError
   ) : (
-    <div className="flex w-full flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <label htmlFor={inputId}>
+    <div data-slot="input" className="flex w-full flex-col gap-2">
+      <div
+        data-slot="input-header"
+        className="flex items-center justify-between gap-2"
+      >
+        <div data-slot="input-label-group" className="flex items-center gap-1">
+          <label data-slot="input-label" htmlFor={inputId}>
             <Text
+              data-slot="input-label-text"
               variant={labelVariant}
               as="span"
-              className={cn("text-black", labelClassName)}
+              className={cn("text-foreground-base", labelClassName)}
             >
               {label}
             </Text>
@@ -289,7 +312,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           ) : null}
         </div>
         {hint ? (
-          <Text variant="small" as="span" className="!text-zinc-400">
+          <Text data-slot="input-hint" variant="small" as="span" tone="subtle">
             {hint}
           </Text>
         ) : null}
