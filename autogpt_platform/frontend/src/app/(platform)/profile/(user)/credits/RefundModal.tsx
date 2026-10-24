@@ -79,9 +79,9 @@ export const RefundModal = ({
           <div className="space-y-4">
             {error && (
               <Text
-                variant="body"
+                variant="body-tight"
                 as="div"
-                className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 leading-5 text-destructive"
+                className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive"
               >
                 <AlertCircle className="h-4 w-4" />
                 <p>{error}</p>
@@ -90,20 +90,16 @@ export const RefundModal = ({
 
             {transactions.length === 0 ? (
               <Text
-                variant="body"
+                variant="body-tight"
                 as="p"
                 // TODO(tokens): no exact role (text-gray-500 #6B7280)
-                className="leading-5 text-gray-500"
+                className="text-gray-500"
               >
                 No eligible transactions found for refund.
               </Text>
             ) : (
               <div className="space-y-2">
-                <Text
-                  variant="body-medium"
-                  as="label"
-                  className="leading-5 text-inherit"
-                >
+                <Text variant="body-medium-tight" as="label" tone="inherit">
                   Select Transaction
                 </Text>
                 <Select
@@ -138,11 +134,10 @@ export const RefundModal = ({
             )}
 
             <div className="space-y-2">
-              <label
-                htmlFor="refundReason"
-                className="text-body font-medium leading-5"
-              >
-                Reason for Refund
+              <label htmlFor="refundReason">
+                <Text variant="body-medium-tight" as="span" tone="inherit">
+                  Reason for Refund
+                </Text>
               </label>
               <Textarea
                 id="refundReason"

@@ -84,11 +84,15 @@ export function FilterSheet({
                       }
                       className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-violet-700 data-[state=checked]:text-white"
                     />
-                    <label
-                      htmlFor={category.key}
-                      className="font-sans text-body leading-[1.375rem] text-zinc-600"
-                    >
-                      {category.name}
+                    <label htmlFor={category.key} className="text-zinc-600">
+                      <Text
+                        variant="body"
+                        as="span"
+                        tone="inherit"
+                        className="block"
+                      >
+                        {category.name}
+                      </Text>
                     </label>
                   </div>
                 ))}
@@ -98,9 +102,9 @@ export function FilterSheet({
             {/* Created by section */}
             <div className="space-y-4 px-5">
               <Text
-                variant="large-medium"
+                variant="large-medium-lh-6"
                 as="p"
-                className="leading-6 text-zinc-800"
+                className="text-zinc-800"
               >
                 Created by
               </Text>
@@ -115,9 +119,16 @@ export function FilterSheet({
                     />
                     <label
                       htmlFor={`creator-${creator}`}
-                      className="font-sans text-body leading-[1.375rem] text-zinc-600"
+                      className="text-zinc-600"
                     >
-                      {creator}
+                      <Text
+                        variant="body"
+                        as="span"
+                        tone="inherit"
+                        className="block"
+                      >
+                        {creator}
+                      </Text>
                     </label>
                   </div>
                 ))}
@@ -125,10 +136,12 @@ export function FilterSheet({
               {creators.length > INITIAL_CREATORS_TO_SHOW && (
                 <Button
                   variant={"link"}
-                  className="m-0 p-0 font-sans text-body font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
+                  className="m-0 p-0 text-zinc-800 underline hover:text-zinc-600"
                   onClick={handleToggleShowMoreCreators}
                 >
-                  {displayedCreatorsCount < creators.length ? "More" : "Less"}
+                  <Text variant="body-medium" as="span" tone="inherit">
+                    {displayedCreatorsCount < creators.length ? "More" : "Less"}
+                  </Text>
                 </Button>
               )}
             </div>
