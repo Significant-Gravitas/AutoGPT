@@ -5,7 +5,7 @@
 Hire AI experts, delegate work, and review the results. AutoGPT brings Otto,
 your experts, and their workflows together on your own infrastructure.
 
-**[Quick start](#quick-start)** ·
+**[Quick start](https://agpt.co/docs/platform/self-hosting/single-container#quick-start)** ·
 [Self-hosting guide](https://docs.agpt.co/platform/self-hosting/single-container) ·
 [GitHub](https://github.com/Significant-Gravitas/AutoGPT) ·
 [Community](https://discord.gg/autogpt)
