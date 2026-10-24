@@ -1,12 +1,14 @@
 import {
   autoUpdate,
   flip,
+  hide,
   offset,
   shift,
   size,
   useFloating,
   type Middleware,
 } from "@floating-ui/react-dom";
+import type { CSSProperties } from "react";
 
 const VIEWPORT_MARGIN = 8;
 const ANCHOR_OFFSET = 8;
@@ -27,8 +29,8 @@ const measureFullHeight: Middleware = {
     );
     const height = Math.min(
       list.scrollHeight +
-        parseFloat(style.borderTopWidth) +
-        parseFloat(style.borderBottomWidth),
+        (parseFloat(style.borderTopWidth) || 0) +
+        (parseFloat(style.borderBottomWidth) || 0),
       LIST_MAX_HEIGHT_REM * rootFontSize,
     );
     return {
@@ -39,7 +41,7 @@ const measureFullHeight: Middleware = {
 };
 
 export function useMentionDropdown() {
-  const { refs, floatingStyles } = useFloating({
+  const { refs, floatingStyles, middlewareData } = useFloating({
     placement: "top-start",
     strategy: "fixed",
     whileElementsMounted: autoUpdate,
@@ -61,12 +63,20 @@ export function useMentionDropdown() {
           );
         },
       }),
+      hide(),
     ],
   });
+
+  // A fixed list escapes the scrolling container, so hide it with the composer
+  // once that container scrolls the composer out of view.
+  const listStyles: CSSProperties = {
+    ...floatingStyles,
+    visibility: middlewareData.hide?.referenceHidden ? "hidden" : undefined,
+  };
 
   return {
     setAnchor: refs.setReference,
     setList: refs.setFloating,
-    listStyles: floatingStyles,
+    listStyles,
   };
 }
