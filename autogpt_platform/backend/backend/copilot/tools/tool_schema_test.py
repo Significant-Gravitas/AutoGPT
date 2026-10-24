@@ -279,7 +279,21 @@ from ._test_data import make_session
 # re-measured on that merged tree (89 tools), with the stack's margin:
 #     merged tree                                 77,301 (89 tools)
 #     + headroom                       +300       77,601
-_CHAR_BUDGET = 77_601
+# Raised 77_176 -> 77_653 for #11220's `constant_inputs`
+# (setup_agent_webhook_trigger) and `trigger_config` (update_preset), which an
+# agent carrying both a trigger node and input nodes needs to configure the two
+# separately. Measured on that branch merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              77,175 (89 tools)
+#     + #11220's two arguments        +178        77,353 (89 tools)
+#     + headroom                      +300        77,653
+# Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
+#     merged tree                                 77,464 (89 tools)
+# Re-measured on #11220 merged with dev 36d5f2e8af, where dev's growth no
+# longer fits under it:
+#     merged tree                                 77,679 (89 tools)
+#     + headroom                       +300       77,979
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_CHAR_BUDGET = 77_979
 
 
 @pytest.fixture(scope="module")
@@ -482,7 +496,18 @@ def test_total_schema_char_budget() -> None:
 # over it. Same headroom, for the same reason.
 #     merged tree                                 69,808
 #     + headroom                       +300       70,108
-_SESSION_WIRE_BUDGET = 70_108
+#
+# #11220's `constant_inputs` and `trigger_config`, the same two arguments as
+# ``_CHAR_BUDGET`` above, ride the largest session. Dev grew 199 past the
+# fab04d6ac9 measurement, so they no longer fit under that headroom.
+# Measured on #11220 merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              69,687
+#     + #11220's two arguments        +164        69,851
+#     + headroom                      +300        70,151
+# Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
+#     merged tree                                 69,962
+# The higher value still covers it. On conflict keep the higher value.
+_SESSION_WIRE_BUDGET = 70_151
 
 
 def test_largest_declared_session_wire_budget() -> None:

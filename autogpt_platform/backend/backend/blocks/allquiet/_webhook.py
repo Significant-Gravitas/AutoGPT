@@ -23,6 +23,7 @@ from fastapi import HTTPException, Request
 from pydantic import SecretStr, TypeAdapter, ValidationError
 from strenum import StrEnum
 
+from backend.api.features.library.model import preset_trigger_configs
 from backend.data.integrations import Webhook, WebhookWithRelations
 from backend.sdk import Credentials, ManualWebhookManagerBase
 
@@ -161,7 +162,9 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
     def _configured_secret(cls, webhook: WebhookWithRelations) -> str | None:
         """Find the signing secret set on any node or preset using this webhook."""
         sources = [node.input_default for node in webhook.triggered_nodes] + [
-            preset.inputs for preset in webhook.triggered_presets
+            config
+            for preset in webhook.triggered_presets
+            for config in preset_trigger_configs(preset.inputs)
         ]
 
         found: list[str] = []

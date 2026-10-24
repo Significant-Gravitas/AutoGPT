@@ -1594,6 +1594,55 @@ async def test_create_expert_preset_rejects_shared_webhook(mocker):
     mock_preset_client.create.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "inputs, credentials",
+    [
+        ({"topic": "news"}, {}),
+        (
+            {},
+            {
+                "credentials": library_model.CredentialsMetaInput(
+                    id="cred-1", provider="github", type="api_key"
+                )
+            },
+        ),
+    ],
+    ids=["agent-without-credentials", "agent-without-inputs"],
+)
+@pytest.mark.asyncio
+async def test_update_preset_accepts_an_empty_inputs_or_credentials_map(
+    mocker, inputs, credentials
+):
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(return_value=MagicMock(id="preset-1", expert_id=None)),
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+    )
+    mocker.patch.object(db, "transaction", fake_tx)
+    mocker.patch.object(
+        library_model.LibraryAgentPreset, "from_db", return_value=MagicMock()
+    )
+
+    await db.update_preset(
+        user_id="owner", preset_id="preset-1", inputs=inputs, credentials=credentials
+    )
+
+    created = mock_preset_client.update.await_args.kwargs["data"]["InputPresets"]
+    assert {row["name"] for row in created["create"]} == {*inputs, *credentials}
+
+
 @pytest.mark.asyncio
 async def test_update_expert_preset_rehomes_on_metadata_only_update(mocker):
     current = MagicMock(
@@ -2209,3 +2258,54 @@ async def test_cleanup_trigger_agents_processes_each_independently(mocker):
     recursive_delete.assert_awaited_once_with(
         library_agent_id="sole", user_id="test-user", soft_delete=True
     )
+
+
+@pytest.mark.asyncio
+async def test_migrate_webhook_presets_rekeys_input_mask(mocker):
+    """Migrating a webhook preset to a newly-activated version re-keys its
+    ``_node_input_mask_`` to the new version's trigger node id — otherwise the
+    edited agent's new node UUID wouldn't match the stored key and the trigger
+    would silently stop firing."""
+    new_trigger = MagicMock()
+    new_trigger.id = "newnode1-aaaa-bbbb-cccc-000000000000"
+    new_trigger.block_id = "block-github"
+    new_trigger.block.webhook_config = MagicMock()
+    new_graph = MagicMock()
+    new_graph.id = "graph-1"
+    new_graph.version = 2
+    new_graph.webhook_input_node = new_trigger
+
+    # Old pinned version: same trigger block, different node UUID (-> prefix).
+    old_trigger = MagicMock()
+    old_trigger.id = "oldnode9-dddd-eeee-ffff-111111111111"
+    old_trigger.block_id = "block-github"
+    old_graph = MagicMock()
+    old_graph.webhook_input_node = old_trigger
+
+    preset = MagicMock(id="preset-1", agentGraphVersion=1)
+
+    preset_prisma = MagicMock()
+    preset_prisma.find_many = AsyncMock(return_value=[preset])
+    preset_prisma.update_many = AsyncMock(return_value=1)
+    mocker.patch("prisma.models.AgentPreset.prisma", return_value=preset_prisma)
+
+    io_prisma = MagicMock()
+    io_prisma.update_many = AsyncMock(return_value=1)
+    mocker.patch(
+        "prisma.models.AgentNodeExecutionInputOutput.prisma",
+        return_value=io_prisma,
+    )
+    mocker.patch.object(db.graph_db, "get_graph", AsyncMock(return_value=old_graph))
+
+    await db.migrate_webhook_presets_to_new_version("user-1", new_graph)
+
+    io_prisma.update_many.assert_awaited_once()
+    kwargs = io_prisma.update_many.await_args.kwargs
+    assert kwargs["data"] == {"name": library_model.node_input_mask_key(new_trigger.id)}
+    assert kwargs["where"]["agentPresetId"] == {"in": ["preset-1"]}
+    assert kwargs["where"]["name"] == {
+        "startswith": library_model.NODE_INPUT_MASK_PREFIX
+    }
+    assert kwargs["where"]["AgentPreset"] == {
+        "is": {"agentGraphVersion": new_graph.version}
+    }
