@@ -1,8 +1,9 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/atoms/Input/Input";
 import { useState } from "react";
 
 interface Props {
@@ -37,10 +38,16 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
     >
       <Dialog.Content>
         <div className="mx-auto w-[95%] space-y-4">
-          <p className="text-sm text-muted-foreground">
+          <Text
+            variant="body"
+            as="p"
+            className="leading-5 text-muted-foreground"
+          >
             Your feedback helps us improve. Share details below.
-          </p>
-          <Textarea
+          </Text>
+          <Input
+            bare
+            type="textarea"
             placeholder="Tell us what went wrong or could be improved..."
             value={comment}
             onChange={(e) => setComment(e.target.value)}
@@ -49,9 +56,13 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
             className="resize-none"
           />
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
+            <Text
+              variant="small"
+              as="p"
+              className="leading-4 text-muted-foreground"
+            >
               {comment.length}/2000
-            </p>
+            </Text>
             <div className="flex gap-2">
               <Button variant="outline" size="small" onClick={handleClose}>
                 Cancel
