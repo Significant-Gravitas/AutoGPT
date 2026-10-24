@@ -16,10 +16,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from prisma.enums import BriefingFrequency
+from prisma.enums import BriefingFrequency, SubscriptionTier
 
 from backend.data.alerts import MaturedAlertPage
 from backend.data.notifications import NotificationPreference
+from backend.data.product_mail_audience import ProductMailStanding
 from backend.notifications import notifications as delivery
 
 NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
@@ -58,6 +59,16 @@ def make_db_client(**overrides) -> SimpleNamespace:
         get_user_by_id=AsyncMock(return_value=None),
         is_marketing_opted_out=AsyncMock(return_value=False),
         get_user_email_verification=AsyncMock(return_value=True),
+        # A paying account, so product mail is inside the audience unless a
+        # test says otherwise.
+        get_product_mail_standing=AsyncMock(
+            return_value=ProductMailStanding(
+                email="sam@example.com",
+                subscription_tier=SubscriptionTier.PRO,
+                subscription_ended_at=None,
+                trial_ends_at=None,
+            )
+        ),
         # Alert conditions
         get_users_with_matured_alerts=AsyncMock(
             return_value=MaturedAlertPage(user_ids=[], exhausted=True)

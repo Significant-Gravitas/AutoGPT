@@ -41,7 +41,6 @@ const LocalValuedInput: React.FC<InputProps> = ({
     // Note:
     // It's intended that the `inputValue` not being added to the dependency array,
     // `inputValue` should only be updated from the outside only when `value` changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -21,25 +21,31 @@ export function SuggestedGoalCard({
   onUseSuggestedGoal,
 }: Props) {
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+    <div className="rounded-xl border border-warning-border bg-warning-surface/50 p-4">
       <div className="flex items-start gap-3">
+        {/* TODO(tokens): no exact role for amber-600 #D97706 */}
         <Icon icon={BulbIcon} size={20} className="mt-0.5 text-amber-600" />
         <div className="flex-1 space-y-3">
           <div>
+            {/* TODO(tokens): no exact role for slate-900 #2A313A */}
             <Text variant="body-medium" className="font-medium text-slate-900">
               {goalType === "unachievable"
                 ? "Goal cannot be accomplished"
                 : "Goal needs more detail"}
             </Text>
+            {/* TODO(tokens): no exact role for slate-600 #5B6A7E */}
             <Text variant="small" className="text-slate-600">
               {reason || message}
             </Text>
           </div>
 
-          <div className="rounded-lg border border-amber-300 bg-white p-3">
+          {/* TODO(tokens): no exact role for amber-300 #FCD34D */}
+          <div className="rounded-lg border border-amber-300 bg-surface p-3">
+            {/* TODO(tokens): no exact role for amber-800 #92400E */}
             <Text variant="small" className="mb-1 font-semibold text-amber-800">
               Suggested alternative:
             </Text>
+            {/* TODO(tokens): no exact role for slate-900 #2A313A */}
             <Text variant="body-medium" className="text-slate-900">
               {suggestedGoal}
             </Text>

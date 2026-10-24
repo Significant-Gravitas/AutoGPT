@@ -217,12 +217,15 @@ interface OutputTablePreviewProps {
 
 function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
   return (
-    <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-zinc-200">
+    <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-border-base">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="bg-zinc-50 text-left">
+          <tr className="bg-surface-muted text-left">
             {columns.map((column) => (
-              <th key={column} className="px-3 py-2 font-medium text-zinc-600">
+              <th
+                key={column}
+                className="px-3 py-2 font-medium text-foreground-secondary"
+              >
                 {column}
               </th>
             ))}
@@ -230,9 +233,9 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={index} className="border-t border-zinc-100">
+            <tr key={index} className="border-t border-separator">
               {columns.map((column) => (
-                <td key={column} className="px-3 py-2 text-zinc-700">
+                <td key={column} className="px-3 py-2 text-foreground-body">
                   {cellText(row[column])}
                 </td>
               ))}
@@ -260,7 +263,7 @@ function OutputTableTruncationNotice({
   runLink,
 }: OutputTableTruncationNoticeProps) {
   return (
-    <Text variant="small" className="text-zinc-500">
+    <Text variant="small" tone="muted">
       Showing the first {visibleRowCount} of {rowCount} rows and{" "}
       {visibleColumnCount} of {columnCount} columns. The CSV export matches this
       preview
@@ -281,14 +284,14 @@ function OutputTableTruncationNotice({
 function RunLinkFallback({ runLink }: { runLink?: string | null }) {
   if (!runLink) {
     return (
-      <Text variant="body" className="text-zinc-500">
+      <Text variant="body" tone="muted">
         This run has no preview available.
       </Text>
     );
   }
   return (
     <div className="space-y-3">
-      <Text variant="body" className="text-zinc-500">
+      <Text variant="body" tone="muted">
         Open the full run to inspect its output.
       </Text>
       <Button as="NextLink" href={runLink} variant="primary" size="small">

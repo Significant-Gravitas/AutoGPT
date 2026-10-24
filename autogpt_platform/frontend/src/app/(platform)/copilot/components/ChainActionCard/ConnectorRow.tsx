@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
@@ -130,7 +131,20 @@ export function ConnectorRow({ row }: Props) {
     return true;
   }
 
-  useEffect(() => {
+  // Several saved accounts can satisfy one row. Nothing picks between them for
+  // the user: the row offers them, and the backend runs on exactly that one.
+  const pickable = expertGrant
+    ? []
+    : filterSystemCredentials(
+        usableProviders?.[row.provider]?.savedCredentials ?? [],
+      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
+  // The selected credential itself must still fit: that another account
+  // does is no reason to keep this one and call it Connected.
+  const selectedStillFits = pickable.some(
+    (credential) => credential.id === row.selected?.id,
+  );
+
+  const syncSelection = useStableCallback(() => {
     if (expertGrant) {
       if (!awaitingNewAccount || row.selected || !knownIds.current) return;
       const fresh = newlyConnectedCredential(
@@ -188,30 +202,23 @@ export function ConnectorRow({ row }: Props) {
       type: savedCredential.type as CredentialsMetaInput["type"],
       title: savedCredential.title ?? undefined,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- row.select is rebuilt each render by the card
+  });
+  // row.select is rebuilt each render by the card, so only these decide.
+  const rejectedKey = rejectedIds.join();
+  const renewedKey = renewedIds.join();
+  useEffect(() => {
+    syncSelection();
   }, [
     savedCredential?.id,
     row.selected,
     allProviders,
     awaitingNewAccount,
     expertGrant?.expertId,
-    rejectedIds.join(),
-    renewedIds.join(),
+    rejectedKey,
+    renewedKey,
     hasRefusedAccount,
   ]);
 
-  // Several saved accounts can satisfy one row. Nothing picks between them for
-  // the user: the row offers them, and the backend runs on exactly that one.
-  const pickable = expertGrant
-    ? []
-    : filterSystemCredentials(
-        usableProviders?.[row.provider]?.savedCredentials ?? [],
-      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
-  // The selected credential itself must still fit: that another account
-  // does is no reason to keep this one and call it Connected.
-  const selectedStillFits = pickable.some(
-    (credential) => credential.id === row.selected?.id,
-  );
   const hasChoice =
     !expertGrant &&
     !row.selected &&

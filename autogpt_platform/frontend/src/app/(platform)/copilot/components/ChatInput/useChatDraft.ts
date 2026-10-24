@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState, type SetStateAction } from "react";
+import {
+  useEffect,
+  useInsertionEffect,
+  useRef,
+  useState,
+  type SetStateAction,
+} from "react";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 
 const subscribers = new Map<string, Set<(value: string) => void>>();
 // Drafts browser storage refused, for a reader that doesn't follow the draft.
@@ -41,10 +48,14 @@ export function useChatDraft(draftKey?: string) {
     key,
     value: readDraft(key),
   }));
-  const visible =
-    snapshot.key === key ? snapshot : { key, value: readDraft(key) };
+  const unsynced = useReadEveryRender(() =>
+    snapshot.key === key ? null : readDraft(key),
+  );
+  const visible = unsynced === null ? snapshot : { key, value: unsynced };
   const current = useRef(visible);
-  current.current = visible;
+  useInsertionEffect(() => {
+    current.current = visible;
+  });
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;

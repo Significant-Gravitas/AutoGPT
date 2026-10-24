@@ -30,6 +30,11 @@ from backend.data.notifications import (
     TrialUpdateData,
     get_notif_data_type,
 )
+from backend.data.product_mail_audience import (
+    PRODUCT_MAIL_LAPSE_WINDOW,
+    is_product_mail_recipient,
+    product_mail_allowlist,
+)
 from backend.data.user import (
     FOOTER_CHOICES,
     generate_preference_link,
@@ -75,6 +80,27 @@ def _utc_today() -> date:
     """The cap resets at UTC midnight, matching the Alert engine's own daily
     cap. Both are documented as a follow-up to move to the user's local day."""
     return datetime.now(tz=timezone.utc).date()
+
+
+async def _in_product_audience(user_id: str, kind: NotificationType) -> bool:
+    """USER_NOTIFICATIONS_AUDIENCE and USER_NOTIFICATIONS_ALLOWLIST, logging
+    why when the answer is no."""
+    standing = await get_database_manager_async_client(
+        should_retry=False
+    ).get_product_mail_standing(user_id)
+    if standing and is_product_mail_recipient(standing, datetime.now(timezone.utc)):
+        return True
+    if standing is None:
+        reason = "the account no longer exists"
+    elif product_mail_allowlist() is not None:
+        reason = "not on USER_NOTIFICATIONS_ALLOWLIST"
+    else:
+        reason = (
+            "no plan or trial, and none ended in the last "
+            f"{PRODUCT_MAIL_LAPSE_WINDOW.days} days"
+        )
+    logger.info(f"Skipping {kind} for user {user_id}: {reason}")
+    return False
 
 
 async def _kept_out_since_queued(event: AudienceEventModel) -> bool:
@@ -349,6 +375,13 @@ class NotificationManager(AppService):
                 f"Skipping {event.type} for user {event.user_id}: not wanted or "
                 "unverified"
             )
+            return True
+
+        # Before the daily cap, so mail that won't go claims no slot.
+        if event.type not in SERVICE_MESSAGES and not await _in_product_audience(
+            event.user_id, event.type
+        ):
+            # Acked, not retried, like the daily cap.
             return True
 
         # The volume knob's own ceiling, across every product notification.

@@ -137,6 +137,14 @@ function decisionLine(proposal: Proposal, decision: Decision): string {
     : `Not approved: do not ${verb} ${proposal.name}, discard that proposal (confirmation_id: ${proposal.confirmationId}).`;
 }
 
+function withoutDecision(
+  decisions: Record<string, Decision>,
+  toolCallId: string,
+) {
+  const { [toolCallId]: _, ...rest } = decisions;
+  return rest;
+}
+
 function toExpertArtifact(
   expert: Record<string, unknown>,
   output: Record<string, unknown>,
@@ -559,8 +567,7 @@ export function ExpertChangeGroup({
 
   function undo() {
     if (!currentProposal) return;
-    const { [currentProposal.toolCallId]: _, ...rest } = decisions;
-    setDecisions(rest);
+    setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
   }
 
   function send() {

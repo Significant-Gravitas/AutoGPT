@@ -38,12 +38,12 @@ export default function AuthFeedback({
       {displayMessage && (
         <div className="text-center text-sm font-medium leading-normal">
           {isError ? (
-            <div className="flex items-center justify-center space-x-2 text-red-500">
+            <div className="flex items-center justify-center space-x-2 text-error">
               <AlertCircle className="h-4 w-4" />
               <span>{displayMessage}</span>
             </div>
           ) : (
-            <div className="flex items-center justify-center space-x-2 text-green-600">
+            <div className="flex items-center justify-center space-x-2 text-success">
               <CheckCircle className="h-4 w-4" />
               <span>{displayMessage}</span>
             </div>
@@ -54,10 +54,16 @@ export default function AuthFeedback({
       {/* Cloud-specific help */}
       {showCloudHelp &&
         (isSignupFlow ? (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <Card
+            // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
+            className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
+          >
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
-                <span className="my-3 block text-center text-sm font-medium text-red-500">
+              <div
+                // TODO(tokens): no exact role for divide-slate-100 (#EFF1F4)
+                className="divide-y divide-slate-100"
+              >
+                <span className="my-3 block text-center text-sm font-medium text-error">
                   The provided email may not be allowed to sign up.
                 </span>
                 <HelpItem
@@ -77,9 +83,15 @@ export default function AuthFeedback({
             </CardContent>
           </Card>
         ) : (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <Card
+            // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
+            className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
+          >
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
+              <div
+                // TODO(tokens): no exact role for divide-slate-100 (#EFF1F4)
+                className="divide-y divide-slate-100"
+              >
                 <HelpItem
                   title="Having trouble logging in?"
                   description="Make sure you've already "
@@ -93,8 +105,14 @@ export default function AuthFeedback({
 
       {/* Local-specific help */}
       {showLocalHelp && (
-        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="w-full divide-y divide-slate-100">
+        <Card
+          // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
+          className="w-full overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
+        >
+          <div
+            // TODO(tokens): no exact role for divide-slate-100 (#EFF1F4)
+            className="w-full divide-y divide-slate-100"
+          >
             <HelpItem
               title="Having trouble getting AutoGPT running locally?"
               description="Ask for help on our"

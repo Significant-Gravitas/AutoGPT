@@ -7,12 +7,19 @@ import { useMountEffect } from "@/hooks/useMountEffect";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getOrCreateCopilotChatRuntime,
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
   markCopilotChatRuntimeHealthy,
-  resetCopilotChatRuntime,
-  shouldReloadCopilotChatRuntime,
+  attachCopilotChatRuntimeCallbacks,
+  detachCopilotChatRuntimeCallbacks,
+  setCopilotChatRuntimeModel,
+  takeCopilotChatRuntime,
 } from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -140,16 +147,16 @@ export function useCopilotStream({
     setRateLimitMessage(null);
     setPlatformLimitFailure(null);
   }
-  const chatRuntime = useMemo(() => {
-    if (!sessionId) return null;
-    if (shouldReloadCopilotChatRuntime(sessionId)) {
-      resetCopilotChatRuntime(sessionId);
-    }
-    return getOrCreateCopilotChatRuntime(sessionId);
-  }, [sessionId]);
-  if (chatRuntime) {
-    chatRuntime.copilotModelRef.current = copilotModel;
-  }
+  // Kept as a memo: taking the runtime can reset a stale one, so it must run
+  // once per session, not whenever the compiler would recompute it.
+  const chatRuntime = useMemo(
+    () => (sessionId ? takeCopilotChatRuntime(sessionId) : null),
+    [sessionId],
+  );
+  // Before any effect or handler of this commit can send with it.
+  useInsertionEffect(() => {
+    if (chatRuntime) setCopilotChatRuntimeModel(chatRuntime, copilotModel);
+  });
 
   // Transient per-mount flags. The parent keys this subtree by sessionId,
   // so every session-switch remounts and these refs reset naturally —
@@ -232,8 +239,7 @@ export function useCopilotStream({
         : FINISH_REFETCH_ATTEMPTS_DEFAULT;
       pendingEngineSwitchRef.current = false;
       providerFailureRef.current = null;
-      setIsFinishProbing(true);
-      try {
+      async function probeForActiveStream() {
         for (let attempt = 0; attempt < attempts; attempt++) {
           await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
           if (!isMountedRef.current) return;
@@ -244,9 +250,11 @@ export function useCopilotStream({
             return;
           }
         }
-      } finally {
-        if (isMountedRef.current) setIsFinishProbing(false);
       }
+      setIsFinishProbing(true);
+      await probeForActiveStream().finally(() => {
+        if (isMountedRef.current) setIsFinishProbing(false);
+      });
     }
 
     function handleError(error: Error) {
@@ -393,20 +401,15 @@ export function useCopilotStream({
       }
     }
 
-    chatRuntime.onFinish = handleFinish;
-    chatRuntime.onError = handleError;
-    chatRuntime.onData = handleData;
+    const callbacks = {
+      onFinish: handleFinish,
+      onError: handleError,
+      onData: handleData,
+    };
+    attachCopilotChatRuntimeCallbacks(chatRuntime, callbacks);
 
     return () => {
-      if (chatRuntime.onFinish === handleFinish) {
-        chatRuntime.onFinish = undefined;
-      }
-      if (chatRuntime.onData === handleData) {
-        chatRuntime.onData = undefined;
-      }
-      if (chatRuntime.onError === handleError) {
-        chatRuntime.onError = undefined;
-      }
+      detachCopilotChatRuntimeCallbacks(chatRuntime, callbacks);
     };
   }, [
     chatRuntime,
@@ -418,11 +421,11 @@ export function useCopilotStream({
   ]);
 
   // Flipped to ``true`` the first time the user actually hits Send on this
-  // mount. Lets the ``hasConnectedThisMountRef`` latch below distinguish
+  // mount. Lets the ``hasConnectedThisMount`` latch below distinguish
   // "resuming a turn that was already running" from "user sent a brand new
   // turn" — in the latter case the ThinkingIndicator is the right surface
   // from the first render, no "Retrieving latest messages" spinner needed.
-  const hasSentThisMountRef = useRef(false);
+  const [hasSentThisMount, setHasSentThisMount] = useState(false);
 
   // Latch flips from ``false`` → ``true`` the first time the stream is
   // considered "live" on this mount. Observed by ``isRestoringActiveSession``
@@ -443,18 +446,20 @@ export function useCopilotStream({
   //     produced anything, suppressing the restore spinner and disabling
   //     the restore-stall watchdog. Checking content (not just status)
   //     still keeps the indicator up during the GET-resume-no-bytes window.
-  const hasConnectedThisMountRef = useRef(false);
-  if (!hasConnectedThisMountRef.current) {
-    const isStreamLive = status === "streaming" || status === "submitted";
-    if (
-      hasSentThisMountRef.current ||
+  //
+  // Derived during render so this render already sees the flip; the state
+  // only keeps it latched. Effects and timers read the ref mirror.
+  const [hasConnectedLatch, setHasConnectedLatch] = useState(false);
+  const isStreamLive = status === "streaming" || status === "submitted";
+  const connectsThisRender =
+    !hasConnectedLatch &&
+    (hasSentThisMount ||
       (isStreamLive &&
         (hasVisibleAssistantContent(rawMessages) ||
-          getLatestAssistantStatusMessage(rawMessages) !== null))
-    ) {
-      hasConnectedThisMountRef.current = true;
-    }
-  }
+          getLatestAssistantStatusMessage(rawMessages) !== null)));
+  if (connectsThisRender) setHasConnectedLatch(true);
+  const hasConnectedThisMount = hasConnectedLatch || connectsThisRender;
+  const hasConnectedThisMountRef = useRef(hasConnectedThisMount);
 
   function resumeStreamFromStart() {
     if (!chatRuntime) return;
@@ -518,9 +523,7 @@ export function useCopilotStream({
     });
     resumeStream();
   }
-  resumeStreamRef.current = resumeStreamFromStart;
   const sessionIdRef = useRef(sessionId);
-  sessionIdRef.current = sessionId;
 
   const {
     isReconnectScheduled,
@@ -535,7 +538,13 @@ export function useCopilotStream({
     resumeStreamRef,
     hasResumedRef,
   });
-  handleReconnectRef.current = handleReconnect;
+  // Every commit, before any effect, handler or timer of it can read them.
+  useInsertionEffect(() => {
+    hasConnectedThisMountRef.current = hasConnectedThisMount;
+    resumeStreamRef.current = resumeStreamFromStart;
+    sessionIdRef.current = sessionId;
+    handleReconnectRef.current = handleReconnect;
+  });
 
   // Wrap sdkSendMessage to guard against re-sending the user message during a
   // reconnect cycle. If the session already has the message (i.e. we are in a
@@ -583,7 +592,7 @@ export function useCopilotStream({
         lastSubmittedKickoffAttemptToken: kickoffAttemptToken,
       });
     }
-    hasSentThisMountRef.current = true;
+    setHasSentThisMount(true);
     if (isUserStoppingRef.current) {
       isUserStoppingRef.current = false;
     }
@@ -595,7 +604,9 @@ export function useCopilotStream({
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
   // Memoised so `messages` keeps its identity across renders that did not
-  // change the chat, instead of being a new array every render.
+  // change the chat, instead of being a new array every render. Kept with the
+  // compiler on: the snapshot effect below, and the page's effects, depend on
+  // this array.
   const messages = useMemo(
     () => deduplicateMessages(rawMessages),
     [rawMessages],
@@ -668,18 +679,7 @@ export function useCopilotStream({
   // watchdog. Counts messages, the last message's parts, and the total
   // text length on the last message so in-place part updates (token
   // streaming) also tick the signal.
-  const streamActivityToken = useMemo(() => {
-    const last = rawMessages[rawMessages.length - 1];
-    let textLen = 0;
-    if (last) {
-      for (const part of last.parts) {
-        if ("text" in part && typeof part.text === "string") {
-          textLen += part.text.length;
-        }
-      }
-    }
-    return `${rawMessages.length}:${last?.parts.length ?? 0}:${textLen}`;
-  }, [rawMessages]);
+  const streamActivityToken = getStreamActivityToken(rawMessages);
 
   const stopSdkStream = sdkStopStream(sdkStop, setMessages);
   const stop = useCopilotStop({
@@ -911,19 +911,19 @@ export function useCopilotStream({
   // input — legitimate reconnect cases set ``isReconnectScheduled`` via
   // ``handleFinish`` / the watchdogs.
   const isReconnecting =
-    !isUserStoppingRef.current &&
+    !isUserStopping &&
     !reconnectExhausted &&
     (isReconnectScheduled ||
       (hasActiveStream &&
-        !hasConnectedThisMountRef.current &&
+        !hasConnectedThisMount &&
         status !== "streaming" &&
         status !== "submitted"));
 
   const isRestoringActiveSession =
-    !isUserStoppingRef.current &&
+    !isUserStopping &&
     !reconnectExhausted &&
     hasActiveStream &&
-    !hasConnectedThisMountRef.current;
+    !hasConnectedThisMount;
 
   return {
     followBackendTurn,
@@ -932,7 +932,7 @@ export function useCopilotStream({
     sendMessage,
     stop,
     status,
-    error: isReconnecting || isUserStoppingRef.current ? undefined : error,
+    error: isReconnecting || isUserStopping ? undefined : error,
     isReconnecting,
     isFinishProbing,
     isRestoringActiveSession,
@@ -953,4 +953,17 @@ export function useCopilotStream({
     },
     dismissRateLimit,
   };
+}
+
+function getStreamActivityToken(messages: UIMessage[]) {
+  const last = messages[messages.length - 1];
+  let textLen = 0;
+  if (last) {
+    for (const part of last.parts) {
+      if ("text" in part && typeof part.text === "string") {
+        textLen += part.text.length;
+      }
+    }
+  }
+  return `${messages.length}:${last?.parts.length ?? 0}:${textLen}`;
 }

@@ -70,7 +70,7 @@ function OutputKeySection({
         <Button
           variant="ghost"
           size="small"
-          className="mt-1 h-auto px-0 py-0.5 text-[11px] text-muted-foreground"
+          className="mt-1 h-auto px-0 py-0.5 text-caption-sm leading-inherit text-muted-foreground"
           onClick={() => setExpanded((prev) => !prev)}
         >
           {expanded ? "Show less" : `Show all ${items.length} items`}
@@ -84,7 +84,7 @@ export function BlockOutputCard({ output }: Props) {
   return (
     <ContentGrid>
       {output.is_dry_run && (
-        <div className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+        <div className="flex items-center gap-1.5 rounded-md border border-warning-border bg-warning-surface px-2.5 py-1.5 text-xs font-medium text-warning-foreground">
           <span>⚡</span>
           <span>Simulated — no real execution occurred</span>
         </div>

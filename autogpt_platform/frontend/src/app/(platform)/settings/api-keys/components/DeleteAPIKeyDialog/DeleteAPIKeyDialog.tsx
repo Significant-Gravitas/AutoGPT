@@ -43,7 +43,7 @@ export function DeleteAPIKeyDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4 px-1">
-          <Text variant="body" className="text-zinc-700">
+          <Text variant="body" className="text-foreground-body">
             This action cannot be undone. Integrations using{" "}
             {isBatch ? "these keys" : "this key"} will immediately lose access.
           </Text>
