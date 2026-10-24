@@ -1,5 +1,8 @@
 codecov:
-  require_ci_to_pass: true
+  # The aggregate PR check waits for Codecov, so coverage must publish first.
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: false
 
 coverage:
   status:
