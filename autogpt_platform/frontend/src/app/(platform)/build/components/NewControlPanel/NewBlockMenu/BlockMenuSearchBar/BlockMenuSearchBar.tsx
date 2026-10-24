@@ -46,7 +46,7 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
         }}
         placeholder={"Blocks, Workflows, Integrations or Keywords..."}
         className={cn(
-          "m-0 border-none p-0 font-sans text-base font-normal text-zinc-800 shadow-none outline-none",
+          "m-0 border-none p-0 font-sans text-body-lg font-normal leading-6 text-zinc-800 shadow-none outline-none",
           "placeholder:text-zinc-400 focus:shadow-none focus:outline-none focus:ring-0",
         )}
       />
