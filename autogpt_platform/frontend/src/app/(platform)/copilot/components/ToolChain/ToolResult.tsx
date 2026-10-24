@@ -588,7 +588,13 @@ export function ToolResult({ row, readOnly = false }: Props) {
     const ran = row.output !== undefined && row.output !== "";
     return (
       <div className="flex flex-col gap-2">
-        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        <HeldCallDetail
+          held={row.held}
+          showArgs={!ownCall}
+          approvedCommand={
+            ownCall ? str(asObject(row.input) ?? {}, "command") : null
+          }
+        />
         {approved && (ran || ownCall) && (
           <ToolOutput row={row} readOnly={readOnly} />
         )}

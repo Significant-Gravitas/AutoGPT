@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { describeData, summarizeData } from "../commandOutput";
+import {
+  dataFile,
+  describeData,
+  previewColumns,
+  stepFailed,
+  summarizeData,
+} from "../commandOutput";
 
 describe("summarizeData", () => {
   it("reads CSV with quoted commas as one table", () => {
@@ -8,16 +14,22 @@ describe("summarizeData", () => {
       kind: "table",
       rows: 2,
       columns: ["name", "note"],
+      delimiter: ",",
+      sample: [
+        ["Rs 899, 30ml", "launch"],
+        ["serum", "vitamin C, 15%"],
+      ],
     });
   });
 
   it("reads TSV", () => {
     expect(
       summarizeData("date\tpost\n2026-11-25\tLaunch\n2026-11-28\tReviews"),
-    ).toEqual({
+    ).toMatchObject({
       kind: "table",
       rows: 2,
       columns: ["date", "post"],
+      delimiter: "\t",
     });
   });
 
@@ -45,9 +57,15 @@ describe("summarizeData", () => {
   });
 
   it("reads JSON objects and lists, and ignores what only looks like JSON", () => {
-    expect(summarizeData('{"a": 1, "b": 2}')).toEqual({
+    expect(
+      summarizeData('{"a": 1, "b": "two", "c": {"nested": true}, "~/x/y": 3}'),
+    ).toEqual({
       kind: "json",
-      fields: ["a", "b"],
+      fields: ["a", "b", "c", "~/x/y"],
+      sample: [
+        ["a", "1"],
+        ["b", "two"],
+      ],
     });
     expect(summarizeData("[1, 2, 3]")).toEqual({ kind: "json-list", items: 3 });
     expect(summarizeData("{not json")).toBeNull();
@@ -61,6 +79,8 @@ describe("describeData", () => {
         kind: "table",
         rows: 1,
         columns: ["a", "b", "c", "d", "e"],
+        delimiter: ",",
+        sample: [],
       }),
     ).toEqual({ title: "Table", detail: "1 row · a, b, c, d, …" });
   });
@@ -70,22 +90,82 @@ describe("describeData", () => {
       describeData({
         kind: "json",
         fields: ["~/workspace/dewleaf/brief.md", "launch"],
+        sample: [],
       }),
     ).toEqual({ title: "Data", detail: "2 fields · launch" });
     expect(
-      describeData({ kind: "table", rows: 3, columns: ["src/a.py", "b.json"] }),
+      describeData({
+        kind: "table",
+        rows: 3,
+        columns: ["src/a.py", "b.json"],
+        delimiter: ",",
+        sample: [],
+      }),
     ).toEqual({ title: "Table", detail: "3 rows · 2 columns" });
   });
 
   it("names JSON by its fields or items", () => {
-    expect(describeData({ kind: "json", fields: ["launch"] })).toEqual({
+    expect(
+      describeData({ kind: "json", fields: ["launch"], sample: [] }),
+    ).toEqual({
       title: "Data",
       detail: "1 field · launch",
     });
-    expect(describeData({ kind: "json", fields: [] }).detail).toBe("No fields");
+    expect(describeData({ kind: "json", fields: [], sample: [] }).detail).toBe(
+      "No fields",
+    );
     expect(describeData({ kind: "json-list", items: 2 })).toEqual({
       title: "Data",
       detail: "2 items",
     });
+  });
+});
+
+describe("stepFailed", () => {
+  const exit = (code: number) => ({ stdout: "", stderr: "", exit_code: code });
+
+  it("is a failure for any non-zero exit by default", () => {
+    expect(stepFailed("curl -fs https://x", exit(22))).toBe(true);
+    expect(stepFailed("./report.sh", exit(1))).toBe(true);
+    expect(stepFailed(null, exit(1))).toBe(true);
+  });
+
+  it("lets through only exit 1 from a predicate command that runs last", () => {
+    expect(stepFailed("grep -q TBD brief.md", exit(1))).toBe(false);
+    expect(stepFailed("cd drafts && test -f brief.md", exit(1))).toBe(false);
+    expect(stepFailed("! [ -d drafts ]", exit(1))).toBe(false);
+    expect(stepFailed("grep -q TBD brief.md", exit(2))).toBe(true);
+    expect(stepFailed("grep -q x a && wc -l a", exit(1))).toBe(true);
+  });
+
+  it("is a failure for a timeout or a refusal, and fine for exit 0", () => {
+    expect(stepFailed("sleep 9", { timed_out: true, exit_code: -1 })).toBe(
+      true,
+    );
+    expect(stepFailed("", { type: "error", message: "No command" })).toBe(true);
+    expect(stepFailed("ls", exit(0))).toBe(false);
+    expect(stepFailed("ls", null)).toBe(false);
+  });
+});
+
+describe("dataFile and previewColumns", () => {
+  it("names the download by what was printed", () => {
+    const table = {
+      kind: "table" as const,
+      rows: 1,
+      columns: ["a", "b"],
+      sample: [],
+    };
+    expect(dataFile({ ...table, delimiter: "," }).name).toBe("table.csv");
+    expect(dataFile({ ...table, delimiter: "\t" }).name).toBe("table.tsv");
+    expect(dataFile({ kind: "json-list", items: 2 }).label).toBe(
+      "Download JSON",
+    );
+  });
+
+  it("previews the first four plain columns", () => {
+    expect(previewColumns(["~/x/y", "a", "b", "c", "d", "e"])).toEqual([
+      1, 2, 3, 4,
+    ]);
   });
 });

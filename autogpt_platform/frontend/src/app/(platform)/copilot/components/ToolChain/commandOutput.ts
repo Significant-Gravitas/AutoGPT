@@ -1,12 +1,59 @@
 import { looksTechnical } from "./plainText";
 
 export type DataSummary =
-  | { kind: "table"; rows: number; columns: string[] }
-  | { kind: "json"; fields: string[] }
+  | {
+      kind: "table";
+      rows: number;
+      columns: string[];
+      delimiter: "," | "\t";
+      // The first rows, cell by cell, for the preview.
+      sample: string[][];
+    }
+  | { kind: "json"; fields: string[]; sample: [string, string][] }
   | { kind: "json-list"; items: number };
 
 const MAX_HEADER_CELL = 40;
 const MIN_TABLE_LINES = 3;
+const SAMPLE_ROWS = 3;
+const SAMPLE_COLUMNS = 4;
+const SAMPLE_FIELDS = 4;
+
+// Exit 1 from these means "no" (no match, not there, files differ), not that
+// the step broke. Any other non-zero exit, or one from any other command, is a
+// failure: `curl -f` exits 22, and scripts report errors on stdout.
+const ANSWERS_NO = /^(?:grep|egrep|fgrep|rg|test|\[\[?|diff|cmp)(?:\s|$)/;
+
+/** Whether a shell step failed. Only an expected "no" is let through: exit 1
+ *  from a predicate command that runs last (`grep -q`, `test -f`, `diff`). */
+export function stepFailed(
+  command: string | null,
+  output: Record<string, unknown> | null,
+): boolean {
+  if (!output) return false;
+  if (output.type === "error" || output.timed_out === true) return true;
+  const exitCode = output.exit_code;
+  if (typeof exitCode !== "number" || exitCode === 0) return false;
+  return !(exitCode === 1 && command && ANSWERS_NO.test(lastCommand(command)));
+}
+
+function lastCommand(command: string): string {
+  const parts = command.split(/&&|\|\||;|\||\n/);
+  const last =
+    parts
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .pop() ?? "";
+  return last.replace(/^!\s*/, "");
+}
+
+/** The columns a preview shows: the plain ones, first few. */
+export function previewColumns(columns: string[]): number[] {
+  return columns
+    .map((name, index) => ({ name, index }))
+    .filter(({ name }) => !looksTechnical(name))
+    .slice(0, SAMPLE_COLUMNS)
+    .map(({ index }) => index);
+}
 
 /** What a command printed, when it is a table (CSV/TSV) or JSON rather than
  *  prose: enough to show it as a chip instead of dumping it into the chat. */
@@ -38,6 +85,27 @@ export function describeData(summary: DataSummary): {
   return { title: "Data", detail: plural(summary.items, "item") };
 }
 
+/** The file a preview's Download button saves: what the step printed. */
+export function dataFile(summary: DataSummary): {
+  name: string;
+  mime: string;
+  label: string;
+} {
+  if (summary.kind !== "table")
+    return {
+      name: "data.json",
+      mime: "application/json",
+      label: "Download JSON",
+    };
+  return summary.delimiter === "\t"
+    ? {
+        name: "table.tsv",
+        mime: "text/tab-separated-values",
+        label: "Download TSV",
+      }
+    : { name: "table.csv", mime: "text/csv", label: "Download CSV" };
+}
+
 function summarizeJSON(text: string): DataSummary | null {
   if (!/^[[{]/.test(text)) return null;
   let value: unknown;
@@ -47,9 +115,20 @@ function summarizeJSON(text: string): DataSummary | null {
     return null;
   }
   // Text opening with { or [ that parses is always an object or a list.
-  return Array.isArray(value)
-    ? { kind: "json-list", items: value.length }
-    : { kind: "json", fields: Object.keys(value as object) };
+  if (Array.isArray(value)) return { kind: "json-list", items: value.length };
+  const entries = Object.entries(value as object);
+  return {
+    kind: "json",
+    fields: entries.map(([key]) => key),
+    sample: entries
+      .filter(
+        ([key, item]) =>
+          !looksTechnical(key) &&
+          ["string", "number", "boolean"].includes(typeof item),
+      )
+      .slice(0, SAMPLE_FIELDS)
+      .map(([key, item]) => [key, String(item)]),
+  };
 }
 
 /** A header and at least two rows, every line splitting into the same number
@@ -69,7 +148,15 @@ function summarizeTable(text: string): DataSummary | null {
     (cell) => cell && cell.length <= MAX_HEADER_CELL && !/[.!?]\s/.test(cell),
   );
   if (!looksLikeHeader) return null;
-  return { kind: "table", rows: rows.length - 1, columns: header };
+  return {
+    kind: "table",
+    rows: rows.length - 1,
+    columns: header,
+    delimiter,
+    sample: rows
+      .slice(1, 1 + SAMPLE_ROWS)
+      .map((cells) => cells.map((cell) => cell.trim())),
+  };
 }
 
 function splitRow(line: string, delimiter: string): string[] {
