@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import _isEmpty from "lodash/isEmpty";
-import { extendTailwindMerge } from "tailwind-merge";
+import { extendTailwindMerge, validators } from "tailwind-merge";
 
 import {
   BlockIOObjectSubSchema,
@@ -16,10 +16,33 @@ import {
 // collapse to the last one. The radius names do the same for every
 // `rounded-*` corner group, so `rounded-xl` and `rounded-2xlarge` no longer
 // both survive and leave the winner to stylesheet order.
+//
+// The overrides keep tailwind-merge 3 merging the way 2 did for classes that
+// still render as in Tailwind 3 (see postcss.tailwind3-compat.cjs): a bare
+// `outline` sets only the style, so it survives next to `outline-2`, and the
+// `scrollbar-*` classes are tailwind.scrollbar.ts's, not Tailwind 4's
+// scrollbar utilities, so none of them replaces another.
 const twMerge = extendTailwindMerge({
+  override: {
+    classGroups: {
+      "outline-w": [
+        {
+          outline: [
+            validators.isNumber,
+            validators.isArbitraryVariableLength,
+            validators.isArbitraryLength,
+          ],
+        },
+      ],
+      "scrollbar-thumb-color": [],
+      "scrollbar-track-color": [],
+      "scrollbar-w": [],
+      "scrollbar-gutter": [],
+    },
+  },
   extend: {
     theme: {
-      borderRadius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
+      radius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
     },
     classGroups: {
       "font-size": [
@@ -41,6 +64,7 @@ const twMerge = extendTailwindMerge({
         },
       ],
       leading: [{ leading: ["inherit"] }],
+      "outline-style": [{ outline: [""] }],
       tracking: [
         { tracking: ["display", "heading", "title", "caps", "eyebrow"] },
       ],
