@@ -48,18 +48,24 @@ export function Collapsible({
     <CollapsibleRoot
       open={openState}
       onOpenChange={handleOpenChange}
+      data-slot="collapsible"
       className={cn("w-full", className)}
     >
       <CollapsibleTrigger
+        data-slot="collapsible-trigger"
         className={cn(
           "flex w-full items-center justify-between text-left transition-all duration-200 hover:opacity-80",
           triggerClassName,
         )}
       >
-        <div className="flex-end flex flex-wrap items-center gap-2">
+        <div
+          data-slot="collapsible-trigger-content"
+          className="flex-end flex flex-wrap items-center gap-2"
+        >
           {trigger}
           <Icon
             icon={ArrowDown01Icon}
+            data-slot="collapsible-icon"
             className={cn(
               "inline-flex h-4 w-4 transition-transform duration-200",
               openState && "rotate-180",
@@ -67,8 +73,13 @@ export function Collapsible({
           />
         </div>
       </CollapsibleTrigger>
-      <CollapsibleContent className={cn("overflow-hidden", contentClassName)}>
-        <div className="pt-2">{children}</div>
+      <CollapsibleContent
+        data-slot="collapsible-panel"
+        className={cn("overflow-hidden", contentClassName)}
+      >
+        <div data-slot="collapsible-panel-content" className="pt-2">
+          {children}
+        </div>
       </CollapsibleContent>
     </CollapsibleRoot>
   );
