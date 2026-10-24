@@ -74,6 +74,10 @@ class Flag(str, Enum):
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
     COPILOT_AUTO_MODE = "copilot-auto-mode"
+    # The prompt-injection check on outside reads (``copilot/gate/reads.py``):
+    # true or "enforce" holds a flagged read for the user; "shadow" judges every
+    # read and records the verdict, holding nothing. Off when missing.
+    COPILOT_READ_SCREEN = "copilot-read-screen"
     # The gate answers the review pauses of workflows AutoPilot started, and
     # its yes satisfies a direct block call's own review. A rollout control
     # that defaults ON by decision; off restores the two approval layers.
@@ -936,6 +940,16 @@ async def _evaluate_boolean_flag(
     # but never let a caller take an irreversible action on it.
     _record_flag_for_sentry(flag_key, default, False)
     return default, False
+
+
+async def get_flag_variant(flag_key: Flag, user_id: str, default: Any = False) -> Any:
+    """For a flag served as true/false or as a variant key: its env override when
+    one is set, as ``is_feature_enabled`` honours it, else the vendor's answer."""
+    override = _env_flag_override(flag_key)
+    if override is not None:
+        return override
+    value, _ = await _evaluate_flag_value(flag_key.value, user_id, default)
+    return value
 
 
 def feature_flag(

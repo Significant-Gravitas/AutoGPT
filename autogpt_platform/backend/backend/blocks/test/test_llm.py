@@ -14,7 +14,13 @@ import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
+from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
+from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
+from backend.util.llm.prompt_refusal_test import (
+    OPENAI_INVALID_PROMPT_BODY,
+    openai_sdk_error,
+)
 from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS, ProviderResponse
 from backend.util.settings import Config
 
@@ -1148,6 +1154,33 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+
+async def test_a_refused_prompt_fails_the_block_with_a_plain_error():
+    """Not a BlockUnknownError quoting the provider: those go to Sentry."""
+    provider = AsyncMock(
+        side_effect=await openai_sdk_error(400, OPENAI_INVALID_PROMPT_BODY)
+    )
+    block = llm.AITextGeneratorBlock()
+
+    with (
+        patch.object(llm, "_llm_call", provider),
+        pytest.raises(BlockExecutionError) as caught,
+    ):
+        async for _ in block.execute(
+            {
+                "prompt": "the user's prompt",
+                "model": llm.DEFAULT_LLM_MODEL,
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+                "retry": 3,
+            },
+            execution_context=ExecutionContext(),
+            credentials=llm.TEST_CREDENTIALS,
+        ):
+            pass
+
+    assert str(caught.value) == PROMPT_REFUSED_MESSAGE
+    assert provider.await_count == 1
 
 
 class TestLLMModelMissing:
