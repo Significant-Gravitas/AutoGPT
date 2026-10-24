@@ -67,6 +67,9 @@ class PrintifyClient:
         self._requests = Requests(
             raise_for_status=False, retry_max_attempts=MAX_ATTEMPTS
         )
+        # Writes go out once: a 5xx after Printify already created the
+        # product (or upload) would otherwise create it again.
+        self._once = Requests(raise_for_status=False, retry_max_attempts=1)
 
     async def list_shops(self) -> list[PrintifyShop]:
         data = await self._request("GET", "/shops.json")
@@ -102,7 +105,7 @@ class PrintifyClient:
             f"/catalog/blueprints/{blueprint_id}/print_providers/"
             f"{print_provider_id}/variants.json",
         )
-        return [PrintifyVariant.model_validate(item) for item in data["variants"]]
+        return _VariantPage.model_validate(data).variants
 
     async def create_product(
         self, shop_id: int, product: dict[str, Any]
@@ -136,7 +139,7 @@ class PrintifyClient:
             f"/shops/{shop_id}/products.json",
             params={"limit": limit, "page": page},
         )
-        return [PrintifyProduct.model_validate(item) for item in data["data"]]
+        return _ProductPage.model_validate(data).data
 
     async def _request(
         self,
@@ -146,7 +149,8 @@ class PrintifyClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> Any:
-        response = await self._requests.request(
+        transport = self._requests if method == "GET" else self._once
+        response = await transport.request(
             method,
             f"{API_URL}{path}",
             headers={
@@ -201,3 +205,13 @@ class _ErrorReason(BaseModel):
 class _ErrorBody(BaseModel):
     message: str = ""
     errors: _ErrorReason | None = None
+
+
+# Envelopes Printify wraps lists in; parsing them makes a malformed reply a
+# validation error rather than a KeyError.
+class _VariantPage(BaseModel):
+    variants: list[PrintifyVariant]
+
+
+class _ProductPage(BaseModel):
+    data: list[PrintifyProduct]

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from pydantic import ValidationError
 
 from backend.blocks.etsy._api import EtsyClient, EtsyError
 from backend.blocks.etsy._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
@@ -288,3 +289,42 @@ async def test_an_etsy_outage_is_a_server_error():
 
 def test_retries_on_throttling_are_bounded():
     assert EtsyClient.raw_requests().retry_max_attempts == 3
+
+
+async def test_only_reads_and_edits_are_retried():
+    """A 5xx after Etsy already made the draft (or took the photo) must not
+    make a second one; the token exchange's code is single-use too."""
+    retried, once = _http(_response(200, {"count": 0, "results": []})), _http(
+        _response(200, {"listing_id": 5, "title": "Cat"})
+    )
+    with patch.object(
+        EtsyClient,
+        "raw_requests",
+        side_effect=lambda attempts=3: retried if attempts == 3 else once,
+    ) as factory:
+        client = EtsyClient(TEST_CREDENTIALS, "keystring", "shared-secret")
+        await client.list_listings(42, "active", 25)
+        await client.create_draft_listing(42, {"title": "Cat"})
+
+    assert {call.kwargs.get("attempts", 3) for call in factory.call_args_list} == {3, 1}
+    assert [c.args[0] for c in retried.request.await_args_list] == ["GET"]
+    assert [c.args[0] for c in once.request.await_args_list] == ["POST"]
+    assert EtsyClient.raw_requests(attempts=1).retry_max_attempts == 1
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c: c.list_listings(42, "active", 25),
+        lambda c: c.list_shipping_profiles(42),
+        lambda c: c.list_categories(),
+    ],
+    ids=["listings", "shipping_profiles", "categories"],
+)
+async def test_a_malformed_success_body_is_a_validation_error(call):
+    """A block reports a ValidationError as an execution error; a KeyError
+    would read as an unknown platform fault."""
+    client, _ = _client(_response(200, {"unexpected": True}))
+
+    with pytest.raises(ValidationError):
+        await call(client)

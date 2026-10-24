@@ -89,7 +89,9 @@ class EtsyOAuthHandler(BaseOAuthHandler):
         return False
 
     async def _request_tokens(self, form: dict[str, str]) -> _TokenResponse:
-        response = await EtsyClient.raw_requests().post(
+        # Once: an authorization code is single-use, and a refresh rotates
+        # the refresh token, so a retry after a lost reply would fail anyway.
+        response = await EtsyClient.raw_requests(attempts=1).post(
             TOKEN_URL,
             headers={
                 "Content-Type": "application/x-www-form-urlencoded",

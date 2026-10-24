@@ -94,10 +94,13 @@ class EtsyClient:
             ),
         }
         self._requests = self.raw_requests()
+        # Creates go out once: a 5xx after Etsy already made the draft (or
+        # took the photo) would otherwise make a second one.
+        self._once = self.raw_requests(attempts=1)
 
     @staticmethod
-    def raw_requests() -> Requests:
-        return Requests(raise_for_status=False, retry_max_attempts=MAX_ATTEMPTS)
+    def raw_requests(attempts: int = MAX_ATTEMPTS) -> Requests:
+        return Requests(raise_for_status=False, retry_max_attempts=attempts)
 
     async def get_my_shop(self) -> EtsyShop:
         me = _Me.model_validate(await self._call("GET", "/users/me"))
@@ -110,13 +113,12 @@ class EtsyClient:
 
     async def list_shipping_profiles(self, shop_id: int) -> list[EtsyShippingProfile]:
         data = await self._call("GET", f"/shops/{shop_id}/shipping-profiles")
-        return [EtsyShippingProfile.model_validate(p) for p in data["results"]]
+        return _ShippingProfilePage.model_validate(data).results
 
     async def list_categories(self) -> list[EtsyCategory]:
         """Every seller category, flattened, each with its full path."""
         data = await self._call("GET", "/seller-taxonomy/nodes")
-        nodes = [_TaxonomyNode.model_validate(node) for node in data["results"]]
-        return _flatten_categories(nodes, [])
+        return _flatten_categories(_TaxonomyPage.model_validate(data).results, [])
 
     async def create_draft_listing(
         self, shop_id: int, form: dict[str, str]
@@ -148,7 +150,7 @@ class EtsyClient:
             f"/shops/{shop_id}/listings",
             params={"state": state, "limit": limit},
         )
-        return [EtsyListing.model_validate(item) for item in data["results"]]
+        return _ListingPage.model_validate(data).results
 
     async def update_listing(
         self, shop_id: int, listing_id: int, form: dict[str, str]
@@ -167,7 +169,9 @@ class EtsyClient:
         form: dict[str, str] | None = None,
         files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
     ) -> Any:
-        response = await self._requests.request(
+        retryable = method in ("GET", "PATCH")
+        transport = self._requests if retryable else self._once
+        response = await transport.request(
             method,
             f"{API_URL}{path}",
             headers=self._headers,
@@ -234,3 +238,17 @@ class _TaxonomyNode(BaseModel):
     id: int
     name: str
     children: list["_TaxonomyNode"] = Field(default_factory=list)
+
+
+# Etsy wraps every list in {"count", "results"}; parsing the envelope makes a
+# malformed reply a validation error rather than a KeyError.
+class _ShippingProfilePage(BaseModel):
+    results: list[EtsyShippingProfile]
+
+
+class _TaxonomyPage(BaseModel):
+    results: list[_TaxonomyNode]
+
+
+class _ListingPage(BaseModel):
+    results: list[EtsyListing]

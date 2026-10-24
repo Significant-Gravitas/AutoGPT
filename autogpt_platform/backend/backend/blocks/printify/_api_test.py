@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from backend.blocks.printify._api import PrintifyClient, PrintifyError
 from backend.blocks.printify._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
@@ -26,6 +27,7 @@ def _client(*responses: Mock) -> tuple[PrintifyClient, AsyncMock]:
     client = PrintifyClient(TEST_CREDENTIALS)
     request = AsyncMock(side_effect=list(responses))
     client._requests.request = request
+    client._once.request = request
     return client, request
 
 
@@ -187,3 +189,44 @@ async def test_a_printify_outage_is_a_server_error_not_a_client_one():
 
 def test_retries_on_throttling_are_bounded():
     assert PrintifyClient(TEST_CREDENTIALS)._requests.retry_max_attempts == 3
+
+
+async def test_only_reads_are_retried():
+    """A 5xx after Printify already created the product must not create a
+    second one: anything that writes goes out once."""
+    client = PrintifyClient(TEST_CREDENTIALS)
+    assert client._requests.retry_max_attempts == 3
+    assert client._once.retry_max_attempts == 1
+    image = {"id": "img-1"}
+    product = {"id": "prod-1", "title": "Cat"}
+    client._requests.request = AsyncMock(return_value=_response(200, []))
+    client._once.request = AsyncMock(
+        side_effect=[_response(200, image), _response(200, product), _response(200, {})]
+    )
+
+    await client.list_shops()
+    await client.upload_image("cat.png", url="https://example.com/cat.png")
+    await client.create_product(1, {})
+    await client.publish_product(1, "prod-1")
+
+    assert [c.args[0] for c in client._requests.request.await_args_list] == ["GET"]
+    assert [c.args[0] for c in client._once.request.await_args_list] == [
+        "POST",
+        "POST",
+        "POST",
+    ]
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c: c.list_variants(400, 99),
+        lambda c: c.list_products(1, 20),
+    ],
+    ids=["variants", "products"],
+)
+async def test_a_malformed_success_body_is_a_validation_error(call):
+    client, _ = _client(_response(200, {"unexpected": True}))
+
+    with pytest.raises(ValidationError):
+        await call(client)

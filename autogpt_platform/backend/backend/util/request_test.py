@@ -745,3 +745,49 @@ async def test_a_retried_upload_sends_the_file_again():
 
     assert response.status == 200
     assert received == [b"png bytes", b"png bytes"]
+
+
+@pytest.mark.asyncio
+async def test_an_upload_redirected_with_307_arrives_whole():
+    """A 307 keeps the method and body, so the next hop re-sends the file:
+    it must get the whole file, not a handle the first hop consumed."""
+    from io import BytesIO
+
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    received: list[bytes] = []
+
+    async def moved(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        await request.read()
+        raise aiohttp_web.HTTPTemporaryRedirect("/upload")
+
+    async def upload(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        form = await request.post()
+        field = form["image"]
+        assert isinstance(field, aiohttp_web.FileField)
+        received.append(field.file.read())
+        return aiohttp_web.json_response({"ok": True})
+
+    app = aiohttp_web.Application()
+    app.router.add_post("/moved", moved)
+    app.router.add_post("/upload", upload)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    await aiohttp_web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        response = await Requests(
+            trusted_origins=["127.0.0.1"], raise_for_status=False
+        ).post(
+            f"http://127.0.0.1:{port}/moved",
+            files=[("image", ("cat.png", BytesIO(b"png bytes"), "image/png"))],
+            data={"rank": "1"},
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [b"png bytes"]
