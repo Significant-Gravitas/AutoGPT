@@ -102,3 +102,12 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Do not type hook returns, let Typescript infer as much as possible
    - Never type with `any` unless a variable/attribute can ACTUALLY be of any type
    - avoid index and barrel files
+
+## Writing Tests That Don't Flake
+
+- **Write for a CI runner 2–3× slower than your machine** — drive product timers (an arm delay, a debounce, an auto-dismiss) with fake timers rather than racing them with `sleep`, and wait with `findBy*` or `waitFor`. The shared setup already raises the test timeout to 15 s and Testing Library's to 3 s.
+- **Query with `findBy*` after any action that refetches or re-renders, and make a search test's MSW handler answer only the typed query** — `getBy*` reads the list a debounced refetch is about to replace.
+- **Assert a callback fired from an effect inside `waitFor`** — `findBy*` resolves on the DOM change, before the effect has run.
+- **Match accessible names exactly** (`{ name: "Max" }` or an anchored regex) — the generated MSW mocks fill names from faker, and `/Max/` can match random text in another card. The shared setup seeds faker, so such a collision fails every run rather than now and then.
+- **Leave nothing pending when a test file ends** — a timer, a library debounce or a request that lands after teardown fails the shard after every test has passed. The shared setup waits for open requests; timers are yours to clear.
+- **Playwright: act only on a settled page** — wait for the app's own response, or a state that proves the last action took, before the next step; dismiss any new first-visit popup where `src/playwright/coverage-fixture.ts` marks the changelog seen; and read a timeout as a possible backend stall before raising it.

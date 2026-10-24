@@ -86,6 +86,14 @@ poetry run pytest path/to/test.py --snapshot-update
 - After refactoring, update mock targets to match new module paths
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
 
+### Tests That Don't Flake
+
+- **No tight bounds on elapsed time** — assert the outcome, and bound real time only with ~10× margin or through a clock the test advances, because a full garbage collection on a CI runner can take seconds.
+- **Pin the clock for code keyed to a time window** (a rate-limit minute, a daily counter), set mid-window, because a run that crosses the boundary splits the test's calls across two windows.
+- **Never patch `time.sleep`, `asyncio.sleep`, `time.time` or `time.monotonic` on the shared module**, including through `backend.x.y.asyncio.sleep` when `y` does `import asyncio`; patch a name the module bound itself (`from asyncio import sleep`) or inject the clock, because the stub reaches every coroutine in the event loop. `backend/util/architecture_test.py` refuses new ones.
+- **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`.
+- **Drive a concurrency test's interleaving with a barrier**, not `asyncio.gather` alone, which switches tasks only at I/O and may never interleave where the race is.
+
 ### Test-Driven Development (TDD)
 
 When fixing a bug or adding a feature, write the test **before** the implementation:
