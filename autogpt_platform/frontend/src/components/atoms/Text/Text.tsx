@@ -49,6 +49,7 @@ export function Text({
   return React.createElement(
     Element,
     {
+      "data-slot": "text",
       className: combinedClassName,
       ...rest,
     },

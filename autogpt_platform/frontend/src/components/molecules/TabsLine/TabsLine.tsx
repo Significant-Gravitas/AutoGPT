@@ -45,7 +45,7 @@ function TabsLine({ variant = "default", ...props }: TabsLineProps) {
     <TabsLineContext.Provider
       value={{ variant, activeTabElement, setActiveTabElement }}
     >
-      <TabsPrimitive.Root {...props} />
+      <TabsPrimitive.Root data-slot="tabs" {...props} />
     </TabsLineContext.Provider>
   );
 }
@@ -77,6 +77,7 @@ const TabsLineList = React.forwardRef<
     return (
       <TabsPrimitive.List
         ref={ref}
+        data-slot="tabs-list"
         // TODO(tokens): no role holds gray-100 (#F3F4F6) or neutral-500
         // (#737373). The dark: classes never apply (forcedTheme="light") and
         // are DS6's (SECRT-3116) to delete.
@@ -90,7 +91,7 @@ const TabsLineList = React.forwardRef<
   }
 
   return (
-    <div className="relative">
+    <div data-slot="tabs-list-root" className="relative">
       <TabsPrimitive.List
         ref={(node) => {
           if (typeof ref === "function") ref(node);
@@ -99,6 +100,7 @@ const TabsLineList = React.forwardRef<
           // @ts-ignore
           listRef.current = node;
         }}
+        data-slot="tabs-list"
         className={cn(
           "inline-flex w-full items-center justify-start border-b border-separator",
           isFlush && "[&>button:first-child]:!pl-0",
@@ -108,6 +110,7 @@ const TabsLineList = React.forwardRef<
       />
       {activeTabElement && (
         <div
+          data-slot="tabs-indicator"
           className={cn(
             "transition-left transition-right absolute bottom-0 h-0.5 bg-brand-hover duration-200 ease-in-out",
             isCompact && "bg-action-hover",
@@ -167,6 +170,7 @@ const TabsLineTrigger = React.forwardRef<
         // @ts-ignore
         elementRef.current = node;
       }}
+      data-slot="tabs-trigger"
       // TODO(tokens): no role for neutral-400 (#A3A3A3), and in `pill` no
       // role holds gray-500 (#6B7280).
       className={cn(
@@ -184,7 +188,9 @@ const TabsLineTrigger = React.forwardRef<
       )}
       {...props}
     >
-      {icon ? <Icon icon={icon} size={14} aria-hidden /> : null}
+      {icon ? (
+        <Icon data-slot="tabs-trigger-icon" icon={icon} size={14} aria-hidden />
+      ) : null}
       {children}
     </TabsPrimitive.Trigger>
   );
@@ -200,6 +206,7 @@ const TabsLineContent = React.forwardRef<
   return (
     <TabsPrimitive.Content
       ref={ref}
+      data-slot="tabs-panel"
       // TODO(tokens): no role for stone-400 (#A8A29E). The dark: classes in
       // `pill` never apply (forcedTheme="light") and are DS6's (SECRT-3116) to
       // delete.

@@ -327,3 +327,70 @@ body[data-google-picker-open="true"] [data-dialog-content] {
     transform: rotate(-14deg) translate(6%, -8%) scale(1.18);
   }
 }
+
+/* DS5g keyframes */
+/* Copilot loaders, moved unchanged from the OrbitLoader, PixelGridLoader and
+   ScaleLoader CSS modules. The modules scoped the names, so they are prefixed
+   here. */
+@keyframes orbit-loader-rotate {
+  0% {
+    transform: rotate(0deg) scale(0.8);
+  }
+  50% {
+    transform: rotate(360deg) scale(1.2);
+  }
+  100% {
+    transform: rotate(720deg) scale(0.8);
+  }
+}
+
+@keyframes orbit-loader-ball1 {
+  0% {
+    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+  }
+  50% {
+    box-shadow: 0 0 0 #18181b;
+    margin-bottom: 0;
+    transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
+  }
+  100% {
+    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+    margin-bottom: calc(var(--gap));
+  }
+}
+
+@keyframes orbit-loader-ball2 {
+  0% {
+    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+  }
+  50% {
+    box-shadow: 0 0 0 #a1a1aa;
+    margin-top: calc(var(--ball-size) * -1);
+    transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
+  }
+  100% {
+    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+    margin-top: 0;
+  }
+}
+
+@keyframes pixel-grid-loader-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-loader-grow {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
