@@ -43,8 +43,11 @@ def compose_attention_items(
         for session, question in _open_questions(questions or [])
         if _is_answerable(session, expert_by_id)
     )
-    if is_paywalled and schedules:
-        items.append(_paywalled_schedules_attention(len(schedules)))
+    # Only workflow schedules resume once a plan returns: a scheduled chat says so
+    # in its own chat, and a refused one-shot is dropped (SECRT-2879).
+    workflow_schedules = sum(schedule.kind == "graph" for schedule in schedules)
+    if is_paywalled and workflow_schedules:
+        items.append(_paywalled_schedules_attention(workflow_schedules))
     elif credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
     return sorted(items, key=_attention_sort_key)

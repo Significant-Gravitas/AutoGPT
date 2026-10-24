@@ -10,7 +10,7 @@ from backend.copilot.gate.references import Reference
 from backend.copilot.gate.review import node_id_for, review_payload
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.copilot.scheduled_chats.service import PausedScheduledChat
-from backend.executor.scheduler import GraphExecutionJobInfo
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .attention import compose_attention_items
 
@@ -76,6 +76,17 @@ def _schedule() -> GraphExecutionJobInfo:
         graph_version=1,
         cron="0 9 * * *",
         input_data={},
+    )
+
+
+def _chat_schedule() -> CopilotTurnJobInfo:
+    return CopilotTurnJobInfo(
+        id="chat-schedule",
+        name="Weekly recap",
+        next_run_time="2026-08-10T09:00:00+00:00",
+        user_id="user",
+        message="Recap my week",
+        run_at=datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc),
     )
 
 
@@ -211,6 +222,32 @@ def test_no_paywall_item_for_an_entitled_owner() -> None:
     )
 
     assert items == []
+
+
+def test_paywall_item_counts_only_workflow_schedules() -> None:
+    # A scheduled chat is told in its own chat, and a refused one-shot is dropped
+    # rather than resumed, so it must neither raise the item nor add to its count.
+    chat_only = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[_chat_schedule()],
+        credits_balance=500,
+        is_paywalled=True,
+    )
+    mixed = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[_schedule(), _chat_schedule()],
+        credits_balance=500,
+        is_paywalled=True,
+    )
+
+    assert chat_only == []
+    assert [item.description for item in mixed] == [
+        "1 scheduled task won't run while your plan is inactive."
+    ]
 
 
 def test_naive_timestamps_are_normalised_to_utc() -> None:

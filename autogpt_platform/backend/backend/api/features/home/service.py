@@ -326,6 +326,6 @@ async def _get_paywalled(*, user_id: str) -> bool:
         return await is_user_paywalled(user_id)
     except Exception:
         logger.warning(
-            "Home could not load paywall state for user %s", user_id[:_LOG_ID_CHARS]
+            f"Home could not load paywall state for user {user_id[:_LOG_ID_CHARS]}"
         )
         return False

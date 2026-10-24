@@ -23,6 +23,7 @@ _PAYWALL_CHECK_SITES = (
     "backend.executor.utils.is_user_paywalled",
     "backend.api.features.integrations.router.is_user_paywalled",
     "backend.copilot.gate.workflow.is_user_paywalled",
+    "backend.api.features.home.service.is_user_paywalled",
 )
 _BAN_CHECK_SITES = (
     "backend.data.user.is_user_banned",
