@@ -170,6 +170,7 @@ from backend.copilot.tools.skills import (
     build_skills_context,
     build_skills_update_notice,
 )
+from backend.copilot.trace_metadata import copilot_trace_metadata
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -2598,6 +2599,7 @@ async def stream_chat_completion_baseline(
             session_id=session_id,
             trace_name="copilot-baseline",
             tags=["baseline", "tool_surface:registry"],
+            metadata=copilot_trace_metadata(base_system_prompt),
         )
         _trace_ctx.__enter__()
     except Exception:

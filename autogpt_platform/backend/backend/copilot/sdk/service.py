@@ -82,6 +82,7 @@ from backend.copilot.sdk.cost_tracking import (
     read_cli_session_usage,
 )
 from backend.copilot.tool_display import tool_calls_for_provider
+from backend.copilot.trace_metadata import copilot_trace_metadata
 from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
 from backend.copilot.turn_budget import resolve_turn_budget
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
@@ -5775,6 +5776,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # user/session fields.
         _user_tier = await get_user_tier(user_id) if user_id else None
         _otel_metadata: dict[str, str] = {
+            **copilot_trace_metadata(base_system_prompt),
             "resume": str(use_resume),
             "conversation_turn": str(turn),
             "tool_surface": "registry",

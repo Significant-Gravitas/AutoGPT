@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import trace_metadata
 from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
@@ -198,6 +200,31 @@ class TestSdkExpertsAuthorization:
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden
         assert "delegate_to_expert" not in hidden
+
+
+@pytest.mark.asyncio
+async def test_sdk_turn_propagates_release_and_prompt_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(trace_metadata.settings.config, "sentry_release", " build-a\n")
+    attributes = MagicMock()
+    await _run_sdk_turn(
+        user_id=None,
+        hire_experts_enabled=False,
+        extra_patches=[
+            (f"{_SVC}.propagate_attributes", dict(new=attributes)),
+            (f"{_SVC}._update_title_async", dict(new_callable=AsyncMock)),
+        ],
+    )
+
+    metadata = attributes.call_args.kwargs["metadata"]
+    assert metadata == {
+        "release": "build-a",
+        "base_prompt_sha256": hashlib.sha256(b"system prompt").hexdigest(),
+        "resume": "False",
+        "conversation_turn": "1",
+        "tool_surface": "registry",
+    }
 
 
 class TestSdkComputerNoteWiring:

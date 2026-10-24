@@ -13,9 +13,10 @@ import logging
 import re
 import threading
 import time
+from contextlib import ExitStack
 from typing import Any
 
-from langfuse import get_client
+from langfuse import get_client, propagate_attributes
 from langfuse.openai import (
     AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
 )
@@ -23,6 +24,7 @@ from openai.types.chat import ChatCompletion
 
 from backend.copilot.chat_platform_header import strip_chat_platform_header
 from backend.copilot.prompting import VOICE_TURN_TAG
+from backend.copilot.trace_metadata import copilot_trace_metadata
 from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.understanding import (
     BusinessUnderstanding,
@@ -862,6 +864,7 @@ async def _generate_session_title(
         ``response=None`` and the caller skips cost-recording: a raised
         ``create`` did not bill, so there is no cost to record.
     """
+    tracing = ExitStack()
     try:
         # Build extra_body for OpenRouter cost and Broadcast attribution.
         # ``usage: {"include": True}`` asks OR to embed the real billed
@@ -899,6 +902,12 @@ async def _generate_session_title(
         # tree as the originating chat turn AND the httpx connection
         # pool stays warm across calls — building a fresh client per
         # title would cost a TCP+TLS handshake every session.
+        try:
+            tracing.enter_context(
+                propagate_attributes(metadata=copilot_trace_metadata())
+            )
+        except Exception:
+            logger.debug("Failed to attach title trace metadata", exc_info=True)
         response = await call_provider_openai_compat_sync(
             client=_get_aux_client(),
             model=title_model,
@@ -925,6 +934,11 @@ async def _generate_session_title(
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")
         return _fallback_title_from_message(message), None
+    finally:
+        try:
+            tracing.close()
+        except Exception:
+            logger.debug("Failed to close title trace metadata", exc_info=True)
 
     # Robust against an empty ``choices`` list OR a choice whose
     # ``message`` is missing ``content`` (shouldn't happen on the OpenAI
