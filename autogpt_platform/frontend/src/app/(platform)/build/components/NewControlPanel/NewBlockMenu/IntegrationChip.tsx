@@ -41,11 +41,7 @@ export const IntegrationChip: IntegrationChipComponent = ({
         )}
       </div>
       {name && (
-        <Text
-          variant="body"
-          as="span"
-          className="truncate leading-[1.375rem] text-zinc-800"
-        >
+        <Text variant="body" as="span" className="truncate text-zinc-800">
           {beautifyString(name)}
         </Text>
       )}

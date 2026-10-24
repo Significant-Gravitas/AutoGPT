@@ -190,11 +190,7 @@ const MultiSelectorTrigger = forwardRef<
           )}
           variant={"secondary"}
         >
-          <Text
-            variant="small"
-            as="span"
-            className="font-semibold leading-4 text-inherit"
-          >
+          <Text variant="small-semibold-tight" as="span" tone="inherit">
             {item}
           </Text>
           <button
