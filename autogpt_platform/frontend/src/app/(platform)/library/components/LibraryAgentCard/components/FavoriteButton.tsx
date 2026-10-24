@@ -59,7 +59,8 @@ export function FavoriteButton({
             size={20}
             className={cn(
               "transition-colors duration-200",
-              isFavorite ? "text-red-500" : "text-gray-600 hover:text-red-500",
+              // TODO(tokens): no exact role for text-gray-600 (#4B5563)
+              isFavorite ? "text-error" : "text-gray-600 hover:text-error",
             )}
           />
         </motion.div>

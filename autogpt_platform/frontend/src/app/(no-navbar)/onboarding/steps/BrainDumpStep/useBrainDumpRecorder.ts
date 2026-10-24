@@ -3,6 +3,7 @@
 // so the reassurance on screen is a fact rather than a hope.
 
 import { useEffect, useRef, useState } from "react";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   HARD_STOP_SECONDS,
@@ -19,6 +20,7 @@ import { buildPart, useUploadQueue } from "./useUploadQueue";
 export type RecorderPhase = "idle" | "recording" | "stopping" | "stopped";
 
 export function useBrainDumpRecorder() {
+  const userID = useAuthStore((state) => state.user?.id);
   const [phase, setPhase] = useState<RecorderPhase>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isSavedLocally, setIsSavedLocally] = useState(false);
@@ -69,7 +71,14 @@ export function useBrainDumpRecorder() {
 
   const queue = useUploadQueue();
 
-  useEffect(() => stopTracks, []);
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      stopTracks();
+    };
+  }, []);
 
   function stopTracks() {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -121,6 +130,12 @@ export function useBrainDumpRecorder() {
       }
       return false;
     }
+    // Back during the prompt, or a skip during "Record again", can leave the
+    // step before the mic opens, and its unmount cleanup has already run.
+    if (unmountedRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+      return false;
+    }
 
     const recordingId = newRecordingId();
     const mimeType = pickMimeType();
@@ -145,6 +160,10 @@ export function useBrainDumpRecorder() {
       durationSecs: 0,
       finalized: false,
     });
+    if (unmountedRef.current) {
+      stopTracks();
+      return false;
+    }
 
     const recorder = new MediaRecorder(stream, { mimeType });
     recorder.ondataavailable = function handleChunk(event) {
@@ -260,7 +279,7 @@ export function useBrainDumpRecorder() {
   // still there, so the user is offered them back rather than told to
   // start over.
   async function findRecoverable() {
-    const meta = await getMeta().catch(() => null);
+    const meta = await getMeta(userID).catch(() => null);
     if (!meta || meta.finalized) return null;
     return meta;
   }
@@ -297,7 +316,7 @@ export function useBrainDumpRecorder() {
   // serialised so the last one issued is the last one to land.
   async function rememberMeta(meta: Parameters<typeof saveMeta>[0]) {
     const write = metaWriteRef.current.then(() =>
-      saveMeta(meta).catch(() => undefined),
+      saveMeta({ ...meta, userID }).catch(() => undefined),
     );
     metaWriteRef.current = write;
     await write;

@@ -1122,7 +1122,13 @@ async def test_fetch_execution_counts_uses_group_by(mocker):
 @pytest.mark.asyncio
 async def test_create_preset_inherits_graph_org(mocker):
     """A preset lives in the same org/team as the graph it runs
-    (resource-follows-parent), regardless of the caller's active org."""
+    (resource-follows-parent), regardless of the caller's active org, when
+    the caller belongs to it."""
+    membership = mocker.patch.object(
+        db,
+        "resolve_member_tenancy",
+        new=AsyncMock(side_effect=lambda user_id, org_id, team_id: (org_id, team_id)),
+    )
     created_row = prisma.models.AgentPreset(
         deactivatedByExpertArchive=False,
         id="preset-1",
@@ -1168,9 +1174,66 @@ async def test_create_preset_inherits_graph_org(mocker):
     )
 
     assert result.id == "preset-1"
+    membership.assert_awaited_once_with("test-user", "org-of-graph", "team-of-graph")
     create_data = mock_preset_client.create.call_args.kwargs["data"]
     assert create_data["organizationId"] == "org-of-graph"
     assert create_data["teamId"] == "team-of-graph"
+
+
+@pytest.mark.asyncio
+async def test_a_preset_on_someone_elses_workflow_stays_in_the_users_org(mocker):
+    """The workflow can be in an org the user isn't in. A preset they save on
+    it goes to their own org and team."""
+    mocker.patch.object(
+        db,
+        "resolve_member_tenancy",
+        new=AsyncMock(return_value=("own-org", "own-team")),
+    )
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(
+            return_value=MagicMock(organization_id="other-org", team_id="other-team")
+        ),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-3",
+        userId="test-user",
+        name="My Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=2,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="test-user",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=2,
+            name="My Preset",
+            description="",
+            is_active=True,
+        ),
+    )
+
+    create_data = mock_preset_client.create.call_args.kwargs["data"]
+    assert (create_data["organizationId"], create_data["teamId"]) == (
+        "own-org",
+        "own-team",
+    )
 
 
 @pytest.mark.asyncio

@@ -32,8 +32,11 @@ export function UserHeader({ user, isSelf, canAct }: Props) {
       <div className="flex min-w-0 items-center gap-3">
         <Avatar className="h-10 w-10 shrink-0">
           {user.image ? <AvatarImage src={user.image} alt="" /> : null}
-          <AvatarFallback accessibleLabel={displayName} className="bg-zinc-100">
-            <span className="text-base font-medium text-zinc-700">
+          <AvatarFallback
+            accessibleLabel={displayName}
+            className="bg-surface-hover"
+          >
+            <span className="text-base font-medium text-foreground-body">
               {displayName.charAt(0).toUpperCase()}
             </span>
           </AvatarFallback>
@@ -66,7 +69,7 @@ export function UserHeader({ user, isSelf, canAct }: Props) {
           </div>
           <Text
             variant="body"
-            className="break-all text-zinc-600"
+            className="break-all text-foreground-secondary"
             translate="no"
           >
             {user.email}

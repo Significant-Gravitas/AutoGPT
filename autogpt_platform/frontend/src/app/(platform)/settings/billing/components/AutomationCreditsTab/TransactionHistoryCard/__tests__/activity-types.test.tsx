@@ -34,7 +34,7 @@ describe("Transaction history activity and states", () => {
       await screen.findByText(name);
       const money = screen.getByText(formatted);
       expect(money.classList.contains("text-red-600")).toBe(false);
-      expect(money.classList.contains("text-green-700")).toBe(
+      expect(money.classList.contains("text-success-foreground")).toBe(
         Number(amount) > 0,
       );
     },

@@ -30,7 +30,7 @@ from backend.util.feature_flag import (
 )
 from backend.util.settings import AppEnvironment, Config, FeatureFlagBackend
 
-PRICING_EXPERIMENT = "subscription-pricing-page-initial-state"
+SERVER_READ_EXPERIMENT = "server-read-experiment"
 
 
 @pytest.fixture(autouse=True)
@@ -139,7 +139,7 @@ class TestPostHogWithoutAKey:
         )
 
         value = await ff.get_feature_flag_value(
-            Flag.HIRE_EXPERTS.value, user_id, True, attributes=attributes
+            Flag.GENERIC_TRIGGER_AGENTS.value, user_id, True, attributes=attributes
         )
 
         assert value is True
@@ -167,7 +167,10 @@ class TestLaunchDarklyBackendLeavesPostHogAlone:
         posthog = mocker.patch.object(ph, "evaluate_flag")
         ld_client.variation_detail.return_value = served(True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
         ld_client.variation_detail.assert_called_once()
         posthog.assert_not_called()
 
@@ -217,7 +220,10 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_a_conclusive_off_is_authoritative(self, mocker, user_context):
@@ -225,21 +231,30 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=False)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_an_unresolved_flag_is_not(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=None)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_an_unconfigured_client_is_not(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         mocker.patch.object(ph, "get_flag_client", return_value=None)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_an_evaluation_that_raises_is_not(self, mocker, user_context):
@@ -247,7 +262,10 @@ class TestPostHogBackend:
         client = stub_posthog(mocker, value=True)
         client.get_feature_flag_result.side_effect = Exception("evaluation exploded")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_a_degraded_user_context_is_not(self, mocker):
@@ -258,7 +276,10 @@ class TestPostHogBackend:
             return_value=(Context.create("u-1"), False),
         )
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_a_payload_flag_returns_its_payload(self, mocker, user_context):
@@ -275,7 +296,10 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=True, payload={"some": "object"})
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_targeting_attributes_are_passed_as_person_properties(self, mocker):
@@ -300,7 +324,7 @@ class TestPostHogBackend:
             return_value=(context, True),
         )
 
-        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
         _, kwargs = client.get_feature_flag_result.call_args
         assert kwargs["person_properties"] == {
@@ -389,7 +413,7 @@ class TestPostHogBackend:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "flag_key,events",
-        [(PRICING_EXPERIMENT, 1), (Flag.HIRE_EXPERTS.value, 0)],
+        [(SERVER_READ_EXPERIMENT, 1), (Flag.GENERIC_TRIGGER_AGENTS.value, 0)],
     )
     async def test_only_an_experiment_read_sends_posthog_its_exposure_event(
         self, mocker, monkeypatch, flag_key, events
@@ -397,6 +421,7 @@ class TestPostHogBackend:
         """`$feature_flag_called` is billed per event, and only an experiment
         counts its exposures with it."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff, "EXPERIMENT_FLAGS", frozenset({SERVER_READ_EXPERIMENT}))
         monkeypatch.setattr(
             urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
         )
@@ -428,7 +453,7 @@ class TestPostHogBackend:
         posthog_client = _posthog_rolled_out_to_dev_only()
         mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
         try:
-            result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            result = await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
         finally:
             posthog_client.shutdown()
 
@@ -464,12 +489,13 @@ class TestDualBackend:
         monkeypatch.setattr(
             urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
         )
-        posthog_client = _posthog_rolled_out(PRICING_EXPERIMENT)
+        mocker.patch.object(ff, "EXPERIMENT_FLAGS", frozenset({SERVER_READ_EXPERIMENT}))
+        posthog_client = _posthog_rolled_out(SERVER_READ_EXPERIMENT)
         capture = mocker.patch.object(posthog_client, "capture")
         read = mocker.spy(posthog_client, "get_feature_flag_result")
         mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
         try:
-            await ff.get_feature_flag_value(PRICING_EXPERIMENT, "u-1")
+            await ff.get_feature_flag_value(SERVER_READ_EXPERIMENT, "u-1")
             await drain_shadow_evaluations()
         finally:
             posthog_client.shutdown()
@@ -484,7 +510,10 @@ class TestDualBackend:
         ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=False)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_a_disagreement_is_logged_as_a_structured_record(
@@ -498,7 +527,7 @@ class TestDualBackend:
         with caplog.at_level(
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
-            await evaluate_feature_flag(Flag.HIRE_EXPERTS, user_id)
+            await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, user_id)
             await drain_shadow_evaluations()
 
         [message] = [
@@ -507,7 +536,7 @@ class TestDualBackend:
             if record.name == "backend.util.feature_flag.mismatch"
         ]
         record = _mismatch_record(message)
-        assert record["flag"] == Flag.HIRE_EXPERTS.value
+        assert record["flag"] == Flag.GENERIC_TRIGGER_AGENTS.value
         assert record["launchdarkly"] == {"value": True, "evaluated": True}
         assert record["posthog"] == {"value": False, "evaluated": True}
         assert user_id not in message
@@ -524,7 +553,7 @@ class TestDualBackend:
         with caplog.at_level(
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
-            await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
             await drain_shadow_evaluations()
 
         assert not [
@@ -544,7 +573,7 @@ class TestDualBackend:
         with caplog.at_level(
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
-            result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            result = await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
             await drain_shadow_evaluations()
 
         assert result == (False, True)
@@ -572,7 +601,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             for _ in range(3):
-                await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+                await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
                 await evaluate_feature_flag(Flag.CHAT_MODE_OPTION, "u-1")
             await drain_shadow_evaluations()
 
@@ -582,7 +611,7 @@ class TestDualBackend:
             if r.name == "backend.util.feature_flag.mismatch"
         ]
         assert sorted(flags) == sorted(
-            [Flag.HIRE_EXPERTS.value, Flag.CHAT_MODE_OPTION.value]
+            [Flag.GENERIC_TRIGGER_AGENTS.value, Flag.CHAT_MODE_OPTION.value]
         )
 
     @pytest.mark.asyncio
@@ -597,7 +626,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             for _ in range(3):
-                await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+                await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
             await drain_shadow_evaluations()
 
         assert (
@@ -647,7 +676,7 @@ class TestDualBackend:
         ld_client.variation_detail.return_value = served(True)
         mocker.patch.object(ph, "evaluate_flag", side_effect=Exception("boom"))
 
-        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        assert await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1") is True
         await drain_shadow_evaluations()
 
     @pytest.mark.asyncio
@@ -740,7 +769,7 @@ class TestDualStaysOffTheRequestPath:
         mocker.patch.object(ph, "evaluate_flag", side_effect=slow_posthog)
 
         result = await asyncio.wait_for(
-            evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1"), timeout=5
+            evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1"), timeout=5
         )
 
         assert result == (True, True)
@@ -760,7 +789,7 @@ class TestDualStaysOffTheRequestPath:
             return_value=(Context.create("u-1"), False),
         )
 
-        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
         await drain_shadow_evaluations()
 
         lookup.assert_called_once_with("u-1")
@@ -780,7 +809,7 @@ class TestDualStaysOffTheRequestPath:
         mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
 
         for _ in range(5):
-            await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
         assert len(ff._shadow_evaluations) == 2
         for task in list(ff._shadow_evaluations):
@@ -812,7 +841,7 @@ class TestShutdownStopsShadowEvaluations:
             return False, True
 
         mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
-        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
         assert len(ff._shadow_evaluations) == 1
 
         ff.shutdown_feature_flags()
@@ -833,7 +862,9 @@ class TestShutdownStopsShadowEvaluations:
 
         mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1"))
+        loop.run_until_complete(
+            evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
+        )
         # What an AppService's cleanup does to its loop before flags shut down.
         loop.close()
 
@@ -853,7 +884,10 @@ class TestShutdownStopsShadowEvaluations:
         get_client = mocker.patch.object(ph, "get_flag_client")
 
         ff.shutdown_feature_flags()
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
         await drain_shadow_evaluations()
 
         get_client.assert_not_called()
@@ -894,9 +928,12 @@ class TestForcedFlagsInEveryBackend:
             ff, "get_client", side_effect=Exception("set_config was not called")
         )
         posthog = mocker.patch.object(ph, "evaluate_flag")
-        monkeypatch.setenv("FORCE_FLAG_HIRE_EXPERTS", "true")
+        monkeypatch.setenv("FORCE_FLAG_GENERIC_TRIGGER_AGENTS", "true")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
         posthog.assert_not_called()
 
     @pytest.mark.asyncio
@@ -915,8 +952,11 @@ class TestForcedFlagsInEveryBackend:
         mocker.patch.object(ph, "get_flag_client", return_value=None)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
-        await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
+        await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)("u-1")
         assert await _gated_route()(user_id="u-1") == "served"
 
     @pytest.mark.asyncio
@@ -930,14 +970,20 @@ class TestForcedFlagsInEveryBackend:
         mocker.patch.object(ph, "is_configured", return_value=True)
         stub_posthog(mocker, value=True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
-        await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
+        await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)("u-1")
         assert await _gated_route()(user_id="u-1") == "served"
 
         stub_posthog(mocker, value=False)
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            True,
+        )
         with pytest.raises(HTTPException) as off:
-            await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+            await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)("u-1")
         assert off.value.status_code == 404
 
 
@@ -960,8 +1006,10 @@ class TestSentryFlagContext:
         ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=backend is FeatureFlagBackend.POSTHOG)
 
-        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
-        assert sentry_flags.get() == [{"flag": Flag.HIRE_EXPERTS.value, "result": True}]
+        assert await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1") is True
+        assert sentry_flags.get() == [
+            {"flag": Flag.GENERIC_TRIGGER_AGENTS.value, "result": True}
+        ]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("initialized", [True, False])
@@ -982,11 +1030,11 @@ class TestSentryFlagContext:
         client.is_initialized.return_value = False
         mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
 
-        await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+        await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
         assert sentry_flags.get() == [
-            {"flag": Flag.HIRE_EXPERTS.value, "result": False},
-            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+            {"flag": Flag.GENERIC_TRIGGER_AGENTS.value, "result": False},
+            {"flag": f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback", "result": True},
         ]
 
     @pytest.mark.asyncio
@@ -995,13 +1043,15 @@ class TestSentryFlagContext:
     ):
         ld_client.variation_detail.return_value = served("on")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1", True) == (
+        assert await evaluate_feature_flag(
+            Flag.GENERIC_TRIGGER_AGENTS, "u-1", True
+        ) == (
             True,
             False,
         )
         assert sentry_flags.get() == [
-            {"flag": Flag.HIRE_EXPERTS.value, "result": True},
-            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+            {"flag": Flag.GENERIC_TRIGGER_AGENTS.value, "result": True},
+            {"flag": f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback", "result": True},
         ]
 
     @pytest.mark.asyncio
@@ -1030,17 +1080,21 @@ class TestSentryFlagContext:
         ld_client.is_initialized.return_value = initialized
         ld_client.variation_detail.return_value = served(answer)
         # A stale earlier answer must not be what an error from this route carries.
-        sentry_sdk.feature_flags.add_feature_flag(Flag.HIRE_EXPERTS.value, True)
+        sentry_sdk.feature_flags.add_feature_flag(
+            Flag.GENERIC_TRIGGER_AGENTS.value, True
+        )
 
         with pytest.raises(HTTPException):
             if gate == "decorator":
                 await _gated_route()(user_id="u-1")
             else:
-                await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+                await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)(
+                    "u-1"
+                )
 
         assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
-            Flag.HIRE_EXPERTS.value: False,
-            f"{Flag.HIRE_EXPERTS.value}.fallback": True,
+            Flag.GENERIC_TRIGGER_AGENTS.value: False,
+            f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback": True,
         }
 
     @pytest.mark.asyncio
@@ -1054,26 +1108,28 @@ class TestSentryFlagContext:
         scope = sentry_sdk.get_current_scope()
         previous, scope.span = scope.span, span
         try:
-            await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+            await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
         finally:
             scope.span = previous
 
-        assert span._flags == {f"flag.evaluation.{Flag.HIRE_EXPERTS.value}": False}
+        assert span._flags == {
+            f"flag.evaluation.{Flag.GENERIC_TRIGGER_AGENTS.value}": False
+        }
 
     @pytest.mark.asyncio
     async def test_a_real_answer_clears_an_earlier_fallback(
         self, ld_client, user_context, sentry_flags
     ):
         sentry_sdk.feature_flags.add_feature_flag(
-            f"{Flag.HIRE_EXPERTS.value}.fallback", True
+            f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback", True
         )
         ld_client.variation_detail.return_value = served(True)
 
-        await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+        await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
         assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
-            f"{Flag.HIRE_EXPERTS.value}.fallback": False,
-            Flag.HIRE_EXPERTS.value: True,
+            f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback": False,
+            Flag.GENERIC_TRIGGER_AGENTS.value: True,
         }
 
     @pytest.mark.asyncio
@@ -1087,7 +1143,10 @@ class TestSentryFlagContext:
         )
         ld_client.variation_detail.return_value = served(True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
 
 
 @pytest.mark.usefixtures("posthog_events_dropped")
@@ -1273,7 +1332,7 @@ def _posthog_rolled_out_to_dev_only() -> Posthog:
     client.feature_flags = [
         {
             "id": 1,
-            "key": Flag.HIRE_EXPERTS.value,
+            "key": Flag.GENERIC_TRIGGER_AGENTS.value,
             "active": True,
             "filters": {
                 "groups": [
@@ -1303,7 +1362,7 @@ def _no_remote_flags(*args, **kwargs):
 def _gated_route():
     """A route behind the decorator, which holds a raw flag key rather than a Flag."""
 
-    @feature_flag(Flag.HIRE_EXPERTS.value)
+    @feature_flag(Flag.GENERIC_TRIGGER_AGENTS.value)
     async def route(user_id: str) -> str:
         return "served"
 

@@ -9,9 +9,9 @@ export function AgentPageLoading() {
           <Skeleton className="h-8 w-20 rounded-lg" />
           <div className="hidden items-center gap-2 md:flex">
             <Skeleton className="h-4 w-24" />
-            <span className="text-zinc-300">/</span>
+            <span className="text-foreground-disabled">/</span>
             <Skeleton className="h-4 w-28" />
-            <span className="text-zinc-300">/</span>
+            <span className="text-foreground-disabled">/</span>
             <Skeleton className="h-4 w-36" />
           </div>
         </div>
@@ -20,8 +20,14 @@ export function AgentPageLoading() {
         <div className="mt-0 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 lg:mt-8 lg:flex-row lg:gap-12">
           {/* Left: Agent info panel */}
           <div className="w-full lg:w-2/5">
-            <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-indigo-100/50 p-[1px]">
-              <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+            <div
+              // TODO(tokens): no exact role: from-blue-100/50 #DBEAFE, to-indigo-100/50 #E0E7FF
+              className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-indigo-100/50 p-[1px]"
+            >
+              <div
+                // TODO(tokens): no exact role: bg-gray-50 #F9FAFB
+                className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4"
+              >
                 {/* Title */}
                 <Skeleton className="mb-3 h-9 w-3/4" />
 

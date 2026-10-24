@@ -56,6 +56,7 @@ LIVE_EVENT_NAMES = {
     "email_opened",
     "email_clicked",
     "email_bounced",
+    "email_complained",
 }
 
 PLANNED_EVENT_NAMES: set[str] = set()

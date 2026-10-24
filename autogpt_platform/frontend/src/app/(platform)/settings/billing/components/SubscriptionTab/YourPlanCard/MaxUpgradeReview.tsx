@@ -22,6 +22,7 @@ export function MaxUpgradeReview({ review }: Props) {
       {review.error && (
         <div
           role="alert"
+          // TODO(tokens): no exact role (border-orange-200 #FFC88A, bg-orange-50 #FFF3E6)
           className="rounded-xl border border-orange-200 bg-orange-50 p-4"
         >
           <Text variant="small" className="mb-3 leading-6">

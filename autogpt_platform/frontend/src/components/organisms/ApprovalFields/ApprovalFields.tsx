@@ -59,8 +59,8 @@ export function ApprovalFields({
       <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(5rem,9rem)_minmax(0,1fr)] sm:gap-y-2">
         {shown.map((field) => (
           <div key={field.key} className="contents">
-            <dt className="text-zinc-500 sm:pt-px">{field.label}</dt>
-            <dd className="mb-1.5 min-w-0 text-zinc-900 [overflow-wrap:anywhere] sm:mb-0">
+            <dt className="text-foreground-tertiary sm:pt-px">{field.label}</dt>
+            <dd className="mb-1.5 min-w-0 text-foreground-strong [overflow-wrap:anywhere] sm:mb-0">
               <FieldOrReference
                 name={field.key}
                 value={values[field.key]}

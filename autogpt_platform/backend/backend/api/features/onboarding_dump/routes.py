@@ -1,9 +1,4 @@
-"""Onboarding brain-dump endpoints.
-
-Everything here is user-scoped and gated on ``ONBOARDING_BRAIN_DUMP`` — a
-stale frontend must not be able to start writing recordings after the flag
-is turned back off.
-"""
+"""Authenticated, user-scoped onboarding brain-dump endpoints."""
 
 import logging
 from typing import Annotated
@@ -11,11 +6,11 @@ from typing import Annotated
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
-from fastapi import APIRouter, Depends, Form, Security, UploadFile
+from fastapi import APIRouter, Form, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
-from backend.api.features.onboarding_dump import db, service, storage
+from backend.api.features.onboarding_dump import db, service, storage, suggested_tasks
 from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
     MAX_PART_BYTES,
@@ -28,29 +23,13 @@ from backend.api.features.onboarding_dump.models import (
     IntroCardResponse,
     RecommendedExpertsResponse,
     RecommendedProvidersResponse,
+    SuggestedTasksResponse,
+    SuggestedTasksUpdate,
     UploadPartResponse,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
-
-
-async def require_brain_dump_flag(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> None:
-    """Gate every endpoint on the brain-dump flag, fail-closed.
-
-    Deliberately not ``create_feature_flag_dependency``: that helper
-    short-circuits to 404 whenever LaunchDarkly has no SDK key, which is
-    every local dev and test environment — and it does so *before*
-    consulting the ``FORCE_FLAG_ONBOARDING_BRAIN_DUMP`` override, so the
-    documented way to switch the feature on locally could never work.
-    ``is_feature_enabled`` checks the env override first and still
-    defaults to False when LaunchDarkly is unreachable.
-    """
-    if not await is_feature_enabled(Flag.ONBOARDING_BRAIN_DUMP, user_id):
-        raise fastapi.HTTPException(status_code=404, detail="Feature not available")
 
 
 router = APIRouter(
@@ -58,7 +37,6 @@ router = APIRouter(
     tags=["onboarding", "brain-dump"],
     dependencies=[
         Security(autogpt_auth_lib.requires_user),
-        Depends(require_brain_dump_flag),
     ],
 )
 
@@ -237,6 +215,31 @@ async def get_brain_dump_recommended_experts(
     return await service.get_recommended_experts(user_id)
 
 
+@router.get("/suggested-tasks", operation_id="get_brain_dump_suggested_tasks")
+async def get_brain_dump_suggested_tasks(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SuggestedTasksResponse:
+    """The greeting's suggested first tasks, each with its own state.
+
+    Unlike ``/intro``, this keeps answering after the first message: the
+    list stays on Home, a sent row marked in progress, until every row is
+    dismissed.
+    """
+    return await suggested_tasks.get_suggested_tasks(user_id)
+
+
+@router.post("/suggested-tasks", operation_id="update_brain_dump_suggested_tasks")
+async def update_brain_dump_suggested_tasks(
+    request: SuggestedTasksUpdate,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SuggestedTasksResponse:
+    """Mark suggested tasks sent, dismissed, or open again (Undo).
+
+    Takes several ids so "Hide all" and its Undo are one write each.
+    """
+    return await suggested_tasks.update_suggested_tasks(user_id, request)
+
+
 @router.post("/intro/complete", operation_id="complete_brain_dump_greeting")
 async def complete_brain_dump_greeting(
     user_id: Annotated[str, Security(get_user_id)],
@@ -304,14 +307,23 @@ async def discard_brain_dump(
 ) -> DumpStatusResponse:
     """Drop a half-uploaded take's server buffer when the user re-records.
 
-    The row and any stored audio are left alone — only the disposable
-    part buffer is cleared.
+    Stored audio is left alone. A named take still uploading is also marked
+    failed, so it no longer holds the row against the user's next take.
 
     ``recording_id`` says *which* take to drop. Without it the row's
     current take is assumed, which is wrong as soon as a second tab has
     moved the row on: the caller would clear a buffer that is still being
     filled. Callers know their own id, so they send it.
     """
+    # Before the buffer goes, so a storage error cannot leave the take holding the row.
+    if recording_id:
+        await db.claim_transition(
+            user_id,
+            recording_id,
+            expected=BrainDumpStatus.recording_uploaded,
+            new=BrainDumpStatus.failed,
+            errorCode="discarded",
+        )
     dump = await db.get_dump(user_id)
     target = recording_id or (dump.recordingId if dump else None)
     if target and not (

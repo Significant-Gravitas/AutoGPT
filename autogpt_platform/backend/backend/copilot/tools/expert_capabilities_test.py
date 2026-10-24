@@ -89,7 +89,6 @@ def team():
     db.with_bundled_skills = AsyncMock(side_effect=lambda templates, _user: templates)
     _hireable_roster.cache_clear()
     with (
-        patch(f"{_SR}.is_feature_enabled", AsyncMock(return_value=True)),
         patch(f"{_SR}.experts_db", MagicMock(return_value=db)),
         patch(f"{_SR}.is_skills_feature_enabled", AsyncMock(return_value=False)),
         patch(

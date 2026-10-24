@@ -49,6 +49,16 @@ def expert_skills_folder(expert_id: str) -> str:
     return f"{EXPERTS_ROOT}{expert_id}/skills"
 
 
+def is_skill_package_path(path: str) -> bool:
+    """Whether *path* sits in a skill folder: the account's ``/skills/``, or
+    ``/experts/<id>/skills/`` for a hired expert's own. Only the skills
+    registry writes there, so every such file is part of a skill package."""
+    if path.startswith(SKILLS_ROOT):
+        return True
+    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
+    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
+
+
 def is_user_file_path(path: str) -> bool:
     """Whether *path* is one of the owner's own files.
 

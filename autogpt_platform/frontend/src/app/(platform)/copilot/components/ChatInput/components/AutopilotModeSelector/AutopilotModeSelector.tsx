@@ -11,16 +11,25 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
 import type { AutopilotMode } from "../../../../autopilotModeStore";
-import { AUTOPILOT_MODE_OPTIONS, getModeOption } from "./helpers";
+import {
+  AUTOPILOT_MODE_OPTIONS,
+  getModeOption,
+  unsupervisedChatDescription,
+} from "./helpers";
 import { UnsupervisedConfirmDialog } from "./UnsupervisedConfirmDialog";
 import { useAutopilotModeSelector } from "./useAutopilotModeSelector";
 
 interface Props {
   sessionId: string | null;
   persistedMode: AutopilotMode | null;
+  disabled?: boolean;
 }
 
-export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
+export function AutopilotModeSelector({
+  sessionId,
+  persistedMode,
+  disabled = false,
+}: Props) {
   const {
     mode,
     isDefault,
@@ -28,13 +37,14 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
     isConfirmOpen,
     confirmUnsupervised,
     cancelUnsupervised,
+    assistantName,
   } = useAutopilotModeSelector({ sessionId, persistedMode });
   const current = getModeOption(mode);
 
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+        <DropdownMenuTrigger asChild disabled={disabled}>
           <button
             type="button"
             aria-label={`Approval mode: ${current.label}. Change mode`}
@@ -48,6 +58,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
                 "bg-zinc-100 text-zinc-700 hover:bg-zinc-200",
               mode === "unsupervised" &&
                 "bg-amber-50 text-amber-700 hover:bg-amber-100",
+              disabled && "opacity-40",
             )}
           >
             <Icon icon={current.icon} size={16} aria-hidden="true" />
@@ -82,6 +93,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
         isOpen={isConfirmOpen}
         onConfirm={confirmUnsupervised}
         onCancel={cancelUnsupervised}
+        description={unsupervisedChatDescription(assistantName)}
       />
     </>
   );

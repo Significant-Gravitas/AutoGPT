@@ -50,6 +50,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
 - No `any` types unless the value genuinely can be anything
 - No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
+- **React Compiler folders** — the compiler builds the folders in `reactCompilerSources` (`next.config.mjs`: the copilot and `ai-elements`). There the `react-hooks` compiler rules and `exhaustive-deps` are errors (warnings everywhere else), oxlint's `autogpt/no-manual-memo` rejects new `useMemo`/`useCallback`, `"use memo"`/`"use no memo"` and any `memo()` without a `// memo-boundary: <why>` comment above it, and `autogpt/no-hookless-use-function` rejects a `use*` function that calls no hook. `src/reactCompilerCoverage.test.ts` fails on any compiler bailout missing from its `KNOWN_BAILOUTS`. Code written before these rules is grandfathered (`.eslintrc.json` overrides, `scripts/eslint-rules/manual-memo-baseline.json`); those lists can only shrink, and the tests fail when an entry is fixed but not removed
 - **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
 - **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
 

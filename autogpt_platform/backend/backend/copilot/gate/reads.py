@@ -32,10 +32,11 @@ from backend.api.features.graph_executions.review.model import PendingHumanRevie
 from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_image import parse_held_image
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.data.db_accessors import experts_db
-from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
+from backend.data.workspace_scope import is_skill_package_path
 from backend.util.feature_flag import Flag, get_flag_variant
 
 from . import answerable, held, resolve_mode
@@ -198,6 +199,11 @@ async def release_held_read(
         # The late result took the approved bytes first.
         return Release(
             output=_stub(tool_name, source, _DELIVERED, session), success=False
+        )
+    approved_at = review.reviewed_at or review.updated_at or review.created_at
+    if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
+        return Release(
+            output=_stub(tool_name, source, _EXPIRED, session), success=False
         )
     return held_bytes(review)
 
@@ -380,10 +386,7 @@ def is_skill_path(path: str | None) -> bool:
     registry writes there; ``write_workspace_file`` refuses these roots."""
     if not path or posixpath.normpath(path) != path:
         return False
-    if path.startswith(SKILLS_ROOT):
-        return True
-    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
-    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
+    return is_skill_package_path(path)
 
 
 def _opened_path(output: str) -> str | None:
@@ -391,7 +394,9 @@ def _opened_path(output: str) -> str | None:
     argument can be relative, or resolve under the session."""
     try:
         data = json.loads(output)
-    except ValueError:
+        if isinstance(data, dict) and data.get("type") == "held_tool_image":
+            data = json.loads(data.get("text", ""))
+    except (ValueError, TypeError):
         return None
     if not isinstance(data, dict) or data.get("type") not in _WORKSPACE_READS:
         return None
@@ -400,17 +405,17 @@ def _opened_path(output: str) -> str | None:
 
 
 def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
-    """The text and images a model can read out of a registry tool's output.
-
-    A workspace read hands the model its file base64-encoded; the judge gets
-    the decoded text or image beside it, and nothing for a binary it cannot
-    read, so that result is not judged.
-    """
+    """The text and images a model can read out of a registry tool's output."""
     try:
         data = json.loads(output)
     except ValueError:
         return output, ()
-    if not isinstance(data, dict) or not isinstance(data.get("content_base64"), str):
+    if not isinstance(data, dict):
+        return output, ()
+    held_image = parse_held_image(data)
+    if held_image is not None:
+        return held_image.text, (Image(**held_image.image.model_dump()),)
+    if not isinstance(data.get("content_base64"), str):
         return output, ()
     mime = str(data.get("mime_type", ""))
     encoded = data["content_base64"]
