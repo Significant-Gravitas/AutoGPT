@@ -226,6 +226,34 @@ async def test_websocket_router_invalid_method(
 
 
 @pytest.mark.asyncio
+async def test_websocket_router_answers_a_subscribe_that_failed(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """The client waits for an ack; silence leaves it with no live updates."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+    mock_manager.subscribe_graph_exec.side_effect = RuntimeError("engine gone")
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    reply = WSMessage.model_validate_json(mock_websocket.send_text.call_args[0][0])
+    assert reply.method == WSMethod.ERROR
+    assert reply.success is False
+    assert "engine gone" not in (reply.error or "")
+
+
+@pytest.mark.asyncio
 async def test_handle_subscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:

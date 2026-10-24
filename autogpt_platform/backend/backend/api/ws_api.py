@@ -89,7 +89,7 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
     # Refused when the ban can't be read, as a request to a signed-in route is;
     # 1011 rather than the ban's code, so an outage never reads as a ban.
     try:
-        banned = await is_user_banned(user_id)
+        banned = await db.retry_on_dead_engine(lambda: is_user_banned(user_id))
     except Exception:
         logger.warning(f"Ban lookup failed for user #{user_id}; refusing the socket")
         await websocket.close(code=1011, reason="Try again")
@@ -314,6 +314,13 @@ async def websocket_router(
                     f"Error while handling '{message.method.value}' message "
                     f"for user #{user_id}: {e}"
                 )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=f"Could not handle '{message.method.value}'; retry",
+                    ).model_dump_json()
+                )
                 continue
 
             if message.method == WSMethod.ERROR:
@@ -346,7 +353,7 @@ async def websocket_router(
 async def _banned_now(user_id: str) -> bool:
     """A lookup that fails keeps the socket; the next message asks again."""
     try:
-        return await is_user_banned(user_id)
+        return await db.retry_on_dead_engine(lambda: is_user_banned(user_id))
     except Exception:
         logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
         return False
