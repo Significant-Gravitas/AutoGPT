@@ -68,6 +68,7 @@ export function ExpertWorkflowsSection({
             <Button
               variant="secondary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >
@@ -75,12 +76,14 @@ export function ExpertWorkflowsSection({
             </Button>
           ) : null}
           <ToolbarSearch
+            textSize="body-md"
             id="expert-workflows-search"
             label="Search workflows"
             value={query}
             onChange={setQuery}
           />
           <PillFilterMenu
+            textSize="body-md"
             label="Filter workflows"
             value={filter}
             defaultValue="all"
@@ -125,6 +128,7 @@ export function ExpertWorkflowsSection({
             <Button
               variant="primary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >
@@ -133,7 +137,7 @@ export function ExpertWorkflowsSection({
           ) : null}
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted">
+        <Text variant="body-md" tone="muted">
           No workflows match.
         </Text>
       ) : view === "list" ? (

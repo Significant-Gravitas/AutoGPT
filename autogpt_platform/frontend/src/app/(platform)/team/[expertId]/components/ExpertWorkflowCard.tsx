@@ -115,20 +115,16 @@ export function ExpertWorkflowCard({
           </Text>
         ) : null}
         {workflow.description ? (
-          <Text
-            variant="body"
-            tone="muted"
-            className="mt-1.5 line-clamp-2 leading-5"
-          >
+          <Text variant="body-md" tone="muted" className="mt-1.5 line-clamp-2">
             {workflow.description}
           </Text>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {runCount !== undefined ? (
             <Text
-              variant="body"
+              variant="body-md"
               tone="muted"
-              className="flex items-center gap-1.5 leading-5"
+              className="flex items-center gap-1.5"
             >
               <Icon icon={Activity01Icon} size={14} className="shrink-0" />
               {runCount} {runCount === 1 ? "run" : "runs"}

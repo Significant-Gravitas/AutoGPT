@@ -64,7 +64,7 @@ export function ExpertSkillListItem({
           )}
         >
           <Text
-            variant="body-medium"
+            variant="body-md-medium"
             className="break-words !text-foreground-strong"
           >
             {entry.name}
@@ -92,14 +92,23 @@ export function ExpertSkillListItem({
           {shown.map((trigger) => (
             <span
               key={trigger}
-              className="max-w-full truncate rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5 text-xs text-foreground-secondary"
+              className="flex min-w-0 max-w-full rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5"
             >
-              {trigger}
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="secondary"
+                className="truncate"
+              >
+                {trigger}
+              </Text>
             </span>
           ))}
           {hiddenCount > 0 ? (
-            <span className="rounded-full px-1.5 py-0.5 text-xs text-foreground-tertiary">
-              +{hiddenCount}
+            <span className="flex rounded-full px-1.5 py-0.5">
+              <Text variant="small-tight" as="span" tone="muted">
+                +{hiddenCount}
+              </Text>
             </span>
           ) : null}
         </div>

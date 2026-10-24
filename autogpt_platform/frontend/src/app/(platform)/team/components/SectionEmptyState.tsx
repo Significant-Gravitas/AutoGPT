@@ -8,7 +8,7 @@ export function SectionEmptyState(
 ) {
   return (
     <div className="mt-4 rounded-2xl bg-surface smooth-shadow-ring-sm">
-      <PanelEmptyState {...props} />
+      <PanelEmptyState textSize="body-md" {...props} />
     </div>
   );
 }

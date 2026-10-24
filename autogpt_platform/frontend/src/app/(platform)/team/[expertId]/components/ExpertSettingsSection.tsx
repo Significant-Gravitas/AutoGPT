@@ -62,7 +62,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
           <Text variant="large-medium" className="!text-foreground-strong">
             Fire {expert.name}
           </Text>
-          <Text variant="body" className="mt-0.5 !text-foreground-secondary">
+          <Text variant="body-md" className="mt-0.5 !text-foreground-secondary">
             {expert.name} leaves your team and stops working for you. Here is
             what that means for what you have set up.
           </Text>
@@ -88,9 +88,11 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
             <button
               type="button"
               onClick={() => void retryPreview()}
-              className="mt-1 text-sm font-medium text-foreground-body underline underline-offset-2 hover:text-foreground"
+              className="mt-1 inline-flex text-foreground-body underline underline-offset-2 hover:text-foreground"
             >
-              Retry
+              <Text variant="body-md-medium" as="span" tone="inherit">
+                Retry
+              </Text>
             </button>
           ) : null}
           {pauseNames.length > 0 ? (
@@ -98,15 +100,23 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               {pauseNames.map((item) => (
                 <span
                   key={item.id}
-                  // TODO(tokens): no exact role: text-amber-800 #92400E
-                  className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 text-xs text-amber-800"
+                  className="flex min-w-0 max-w-full rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5"
                 >
-                  {item.name}
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="warning-strong"
+                    className="truncate"
+                  >
+                    {item.name}
+                  </Text>
                 </span>
               ))}
               {hiddenPauseCount > 0 ? (
-                <span className="px-1 py-0.5 text-xs text-foreground-tertiary">
-                  +{hiddenPauseCount} more
+                <span className="flex px-1 py-0.5">
+                  <Text variant="small-tight" as="span" tone="muted">
+                    +{hiddenPauseCount} more
+                  </Text>
                 </span>
               ) : null}
             </div>
@@ -145,6 +155,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
         <Button
           variant="destructive"
           size="small"
+          textSize="body-md"
           onClick={onFire}
           data-testid="expert-fire-button"
         >
@@ -186,20 +197,26 @@ function Consequence({
       </span>
       <div className="min-w-0 flex-1 pt-1">
         <div className="flex items-center justify-between gap-3">
-          <Text variant="body" className="!text-foreground-emphasis">
+          <Text variant="body-md" className="!text-foreground-emphasis">
             {title}
           </Text>
           {tag ? (
             <span
               className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                "flex shrink-0 rounded-full px-2 py-0.5",
                 isWarn
-                  ? "bg-warning-surface text-warning-foreground"
-                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
-                    "bg-emerald-50 text-emerald-700",
+                  ? "bg-warning-surface"
+                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5
+                    "bg-emerald-50",
               )}
             >
-              {tag}
+              <Text
+                variant="small-medium-tight"
+                as="span"
+                tone={isWarn ? "warning" : "success-strong"}
+              >
+                {tag}
+              </Text>
             </span>
           ) : null}
         </div>

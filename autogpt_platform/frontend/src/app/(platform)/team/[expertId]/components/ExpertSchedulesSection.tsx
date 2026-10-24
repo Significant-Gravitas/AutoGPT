@@ -67,6 +67,7 @@ export function ExpertSchedulesSection({
             <Button
               variant="secondary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
@@ -74,12 +75,14 @@ export function ExpertSchedulesSection({
             </Button>
           ) : null}
           <ToolbarSearch
+            textSize="body-md"
             id="expert-schedules-search"
             label="Search schedules"
             value={query}
             onChange={setQuery}
           />
           <PillFilterMenu
+            textSize="body-md"
             label="Filter schedules"
             value={filter}
             defaultValue="all"
@@ -120,6 +123,7 @@ export function ExpertSchedulesSection({
             <Button
               variant="primary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
@@ -128,7 +132,7 @@ export function ExpertSchedulesSection({
           ) : null}
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No schedules match.
         </Text>
       ) : (
@@ -136,6 +140,7 @@ export function ExpertSchedulesSection({
           {visible.map((schedule) => (
             <li key={schedule.id}>
               <GraphScheduleListItem
+                textSize="body-md"
                 schedule={schedule}
                 className="rounded-2xl border-0 smooth-shadow-ring-sm"
                 iconClassName={accentClassName}

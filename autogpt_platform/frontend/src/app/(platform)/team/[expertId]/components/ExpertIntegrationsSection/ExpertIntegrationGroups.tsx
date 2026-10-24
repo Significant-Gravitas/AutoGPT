@@ -100,6 +100,9 @@ export function ExpertIntegrationGroups({
         <motion.div
           key={group.id}
           variants={reduceMotion ? REDUCED_ITEM_VARIANTS : ITEM_VARIANTS}
+          // ui/accordion's content wrapper sets text-sm, which the profile tab
+          // ran at 15px/1.5rem; its slot takes the same size here.
+          className="[&_[data-slot=accordion-panel]]:text-body-md"
         >
           <Accordion
             type="single"
@@ -108,7 +111,10 @@ export function ExpertIntegrationGroups({
             className="w-full overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
           >
             <AccordionItem value={group.id} className="border-b-0">
-              <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary">
+              <AccordionTrigger
+                textSize="body-md"
+                className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary"
+              >
                 <div className="flex items-center gap-2.5">
                   <IntegrationLogo
                     provider={group.icon}
@@ -116,7 +122,7 @@ export function ExpertIntegrationGroups({
                     size={20}
                     className="rounded-full bg-surface"
                   />
-                  <Text variant="body-medium" as="span" tone="primary">
+                  <Text variant="body-md-medium" as="span" tone="primary">
                     {group.name}
                   </Text>
                   <Text
@@ -164,7 +170,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
     >
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span" tone="primary">
+          <Text variant="body-md-medium" as="span" tone="primary">
             {name}
           </Text>
           <Text
@@ -176,7 +182,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
             {TYPE_LABELS[integration.type] ?? integration.type}
           </Text>
         </div>
-        <Text variant="body" as="span" tone="muted">
+        <Text variant="body-md" as="span" tone="muted">
           {CONNECTION_LABELS[integration.type] ?? "Configured"}
         </Text>
       </div>

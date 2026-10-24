@@ -68,6 +68,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
                 <Button
                   variant="secondary"
                   size="small"
+                  textSize="body-md"
                   leadingIcon={Share01Icon}
                   disabled={
                     grantable.length === 0 || isError || isGrantableError
@@ -95,12 +96,14 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           <Button
             variant="secondary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >
             Add integration
           </Button>
           <ToolbarSearch
+            textSize="body-md"
             id="expert-integrations-search"
             label="Search integrations"
             value={query}
@@ -113,6 +116,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
         <Skeleton className="h-24 w-full rounded-lg" />
       ) : isError ? (
         <ErrorCard
+          textSize="body-md"
           context="this expert's integrations"
           hint="We could not load what this expert can reach."
           onRetry={refetch}
@@ -130,6 +134,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           <Button
             variant="primary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >
@@ -139,6 +144,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
             <Button
               variant="secondary"
               size="small"
+              textSize="body-md"
               leadingIcon={Share01Icon}
               onClick={openUseExisting}
             >
@@ -147,7 +153,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           ) : null}
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No integrations match.
         </Text>
       ) : (

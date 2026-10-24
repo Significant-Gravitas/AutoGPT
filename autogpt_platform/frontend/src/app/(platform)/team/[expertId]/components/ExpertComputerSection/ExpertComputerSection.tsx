@@ -5,7 +5,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import {
+  DesktopStreamPreview,
+  isDesktopStream,
+} from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import {
@@ -48,6 +51,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
   if (!computer) {
     return (
       <ErrorCard
+        textSize="body-md"
         context="this expert's computer"
         hint="We could not load the sandbox status."
         onRetry={() => refetch()}
@@ -96,7 +100,9 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
               data-testid="expert-desktop-stream"
               className="overflow-hidden rounded-xl"
             >
-              {desktopStreamRenderer.render(stream)}
+              {isDesktopStream(stream) ? (
+                <DesktopStreamPreview value={stream} textSize="body-md" />
+              ) : null}
             </div>
             {/* A finished turn suspends the machine and ends this stream, so
                 the way back in stays next to it. */}
@@ -104,6 +110,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
               <Button
                 variant="secondary"
                 size="small"
+                textSize="body-md"
                 loading={isOpening}
                 disabled={!computer.e2b_active}
                 onClick={openDesktop}
@@ -123,11 +130,11 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             />
             <span
               className={cn(
-                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1",
                 running
-                  ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981, text-emerald-300 #6EE7B7
-                    "bg-emerald-500/15 text-emerald-300"
-                  : "bg-surface/10 text-foreground-disabled",
+                  ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981
+                    "bg-emerald-500/15"
+                  : "bg-surface/10",
               )}
             >
               <span
@@ -138,10 +145,16 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   running ? "bg-emerald-400" : "bg-zinc-400",
                 )}
               />
-              {status}
+              <Text
+                variant="small-medium-tight"
+                as="span"
+                tone={running ? "success-light" : "disabled"}
+              >
+                {status}
+              </Text>
             </span>
             <Text
-              variant="body"
+              variant="body-md"
               className="relative max-w-md !text-foreground-disabled"
             >
               {formatScreen(computer)}
@@ -185,14 +198,14 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   <Icon icon={Folder01Icon} size={15} aria-hidden />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <code className="text-xs text-foreground-emphasis">
+                  <Text variant="small-mono-tight" as="code" tone="emphasis">
                     {path}
-                  </code>
+                  </Text>
                   <Text variant="small" className="!text-foreground-tertiary">
                     {describeMount(path, computer)}{" "}
-                    <span className="font-mono text-xs text-foreground-subtle">
+                    <Text variant="small-mono-tight" as="span" tone="subtle">
                       {name}
-                    </span>
+                    </Text>
                   </Text>
                 </span>
               </li>

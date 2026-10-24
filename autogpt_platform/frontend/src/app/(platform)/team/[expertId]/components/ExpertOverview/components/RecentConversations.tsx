@@ -44,6 +44,7 @@ export function RecentConversations({
         <CardError message="Couldn't load conversations." onRetry={onRetry} />
       ) : sessions.length === 0 ? (
         <PanelEmptyState
+          textSize="body-md"
           tiles={[
             <Icon
               key="a"
@@ -72,6 +73,7 @@ export function RecentConversations({
           <Button
             variant="primary"
             size="small"
+            textSize="body-md"
             leadingIcon={BubbleChatIcon}
             onClick={onChat}
           >
@@ -91,7 +93,7 @@ export function RecentConversations({
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <Text
-                    variant="body-medium"
+                    variant="body-md-medium"
                     as="span"
                     className="truncate !text-foreground-strong"
                   >

@@ -83,3 +83,22 @@ describe("Input typing", () => {
     },
   );
 });
+
+describe("Input textSize", () => {
+  it("keeps the small size's text-body by default", () => {
+    render(<Input id="q" label="Search" hideLabel size="small" />);
+    const classes = screen.getByRole("textbox").className.split(" ");
+    expect(classes).toContain("text-body");
+    expect(classes).toContain("placeholder:text-body");
+  });
+
+  it("sets the value at text-body-md for body-md, placeholder unchanged", () => {
+    render(
+      <Input id="q" label="Search" hideLabel size="small" textSize="body-md" />,
+    );
+    const classes = screen.getByRole("textbox").className.split(" ");
+    expect(classes).toContain("text-body-md");
+    expect(classes).not.toContain("text-body");
+    expect(classes).toContain("placeholder:text-body");
+  });
+});

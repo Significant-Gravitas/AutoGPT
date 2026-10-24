@@ -45,6 +45,9 @@ export interface TextFieldProps extends Omit<InputProps, "size" | "onKeyDown"> {
   rows?: number;
   amountPrefix?: string;
   amountSuffix?: string;
+  /** `body-md` sets the value at the text-body-md role (15px/1.5rem) for
+   *  sizes whose text is text-body, e.g. inside a profile tab. */
+  textSize?: "body" | "body-md";
 }
 
 export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
@@ -64,6 +67,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     amountPrefix,
     amountSuffix,
     onKeyDown,
+    textSize = "body",
     ...props
   },
   ref,
@@ -110,6 +114,8 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     className,
   );
 
+  const bodyTextClass = textSize === "body-md" ? "text-body-md" : "text-body";
+
   const errorStyles =
     error && "!border !border-error focus:border-error focus:ring-error";
 
@@ -127,11 +133,12 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
             size === "small" && [
               "min-h-9", // 36px minimum
               "py-2",
-              "text-body",
+              bodyTextClass,
               "placeholder:text-body",
             ],
             size === "medium" && [
-              "min-h-[2.875rem] text-body", // 46px minimum (current default)
+              "min-h-[2.875rem]", // 46px minimum (current default)
+              bodyTextClass,
               "py-2.5",
             ],
           )}
@@ -165,7 +172,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
             size === "small" && [
               "h-9",
               "py-2",
-              "text-body",
+              bodyTextClass,
               "placeholder:text-body",
             ],
             size === "medium" && ["h-[2.875rem]", "py-2.5"],
@@ -211,7 +218,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           size === "small" && [
             "h-9", // 36px
             "py-2",
-            "text-body", // 14px font, 22px line height
+            bodyTextClass, // 14px font, 22px line height
             "placeholder:text-body",
           ],
           size === "medium" && [

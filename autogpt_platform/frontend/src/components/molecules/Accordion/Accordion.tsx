@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { cn } from "@/lib/utils";
+
 import {
   Accordion as BaseAccordion,
   AccordionContent as BaseAccordionContent,
@@ -23,11 +25,23 @@ const AccordionItem = React.forwardRef<
 ));
 AccordionItem.displayName = "AccordionItem";
 
+interface TextSizeProps {
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
+}
+
 const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof BaseAccordionTrigger>,
-  React.ComponentPropsWithoutRef<typeof BaseAccordionTrigger>
->((props, ref) => (
-  <BaseAccordionTrigger ref={ref} data-slot="accordion-trigger" {...props} />
+  React.ComponentPropsWithoutRef<typeof BaseAccordionTrigger> & TextSizeProps
+>(({ textSize = "body", className, ...props }, ref) => (
+  <BaseAccordionTrigger
+    ref={ref}
+    data-slot="accordion-trigger"
+    className={
+      textSize === "body-md" ? cn(className, "text-body-md") : className
+    }
+    {...props}
+  />
 ));
 AccordionTrigger.displayName = "AccordionTrigger";
 
