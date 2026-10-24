@@ -92,6 +92,13 @@ async def upload_brain_dump_part(
 
     if part_index == 0:
         await db.start_dump(user_id, recording_id, BrainDumpInputMode.voice)
+        # A discard that landed since the check above has already looked for
+        # this take on the row and missed it, so give the row back here.
+        if not resent and await storage.was_discarded(user_id, recording_id):
+            await _release_discarded_take(user_id, recording_id)
+            raise fastapi.HTTPException(
+                status_code=409, detail="This recording was discarded"
+            )
 
     cumulative = await storage.append_part(
         user_id, recording_id, part_index, b"".join(chunks)
@@ -326,16 +333,13 @@ async def discard_brain_dump(
     moved the row on: the caller would clear a buffer that is still being
     filled. Callers know their own id, so they send it.
     """
-    # Before the buffer goes, so a storage error cannot leave the take holding the row.
+    # Mark before releasing: a late part 0 claims the row and then reads the
+    # mark, so one of the two always sees the other. Both before the buffer goes.
     if recording_id:
-        await db.claim_transition(
-            user_id,
-            recording_id,
-            expected=BrainDumpStatus.recording_uploaded,
-            new=BrainDumpStatus.failed,
-            errorCode="discarded",
-        )
-        await storage.mark_discarded(user_id, recording_id)
+        try:
+            await storage.mark_discarded(user_id, recording_id)
+        finally:
+            await _release_discarded_take(user_id, recording_id)
     dump = await db.get_dump(user_id)
     target = recording_id or (dump.recordingId if dump else None)
     if target and not (
@@ -348,4 +352,15 @@ async def discard_brain_dump(
         status=dump.status if dump else None,
         input_mode=dump.inputMode if dump else None,
         has_audio=bool(dump and dump.audioPath),
+    )
+
+
+async def _release_discarded_take(user_id: str, recording_id: str) -> None:
+    """Fail a discarded take that is still waiting for parts, so it stops holding the row."""
+    await db.claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.recording_uploaded,
+        new=BrainDumpStatus.failed,
+        errorCode="discarded",
     )

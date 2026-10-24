@@ -4,6 +4,7 @@
 rules, so only the database shows which takes the real claim lets through.
 """
 
+import asyncio
 import io
 import uuid
 from collections.abc import AsyncGenerator
@@ -151,6 +152,54 @@ async def test_a_skipped_take_resent_from_the_browser_starts_again(user_id: str)
     )
 
 
+async def test_a_late_first_part_claiming_the_row_after_the_discard_gives_it_back(
+    user_id: str, mocker: MockerFixture
+):
+    """Part 0 passed its discard check just before the user threw the take away."""
+    upload, claim_row = await _late_part_zero_held_at_its_claim(user_id, mocker)
+
+    await routes.discard_brain_dump(user_id=user_id, recording_id="rec-voice")
+    claim_row.set()
+
+    assert await _status_of(upload) == 409
+    response = await service.finalize_typed_dump(
+        user_id, "rec-typed", TYPED_TEXT, BackgroundTasks()
+    )
+    assert response.status == BrainDumpStatus.transcribed
+
+
+async def test_a_late_first_part_claiming_the_row_mid_discard_gives_it_back(
+    user_id: str, mocker: MockerFixture
+):
+    upload, claim_row = await _late_part_zero_held_at_its_claim(user_id, mocker)
+    halfway, finish_discard = asyncio.Event(), asyncio.Event()
+    held_mark, held_claim = _hold_the_first_to_return(
+        routes.storage.mark_discarded,
+        routes.db.claim_transition,
+        reached=halfway,
+        resume=finish_discard,
+    )
+    mocker.patch.object(routes.storage, "mark_discarded", new=held_mark)
+    mocker.patch.object(routes.db, "claim_transition", new=held_claim)
+
+    discard = asyncio.create_task(
+        routes.discard_brain_dump(user_id=user_id, recording_id="rec-voice")
+    )
+    await asyncio.wait_for(halfway.wait(), timeout=5)
+    claim_row.set()
+    try:
+        status = await _status_of(upload)
+    finally:
+        finish_discard.set()
+        await discard
+
+    assert status == 409
+    response = await service.finalize_typed_dump(
+        user_id, "rec-typed", TYPED_TEXT, BackgroundTasks()
+    )
+    assert response.status == BrainDumpStatus.transcribed
+
+
 # Another tab's take may be the one running, so neither kind of new take
 # can reset it.
 @pytest.mark.parametrize("second", ["typed", "skipped"])
@@ -203,3 +252,48 @@ async def _upload_part_zero(user_id: str, recording_id: str, resent: bool = Fals
         part_index=0,
         resent=resent,
     )
+
+
+async def _late_part_zero_held_at_its_claim(
+    user_id: str, mocker: MockerFixture
+) -> tuple[asyncio.Task, asyncio.Event]:
+    """Upload part 0 of ``rec-voice`` and hold it just before it claims the row."""
+    checked, claim_row = asyncio.Event(), asyncio.Event()
+    real_start_dump = db.start_dump
+
+    async def held_start_dump(*args, **kwargs):
+        checked.set()
+        await claim_row.wait()
+        return await real_start_dump(*args, **kwargs)
+
+    mocker.patch.object(routes.db, "start_dump", new=held_start_dump)
+    upload = asyncio.create_task(_upload_part_zero(user_id, "rec-voice"))
+    await asyncio.wait_for(checked.wait(), timeout=5)
+    return upload, claim_row
+
+
+def _hold_the_first_to_return(*calls, reached: asyncio.Event, resume: asyncio.Event):
+    """Wrap ``calls`` so whichever of them returns first waits for ``resume``."""
+    returned = 0
+
+    def wrap(real):
+        async def held(*args, **kwargs):
+            nonlocal returned
+            result = await real(*args, **kwargs)
+            returned += 1
+            if returned == 1:
+                reached.set()
+                await resume.wait()
+            return result
+
+        return held
+
+    return [wrap(call) for call in calls]
+
+
+async def _status_of(upload: asyncio.Task) -> int:
+    try:
+        await upload
+    except HTTPException as refused:
+        return refused.status_code
+    return 200
