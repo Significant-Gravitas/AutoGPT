@@ -3,7 +3,7 @@ import { APIError } from "better-auth/api";
 import {
   assertEmailHasMailServer,
   undeliverableEmailError,
-} from "./disposable-email";
+} from "./email-deliverability";
 import { mintServiceToken } from "./service-token";
 
 export type AuthEmailType =

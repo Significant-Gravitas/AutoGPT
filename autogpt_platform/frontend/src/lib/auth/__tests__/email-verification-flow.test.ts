@@ -68,8 +68,16 @@ vi.mock("../provision-platform-user", () => ({
 const sentEmails = vi.hoisted(
   () => [] as Array<{ to: string; type: string; url: string }>,
 );
+// Addresses the mail provider refuses at send time, as sendAuthEmail reports it.
+const refusedAtSend = vi.hoisted(() => new Set<string>());
 vi.mock("../email", () => ({
   sendAuthEmail: vi.fn(async (email: (typeof sentEmails)[number]) => {
+    if (refusedAtSend.has(email.to)) {
+      const { undeliverableEmailError } = await import(
+        "../email-deliverability"
+      );
+      throw undeliverableEmailError();
+    }
     sentEmails.push(email);
   }),
 }));
@@ -218,6 +226,7 @@ function lastVerifyLink(to: string) {
 
 beforeEach(() => {
   sentEmails.length = 0;
+  refusedAtSend.clear();
   pendingAfterResponse.length = 0;
   provisionPlatformUser.mockClear();
   platformUsers.clear();
@@ -1350,6 +1359,24 @@ describe("an address the mailer won't deliver to", () => {
 
     expect(answers[0]).toEqual(answers[1]);
     expect(answers[0]).toMatchObject({ status: 400, body: undeliverable });
+  });
+
+  // Resend is the one route that awaits its send; the others send in the
+  // background, where a refusal is only logged.
+  it("shows Resend a refusal that comes back from the send itself", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "bounced-later@example.com");
+    await emailsSent();
+    refusedAtSend.add("bounced-later@example.com");
+
+    const response = await post(handler, "/send-verification-email", {
+      email: "bounced-later@example.com",
+      callbackURL,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject(undeliverable);
+    expect(lookup).toHaveBeenCalledTimes(2);
   });
 
   it.each([

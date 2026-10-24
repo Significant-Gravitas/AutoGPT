@@ -12,15 +12,15 @@ import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { getTrustedClientIP } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
-import {
-  assertEmailDeliverable,
-  assertEmailHasMailServer,
-  assertNotDisposableEmail,
-} from "./disposable-email";
+import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
-import { sharedLookups } from "./email-deliverability";
+import {
+  assertEmailDeliverable,
+  assertEmailHasMailServer,
+  sharedLookups,
+} from "./email-deliverability";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP, IP_CAPPED_PATHS } from "./ip-email-cap";
