@@ -15,7 +15,7 @@ a run into a question, never the reverse.
 """
 
 import logging
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, TypeGuard
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
@@ -127,13 +127,17 @@ DECIDED = Decision(allowed=True, decided=True)
 
 
 async def gate_active(user_id: str | None, session: ChatSession) -> bool:
-    """The gate runs only where a signed-in user can answer; sessions nobody
-    is watching stay ungated until they get their own path."""
-    if not user_id or session.metadata.origin != "interactive":
-        return False
-    if session.metadata.source_platform in CARDLESS_PLATFORMS:
+    if not answerable(user_id, session):
         return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+
+
+def answerable(user_id: str | None, session: ChatSession) -> TypeGuard[str]:
+    """Whether a signed-in user can answer a card here; sessions nobody is
+    watching stay unchecked until they get their own path."""
+    if not user_id or session.metadata.origin != "interactive":
+        return False
+    return session.metadata.source_platform not in CARDLESS_PLATFORMS
 
 
 async def unified_approvals(user_id: str) -> bool:
@@ -468,6 +472,7 @@ __all__ = [
     "Ruling",
     "LINKED_CHAT_PLATFORMS",
     "active_mode",
+    "answerable",
     "check_action",
     "child_autopilot_mode",
     "gate_active",
