@@ -30,6 +30,7 @@ export function StorageUsage() {
 
   const percent = Math.min(Math.max(data.used_percent, 0), 100);
   const usedLabel = `${Math.round(percent)}% of storage used`;
+  const internalBytes = data.internal_bytes ?? 0;
 
   return (
     <div
@@ -37,7 +38,7 @@ export function StorageUsage() {
       title={usedLabel}
       data-testid="storage-usage"
     >
-      <Text variant="small" as="span" className="text-foreground-tertiary">
+      <Text variant="small" as="span" className="text-foreground-secondary">
         Storage
       </Text>
       <Progress
@@ -53,12 +54,21 @@ export function StorageUsage() {
           percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
         )}
       />
-      <Text variant="small" as="span" className="text-foreground-tertiary">
+      <Text variant="small" as="span" className="text-foreground-secondary">
         <span className="font-medium text-foreground-body">
           {formatFileSize(data.used_bytes)}
         </span>{" "}
         of {formatFileSize(data.limit_bytes)}
       </Text>
+      {internalBytes > 0 ? (
+        <Text
+          variant="small"
+          as="span"
+          className="hidden text-foreground-secondary lg:inline"
+        >
+          {`${formatFileSize(internalBytes)} is your team's skills and working files`}
+        </Text>
+      ) : null}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import posthog from "posthog-js";
 import type { ReactNode } from "react";
 import {
   afterEach,
@@ -494,6 +495,39 @@ describe("onboarding brain dump — typed fallback", () => {
     // has already refused the microphone.
     expect(screen.queryByRole("button", { name: "record instead" })).toBeNull();
   });
+
+  // No microphone, or one another app holds: Talk used to do nothing at all.
+  it.each([
+    new DOMException("", "NotFoundError"),
+    new DOMException("", "NotReadableError"),
+    new TypeError("navigator.mediaDevices is undefined"),
+  ])(
+    "says the microphone couldn't open and offers Write when it fails with $name",
+    async (failure) => {
+      vi.mocked(posthog.capture).mockClear();
+      getUserMedia.mockRejectedValue(failure);
+      landOnPainPointsStep();
+
+      render(<OnboardingPage />);
+      await screen.findByText(DUMP_HEADLINE);
+      await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+
+      expect(
+        await screen.findByText(
+          "We couldn't open your microphone. You can write it instead.",
+        ),
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
+      // Unlike a denial, this can be fixed on the device, so Talk stays.
+      expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
+      expect(posthog.capture).toHaveBeenCalledWith("brain_dump_mic_failed", {
+        error_name: failure.name,
+      });
+      expect(
+        vi.mocked(posthog.capture).mock.calls.map(([event]) => event),
+      ).not.toContain("brain_dump_permission_denied");
+    },
+  );
 
   it("opens the typed composer from the rest state via Write", async () => {
     landOnPainPointsStep();

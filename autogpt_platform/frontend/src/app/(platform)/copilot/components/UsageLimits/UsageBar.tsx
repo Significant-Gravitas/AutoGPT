@@ -19,14 +19,25 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text variant="body-medium" className="text-neutral-700">
+        <Text
+          // TODO(tokens): no exact role for text-neutral-700
+          variant="body-medium"
+          className="text-neutral-700"
+        >
           {label}
         </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
+        <Text
+          // TODO(tokens): no exact role for text-neutral-500
+          variant="body"
+          className="tabular-nums text-neutral-500"
+        >
           {percentLabel}
         </Text>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div
+        // TODO(tokens): no exact role for bg-neutral-200
+        className="h-2 w-full overflow-hidden rounded-full bg-neutral-200"
+      >
         <div
           role="progressbar"
           aria-label={`${label} usage`}
@@ -34,12 +45,17 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
           aria-valuemax={100}
           aria-valuenow={percent}
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
-            isHigh ? "bg-orange-500" : "bg-blue-500"
+            // TODO(tokens): no exact role for bg-orange-500
+            isHigh ? "bg-orange-500" : "bg-info"
           }`}
           style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
-      <Text variant="small" className="text-neutral-500">
+      <Text
+        // TODO(tokens): no exact role for text-neutral-500
+        variant="small"
+        className="text-neutral-500"
+      >
         Resets {resetLabel}
       </Text>
     </div>

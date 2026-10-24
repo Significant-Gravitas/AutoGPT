@@ -151,7 +151,9 @@ def rows():
             f"{_READS}.capture_cost_context",
             AsyncMock(return_value=TrialCostContext(user_id="user-1", trial_id=None)),
         ),
-        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
         patch.object(held, "remember", fake.remember),

@@ -555,5 +555,6 @@ export function useBrainDumpStep() {
     // Going back to the orb is a dead end when the browser already refused
     // the microphone, so the way back is offered only when it can work.
     isMicBlocked: recorder.permissionDenied,
+    isMicUnavailable: recorder.micUnavailable,
   };
 }

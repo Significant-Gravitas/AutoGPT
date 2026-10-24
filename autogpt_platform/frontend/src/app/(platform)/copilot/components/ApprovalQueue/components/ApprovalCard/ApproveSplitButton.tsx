@@ -65,6 +65,7 @@ export function ApproveSplitButton({
             disabled={disabled}
             aria-label="More ways to approve"
             withTooltip={false}
+            // TODO(tokens): no fitting role for border-l-zinc-600 #68686F; #68686F is foreground-secondary (a text colour)
             className="min-w-0 rounded-l-none border-l-zinc-600 px-2"
           >
             <Icon icon={ArrowDown01Icon} size={14} aria-hidden />
@@ -79,13 +80,15 @@ export function ApproveSplitButton({
                 onSelect={() => onApprove(rule, scope)}
                 className="flex flex-col items-start gap-0.5 py-2"
               >
-                <span className="text-sm text-zinc-900">{title}</span>
-                <span className="text-xs text-zinc-500">{detail}</span>
+                <span className="text-sm text-foreground-strong">{title}</span>
+                <span className="text-xs text-foreground-tertiary">
+                  {detail}
+                </span>
               </DropdownMenuItem>
             );
           })}
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs font-normal text-zinc-500">
+          <DropdownMenuLabel className="text-xs font-normal text-foreground-tertiary">
             Applies to
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup
@@ -98,7 +101,7 @@ export function ApproveSplitButton({
                 value={option}
                 // Picking a scope keeps the menu open so the action can follow.
                 onSelect={(event) => event.preventDefault()}
-                className="text-sm text-zinc-900"
+                className="text-sm text-foreground-strong"
               >
                 {scopeLabel(option, who)}
               </DropdownMenuRadioItem>

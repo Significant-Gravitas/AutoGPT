@@ -264,7 +264,7 @@ describe("TokenDevtoolBadge autocompact threshold", () => {
   it("keeps the bar neutral below the autocompact trigger", async () => {
     // 65k base + 5k = 70k, under the trigger.
     const classes = await fillClassesAtContext(5_000);
-    expect(classes.some((name) => name.includes("bg-zinc-800"))).toBe(true);
+    expect(classes.some((name) => name.includes("bg-action"))).toBe(true);
   });
 });
 

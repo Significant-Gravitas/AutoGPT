@@ -43,6 +43,7 @@ from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.llm.prompt_refusal import PromptRefusedError
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
@@ -2180,6 +2181,9 @@ class OrchestratorBlock(Block):
                 )
                 break
 
+            except PromptRefusedError:
+                # Not a tool-call mistake the model can fix on a retry.
+                raise
             except ValueError as e:
                 last_error = e
                 error_feedback = (
