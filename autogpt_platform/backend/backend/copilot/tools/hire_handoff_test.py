@@ -45,8 +45,12 @@ class _FakeRedis:
 
     def __init__(self):
         self.store: dict[str, str] = {}
+        self.fail_next_setex = False
 
     async def setex(self, key, ttl, value):
+        if self.fail_next_setex:
+            self.fail_next_setex = False
+            raise ConnectionError("redis blip")
         self.store[key] = value
 
     async def set(self, key, value, *, nx=False, ex=None):
@@ -110,7 +114,8 @@ def _env(
     db.hire_expert = AsyncMock(return_value=SimpleNamespace(expert=hired))
     db.get_expert = AsyncMock(return_value=hired)
     db.list_experts = AsyncMock(return_value=[hired])
-    redis = AsyncMock(return_value=_FakeRedis())
+    fake_redis = _FakeRedis()
+    redis = AsyncMock(return_value=fake_redis)
     turn = AsyncMock(
         side_effect=turn_error,
         return_value=(turn_outcome, SessionResult(refusal=refusal)),
@@ -147,7 +152,9 @@ def _env(
         ),
         patch("backend.copilot.tools.hire_handoff.delete_chat_session", deleted),
     ):
-        yield SimpleNamespace(db=db, turn=turn, created=created, deleted=deleted)
+        yield SimpleNamespace(
+            db=db, turn=turn, created=created, deleted=deleted, redis=fake_redis
+        )
 
 
 def _approve(session):
@@ -242,6 +249,25 @@ class TestHireAndHandOffInOneApproval:
         assert resp.handoff is None
         assert "hire only" in resp.message.lower()
         assert _TITLE in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_confirm_that_broke_midway_leaves_the_hire_answerable(self):
+        """A Redis error after the shared claim must not leave that claim
+        behind, or the user's real answer is refused as already done when
+        nothing was hired (Sentry)."""
+        with _env() as env:
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            env.redis.fail_next_setex = True
+            with pytest.raises(ConnectionError):
+                await _confirm(_approve(session), preview.confirmation_id)
+            env.db.hire_expert.assert_not_called()
+
+            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        env.db.hire_expert.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_one_answer_never_hires_twice(self):
