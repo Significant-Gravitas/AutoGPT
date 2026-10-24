@@ -25,6 +25,7 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { AnsweredCardsContext } from "./AnsweredCardsContext";
+import { isAnsweredOnServer } from "./answeredOnServer";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 
@@ -621,13 +622,27 @@ export function ExpertChangeGroup({
     setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
   }
 
-  function send() {
+  async function send() {
     if (!actions || sent) return;
+    setSent(true);
     const message = open
       .map((proposal) =>
         decisionLine({ ...proposal, decision: decisions[proposal.toolCallId] }),
       )
       .join("\n");
+    // A tab opened before another one answered still shows the buttons: it
+    // shows that answer instead of sending a second.
+    if (
+      actions.sessionId &&
+      actions.onBackendTurn &&
+      (await isAnsweredOnServer(
+        actions.sessionId,
+        open.map((proposal) => proposal.confirmationId),
+      ))
+    ) {
+      actions.onBackendTurn();
+      return;
+    }
     // The card stays marked sent because the message is already in the
     // thread for Retry — the failure only needs saying.
     void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
@@ -639,7 +654,6 @@ export function ExpertChangeGroup({
           "it is still in the thread, use Retry once you have a plan",
       }),
     );
-    setSent(true);
   }
 
   const pager = visible.length > 1 && (
@@ -705,7 +719,7 @@ export function ExpertChangeGroup({
         variant="primary"
         size="icon"
         aria-label="Send decisions"
-        onClick={send}
+        onClick={() => void send()}
         className="size-8 p-0"
       >
         <Icon icon={SentIcon} size={15} />

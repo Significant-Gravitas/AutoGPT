@@ -130,9 +130,7 @@ export function getAnsweredCards(
   const answered = new Map<string, AnsweredCard>();
   for (const message of messages) {
     if (message.role !== "user") continue;
-    const decisions =
-      decisionsFromMetadata(message.metadata) ??
-      messageText(message).split("\n").flatMap(parseLine);
+    const decisions = rowDecisions(message.metadata, messageText(message));
     for (const { verdict, confirmationId } of decisions) {
       if (confirmationId)
         answered.set(confirmationId, { verdict, messageID: message.id });
@@ -148,6 +146,28 @@ function messageText(
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("\n")
     .trim();
+}
+
+/** The cards a chat's stored rows answered, read from the raw rows of
+ *  GET /sessions/{id}: what a tab opened before another one answered checks
+ *  before it sends. */
+export function answeredIdsInRows(rows: unknown[]): Set<string> {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const { role, content, metadata } = row as Record<string, unknown>;
+    if (role !== "user") continue;
+    const text = typeof content === "string" ? content : "";
+    for (const { confirmationId } of rowDecisions(metadata, text)) {
+      if (confirmationId) ids.add(confirmationId);
+    }
+  }
+  return ids;
+}
+
+// Every decision line in a row, not only a row made of them, as for the gate.
+function rowDecisions(metadata: unknown, text: string): CardDecision[] {
+  return decisionsFromMetadata(metadata) ?? text.split("\n").flatMap(parseLine);
 }
 
 const GERUNDS: Record<DecisionVerb, string> = {

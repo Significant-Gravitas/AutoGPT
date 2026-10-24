@@ -2,9 +2,15 @@ import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getGetV2GetSessionMockHandler } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getGetV2GetPendingReviewsForChatSessionMockHandler } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { server } from "@/mocks/mock-server";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { ChatContainer } from "../components/ChatContainer/ChatContainer";
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
@@ -182,9 +188,11 @@ describe("a proposal card's decision in the chat", () => {
 function Chat({
   messages,
   onSend = vi.fn(),
+  onBackendTurn,
 }: {
   messages: Message[];
   onSend?: (text: string) => void;
+  onBackendTurn?: () => void;
 }) {
   return (
     <ChatContainer
@@ -196,9 +204,21 @@ function Chat({
       isCreatingSession={false}
       onCreateSession={vi.fn()}
       onSend={onSend}
+      onBackendTurn={onBackendTurn}
       onStop={vi.fn()}
     />
   );
+}
+
+// What GET /sessions/{id} holds when the card is checked before a send.
+function storedSession(rows: Record<string, unknown>[]) {
+  return getGetV2GetSessionMockHandler({
+    id: SESSION_ID,
+    created_at: "2026-10-24T03:00:00Z",
+    updated_at: "2026-10-24T03:00:00Z",
+    user_id: "user-1",
+    messages: rows,
+  });
 }
 
 const TAGGED_APPROVAL = userRow(
@@ -226,7 +246,10 @@ function expectNoDecisionButtons() {
 describe("a proposal card the chat already answered", () => {
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
-    server.use(getGetV2GetPendingReviewsForChatSessionMockHandler([]));
+    server.use(
+      getGetV2GetPendingReviewsForChatSessionMockHandler([]),
+      storedSession([]),
+    );
   });
   afterEach(() => {
     cleanup();
@@ -287,5 +310,44 @@ describe("a proposal card the chat already answered", () => {
     await user.dblClick(screen.getByRole("button", { name: "Send decisions" }));
 
     expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("in a stale tab, shows the answer another tab gave instead of sending a second", async () => {
+    server.use(
+      storedSession([
+        { role: "user", content: "Get someone to run Dewleaf's marketing." },
+        {
+          role: "user",
+          content: `Approved: hire Maya (confirmation_id: ${CONFIRMATION_ID}).`,
+          metadata: {
+            kind: "card_decision",
+            decisions: [
+              {
+                verdict: "approved",
+                confirmation_id: CONFIRMATION_ID,
+                verb: "hire",
+                name: "Maya",
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onBackendTurn = vi.fn();
+    render(
+      <Chat
+        messages={[ask, hireCard]}
+        onSend={onSend}
+        onBackendTurn={onBackendTurn}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Decline" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    await waitFor(() => expect(onBackendTurn).toHaveBeenCalledTimes(1));
+    expect(onSend).not.toHaveBeenCalled();
   });
 });
