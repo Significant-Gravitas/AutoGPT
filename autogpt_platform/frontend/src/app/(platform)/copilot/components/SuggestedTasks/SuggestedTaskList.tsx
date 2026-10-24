@@ -41,7 +41,7 @@ export function SuggestedTaskList({
   return (
     <ol
       className={cn(
-        "divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200 bg-white",
+        "divide-y divide-separator overflow-hidden rounded-lg border border-border-base bg-surface",
         className,
       )}
     >
@@ -56,7 +56,7 @@ export function SuggestedTaskList({
                 prefersReducedMotion ? undefined : { height: 0, opacity: 0 }
               }
               transition={{ duration: 0.15 }}
-              className="group/row flex items-center transition-colors duration-150 hover:bg-zinc-50"
+              className="group/row flex items-center transition-colors duration-150 hover:bg-surface-muted"
               data-testid="suggested-task"
             >
               {isSent && task.session_id ? (
@@ -67,7 +67,7 @@ export function SuggestedTaskList({
                   <Icon
                     icon={promptIcon}
                     size={15}
-                    className="shrink-0 text-zinc-300"
+                    className="shrink-0 text-foreground-disabled"
                   />
                   <span className="flex min-w-0 flex-col">
                     <Text
@@ -100,7 +100,7 @@ export function SuggestedTaskList({
                   <Icon
                     icon={promptIcon}
                     size={15}
-                    className="shrink-0 text-zinc-400"
+                    className="shrink-0 text-foreground-subtle"
                   />
                   <span className="flex min-w-0 flex-col">
                     <Text
@@ -116,14 +116,14 @@ export function SuggestedTaskList({
                     <Icon
                       icon={Loading03Icon}
                       size={15}
-                      className="ml-auto shrink-0 animate-spin text-zinc-400"
+                      className="ml-auto shrink-0 animate-spin text-foreground-subtle"
                       aria-label="Starting"
                     />
                   ) : (
                     <Icon
                       icon={ArrowRight01Icon}
                       size={15}
-                      className="ml-auto shrink-0 text-zinc-400"
+                      className="ml-auto shrink-0 text-foreground-subtle"
                     />
                   )}
                 </button>
@@ -136,7 +136,7 @@ export function SuggestedTaskList({
                 aria-label={`Hide: ${task.title}`}
                 disabled={sendingId !== null}
                 onClick={() => onHide(task)}
-                className="mr-2 shrink-0 text-zinc-400 opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 hover:text-zinc-700 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 hover:text-foreground-body focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
               >
                 <Icon icon={Cancel01Icon} size={14} />
               </Button>
