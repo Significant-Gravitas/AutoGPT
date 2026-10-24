@@ -32,6 +32,10 @@ def test_run_opens_its_port_before_loading_blocks_and_taking_turns() -> None:
             "backend.copilot.executor.manager._load_catalog",
             side_effect=lambda: order.append("load_catalog"),
         ),
+        patch(
+            "backend.copilot.executor.manager.start_cli_warmup",
+            side_effect=lambda: order.append("warm_cli"),
+        ) as warm_cli,
         patch("backend.copilot.executor.manager.get_blocks", side_effect=load_blocks),
         patch(
             "backend.copilot.executor.manager.freeze_startup_heap",
@@ -47,9 +51,11 @@ def test_run_opens_its_port_before_loading_blocks_and_taking_turns() -> None:
     ):
         executor.run()
 
+    warm_cli.assert_called_once_with()
     assert order == [
         "open_port",
         "load_catalog",
+        "warm_cli",
         "load_blocks",
         "freeze_heap",
         "cancel_thread",
