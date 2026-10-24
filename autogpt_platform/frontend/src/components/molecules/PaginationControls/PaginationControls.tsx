@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/__legacy__/ui/button";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   currentPage: number;
@@ -41,12 +42,16 @@ export function PaginationControls({
       >
         Previous
       </Button>
-      <span
+      {/* Text with the label's own line height; its colour stays inherited from
+          the page, as the plain span's was. */}
+      <Text
+        variant="body"
+        as="span"
         data-slot="pagination-controls-label"
-        className="text-body leading-5"
+        className="leading-5 text-inherit"
       >
         Page {currentPage} of {totalPages}
-      </span>
+      </Text>
       <Button
         variant="outline"
         data-slot="pagination-controls-next"
