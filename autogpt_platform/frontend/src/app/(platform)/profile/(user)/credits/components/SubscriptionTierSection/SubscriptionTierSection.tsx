@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useSubscriptionTierSection } from "./useSubscriptionTierSection";
@@ -236,7 +236,8 @@ export function SubscriptionTierSection() {
               {!isCurrent && isPaymentEnabled && (
                 <Button
                   className="w-full"
-                  variant={isUpgrade ? "default" : "outline"}
+                  variant={isUpgrade ? "compact-primary" : "compact-outline"}
+                  size="compact"
                   disabled={isPending || isScheduledTier}
                   onClick={() => onTierButtonClick(tier.key)}
                 >
@@ -268,7 +269,8 @@ export function SubscriptionTierSection() {
           </p>
           {!hasPendingChange && (
             <Button
-              variant="ghost"
+              variant="compact-ghost"
+              size="compact"
               // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400); no fitting role for hover:text-red-600 #D93636; #D93636 is error-hover, a hover fill
               className="shrink-0 text-sm text-neutral-600 hover:text-red-600 dark:text-neutral-400"
               disabled={isPending}
@@ -301,13 +303,15 @@ export function SubscriptionTierSection() {
           </p>
           <Dialog.Footer>
             <Button
-              variant="outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setConfirmDowngradeTo(null)}
             >
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant="compact-destructive"
+              size="compact"
               onClick={() => void confirmDowngrade()}
             >
               Confirm Downgrade
@@ -340,13 +344,15 @@ export function SubscriptionTierSection() {
           </p>
           <Dialog.Footer>
             <Button
-              variant="outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setConfirmReplacePendingTo(null)}
             >
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant="compact-destructive"
+              size="compact"
               onClick={() => void confirmReplacePending()}
             >
               Replace pending change
@@ -375,12 +381,17 @@ export function SubscriptionTierSection() {
           </p>
           <Dialog.Footer>
             <Button
-              variant="outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setPendingUpgradeTier(null)}
             >
               Cancel
             </Button>
-            <Button onClick={() => void confirmUpgrade()}>
+            <Button
+              variant="compact-primary"
+              size="compact"
+              onClick={() => void confirmUpgrade()}
+            >
               {subscription.has_active_stripe_subscription
                 ? "Confirm Upgrade"
                 : "Continue to Checkout"}

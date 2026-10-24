@@ -8,6 +8,14 @@ import { cva, VariantProps } from "class-variance-authority";
 import { IconSvgElement } from "@hugeicons/react";
 import { LinkProps } from "next/link";
 
+// The compact family keeps the look of the deleted components/ui/button
+// (SECRT-3113): rounded-md, no border, 14px/20px text and a 16px svg. Pair a
+// compact-* variant with a compact-* size.
+// TODO(tokens): no role holds neutral-900 #171717, neutral-100 #F5F5F5 or
+// neutral-200 #E5E5E5 (border is #E4E4E7), so they stay raw.
+const COMPACT_BASE =
+  "gap-2 rounded-md border-0 min-w-0 text-body leading-5 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
+
 // Extended button variants based on our design system.
 // TODO(tokens): no role or scale value is identical for the outline border
 // #a6a6a6, min-w-[7.7rem], min-w-[5.5rem], h-[2.875rem] or rounded-[96px]
@@ -38,6 +46,10 @@ export const extendedButtonVariants = cva(
           linkFocusClasses,
           "inline-flex items-center gap-2 border-none bg-transparent px-0 py-0 text-left",
         ),
+        "compact-primary": `${COMPACT_BASE} bg-neutral-900 text-primary-foreground shadow hover:bg-neutral-900/90`,
+        "compact-destructive": `${COMPACT_BASE} bg-error text-destructive-foreground shadow-sm hover:bg-error/90`,
+        "compact-outline": `${COMPACT_BASE} border border-neutral-200 bg-surface shadow-sm hover:bg-neutral-100 hover:text-neutral-900`,
+        "compact-ghost": `${COMPACT_BASE} hover:bg-neutral-100 hover:text-neutral-900`,
       },
       size: {
         small: "px-3 py-2 text-body leading-5 gap-1.5 h-9 min-w-[5.5rem]",
@@ -46,6 +58,10 @@ export const extendedButtonVariants = cva(
         xs: "h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-caption leading-4",
         "icon-xs": "size-7 min-w-0 rounded-md p-0",
         "icon-sm": "size-8 min-w-0 rounded-lg p-0",
+        compact: "h-9 px-4 py-2",
+        "compact-sm": "h-8 px-3 text-caption leading-4",
+        "compact-icon": "h-9 w-9",
+        "compact-icon-sm": "h-8 w-8",
       },
     },
     compoundVariants: [
@@ -74,6 +90,10 @@ export const BUTTON_ICON_SIZE = {
   xs: 14,
   "icon-xs": 14,
   "icon-sm": 16,
+  compact: 16,
+  "compact-sm": 16,
+  "compact-icon": 16,
+  "compact-icon-sm": 16,
 } as const;
 
 export const ICON_ONLY_SIZES: ReadonlySet<string> = new Set([
@@ -100,6 +120,7 @@ type ButtonAsButton = BaseButtonProps &
   React.ButtonHTMLAttributes<HTMLButtonElement> & {
     as?: "button";
     href?: never;
+    ref?: React.Ref<HTMLButtonElement>;
   };
 
 type ButtonAsLink = BaseButtonProps &

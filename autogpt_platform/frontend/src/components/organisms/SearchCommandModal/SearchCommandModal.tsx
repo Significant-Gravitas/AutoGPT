@@ -1,5 +1,5 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -157,8 +157,8 @@ export function SearchCommandModal({
             {query ? (
               <Button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
+                variant="compact-ghost"
+                size="compact-icon-sm"
                 aria-label="Clear search"
                 onClick={() => onQueryChange("")}
                 className="shrink-0"

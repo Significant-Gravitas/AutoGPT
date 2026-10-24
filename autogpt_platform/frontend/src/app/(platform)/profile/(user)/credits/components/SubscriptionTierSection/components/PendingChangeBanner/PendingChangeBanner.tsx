@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { formatPendingDate, getTierLabel } from "../../helpers";
 
 interface Props {
@@ -49,8 +49,8 @@ export function PendingChangeBanner({
         )}
       </p>
       <Button
-        variant="outline"
-        size="sm"
+        variant="compact-outline"
+        size="compact-sm"
         disabled={isBusy}
         onClick={onKeepCurrent}
       >

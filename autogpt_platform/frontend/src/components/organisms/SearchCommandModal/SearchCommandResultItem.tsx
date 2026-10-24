@@ -1,5 +1,5 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject } from "react";
 import { highlightMatch, type SearchCommandItem } from "./helpers";
@@ -34,7 +34,8 @@ export function SearchCommandResultItem({
       ref={isHighlighted ? highlightedRef : undefined}
       id={`${idPrefix}-${item.id}`}
       type="button"
-      variant="ghost"
+      variant="compact-ghost"
+      size="compact"
       role="option"
       aria-selected={isHighlighted}
       onMouseEnter={onHighlight}
