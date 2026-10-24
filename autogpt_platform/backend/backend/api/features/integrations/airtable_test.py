@@ -3,6 +3,7 @@ for the picker card, from the caller's own credential only."""
 
 from unittest.mock import AsyncMock, patch
 
+import aiohttp
 import fastapi
 import fastapi.testclient
 import pytest
@@ -12,7 +13,7 @@ from pydantic import SecretStr
 from backend.api.features.integrations.airtable import router
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
-from backend.util.request import HTTPClientError
+from backend.util.request import HTTPClientError, HTTPServerError
 
 app = fastapi.FastAPI()
 app.include_router(router, prefix="/airtable")
@@ -133,3 +134,24 @@ def test_only_a_refusal_says_reconnect(status, expected, words):
 
     assert resp.status_code == expected
     assert words in resp.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        HTTPServerError("down", 503),
+        aiohttp.ClientConnectionError("no route"),
+        TimeoutError(),
+    ],
+    ids=["airtable-5xx", "connection", "timeout"],
+)
+def test_airtable_being_down_is_said_plainly(error):
+    """An outage is not the user's to fix: no 500, no "reconnect"."""
+    with patch(_CREDS) as creds, patch(_LIST, AsyncMock(side_effect=error)):
+        creds.get = AsyncMock(return_value=_airtable())
+        resp = client.get("/airtable/credentials/cred-1/bases")
+
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == (
+        "Airtable isn't answering right now. Try again in a minute."
+    )

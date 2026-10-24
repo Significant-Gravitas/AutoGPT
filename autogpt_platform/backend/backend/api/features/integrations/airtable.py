@@ -4,6 +4,7 @@ replaces asking the user for an id from a URL."""
 import logging
 from typing import Annotated, Literal
 
+import aiohttp
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, HTTPException, Path, Security, status
 from pydantic import BaseModel
@@ -13,7 +14,7 @@ from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import Credentials, is_sdk_default
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util.request import HTTPClientError
+from backend.util.request import HTTPClientError, HTTPServerError
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +63,30 @@ async def list_airtable_bases(
     except HTTPClientError as e:
         logger.warning(f"Airtable refused to refresh this connection ({e.status_code})")
         raise _reconnect()
+    except _UNREACHABLE as e:
+        raise _down(e)
     try:
         bases, truncated = await _all_bases(credential)
     except HTTPClientError as e:
         logger.warning(f"Airtable refused to list bases ({e.status_code})")
         raise _listing_error(e.status_code)
+    except _UNREACHABLE as e:
+        raise _down(e)
     return AirtableBasesResponse(
         bases=sorted(bases, key=lambda b: (_RANK[b.access], b.name.casefold())),
         truncated=truncated,
+    )
+
+
+# Airtable failing or out of reach: not the user's to fix by reconnecting.
+_UNREACHABLE = (HTTPServerError, aiohttp.ClientError, TimeoutError)
+
+
+def _down(error: Exception) -> HTTPException:
+    logger.warning(f"Airtable is unreachable: {type(error).__name__}")
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Airtable isn't answering right now. Try again in a minute.",
     )
 
 
