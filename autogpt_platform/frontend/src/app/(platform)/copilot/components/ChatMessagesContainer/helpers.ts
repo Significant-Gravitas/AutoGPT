@@ -368,8 +368,8 @@ export function resolveWorkspaceUrls(
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
-      const label = (linkText || "Download file").replace(/[\\[\]]/g, "\\$&");
-      return `![${label}](${WORKSPACE_LINK_IMAGE_PREFIX}${encodeURIComponent(fileId)})`;
+      // The label is markdown already, valid inside `![…]` as it was in `[…]`.
+      return `![${linkText || "Download file"}](${WORKSPACE_LINK_IMAGE_PREFIX}${encodeURIComponent(fileId)})`;
     },
   );
 

@@ -86,6 +86,14 @@ describe("an inline workspace link in a chat message", () => {
     expect(openedFileID()).toBe(FILE_ID);
   });
 
+  it("reads a link label's markdown escapes as the link text does", async () => {
+    renderText(`[my\\_report.md](${DOC})`);
+
+    expect(
+      await screen.findByRole("link", { name: "my_report.md" }),
+    ).toBeDefined();
+  });
+
   it("keeps a download link to a file the message also shows as an image", async () => {
     const image = `workspace://${FILE_ID}#image/png`;
     renderText(`![Chart](${image}) Full size: [Chart file](${image})`);
