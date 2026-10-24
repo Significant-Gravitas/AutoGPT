@@ -1,4 +1,5 @@
 import { Button } from "@/components/__legacy__/ui/button";
+import { Text } from "@/components/atoms/Text/Text";
 import React, { Fragment } from "react";
 import { IntegrationBlock } from "../IntergrationBlock";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -73,23 +74,35 @@ export const IntegrationBlocks = () => {
           <div className="flex items-center gap-1">
             <Button
               variant={"link"}
-              className="p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800"
+              className="p-0 font-sans text-body font-medium leading-[1.375rem] text-zinc-800"
               onClick={() => {
                 setIntegration(undefined);
               }}
             >
               Integrations
             </Button>
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+            <Text
+              variant="body-medium"
+              as="p"
+              className="leading-[1.375rem] text-zinc-800"
+            >
               /
-            </p>
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+            </Text>
+            <Text
+              variant="body-medium"
+              as="p"
+              className="leading-[1.375rem] text-zinc-800"
+            >
               {integration}
-            </p>
+            </Text>
           </div>
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
+          <Text
+            variant="body"
+            as="span"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400"
+          >
             {totalBlocks}
-          </span>
+          </Text>
         </div>
         <div className="space-y-3">
           {allBlocks.map((block) => (

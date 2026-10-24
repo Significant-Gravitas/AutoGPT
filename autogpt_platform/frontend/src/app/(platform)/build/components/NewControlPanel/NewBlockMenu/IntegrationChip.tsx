@@ -1,4 +1,5 @@
 import { Button } from "@/components/__legacy__/ui/button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
@@ -40,9 +41,13 @@ export const IntegrationChip: IntegrationChipComponent = ({
         )}
       </div>
       {name && (
-        <span className="truncate font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+        <Text
+          variant="body"
+          as="span"
+          className="truncate leading-[1.375rem] text-zinc-800"
+        >
           {beautifyString(name)}
-        </span>
+        </Text>
       )}
     </Button>
   );

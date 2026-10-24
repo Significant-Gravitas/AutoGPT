@@ -86,7 +86,7 @@ export function FilterSheet({
                     />
                     <label
                       htmlFor={category.key}
-                      className="font-sans text-sm leading-[1.375rem] text-zinc-600"
+                      className="font-sans text-body leading-[1.375rem] text-zinc-600"
                     >
                       {category.name}
                     </label>
@@ -97,9 +97,13 @@ export function FilterSheet({
 
             {/* Created by section */}
             <div className="space-y-4 px-5">
-              <p className="font-sans text-base font-medium text-zinc-800">
+              <Text
+                variant="large-medium"
+                as="p"
+                className="leading-6 text-zinc-800"
+              >
                 Created by
-              </p>
+              </Text>
               <div className="space-y-2">
                 {visibleCreators.map((creator, i) => (
                   <div key={i} className="flex items-center space-x-2">
@@ -111,7 +115,7 @@ export function FilterSheet({
                     />
                     <label
                       htmlFor={`creator-${creator}`}
-                      className="font-sans text-sm leading-[1.375rem] text-zinc-600"
+                      className="font-sans text-body leading-[1.375rem] text-zinc-600"
                     >
                       {creator}
                     </label>
@@ -121,7 +125,7 @@ export function FilterSheet({
               {creators.length > INITIAL_CREATORS_TO_SHOW && (
                 <Button
                   variant={"link"}
-                  className="m-0 p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
+                  className="m-0 p-0 font-sans text-body font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
                   onClick={handleToggleShowMoreCreators}
                 >
                   {displayedCreatorsCount < creators.length ? "More" : "Less"}
