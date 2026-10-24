@@ -71,7 +71,6 @@ async def test_rating_again_updates_the_same_row(setup_test_user, test_user_id):
         score_name="user-feedback",
         score_value=0,
         comment="Wrong numbers",
-        langfuse_trace_id=None,
     )
     second = await upsert_message_feedback(
         user_id=test_user_id,
@@ -80,7 +79,6 @@ async def test_rating_again_updates_the_same_row(setup_test_user, test_user_id):
         score_name="user-feedback",
         score_value=1,
         comment=None,
-        langfuse_trace_id="1edf31f11b1693cc6103f358c1481694",
     )
 
     assert second == first
@@ -88,7 +86,6 @@ async def test_rating_again_updates_the_same_row(setup_test_user, test_user_id):
     assert len(rows) == 1
     assert rows[0].scoreValue == 1
     assert rows[0].comment is None
-    assert rows[0].langfuseTraceId == "1edf31f11b1693cc6103f358c1481694"
     assert rows[0].sessionId == session_id
     assert rows[0].userId == test_user_id
 
@@ -104,7 +101,6 @@ async def test_each_score_name_keeps_its_own_rating(setup_test_user, test_user_i
         score_name="user-feedback",
         score_value=1,
         comment=None,
-        langfuse_trace_id=None,
     )
     copy = await upsert_message_feedback(
         user_id=test_user_id,
@@ -113,7 +109,6 @@ async def test_each_score_name_keeps_its_own_rating(setup_test_user, test_user_i
         score_name="copy",
         score_value=1,
         comment=None,
-        langfuse_trace_id=None,
     )
 
     assert vote != copy
@@ -132,7 +127,6 @@ async def test_comment_is_stripped_of_postgres_control_characters(
         score_name="user-feedback",
         score_value=0,
         comment="bad\x00 answer",
-        langfuse_trace_id=None,
     )
 
     row = await ChatMessageFeedback.prisma().find_unique(where={"id": feedback_id})

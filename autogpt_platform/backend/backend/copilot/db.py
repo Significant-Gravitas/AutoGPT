@@ -733,8 +733,6 @@ async def add_chat_messages_batch(
                         data["llmAuthProvider"] = msg["llm_auth_provider"]
                     if msg.get("llm_credential_id") is not None:
                         data["llmCredentialId"] = msg["llm_credential_id"]
-                    if msg.get("langfuse_trace_id") is not None:
-                        data["langfuseTraceId"] = msg["langfuse_trace_id"]
                     if msg.get("trace_id") is not None:
                         data["traceId"] = msg["trace_id"]
 
@@ -1416,7 +1414,6 @@ async def update_chat_message_stamps(
     routing_source: str | None,
     llm_auth_provider: str | None = None,
     llm_credential_id: str | None = None,
-    langfuse_trace_id: str | None = None,
     trace_id: str | None = None,
 ) -> bool:
     """Back-fill the execution stamps on an already-persisted message row.
@@ -1439,8 +1436,6 @@ async def update_chat_message_stamps(
         data["llmAuthProvider"] = llm_auth_provider
     if llm_credential_id is not None:
         data["llmCredentialId"] = llm_credential_id
-    if langfuse_trace_id is not None:
-        data["langfuseTraceId"] = langfuse_trace_id
     if trace_id is not None:
         data["traceId"] = trace_id
     result = await PrismaChatMessage.prisma().update(

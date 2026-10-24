@@ -116,14 +116,13 @@ class InferenceUsage(BaseModel):
 
 
 class InferenceContext(BaseModel):
-    """One call's scope, job and route; ``trace_id`` once it is traced."""
+    """One call's scope, job and route."""
 
     model_config = ConfigDict(frozen=True)
 
     scope: InferenceScope
     job: InferenceJob
     route: RouteDecision
-    trace_id: str | None = None
 
 
 # How a background call failed, naming it without quoting the model.

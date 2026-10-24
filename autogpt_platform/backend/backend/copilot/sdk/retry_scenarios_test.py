@@ -1063,10 +1063,6 @@ def _make_sdk_patches(
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
         ("os.makedirs", {}),
         (
-            f"{_SVC}.propagate_attributes",
-            dict(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())),
-        ),
-        (
             f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
@@ -1131,7 +1127,6 @@ def _make_sdk_patches(
                 thinking_standard_model="anthropic/claude-sonnet-4-6",
             ),
         ),
-        (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         (
             "backend.copilot.gate.held.answered",
             dict(new_callable=AsyncMock, return_value=[]),

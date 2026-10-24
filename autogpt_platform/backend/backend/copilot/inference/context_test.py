@@ -60,7 +60,7 @@ def test_models_are_frozen():
         scope=InferenceScope(user_id="u1"), job=_job(), route=_route()
     )
     with pytest.raises(ValidationError):
-        ctx.trace_id = "t"
+        ctx.scope = InferenceScope(user_id="u2")
 
 
 def test_route_keeps_the_platform_credential_implicit():

@@ -525,7 +525,7 @@ class TestGenerateSessionTitle:
         """Every title-gen test mocks ``call_provider_openai_compat_sync``,
         but ``_generate_session_title`` still calls ``_get_aux_client()``
         before reaching the helper. Stub that out so tests don't try to
-        instantiate a real LangfuseAsyncOpenAI from test-env config."""
+        instantiate a real AsyncOpenAI from test-env config."""
         with patch(
             "backend.copilot.service._get_aux_client",
             return_value=MagicMock(name="aux_client_stub"),

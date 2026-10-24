@@ -13,8 +13,6 @@ import asyncio
 import logging
 import os
 
-from langfuse import get_client
-
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
 from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.api.features.onboarding_dump.providers import (
@@ -22,11 +20,12 @@ from backend.api.features.onboarding_dump.providers import (
     provider_lines,
 )
 from backend.util.clients import get_openai_client
-from backend.util.settings import Settings
+from backend.util.langfuse_prompts import (
+    get_langfuse_prompt_client,
+    langfuse_prompts_configured,
+)
 
 logger = logging.getLogger(__name__)
-
-settings = Settings()
 
 _MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
 _TIMEOUT_SECONDS = 30
@@ -231,13 +230,11 @@ async def _fetch_langfuse_prompt() -> str | None:
     unconfigured or the fetch fails — the caller falls back to
     ``_LOCAL_PROMPT`` so a Langfuse outage never blocks onboarding.
     """
-    if not (
-        settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
-    ):
+    if not langfuse_prompts_configured():
         return None
     try:
         prompt = await asyncio.to_thread(
-            get_client().get_prompt,
+            get_langfuse_prompt_client().get_prompt,
             LANGFUSE_PROMPT_NAME,
             cache_ttl_seconds=LANGFUSE_PROMPT_CACHE_TTL_SECONDS,
         )

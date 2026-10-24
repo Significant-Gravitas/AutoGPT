@@ -6,7 +6,6 @@ unattended run being told it may override, and the reviewer's own prose landing
 unfenced in the caller's context.
 """
 
-from contextlib import ExitStack
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -37,9 +36,6 @@ from backend.copilot.tools.models import ConsultVerdictResponse, ErrorResponse
 _TOOL = ConsultTeammateTool()
 _COMPLETE = "backend.copilot.tools.consult_teammate.structured_complete"
 _PERSIST = "backend.copilot.inference.record.persist_and_record_usage"
-_OPEN_SPANS = "backend.copilot.inference.trace._open_spans"
-_TRACE_ID = "backend.copilot.inference.trace._current_trace_id"
-_WRITE_USAGE = "backend.copilot.inference.trace._write_usage"
 
 
 @pytest.fixture(autouse=True)
@@ -268,34 +264,6 @@ class TestExecute:
         assert isinstance(result, ConsultVerdictResponse)
         assert result.verdict == "insufficient"
         assert billed.await_args.kwargs["prompt_tokens"] == 11
-
-    async def test_a_billed_failure_reaches_the_trace_priced(self):
-        """The span of a consult whose answer did not parse carries the cost
-        the ledger charged, not the provider's unpriced usage."""
-        usage = InferenceUsage(
-            model="claude-haiku-4-5-20251001",
-            input_tokens=1_000_000,
-            payer="platform_allowance",
-        )
-        written: list[InferenceUsage | None] = []
-        with patch(
-            "backend.copilot.tools.consult_teammate.resolve_target_expert",
-            AsyncMock(return_value=_expert()),
-        ), patch(
-            _COMPLETE, AsyncMock(side_effect=InferenceError("not json", usage))
-        ), patch(
-            _PERSIST, AsyncMock()
-        ), patch(
-            _OPEN_SPANS, return_value=ExitStack()
-        ), patch(
-            _TRACE_ID, return_value=None
-        ), patch(
-            _WRITE_USAGE, side_effect=written.append
-        ):
-            result = await self._run()
-        assert isinstance(result, ConsultVerdictResponse)
-        assert result.verdict == "insufficient"
-        assert [u.cost_usd if u else None for u in written] == [pytest.approx(1.0)]
 
     async def test_a_verdict_whose_response_reported_no_usage_writes_no_row(self):
         """OpenRouter can omit usage. No tokens and no cost is no cost row and

@@ -31,7 +31,6 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 LOOP_BOUND_TYPES = frozenset(
     {
         "AsyncOpenAI",
-        "LangfuseAsyncOpenAI",
         "AsyncClient",  # httpx, openai internal
         "AsyncRabbitMQ",
         "AsyncRedisExecutionEventBus",

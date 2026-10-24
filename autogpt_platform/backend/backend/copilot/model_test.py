@@ -2226,7 +2226,6 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
         routing_source="env",
         llm_auth_provider=None,
         llm_credential_id=None,
-        langfuse_trace_id=None,
         trace_id=None,
     )
     assert flushed.stamps_pending_save is False
@@ -2236,17 +2235,15 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
 async def test_save_session_to_db_persists_the_turn_trace(
     mocker: MockerFixture,
 ) -> None:
-    """The Langfuse and PostHog traces stamped at end of turn reach the DB
+    """The PostHog trace stamped at end of turn reaches the DB
     both on rows flushed mid-turn (back-fill) and on rows inserted by this
     save."""
-    trace_id = "1edf31f11b1693cc6103f358c1481694"
     flushed = ChatMessage(
         role="assistant",
         content="working on it",
         sequence=7,
         model="claude-sonnet-4-6",
         routing_source="env",
-        langfuse_trace_id=trace_id,
         trace_id="turn-1",
         stamps_pending_save=True,
     )
@@ -2255,7 +2252,6 @@ async def test_save_session_to_db_persists_the_turn_trace(
         content="done",
         model="claude-sonnet-4-6",
         routing_source="env",
-        langfuse_trace_id=trace_id,
         trace_id="turn-1",
     )
     session = _make_session_with_messages(flushed, unsaved)
@@ -2272,10 +2268,8 @@ async def test_save_session_to_db_persists_the_turn_trace(
 
     backfill = mock_db.update_chat_message_stamps.await_args
     assert backfill.kwargs["sequence"] == 7
-    assert backfill.kwargs["langfuse_trace_id"] == trace_id
     assert backfill.kwargs["trace_id"] == "turn-1"
     (inserted,) = mock_db.add_chat_messages_batch.await_args.kwargs["messages"]
-    assert inserted["langfuse_trace_id"] == trace_id
     assert inserted["trace_id"] == "turn-1"
 
 
