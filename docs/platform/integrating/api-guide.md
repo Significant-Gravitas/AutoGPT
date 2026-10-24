@@ -32,6 +32,38 @@ API keys are ideal for:
 - Personal scripts and automation
 - Backend services
 
+#### Authentication attempt limits
+
+API-key authentication allows 60 failed or in-flight attempts per client IP and
+key prefix, and 120 per client IP across all prefixes, in a 60-second fixed
+window. Successful validations refund their attempts, so normal sequential
+requests with a valid key do not exhaust this budget. Large concurrent bursts
+and clients sharing a NAT address share these limits. When throttled, wait for
+the number of seconds in the HTTP 429 response's `Retry-After` header.
+
+These checks run before expensive key verification. They are separate from any
+quotas applied after authentication and never cache credentials or permissions.
+The database filters candidates by the stored prefix and suffix; it still
+verifies all matching active candidates as needed to preserve valid keys.
+
+For self-hosting, configure Uvicorn's `FORWARDED_ALLOW_IPS` to trust only your
+reverse proxy addresses, and prevent untrusted access through those addresses.
+The limiter uses the ASGI client address and does not read raw
+`X-Forwarded-For`. The single-container Nginx proxy replaces that header with
+the connection's remote address and connects to Uvicorn over loopback. Additional
+upstream proxies need their own trusted client-address configuration. Missing
+client addresses, including invalid forwarded addresses from a misconfigured
+trusted proxy, skip the IP limiter. Never trust all senders (`*`) on a directly
+reachable backend. For a load balancer that appends multiple addresses, configure
+the complete trusted proxy chain or rewrite the header at the trusted edge;
+otherwise clients can share a proxy bucket or supply their own identity.
+
+Redis admission has a 250ms deadline and fails open. Successful authentication
+has a separate 250ms deadline for refunding its reservation; a failed refund
+leaves that reservation charged until the window expires. These availability
+fallbacks make working Redis and correct proxy configuration prerequisites for
+enforcement.
+
 ### 2. OAuth 2.0 (Single Sign-On)
 
 For applications that need to act on behalf of users, use OAuth 2.0. This allows users to authorize your application to access their AutoGPT resources.

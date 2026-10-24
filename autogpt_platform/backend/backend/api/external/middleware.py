@@ -1,8 +1,12 @@
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
-from fastapi import HTTPException, Security, status
+from fastapi import HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
 
+from backend.api.external.auth_rate_limit import (
+    enforce_api_key_validate_rate_limit,
+    refund_api_key_validate_rate_limit,
+)
 from backend.data.auth.api_key import APIKeyInfo, validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -17,13 +21,17 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
 
-async def require_api_key(api_key: str | None = Security(api_key_header)) -> APIKeyInfo:
+async def require_api_key(
+    request: Request,
+    api_key: str | None = Security(api_key_header),
+) -> APIKeyInfo:
     """Middleware for API key authentication only"""
     if api_key is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key"
         )
 
+    budget = await enforce_api_key_validate_rate_limit(request, api_key)
     api_key_obj = await validate_api_key(api_key)
 
     if not api_key_obj:
@@ -32,6 +40,7 @@ async def require_api_key(api_key: str | None = Security(api_key_header)) -> API
         )
 
     await _refuse_banned_owner(api_key_obj)
+    await refund_api_key_validate_rate_limit(budget)
     return api_key_obj
 
 
@@ -55,6 +64,7 @@ async def require_access_token(
 
 
 async def require_auth(
+    request: Request,
     api_key: str | None = Security(api_key_header),
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
 ) -> APIAuthorizationInfo:
@@ -70,9 +80,11 @@ async def require_auth(
     """
     # Try API key first
     if api_key is not None:
+        budget = await enforce_api_key_validate_rate_limit(request, api_key)
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
             await _refuse_banned_owner(api_key_info)
+            await refund_api_key_validate_rate_limit(budget)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"

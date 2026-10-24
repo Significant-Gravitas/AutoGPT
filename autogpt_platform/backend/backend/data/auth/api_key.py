@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
-from prisma.types import APIKeyWhereUniqueInput
+from prisma.types import APIKeyWhereInput, APIKeyWhereUniqueInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
@@ -115,10 +115,14 @@ async def create_api_key(
     return APIKeyInfo.from_db(saved_key_obj), generated_key.key
 
 
-async def get_active_api_keys_by_head(head: str) -> list[APIKeyInfoWithHash]:
-    results = await PrismaAPIKey.prisma().find_many(
-        where={"head": head, "status": APIKeyStatus.ACTIVE}
-    )
+async def get_active_api_keys_by_head(
+    head: str,
+    tail: str | None = None,
+) -> list[APIKeyInfoWithHash]:
+    where: APIKeyWhereInput = {"head": head, "status": APIKeyStatus.ACTIVE}
+    if tail is not None:
+        where["tail"] = tail
+    results = await PrismaAPIKey.prisma().find_many(where=where)
     return [APIKeyInfoWithHash.from_db(key) for key in results]
 
 
@@ -132,7 +136,10 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
-        potential_matches = await get_active_api_keys_by_head(head)
+        # All head+tail matches, including legacy keys, remain eligible so a
+        # collision cannot make an otherwise valid key unauthenticatable.
+        tail = plaintext_key[-APIKeySmith.TAIL_LENGTH :]
+        potential_matches = await get_active_api_keys_by_head(head, tail=tail)
 
         matched_api_key = next(
             (pm for pm in potential_matches if pm.match(plaintext_key)),
