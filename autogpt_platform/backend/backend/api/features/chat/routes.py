@@ -301,6 +301,35 @@ async def _validate_session_expert_writable_by_user(
         raise HTTPException(status_code=404, detail="Expert not found")
 
 
+async def _admit_card_answer(
+    user_id: str,
+    session_id: str,
+    message: str,
+    *,
+    owner: str | None,
+    has_attachments: bool,
+) -> tuple[bool, dict[str, Any] | None]:
+    """Record the card decisions in a user's own request, once per card.
+
+    The only writer of card approvals: a model can add chat rows, not
+    requests. Returns whether the request may go on, and the metadata that
+    tags a row made only of decisions. A card the chat already answered, in
+    this tab or another, is not answered again.
+    """
+    # A note in place of the row would hide what was attached to it.
+    metadata = None if has_attachments else card_decision_metadata(message)
+    if metadata and await is_already_answered(
+        user_id,
+        session_id,
+        [d["confirmation_id"] for d in metadata["decisions"]],
+        owner=owner or uuid4().hex,
+    ):
+        logger.info(f"Dropped a second answer to a card in session {session_id}")
+        return False, None
+    await record_card_decisions(user_id, session_id, message)
+    return True, metadata
+
+
 async def _validate_and_get_writable_session(
     session_id: str,
     user_id: str,
@@ -1944,24 +1973,17 @@ async def stream_chat_post(
     )
     message_metadata: dict[str, Any] | None = None
     if request.is_user_message:
-        # A note in place of the row would hide what was attached to it.
-        if not (request.file_ids or request.folder_ids):
-            message_metadata = card_decision_metadata(message)
-        if message_metadata and await is_already_answered(
+        admitted, message_metadata = await _admit_card_answer(
             user_id,
             session_id,
-            [d["confirmation_id"] for d in message_metadata["decisions"]],
-            owner=message_id or uuid4().hex,
-        ):
-            # Answered already, in this tab or another: nothing is recorded or
-            # saved, and the client's refetch shows the answer that stands.
-            logger.info(
-                f"[STREAM] Dropped a second answer to a card in session {session_id}",
-                extra={"json_fields": log_meta},
-            )
+            message,
+            owner=message_id,
+            has_attachments=bool(request.file_ids or request.folder_ids),
+        )
+        if not admitted:
+            # Nothing was recorded or saved; the client's refetch shows the
+            # answer that stands.
             return _empty_ui_message_stream_response()
-        # The only writer of card approvals: a model can add chat rows, not requests.
-        await record_card_decisions(user_id, session_id, message)
     persisted_kickoff_has_reply: bool | None = None
     resume_persisted_kickoff = False
     if request.expert_kickoff:
@@ -2436,6 +2458,16 @@ async def queue_pending_message(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
+    admitted, _ = await _admit_card_answer(
+        user_id,
+        session_id,
+        request.message,
+        owner=client_message_id,
+        has_attachments=bool(request.file_ids or request.folder_ids),
+    )
+    if not admitted:
+        # True "turn in flight" keeps the client from resending via /stream.
+        return await already_accepted_response(session_id)
     return await queue_pending_for_http(
         session_id=session_id,
         user_id=user_id,

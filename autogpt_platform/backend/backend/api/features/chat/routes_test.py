@@ -3053,6 +3053,41 @@ def test_queue_pending_message_returns_200_when_turn_in_flight(
     assert "turn_in_flight" in data
 
 
+@pytest.mark.parametrize("answered", [False, True])
+def test_queue_pending_message_answers_a_card_once(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, answered: bool
+) -> None:
+    """A decision queued behind a running turn is recorded, and refused once
+    the card was answered, as on POST /stream."""
+    _mock_stream_queue_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_already_answered",
+        new_callable=AsyncMock,
+        return_value=answered,
+    )
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+
+    response = client.post("/sessions/sess-1/messages/pending", json={"message": line})
+
+    assert response.status_code == 200
+    assert response.json()["turn_in_flight"] is True
+    if answered:
+        record.assert_not_awaited()
+        push.assert_not_awaited()
+    else:
+        record.assert_awaited_once_with(test_user_id, "sess-1", line)
+        push.assert_awaited_once()
+
+
 def test_queue_pending_message_on_the_platform_route_needs_a_plan(
     mocker: pytest_mock.MockerFixture, paywalled_user
 ) -> None:
