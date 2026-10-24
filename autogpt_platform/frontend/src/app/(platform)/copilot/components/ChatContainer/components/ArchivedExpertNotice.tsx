@@ -1,6 +1,7 @@
 import type { ExpertReadOnlyReason } from "@/app/(platform)/copilot/useExpertMap";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { ArchiveIcon, CloudOffIcon } from "@hugeicons/core-free-icons";
 
 type Props = {
@@ -22,20 +23,25 @@ const NOTICE_COPY: Record<ExpertReadOnlyReason, (name: string) => string> = {
 export function ArchivedExpertNotice({ expertName, reason }: Props) {
   return (
     <div className="px-3 pb-6 pt-2">
-      <div
+      <AttentionCard.Root
+        variant="muted"
+        density="relaxed"
         data-testid="archived-expert-notice"
         role="status"
-        className="mx-auto flex w-full max-w-2xl items-center justify-center gap-2 rounded-2xl border border-border bg-muted/40 px-4 py-3 text-center"
+        className="mx-auto w-full max-w-2xl"
       >
-        <Icon
-          icon={reason === "unavailable" ? CloudOffIcon : ArchiveIcon}
-          size={16}
-          className="text-muted-foreground"
-        />
-        <Text variant="small" className="text-muted-foreground">
-          {NOTICE_COPY[reason](expertName)}
-        </Text>
-      </div>
+        <AttentionCard.Row align="center" justify="center">
+          <AttentionCard.Icon>
+            <Icon
+              icon={reason === "unavailable" ? CloudOffIcon : ArchiveIcon}
+              size={16}
+            />
+          </AttentionCard.Icon>
+          <Text variant="small" className="text-muted-foreground">
+            {NOTICE_COPY[reason](expertName)}
+          </Text>
+        </AttentionCard.Row>
+      </AttentionCard.Root>
     </div>
   );
 }

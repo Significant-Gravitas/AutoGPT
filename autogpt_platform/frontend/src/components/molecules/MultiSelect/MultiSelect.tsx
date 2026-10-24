@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/__legacy__/ui/badge";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Command,
   CommandItem,
@@ -191,12 +192,16 @@ const MultiSelectorTrigger = forwardRef<
           )}
           variant={"secondary"}
         >
-          <span
+          {/* Text at the label's own line height; colour and weight stay
+              inherited from the badge, as the plain span's were. */}
+          <Text
+            variant="small"
+            as="span"
             data-slot="multi-select-badge-label"
-            className="text-caption leading-4"
+            className="leading-4 text-inherit [font-weight:inherit]"
           >
             {item}
-          </span>
+          </Text>
           <button
             data-slot="multi-select-remove"
             aria-label={`Remove ${item} option`}
