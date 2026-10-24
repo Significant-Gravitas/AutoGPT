@@ -132,6 +132,19 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         return f"Raised expert lifetime limit of {self.limit} reached"
 
 
+class RoutineNotFoundError(NotFoundError):
+    """No such routine on this owner."""
+
+
+class RoutineUnansweredAsksError(ValueError):
+    """The routine still has questions nobody answered.
+
+    A seeded proposal names what it needs to know — which repo, which inbox,
+    what hour. Scheduling it before those are answered would run it against
+    guesses on somebody's account, every day, unattended.
+    """
+
+
 class GraphNotFoundError(ValueError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
