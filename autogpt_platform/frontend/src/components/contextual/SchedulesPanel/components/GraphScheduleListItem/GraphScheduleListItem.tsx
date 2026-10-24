@@ -106,15 +106,14 @@ export function GraphScheduleListItem({
               {recurrenceLabel}
             </Text>
             <span className="text-foreground-disabled">•</span>
-            <Text
-              variant="small"
-              as="span"
+            <span
+              // A badge Text cannot carry: caption at text-xs's 16px.
               // TODO(tokens): no exact role for bg-emerald-100 #d1fae5, text-emerald-700 #047857
-              className="rounded-md bg-emerald-100 px-2 py-0.5 leading-4 text-emerald-700"
+              className="rounded-md bg-emerald-100 px-2 py-0.5 text-caption leading-4 text-emerald-700"
               data-testid="schedule-kind-badge"
             >
               Workflow run
-            </Text>
+            </span>
           </div>
         </div>
       </Link>

@@ -100,6 +100,9 @@ export function ExpertIntegrationGroups({
         <motion.div
           key={group.id}
           variants={reduceMotion ? REDUCED_ITEM_VARIANTS : ITEM_VARIANTS}
+          // ui/accordion's content wrapper sets text-sm, which the profile tab
+          // ran at 15px/1.5rem; its slot takes the same size here.
+          className="[&_[data-slot=accordion-panel]]:text-body-md"
         >
           <Accordion
             type="single"
@@ -132,7 +135,7 @@ export function ExpertIntegrationGroups({
                   </Text>
                 </div>
               </AccordionTrigger>
-              <AccordionContent textSize="body-md" className="px-0 pb-0 pt-0">
+              <AccordionContent className="px-0 pb-0 pt-0">
                 <div className="flex flex-col divide-y divide-separator border-t border-border-base">
                   {group.integrations.map((integration) => (
                     <ExpertIntegrationRow

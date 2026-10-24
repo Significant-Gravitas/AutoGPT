@@ -96,25 +96,19 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
           {pauseNames.length > 0 ? (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {pauseNames.map((item) => (
-                <Text
+                <span
                   key={item.id}
-                  variant="small"
-                  as="span"
+                  // A pill Text cannot carry: caption at text-xs's 16px.
                   // TODO(tokens): no exact role: text-amber-800 #92400E
-                  className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 leading-4 text-amber-800"
+                  className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 text-caption leading-4 text-amber-800"
                 >
                   {item.name}
-                </Text>
+                </span>
               ))}
               {hiddenPauseCount > 0 ? (
-                <Text
-                  variant="small"
-                  as="span"
-                  tone="muted"
-                  className="px-1 py-0.5 leading-4"
-                >
+                <span className="px-1 py-0.5 text-caption leading-4 text-foreground-tertiary">
                   +{hiddenPauseCount} more
-                </Text>
+                </span>
               ) : null}
             </div>
           ) : null}
@@ -198,11 +192,10 @@ function Consequence({
             {title}
           </Text>
           {tag ? (
-            <Text
-              variant="small-medium"
-              as="span"
+            <span
+              // A pill Text cannot carry: caption at text-xs's 16px.
               className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 leading-4",
+                "shrink-0 rounded-full px-2 py-0.5 text-caption font-medium leading-4",
                 isWarn
                   ? "bg-warning-surface text-warning-foreground"
                   : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
@@ -210,7 +203,7 @@ function Consequence({
               )}
             >
               {tag}
-            </Text>
+            </span>
           ) : null}
         </div>
         {children}

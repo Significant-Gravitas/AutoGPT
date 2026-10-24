@@ -47,16 +47,9 @@ AccordionTrigger.displayName = "AccordionTrigger";
 
 const AccordionContent = React.forwardRef<
   React.ElementRef<typeof BaseAccordionContent>,
-  React.ComponentPropsWithoutRef<typeof BaseAccordionContent> & TextSizeProps
->(({ textSize = "body", className, ...props }, ref) => (
-  <BaseAccordionContent
-    ref={ref}
-    data-slot="accordion-panel"
-    className={
-      textSize === "body-md" ? cn(className, "text-body-md") : className
-    }
-    {...props}
-  />
+  React.ComponentPropsWithoutRef<typeof BaseAccordionContent>
+>((props, ref) => (
+  <BaseAccordionContent ref={ref} data-slot="accordion-panel" {...props} />
 ));
 AccordionContent.displayName = "AccordionContent";
 

@@ -87,12 +87,9 @@ export function ExpertWorkflowListItem({
           </Text>
         ) : null}
         {meta.length > 0 || credentialProviders.length > 0 ? (
-          <Text
-            variant="body-md"
-            as="div"
-            tone="secondary"
-            className="mt-1 flex flex-wrap items-center gap-2"
-          >
+          // A flex row of mixed children (meta, separator, credential
+          // stack) Text cannot lay out: the profile-tab size on the row.
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-body-md text-foreground-secondary">
             {meta.length > 0 ? (
               <Text
                 variant="body-md"
@@ -107,7 +104,7 @@ export function ExpertWorkflowListItem({
               <span className="text-foreground-disabled">•</span>
             ) : null}
             <WorkflowCredentialStack providers={credentialProviders} />
-          </Text>
+          </div>
         ) : null}
       </div>
 

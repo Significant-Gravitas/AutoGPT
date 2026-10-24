@@ -39,6 +39,9 @@ export const variants = {
   "body-md-medium": "font-sans text-body-md font-medium text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-tight":
+    "font-sans text-caption font-normal leading-4 text-foreground-base",
 
   // Label Text
   label:
@@ -86,6 +89,7 @@ export const variantElementMap: Record<Variant, As> = {
   "body-md-medium": "p",
   small: "p",
   "small-medium": "p",
+  "small-tight": "p",
   label: "span",
   eyebrow: "span",
 };
