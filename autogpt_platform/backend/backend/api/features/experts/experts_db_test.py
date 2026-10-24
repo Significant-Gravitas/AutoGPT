@@ -28,6 +28,7 @@ from backend.api.features.experts import (
     routines,
     scheduling,
     seed,
+    setup,
 )
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
@@ -130,7 +131,10 @@ FINANCE_AND_ANALYTICS_EXPERTS = ("Mina", "Theo", "Quinn")
 # unattended from the day of hire, so PreloadSeed.cron limits which workflows
 # may carry one; pinning the whole set here makes adding a cron a deliberate
 # edit to this test rather than a silent roster change.
-EXPECTED_ROSTER_SCHEDULES = {
+EXPECTED_ROSTER_SCHEDULES: set[tuple[str, str, str]] = set()
+# Cadences REMOVED_TEMPLATE_CADENCES clears that the catalog's main still ships
+# until Significant-Gravitas/skills-catalog#22 merges; delete then.
+CADENCES_LEAVING_THE_CATALOG = {
     ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
     ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
 }
@@ -3747,7 +3751,7 @@ def test_roster_preload_counts_and_scheduled_cadences(
         for preload in entry["preloads"]
         if preload["cron"] is not None
     }
-    assert scheduled == EXPECTED_ROSTER_SCHEDULES
+    assert scheduled - CADENCES_LEAVING_THE_CATALOG == EXPECTED_ROSTER_SCHEDULES
 
 
 def _catalog_package_slugs(root: Path) -> set[str]:
@@ -4016,12 +4020,10 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
         fixture_roster, templates, expected
     )
 
-    frankie_crons = [
-        w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
-    ]
-    assert frankie_crons == ["40 7 * * *"]
-    for name in ("Maria", "Max"):
-        assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+    for name, entry in fixture_roster.items():
+        hired_crons = [w.schedule_cron for w in results[name].expert.workflows]
+        roster_crons = [p["cron"] for p in entry["preloads"]]
+        assert sorted(filter(None, hired_crons)) == sorted(filter(None, roster_crons))
     assert all(result.expert.day_one == [] for result in results.values())
 
 
@@ -4147,6 +4149,53 @@ async def test_seed_clears_removed_cadences_without_live_jobs(server: SpinTestSe
         assert row is not None
         assert row.scheduleId is None
         assert row.scheduleCron is None
+
+
+@pytest.mark.parametrize("cron", ["40 7 * * *", "0 8 * * 1"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_takes_the_newsletter_off_setup_needed_for_existing_hires(
+    server: SpinTestServer, cron: str
+):
+    """Frankie (daily) and Nadia (Mondays) hires kept the newsletter's cadence
+    with no schedule, because it needs inputs and a sign-in nobody gave, so
+    "Setup needed" listed it; the next seed run clears it and keeps the workflow."""
+    expected = await _load_roster_store_assets()
+    newsletter = expected["personalized-morning-coffee-newsletter"]
+    owner = await _create_seed_user()
+    template = await _seed_template(
+        name="Frankie", preload_listings=[newsletter], preload_crons={newsletter: cron}
+    )
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    with (
+        patch.object(scheduling, "get_scheduler_client", return_value=scheduler),
+        patch.object(seed, "get_scheduler_client", return_value=scheduler),
+    ):
+        hired = await experts_db.hire_expert(owner.id, template.id, None)
+        [workflow] = hired.expert.workflows
+        assert (workflow.schedule_cron, workflow.schedule_id) == (cron, None)
+        listed = await setup.list_setup_items(owner.id)
+        assert {"Your Email Address"} <= {
+            name
+            for item in listed
+            if item.workflow_id == workflow.id
+            for name in item.missing_inputs
+        }
+
+        await seed._clear_removed_cadences()
+
+        assert not [
+            item
+            for item in await setup.list_setup_items(owner.id)
+            if item.workflow_id == workflow.id
+        ]
+    scheduler.add_execution_schedule.assert_not_awaited()
+    row = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": workflow.id}
+    )
+    assert row is not None
+    assert row.scheduleCron is None
+    assert row.libraryAgentId is not None
 
 
 @pytest.mark.asyncio(loop_scope="session")

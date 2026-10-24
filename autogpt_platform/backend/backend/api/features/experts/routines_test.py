@@ -43,6 +43,7 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
     ("Daniel", "wednesday-cash-and-commitment-scan"),
     ("Frankie", "day-ahead-brief"),
     ("Frankie", "week-ahead-review"),
+    ("Frankie", "personal-newsletter"),
     ("James", "ops-capacity-and-controls-check"),
     ("James", "ops-vendor-renewal-watch"),
     ("James", "ops-weekly-review"),
@@ -58,6 +59,7 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
     ("Maya", "marketing-content-pipeline-check"),
     ("Maya", "marketing-weekly-read"),
     ("Nadia", "competitor-brief"),
+    ("Nadia", "personal-newsletter"),
     ("Remy", "lifecycle-performance-read"),
     ("Robin", "callback-and-queue-sweep"),
     ("Robin", "escalation-and-sla-watch"),
@@ -75,6 +77,13 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
     ("Zara", "weekly-gtm-scorecard"),
 }
 
+# Routines the catalog's main lacks until Significant-Gravitas/skills-catalog#22
+# merges; delete then.
+ROUTINES_ARRIVING_WITH_THE_CATALOG = {
+    ("Frankie", "personal-newsletter"),
+    ("Nadia", "personal-newsletter"),
+}
+
 VALID_SESSION_MODES = {"FRESH", "PINNED", "THREAD"}
 
 
@@ -83,7 +92,7 @@ def test_roster_routines_are_declared(real_roster):
         (entry["name"], routine["key"])
         for entry in real_roster
         for routine in entry["routines"]
-    } == EXPECTED_ROSTER_ROUTINES
+    } | ROUTINES_ARRIVING_WITH_THE_CATALOG == EXPECTED_ROSTER_ROUTINES
 
 
 def test_roster_routine_keys_are_unique_per_expert(real_roster):
