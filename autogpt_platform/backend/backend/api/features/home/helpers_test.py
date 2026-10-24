@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.api.features.library.model import LibraryAgentRef
 from backend.executor.scheduler import GraphExecutionJobInfo
@@ -210,3 +212,27 @@ def test_a_library_or_expert_name_outranks_the_schedules() -> None:
     assert agent_refs_by_graph([], refs, [job])[SHARED_GRAPH].name == "Inbox triage"
     by_expert = agent_refs_by_graph([_expert("alice")], [], [job])
     assert by_expert[SHARED_GRAPH].name == "Inbox triage"
+
+
+@pytest.mark.parametrize(
+    "names, expected",
+    [
+        (["Morning prep", "Evening prep"], None),
+        (["Evening prep", "Morning prep"], None),
+        (["Daily prep", "Daily prep"], "Daily prep"),
+    ],
+)
+def test_a_graph_takes_a_schedule_name_only_when_its_schedules_agree(
+    names: list[str], expected: str | None
+) -> None:
+    # Older runs carry no schedule id, so one schedule's name may not be theirs.
+    jobs = [
+        _job(f"job-{index}", next_run="2026-08-10T10:00:00Z").model_copy(
+            update={"agent_name": name}
+        )
+        for index, name in enumerate(names)
+    ]
+
+    agent = agent_refs_by_graph([], [], jobs).get(SHARED_GRAPH)
+
+    assert (agent.name if agent else None) == expected
