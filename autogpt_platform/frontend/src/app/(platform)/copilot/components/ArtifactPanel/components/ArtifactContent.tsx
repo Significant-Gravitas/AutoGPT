@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
 import { Suspense, useState } from "react";
@@ -41,15 +42,17 @@ function ArtifactContentLoader({
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-foreground-tertiary">
+        <Text variant="body" as="p" tone="muted" className="leading-5">
           Failed to load content
-        </p>
-        <p className="text-xs text-foreground-subtle">{error}</p>
+        </Text>
+        <Text variant="small" as="p" tone="subtle" className="leading-4">
+          {error}
+        </Text>
         <button
           type="button"
           onClick={retry}
           // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-caption font-medium leading-4 text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
         </button>
@@ -95,7 +98,9 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-foreground-tertiary">Failed to load image</p>
+        <Text variant="body" as="p" tone="muted" className="leading-5">
+          Failed to load image
+        </Text>
         <button
           type="button"
           onClick={() => {
@@ -104,7 +109,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
             setRetryNonce((n) => n + 1);
           }}
           // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-caption font-medium leading-4 text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
         </button>
@@ -143,7 +148,9 @@ function ArtifactVideo({ src }: { src: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-foreground-tertiary">Failed to load video</p>
+        <Text variant="body" as="p" tone="muted" className="leading-5">
+          Failed to load video
+        </Text>
         <button
           type="button"
           onClick={() => {
@@ -152,7 +159,7 @@ function ArtifactVideo({ src }: { src: string }) {
             setRetryNonce((n) => n + 1);
           }}
           // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-caption font-medium leading-4 text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
         </button>
@@ -223,7 +230,7 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-foreground-emphasis">
+      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-body leading-5 text-foreground-emphasis">
         {content}
       </pre>
     );
@@ -314,7 +321,7 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-foreground-emphasis">
+    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-body leading-5 text-foreground-emphasis">
       {content}
     </pre>
   );
