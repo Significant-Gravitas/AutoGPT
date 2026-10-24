@@ -117,6 +117,13 @@ class Flag(str, Enum):
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
 
+    # The role-first harness. Otto is prompted as the head of the user's team
+    # and an expert session as one hired employee, rather than both getting
+    # one undifferentiated prompt. Fail-closed (default False). With it off
+    # every session is prompted as Otto is, so the system prompt is the one
+    # that shipped before the split — the flag leaves nothing behind.
+    EXPERT_TASK_MANAGEMENT = "expert-task-management"
+
     # Per-feature gate for the cascading-expiry helper
     # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
     # dream pass may demote every ``:RELATES_TO`` edge directly
