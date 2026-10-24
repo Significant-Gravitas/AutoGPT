@@ -18,6 +18,7 @@ import {
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { capabilityTargetRow } from "./capabilityRow";
+import { CommandResult } from "./CommandResult";
 import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
@@ -69,7 +70,6 @@ import {
   KeyValueList,
   OutputList,
   SearchResults,
-  Terminal,
   TodoList,
 } from "./ToolResultViews";
 
@@ -533,7 +533,7 @@ function toolCard(
       return null;
     }
     case "bash_exec":
-      return <Terminal row={row} />;
+      return <CommandResult row={row} />;
     case "start_desktop":
       return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
@@ -588,7 +588,13 @@ export function ToolResult({ row, readOnly = false }: Props) {
     const ran = row.output !== undefined && row.output !== "";
     return (
       <div className="flex flex-col gap-2">
-        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        <HeldCallDetail
+          held={row.held}
+          showArgs={!ownCall}
+          approvedCommand={
+            ownCall ? str(asObject(row.input) ?? {}, "command") : null
+          }
+        />
         {approved && (ran || ownCall) && (
           <ToolOutput row={row} readOnly={readOnly} />
         )}

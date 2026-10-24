@@ -601,7 +601,9 @@ def read_review_id(
     session_id: str, user_id: str, tool_name: str, args: dict[str, Any]
 ) -> str:
     # Its own node id, so an action approval can never be spent on a read.
-    return review_store.review_id_for(session_id, user_id, f"read-{tool_name}", args)
+    return review_store.review_id_for(
+        session_id, user_id, f"{review_store.READ_NODE_PREFIX}{tool_name}", args
+    )
 
 
 async def _hold(

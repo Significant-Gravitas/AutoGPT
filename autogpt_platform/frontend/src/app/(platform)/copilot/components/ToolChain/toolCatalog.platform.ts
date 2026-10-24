@@ -1,5 +1,6 @@
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import {
+  phraseField,
   quoted,
   quotedName,
   strField,
@@ -41,11 +42,13 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Taking a screenshot",
     done: "Took a screenshot",
   },
+  // The command itself is technical detail: the row shows the purpose the
+  // model gave, and calls saved without one get a generic label.
   bash_exec: {
     category: "bash",
-    running: "Running command",
-    done: "Ran command",
-    subject: (input) => quoted(input, "command", 60),
+    running: "Running a command",
+    done: "Ran a command",
+    phrase: (input) => phraseField(input, "purpose"),
   },
   start_desktop: {
     category: "browser",

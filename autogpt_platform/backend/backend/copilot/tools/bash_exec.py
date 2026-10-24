@@ -190,7 +190,7 @@ class BashExecTool(BaseTool):
             "in ~/workspace (a durable volume); other paths are scratch. The "
             "desktop (start_desktop) is this same machine, all paths included. "
             "Expert sessions: ~/workspace is the expert's own machine, ~/shared "
-            "is the user's workspace."
+            "is the user's workspace. Always set `purpose`."
         )
 
     @property
@@ -198,6 +198,15 @@ class BashExecTool(BaseTool):
         return {
             "type": "object",
             "properties": {
+                # Display only: the chat labels the step with it, and calls
+                # saved before it existed get a generic label instead.
+                "purpose": {
+                    "type": "string",
+                    "description": (
+                        "Step label the user sees instead of the command, in "
+                        'plain words: "Updating your launch brief".'
+                    ),
+                },
                 "command": {
                     "type": "string",
                     "description": "Bash command or script.",

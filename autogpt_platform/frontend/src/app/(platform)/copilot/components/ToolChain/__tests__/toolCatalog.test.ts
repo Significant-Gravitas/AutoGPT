@@ -2,6 +2,104 @@ import { describe, expect, it } from "vitest";
 import { getCatalogLabel } from "../toolCatalog";
 
 describe("getCatalogLabel", () => {
+  describe("bash_exec", () => {
+    const purpose = "Updating your launch brief";
+    const command = "cd ~/workspace/dewleaf && sed -i 's/TBD/25 Nov/' brief.md";
+
+    it("labels the step with its plain-language purpose, never the command", () => {
+      expect(
+        getCatalogLabel("bash_exec", { purpose, command }, "running"),
+      ).toEqual({ category: "bash", text: "Updating your launch brief…" });
+      expect(
+        getCatalogLabel("bash_exec", { purpose, command }, "done"),
+      ).toEqual({
+        category: "bash",
+        text: "Updating your launch brief",
+      });
+      expect(
+        getCatalogLabel("bash_exec", { purpose, command }, "error")?.text,
+      ).toBe("Failed while updating your launch brief");
+    });
+
+    it("keeps the capital of a purpose that opens with a name", () => {
+      expect(
+        getCatalogLabel(
+          "bash_exec",
+          { purpose: "Shopify sync for the launch", command },
+          "error",
+        )?.text,
+      ).toBe("Failed: Shopify sync for the launch");
+    });
+
+    it("falls back to the generic label when the purpose is itself technical", () => {
+      for (const purpose of [
+        "Patching brief.md with sed",
+        "Running cd ~/workspace/dewleaf",
+        "Calling run_capability",
+      ]) {
+        expect(
+          getCatalogLabel("bash_exec", { purpose, command }, "done")?.text,
+        ).toBe("Ran a command");
+      }
+    });
+
+    it("never shows two ellipses on a running step", () => {
+      const long = getCatalogLabel(
+        "bash_exec",
+        { purpose: "Checking ".repeat(20), command },
+        "running",
+      )?.text;
+      expect(long?.endsWith("…")).toBe(true);
+      expect(long).not.toContain("……");
+      const trailing = { purpose: "Updating your brief…", command };
+      expect(getCatalogLabel("bash_exec", trailing, "running")?.text).toBe(
+        "Updating your brief…",
+      );
+      expect(getCatalogLabel("bash_exec", trailing, "done")?.text).toBe(
+        "Updating your brief",
+      );
+    });
+
+    it("tidies a purpose the model wrote as a sentence", () => {
+      expect(
+        getCatalogLabel(
+          "bash_exec",
+          { purpose: "  Updating   your launch brief.  ", command },
+          "done",
+        )?.text,
+      ).toBe("Updating your launch brief");
+    });
+
+    it("caps a long purpose", () => {
+      const text =
+        getCatalogLabel(
+          "bash_exec",
+          { purpose: "Checking ".repeat(20), command },
+          "done",
+        )?.text ?? "";
+      expect(text.length).toBeLessThanOrEqual(80);
+      expect(text.endsWith("…")).toBe(true);
+    });
+
+    it("falls back to a generic label for calls saved without a purpose", () => {
+      for (const input of [
+        { command },
+        { command, purpose: "  " },
+        undefined,
+      ]) {
+        expect(getCatalogLabel("bash_exec", input, "running")?.text).toBe(
+          "Running a command…",
+        );
+        expect(getCatalogLabel("bash_exec", input, "done")?.text).toBe(
+          "Ran a command",
+        );
+      }
+      expect(getCatalogLabel("bash_exec", { command }, "error")?.text).toBe(
+        "Failed while running a command",
+      );
+    });
+  });
+
   it("returns null for tools missing from the catalog", () => {
     expect(getCatalogLabel("totally_unknown_tool", {}, "running")).toBeNull();
   });
@@ -42,7 +140,6 @@ describe("getCatalogLabel", () => {
   });
 
   it.each([
-    ["bash_exec", { command: "ls -la" }, "done", 'Ran command "ls -la"'],
     [
       "browser_navigate",
       { url: "https://agpt.co" },

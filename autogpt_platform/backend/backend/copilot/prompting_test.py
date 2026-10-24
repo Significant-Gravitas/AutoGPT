@@ -379,6 +379,66 @@ class TestReplyStyle:
         assert "—" not in section and "–" not in section
 
 
+class TestProgressTheUserSees:
+    """Experts and Otto write their progress for a business owner, not a
+    developer (SECRT-3158). On SHARED_TOOL_NOTES because production's base
+    prompt comes from Langfuse and both engines append these notes."""
+
+    @pytest.mark.parametrize("use_e2b", [None, False, True])
+    def test_every_turn_gets_the_rule(self, use_e2b):
+        notes = (
+            prompting.SHARED_TOOL_NOTES
+            if use_e2b is None
+            else prompting.get_sdk_supplement(use_e2b=use_e2b)
+        )
+        assert "### Progress the user sees" in notes
+
+    def test_progress_names_no_tools_paths_commands_or_ids(self):
+        section = _progress_section()
+        assert "never write a tool name, a file path, a shell command" in section
+        assert "an internal id" in section
+        assert '"Updating your launch brief", not "patching brief.md with sed"' in (
+            section
+        )
+
+    def test_long_work_is_announced_with_a_rough_time(self):
+        section = _progress_section()
+        assert "Before work that will take more than a minute" in section
+        assert "roughly how long it will take" in section
+
+    def test_every_shell_step_carries_a_purpose(self):
+        assert "Give every `bash_exec` call a `purpose`" in _progress_section()
+
+    def test_raw_data_is_shared_as_a_file_unless_the_user_asked_for_it(self):
+        section = _progress_section()
+        assert (
+            "Never paste raw CSV or JSON, or a whole data file, into a reply "
+            "unless the user asked for it." in section
+        )
+        assert "Never paste a table" not in section
+
+    def test_the_reply_style_no_longer_says_raw_tool_calls_are_seen(self):
+        assert "The user already sees the tool calls." not in (
+            prompting.SHARED_TOOL_NOTES
+        )
+
+    def test_the_rule_does_not_model_the_dashes_it_forbids(self):
+        section = _progress_section()
+        assert "—" not in section and "–" not in section
+
+    def test_the_base_prompt_no_longer_says_the_user_cannot_see_tools(self):
+        assert "They can't see your tools" not in CACHEABLE_SYSTEM_PROMPT
+        assert "The progress rules below say how to word them." in (
+            CACHEABLE_SYSTEM_PROMPT
+        )
+
+
+def _progress_section() -> str:
+    notes = prompting.SHARED_TOOL_NOTES
+    start = notes.index("### Progress the user sees")
+    return notes[start : notes.index("### Working rules")]
+
+
 class TestMathGuidance:
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):

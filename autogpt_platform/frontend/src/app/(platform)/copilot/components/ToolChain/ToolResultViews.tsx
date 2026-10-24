@@ -142,7 +142,9 @@ export function Terminal({ row }: RowProps) {
   const input = asObject(row.input);
   const output = asObject(row.output);
   const command = input ? str(input, "command") : null;
-  const stdout = output ? str(output, "stdout", "stderr") : null;
+  const stdout = output ? str(output, "stdout") : null;
+  // Where a timeout or a dropped connection is explained, as its first line.
+  const stderr = output ? str(output, "stderr") : null;
   const exitCode = output?.exit_code;
   return (
     <div className="rounded-xl bg-action-hover p-3 font-mono text-caption-sm leading-4">
@@ -158,6 +160,11 @@ export function Terminal({ row }: RowProps) {
           className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none"
         >
           {stdout}
+        </pre>
+      )}
+      {stderr && (
+        <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-red-300 scrollbar-none">
+          {stderr}
         </pre>
       )}
       {typeof exitCode === "number" && exitCode !== 0 && (

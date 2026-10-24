@@ -1,4 +1,5 @@
 import { type ToolCategory, truncate } from "../../tools/GenericTool/helpers";
+import { looksTechnical } from "./plainText";
 
 export type ChainCategory =
   | ToolCategory
@@ -36,6 +37,10 @@ export interface ToolMeta {
   /** Appended to the done label when a lookup finds nothing ("none yet"). */
   empty?: string;
   subject?: (input: ToolInput, context: ToolDisplayContext) => string | null;
+  /** The call's own plain-language description of the step ("Updating your
+   *  launch brief"). When present it is the whole label, in place of
+   *  running/done and the subject. */
+  phrase?: (input: ToolInput) => string | null;
 }
 
 export function strField(input: ToolInput, key: string): string | null {
@@ -49,6 +54,22 @@ export function quoted(
   maxLen = 50,
 ): string | null {
   return quotedName(strField(input, key), maxLen);
+}
+
+const PHRASE_MAX_LEN = 80;
+
+/** A step description the model wrote, tidied into a row label: one line,
+ *  no closing full stop, capped. One that names a path, command or tool is
+ *  dropped, so the row falls back to its generic label. */
+export function phraseField(input: ToolInput, key: string): string | null {
+  const value = strField(input, key);
+  if (!value) return null;
+  const phrase = value
+    .replace(/\s+/g, " ")
+    .replace(/[.!…]+$/, "")
+    .trim();
+  if (!phrase || looksTechnical(phrase)) return null;
+  return truncate(phrase, PHRASE_MAX_LEN - 1);
 }
 
 export function quotedName(value: string | null, maxLen = 50): string | null {

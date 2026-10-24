@@ -122,8 +122,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
     ["running", "queued", "unknown"].includes(
       effectiveStatus?.toLowerCase() ?? "",
     );
-  const liveReasoning =
-    isReasoning && row.state === "running" && !!row.reasoningText;
+  // Thinking stays folded under "Thinking…" while it streams: it is the
+  // model's working, not progress the user should have to read. Opening the
+  // row shows it live.
+  const liveReasoning = isReasoning && row.state === "running";
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
@@ -131,7 +133,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
         liveSubSession ||
         !!row.held?.card ||
         heldShowsOwnCall(row));
-  const showContent = liveReasoning || (open && hasContent);
+  const showContent = open && hasContent;
   const rowText = (
     <SwapText
       text={
@@ -187,16 +189,14 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           >
             {rowText}
             {heldTag}
-            {!liveReasoning && (
-              <Icon
-                icon={ArrowDown01Icon}
-                size={10}
-                className={cn(
-                  "shrink-0 text-foreground-disabled transition-transform duration-300 ease-out-quint group-hover/row:text-foreground-tertiary",
-                  open && "rotate-180",
-                )}
-              />
-            )}
+            <Icon
+              icon={ArrowDown01Icon}
+              size={10}
+              className={cn(
+                "shrink-0 text-foreground-disabled transition-transform duration-300 ease-out-quint group-hover/row:text-foreground-tertiary",
+                open && "rotate-180",
+              )}
+            />
           </button>
         ) : (
           <div className="flex h-7 items-center gap-1.5">
