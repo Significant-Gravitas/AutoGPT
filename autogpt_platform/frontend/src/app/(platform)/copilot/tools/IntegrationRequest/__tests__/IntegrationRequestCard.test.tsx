@@ -71,6 +71,30 @@ describe("IntegrationRequestCard", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("still shows a settled answer that is not the card, via capability", () => {
+    const { container } = renderPart(
+      viaRunCapability({
+        type: "error",
+        message: "Printify can be connected: find_capability(query='printify')",
+      }),
+    );
+
+    expect(container.textContent).not.toBe("");
+    expect(screen.queryByText(/isn't supported yet/)).toBeNull();
+  });
+
+  it("still shows a failed direct call", () => {
+    const { container } = renderPart({
+      type: "tool-request_integration",
+      toolCallId: "call-3",
+      state: "output-error",
+      input: { service: "Gelato" },
+      errorText: "Tool failed",
+    } as Part);
+
+    expect(container.textContent).not.toBe("");
+  });
+
   it("stays out of the collapsing tool chain", () => {
     expect(isChainableToolPart(viaRunCapability(RECORDED))).toBe(false);
     expect(

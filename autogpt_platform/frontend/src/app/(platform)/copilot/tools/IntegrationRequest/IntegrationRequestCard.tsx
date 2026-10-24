@@ -4,6 +4,7 @@ import type { ToolUIPart } from "ai";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Unlink04Icon } from "@hugeicons/core-free-icons";
+import { GenericTool } from "../GenericTool/GenericTool";
 import { parseIntegrationRequest } from "./helpers";
 
 interface Props {
@@ -14,7 +15,14 @@ interface Props {
  *  where the user asked, so the reply below can go straight to what works. */
 export function IntegrationRequestCard({ part }: Props) {
   const request = parseIntegrationRequest(part.output);
-  if (!request) return null;
+  if (!request) {
+    // Still running: the card arrives with the answer. Settled on anything
+    // else (an error, or a service that turned out to be supported): show it
+    // the way any other tool result is shown rather than drop it.
+    const settled =
+      part.state === "output-available" || part.state === "output-error";
+    return settled ? <GenericTool part={part} /> : null;
+  }
   const { service, recorded } = request;
   return (
     <div className="my-2 flex items-start gap-3 rounded-3xl border border-separator bg-surface px-4 py-3.5">
