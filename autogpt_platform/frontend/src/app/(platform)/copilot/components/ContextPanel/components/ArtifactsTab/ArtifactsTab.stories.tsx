@@ -88,3 +88,17 @@ export const Loaded: Story = {
     },
   },
 };
+
+export const Empty: Story = {
+  name: "Empty (nothing to preview)",
+  args: { sessionId: "story-artifacts-empty" },
+  parameters: {
+    msw: {
+      handlers: [
+        http.get("*/api/workspace/files", () =>
+          HttpResponse.json({ files: [], offset: 0, has_more: false }),
+        ),
+      ],
+    },
+  },
+};
