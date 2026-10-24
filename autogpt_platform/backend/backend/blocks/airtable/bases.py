@@ -33,10 +33,10 @@ class AirtableCreateBaseBlock(Block):
         )
         workspace_id: str = SchemaField(
             description=(
-                "The workspace (id starts with 'wsp') to create the base in. "
-                "Airtable's connection can't look this up, so in a chat never "
-                "ask the user for it: add tables to a base they pick instead "
-                "(Airtable Create Table, whose base is picked in a card)."
+                "The workspace to create the base in; its id starts with "
+                "'wsp'. An Airtable connection can't look it up, so to keep "
+                "data in a base the user already has, use Airtable Create "
+                "Table, whose base is picked from a list."
             )
         )
         name: str = SchemaField(description="The name of the new base")

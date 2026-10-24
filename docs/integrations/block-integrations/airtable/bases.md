@@ -19,7 +19,7 @@ Enable find_existing to search for a base with the same name before creating a n
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| workspace_id | The workspace ID where the base will be created | str | Yes |
+| workspace_id | The workspace to create the base in; its id starts with 'wsp'. An Airtable connection can't look it up, so to keep data in a base the user already has, use Airtable Create Table, whose base is picked from a list. | str | Yes |
 | name | The name of the new base | str | Yes |
 | find_existing | If true, return existing base with same name instead of creating duplicate | bool | No |
 | tables | At least one table and field must be specified. Array of table objects to create in the base. Each table should have 'name' and 'fields' properties | List[Dict[str, Any]] | No |
