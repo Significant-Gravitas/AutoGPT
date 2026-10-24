@@ -3,7 +3,10 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import dynamic from "next/dynamic";
 import { CSSProperties } from "react";

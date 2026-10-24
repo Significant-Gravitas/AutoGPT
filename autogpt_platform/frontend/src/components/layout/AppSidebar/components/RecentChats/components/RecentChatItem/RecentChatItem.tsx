@@ -13,7 +13,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import Link, { useLinkStatus } from "next/link";
 import { memo, useRef } from "react";
 import {

@@ -21,7 +21,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   useSidebar,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useTourStore } from "../../tourStore";
@@ -66,7 +66,7 @@ interface Props {
 }
 
 // Matches the mobile sidebar sheet's closing animation
-// (`data-[state=closed]:duration-200` in `@/components/ui/sidebar`).
+// (`data-[state=closed]:duration-200` in `@/components/molecules/Sidebar/Sidebar`).
 const SHEET_CLOSE_MS = 200;
 
 export function TourSidebar({ variant = "tour" }: Props) {
