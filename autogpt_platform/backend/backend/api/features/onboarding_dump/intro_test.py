@@ -187,6 +187,15 @@ async def test_without_integrations_twice_the_generic_prompts_are_used(
     assert all(p.integrations is not None for p in prompts)
 
 
+@pytest.mark.parametrize("unreadable", [[7], [""], [None, "  "]])
+def test_integrations_with_no_usable_name_say_nothing(unreadable: list):
+    """Only an empty array means "no sign-in"; one whose every entry is
+    unusable stood for some service, so the prompt is not kept."""
+    named = {"title": "List each sticker", "prompt": "Do it."}
+    assert intro._parse_prompts([{**named, "integrations": unreadable}]) == []
+    assert intro._parse_prompts([{**named, "integrations": []}])[0].integrations == []
+
+
 def test_the_generic_prompts_say_they_connect_to_nothing():
     assert [p.integrations for p in intro.fallback_prompts()] == [[]] * len(
         intro.fallback_prompts()

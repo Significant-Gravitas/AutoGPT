@@ -318,7 +318,11 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
 
 
 def _parse_integrations(raw: object) -> list[str] | None:
-    """The services a prompt says it connects to; ``None`` if it said nothing."""
+    """The services a prompt says it connects to; ``None`` if it did not say.
+
+    ``[]`` means no sign-in. A non-empty array with no usable name in it
+    (``[7]``) says nothing, not that: it would hide the service it meant.
+    """
     if not isinstance(raw, list):
         return None
     names = [
@@ -326,6 +330,8 @@ def _parse_integrations(raw: object) -> list[str] | None:
         for name in raw
         if isinstance(name, str) and name.strip()
     ]
+    if raw and not names:
+        return None
     return names[:MAX_INTEGRATIONS]
 
 

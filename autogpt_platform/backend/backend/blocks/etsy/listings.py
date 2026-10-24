@@ -65,7 +65,7 @@ class EtsyCreateDraftListingBlock(Block):
         readiness_state_id: int = SchemaField(
             description=(
                 "Processing profile from Get My Etsy Shop (how long it takes "
-                "to make); 0 uses the shop's default"
+                "to make); 0 leaves it unset, to choose later on Etsy"
             ),
             default=0,
             advanced=True,
