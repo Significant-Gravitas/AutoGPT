@@ -83,6 +83,26 @@ export function setGreetingDone(userId: string | null | undefined) {
   window.localStorage.setItem(GREETING_DONE_KEY, userId);
 }
 
+// Everything above lives in this tab's sessionStorage, which outlives a
+// sign-out. The next account to sign in here must not inherit it: a
+// pending welcome would open the first-run walkthrough for someone who
+// finished onboarding long ago.
+export function clearOnboardingHandoff() {
+  if (typeof window === "undefined") return;
+  try {
+    for (const key of [
+      INTRO_PATH_KEY,
+      MIC_GLOW_KEY,
+      AWAITING_FOLLOWUP_KEY,
+      PENDING_LATER_DUMP_KEY,
+      WELCOME_PENDING_KEY,
+    ])
+      window.sessionStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable (private mode); nothing to clear then.
+  }
+}
+
 function setFlag(key: string) {
   if (typeof window === "undefined") return;
   try {
