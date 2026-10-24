@@ -100,6 +100,7 @@ def _env(
     turn_outcome: str = "running",
     turn_error: Exception | None = None,
     paused: bool = False,
+    thread_status: str | Exception = "running",
 ):
     hired = _hired(paused=paused)
     db = MagicMock()
@@ -113,6 +114,12 @@ def _env(
         side_effect=turn_error, return_value=(turn_outcome, SessionResult())
     )
     created = []
+    chat = MagicMock()
+    chat.get_chat_session_status = AsyncMock(
+        side_effect=thread_status if isinstance(thread_status, Exception) else None,
+        return_value=thread_status,
+    )
+    deleted = AsyncMock()
 
     async def create_session(user_id, **kwargs):
         created.append(kwargs)
@@ -139,8 +146,10 @@ def _env(
             "backend.copilot.tools.delegate_to_expert.build_spawn_state_note",
             AsyncMock(return_value=""),
         ),
+        patch("backend.copilot.tools.hire_handoff.chat_db", return_value=chat),
+        patch("backend.copilot.tools.hire_handoff.delete_chat_session", deleted),
     ):
-        yield SimpleNamespace(db=db, turn=turn, created=created)
+        yield SimpleNamespace(db=db, turn=turn, created=created, deleted=deleted)
 
 
 def _approve(session):
@@ -328,6 +337,41 @@ class TestHandOffOnlyClaimsWhatHappened:
         assert resp.handoff.link == "/copilot?sessionId=thread-1"
         assert "thread-1" in resp.message
         assert "delegate_to_expert" not in resp.message
+        env.deleted.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_error_before_the_dispatch_is_a_retryable_failure(self):
+        """A dispatch that raised released its turn slot, so the thread is
+        still idle: nothing was sent, the empty thread goes, and a retry is
+        safe (Sentry, second review)."""
+        with _env(turn_error=RuntimeError("rabbit blip"), thread_status="idle") as env:
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert resp.handoff is not None
+        assert resp.handoff.status == "failed"
+        assert resp.handoff.link is None
+        assert "delegate_to_expert" in resp.message
+        env.deleted.assert_awaited_once_with("thread-1", _USER)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_unreadable_thread_is_never_reported_as_not_sent(self):
+        with _env(
+            turn_error=RuntimeError("redis blip"),
+            thread_status=RuntimeError("db blip"),
+        ) as env:
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert resp.handoff is not None
+        assert resp.handoff.status == "unconfirmed"
+        env.deleted.assert_not_called()
 
 
 class TestHandOffTaskValidation:

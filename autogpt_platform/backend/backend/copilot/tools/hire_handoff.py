@@ -15,15 +15,18 @@ is not put to them again.
 
 The hire stands whatever happens to the task, and what is reported is only
 what is known: started, queued for a task slot, not started (with whether a
-retry can help), or, once the thread exists, sent but unconfirmed. That last
-case never asks for a second delegation, which could run the task twice.
+retry can help), or sent but unconfirmed. When the send raises, the thread
+says which: a dispatch that failed released its turn, leaving the thread
+idle, so it is removed and a retry is safe; anything else may be running and
+is never sent a second time.
 """
 
 import logging
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.model import ChatSession
+from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, delete_chat_session
+from backend.data.db_accessors import chat_db
 
 from .delegate_to_expert import (
     open_delegation_thread,
@@ -82,9 +85,11 @@ async def hand_off_to_new_hire(
             wait_for_result=0,
         )
     except Exception:
-        # The thread exists and the task may be running in it: point there.
-        logger.warning("Hand-off to a new hire is unconfirmed", exc_info=True)
-        return _report(applied, task, "unconfirmed", thread)
+        logger.warning("Hand-off to a new hire raised", exc_info=True)
+        if await _was_sent(thread):
+            return _report(applied, task, "unconfirmed", thread)
+        await _discard(thread, user_id)
+        return _report(applied, task, "failed", None, "It could not be sent.", True)
     if not isinstance(sent, SubSessionStatusResponse) or sent.status == "error":
         return _report(applied, task, "failed", None, sent.message, True)
     status = "started" if sent.status in _STARTED else "queued"
@@ -116,6 +121,29 @@ async def _target(user_id: str, session: ChatSession, expert_id: str) -> Expert:
     if (refusal := await chain_refusal(user_id, session, target)) is not None:
         raise _NotStarted(refusal, retry=False)
     return target
+
+
+async def _was_sent(thread: str) -> bool:
+    """Whether a send that raised may have reached *thread*.
+
+    Only an idle thread proves it did not: a failed dispatch releases its
+    turn slot, which sets the thread back to idle. An unreadable status
+    counts as sent, so the task is never handed over twice.
+    """
+    try:
+        return await chat_db().get_chat_session_status(thread) != CHAT_STATUS_IDLE
+    except Exception:
+        logger.warning("Could not read a hand-off thread's status", exc_info=True)
+        return True
+
+
+async def _discard(thread: str, user_id: str) -> None:
+    """Remove a thread nothing was sent to. Best-effort, like
+    ``discard_unused_sub_session``: an empty thread is the lesser harm."""
+    try:
+        await delete_chat_session(thread, user_id)
+    except Exception:
+        logger.warning("Failed to remove an unused hand-off thread", exc_info=True)
 
 
 def _report(
