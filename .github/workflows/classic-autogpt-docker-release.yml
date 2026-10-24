@@ -10,6 +10,9 @@ on:
         type: boolean
         description: 'Build from scratch, without using cached layers'
 
+permissions:
+  contents: read
+
 env:
   IMAGE_NAME: auto-gpt
   DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
