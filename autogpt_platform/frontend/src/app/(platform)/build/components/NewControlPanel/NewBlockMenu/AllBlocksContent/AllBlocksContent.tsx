@@ -67,7 +67,7 @@ export const AllBlocksContent = () => {
                 variant="body"
                 as="span"
                 tone="secondary"
-                className="rounded-full bg-surface-hover px-[0.375rem] font-sans"
+                className="rounded-full bg-surface-hover px-[0.375rem]"
               >
                 {category.total_blocks}
               </Text>

@@ -106,10 +106,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             onClick={(e) => e.stopPropagation()}
           >
             <Text
-              variant="small"
+              variant="small-medium"
               as="span"
               // TODO(tokens): no exact role: text-blue-700 #1D4ED8
-              className="font-sans font-medium leading-5 text-blue-700 underline"
+              className="leading-5 text-blue-700 underline"
             >
               Workflow page
             </Text>
