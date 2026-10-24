@@ -63,7 +63,11 @@ const NOTHING_KEPT: MemoryUnderstanding = {
 function mockAccountScope(understanding: () => MemoryUnderstanding) {
   server.use(
     getListExpertsMockHandler200([]),
-    getListMyMemoryFactsMockHandler200({ expert_id: null, items: [] }),
+    getListMyMemoryFactsMockHandler200({
+      expert_id: null,
+      items: [],
+      total: 0,
+    }),
     getGetMyMemoryOverviewMockHandler200({
       expert_id: null,
       facts: 0,
@@ -189,6 +193,7 @@ describe("What Otto knows about your work", () => {
       }),
       getListMyExpertMemoryFactsMockHandler200({
         expert_id: "expert-maria",
+        total: 1,
         items: [
           {
             uuid: "edge-m1",

@@ -9,7 +9,11 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from redis.exceptions import ResponseError
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
-from backend.copilot.graphiti.client import derive_memory_group_id
+from backend.copilot.graphiti.fact_list import (
+    InvalidFactCursorError,
+    LiveFact,
+    LiveFactPage,
+)
 from backend.copilot.graphiti.memory_model import (
     FORGET_BUSY_REASON,
     ForgetResult,
@@ -108,9 +112,31 @@ class TestOverview:
 
 
 class TestListFacts:
-    def test_maps_rows_to_facts(self) -> None:
-        driver = _driver_returning(
-            [
+    """The query itself is pinned against a live FalkorDB in
+    ``graphiti/fact_list_integration_test.py``."""
+
+    def test_maps_the_page_with_its_total_and_cursor(self, test_user_id) -> None:
+        page = LiveFactPage(
+            items=[
+                LiveFact(
+                    uuid="edge-1",
+                    fact="Prefers Monday summaries",
+                    name="prefers",
+                    source="User",
+                    target="Monday summaries",
+                    created_at="2026-08-16T00:00:00Z",
+                )
+            ],
+            total=19,
+            next_cursor="next-page",
+        )
+        list_facts = AsyncMock(return_value=page)
+        with patch(f"{_MOCK_MODULE}.list_live_facts", list_facts):
+            resp = client.get("/memory/facts?limit=5")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "expert_id": None,
+            "items": [
                 {
                     "uuid": "edge-1",
                     "fact": "Prefers Monday summaries",
@@ -119,47 +145,47 @@ class TestListFacts:
                     "target": "Monday summaries",
                     "created_at": "2026-08-16T00:00:00Z",
                 }
-            ]
+            ],
+            "total": 19,
+            "next_cursor": "next-page",
+        }
+        list_facts.assert_awaited_once_with(
+            MemoryScope.for_user(test_user_id), limit=5, cursor=None
         )
-        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
-            resp = client.get("/memory/facts?limit=5")
+
+    def test_passes_the_cursor_on_for_the_next_page(self, test_user_id) -> None:
+        list_facts = AsyncMock(return_value=LiveFactPage(items=[], total=19))
+        with patch(f"{_MOCK_MODULE}.list_live_facts", list_facts):
+            resp = client.get("/memory/facts?limit=6&cursor=abc")
         assert resp.status_code == 200
-        body = resp.json()
-        assert body["expert_id"] is None
-        assert body["items"][0]["uuid"] == "edge-1"
-        assert body["items"][0]["fact"] == "Prefers Monday summaries"
-        query = driver.execute_query.await_args_list[0].args[0]
-        assert live_fact_predicate("e") in query
-        assert "ORDER BY e.created_at DESC" in query
+        assert resp.json()["next_cursor"] is None
+        list_facts.assert_awaited_once_with(
+            MemoryScope.for_user(test_user_id), limit=6, cursor="abc"
+        )
 
-    def test_missing_graph_is_empty_list(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.side_effect = ResponseError("no such graph")
-        driver.close = AsyncMock()
-        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
-            resp = client.get("/memory/facts")
-        assert resp.status_code == 200
-        assert resp.json()["items"] == []
+    def test_a_cursor_it_did_not_write_is_400(self) -> None:
+        list_facts = AsyncMock(side_effect=InvalidFactCursorError("Invalid cursor"))
+        with patch(f"{_MOCK_MODULE}.list_live_facts", list_facts):
+            resp = client.get("/memory/facts?cursor=not-ours")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid cursor"
 
-    def test_expert_scope_uses_expert_group(self, test_user_id) -> None:
-        driver = _driver_returning([])
-        opened: list[str] = []
-
-        def open_driver(scope):
-            opened.append(scope.group_id)
-            return driver
-
+    def test_expert_scope_pages_the_expert_group(self, test_user_id) -> None:
+        list_facts = AsyncMock(return_value=LiveFactPage(items=[], total=3))
         with (
-            patch(f"{_MOCK_MODULE}.open_driver", side_effect=open_driver),
+            patch(f"{_MOCK_MODULE}.list_live_facts", list_facts),
             patch(
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert()),
             ) as get_expert,
         ):
-            resp = client.get(f"/memory/experts/{_EXPERT_ID}/facts")
+            resp = client.get(f"/memory/experts/{_EXPERT_ID}/facts?cursor=abc")
         assert resp.status_code == 200
         assert resp.json()["expert_id"] == _EXPERT_ID
-        assert opened == [derive_memory_group_id(test_user_id, _EXPERT_ID)]
+        assert resp.json()["total"] == 3
+        list_facts.assert_awaited_once_with(
+            MemoryScope.for_expert(test_user_id, _EXPERT_ID), limit=50, cursor="abc"
+        )
         get_expert.assert_awaited_once_with(
             test_user_id, _EXPERT_ID, include_workflows=False
         )

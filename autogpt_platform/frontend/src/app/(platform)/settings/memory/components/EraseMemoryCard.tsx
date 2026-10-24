@@ -10,6 +10,8 @@ interface Props {
   scopeName: string;
   memoryCount: number | null;
   isErasing: boolean;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
   onErase: () => Promise<boolean>;
 }
 
@@ -17,11 +19,19 @@ export function EraseMemoryCard({
   scopeName,
   memoryCount,
   isErasing,
+  isOpen,
+  onOpenChange,
   onErase,
 }: Props) {
-  const [isOpen, setIsOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const isConfirmed = confirmText.trim() === scopeName;
+
+  // Cleared on close rather than on open: the dialog also opens from the
+  // memories card's "Forget everything…", which doesn't go through here.
+  function setIsOpen(open: boolean) {
+    onOpenChange(open);
+    if (!open) setConfirmText("");
+  }
 
   async function handleErase() {
     if (!isConfirmed) return;
@@ -46,13 +56,7 @@ export function EraseMemoryCard({
       <Dialog
         title={`Erase all of ${scopeName}'s memory`}
         styling={{ maxWidth: "440px" }}
-        controlled={{
-          isOpen,
-          set: (open) => {
-            setIsOpen(open);
-            if (open) setConfirmText("");
-          },
-        }}
+        controlled={{ isOpen, set: setIsOpen }}
       >
         <Dialog.Trigger>
           <Button variant="destructive" size="small">

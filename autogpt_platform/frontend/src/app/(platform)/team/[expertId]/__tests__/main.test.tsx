@@ -225,6 +225,7 @@ beforeEach(() => {
     getGetExpertMockHandler(maria),
     getListMyExpertMemoryFactsMockHandler200({
       expert_id: maria.id,
+      total: 0,
       items: [],
     }),
     getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),

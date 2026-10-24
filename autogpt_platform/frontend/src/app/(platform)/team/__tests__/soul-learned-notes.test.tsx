@@ -90,6 +90,7 @@ describe("Soul drawer — what I've learned", () => {
         factRequests.push(String(info.params.expertId));
         return {
           expert_id: "expert-maria",
+          total: 2,
           items: [
             makeFact(),
             makeFact({
@@ -125,6 +126,7 @@ describe("Soul drawer — what I've learned", () => {
     server.use(
       getListMyExpertMemoryFactsMockHandler200({
         expert_id: "expert-maria",
+        total: 0,
         items: [],
       }),
     );
@@ -150,6 +152,7 @@ describe("Soul drawer — what I've learned", () => {
         listCalls += 1;
         return {
           expert_id: "expert-maria",
+          total: forgotten.length ? 0 : 1,
           items: forgotten.length ? [] : [makeFact()],
         };
       }),
@@ -206,7 +209,7 @@ describe("Soul drawer — what I've learned", () => {
     server.use(
       getListMyExpertMemoryFactsMockHandler(async () => {
         listCalls += 1;
-        return { expert_id: "expert-maria", items: [makeFact()] };
+        return { expert_id: "expert-maria", items: [makeFact()], total: 1 };
       }),
     );
 

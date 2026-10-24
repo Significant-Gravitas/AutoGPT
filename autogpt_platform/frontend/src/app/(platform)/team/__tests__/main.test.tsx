@@ -108,6 +108,7 @@ beforeEach(() => {
     getListExpertSetupItemsMockHandler([]),
     getListMyExpertMemoryFactsMockHandler200({
       expert_id: "expert-maria",
+      total: 0,
       items: [],
     }),
     getGetV1ListProvidersMockHandler([]),

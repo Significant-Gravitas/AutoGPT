@@ -27,8 +27,14 @@ class MemoryFact(BaseModel):
 
 
 class MemoryFactListResponse(BaseModel):
+    """One page of live facts, newest first. ``total`` counts every live fact
+    in the scope; ``next_cursor`` asks for the next page and is ``None`` on
+    the last one."""
+
     expert_id: str | None = None
     items: list[MemoryFact]
+    total: int
+    next_cursor: str | None = None
 
 
 class ForgetFactResponse(BaseModel):

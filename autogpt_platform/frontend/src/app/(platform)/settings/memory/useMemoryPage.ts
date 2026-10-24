@@ -7,12 +7,8 @@ import {
   getListMyMemoryFactsQueryKey,
   useEraseMyExpertMemory,
   useEraseMyMemory,
-  useForgetMyExpertMemoryFact,
-  useForgetMyMemoryFact,
   useGetMyExpertMemoryOverview,
   useGetMyMemoryOverview,
-  useListMyExpertMemoryFacts,
-  useListMyMemoryFacts,
 } from "@/app/api/__generated__/endpoints/memory/memory";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,8 +17,8 @@ import {
   getActiveExperts,
   getScopeName,
   readExpertScopeFromUrl,
-  RECENT_FACTS_LIMIT,
 } from "./helpers";
+import { useMemoryFacts } from "./useMemoryFacts";
 
 export function useMemoryPage() {
   // The Soul drawer's learned-notes panel links here with ?expert=<id>, so
@@ -47,18 +43,11 @@ export function useMemoryPage() {
     }
   }, [scopeExpertID, expertsSettled, experts]);
 
-  const accountFacts = useListMyMemoryFacts(
-    { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: scopeExpertID === null } },
-  );
-  const expertFacts = useListMyExpertMemoryFacts(
-    scopeExpertID ?? "",
-    { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: scopeExpertID !== null } },
-  );
-  const factsQuery = scopeExpertID === null ? accountFacts : expertFacts;
-  const facts =
-    factsQuery.data?.status === 200 ? factsQuery.data.data.items : [];
+  const memories = useMemoryFacts({
+    scopeExpertID,
+    onForgotten: invalidateScopeQueries,
+  });
+  const [isEraseOpen, setIsEraseOpen] = useState(false);
 
   const accountOverview = useGetMyMemoryOverview({
     query: { enabled: scopeExpertID === null },
@@ -91,48 +80,6 @@ export function useMemoryPage() {
       queryKey: getGetMyExpertMemoryOverviewQueryKey(scopeExpertID),
     });
   }
-
-  function onForgotten() {
-    invalidateScopeQueries();
-    toast({ title: "Forgotten" });
-  }
-
-  function onForgetError() {
-    toast({
-      title: "Could not forget that memory",
-      description: "Please try again.",
-      variant: "destructive",
-    });
-  }
-
-  const forgetAccountFact = useForgetMyMemoryFact({
-    mutation: { onSuccess: onForgotten, onError: onForgetError },
-  });
-  const forgetExpertFact = useForgetMyExpertMemoryFact({
-    mutation: { onSuccess: onForgotten, onError: onForgetError },
-  });
-
-  async function forgetFact(uuid: string) {
-    try {
-      if (scopeExpertID === null) {
-        await forgetAccountFact.mutateAsync({ factUuid: uuid });
-      } else {
-        await forgetExpertFact.mutateAsync({
-          expertId: scopeExpertID,
-          factUuid: uuid,
-        });
-      }
-    } catch {
-      // onError already surfaced the toast; keep the rejection out of the
-      // click handler.
-    }
-  }
-
-  const forgettingUuid = forgetAccountFact.isPending
-    ? forgetAccountFact.variables?.factUuid
-    : forgetExpertFact.isPending
-      ? forgetExpertFact.variables?.factUuid
-      : null;
 
   function onErased() {
     invalidateScopeQueries();
@@ -177,14 +124,10 @@ export function useMemoryPage() {
     selectScope,
     experts,
     scopeName: getScopeName(scopeExpertID, experts),
-    facts,
-    isLoadingFacts: factsQuery.isLoading,
-    isFactsError: factsQuery.isError,
-    factsError: factsQuery.error,
-    refetchFacts: factsQuery.refetch,
+    memories,
     memoryCount: overview?.facts ?? null,
-    forgetFact,
-    forgettingUuid: forgettingUuid ?? null,
+    isEraseOpen,
+    setIsEraseOpen,
     eraseScope,
     isErasing: eraseAccount.isPending || eraseExpert.isPending,
   };
