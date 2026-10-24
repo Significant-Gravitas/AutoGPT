@@ -432,9 +432,16 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-caption leading-4 text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
-                or enter an API credential manually
+                <Text
+                  variant="small-tight"
+                  as="span"
+                  tone="inherit"
+                  className="block underline"
+                >
+                  or enter an API credential manually
+                </Text>
               </button>
             )}
 
@@ -450,8 +457,15 @@ export function MCPToolDialog({
                   selectClassName="h-10 rounded-md border border-input bg-background px-3 text-body leading-5"
                 />
 
-                <Label htmlFor="mcp-auth-token" className="text-body leading-5">
-                  {mcpAuthTokenLabel(manualAuthScheme)}
+                <Label htmlFor="mcp-auth-token">
+                  <Text
+                    variant="body-medium-tight"
+                    as="span"
+                    tone="inherit"
+                    className="block"
+                  >
+                    {mcpAuthTokenLabel(manualAuthScheme)}
+                  </Text>
                 </Label>
                 <Input
                   id="mcp-auth-token"
@@ -469,10 +483,10 @@ export function MCPToolDialog({
                   autoFocus
                 />
                 <Text
-                  variant="small"
+                  variant="small-tight"
                   as="p"
                   id="mcp-auth-token-hint"
-                  className="leading-4 text-gray-500"
+                  className="text-gray-500"
                 >
                   {mcpAuthTokenHint(manualAuthScheme)}
                 </Text>
@@ -481,11 +495,11 @@ export function MCPToolDialog({
 
             {error && (
               <Text
-                variant="body"
+                variant="body-tight"
                 as="p"
                 role="alert"
                 aria-live="polite"
-                className="leading-5 text-red-700 dark:text-red-400"
+                className="text-red-700 dark:text-red-400"
               >
                 {error}
               </Text>
@@ -617,9 +631,10 @@ function MCPToolCard({
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
         <Text
-          variant="body"
+          variant="body-semibold-tight"
           as="span"
-          className="flex-1 font-semibold leading-5 text-inherit dark:text-white"
+          tone="inherit"
+          className="flex-1 dark:text-white"
         >
           {tool.name}
         </Text>
@@ -633,9 +648,9 @@ function MCPToolCard({
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
         <Text
-          variant="small"
+          variant="small-lh-relaxed"
           as="p"
-          className="px-3 pb-1 leading-relaxed text-gray-500 dark:text-gray-400"
+          className="px-3 pb-1 text-gray-500 dark:text-gray-400"
         >
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
         </Text>
@@ -692,11 +707,18 @@ function MCPToolCard({
                     key={name}
                     className="border-b border-gray-50 last:border-0 dark:border-slate-700/50"
                   >
-                    <td className="px-2 py-1 font-mono text-caption-sm leading-inherit text-gray-700 dark:text-gray-300">
-                      {name}
-                      {required.has(name) && (
-                        <span className="ml-0.5 text-red-400">*</span>
-                      )}
+                    <td className="px-2 py-1 text-gray-700 dark:text-gray-300">
+                      <Text
+                        variant="caption-sm-mono-inherit"
+                        as="span"
+                        tone="inherit"
+                        className="block"
+                      >
+                        {name}
+                        {required.has(name) && (
+                          <span className="ml-0.5 text-red-400">*</span>
+                        )}
+                      </Text>
                     </td>
                     <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
                       {schemaTypeLabel(prop)}
@@ -720,9 +742,11 @@ function MCPToolCard({
             e.stopPropagation();
             setExpanded((prev) => !prev);
           }}
-          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-tiny leading-inherit text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
+          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
         >
-          {expanded ? "Hide details" : "Show details"}
+          <Text variant="tiny-inherit" as="span" tone="inherit">
+            {expanded ? "Hide details" : "Show details"}
+          </Text>
           <Icon
             icon={ArrowDown01Icon}
             className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}
