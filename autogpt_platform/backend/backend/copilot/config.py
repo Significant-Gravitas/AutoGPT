@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import (
@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.providers import ProviderLiteral
@@ -723,6 +723,21 @@ class ChatConfig(BaseSettings):
         "also requires the credentials to be valid — use the ``openrouter_active`` "
         "property for the final answer.",
     )
+    openrouter_provider_order: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description="Allowed OpenRouter providers for the SDK path's Claude "
+        "calls, tried in order using the model's endpoint tags. Empty (the "
+        "default) leaves the choice to OpenRouter. The hosted platform lists "
+        "``google-vertex/global,anthropic,amazon-bedrock,azure/global,"
+        "claude-on-aws``: Google Vertex global first, then Anthropic, then the "
+        "other standard Claude providers. Sessions with a non-Claude fallback "
+        "retain OpenRouter's routing. Fallback stays within the list; if none "
+        "of its providers can serve the request, it fails instead of trying an "
+        "unlisted one, so list only providers the OpenRouter account allows. "
+        "This setting selects providers, not a price ceiling; recheck endpoint "
+        "pricing when changing models or this list. Set as a comma-separated "
+        "list (``CHAT_OPENROUTER_PROVIDER_ORDER=google-vertex/global,anthropic``).",
+    )
     use_claude_code_subscription: bool = Field(
         default=False,
         description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
@@ -1103,6 +1118,17 @@ class ChatConfig(BaseSettings):
             v = os.getenv("CHAT_DIRECT_ANTHROPIC_API_KEY") or os.getenv(
                 "ANTHROPIC_API_KEY"
             )
+        return v
+
+    @field_validator("openrouter_provider_order", mode="before")
+    @classmethod
+    def split_openrouter_provider_order(cls, v):
+        """Read the environment's comma-separated list. A JSON-style list
+        (``["a", "b"]``) reads the same, so neither spelling can stop the
+        backend from starting."""
+        if isinstance(v, str):
+            names = (name.strip().strip("\"'") for name in v.strip("[] ").split(","))
+            return [name for name in names if name]
         return v
 
     @field_validator("claude_agent_cli_path", mode="before")
