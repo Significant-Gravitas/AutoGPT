@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -23,6 +24,7 @@ export const FilterChip: React.FC<Props> = ({
   return (
     <AnimatePresence mode="wait">
       <Button
+        variant="legacy-default"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={cn(
@@ -33,14 +35,17 @@ export const FilterChip: React.FC<Props> = ({
         )}
         {...rest}
       >
-        <span
+        <Text
+          variant="body-medium"
+          as="span"
+          tone="secondary"
           className={cn(
-            "font-sans text-sm font-medium leading-[1.375rem] text-zinc-600 group-hover:text-zinc-600 group-disabled:text-zinc-400",
+            "group-hover:text-zinc-600 group-disabled:text-zinc-400",
             selected && "text-zinc-50",
           )}
         >
           {name}
-        </span>
+        </Text>
         {selected && !isHovered && (
           <motion.span
             initial={{ opacity: 0.5, scale: 0.5, filter: "blur(20px)" }}

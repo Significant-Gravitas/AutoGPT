@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CronScheduler } from "@/components/contextual/CronScheduler/cron-scheduler";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -151,10 +151,12 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
           )}
         </div>
         <div className="mt-8 flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="legacy-outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleDone}>Done</Button>
+          <Button variant="legacy-default" onClick={handleDone}>
+            Done
+          </Button>
         </div>
       </Dialog.Content>
     </Dialog>

@@ -1,7 +1,8 @@
 "use client";
 
 import { Loader2, MoreVertical } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Table,
   TableBody,
@@ -47,9 +48,13 @@ export function APIKeysSection() {
                 <TableRow key={key.id} data-testid="api-key-row">
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
-                    <div className="rounded-md border p-1 px-2 text-xs">
+                    <Text
+                      variant="small"
+                      as="div"
+                      className="rounded-md border p-1 px-2 leading-4 text-inherit"
+                    >
                       {`${key.head}******************${key.tail}`}
-                    </div>
+                    </Text>
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -80,8 +85,8 @@ export function APIKeysSection() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           data-testid="api-key-actions"
-                          variant="ghost"
-                          size="sm"
+                          variant="legacy-ghost"
+                          size="legacy-sm"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </Button>

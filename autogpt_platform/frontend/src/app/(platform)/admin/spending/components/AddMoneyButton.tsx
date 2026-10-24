@@ -4,7 +4,7 @@
 // bg-gray-50 #F9FAFB, text-gray-500 #6B7280.
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Dialog,
   DialogContent,
@@ -66,8 +66,8 @@ export function AdminAddMoneyButton({
   return (
     <>
       <Button
-        size="sm"
-        variant="default"
+        size="legacy-sm"
+        variant="legacy-default"
         onClick={(e) => {
           e.stopPropagation();
           setIsAddMoneyDialogOpen(true);
@@ -138,13 +138,17 @@ export function AdminAddMoneyButton({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                variant="legacy-outline"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                variant="legacy-default"
+                type="submit"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Adding..." : "Add Dollars"}
               </Button>
             </DialogFooter>

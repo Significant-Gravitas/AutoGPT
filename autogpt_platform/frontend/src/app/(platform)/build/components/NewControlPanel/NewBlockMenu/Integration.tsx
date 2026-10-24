@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
@@ -25,6 +26,7 @@ export const Integration: IntegrationComponent = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       className={cn(
         "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-50 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
@@ -47,17 +49,31 @@ export const Integration: IntegrationComponent = ({
       <div className="w-full">
         <div className="flex items-center justify-between gap-2">
           {title && (
-            <p className="line-clamp-1 flex-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-700 group-disabled:text-zinc-400">
+            <Text
+              variant="body-medium"
+              tone="body"
+              className="line-clamp-1 flex-1 group-disabled:text-zinc-400"
+            >
               {beautifyString(title)}
-            </p>
+            </Text>
           )}
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
+          <Text
+            variant="body-medium"
+            as="span"
+            tone="muted"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-zinc-400"
+          >
             {number_of_blocks}
-          </span>
+          </Text>
         </div>
-        <span className="line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400">
+        <Text
+          variant="small"
+          as="span"
+          tone="muted"
+          className="line-clamp-1 leading-5 group-disabled:text-zinc-400"
+        >
           {description}
-        </span>
+        </Text>
       </div>
     </Button>
   );
