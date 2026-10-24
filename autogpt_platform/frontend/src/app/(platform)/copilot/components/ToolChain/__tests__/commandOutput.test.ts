@@ -138,6 +138,16 @@ describe("stepFailed", () => {
     expect(stepFailed("grep -q x a && wc -l a", exit(1))).toBe(true);
   });
 
+  it("reads a quoted | or ; as part of the argument, not a new command", () => {
+    expect(stepFailed('grep -Eq "TBD|TODO" brief.md', exit(1))).toBe(false);
+    expect(stepFailed("grep -q 'a;b' notes.txt", exit(1))).toBe(false);
+    expect(stepFailed('cat log | grep -q "x|y"', exit(1))).toBe(false);
+    expect(stepFailed('grep -q "a|b" f && ./publish.sh', exit(1))).toBe(true);
+    expect(stepFailed("grep -q TBD brief.md 2>&1", exit(1))).toBe(false);
+    expect(stepFailed("grep -q x\\;y notes.txt", exit(1))).toBe(false);
+    expect(stepFailed("sleep 5 & ./sync.sh", exit(1))).toBe(true);
+  });
+
   it("is a failure for a timeout or a refusal, and fine for exit 0", () => {
     expect(stepFailed("sleep 9", { timed_out: true, exit_code: -1 })).toBe(
       true,

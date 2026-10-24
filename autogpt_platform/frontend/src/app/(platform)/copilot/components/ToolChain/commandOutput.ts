@@ -36,14 +36,44 @@ export function stepFailed(
   return !(exitCode === 1 && command && ANSWERS_NO.test(lastCommand(command)));
 }
 
+/** The last command of a list or pipeline. A `|`, `;` or `&` inside quotes
+ *  (`grep -Eq "TBD|TODO"`), after a backslash or in a redirection (`2>&1`)
+ *  is part of the command, not a separator. */
 function lastCommand(command: string): string {
-  const parts = command.split(/&&|\|\||;|\||\n/);
+  const parts: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+    if (char === "\\" && quote !== "'") {
+      current += char + (command[i + 1] ?? "");
+      i++;
+    } else if (quote) {
+      if (char === quote) quote = null;
+      current += char;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      current += char;
+    } else if (
+      /[|;\n]/.test(char) ||
+      (char === "&" && !isRedirect(command, i))
+    ) {
+      parts.push(current);
+      current = "";
+    } else current += char;
+  }
+  parts.push(current);
   const last =
     parts
       .map((part) => part.trim())
       .filter(Boolean)
       .pop() ?? "";
   return last.replace(/^!\s*/, "");
+}
+
+/** An `&` in `2>&1`, `>&2` or `&>log` redirects output; it ends no command. */
+function isRedirect(command: string, at: number): boolean {
+  return /[<>]/.test(command[at - 1] ?? "") || command[at + 1] === ">";
 }
 
 /** The columns a preview shows: the plain ones, first few. */
