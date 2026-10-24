@@ -1,5 +1,6 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import {
   Card,
   CardContent,
@@ -7,13 +8,12 @@ import {
   CardTitle,
 } from "@/components/__legacy__/ui/card";
 import {
-  Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import {
   Select,
   SelectContent,
@@ -57,14 +57,16 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
         <CardTitle>Timezone</CardTitle>
       </CardHeader>
       <CardContent>
-        <Form {...form}>
+        <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
               name="timezone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Select your timezone</FormLabel>
+                  <FormLabel className="text-body font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Select your timezone
+                  </FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
@@ -82,7 +84,10 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage />
+                  <FormMessage
+                    // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
+                    className="text-[0.8rem] leading-inherit"
+                  />
                 </FormItem>
               )}
             />
@@ -90,7 +95,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
               {isLoading ? "Saving..." : "Save timezone"}
             </Button>
           </form>
-        </Form>
+        </FormProvider>
       </CardContent>
     </Card>
   );

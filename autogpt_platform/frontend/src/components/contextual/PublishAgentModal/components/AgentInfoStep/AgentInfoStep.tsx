@@ -1,7 +1,8 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import { CronExpressionDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Accordion,
   AccordionContent,
@@ -126,7 +127,7 @@ export function AgentInfoStep({
     <div className="mx-auto flex w-full flex-col">
       <StepHeader title={title} description={description} currentStep="info" />
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 pb-5">
           {isMarketplaceUpdate && (
             <section className="rounded-[18px] border border-warning-border bg-warning-surface p-4">
@@ -506,7 +507,7 @@ export function AgentInfoStep({
             }
           />
         </form>
-      </Form>
+      </FormProvider>
 
       <CronExpressionDialog
         open={cronScheduleDialogOpen}

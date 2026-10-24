@@ -1,4 +1,4 @@
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Tabs,
   TabsContent,
@@ -16,7 +16,7 @@ import useCredits from "@/hooks/useCredits";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { z } from "zod";
 
 const autoRefillSchema = z
@@ -115,7 +115,7 @@ export function WalletRefill() {
               Choose a one-time top-up or set up automatic refills.
             </div>
 
-            <Form {...autoRefillForm}>
+            <FormProvider {...autoRefillForm}>
               <form
                 onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
                 className="my-6"
@@ -163,7 +163,7 @@ export function WalletRefill() {
                   Enable Auto-refill
                 </Button>
               </form>
-            </Form>
+            </FormProvider>
           </TabsContent>
           <div className="mb-3 justify-start font-sans text-xs font-normal leading-tight">
             <span className="text-foreground-tertiary">

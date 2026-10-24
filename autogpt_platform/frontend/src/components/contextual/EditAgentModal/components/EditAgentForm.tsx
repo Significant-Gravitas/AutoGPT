@@ -1,9 +1,10 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import * as React from "react";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
@@ -88,7 +89,7 @@ export function EditAgentForm({
 
   return (
     <div className="mx-auto flex w-full flex-col">
-      <Form {...form}>
+      <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(handleFormSubmit)}
           className="flex flex-col gap-5 pb-5"
@@ -386,7 +387,7 @@ export function EditAgentForm({
             </Button>
           </div>
         </form>
-      </Form>
+      </FormProvider>
     </div>
   );
 }

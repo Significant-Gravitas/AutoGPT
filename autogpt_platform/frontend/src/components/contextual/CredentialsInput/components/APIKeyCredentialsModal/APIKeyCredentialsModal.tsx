@@ -1,8 +1,5 @@
-import {
-  Form,
-  FormDescription,
-  FormField,
-} from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormDescription, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -62,7 +59,7 @@ export function APIKeyCredentialsModal({
           </p>
         )}
 
-        <Form {...form}>
+        <FormProvider {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
             className="space-y-2 px-2"
@@ -92,7 +89,10 @@ export function APIKeyCredentialsModal({
                     placeholder="Enter API Key..."
                     hint={
                       schema.credentials_scopes ? (
-                        <FormDescription>
+                        <FormDescription
+                          // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
+                          className="text-[0.8rem] leading-inherit"
+                        >
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>
@@ -150,7 +150,7 @@ export function APIKeyCredentialsModal({
               Add API Key
             </Button>
           </form>
-        </Form>
+        </FormProvider>
       </Dialog.Content>
     </Dialog>
   );
