@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Input } from "@/components/atoms/Input/Input";
@@ -37,9 +38,13 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
     >
       <Dialog.Content>
         <div className="mx-auto w-[95%] space-y-4">
-          <p className="text-sm text-muted-foreground">
+          <Text
+            variant="body"
+            as="p"
+            className="leading-5 text-muted-foreground"
+          >
             Your feedback helps us improve. Share details below.
-          </p>
+          </Text>
           <Input
             bare
             type="textarea"
@@ -51,9 +56,13 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
             className="resize-none"
           />
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
+            <Text
+              variant="small"
+              as="p"
+              className="leading-4 text-muted-foreground"
+            >
               {comment.length}/2000
-            </p>
+            </Text>
             <div className="flex gap-2">
               <Button variant="outline" size="small" onClick={handleClose}>
                 Cancel
