@@ -181,6 +181,62 @@ describe("after the hire and hand-off", () => {
     ).toBe("/copilot?sessionId=thread-1");
   });
 
+  it("says the task waits for a slot rather than that it started", () => {
+    render(
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_applied",
+          applied: true,
+          kind: "hire",
+          expert,
+          handoff: {
+            title: TITLE,
+            status: "queued",
+            sub_session_id: "thread-1",
+            link: "/copilot?sessionId=thread-1",
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/will start on the Printify order pipeline/),
+    ).toBeDefined();
+    expect(screen.queryByText(/started on/)).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Open James's chat" })
+        .getAttribute("href"),
+    ).toBe("/copilot?sessionId=thread-1");
+  });
+
+  it("points at the thread when it is not known whether the task started", () => {
+    render(
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_applied",
+          applied: true,
+          kind: "hire",
+          expert,
+          handoff: {
+            title: TITLE,
+            status: "unconfirmed",
+            sub_session_id: "thread-1",
+            link: "/copilot?sessionId=thread-1",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/was sent to James's chat/)).toBeDefined();
+    expect(screen.queryByText(/started on/)).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Open James's chat" })
+        .getAttribute("href"),
+    ).toBe("/copilot?sessionId=thread-1");
+  });
+
   it("says plainly when the task did not start", () => {
     render(
       <ExpertChangeCard
@@ -194,8 +250,8 @@ describe("after the hire and hand-off", () => {
       />,
     );
 
-    expect(screen.getByRole("status").textContent).toContain(
-      `James is hired, but ${TITLE} didn't start yet.`,
+    expect(screen.getByRole("status").textContent).toBe(
+      `James is hired, but ${TITLE} didn't start.`,
     );
     expect(screen.queryByRole("link")).toBeNull();
   });

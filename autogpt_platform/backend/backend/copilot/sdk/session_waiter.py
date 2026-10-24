@@ -344,6 +344,12 @@ async def run_copilot_turn_via_queue(
             tool_name,
         )
         return "rejected_concurrent_turn_cap", SessionResult()
+    if timeout <= 0:
+        # The turn is queued and the caller waits for nothing. Subscribing
+        # anyway could only fail, and a failure here, after the dispatch,
+        # would read as "not started" to a caller that then runs the same
+        # task a second time.
+        return "running", SessionResult()
     return await wait_for_session_result(
         session_id=session_id,
         user_id=user_id,

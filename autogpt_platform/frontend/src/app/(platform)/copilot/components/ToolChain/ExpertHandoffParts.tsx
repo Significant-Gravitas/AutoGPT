@@ -128,7 +128,7 @@ interface StatusProps {
 
 /** Where the work went once the hire and hand-off landed. */
 export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
-  if (!outcome.started || !outcome.link) {
+  if (outcome.status === "failed" || !outcome.link) {
     return (
       <div
         role="status"
@@ -141,8 +141,7 @@ export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
           aria-hidden
         />
         <p className="min-w-0 [overflow-wrap:anywhere]">
-          {expertName} is hired, but {outcome.title} didn&apos;t start yet. Otto
-          will hand it over again.
+          {expertName} is hired, but {outcome.title} didn&apos;t start.
         </p>
       </div>
     );
@@ -150,8 +149,7 @@ export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-zinc-100 px-4 py-3">
       <p className="min-w-[min(100%,14rem)] flex-1 text-sm text-zinc-600 [overflow-wrap:anywhere]">
-        <span className="font-medium text-zinc-800">{expertName}</span> started
-        on {outcome.title}. The work happens in their own chat.
+        <HandoffSentence outcome={outcome} expertName={expertName} />
       </p>
       <NextLink
         href={outcome.link}
@@ -166,5 +164,29 @@ export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
         />
       </NextLink>
     </div>
+  );
+}
+
+function HandoffSentence({ outcome, expertName }: StatusProps) {
+  const name = <span className="font-medium text-zinc-800">{expertName}</span>;
+  if (outcome.status === "unconfirmed") {
+    return (
+      <>
+        {outcome.title} was sent to {possessive(expertName)} chat.
+      </>
+    );
+  }
+  if (outcome.status === "queued") {
+    return (
+      <>
+        {name} will start on {outcome.title} as soon as a task slot frees. The
+        work happens in their own chat.
+      </>
+    );
+  }
+  return (
+    <>
+      {name} started on {outcome.title}. The work happens in their own chat.
+    </>
   );
 }

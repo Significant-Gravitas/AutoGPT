@@ -668,11 +668,13 @@ class ExpertHandoffOutcome(BaseModel):
     """Whether the task a hire was approved for reached the new expert.
 
     ``link`` opens the expert's thread, where the work is happening; it is
-    unset when the task could not start.
+    unset when the task did not start.
     """
 
     title: str
-    status: Literal["started", "failed"]
+    # ``queued``: waiting for one of the user's task slots. ``unconfirmed``:
+    # sent to the thread, but whether it started could not be read.
+    status: Literal["started", "queued", "unconfirmed", "failed"]
     sub_session_id: str | None = None
     link: str | None = None
 

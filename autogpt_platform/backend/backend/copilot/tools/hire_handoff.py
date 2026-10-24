@@ -7,18 +7,29 @@ the model then asked in prose whether to hand the task over, and the user had
 to type a second answer to something they had just approved (SECRT-3138).
 
 Confirming the hand-off id hires and then runs the task as a normal
-``delegate_to_expert`` from this chat (``start_delegation``), so the thread,
-its permissions, mode and result contract are exactly a delegation's. The
-user's click on the card is the approval for both; the hand-off is not put to
-them again. The hire stands even when the task cannot start, and the model is
-told to retry the delegation rather than ask.
+``delegate_to_expert`` from this chat (``open_delegation_thread`` and
+``run_delegated_turn``), so the thread, its permissions, mode and result
+contract are exactly a delegation's, and a paused teammate is refused the
+same way. The user's click on the card is the approval for both; the hand-off
+is not put to them again.
+
+The hire stands whatever happens to the task, and what is reported is only
+what is known: started, queued for a task slot, not started (with whether a
+retry can help), or, once the thread exists, sent but unconfirmed. That last
+case never asks for a second delegation, which could run the task twice.
 """
 
 import logging
+from typing import Literal
 
+from backend.api.features.experts.models import Expert
 from backend.copilot.model import ChatSession
 
-from .delegate_to_expert import start_delegation
+from .delegate_to_expert import (
+    open_delegation_thread,
+    paused_refusal,
+    run_delegated_turn,
+)
 from .expert_delegation import chain_refusal, resolve_target_expert
 from .expert_proposal import hire_message
 from .models import (
@@ -27,18 +38,21 @@ from .models import (
     ExpertHandoffTask,
     SubSessionStatusResponse,
 )
+from .run_sub_session import _sub_session_link
 
 logger = logging.getLogger(__name__)
 
-_STARTED = frozenset({"running", "queued", "completed"})
+_STARTED = frozenset({"running", "completed"})
 
 
 class _NotStarted(Exception):
-    """The task did not reach the new hire; carries the model-facing reason."""
+    """The task did not reach the new hire; carries the model-facing reason
+    and whether trying the delegation again can help."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, retry: bool) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.retry = retry
 
 
 async def hand_off_to_new_hire(
@@ -50,23 +64,31 @@ async def hand_off_to_new_hire(
     """Start *task* with the expert *applied* just hired."""
     expert = applied.expert
     try:
-        started = await _start(user_id, session, expert.id, task)
+        target = await _target(user_id, session, expert.id)
+        thread = await open_delegation_thread(user_id, session, target)
     except _NotStarted as e:
-        return _failed(applied, task, e.reason)
+        return _report(applied, task, "failed", None, e.reason, e.retry)
     except Exception:
-        logger.warning("Hand-off to a new hire failed to start", exc_info=True)
-        return _failed(applied, task, "The task could not be queued.")
-    return applied.model_copy(
-        update={
-            "message": _started_message(expert.name, task, started),
-            "handoff": ExpertHandoffOutcome(
-                title=task.title,
-                status="started",
-                sub_session_id=started.sub_session_id,
-                link=started.sub_autopilot_session_link,
-            ),
-        }
-    )
+        logger.warning("Hand-off to a new hire could not open", exc_info=True)
+        return _report(applied, task, "failed", None, "It could not be sent.", True)
+    try:
+        sent = await run_delegated_turn(
+            user_id=user_id,
+            session=session,
+            target=target,
+            inner_session_id=thread,
+            prompt=task.brief,
+            opened_here=True,
+            wait_for_result=0,
+        )
+    except Exception:
+        # The thread exists and the task may be running in it: point there.
+        logger.warning("Hand-off to a new hire is unconfirmed", exc_info=True)
+        return _report(applied, task, "unconfirmed", thread)
+    if not isinstance(sent, SubSessionStatusResponse) or sent.status == "error":
+        return _report(applied, task, "failed", None, sent.message, True)
+    status = "started" if sent.status in _STARTED else "queued"
+    return _report(applied, task, status, sent.sub_session_id)
 
 
 def with_hire_only(
@@ -84,67 +106,85 @@ def with_hire_only(
     )
 
 
-async def _start(
-    user_id: str, session: ChatSession, expert_id: str, task: ExpertHandoffTask
-) -> SubSessionStatusResponse:
-    """Queue *task* for the new hire without waiting on it."""
+async def _target(user_id: str, session: ChatSession, expert_id: str) -> Expert:
+    """The hire, if it can take delegated work; ``delegate_to_expert``'s rules."""
     target = await resolve_target_expert(user_id, expert_id)
-    if target is None:
-        raise _NotStarted("They could not be found on the team right after hiring.")
-    refusal = await chain_refusal(user_id, session, target)
-    if refusal is not None:
-        raise _NotStarted(refusal)
-    started = await start_delegation(
-        user_id=user_id,
-        session=session,
-        target=target,
-        prompt=task.brief,
-        wait_for_result=0,
-    )
-    if not isinstance(started, SubSessionStatusResponse) or (
-        started.status not in _STARTED
-    ):
-        raise _NotStarted(started.message)
-    return started
+    if target is None or target.is_archived:
+        raise _NotStarted("They are not on the team right now.", retry=False)
+    if (paused := paused_refusal(target)) is not None:
+        raise _NotStarted(paused, retry=False)
+    if (refusal := await chain_refusal(user_id, session, target)) is not None:
+        raise _NotStarted(refusal, retry=False)
+    return target
 
 
-def _failed(
-    applied: ExpertChangeAppliedResponse, task: ExpertHandoffTask, reason: str
+def _report(
+    applied: ExpertChangeAppliedResponse,
+    task: ExpertHandoffTask,
+    status: Literal["started", "queued", "unconfirmed", "failed"],
+    thread: str | None,
+    reason: str = "",
+    retry: bool = False,
 ) -> ExpertChangeAppliedResponse:
     expert = applied.expert
+    link = _sub_session_link(thread)
+    if status == "failed":
+        message = _failed_message(expert.name, expert.id, task, reason, retry)
+    else:
+        message = _sent_message(status, expert.name, task, thread or "", link)
     return applied.model_copy(
         update={
-            "message": _failed_message(expert.name, expert.id, task, reason),
-            "handoff": ExpertHandoffOutcome(title=task.title, status="failed"),
+            "message": message,
+            "handoff": ExpertHandoffOutcome(
+                title=task.title, status=status, sub_session_id=thread, link=link
+            ),
         }
     )
 
 
-def _started_message(
-    name: str, task: ExpertHandoffTask, started: SubSessionStatusResponse
+def _sent_message(
+    status: Literal["started", "queued", "unconfirmed"],
+    name: str,
+    task: ExpertHandoffTask,
+    thread: str,
+    link: str | None,
 ) -> str:
-    where = (
-        f" in their own chat at {started.sub_autopilot_session_link}"
-        if started.sub_autopilot_session_link
-        else ""
+    where = f"their own chat at {link}"
+    if status == "unconfirmed":
+        return (
+            f"{name} is hired. {task.title} was sent to {where}, but whether it "
+            "started could not be confirmed. Check it with "
+            f"tool:get_sub_session_result (sub_session_id: {thread}) before "
+            "anything else, and don't hand it over again: it may already be "
+            "running."
+        )
+    state = (
+        f"has started on {task.title} in {where}"
+        if status == "started"
+        else f"will start on {task.title} in {where} when one of the user's "
+        "task slots frees"
     )
     return (
-        f"{name} is hired and has started on {task.title}{where}. Tell the "
-        f"user in one short line that {name} is on it and where to follow "
-        "along. Don't ask whether to hand it over: they chose that on the "
-        "card. Their result comes back here; check it with "
-        f"tool:get_sub_session_result (sub_session_id: {started.sub_session_id}) "
+        f"{name} is hired and {state}. Tell the user in one short line that "
+        f"{name} is on it and where to follow along. Don't ask whether to hand "
+        "it over: they chose that on the card. Their result comes back here; "
+        f"check it with tool:get_sub_session_result (sub_session_id: {thread}) "
         "when you need it. Their workflows and skills finish installing in the "
         "background."
     )
 
 
 def _failed_message(
-    name: str, expert_id: str, task: ExpertHandoffTask, reason: str
+    name: str, expert_id: str, task: ExpertHandoffTask, reason: str, retry: bool
 ) -> str:
+    lead = f"{name} is hired and on the team, but {task.title} did not reach them: "
+    if not retry:
+        return (
+            f"{lead}{reason} Tell the user why in one short line, and don't ask "
+            "them again whether to hand it over."
+        )
     return (
-        f"{name} is hired and on the team, but {task.title} did not reach them: "
-        f"{reason} The user already approved handing it over on the card, so "
-        f"start it with delegate_to_expert (expert_id: {expert_id}) and the "
+        f"{lead}{reason} The user already approved handing it over on the card, "
+        f"so start it with delegate_to_expert (expert_id: {expert_id}) and the "
         "same task instead of asking them again."
     )

@@ -619,3 +619,37 @@ async def test_a_queued_child_turn_carries_its_parents_impersonation(
         )
 
     assert queued.await_args.kwargs["impersonated"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_dispatched_turn_with_no_wait_returns_without_reading_its_stream():
+    """``timeout == 0`` after a dispatch has nothing to wait for. Reading the
+    stream anyway is pure risk: the turn is already queued, so a Redis error
+    there would read as "not started" and a caller retrying on it would run
+    the same task twice (SECRT-3138 review)."""
+    scheduled = AsyncMock()
+    stream_read = AsyncMock(side_effect=RuntimeError("redis subscribe failed"))
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("backend.copilot.sdk.session_waiter.schedule_turn", new=scheduled),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=stream_read,
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-fire-and-forget",
+            user_id="u1",
+            message="own the Printify pipeline",
+            timeout=0,
+            tool_call_id="delegate:parent",
+            tool_name="delegate_to_expert",
+        )
+
+    assert outcome == "running"
+    assert result == SessionResult()
+    scheduled.assert_awaited_once()
+    stream_read.assert_not_awaited()

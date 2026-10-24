@@ -5,9 +5,11 @@ export interface HandoffTask {
   brief: string;
 }
 
+type HandoffStatus = "started" | "queued" | "unconfirmed" | "failed";
+
 export interface HandoffOutcome {
   title: string;
-  started: boolean;
+  status: HandoffStatus;
   link: string | null;
 }
 
@@ -29,11 +31,15 @@ export function handoffOutcomeOf(
   const handoff = asObject(output.handoff);
   const title = handoff && str(handoff, "title");
   if (!handoff || !title) return null;
-  return {
-    title,
-    started: str(handoff, "status") === "started",
-    link: str(handoff, "link") ?? null,
-  };
+  const link = str(handoff, "link") ?? null;
+  return { title, status: link ? statusOf(handoff) : "failed", link };
+}
+
+function statusOf(handoff: Record<string, unknown>): HandoffStatus {
+  const status = str(handoff, "status");
+  return status === "started" || status === "queued" || status === "unconfirmed"
+    ? status
+    : "failed";
 }
 
 /** Subject of the decision line for "hire and hand off". It reads as one

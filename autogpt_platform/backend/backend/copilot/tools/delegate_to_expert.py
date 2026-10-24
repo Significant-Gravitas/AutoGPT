@@ -214,13 +214,23 @@ class DelegateToExpertTool(BaseTool):
                 await unknown_target_message(user_id, target_id, session.expert_id),
                 session,
             )
-        if target.schedules_paused_at is not None:
-            return self._error(
-                f"{target.name} is paused (budget guardrail or archive) and "
-                "cannot take delegated work until the user resumes them.",
-                session,
-            )
+        if (paused := paused_refusal(target)) is not None:
+            return self._error(paused, session)
         return target
+
+
+def paused_refusal(target: Expert) -> str | None:
+    """Why a paused teammate can't take delegated work, or ``None``.
+
+    Shared with ``hire_handoff``: re-hiring a template returns the existing
+    hire unchanged, so a "new" hire can be one the budget guardrail paused.
+    """
+    if target.schedules_paused_at is None:
+        return None
+    return (
+        f"{target.name} is paused (budget guardrail or archive) and "
+        "cannot take delegated work until the user resumes them."
+    )
 
 
 async def start_delegation(
@@ -235,11 +245,8 @@ async def start_delegation(
 ) -> ToolResponseBase:
     """Run *prompt* as *target* in a thread delegated from *session*.
 
-    The part of ``delegate_to_expert`` after its checks, shared with
-    ``hire_handoff`` so a task handed to a new hire runs exactly like any
-    other delegation: same thread provenance, permissions, mode and result
-    contract. The caller has already resolved *target* and cleared
-    ``chain_refusal``.
+    The part of ``delegate_to_expert`` after its checks. The caller has
+    already resolved *target* and cleared ``chain_refusal``.
     """
     inner_session_id = await _resolve_session(
         user_id=user_id,
@@ -249,7 +256,37 @@ async def start_delegation(
     )
     if isinstance(inner_session_id, ErrorResponse):
         return inner_session_id
+    return await run_delegated_turn(
+        user_id=user_id,
+        session=session,
+        target=target,
+        inner_session_id=inner_session_id,
+        prompt=prompt,
+        system_context=system_context,
+        opened_here=not delegated_session_id,
+        wait_for_result=wait_for_result,
+    )
 
+
+async def run_delegated_turn(
+    *,
+    user_id: str,
+    session: ChatSession,
+    target: Expert,
+    inner_session_id: str,
+    prompt: str,
+    system_context: str = "",
+    opened_here: bool,
+    wait_for_result: int,
+) -> ToolResponseBase:
+    """Queue *prompt* on a delegation thread and report what happened.
+
+    Shared with ``hire_handoff``, which opens the thread itself first
+    (``open_delegation_thread``) so it always knows where a task went, so a
+    task handed to a new hire runs exactly like any other delegation: same
+    provenance, permissions, mode and result contract. ``opened_here``
+    drops a thread this call opened when its turn never reached it.
+    """
     caller = await _caller_name(user_id, session.expert_id)
     started_at = time.monotonic()
     outcome, result = await run_copilot_turn_via_queue(
@@ -268,7 +305,7 @@ async def start_delegation(
         message_metadata=sent_from_metadata(session, caller),
     )
     elapsed = time.monotonic() - started_at
-    discarded = not delegated_session_id and await discard_unused_sub_session(
+    discarded = opened_here and await discard_unused_sub_session(
         inner_session_id, user_id, outcome
     )
     if discarded:
@@ -327,22 +364,7 @@ async def _resolve_session(
     guessing an id.
     """
     if not delegated_session_id:
-        new_session = await create_chat_session(
-            user_id,
-            dry_run=session.dry_run,
-            llm_auth_provider=session.metadata.llm_auth_provider,
-            llm_credential_id=session.metadata.llm_credential_id,
-            expert_id=target.id,
-            delegated_by_expert_id=session.expert_id,
-            delegated_by_session_id=session.session_id,
-            origin=child_session_origin(session.metadata),
-            # Decided here, from the expert row already in hand, so the
-            # thread cannot pick up a looser default written in between.
-            inherited_autopilot_mode=child_autopilot_mode(
-                session, target.autopilot_mode
-            ),
-        )
-        return new_session.session_id
+        return await open_delegation_thread(user_id, session, target)
 
     prior = await get_chat_session(delegated_session_id)
     if (
@@ -370,6 +392,26 @@ async def _resolve_session(
             session,
         )
     return delegated_session_id
+
+
+async def open_delegation_thread(
+    user_id: str, session: ChatSession, target: Expert
+) -> str:
+    """Open a fresh thread for *target*, delegated from *session*."""
+    new_session = await create_chat_session(
+        user_id,
+        dry_run=session.dry_run,
+        llm_auth_provider=session.metadata.llm_auth_provider,
+        llm_credential_id=session.metadata.llm_credential_id,
+        expert_id=target.id,
+        delegated_by_expert_id=session.expert_id,
+        delegated_by_session_id=session.session_id,
+        origin=child_session_origin(session.metadata),
+        # Decided here, from the expert row already in hand, so the
+        # thread cannot pick up a looser default written in between.
+        inherited_autopilot_mode=child_autopilot_mode(session, target.autopilot_mode),
+    )
+    return new_session.session_id
 
 
 async def _caller_name(user_id: str, caller_expert_id: str | None) -> str:

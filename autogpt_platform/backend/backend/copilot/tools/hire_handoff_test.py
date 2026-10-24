@@ -11,6 +11,7 @@ twice. Only the queue, the session store and the roster are faked.
 
 import json
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -75,7 +76,7 @@ def _template():
     )
 
 
-def _hired():
+def _hired(*, paused: bool = False):
     return SimpleNamespace(
         id="exp-james",
         name="James",
@@ -88,21 +89,29 @@ def _hired():
         avatar_url=None,
         color="amber-300",
         is_archived=False,
-        schedules_paused_at=None,
+        schedules_paused_at=datetime(2026, 10, 1, tzinfo=UTC) if paused else None,
         autopilot_mode=None,
     )
 
 
 @contextmanager
-def _env(*, turn_outcome: str = "running"):
+def _env(
+    *,
+    turn_outcome: str = "running",
+    turn_error: Exception | None = None,
+    paused: bool = False,
+):
+    hired = _hired(paused=paused)
     db = MagicMock()
     db.list_templates = AsyncMock(return_value=[_template()])
     db.count_active_experts = AsyncMock(return_value=0)
-    db.hire_expert = AsyncMock(return_value=SimpleNamespace(expert=_hired()))
-    db.get_expert = AsyncMock(return_value=_hired())
-    db.list_experts = AsyncMock(return_value=[_hired()])
+    db.hire_expert = AsyncMock(return_value=SimpleNamespace(expert=hired))
+    db.get_expert = AsyncMock(return_value=hired)
+    db.list_experts = AsyncMock(return_value=[hired])
     redis = AsyncMock(return_value=_FakeRedis())
-    turn = AsyncMock(return_value=(turn_outcome, SessionResult()))
+    turn = AsyncMock(
+        side_effect=turn_error, return_value=(turn_outcome, SessionResult())
+    )
     created = []
 
     async def create_session(user_id, **kwargs):
@@ -259,6 +268,66 @@ class TestHireAndHandOffInOneApproval:
         # Already approved on the card: retry it, don't ask again in prose.
         assert "delegate_to_expert" in resp.message
         assert "exp-james" in resp.message
+
+
+class TestHandOffOnlyClaimsWhatHappened:
+    """Review findings on the first cut (Capy, Sentry): the card and Otto
+    must never be told "started" or "retry" when that is not what happened."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_paused_expert_is_not_handed_the_task(self):
+        """Re-hiring a template returns the existing hire unchanged, paused
+        or not; a paused teammate takes no delegated work, here as in
+        delegate_to_expert."""
+        with _env(paused=True) as env:
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        env.turn.assert_not_called()
+        assert env.created == []
+        assert resp.handoff is not None
+        assert resp.handoff.status == "failed"
+        assert "paused" in resp.message
+        # Nothing to retry until the user resumes them.
+        assert "delegate_to_expert" not in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_task_waiting_for_a_slot_is_queued_not_started(self):
+        with _env(turn_outcome="queued_for_slot") as env:
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        env.turn.assert_awaited_once()
+        assert resp.handoff is not None
+        assert resp.handoff.status == "queued"
+        assert resp.handoff.link == "/copilot?sessionId=thread-1"
+        assert "started" not in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_error_after_the_thread_opened_is_reported_unconfirmed(self):
+        """Once the thread exists the task may already be running, so an
+        error from then on must point at that thread, never ask for a second
+        delegation that would run the task twice."""
+        with _env(turn_error=RuntimeError("redis blip")) as env:
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert len(env.created) == 1
+        assert resp.handoff is not None
+        assert resp.handoff.status == "unconfirmed"
+        assert resp.handoff.sub_session_id == "thread-1"
+        assert resp.handoff.link == "/copilot?sessionId=thread-1"
+        assert "thread-1" in resp.message
+        assert "delegate_to_expert" not in resp.message
 
 
 class TestHandOffTaskValidation:
