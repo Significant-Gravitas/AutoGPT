@@ -1,21 +1,15 @@
-import { useListDelegations } from "@/app/api/__generated__/endpoints/experts/experts";
-import { okData } from "@/app/api/helpers";
+import { useDelegationPages } from "../../../components/DelegationList/useDelegationPages";
+import { getDelegationTotal } from "../../../components/DelegationList/helpers";
 
 /** The hand-offs Otto (or a teammate) gave this expert, newest first. */
 export function useExpertHandoffs(expertId: string) {
-  const query = useListDelegations(
-    { expert_id: expertId },
-    { query: { select: (res) => okData(res) ?? null } },
-  );
-  const delegations = query.data?.delegations ?? [];
+  const pages = useDelegationPages({ expertId });
 
   return {
-    delegations,
-    isWorkingForOtto: delegations.some(
+    ...pages,
+    total: pages.summary ? getDelegationTotal(pages.summary) : 0,
+    isWorkingForOtto: pages.delegations.some(
       (d) => d.status === "running" && !d.delegated_by_expert_id,
     ),
-    isLoading: query.isLoading,
-    isError: query.isError && !query.data,
-    refetch: query.refetch,
   };
 }

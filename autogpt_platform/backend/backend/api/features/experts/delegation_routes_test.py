@@ -119,6 +119,7 @@ def test_the_list_passes_its_filters_for_the_caller(
             "expert_id": "e1",
             "parent_session_id": "s1",
             "status": "running",
+            "group": "working",
             "offset": 20,
         },
     )
@@ -130,6 +131,7 @@ def test_the_list_passes_its_filters_for_the_caller(
         expert_id="e1",
         parent_session_id="s1",
         status="running",
+        group="working",
         limit=50,
         offset=20,
     )
@@ -137,5 +139,11 @@ def test_the_list_passes_its_filters_for_the_caller(
 
 def test_an_unknown_status_filter_is_refused():
     response = client.get("/experts/delegations", params={"status": "sleeping"})
+
+    assert response.status_code == 422
+
+
+def test_an_unknown_group_filter_is_refused():
+    response = client.get("/experts/delegations", params={"group": "asleep"})
 
     assert response.status_code == 422

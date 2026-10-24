@@ -53,18 +53,23 @@ async def get_session_costs(user_id: str, session_ids: list[str]) -> dict[str, i
     return {str(row["session_id"]): int(row["total"] or 0) for row in rows}
 
 
-async def get_delegation_spend_since(user_id: str, since: datetime) -> int:
-    """Microdollars *user_id*'s delegated threads have logged since *since*."""
+async def get_delegation_spend_since(
+    user_id: str, since: datetime, expert_id: str | None = None
+) -> int:
+    """Microdollars *user_id*'s delegated threads (only *expert_id*'s, when
+    given) have logged since *since*."""
     rows = await db.query_raw_with_schema(
         'SELECT COALESCE(SUM(l."costMicrodollars"), 0)::bigint AS total '
         'FROM {schema_prefix}"PlatformCostLog" l '
         'JOIN {schema_prefix}"ChatSession" s ON s."id" = l."chatSessionId" '
         'WHERE l."userId" = $1 AND s."userId" = $1 '
         # The column holds UTC without a zone; the driver binds timestamptz.
-        "AND l.\"createdAt\" >= ($2::timestamptz AT TIME ZONE 'UTC') AND "
+        "AND l.\"createdAt\" >= ($2::timestamptz AT TIME ZONE 'UTC') "
+        'AND ($3::text IS NULL OR s."expertId" = $3) AND '
         + delegated_session_sql("s."),
         user_id,
         since,
+        expert_id,
     )
     return int(rows[0]["total"] or 0) if rows else 0
 

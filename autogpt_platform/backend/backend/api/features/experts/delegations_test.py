@@ -296,6 +296,46 @@ async def test_a_status_filter_reaches_past_the_newest_page(team):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_group_filter_takes_every_status_its_chip_shows(team):
+    """The lists filter by chip: Needs you is a held card or a question,
+    Failed is a failure or a stop, and an old match is found past page one."""
+    user_id, expert_id, otto = team
+    ids = await _seed(user_id, expert_id, otto)
+
+    needs_you = await list_delegations(user_id, group="needs_you")
+    failed = await list_delegations(user_id, group="failed", limit=1, offset=1)
+    asked = await list_delegations(user_id, group="needs_you", status="needs_input")
+
+    assert [r.status for r in needs_you.delegations] == ["proposed", "needs_input"]
+    assert needs_you.total == needs_you.summary.needs_you == 2
+    assert [r.sub_session_id for r in failed.delegations] == [ids["failed"]]
+    assert failed.total == failed.summary.failed == 2
+    assert [r.status for r in asked.delegations] == ["needs_input"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_summary_counts_the_hand_offs_started_today(team):
+    """Counted in SQL, so a long history does not hide today's."""
+    user_id, expert_id, otto = team
+    await _seed(user_id, expert_id, otto)
+    await ChatSession.prisma().create(
+        data={
+            "id": str(uuid.uuid4()),
+            "userId": user_id,
+            "expertId": expert_id,
+            "credentials": SafeJson({}),
+            "metadata": SafeJson(
+                {"delegated_by_session_id": otto, "delegated_by_expert_id": None}
+            ),
+        }
+    )
+
+    response = await list_delegations(user_id, limit=1)
+
+    assert response.summary.started_today == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_pages_walk_the_merged_list_with_one_total(team):
     user_id, expert_id, otto = team
     await _seed(user_id, expert_id, otto)

@@ -61,6 +61,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import { format, subDays } from "date-fns";
+import { noDelegations } from "../../autopilot/__tests__/delegationFixtures";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { heldRead } from "@/app/(platform)/copilot/components/ApprovalQueue/__tests__/fixtures";
 import ExpertDetailPage from "../page";
@@ -222,6 +223,7 @@ beforeEach(() => {
     getGetHomeDashboardMockHandler(
       getGetHomeDashboardResponseMock200({ attention: [] }),
     ),
+    noDelegations(),
     getGetExpertMockHandler(maria),
     getListMyExpertMemoryFactsMockHandler200({
       expert_id: maria.id,
@@ -308,6 +310,7 @@ describe("ExpertDetailPage", () => {
 
   test("shows the expert's integrations beside the category chip", async () => {
     server.use(
+      noDelegations(),
       getGetExpertMockHandler(() => ({
         ...maria,
         categories: ["marketing"],
@@ -463,6 +466,7 @@ describe("ExpertDetailPage", () => {
     const deleted: string[] = [];
     let removed = false;
     server.use(
+      noDelegations(),
       getGetExpertMockHandler(() =>
         removed ? { ...maria, workflows: [maria.workflows[1]] } : maria,
       ),
@@ -591,6 +595,7 @@ describe("ExpertDetailPage", () => {
 
   test("shows expert-owned skill metadata without claiming it belongs to the personal library", async () => {
     server.use(
+      noDelegations(),
       getGetExpertMockHandler(() => ({ ...maria, skills: ["expert-only"] })),
       getListCopilotSkillsMockHandler200(({ request }) =>
         new URL(request.url).searchParams.get("expert_id") === maria.id
@@ -616,6 +621,7 @@ describe("ExpertDetailPage", () => {
 
   test("falls back to the library entry for an expert assigned a skill before it owned one", async () => {
     server.use(
+      noDelegations(),
       getGetExpertMockHandler(() => ({
         ...maria,
         skills: ["content-strategy"],
@@ -652,6 +658,7 @@ describe("ExpertDetailPage", () => {
     const puts: ExpertSkillsUpdate[] = [];
     let skills = ["Content strategy"];
     server.use(
+      noDelegations(),
       getGetExpertMockHandler(() => ({ ...maria, skills })),
       getListCopilotSkillsMockHandler200([
         {
@@ -736,6 +743,7 @@ describe("ExpertDetailPage", () => {
       ...hubSkillHandlers(installs, () => {
         skills = ["seo-audit"];
       }),
+      noDelegations(),
       getGetExpertMockHandler(() => ({ ...maria, skills })),
     );
     render(<ExpertDetailPage />);
@@ -780,6 +788,7 @@ describe("ExpertDetailPage", () => {
     const puts: ExpertSkillsUpdate[] = [];
     let skills = ["Content strategy"];
     server.use(
+      noDelegations(),
       getGetExpertMockHandler(() => ({ ...maria, skills })),
       getListCopilotSkillsMockHandler200([]),
       getUpdateExpertSkillsMockHandler200(async ({ request }) => {
@@ -1026,6 +1035,7 @@ describe("ExpertDetailPage", () => {
   test("paused expert offers one-click resume", async () => {
     const resumeSpy = vi.fn(() => ({ ...maria, schedules_paused_at: null }));
     server.use(
+      noDelegations(),
       getGetExpertMockHandler({
         ...maria,
         schedules_paused_at: new Date("2026-08-03T12:00:00Z"),

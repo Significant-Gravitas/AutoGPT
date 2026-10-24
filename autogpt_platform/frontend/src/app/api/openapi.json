@@ -7775,6 +7775,23 @@
             }
           },
           {
+            "name": "group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["needs_you", "working", "completed", "failed"],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
+              "description": "Only this group: needs_you, working, ...",
+              "title": "Group"
+            },
+            "description": "Only this group: needs_you, working, ..."
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -23800,6 +23817,11 @@
           "needs_you": { "type": "integer", "title": "Needs You" },
           "completed": { "type": "integer", "title": "Completed" },
           "failed": { "type": "integer", "title": "Failed" },
+          "started_today": {
+            "type": "integer",
+            "title": "Started Today",
+            "default": 0
+          },
           "spent_today_usd": { "type": "number", "title": "Spent Today Usd" }
         },
         "type": "object",

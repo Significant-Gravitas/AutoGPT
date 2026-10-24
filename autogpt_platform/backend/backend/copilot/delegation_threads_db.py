@@ -6,6 +6,7 @@ Deriving it in the query lets a status filter, a page and the counts all see
 the same rows, instead of filtering a page that was already cut.
 """
 
+from datetime import datetime
 from typing import Literal
 
 from prisma.models import ChatSession as PrismaChatSession
@@ -65,24 +66,40 @@ async def list_delegated_threads(
     user_id: str,
     filters: DelegationFilter,
     *,
-    status: ThreadStatus | None = None,
+    statuses: list[ThreadStatus] | None = None,
     limit: int = 50,
 ) -> list[DelegatedThread]:
-    """The newest *limit* delegated threads matching *filters* and *status*."""
+    """The newest *limit* delegated threads matching *filters*, in any of
+    *statuses* (every status when None)."""
     rows = await db.query_raw_with_schema(
-        _THREADS + 'SELECT "id", status FROM d WHERE ($7::text IS NULL OR '
-        'status = $7) ORDER BY "createdAt" DESC LIMIT $8',
+        _THREADS + 'SELECT "id", status FROM d WHERE ($7::text[] IS NULL OR '
+        'status = ANY($7::text[])) ORDER BY "createdAt" DESC LIMIT $8',
         *_params(user_id, filters),
-        status,
+        statuses,
         limit,
     )
-    statuses: dict[str, ThreadStatus] = {str(r["id"]): r["status"] for r in rows}
-    sessions = await _sessions(user_id, list(statuses))
+    found: dict[str, ThreadStatus] = {str(r["id"]): r["status"] for r in rows}
+    sessions = await _sessions(user_id, list(found))
     return [
         DelegatedThread(session=sessions[sid], status=state)
-        for sid, state in statuses.items()
+        for sid, state in found.items()
         if sid in sessions
     ]
+
+
+async def count_threads_started_since(
+    user_id: str, filters: DelegationFilter, since: datetime
+) -> int:
+    """How many delegated threads matching *filters* started at or after
+    *since*."""
+    rows = await db.query_raw_with_schema(
+        _THREADS + "SELECT COUNT(*) AS n FROM d "
+        # The column holds UTC without a zone; the driver binds timestamptz.
+        "WHERE \"createdAt\" >= ($7::timestamptz AT TIME ZONE 'UTC')",
+        *_params(user_id, filters),
+        since,
+    )
+    return int(rows[0]["n"]) if rows else 0
 
 
 async def count_delegated_threads(

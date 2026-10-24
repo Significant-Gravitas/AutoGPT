@@ -8,7 +8,7 @@ the last message is a reply, a failure, or a stop.
 """
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ValidationError
 
@@ -21,6 +21,7 @@ from backend.copilot.delegation_threads_db import (
     DelegationFilter,
     ThreadStatus,
     count_delegated_threads,
+    count_threads_started_since,
     list_delegated_threads,
 )
 from backend.copilot.gate.handoff import HandoffCard
@@ -36,6 +37,15 @@ DelegationStatus = Literal[
     "failed",
     "cancelled",
 ]
+# The groups the lists filter by, matching the summary's counts.
+DelegationGroup = Literal["needs_you", "working", "completed", "failed"]
+GROUP_STATUSES: dict[DelegationGroup, frozenset[DelegationStatus]] = {
+    "needs_you": frozenset({"proposed", "needs_input"}),
+    "working": frozenset({"queued", "running"}),
+    "completed": frozenset({"completed"}),
+    "failed": frozenset({"failed", "cancelled"}),
+}
+_THREAD_STATUSES: tuple[ThreadStatus, ...] = get_args(ThreadStatus)
 _MICRODOLLARS = 1_000_000
 _TITLE_CHARS = 80
 _TERMINAL: frozenset[str] = frozenset(
@@ -68,6 +78,8 @@ class DelegationCounts(BaseModel):
     needs_you: int
     completed: int
     failed: int
+    # Hand-offs started since UTC midnight, and what they spent.
+    started_today: int = 0
     spent_today_usd: float
 
 
@@ -84,6 +96,7 @@ async def list_delegations(
     expert_id: str | None = None,
     parent_session_id: str | None = None,
     status: DelegationStatus | None = None,
+    group: DelegationGroup | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> DelegationListResponse:
@@ -91,27 +104,43 @@ async def list_delegations(
 
     Every filter runs in SQL, so a page is cut from matching rows only;
     ``total`` counts every match, and ``summary`` every hand-off in scope
-    whatever the ``status`` filter and page.
+    whatever the ``status`` / ``group`` filter and page.
     """
     scope = DelegationFilter(expert_id=expert_id, parent_session_id=parent_session_id)
+    statuses = _statuses(status, group)
     window = offset + limit
     held = (
         await delegation_list_db.list_held_handoffs(user_id, scope, limit=window)
-        if status in (None, "proposed")
+        if statuses is None or "proposed" in statuses
         else []
     )
+    thread_statuses: list[ThreadStatus] | None = (
+        None if statuses is None else [t for t in _THREAD_STATUSES if t in statuses]
+    )
     threads = (
-        await list_delegated_threads(user_id, scope, status=status, limit=window)
-        if status != "proposed"
+        await list_delegated_threads(
+            user_id, scope, statuses=thread_statuses, limit=window
+        )
+        if thread_statuses is None or thread_statuses
         else []
     )
     counts = await count_delegated_threads(user_id, scope)
     held_count = await delegation_list_db.count_held_handoffs(user_id, scope)
     return DelegationListResponse(
         delegations=await _page(user_id, held, threads, offset, window),
-        total=_total(counts, held_count, status),
-        summary=await _summary_counts(user_id, counts, held_count),
+        total=_total(counts, held_count, statuses),
+        summary=await _summary_counts(user_id, scope, counts, held_count),
     )
+
+
+def _statuses(
+    status: DelegationStatus | None, group: DelegationGroup | None
+) -> frozenset[DelegationStatus] | None:
+    """The statuses both filters allow; None when neither is set."""
+    if group is None:
+        return None if status is None else frozenset({status})
+    allowed = GROUP_STATUSES[group]
+    return allowed if status is None else allowed & {status}
 
 
 class _Candidate(BaseModel):
@@ -159,7 +188,7 @@ def _proposals(held: list[HeldHandoff]) -> list[DelegationSummary]:
 async def delegated_questions(user_id: str, limit: int = 10) -> list[DelegationSummary]:
     """Delegated threads paused on a question to the user, newest first."""
     threads = await list_delegated_threads(
-        user_id, DelegationFilter(), status="needs_input", limit=limit
+        user_id, DelegationFilter(), statuses=["needs_input"], limit=limit
     )
     return await summarize_threads(user_id, threads)
 
@@ -295,24 +324,36 @@ def _proposal(held: HeldHandoff) -> DelegationSummary | None:
 
 
 def _total(
-    counts: dict[ThreadStatus, int], held: int, status: DelegationStatus | None
+    counts: dict[ThreadStatus, int],
+    held: int,
+    statuses: frozenset[DelegationStatus] | None,
 ) -> int:
-    if status is None:
+    if statuses is None:
         return held + sum(counts.values())
-    if status == "proposed":
-        return held
-    return counts.get(status, 0)
+    threads = sum(n for status, n in counts.items() if status in statuses)
+    return threads + (held if "proposed" in statuses else 0)
 
 
 async def _summary_counts(
-    user_id: str, counts: dict[ThreadStatus, int], held: int
+    user_id: str,
+    scope: DelegationFilter,
+    counts: dict[ThreadStatus, int],
+    held: int,
 ) -> DelegationCounts:
-    spent = await delegation_db.get_delegation_spend_since(user_id, start_of_utc_day())
+    today = start_of_utc_day()
+    spent = await delegation_db.get_delegation_spend_since(
+        user_id, today, scope.expert_id
+    )
+    started = await count_threads_started_since(user_id, scope, today)
+    held_today = await delegation_list_db.count_held_handoffs(
+        user_id, scope, since=today
+    )
     return DelegationCounts(
         working=counts.get("running", 0) + counts.get("queued", 0),
         needs_you=counts.get("needs_input", 0) + held,
         completed=counts.get("completed", 0),
-        failed=counts.get("failed", 0),
+        failed=counts.get("failed", 0) + counts.get("cancelled", 0),
+        started_today=started + held_today,
         spent_today_usd=round(spent / _MICRODOLLARS, 6),
     )
 

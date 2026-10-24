@@ -10,7 +10,12 @@ import { getListCopilotSkillsMockHandler200 } from "@/app/api/__generated__/endp
 import type { DelegationSettings } from "@/app/api/__generated__/models/delegationSettings";
 import type { DelegationSummary } from "@/app/api/__generated__/models/delegationSummary";
 import type { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
+import type { DelegationCounts } from "@/app/api/__generated__/models/delegationCounts";
 import { server } from "@/mocks/mock-server";
+import {
+  type DelegationFilter,
+  filterDelegations,
+} from "../../components/DelegationList/helpers";
 
 const NOW = new Date();
 const YESTERDAY = new Date(NOW.getTime() - 26 * 60 * 60 * 1000);
@@ -96,16 +101,13 @@ export function mockOttoApi() {
       },
     } as LibraryAgentResponse),
     getListCopilotSkillsMockHandler200([]),
-    getListDelegationsMockHandler200({
-      delegations: DELEGATIONS,
-      total: DELEGATIONS.length,
-      summary: {
-        working: 1,
-        needs_you: 1,
-        completed: 1,
-        failed: 1,
-        spent_today_usd: 0.4,
-      },
+    listDelegationsLikeTheServer(DELEGATIONS, {
+      working: 1,
+      needs_you: 1,
+      completed: 1,
+      failed: 1,
+      started_today: 3,
+      spent_today_usd: 0.4,
     }),
     getGetDelegationSettingsMockHandler200(() => current),
     getUpdateDelegationSettingsMockHandler200(async ({ request }) => {
@@ -115,4 +117,39 @@ export function mockOttoApi() {
     }),
   );
   return { saved };
+}
+
+/** The list endpoint as the server answers it: filtered by ``group`` and
+ *  cut to ``offset``/``limit``, with counts over every hand-off. */
+export function listDelegationsLikeTheServer(
+  rows: DelegationSummary[],
+  summary: DelegationCounts,
+  onRequest?: () => void,
+) {
+  return getListDelegationsMockHandler200(({ request }) => {
+    onRequest?.();
+    const params = new URL(request.url).searchParams;
+    const group = (params.get("group") ?? "all") as DelegationFilter;
+    const offset = Number(params.get("offset") ?? 0);
+    const limit = Number(params.get("limit") ?? 50);
+    const matching = filterDelegations(rows, group);
+    return {
+      delegations: matching.slice(offset, offset + limit),
+      total: matching.length,
+      summary,
+    };
+  });
+}
+
+/** No hand-offs: registered ahead of `/experts/:expertId`, which would
+ *  otherwise answer `/experts/delegations` with an expert. */
+export function noDelegations() {
+  return listDelegationsLikeTheServer([], {
+    working: 0,
+    needs_you: 0,
+    completed: 0,
+    failed: 0,
+    started_today: 0,
+    spent_today_usd: 0,
+  });
 }

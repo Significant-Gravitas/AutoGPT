@@ -115,13 +115,9 @@ export default function AutopilotPage() {
 
         <TabsLineContent value="delegations">
           <AutopilotDelegationsSection
-            delegations={delegations.delegations}
-            summary={delegations.summary}
+            pages={delegations}
             todayCount={delegations.todayCount}
             mode={delegations.mode}
-            isLoading={delegations.isLoading}
-            isError={delegations.isError}
-            onRetry={() => void delegations.refetch()}
             onChangeMode={() => onTabChange("settings")}
           />
         </TabsLineContent>

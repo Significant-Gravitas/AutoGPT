@@ -4,6 +4,7 @@ import {
   filterDelegations,
   formatDelegationDay,
   formatDelegationTime,
+  getDelegationTotal,
   getExpertSummaryLine,
   getHandoffMeta,
   getOttoSummaryLine,
@@ -68,25 +69,21 @@ describe("delegation list helpers", () => {
     );
   });
 
-  it("sums up Otto's day and an expert's week", () => {
-    expect(
-      getOttoSummaryLine(3, {
-        working: 2,
-        needs_you: 1,
-        completed: 0,
-        failed: 0,
-        spent_today_usd: 0.4,
-      }),
-    ).toBe("3 delegations today · 2 working · 1 needs you · $0.40 spent");
-    expect(
-      getExpertSummaryLine(
-        [
-          delegation({ cost_usd: 1 }),
-          delegation({ status: "failed", cost_usd: 0.67 }),
-          delegation({ created_at: at(9) }),
-        ],
-        NOW,
-      ),
-    ).toBe("2 delegations this week · 1 done · 1 failed · $1.67 spent");
+  it("sums up Otto's day and an expert's hand-offs from the server's counts", () => {
+    const summary = {
+      working: 2,
+      needs_you: 1,
+      completed: 4,
+      failed: 1,
+      started_today: 3,
+      spent_today_usd: 0.4,
+    };
+    expect(getOttoSummaryLine(3, summary)).toBe(
+      "3 delegations today · 2 working · 1 needs you · $0.40 spent",
+    );
+    expect(getDelegationTotal(summary)).toBe(8);
+    expect(getExpertSummaryLine(summary)).toBe(
+      "8 delegations · 4 done · 1 failed · $0.40 spent today",
+    );
   });
 });

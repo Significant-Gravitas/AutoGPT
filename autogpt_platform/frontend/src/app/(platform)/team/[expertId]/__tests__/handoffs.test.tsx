@@ -1,7 +1,6 @@
 import {
   getGetExpertActivityMockHandler,
   getGetExpertMockHandler,
-  getListDelegationsMockHandler200,
   getListExpertRunsMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
@@ -10,6 +9,11 @@ import {
 } from "@/app/api/__generated__/endpoints/home/home.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { DelegationSummary } from "@/app/api/__generated__/models/delegationSummary";
+import { listDelegationsLikeTheServer } from "../../autopilot/__tests__/delegationFixtures";
+import {
+  type DelegationGroup,
+  getDelegationGroup,
+} from "../../components/DelegationList/helpers";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
 import {
@@ -73,25 +77,27 @@ function handoff(over: Partial<DelegationSummary>): DelegationSummary {
   };
 }
 
-function withHandoffs(delegations: DelegationSummary[]) {
+function withHandoffs(delegations: DelegationSummary[], spentToday = 0) {
   const listed = vi.fn();
   server.use(
-    getListDelegationsMockHandler200(() => {
-      listed();
-      return {
-        delegations,
-        total: delegations.length,
-        summary: {
-          working: 0,
-          needs_you: 0,
-          completed: 0,
-          failed: 0,
-          spent_today_usd: 0,
-        },
-      };
-    }),
+    listDelegationsLikeTheServer(
+      delegations,
+      {
+        working: count(delegations, "working"),
+        needs_you: count(delegations, "needs_you"),
+        completed: count(delegations, "completed"),
+        failed: count(delegations, "failed"),
+        started_today: 0,
+        spent_today_usd: spentToday,
+      },
+      listed,
+    ),
   );
   return listed;
+}
+
+function count(rows: DelegationSummary[], group: DelegationGroup) {
+  return rows.filter((row) => getDelegationGroup(row.status) === group).length;
 }
 
 beforeEach(() => {
@@ -107,24 +113,27 @@ beforeEach(() => {
 });
 
 describe("an expert's hand-offs from Otto", () => {
-  test("lists them on the Overview with the week's summary", async () => {
-    withHandoffs([
-      handoff({}),
-      handoff({
-        sub_session_id: "sub-2",
-        title: "Roadmap re-prioritisation",
-        brief: "Stopped before the scoring step.",
-        status: "failed",
-        created_at: LAST_WEEK,
-        elapsed_seconds: 250,
-        cost_usd: 1.36,
-        files_count: 0,
-      }),
-    ]);
+  test("lists them on the Overview with the server's summary", async () => {
+    withHandoffs(
+      [
+        handoff({}),
+        handoff({
+          sub_session_id: "sub-2",
+          title: "Roadmap re-prioritisation",
+          brief: "Stopped before the scoring step.",
+          status: "failed",
+          created_at: LAST_WEEK,
+          elapsed_seconds: 250,
+          cost_usd: 1.36,
+          files_count: 0,
+        }),
+      ],
+      1.67,
+    );
     render(<ExpertDetailPage />);
 
     expect((await screen.findByTestId("handoffs-summary")).textContent).toBe(
-      "2 delegations this week · 1 done · 1 failed · $1.67 spent",
+      "2 delegations · 1 done · 1 failed · $1.67 spent today",
     );
     expect(screen.getByText("All from Otto")).toBeDefined();
     const rows = within(
@@ -159,11 +168,13 @@ describe("an expert's hand-offs from Otto", () => {
     fireEvent.click(
       within(filters).getByRole("button", { name: "In progress" }),
     );
+    await waitFor(() =>
+      expect(screen.queryByText("Onboarding revamp PRD")).toBeNull(),
+    );
     expect(screen.getByText("Launch checklist")).toBeDefined();
-    expect(screen.queryByText("Onboarding revamp PRD")).toBeNull();
 
     fireEvent.click(within(filters).getByRole("button", { name: "Failed" }));
-    expect(screen.getByText("Nothing here right now.")).toBeDefined();
+    expect(await screen.findByText("Nothing here right now.")).toBeDefined();
   });
 
   test("says Working for Otto in the header while a hand-off runs", async () => {

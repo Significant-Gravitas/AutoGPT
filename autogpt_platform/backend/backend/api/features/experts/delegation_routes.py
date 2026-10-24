@@ -10,6 +10,7 @@ from fastapi import APIRouter, Query, Security
 
 from backend.api.features.experts import delegations
 from backend.api.features.experts.delegations import (
+    DelegationGroup,
     DelegationListResponse,
     DelegationStatus,
 )
@@ -47,6 +48,9 @@ async def list_delegations(
         default=None, description="Only hand-offs made from this chat"
     ),
     status: DelegationStatus | None = Query(default=None),
+    group: DelegationGroup | None = Query(
+        default=None, description="Only this group: needs_you, working, ..."
+    ),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=10_000),
     user_id: str = Security(get_user_id),
@@ -58,6 +62,7 @@ async def list_delegations(
         expert_id=expert_id,
         parent_session_id=parent_session_id,
         status=status,
+        group=group,
         limit=limit,
         offset=offset,
     )

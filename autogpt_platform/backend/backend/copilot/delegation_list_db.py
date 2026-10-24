@@ -109,10 +109,18 @@ async def list_held_handoffs(
     ]
 
 
-async def count_held_handoffs(user_id: str, filters: DelegationFilter) -> int:
+async def count_held_handoffs(
+    user_id: str, filters: DelegationFilter, *, since: datetime | None = None
+) -> int:
+    """Hand-offs waiting on their card; only those held at or after *since*
+    when given."""
     rows = await db.query_raw_with_schema(
-        'SELECT COUNT(*) AS n FROM {schema_prefix}"PendingHumanReview" ' + _HELD,
+        'SELECT COUNT(*) AS n FROM {schema_prefix}"PendingHumanReview" ' + _HELD
+        # The column holds UTC without a zone; the driver binds timestamptz.
+        + "AND ($5::timestamptz IS NULL OR "
+        "\"createdAt\" >= ($5::timestamptz AT TIME ZONE 'UTC')) ",
         *_held_params(user_id, filters),
+        since,
     )
     return int(rows[0]["n"]) if rows else 0
 

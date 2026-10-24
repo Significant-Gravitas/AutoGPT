@@ -17,18 +17,17 @@ interface Props {
 /** On the Overview, once Otto has handed this expert anything: an expert
  *  nobody delegated to keeps the page it had. */
 export function ExpertHandoffsSection({ expertId, expertName }: Props) {
-  const { delegations, isLoading, isError, refetch } =
-    useExpertHandoffs(expertId);
-  if (isLoading || (!isError && delegations.length === 0)) return null;
+  const pages = useExpertHandoffs(expertId);
+  if (pages.isLoading || (!pages.isError && pages.total === 0)) return null;
   const allFromOtto =
-    delegations.length > 0 &&
-    delegations.every((d) => !d.delegated_by_expert_id);
+    pages.delegations.length > 0 &&
+    pages.delegations.every((d) => !d.delegated_by_expert_id);
 
   return (
     <section aria-label="Hand-offs from Otto" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
         <Text variant="body" tone="primary" data-testid="handoffs-summary">
-          {isError ? "Hand-offs" : getExpertSummaryLine(delegations)}
+          {pages.summary ? getExpertSummaryLine(pages.summary) : "Hand-offs"}
         </Text>
         {allFromOtto ? (
           <Text variant="small" as="span" tone="muted">
@@ -38,13 +37,10 @@ export function ExpertHandoffsSection({ expertId, expertName }: Props) {
       </div>
       <DelegationList
         label="Hand-offs"
-        delegations={delegations}
+        pages={pages}
         filters={EXPERT_DELEGATION_FILTERS}
         getMeta={(delegation) => getHandoffMeta(delegation)}
         emptyMessage={`Nothing handed to ${expertName} yet. Work Otto delegates shows up here.`}
-        isLoading={false}
-        isError={isError}
-        onRetry={() => void refetch()}
       />
     </section>
   );

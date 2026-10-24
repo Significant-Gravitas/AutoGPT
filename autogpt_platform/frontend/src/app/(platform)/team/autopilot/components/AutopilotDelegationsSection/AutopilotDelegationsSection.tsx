@@ -1,11 +1,12 @@
 "use client";
 
 import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
-import type { DelegationCounts } from "@/app/api/__generated__/models/delegationCounts";
-import type { DelegationSummary } from "@/app/api/__generated__/models/delegationSummary";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { DelegationList } from "../../../components/DelegationList/DelegationList";
+import {
+  DelegationList,
+  type DelegationPages,
+} from "../../../components/DelegationList/DelegationList";
 import {
   getDelegationMeta,
   getModeLabel,
@@ -14,27 +15,20 @@ import {
 } from "../../../components/DelegationList/helpers";
 
 interface Props {
-  delegations: DelegationSummary[];
-  summary: DelegationCounts | null;
+  pages: DelegationPages;
   todayCount: number;
   mode: string | null;
-  isLoading: boolean;
-  isError: boolean;
-  onRetry: () => void;
   onChangeMode: () => void;
 }
 
 export function AutopilotDelegationsSection({
-  delegations,
-  summary,
+  pages,
   todayCount,
   mode,
-  isLoading,
-  isError,
-  onRetry,
   onChangeMode,
 }: Props) {
   const modeLabel = getModeLabel(mode);
+  const summary = pages.summary;
 
   return (
     <section className="flex flex-col gap-4 pt-2">
@@ -66,13 +60,10 @@ export function AutopilotDelegationsSection({
 
       <DelegationList
         label="Delegations"
-        delegations={delegations}
+        pages={pages}
         filters={OTTO_DELEGATION_FILTERS}
         getMeta={getDelegationMeta}
         emptyMessage="No hand-offs yet. When Otto hands work to an expert, it shows up here."
-        isLoading={isLoading}
-        isError={isError}
-        onRetry={onRetry}
       />
     </section>
   );

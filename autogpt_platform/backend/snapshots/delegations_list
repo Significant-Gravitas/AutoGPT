@@ -150,9 +150,10 @@
   ],
   "summary": {
     "completed": 1,
-    "failed": 1,
+    "failed": 2,
     "needs_you": 2,
     "spent_today_usd": 0.31,
+    "started_today": 0,
     "working": 1
   }
 }

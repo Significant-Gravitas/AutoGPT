@@ -125,14 +125,6 @@ export function formatDelegationDay(value: Date | string, now = new Date()) {
   return formatDelegationTime(at, now);
 }
 
-export function isToday(value: Date | string, now = new Date()) {
-  return daysAgo(new Date(value), now) === 0;
-}
-
-export function isThisWeek(value: Date | string, now = new Date()) {
-  return daysAgo(new Date(value), now) < 7;
-}
-
 const STATE_WORDS: Partial<Record<DelegationSummaryStatus, string>> = {
   proposed: "waiting for your approval",
   needs_input: "asked a question",
@@ -222,20 +214,21 @@ export function getOttoSummaryLine(
     .join(" · ");
 }
 
-/** "5 delegations this week · 4 done · 1 failed · $1.67 spent". */
-export function getExpertSummaryLine(
-  delegations: DelegationSummary[],
-  now = new Date(),
-) {
-  const week = delegations.filter((d) => isThisWeek(d.created_at, now));
-  const done = week.filter((d) => d.status === "completed").length;
-  const failed = week.filter((d) => d.status === "failed").length;
-  const spent = week.reduce((sum, d) => sum + (d.cost_usd ?? 0), 0);
+/** Every hand-off the counts cover. */
+export function getDelegationTotal(summary: DelegationCounts) {
+  return (
+    summary.working + summary.needs_you + summary.completed + summary.failed
+  );
+}
+
+/** "5 delegations · 4 done · 1 failed · $1.67 spent today", counted on the
+ *  server over every hand-off this expert was given. */
+export function getExpertSummaryLine(summary: DelegationCounts) {
   return [
-    `${plural(week.length, "delegation")} this week`,
-    done > 0 ? `${done} done` : null,
-    failed > 0 ? `${failed} failed` : null,
-    `${formatUsd(spent)} spent`,
+    plural(getDelegationTotal(summary), "delegation"),
+    summary.completed > 0 ? `${summary.completed} done` : null,
+    summary.failed > 0 ? `${summary.failed} failed` : null,
+    `${formatUsd(summary.spent_today_usd)} spent today`,
   ]
     .filter(Boolean)
     .join(" · ");

@@ -1,42 +1,33 @@
 "use client";
 
 import type { DelegationSummary } from "@/app/api/__generated__/models/delegationSummary";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { useState } from "react";
 import { DelegationFilterChips } from "./DelegationFilterChips";
 import { DelegationListRow } from "./DelegationListRow";
-import {
-  type DelegationFilter,
-  type DelegationFilterOption,
-  filterDelegations,
-  getDelegationKey,
-} from "./helpers";
+import { type DelegationFilterOption, getDelegationKey } from "./helpers";
+import type { useDelegationPages } from "./useDelegationPages";
+
+export type DelegationPages = ReturnType<typeof useDelegationPages>;
 
 interface Props {
   label: string;
-  delegations: DelegationSummary[];
+  pages: DelegationPages;
   filters: DelegationFilterOption[];
   getMeta: (delegation: DelegationSummary) => string;
   emptyMessage: string;
-  isLoading: boolean;
-  isError: boolean;
-  onRetry: () => void;
 }
 
 export function DelegationList({
   label,
-  delegations,
+  pages,
   filters,
   getMeta,
   emptyMessage,
-  isLoading,
-  isError,
-  onRetry,
 }: Props) {
-  const [filter, setFilter] = useState<DelegationFilter>("all");
-  const visible = filterDelegations(delegations, filter);
+  const { filter, delegations: visible, isLoading, isError } = pages;
 
   if (isLoading) {
     return (
@@ -52,7 +43,7 @@ export function DelegationList({
       <ErrorCard
         context="hand-offs"
         hint="We could not load the hand-offs."
-        onRetry={onRetry}
+        onRetry={() => void pages.refetch()}
       />
     );
   }
@@ -63,7 +54,7 @@ export function DelegationList({
         label={`Filter ${label.toLowerCase()}`}
         options={filters}
         value={filter}
-        onChange={setFilter}
+        onChange={pages.setFilter}
       />
       {visible.length === 0 ? (
         <Text variant="body" tone="muted" className="px-1 py-6">
@@ -81,6 +72,17 @@ export function DelegationList({
           ))}
         </ul>
       )}
+      {pages.hasMore ? (
+        <Button
+          variant="secondary"
+          size="small"
+          className="self-center"
+          loading={pages.isLoadingMore}
+          onClick={pages.loadMore}
+        >
+          Show more
+        </Button>
+      ) : null}
     </div>
   );
 }

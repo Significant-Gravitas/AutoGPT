@@ -7,13 +7,18 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import AutopilotPage from "../page";
-import { mockOttoApi } from "./delegationFixtures";
+import {
+  delegation,
+  listDelegationsLikeTheServer,
+  mockOttoApi,
+} from "./delegationFixtures";
 
 // The tabs live in ?tab=; a remembering adapter keeps a clicked tab open.
 function renderPage() {
@@ -92,25 +97,77 @@ describe("Otto's Delegations tab", () => {
       name: "Filter delegations",
     });
 
+    function rowTexts() {
+      return within(screen.getByRole("list", { name: "Delegations" }))
+        .getAllByRole("listitem")
+        .map((row) => row.textContent);
+    }
+
     fireEvent.click(within(filters).getByRole("button", { name: "Needs you" }));
-    let rows = within(
-      screen.getByRole("list", { name: "Delegations" }),
-    ).getAllByRole("listitem");
-    expect(rows.map((row) => row.textContent)).toEqual([
-      expect.stringContaining("Retention policy check"),
-    ]);
+    await waitFor(() =>
+      expect(rowTexts()).toEqual([
+        expect.stringContaining("Retention policy check"),
+      ]),
+    );
 
     fireEvent.click(within(filters).getByRole("button", { name: "Working" }));
-    rows = within(
-      screen.getByRole("list", { name: "Delegations" }),
-    ).getAllByRole("listitem");
-    expect(rows.map((row) => row.textContent)).toEqual([
-      expect.stringContaining("Eng estimate for onboarding revamp"),
-    ]);
+    await waitFor(() =>
+      expect(rowTexts()).toEqual([
+        expect.stringContaining("Eng estimate for onboarding revamp"),
+      ]),
+    );
 
     fireEvent.click(within(filters).getByRole("button", { name: "Failed" }));
-    expect(screen.getByText("Partner outreach list")).toBeDefined();
+    expect(await screen.findByText("Partner outreach list")).toBeDefined();
     expect(screen.queryByText("Onboarding revamp PRD")).toBeNull();
+  });
+
+  test("finds an old hand-off waiting on the user, and shows more on request", async () => {
+    const recent = Array.from({ length: 55 }, (_, i) =>
+      delegation({
+        sub_session_id: `done-${i}`,
+        title: `Finished task ${i}`,
+        status: "completed",
+      }),
+    );
+    const waiting = delegation({
+      sub_session_id: "old-question",
+      title: "Pricing page copy",
+      status: "needs_input",
+      question: "Annual or monthly first?",
+    });
+    server.use(
+      listDelegationsLikeTheServer([...recent, waiting], {
+        working: 0,
+        needs_you: 1,
+        completed: 55,
+        failed: 0,
+        started_today: 56,
+        spent_today_usd: 0,
+      }),
+    );
+    renderPage();
+    await openTab("Delegations");
+    const list = await screen.findByRole("list", { name: "Delegations" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(50);
+    expect(screen.queryByText("Pricing page copy")).toBeNull();
+
+    // Past the first page, yet Needs you finds it: the server filters.
+    const filters = screen.getByRole("group", { name: "Filter delegations" });
+    fireEvent.click(within(filters).getByRole("button", { name: "Needs you" }));
+    expect(await screen.findByText("Pricing page copy")).toBeDefined();
+
+    fireEvent.click(within(filters).getByRole("button", { name: "All" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("list", { name: "Delegations" })).getAllByRole(
+          "listitem",
+        ),
+      ).toHaveLength(56),
+    );
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(screen.getByText("56 delegations today")).toBeDefined();
   });
 
   test("says so when Otto has not handed anything off", async () => {

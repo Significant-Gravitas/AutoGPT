@@ -1,6 +1,5 @@
 import {
   getGetExpertMockHandler,
-  getListDelegationsMockHandler200,
   getListExpertCredentialsMockHandler,
   getListExpertRunsMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
@@ -20,6 +19,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { noDelegations } from "../../autopilot/__tests__/delegationFixtures";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ExpertDetailPage from "../page";
 
@@ -110,6 +110,7 @@ beforeEach(() => {
     getGetHomeDashboardMockHandler(
       getGetHomeDashboardResponseMock200({ attention: [] }),
     ),
+    noDelegations(),
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertRunsMockHandler([]),
@@ -191,8 +192,7 @@ describe("managing an expert's integrations", () => {
     let revoked: string | null = null;
     let expertReads = 0;
     server.use(
-      // Ahead of the expert handler, whose :expertId would also match it.
-      getListDelegationsMockHandler200(),
+      noDelegations(),
       getGetExpertMockHandler(() => {
         expertReads += 1;
         return maria;
@@ -737,6 +737,7 @@ describe("managing an expert's integrations", () => {
     server.use(
       // The grant is what lets the backend create the schedule this
       // workflow was waiting on, so the expert itself changes too.
+      noDelegations(),
       getGetExpertMockHandler(() => ({
         ...maria,
         workflows: [
