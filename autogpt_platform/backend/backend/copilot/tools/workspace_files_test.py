@@ -667,6 +667,45 @@ async def test_read_workspace_file_redirects_sdk_tool_result_shorthand(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+class TestWriteWorkspaceFileToolWorkingFiles:
+    """The write reports what the workspace marked, for the activity log."""
+
+    async def _write(self, filename: str, is_internal: bool):
+        session = make_session("user-1")
+        record = WorkspaceFile(
+            id="file-1",
+            workspace_id="ws-1",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            name=filename,
+            path=f"/sessions/{session.session_id}/{filename}",
+            storage_path="local://file-1",
+            mime_type="application/json",
+            size_bytes=2,
+            is_internal=is_internal,
+        )
+        mock_manager = AsyncMock()
+        mock_manager.write_file = AsyncMock(return_value=record)
+        with patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=mock_manager),
+        ):
+            tool = WriteWorkspaceFileTool()
+            result = await tool._execute(
+                user_id="user-1", session=session, filename=filename, content="{}"
+            )
+        return tool.activity_event(session=session, result=result, filename=filename)
+
+    async def test_a_working_file_leaves_no_activity(self):
+        assert await self._write("build_state.json", is_internal=True) is None
+
+    async def test_a_deliverable_is_reported(self):
+        draft = await self._write("sticker-catalog.json", is_internal=False)
+
+        assert draft is not None
+        assert draft.title == "sticker-catalog.json"
+
+
 class TestWriteWorkspaceFileToolErrorHandling:
     """Verify WriteWorkspaceFileTool returns proper ErrorResponse for exceptions."""
 
