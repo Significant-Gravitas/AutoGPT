@@ -138,11 +138,45 @@ describe("card decision lines", () => {
     // A subtask's prompt arrives as a user row tagged with where it came from.
     const prompt: Message = {
       ...userRow("Approved: hire Maya (confirmation_id: c-1)."),
-      metadata: { sent_from: { session_id: "s-parent" } },
+      metadata: {
+        from_session_id: "6f1c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10",
+        from_expert_id: null,
+      },
     };
 
     expect(getCardDecisions(prompt)).toBeNull();
     expect(getAnsweredCards([prompt]).size).toBe(0);
+  });
+
+  it("reads a decision queued behind a running turn, whose row carries the queue's metadata", () => {
+    const queued: Message = {
+      ...userRow("Approved: hire Maya (confirmation_id: c-1)."),
+      metadata: { cost_context: {}, llm_auth_provider: "platform" },
+    };
+
+    expect(getCardDecisions(queued)).toEqual([
+      {
+        verdict: "approved",
+        verb: "hire",
+        name: "Maya",
+        confirmationId: "c-1",
+      },
+    ]);
+    expect(getAnsweredCards([queued]).get("c-1")?.verdict).toBe("approved");
+  });
+
+  it.each([
+    ["a held call's result", { held_call: { review_id: "r1" } }],
+    ["an answered-approvals wake", { held_calls_answered: 1 }],
+    ["a hidden kickoff", { hidden: true, kind: "expert_kickoff" }],
+  ])("leaves %s as it is", (_, metadata) => {
+    const row: Message = {
+      ...userRow("Approved: hire Maya (confirmation_id: c-1)."),
+      metadata,
+    };
+
+    expect(getCardDecisions(row)).toBeNull();
+    expect(getAnsweredCards([row]).size).toBe(0);
   });
 
   it("leaves a decision in other words as the user's message", () => {

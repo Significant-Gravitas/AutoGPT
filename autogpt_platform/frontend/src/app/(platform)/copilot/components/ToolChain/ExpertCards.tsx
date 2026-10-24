@@ -25,7 +25,7 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { AnsweredCardsContext } from "./AnsweredCardsContext";
-import { isAnsweredOnServer } from "./answeredOnServer";
+import { answeredIdsOnServer } from "./answeredOnServer";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 
@@ -625,24 +625,23 @@ export function ExpertChangeGroup({
   async function send() {
     if (!actions || sent) return;
     setSent(true);
-    const message = open
+    // A tab opened before another one answered still shows the buttons: it
+    // sends only what is still open, and shows the rest as answered.
+    const answeredNow = actions.sessionId
+      ? await answeredIdsOnServer(actions.sessionId)
+      : null;
+    const toSend = answeredNow
+      ? open.filter((proposal) => !answeredNow.has(proposal.confirmationId))
+      : open;
+    if (toSend.length === 0) {
+      actions.onBackendTurn?.();
+      return;
+    }
+    const message = toSend
       .map((proposal) =>
         decisionLine({ ...proposal, decision: decisions[proposal.toolCallId] }),
       )
       .join("\n");
-    // A tab opened before another one answered still shows the buttons: it
-    // shows that answer instead of sending a second.
-    if (
-      actions.sessionId &&
-      actions.onBackendTurn &&
-      (await isAnsweredOnServer(
-        actions.sessionId,
-        open.map((proposal) => proposal.confirmationId),
-      ))
-    ) {
-      actions.onBackendTurn();
-      return;
-    }
     // The card stays marked sent because the message is already in the
     // thread for Retry — the failure only needs saying.
     void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>

@@ -67,6 +67,29 @@ const hireCard: Message = {
   ],
 };
 
+// Two hires in one turn, one card that pages between them.
+const teamCard: Message = {
+  id: `${SESSION_ID}-seq-2`,
+  role: "assistant",
+  parts: [
+    hireCard.parts[0],
+    {
+      type: "tool-hire_expert",
+      toolCallId: "call-hire-theo",
+      state: "output-available",
+      input: { template_id: "tpl-ops" },
+      output: {
+        type: "expert_change_proposed",
+        message: "Nothing hired yet.",
+        session_id: SESSION_ID,
+        applied: false,
+        confirmation_id: "c-theo",
+        preview: { kind: "hire", name: "Theo", role: "Ops" },
+      },
+    } as ToolUIPart,
+  ],
+};
+
 function userRow(text: string, metadata?: unknown): Message {
   return {
     id: `${SESSION_ID}-seq-3`,
@@ -310,6 +333,38 @@ describe("a proposal card the chat already answered", () => {
     await user.dblClick(screen.getByRole("button", { name: "Send decisions" }));
 
     expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("in a stale tab, sends only the decisions another tab has not given", async () => {
+    server.use(
+      storedSession([
+        {
+          role: "user",
+          content: `Approved: hire Maya (confirmation_id: ${CONFIRMATION_ID}).`,
+        },
+      ]),
+    );
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onBackendTurn = vi.fn();
+    render(
+      <Chat
+        messages={[ask, teamCard]}
+        onSend={onSend}
+        onBackendTurn={onBackendTurn}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Decline" }));
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith(
+        "Approved: hire Theo (confirmation_id: c-theo).",
+      ),
+    );
+    expect(onBackendTurn).not.toHaveBeenCalled();
   });
 
   it("in a stale tab, shows the answer another tab gave instead of sending a second", async () => {

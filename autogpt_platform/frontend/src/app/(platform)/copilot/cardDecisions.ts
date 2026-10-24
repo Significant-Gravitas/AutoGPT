@@ -60,11 +60,11 @@ const DECLINED_SUBJECT_RE =
 export function getCardDecisions(
   message: UIMessage<unknown, UIDataTypes, UITools>,
 ): CardDecision[] | null {
-  if (message.role !== "user") return null;
+  if (message.role !== "user" || isServerWritten(message.metadata)) return null;
   if (message.parts.some((part) => part.type !== "text")) return null;
-  const decisions = message.metadata
-    ? decisionsFromMetadata(message.metadata)
-    : decisionsFromText(messageText(message));
+  const decisions =
+    decisionsFromMetadata(message.metadata) ??
+    decisionsFromText(messageText(message));
   // The card always names the change; a line in other words is shown as typed.
   if (!decisions?.every((decision) => decision.verb && decision.name))
     return null;
@@ -169,11 +169,30 @@ export function answeredIdsInRows(rows: unknown[]): Set<string> {
 }
 
 // Every decision line in a row, not only a row made of them, as for the gate.
-// A row the server wrote for something else, such as a subtask's prompt, is
-// not the user answering, whatever its text says.
 function rowDecisions(metadata: unknown, text: string): CardDecision[] {
-  if (metadata) return decisionsFromMetadata(metadata) ?? [];
-  return text.split("\n").flatMap(parseLine);
+  if (isServerWritten(metadata)) return [];
+  return decisionsFromMetadata(metadata) ?? text.split("\n").flatMap(parseLine);
+}
+
+// A user-role row the server wrote for something else is not the user
+// answering, whatever its text says: a delegated or subtask prompt, a held
+// call's rows, a hidden control turn. A row queued behind a running turn
+// carries the queue's own metadata and is still the user's. The backend's
+// card_decided.is_server_written reads rows the same way.
+const SERVER_WRITTEN_KEYS = [
+  "from_session_id",
+  "held_call",
+  "held_calls_answered",
+];
+
+function isServerWritten(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== "object") return false;
+  const value = metadata as Record<string, unknown>;
+  return (
+    SERVER_WRITTEN_KEYS.some((key) => key in value) ||
+    value.hidden === true ||
+    (value.kind !== undefined && value.kind !== CARD_DECISION_KIND)
+  );
 }
 
 const GERUNDS: Record<DecisionVerb, string> = {
