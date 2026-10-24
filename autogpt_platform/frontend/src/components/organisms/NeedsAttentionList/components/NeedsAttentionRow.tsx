@@ -52,7 +52,10 @@ export function NeedsAttentionRow({
           />
         </AttentionCard.Icon>
         <AttentionCard.Content asChild>
-          <Link href={getReviewLink(review)} data-slot="needs-attention-row-link">
+          <Link
+            href={getReviewLink(review)}
+            data-slot="needs-attention-row-link"
+          >
             <Text variant="body-medium" className="truncate">
               {title}
             </Text>
