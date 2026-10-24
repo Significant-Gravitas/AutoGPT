@@ -7,6 +7,7 @@ import {
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
+import { containsLikelySecret } from "@/lib/secret-detection";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -43,6 +44,7 @@ import { ConnectionPickerDialog } from "./components/ConnectionPicker/Connection
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { SecretPasteNotice } from "./components/SecretPasteNotice";
 import { StopButton } from "./components/StopButton";
 import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
@@ -491,6 +493,9 @@ export const ChatInput = memo(function ChatInput({
         )}
         {atReset && hasAttachments && (
           <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
+        )}
+        {containsLikelySecret(value) && (
+          <SecretPasteNotice className={stacked ? undefined : "mt-1.5"} />
         )}
         <FileChips
           attachments={attachments}
