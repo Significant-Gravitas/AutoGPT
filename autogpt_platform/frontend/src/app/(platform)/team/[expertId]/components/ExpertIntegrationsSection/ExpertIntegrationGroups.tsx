@@ -108,7 +108,10 @@ export function ExpertIntegrationGroups({
             className="w-full overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
           >
             <AccordionItem value={group.id} className="border-b-0">
-              <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary">
+              <AccordionTrigger
+                textSize="body-md"
+                className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary"
+              >
                 <div className="flex items-center gap-2.5">
                   <IntegrationLogo
                     provider={group.icon}
@@ -129,7 +132,7 @@ export function ExpertIntegrationGroups({
                   </Text>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-0 pb-0 pt-0">
+              <AccordionContent textSize="body-md" className="px-0 pb-0 pt-0">
                 <div className="flex flex-col divide-y divide-separator border-t border-border-base">
                   {group.integrations.map((integration) => (
                     <ExpertIntegrationRow
