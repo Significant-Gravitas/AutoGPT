@@ -549,8 +549,12 @@ class WorkspaceManager:
             f"Wrote skill package {publication.file.path} ({len(stored)} files, "
             f"{len(removed)} removed) to workspace {self.workspace_id}"
         )
+        # Package files are the skills registry's, not the user's to find.
         for blob in stored:
-            self._schedule_embedding(blob.file_id, blob.name, blob.path)
+            if not is_internal_workspace_file(
+                name=blob.name, path=blob.path, metadata=blob.metadata
+            ):
+                self._schedule_embedding(blob.file_id, blob.name, blob.path)
         return publication.file
 
     async def _discard_unpublished(

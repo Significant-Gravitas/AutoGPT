@@ -76,6 +76,7 @@ def _make_file_mock(**overrides) -> MagicMock:
         "size_bytes": 100,
         "folder_id": None,
         "metadata": {},
+        "is_internal": False,
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
     defaults.update(overrides)
@@ -126,6 +127,33 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
         root_only=False,
         include_internal=False,
     )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_include_internal_opts_into_skill_files(
+    mock_manager_cls, mock_get_workspace
+):
+    """Skill packages and Otto's working files are left out unless asked for,
+    and each listed file says whether it is one."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = [
+        _make_file(id="f1", name="dewleaf-launch-brief.md"),
+        _make_file(
+            id="f2",
+            name="SKILL.md",
+            path="/experts/e1/skills/copywriting/SKILL.md",
+            is_internal=True,
+        ),
+    ]
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files", params={"include_internal": "true"})
+
+    assert response.status_code == 200
+    assert [f["is_internal"] for f in response.json()["files"]] == [False, True]
+    assert mock_instance.list_files.call_args.kwargs["include_internal"] is True
 
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
@@ -944,8 +972,9 @@ def test_get_storage_usage_returns_tier_based_limit(mocker):
         return_value=_make_workspace(),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=100 * 1024 * 1024,  # 100 MB used
+        "backend.api.features.workspace.routes.get_workspace_size_breakdown",
+        # 100 MB used, 3 MB of it skills and working files
+        return_value=(100 * 1024 * 1024, 3 * 1024 * 1024),
     )
     count = mocker.patch(
         "backend.api.features.workspace.routes.count_workspace_files",
@@ -962,6 +991,8 @@ def test_get_storage_usage_returns_tier_based_limit(mocker):
     assert data["limit_bytes"] == 1024 * 1024 * 1024
     assert data["used_bytes"] == 100 * 1024 * 1024
     assert data["file_count"] == 5
+    # Skills and working files still use the quota, and are named apart.
+    assert data["internal_bytes"] == 3 * 1024 * 1024
     # The count is of the files the user sees, not Otto's working files.
     assert count.call_args.kwargs == {"include_internal": False}
 

@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableHead,
   TableBody,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/components/TablePrimitives";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { ChevronDown, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
