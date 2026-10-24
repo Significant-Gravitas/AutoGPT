@@ -1,8 +1,11 @@
+import { getGetV2ListChatConnectionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import type { AIConnectionOffersResponse } from "@/app/api/__generated__/models/aIConnectionOffersResponse";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
+import { useState, type ReactNode } from "react";
 import { useCopilotUIStore } from "../../../../store";
 import { ConnectionPicker } from "./ConnectionPicker";
 
@@ -42,6 +45,22 @@ const offersHandler = http.get("*/api/chat/connections", () =>
   HttpResponse.json<AIConnectionOffersResponse>({ offers: [PLATFORM_OFFER] }),
 );
 
+interface FreshConnectionsProps {
+  children: ReactNode;
+}
+
+// Storybook shares one query client across stories, so the offers one story
+// loaded would otherwise answer the next story's request (and hide its error).
+function FreshConnections({ children }: FreshConnectionsProps) {
+  const queryClient = useQueryClient();
+  useState(() =>
+    queryClient.removeQueries({
+      queryKey: getGetV2ListChatConnectionsQueryKey(),
+    }),
+  );
+  return children;
+}
+
 const meta: Meta<typeof ConnectionPicker> = {
   title: "Copilot/ConnectionPicker",
   component: ConnectionPicker,
@@ -57,11 +76,13 @@ const meta: Meta<typeof ConnectionPicker> = {
   },
   decorators: [
     (Story) => (
-      <TooltipProvider>
-        <div className="pt-12">
-          <Story />
-        </div>
-      </TooltipProvider>
+      <FreshConnections>
+        <TooltipProvider>
+          <div className="pt-12">
+            <Story />
+          </div>
+        </TooltipProvider>
+      </FreshConnections>
     ),
   ],
 };
@@ -87,4 +108,33 @@ export const AdvancedTier: Story = {
       return <Story />;
     },
   ],
+};
+
+export const Unavailable: Story = {
+  name: "Connections unavailable (request failed)",
+  parameters: {
+    msw: {
+      handlers: [
+        http.get("*/api/chat/connections", () =>
+          HttpResponse.json(
+            { detail: "Connections are unavailable right now." },
+            { status: 500 },
+          ),
+        ),
+      ],
+    },
+  },
+};
+
+export const NoConnections: Story = {
+  name: "No connections (set up link)",
+  parameters: {
+    msw: {
+      handlers: [
+        http.get("*/api/chat/connections", () =>
+          HttpResponse.json<AIConnectionOffersResponse>({ offers: [] }),
+        ),
+      ],
+    },
+  },
 };
