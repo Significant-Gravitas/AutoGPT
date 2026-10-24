@@ -158,7 +158,7 @@ describe("first-run walkthrough", () => {
   it("explains the trial allowance on the wallet step", async () => {
     renderTour();
     openTour();
-    act(() => useFirstRunTourStore.getState().goTo(3));
+    act(() => useFirstRunTourStore.getState().goTo("allowance"));
 
     expect(
       await screen.findByText(
@@ -173,6 +173,55 @@ describe("first-run walkthrough", () => {
     openTour();
 
     expect(await screen.findByText("1 of 4")).toBeDefined();
+  });
+
+  it("stays on the same step when billing turns out to be on mid-walkthrough", async () => {
+    billing.enabled = false;
+    const { rerender } = renderTour();
+    openTour();
+    for (let i = 0; i < 3; i++)
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Next" }),
+      );
+    expect(await screen.findByText("4 of 4")).toBeDefined();
+
+    billing.enabled = true;
+    rerender(
+      <SidebarProvider defaultOpen={false}>
+        <SidebarState />
+        <Targets />
+        <FirstRunTour />
+      </SidebarProvider>,
+    );
+
+    expect(await screen.findByText("5 of 5")).toBeDefined();
+    expect(screen.getByRole("dialog", { name: "Start here" })).toBeDefined();
+  });
+
+  it("carries on to the next step when the one showing drops out", async () => {
+    const { rerender } = renderTour();
+    openTour();
+    for (let i = 0; i < 3; i++)
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Next" }),
+      );
+    expect(
+      await screen.findByRole("dialog", {
+        name: "Keep an eye on your allowance",
+      }),
+    ).toBeDefined();
+
+    billing.enabled = false;
+    rerender(
+      <SidebarProvider defaultOpen={false}>
+        <SidebarState />
+        <Targets />
+        <FirstRunTour />
+      </SidebarProvider>,
+    );
+
+    expect(await screen.findByText("4 of 4")).toBeDefined();
+    expect(screen.getByRole("dialog", { name: "Start here" })).toBeDefined();
   });
 
   it("opens the collapsed sidebar, where a new account's wallet is hidden", async () => {
@@ -201,7 +250,7 @@ describe("first-run walkthrough", () => {
   it("says the first tasks are on their way when they have not landed yet", async () => {
     renderTour(["chats", "team", "files", "wallet"]);
     openTour();
-    act(() => useFirstRunTourStore.getState().goTo(4));
+    act(() => useFirstRunTourStore.getState().goTo("start"));
 
     expect(
       await screen.findByText(
@@ -252,7 +301,7 @@ describe("first-run walkthrough", () => {
   it("offers Connect your tools on the last step, after which the walkthrough is done", async () => {
     renderTour();
     openTour();
-    act(() => useFirstRunTourStore.getState().goTo(4));
+    act(() => useFirstRunTourStore.getState().goTo("start"));
 
     await userEvent.click(
       await screen.findByRole("button", {

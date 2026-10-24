@@ -99,7 +99,7 @@ describe("AccountMenu", () => {
     );
 
     expect(useFirstRunTourStore.getState().source).toBe("menu");
-    expect(useFirstRunTourStore.getState().stepIndex).toBe(0);
+    expect(useFirstRunTourStore.getState().stepID).toBeNull();
     act(() => useFirstRunTourStore.getState().close());
   });
 

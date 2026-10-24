@@ -9,7 +9,7 @@ import { useUsageExperience } from "@/services/usageExperience/useUsageExperienc
 import { useEffect } from "react";
 import { setFirstRunTourSeen } from "./helpers";
 import { focusStartingPoint } from "./focusStartingPoint";
-import { getAvailableSteps, getStepBody } from "./steps";
+import { findStepIndex, getAvailableSteps, getStepBody } from "./steps";
 import { useFirstRunTourStore } from "./store";
 import type { MeasuredStop } from "./useTourStops";
 
@@ -27,7 +27,7 @@ export function useFirstRunTour() {
   const { experience } = useUsageExperience();
   const isBillingEnabled = useIsBillingEnabled();
   const source = useFirstRunTourStore((state) => state.source);
-  const stepIndex = useFirstRunTourStore((state) => state.stepIndex);
+  const stepID = useFirstRunTourStore((state) => state.stepID);
   const goTo = useFirstRunTourStore((state) => state.goTo);
   const close = useFirstRunTourStore((state) => state.close);
   const setConnectToolsOpen = useFirstRunTourStore(
@@ -36,7 +36,7 @@ export function useFirstRunTour() {
 
   const isOpen = source !== null;
   const steps = getAvailableSteps({ isBillingEnabled });
-  const safeIndex = Math.min(stepIndex, steps.length - 1);
+  const safeIndex = findStepIndex(steps, stepID);
   const step = isOpen ? steps[safeIndex] : null;
   const isLastStep = safeIndex === steps.length - 1;
   const context = { isTrial: experience.isActiveTrial };
@@ -97,8 +97,8 @@ export function useFirstRunTour() {
     trackStep,
     bodyFor: (index: number, stop: MeasuredStop | undefined) =>
       getStepBody(steps[index], stop?.target ?? null, context),
-    next: () => (isLastStep ? startHere() : goTo(safeIndex + 1)),
-    back: () => goTo(Math.max(safeIndex - 1, 0)),
+    next: () => (isLastStep ? startHere() : goTo(steps[safeIndex + 1].id)),
+    back: () => goTo(steps[Math.max(safeIndex - 1, 0)].id),
     skip: () => finish("skipped"),
     startHere,
     connectToolsFirst,

@@ -116,6 +116,20 @@ export function getAvailableSteps({ isBillingEnabled }: TourAvailability) {
   return isBillingEnabled ? TOUR_STEPS : STEPS_WITHOUT_BILLING;
 }
 
+// Where a step sits in this list. The list can change under an open
+// walkthrough (the billing flag answering late), so the walkthrough holds
+// on to a step, not a position. A step that dropped out hands over to the
+// next one still in the list.
+export function findStepIndex(steps: TourStep[], stepID: string | null) {
+  const index = steps.findIndex((step) => step.id === stepID);
+  if (stepID === null || index !== -1) return Math.max(index, 0);
+  const order = TOUR_STEPS.findIndex((step) => step.id === stepID);
+  const next = steps.findIndex(
+    (step) => TOUR_STEPS.findIndex(({ id }) => id === step.id) > order,
+  );
+  return next === -1 ? steps.length - 1 : next;
+}
+
 // One step as a list, for the hook that measures lists of targets. Cached so
 // the same step always hands over the same array.
 const stepLists = new WeakMap<TourStep, TourStep[]>();
