@@ -20,14 +20,7 @@ class RegistryCacheTests(unittest.TestCase):
     def test_pull_requests_read_but_never_write_registry_cache(self):
         self.assertEqual(
             self.settings("pull_request", "refs/pull/1/merge"),
-            [
-                f"{target}.cache-from=type=registry,ref={IMAGE}:v4-amd64"
-                for target in (
-                    "backend-server-base",
-                    "backend-server",
-                    "single-container",
-                )
-            ],
+            [f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64"],
         )
         self.assertFalse(
             any("cache-to" in s for s in self.settings("pull_request", arch="arm64"))
@@ -73,17 +66,29 @@ class RegistryCacheTests(unittest.TestCase):
             self.settings("workflow_dispatch", "refs/heads/two"),
         )
 
-    def test_every_bake_target_reads_the_validation_cache(self):
+    def test_only_the_final_bake_target_reads_the_validation_cache(self):
+        # The helper targets' stages are part of the single-container build, so
+        # they are still served from its cache. A helper reading the cache
+        # itself can own the shared import, and its short-lived session then
+        # breaks the final build's layer pulls ("no active session").
         bake = (
             SCRIPT.parents[2] / "autogpt_platform/single-container/docker-bake.hcl"
         ).read_text(encoding="utf-8")
         targets = re.findall(r'^target "([^"]+)"', bake, re.MULTILINE)
-        self.assertIn("backend-server-base", targets)
-        settings = self.settings("push")
-        for target in targets:
+        helpers = [target for target in targets if target != "single-container"]
+        self.assertIn("backend-server-base", helpers)
+        for helper in helpers:
+            self.assertIn(f'"target:{helper}"', bake)
+        for event in ("push", "pull_request", "workflow_dispatch"):
+            settings = self.settings(event)
             self.assertIn(
-                f"{target}.cache-from=type=registry,ref={IMAGE}:v4-amd64", settings
+                f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64",
+                settings,
             )
+            for helper in helpers:
+                self.assertFalse(
+                    any(s.startswith(f"{helper}.") for s in settings), settings
+                )
 
     def test_validation_cache_reads_are_architecture_scoped(self):
         settings = self.settings("release", "refs/tags/v1")
