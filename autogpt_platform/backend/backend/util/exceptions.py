@@ -360,3 +360,8 @@ class ExpertRunPausedError(ValueError):
 
 class ConflictError(Exception):
     """The request lost to a concurrent change of the same resource; retrying may succeed."""
+
+
+class EmailUndeliverableError(ValueError):
+    """The mail provider won't deliver to this address (an earlier hard bounce,
+    spam complaint or suppression), so retrying the send can't succeed."""
