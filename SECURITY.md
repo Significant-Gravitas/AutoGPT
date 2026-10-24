@@ -231,5 +231,3 @@ Accepted reporter, finder and analyst credits on published advisories:
 These previously published acknowledgments are retained separately from the generated list.
 
 - Jiaqi Luo ([@lhahah](https://github.com/lhahah))
-
-**Last updated: October 2026**

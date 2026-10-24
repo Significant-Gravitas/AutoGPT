@@ -421,6 +421,12 @@ class ReleaseWriterTests(unittest.TestCase):
             "body": "# Features\nOriginal\n",
         }
         self.digest = sync.snapshot_digest(self.snapshot)
+        self.write_environment = {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_REPOSITORY": api.REPOSITORY,
+            "GITHUB_REF": "refs/heads/master",
+            "GH_TOKEN": CANARY,
+        }
         sleep = patch.object(publish.time, "sleep")
         sleep.start()
         self.addCleanup(sleep.stop)
@@ -546,18 +552,52 @@ class ReleaseWriterTests(unittest.TestCase):
         self.assertNotIn(CANARY, str(raised.exception))
 
     def test_cli_refuses_writes_outside_trusted_workflow(self):
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}), patch(
+        for key, value in (
+            ("GITHUB_ACTIONS", "false"),
+            ("GITHUB_REPOSITORY", "different/repository"),
+            ("GITHUB_REF", "refs/heads/dev"),
+            ("GH_TOKEN", None),
+            ("GH_TOKEN", ""),
+        ):
+            environment = self.write_environment.copy()
+            if value is None:
+                del environment[key]
+            else:
+                environment[key] = value
+            with self.subTest(key=key, value=value):
+                output = io.StringIO()
+                with patch.dict(os.environ, environment, clear=True), patch(
+                    "sys.argv", ["publish", "--expected-digest", self.digest, "--apply"]
+                ), patch.object(
+                    publish, "update_releases"
+                ) as update, contextlib.redirect_stdout(
+                    output
+                ), contextlib.redirect_stderr(
+                    output
+                ), self.assertRaises(
+                    SystemExit
+                ) as raised:
+                    publish.main()
+                update.assert_not_called()
+                self.assertEqual(raised.exception.code, 1)
+                self.assertIn(
+                    api.PublicErrorCode.WRITE_CONTEXT.value, output.getvalue()
+                )
+                self.assertNotIn(CANARY, output.getvalue())
+
+    def test_cli_allows_writes_with_complete_trusted_context(self):
+        result = {"changed_releases": 0, "immutable_releases_skipped": 0}
+        with patch.dict(os.environ, self.write_environment, clear=True), patch(
             "sys.argv", ["publish", "--expected-digest", self.digest, "--apply"]
         ), patch.object(
-            publish, "update_releases"
-        ) as update, contextlib.redirect_stderr(
+            publish, "update_releases", return_value=result
+        ) as update, contextlib.redirect_stdout(
             io.StringIO()
-        ) as stderr, self.assertRaises(
-            SystemExit
-        ):
+        ) as output:
             publish.main()
-        update.assert_not_called()
-        self.assertNotIn(CANARY, stderr.getvalue())
+        update.assert_called_once_with(self.digest, apply=True)
+        self.assertEqual(json.loads(output.getvalue()), result)
+        self.assertNotIn(CANARY, output.getvalue())
 
 
 if __name__ == "__main__":
