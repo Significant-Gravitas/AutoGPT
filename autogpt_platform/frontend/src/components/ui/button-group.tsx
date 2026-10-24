@@ -48,7 +48,7 @@ function ButtonGroupText({
   return (
     <Comp
       className={cn(
-        "shadow-xs flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-100 px-4 text-sm font-medium dark:border-neutral-800 dark:bg-neutral-800 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
+        "shadow-xs flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-100 px-4 text-body font-medium leading-5 dark:border-neutral-800 dark:bg-neutral-800 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
         className,
       )}
       {...props}
