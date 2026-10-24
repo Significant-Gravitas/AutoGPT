@@ -19,7 +19,8 @@ import { useContextualTips } from "./useContextualTips";
 
 // Rendered once in the app chrome; shows at most one tip at a time.
 export function ContextualTips() {
-  const { active, dismiss, reportShown, postponeActive } = useContextualTips();
+  const { active, dismiss, reportShown, postponeActive, othersWaiting } =
+    useContextualTips();
   if (!active) return null;
   return (
     <ContextualTip
@@ -28,6 +29,7 @@ export function ContextualTips() {
       onDismiss={dismiss}
       onShown={reportShown}
       onUnavailable={postponeActive}
+      othersWaiting={othersWaiting}
     />
   );
 }
@@ -41,12 +43,20 @@ interface Props {
   onDismiss: () => void;
   onShown: (id: TipID) => void;
   onUnavailable: () => void;
+  /** Another tip is queued behind this one. */
+  othersWaiting: boolean;
 }
 
 // A small card beside the real control, with a ring around it and no dim:
 // the user is in the middle of something, so it never takes focus and never
 // blocks the page. "Got it" or Escape puts it away for good.
-function ContextualTip({ id, onDismiss, onShown, onUnavailable }: Props) {
+function ContextualTip({
+  id,
+  onDismiss,
+  onShown,
+  onUnavailable,
+  othersWaiting,
+}: Props) {
   const tip = TIPS[id];
   const [stop] = useTourStops(tipStepOf(id));
   const box = stop?.box ?? null;
@@ -80,11 +90,14 @@ function ContextualTip({ id, onDismiss, onShown, onUnavailable }: Props) {
     if (hasBox) reportOnScreen(id);
   }, [hasBox, id, reportOnScreen]);
 
+  // Armed only while another tip waits behind it, so one queued later
+  // still gets its turn once this one has waited out its grace period.
   useEffect(() => {
-    if (hasBox) return;
+    if (hasBox || !othersWaiting) return;
     const timer = window.setTimeout(giveWay, TIP_TARGET_GRACE_MS);
     return () => window.clearTimeout(timer);
-  }, [hasBox, giveWay]);
+  }, [hasBox, othersWaiting, giveWay]);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Nothing on screen to point at yet: wait rather than float in a corner.
   if (!isOnScreen(box)) return null;
@@ -103,7 +116,13 @@ function ContextualTip({ id, onDismiss, onShown, onUnavailable }: Props) {
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
-          onEscapeKeyDown={onDismiss}
+          // The tip never takes focus, so an Escape elsewhere belongs to
+          // something else (the composer's mention list). Only one from
+          // inside the tip puts it away.
+          onEscapeKeyDown={(event) => {
+            if (contentRef.current?.contains(event.target as Node)) onDismiss();
+          }}
+          ref={contentRef}
           role="region"
           aria-labelledby={titleID}
           data-testid="contextual-tip"

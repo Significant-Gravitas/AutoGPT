@@ -27,7 +27,7 @@ export function useContextualTips() {
     (store) => store.isConnectToolsOpen,
   );
 
-  useSecondChatMoment(isLoggedIn);
+  useSecondChatMoment(isLoggedIn, userID);
 
   function isSeen(id: TipID) {
     return (
@@ -90,6 +90,7 @@ export function useContextualTips() {
     active,
     dismiss,
     reportShown,
+    othersWaiting: requested.length > 1,
     // Nothing on screen to point at yet: let the next tip have its turn.
     postponeActive: () => active && postpone(active),
   };
@@ -100,14 +101,19 @@ export function useContextualTips() {
 // way of starting one counts: the composer, a suggested task, an expert's
 // own chat. It goes by the most chats seen, not the last count, so a list
 // that dips back to one (a failed delete, deleting down) does not count.
-function useSecondChatMoment(isLoggedIn: boolean) {
+function useSecondChatMoment(isLoggedIn: boolean, userID: string | null) {
   const { sessions, isLoading } = useSessionList({ enabled: isLoggedIn });
-  const mostSeen = useRef<number | null>(null);
+  // Per account: someone else signing in here starts from their own list.
+  const mostSeen = useRef<{ userID: string | null; count: number } | null>(
+    null,
+  );
   const count = sessions.length;
 
   useEffect(() => {
     if (!isLoggedIn || isLoading) return;
-    if (isFirstSecondChat(mostSeen.current, count)) requestTip("second-chat");
-    mostSeen.current = Math.max(mostSeen.current ?? 0, count);
-  }, [isLoggedIn, isLoading, count]);
+    const seen = mostSeen.current?.userID === userID ? mostSeen.current : null;
+    if (isFirstSecondChat(seen?.count ?? null, count))
+      requestTip("second-chat");
+    mostSeen.current = { userID, count: Math.max(seen?.count ?? 0, count) };
+  }, [isLoggedIn, isLoading, count, userID]);
 }

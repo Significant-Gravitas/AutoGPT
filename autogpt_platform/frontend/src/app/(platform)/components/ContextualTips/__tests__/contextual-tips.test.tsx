@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const capture = vi.hoisted(() => vi.fn());
 vi.mock("posthog-js", () => ({ default: { capture } }));
 
+const auth = vi.hoisted(() => ({ userID: "user-1" }));
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "user-1" }, isLoggedIn: true }),
+  useAuth: () => ({ user: { id: auth.userID }, isLoggedIn: true }),
 }));
 
 const onboarding = vi.hoisted(() => ({
@@ -85,6 +86,7 @@ function Page() {
 }
 
 beforeEach(() => {
+  auth.userID = "user-1";
   hidden.clear();
   placed.clear();
   billing.enabled = true;
@@ -246,6 +248,22 @@ describe("contextual tips — the first second chat", () => {
       expect(useContextualTipStore.getState().requested).toEqual([]);
       unmount();
     }
+  });
+
+  it("starts counting afresh for another account", async () => {
+    sessionList.current = { sessions: [{ id: "a" }], isLoading: false };
+    const { rerender } = render(<Page />);
+
+    // Someone else signs in here and already has two chats.
+    auth.userID = "user-2";
+    sessionList.current = {
+      sessions: [{ id: "x" }, { id: "y" }],
+      isLoading: false,
+    };
+    rerender(<Page />);
+    await act(async () => {});
+
+    expect(useContextualTipStore.getState().requested).toEqual([]);
   });
 
   it("points at the chat list when a second chat appears", async () => {
@@ -455,11 +473,12 @@ describe("contextual tips — showing one", () => {
     expect(screen.queryByText("Where costs come from")).toBeNull();
   });
 
-  it("puts the tip away with Escape", async () => {
+  it("puts the tip away with Escape pressed inside it", async () => {
     render(<Page />);
     act(() => requestTip("second-chat"));
     await screen.findByText("You have two chats now");
 
+    screen.getByRole("button", { name: "Got it" }).focus();
     await userEvent.keyboard("{Escape}");
 
     await waitFor(() =>
@@ -467,4 +486,37 @@ describe("contextual tips — showing one", () => {
     );
     expect(onboarding.current.completeStep).toHaveBeenCalledWith("CHATS_TIP");
   });
+
+  it("stays put when Escape belongs to something else on the page", async () => {
+    // The tip never takes focus, so an Escape elsewhere (closing the
+    // composer's mention list) is not the user putting the tip away.
+    render(<Page />);
+    act(() => requestTip("second-chat"));
+    await screen.findByText("You have two chats now");
+
+    screen.getByRole("textbox", { name: "Message" }).focus();
+    await userEvent.keyboard("{Escape}");
+    await act(async () => {});
+
+    expect(screen.getByTestId("contextual-tip")).toBeDefined();
+    expect(onboarding.current.completeStep).not.toHaveBeenCalled();
+  });
+
+  it("gives way to a tip that arrives later, after it has waited alone", async () => {
+    hidden.add("wallet");
+    hidden.add("menu");
+    render(<Page />);
+    act(() => requestTip("first-cost"));
+    // Alone in the queue past its grace period: there was no one to give
+    // way to then.
+    // Outside act(): inside it React holds the tip's mount until the wait
+    // is over, and the timer never runs alone.
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+
+    act(() => requestTip("first-expert"));
+
+    expect(
+      await screen.findByText("Experts can own tasks", {}, { timeout: 4000 }),
+    ).toBeDefined();
+  }, 15000);
 });
