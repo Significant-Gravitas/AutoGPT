@@ -16,6 +16,8 @@ import {
 import { cn } from "@/lib/utils";
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
+import { ContextualTips } from "../components/ContextualTips/ContextualTips";
+import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
@@ -76,6 +78,8 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
         {showChangelog ? <ChangelogPopup /> : null}
+        <FirstRunTour />
+        <ContextualTips />
         <SidebarInset className="bg-[#f9f9f9]">
           <header
             className={cn(

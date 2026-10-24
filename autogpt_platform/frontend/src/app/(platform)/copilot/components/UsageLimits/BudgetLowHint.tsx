@@ -3,6 +3,7 @@ import { budgetLowHint } from "@/services/usageExperience/budget";
 import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
 import { cn } from "@/lib/utils";
 import { BudgetRing } from "./BudgetRing";
+import { useTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 
 interface Props {
   usage: UsageSnapshot;
@@ -17,7 +18,10 @@ const WINDOW_LABEL = {
 
 export function BudgetLowHint({ usage, className }: Props) {
   const { budget, experience } = usage;
-  if (budget.state !== "low" || !budget.window) return null;
+  const isLow = budget.state === "low" && !!budget.window;
+  // Running low is the moment the allowance matters, if Otto never said so.
+  useTipMoment("first-cost", isLow);
+  if (!isLow || !budget.window) return null;
   const trialPercent = experience.isLifetimeTrial
     ? experience.trialPercent
     : null;

@@ -1,5 +1,7 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { useFirstRunTourStore } from "@/app/(platform)/components/FirstRunTour/store";
+import { act, render, screen } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
 import { InitialAvatar } from "../components/InitialAvatar";
@@ -38,7 +40,10 @@ vi.mock("@/components/molecules/Popover/Popover", () => {
   function PopoverContent({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;
   }
-  return { Popover, PopoverTrigger, PopoverContent };
+  function PopoverClose({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
+  }
+  return { Popover, PopoverTrigger, PopoverContent, PopoverClose };
 });
 
 const baseGroups: MenuItemGroup[] = [
@@ -84,6 +89,18 @@ const baseGroups: MenuItemGroup[] = [
 describe("AccountMenu", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+  });
+
+  test("offers Show me around, which replays the first-run walkthrough", async () => {
+    render(<AccountMenu userName="Ada Lovelace" menuItemGroups={baseGroups} />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Show me around" }),
+    );
+
+    expect(useFirstRunTourStore.getState().source).toBe("menu");
+    expect(useFirstRunTourStore.getState().stepIndex).toBe(0);
+    act(() => useFirstRunTourStore.getState().close());
   });
 
   afterEach(() => {

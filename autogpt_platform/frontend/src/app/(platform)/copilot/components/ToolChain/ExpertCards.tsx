@@ -23,6 +23,7 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
+import { useTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 import { asObject, str } from "./resultHelpers";
 
 interface Props {
@@ -99,6 +100,11 @@ interface Proposal {
   kind: ExpertKind | "soul" | null;
   name: string;
   confirmationId: string;
+}
+
+function isOpenExpertProposal(part: ToolUIPart) {
+  const kind = proposalOf(part)?.kind;
+  return kind === "hire" || kind === "raise";
 }
 
 /** A hire/raise/Soul preview the user can still say yes or no to. */
@@ -541,6 +547,8 @@ export function ExpertChangeGroup({
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
+  // Otto proposing an expert is the moment to say experts can own tasks.
+  useTipMoment("first-expert", !readOnly && visible.some(isOpenExpertProposal));
   if (visible.length === 0) return null;
 
   const current = Math.min(step, visible.length - 1);

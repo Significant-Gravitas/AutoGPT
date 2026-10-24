@@ -1,5 +1,6 @@
 "use client";
 
+import { tourTarget } from "@/app/(platform)/components/FirstRunTour/steps";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
@@ -64,7 +65,10 @@ export function SidebarUserActions() {
           accountMenu
         )}
         {profile && (
-          <div className="group-data-[collapsible=icon]:hidden">
+          <div
+            className="group-data-[collapsible=icon]:hidden"
+            {...tourTarget("wallet")}
+          >
             <Wallet key={profile.username} compact />
           </div>
         )}

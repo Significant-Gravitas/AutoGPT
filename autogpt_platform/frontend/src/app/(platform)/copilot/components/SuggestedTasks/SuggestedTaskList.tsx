@@ -12,6 +12,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
+import { tourTarget } from "@/app/(platform)/components/FirstRunTour/steps";
 import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
 
 interface Props {
@@ -39,6 +40,7 @@ export function SuggestedTaskList({
 
   return (
     <ol
+      {...tourTarget("first-tasks")}
       className={cn(
         "divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200 bg-white",
         className,
