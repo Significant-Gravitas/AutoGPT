@@ -1,10 +1,13 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth import get_optional_user_id
 from pydantic import SecretStr
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import LockError, RedisClusterException
 
 from backend.api.features.integrations.codex import (
     CODEX_LOGIN_STATE_KEY,
@@ -18,15 +21,19 @@ from backend.api.features.integrations.codex import (
 )
 from backend.api.features.integrations.router import router
 from backend.data.model import OAuth2Credentials, OAuthState
+from backend.integrations.codex.chatgpt_auth import CodexAuthError
 from backend.integrations.codex.models import (
     CodexAccountSnapshot,
     CodexRateLimitsSnapshot,
     CodexRateLimitWindow,
 )
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
+
+_CLUSTER = "127.0.0.1:17000, 127.0.0.1:17001"
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
@@ -662,8 +669,11 @@ async def test_codex_logout_uses_and_releases_exclusive_lease():
             manager, TEST_USER_ID, "codex-credential"
         )
 
-    assert revoked is True
-    manager.acquire_lease.assert_awaited_once_with(TEST_USER_ID, "codex-credential")
+    # OpenAI has no revocation endpoint, so a logout never counts as a revoke.
+    assert revoked is False
+    manager.acquire_lease.assert_awaited_once_with(
+        TEST_USER_ID, "codex-credential", refresh=False
+    )
     get_transport.return_value.logout.assert_awaited_once_with(lease)
     lease.delete.assert_awaited_once()
     lease.release.assert_awaited_once()
@@ -693,3 +703,284 @@ async def test_codex_logout_failure_is_redacted_and_still_releases(caplog):
     assert "refresh-secret" not in caplog.text
     lease.delete.assert_awaited_once()
     lease.release.assert_awaited_once()
+
+
+def _expired_credentials() -> OAuth2Credentials:
+    return _credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler", "access_token_expires_at": 1}
+    )
+
+
+def _manager_with_stored_row(
+    mocker, credentials: OAuth2Credentials
+) -> tuple[IntegrationCredentialsManager, dict[str, OAuth2Credentials], AsyncMock]:
+    """A real manager over a fake store holding one row, with Redis stubbed."""
+    manager = IntegrationCredentialsManager()
+    rows = {credentials.id: credentials}
+
+    async def get_creds_by_id(_user_id: str, credentials_id: str):
+        return rows.get(credentials_id)
+
+    async def delete_creds_by_id(_user_id: str, credentials_id: str):
+        rows.pop(credentials_id, None)
+
+    lock = AsyncMock()
+    lock.name = str(manager._credentials_lock_key(TEST_USER_ID, credentials.id))
+    lock.locked.return_value = True
+    lock.owned.return_value = True
+    lock.timeout = 60
+    lock.extend.return_value = True
+
+    class _NoopLock:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *_exc):
+            return None
+
+    mocker.patch.object(manager.store, "get_creds_by_id", side_effect=get_creds_by_id)
+    mocker.patch.object(
+        manager.store, "delete_creds_by_id", side_effect=delete_creds_by_id
+    )
+    mocker.patch.object(manager, "_locked", return_value=_NoopLock())
+    mocker.patch.object(manager, "_acquire_lock", AsyncMock(return_value=lock))
+    mocker.patch(
+        "backend.integrations.creds_manager.publish_creds_changed",
+        new_callable=AsyncMock,
+    )
+    return manager, rows, lock
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refresh_error",
+    [
+        CodexAuthError("ChatGPT refused to refresh the credential (HTTP 401)"),
+        ValueError("Access to blocked or private IP address"),
+        OSError("network unreachable"),
+    ],
+)
+async def test_revoke_deletes_expired_codex_credential_without_refreshing(
+    mocker, refresh_error
+):
+    credentials = _expired_credentials()
+    manager, rows, lock = _manager_with_stored_row(mocker, credentials)
+    refresh = mocker.patch.object(
+        manager, "refresh_if_needed", AsyncMock(side_effect=refresh_error)
+    )
+    with patch(
+        "backend.api.features.integrations.codex._get_codex_transport"
+    ) as get_transport:
+        get_transport.return_value.logout = AsyncMock()
+
+        revoked = await revoke_codex_credentials(manager, TEST_USER_ID, credentials.id)
+
+    assert revoked is False
+    assert credentials.id not in rows
+    refresh.assert_not_awaited()
+    lock.release.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_revoke_raises_instead_of_reporting_success_for_missing_row(mocker):
+    credentials = _expired_credentials()
+    manager, rows, lock = _manager_with_stored_row(mocker, credentials)
+    rows.clear()
+
+    with pytest.raises(ValueError):
+        await revoke_codex_credentials(manager, TEST_USER_ID, credentials.id)
+
+
+def test_codex_delete_removes_expired_credential_whose_refresh_fails(mocker):
+    credentials = _expired_credentials()
+    manager, rows, lock = _manager_with_stored_row(mocker, credentials)
+    mocker.patch.object(
+        manager,
+        "refresh_if_needed",
+        AsyncMock(side_effect=CodexAuthError("refresh refused")),
+    )
+    with (
+        patch("backend.api.features.integrations.router.creds_manager", manager),
+        patch(
+            "backend.api.features.integrations.router.remove_all_webhooks_for_credentials",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        get_transport.return_value.logout = AsyncMock()
+
+        response = client.delete(f"/codex/credentials/{credentials.id}?force=true")
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True, "revoked": False}
+    assert credentials.id not in rows
+
+
+@pytest.mark.parametrize(
+    "error, expected_status",
+    [
+        (ValueError("Credentials not found"), 404),
+        (RuntimeError("Credential identity changed before deletion"), 500),
+        (CodexAuthError("access-secret refresh-secret"), 500),
+        (RedisClusterException(f"Redis Cluster cannot be connected: {_CLUSTER}"), 500),
+    ],
+)
+def test_codex_delete_never_reports_deleted_when_row_remains(error, expected_status):
+    credentials = _credentials()
+    with (
+        patch("backend.api.features.integrations.router.creds_manager") as manager,
+        patch(
+            "backend.api.features.integrations.router.remove_all_webhooks_for_credentials",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.integrations.router.revoke_codex_credentials",
+            new=AsyncMock(side_effect=error),
+        ),
+    ):
+        manager.store.get_creds_by_id = AsyncMock(return_value=credentials)
+
+        response = client.delete("/codex/credentials/codex-credential?force=true")
+
+    assert response.status_code == expected_status
+    assert response.json().get("deleted") is not True
+    assert "access-secret" not in response.text
+    assert "127.0.0.1" not in response.text
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_report_expired_connection_as_conflict(route):
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager"
+        ) as manager,
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        manager.acquire_lease = AsyncMock(side_effect=CodexAuthError("access-secret"))
+        manager.exists = AsyncMock(return_value=True)
+
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "ChatGPT connection expired; reconnect it"}
+    get_transport.assert_not_called()
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+@pytest.mark.parametrize(
+    "infra_error",
+    [
+        RedisConnectionError("Error connecting to redis-0.redis.internal:6379"),
+        LockError("Cannot release a lock that's no longer owned"),
+        TimeoutError("Timed out waiting for a Redis lock"),
+        OSError("network unreachable"),
+        RedisClusterException(f"Redis Cluster cannot be connected: {_CLUSTER}"),
+        aiohttp.ClientConnectionError("Cannot connect to host auth.openai.com:443"),
+    ],
+)
+def test_codex_status_routes_report_infra_failure_as_unavailable(route, infra_error):
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager"
+        ) as manager,
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        manager.acquire_lease = AsyncMock(side_effect=infra_error)
+        manager.exists = AsyncMock(return_value=True)
+
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    _assert_unavailable(response)
+    get_transport.assert_not_called()
+
+
+def _assert_unavailable(response) -> None:
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "ChatGPT connection is temporarily unavailable; try again"
+    }
+    for leaked in ("redis", "127.0.0.1", "198.18.0.1", "auth.openai.com"):
+        assert leaked not in response.text
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_hide_url_guard_refresh_failure(mocker, route):
+    manager, _rows, _lock = _manager_with_stored_row(mocker, _expired_credentials())
+    mocker.patch.object(
+        manager,
+        "refresh_if_needed",
+        AsyncMock(
+            side_effect=ValueError(
+                "Access to blocked or private IP address 198.18.0.1 "
+                "for hostname auth.openai.com is not allowed."
+            )
+        ),
+    )
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager", manager
+        ),
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    _assert_unavailable(response)
+    get_transport.assert_not_called()
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_hide_redis_cluster_outage(mocker, route):
+    manager, _rows, _lock = _manager_with_stored_row(mocker, _credentials())
+    mocker.patch.object(
+        manager,
+        "_locked",
+        side_effect=RedisClusterException(
+            f"Redis Cluster cannot be connected: {_CLUSTER}"
+        ),
+    )
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager", manager
+        ),
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    _assert_unavailable(response)
+    get_transport.assert_not_called()
+
+
+def test_codex_status_route_hides_unexpected_acquisition_error():
+    with patch(
+        "backend.api.features.integrations.codex.codex_credentials_manager"
+    ) as manager:
+        manager.acquire_lease = AsyncMock(side_effect=RuntimeError("access-secret"))
+        manager.exists = AsyncMock(return_value=True)
+
+        response = client.get("/codex/credentials/codex-credential/account")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Could not load the ChatGPT connection"}
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_report_missing_row_as_not_found(route):
+    with patch(
+        "backend.api.features.integrations.codex.codex_credentials_manager"
+    ) as manager:
+        manager.acquire_lease = AsyncMock(side_effect=ValueError("not found"))
+        manager.exists = AsyncMock(return_value=False)
+
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    assert response.status_code == 404

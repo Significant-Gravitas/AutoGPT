@@ -3,13 +3,16 @@ import secrets
 from typing import TYPE_CHECKING, Annotated, Literal
 from urllib.parse import quote, urlencode
 
+import aiohttp
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, HTTPException, Path, Security, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from redis.exceptions import RedisClusterException, RedisError
 
 from backend.api.features.integrations.codex_device_page import render_device_login_page
 from backend.integrations.codex.access import enforce_codex_access_http
+from backend.integrations.codex.chatgpt_auth import CodexAuthError
 from backend.integrations.codex.login import (
     CodexDeviceLogin,
     CodexDeviceLoginState,
@@ -168,22 +171,28 @@ async def revoke_codex_credentials(
     user_id: str,
     credential_id: str,
 ) -> bool:
-    try:
-        lease = await manager.acquire_lease(user_id, credential_id)
-    except ValueError:
-        return False
+    """Delete a stored Codex credential, with a best-effort logout first.
+
+    The credential is leased without refreshing it: an expired or revoked
+    ChatGPT grant must still be deletable. Returns whether the provider revoked
+    the grant, which is always False because OpenAI publishes no revocation
+    endpoint for this client (see `CodexDeviceAuthHandler.revoke_tokens`).
+
+    Raises ValueError if the credential doesn't exist or isn't a Codex one, and
+    propagates any other error, so a False return always means "deleted".
+    """
+    lease = await manager.acquire_lease(user_id, credential_id, refresh=False)
     try:
         if lease.credentials.provider != "codex":
-            return False
-        revoked = False
+            raise ValueError(f"Credentials #{credential_id} are not Codex credentials")
         if _is_codex_lease(lease):
             try:
+                # A no-op today; kept so a real logout can slot in later.
                 await _get_codex_transport().logout(lease)
-                revoked = True
             except Exception as error:
                 logger.warning("Codex logout failed with %s", type(error).__name__)
         await lease.delete()
-        return revoked
+        return False
     finally:
         await lease.release()
 
@@ -194,12 +203,46 @@ async def _acquire_codex_lease(
 ) -> CredentialLease:
     try:
         lease = await codex_credentials_manager.acquire_lease(user_id, credential_id)
-    except ValueError:
-        raise _credential_not_found() from None
+    except (RedisError, RedisClusterException, OSError, aiohttp.ClientError) as error:
+        # Lock, Redis or network outage (a lock wait timeout is a TimeoutError),
+        # not an expired grant: the user can't fix it by reconnecting.
+        _log_acquisition_failure(error)
+        raise _codex_unavailable() from None
+    except Exception as error:
+        # Acquiring refreshes an expiring token first. Only report "not found"
+        # when the row really is gone.
+        if not await codex_credentials_manager.exists(user_id, credential_id):
+            raise _credential_not_found() from None
+        _log_acquisition_failure(error)
+        if isinstance(error, CodexAuthError):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="ChatGPT connection expired; reconnect it",
+            ) from None
+        if isinstance(error, ValueError):
+            # With the row present, this came from the refresh request, e.g. the
+            # URL guard blocking the token host. Its message names the host/IP.
+            raise _codex_unavailable() from None
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not load the ChatGPT connection",
+        ) from None
     if not _is_codex_lease(lease):
         await lease.release()
         raise _credential_not_found()
     return lease
+
+
+def _codex_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="ChatGPT connection is temporarily unavailable; try again",
+    )
+
+
+def _log_acquisition_failure(error: Exception) -> None:
+    # Only the type: messages can carry hosts, IPs or cluster addresses.
+    logger.warning("Codex credential acquisition failed with %s", type(error).__name__)
 
 
 def _is_codex_lease(lease: CredentialLease) -> bool:
