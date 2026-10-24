@@ -63,7 +63,7 @@ export function QuestionAnswerField({
           ? `e.g. ${question.example}`
           : "Type your answer"
       }
-      className="resize-none rounded-2xl bg-zinc-50 px-4 py-3 text-base leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+      className="resize-none rounded-2xl bg-surface-muted px-4 py-3 text-base leading-relaxed text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
     />
   );
 
@@ -108,7 +108,7 @@ export function QuestionAnswerField({
             setToggled(true);
             setTyping(true);
           }}
-          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-zinc-200 px-4 py-3 text-left text-base text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
+          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-border-base px-4 py-3 text-left text-base text-foreground-tertiary transition-colors hover:border-border-strong hover:text-foreground-body"
         >
           <Icon icon={PencilEdit02Icon} size={16} className="shrink-0" />
           Type something…
