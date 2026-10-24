@@ -300,6 +300,29 @@ describe("useAuthStore account change", () => {
     );
   });
 
+  it("closes the first-run walkthrough and drops queued tips when the user signs out", async () => {
+    // Both live in module stores that outlive the page: the next account
+    // to sign in must not inherit an open walkthrough or someone's tips.
+    const { useFirstRunTourStore } = await import(
+      "@/app/(platform)/components/FirstRunTour/store"
+    );
+    const { useContextualTipStore } = await import(
+      "@/app/(platform)/components/ContextualTips/store"
+    );
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useFirstRunTourStore.getState().open("auto");
+    useFirstRunTourStore.getState().setConnectToolsOpen(true);
+    useContextualTipStore.getState().request("second-chat");
+
+    useAuthStore.setState({ user: null });
+
+    await vi.waitFor(() =>
+      expect(useFirstRunTourStore.getState().source).toBeNull(),
+    );
+    expect(useFirstRunTourStore.getState().isConnectToolsOpen).toBe(false);
+    expect(useContextualTipStore.getState().requested).toEqual([]);
+  });
+
   it("keeps the finished-chats list when the same user is refreshed", async () => {
     useAuthStore.setState({ user: { id: "user-1" } as User });
     useAuthStore.setState({ user: { id: "user-1" } as User });
