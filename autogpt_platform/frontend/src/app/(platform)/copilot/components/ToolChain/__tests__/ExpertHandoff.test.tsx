@@ -228,7 +228,9 @@ describe("after the hire and hand-off", () => {
       />,
     );
 
-    expect(screen.getByText(/was sent to James's chat/)).toBeDefined();
+    expect(
+      screen.getByText(/may have started in James's chat\. Open it to check\./),
+    ).toBeDefined();
     expect(screen.queryByText(/started on/)).toBeNull();
     expect(
       screen

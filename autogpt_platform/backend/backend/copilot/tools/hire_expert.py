@@ -125,22 +125,9 @@ class HireExpertTool(BaseTool):
                 message="template_id is required.", session_id=session_id
             )
 
-        try:
-            params = _HireParams(
-                name=" ".join(name.split()),
-                handoff_title=" ".join(handoff_title.split()),
-                handoff_task=handoff_task.strip(),
-            )
-        except ValidationError as e:
-            return ErrorResponse(
-                message=f"Invalid hire — {_validation_detail(e)}",
-                session_id=session_id,
-            )
-        if bool(params.handoff_title) != bool(params.handoff_task):
-            return ErrorResponse(
-                message="Pass handoff_title and handoff_task together, or neither.",
-                session_id=session_id,
-            )
+        params = _hire_params(name, handoff_title, handoff_task)
+        if isinstance(params, str):
+            return ErrorResponse(message=params, session_id=session_id)
 
         template = await _find_template(template_id.strip())
         if template is None:
@@ -154,42 +141,17 @@ class HireExpertTool(BaseTool):
         if error := await capacity_error(user_id, session_id, "hire"):
             return error
 
-        preview = ExpertChangePreview(
-            kind="hire",
-            name=params.name or template.name,
-            role=template.role,
-            tagline=template.tagline or "",
-            about=template.identity,
-            boundaries=template.boundaries,
-            voice_preferences=template.voice_preferences,
-            template_id=template.id,
-            avatar_url=template.avatar_url,
-            color=template.color,
-        )
+        preview = _preview(template, params.name)
         handoff = params.handoff()
-        confirmation_id = str(uuid.uuid4())
-        handoff_confirmation_id = str(uuid.uuid4()) if handoff else None
-        proposal = ExpertChangeProposal(
-            user_id=user_id,
-            session_id=session_id,
-            preview=preview,
-            user_turn_watermark=user_turn_watermark(session),
-            handoff=handoff,
-            sibling_confirmation_id=handoff_confirmation_id,
-        )
-        redis = await get_redis_async()
-        await store_proposal(redis, confirmation_id, proposal)
-        if handoff_confirmation_id is not None:
-            await store_proposal(
-                redis,
-                handoff_confirmation_id,
-                proposal.model_copy(
-                    update={
-                        "hand_off": True,
-                        "sibling_confirmation_id": confirmation_id,
-                    }
-                ),
+        confirmation_id, handoff_confirmation_id = await _park(
+            ExpertChangeProposal(
+                user_id=user_id,
+                session_id=session_id,
+                preview=preview,
+                user_turn_watermark=user_turn_watermark(session),
+                handoff=handoff,
             )
+        )
         return ExpertChangeProposedResponse(
             message=_proposed_message(handoff is not None),
             session_id=session_id,
@@ -198,6 +160,62 @@ class HireExpertTool(BaseTool):
             handoff=handoff,
             handoff_confirmation_id=handoff_confirmation_id,
         )
+
+
+def _hire_params(name: str, handoff_title: str, handoff_task: str) -> _HireParams | str:
+    """The validated hire arguments, or why they are refused."""
+    try:
+        params = _HireParams(
+            name=" ".join(name.split()),
+            handoff_title=" ".join(handoff_title.split()),
+            handoff_task=handoff_task.strip(),
+        )
+    except ValidationError as e:
+        return f"Invalid hire — {_validation_detail(e)}"
+    if bool(params.handoff_title) != bool(params.handoff_task):
+        return "Pass handoff_title and handoff_task together, or neither."
+    return params
+
+
+def _preview(template: Expert, name: str) -> ExpertChangePreview:
+    return ExpertChangePreview(
+        kind="hire",
+        name=name or template.name,
+        role=template.role,
+        tagline=template.tagline or "",
+        about=template.identity,
+        boundaries=template.boundaries,
+        voice_preferences=template.voice_preferences,
+        template_id=template.id,
+        avatar_url=template.avatar_url,
+        color=template.color,
+    )
+
+
+async def _park(proposal: ExpertChangeProposal) -> tuple[str, str | None]:
+    """Park *proposal* under a fresh id and, when it carries a task, its
+    "hire and hand off" twin under a second; returns both ids."""
+    redis = await get_redis_async()
+    confirmation_id = str(uuid.uuid4())
+    if proposal.handoff is None:
+        await store_proposal(redis, confirmation_id, proposal)
+        return confirmation_id, None
+    handoff_confirmation_id = str(uuid.uuid4())
+    await store_proposal(
+        redis,
+        confirmation_id,
+        proposal.model_copy(
+            update={"sibling_confirmation_id": handoff_confirmation_id}
+        ),
+    )
+    await store_proposal(
+        redis,
+        handoff_confirmation_id,
+        proposal.model_copy(
+            update={"hand_off": True, "sibling_confirmation_id": confirmation_id}
+        ),
+    )
+    return confirmation_id, handoff_confirmation_id
 
 
 def _proposed_message(with_handoff: bool) -> str:

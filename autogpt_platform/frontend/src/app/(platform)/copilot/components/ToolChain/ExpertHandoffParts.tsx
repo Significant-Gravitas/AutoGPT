@@ -174,7 +174,8 @@ function HandoffSentence({ outcome, expertName }: StatusProps) {
   if (outcome.status === "unconfirmed") {
     return (
       <>
-        {outcome.title} was sent to {possessive(expertName)} chat.
+        {outcome.title} may have started in {possessive(expertName)} chat. Open
+        it to check.
       </>
     );
   }
