@@ -41,7 +41,10 @@ export function EmptyHero({
       ) : recipientPicker ? (
         <div className="mb-8 text-heading-sm leading-relaxed tracking-normal text-foreground-strong">
           {isExpert ? "I'm" : "Tell"}{" "}
-          <span className="mr-1 inline-block align-middle [&_button]:ml-0 [&_button]:text-lg">
+          <span
+            // TODO(tokens): no role holds 18px (text-lg); the type scale goes 16px (body-lg) to 20px (lead). SECRT-3152
+            className="mr-1 inline-block align-middle [&_button]:ml-0 [&_button]:text-lg"
+          >
             {recipientPicker}
           </span>
           {isExpert

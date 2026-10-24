@@ -1,6 +1,6 @@
 "use client";
+import { useEffect } from "react";
 import { motion, stagger, useAnimate } from "motion/react";
-import { useMountEffect } from "@/hooks/useMountEffect";
 import { cn } from "@/lib/utils";
 
 export const TextGenerateEffect = ({
@@ -19,7 +19,7 @@ export const TextGenerateEffect = ({
 }) => {
   const [scope, animate] = useAnimate();
   const wordsArray = words.split(" ");
-  useMountEffect(() => {
+  useEffect(() => {
     animate(
       "span",
       {
@@ -31,7 +31,7 @@ export const TextGenerateEffect = ({
         delay: stagger(0.08, { startDelay: delay }),
       },
     );
-  });
+  }, [scope.current]);
 
   const renderWords = () => {
     return (
@@ -56,7 +56,10 @@ export const TextGenerateEffect = ({
   return (
     <div className={cn("font-bold", className)}>
       <div className="mt-4">
-        <div className="text-2xl leading-snug tracking-wide text-black dark:text-white">
+        <div
+          // TODO(tokens): no role holds 24px (text-2xl); the type scale goes 22px (heading-sm) to 28px (heading). SECRT-3152
+          className="text-2xl leading-snug tracking-wide text-black dark:text-white"
+        >
           {renderWords()}
         </div>
       </div>
