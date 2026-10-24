@@ -1,4 +1,6 @@
+import type { UIMessage } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resendMetadata } from "../helpers/resendMetadata";
 
 // Drives the devtool gate. Defaults to off so the bulk of these tests
 // exercise the plain fetch path rather than the usage-capturing wrapper.
@@ -24,7 +26,10 @@ vi.mock("../tokenDevtool/usageTap", () => ({
 }));
 
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import { createCopilotTransport } from "../copilotStreamTransport";
+import {
+  createCopilotTransport,
+  streamRequestBody,
+} from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
 
 beforeEach(() => {
@@ -361,5 +366,47 @@ describe("copilotStreamTransport - folder attachments", () => {
     const { body } = await prepare([{ type: "text", text: "hi" }]);
     expect(body.file_ids).toBeNull();
     expect(body.folder_ids).toBeNull();
+  });
+});
+
+describe("streamRequestBody for a Retry of a held follow-up", () => {
+  function userMessageWith(metadata: unknown): UIMessage {
+    return {
+      id: "local-1",
+      role: "user",
+      parts: [{ type: "text", text: "Status?" }],
+      metadata,
+    };
+  }
+
+  it("names the follow-up and keys the send by it, so a second click is the same send", () => {
+    const first = streamRequestBody(
+      "sess-1",
+      userMessageWith(resendMetadata("pm-1")),
+      undefined,
+    );
+    const second = streamRequestBody(
+      "sess-1",
+      userMessageWith(resendMetadata("pm-1")),
+      undefined,
+    );
+
+    expect(first).toMatchObject({
+      message: "Status?",
+      resend_pending_id: "pm-1",
+      message_id: "resend-pm-1",
+    });
+    expect(second.message_id).toBe(first.message_id);
+  });
+
+  it("leaves an ordinary send unkeyed to any held follow-up", () => {
+    const body = streamRequestBody(
+      "sess-1",
+      userMessageWith(undefined),
+      undefined,
+    );
+
+    expect(body.resend_pending_id).toBeNull();
+    expect(body.message_id).toMatch(UUID_RE);
   });
 });

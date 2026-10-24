@@ -85,7 +85,7 @@ interface Props {
   /** Set when the turn that should have read `queuedMessages` ended first,
    *  so each shows as not sent, with a Retry. */
   queuedHeldReason?: HeldReason | null;
-  onRetryQueuedMessage?: (text: string) => void;
+  onRetryQueuedMessage?: (index: number) => void;
   /** A just-sent message whose local attachments are still uploading. It is
    *  not in `messages` yet (the SDK only pushes it once `sendMessage` runs),
    *  so it renders as a placeholder bubble with an "Uploading files…"

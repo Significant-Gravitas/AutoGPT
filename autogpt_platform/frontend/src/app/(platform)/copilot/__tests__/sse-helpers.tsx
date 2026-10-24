@@ -175,6 +175,11 @@ export function renderHost(
     getGetV2GetPendingMessagesMockHandler200({
       count: opts.pendingMessages?.length ?? 0,
       messages: opts.pendingMessages ?? [],
+      // Stable ids, as the server gives every queued message one.
+      items: (opts.pendingMessages ?? []).map((content, index) => ({
+        id: `pm-${index + 1}`,
+        content,
+      })),
       held_reason: opts.pendingHeldReason ?? null,
     }),
     // useCopilotStop POSTs here when the user clicks Stop. The default

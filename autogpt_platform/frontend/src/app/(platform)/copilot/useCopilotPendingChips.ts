@@ -5,6 +5,13 @@ import type { UIMessage } from "ai";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 import { dropQueuedSendBubbles } from "./helpers/dropQueuedSendBubbles";
+import {
+  adoptOrAppend,
+  type QueuedMessage,
+  rebasedToServer,
+  serverItemsOf,
+  withUnknownRestored,
+} from "./helpers/pendingChipQueue";
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
 import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
@@ -15,13 +22,6 @@ import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
 const MID_TURN_BACKSTOP_POLL_MS = 10_000;
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
-
-interface QueuedMessage {
-  id: string;
-  text: string;
-  /** Read back from the server before this tab's own send of it resolved. */
-  restored?: boolean;
-}
 
 export type HeldReason = NonNullable<PeekPendingMessagesResponseHeldReason>;
 
@@ -135,41 +135,27 @@ export function useCopilotPendingChips({
     setQueue,
   });
 
-  function queueMessage(text: string) {
+  // `serverId` is the queued message's id from the send's answer; a peek that
+  // answered first may already have listed it.
+  function queueMessage(text: string, serverId?: string | null) {
     // Options force uuid's getRandomValues path: crypto.randomUUID does not
     // exist on a plain-HTTP LAN origin, and this updater runs during render,
     // so there it took the whole chat page down instead of queueing.
-    setQueue((prev) => adoptOrAppend(prev, { id: uuidv4({}), text }));
+    setQueue((prev) => adoptOrAppend(prev, { id: uuidv4({}), text, serverId }));
   }
 
   // The strip entry a resend replaces; its bubble comes from the send.
-  function takeQueuedMessage(text: string) {
-    setQueue((prev) => {
-      const index = prev.findIndex((entry) => entry.text === text);
-      return index === -1 ? prev : prev.filter((_, i) => i !== index);
-    });
+  function takeQueuedMessage(id: string) {
+    setQueue((prev) => prev.filter((entry) => entry.id !== id));
   }
 
   return {
     queuedMessages,
+    queuedEntries: queue,
     queueMessage,
     takeQueuedMessage,
     heldReason: isActive || queue.length === 0 ? null : heldReason,
   };
-}
-
-/**
- * A send resolves after the server has buffered it, so a peek answered in
- * between already restored it into the strip; that copy is this send's, and
- * a second one would later be promoted as a bubble the server never stored.
- */
-function adoptOrAppend(
-  prev: QueuedMessage[],
-  entry: QueuedMessage,
-): QueuedMessage[] {
-  const index = prev.findIndex((e) => e.restored && e.text === entry.text);
-  if (index === -1) return [...prev, entry];
-  return prev.map((e, i) => (i === index ? { ...e, restored: false } : e));
 }
 
 // ── 1. Peek sync ───────────────────────────────────────────────────────
@@ -286,13 +272,8 @@ function usePeekOnBoundary({
         // Local entries keep their ids: a turn-start drain hint can already
         // have a promotion in flight for them, and rebasing them to fresh
         // ids would leave that promotion's copy stuck in the strip.
-        const unknownCount = res.data.count - inFlightIds.size;
-        if (unknownCount > 0) {
-          const restored = res.data.messages
-            .slice(0, unknownCount)
-            .map((text) => ({ id: uuidv4({}), text, restored: true }));
-          setQueue((current) => [...restored, ...current]);
-        }
+        const items = serverItemsOf(res.data);
+        setQueue((current) => withUnknownRestored(current, items, inFlightIds));
         return;
       }
       // Session-load or idle-after-turn: rebase to server truth, then
@@ -304,16 +285,8 @@ function usePeekOnBoundary({
       setHeldReason(res.data.held_reason ?? null);
       // A send the server queued rather than stored is drawn by its chip.
       dropQueuedSendsRef.current(res.data.messages);
-      setQueue((current) => {
-        const fromServer = res.data.messages.map((text) => ({
-          id: uuidv4({}),
-          text,
-        }));
-        const queuedDuringWindow = current.filter(
-          (entry) => !inFlightIds.has(entry.id),
-        );
-        return [...fromServer, ...queuedDuringWindow];
-      });
+      const items = serverItemsOf(res.data);
+      setQueue((current) => rebasedToServer(current, items, inFlightIds));
     });
     void peek.catch(ignoreMissingSession);
   }, [sessionId, status, queueRef, setQueue, setHeldReason]);

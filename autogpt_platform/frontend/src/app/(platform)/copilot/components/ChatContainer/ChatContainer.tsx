@@ -118,7 +118,7 @@ export interface ChatContainerProps {
   queuedMessages?: string[];
   /** Set when nothing will answer `queuedMessages` unless they are resent. */
   queuedHeldReason?: HeldReason | null;
-  onRetryQueuedMessage?: (text: string) => void;
+  onRetryQueuedMessage?: (index: number) => void;
   isUploadingFiles?: boolean;
   /** The message whose attachments are still uploading, shown as a
    *  placeholder bubble until the real one lands in `messages`. */

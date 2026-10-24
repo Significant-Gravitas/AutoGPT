@@ -24,7 +24,6 @@ import {
   getKickoffAttemptToken,
   isKickoffMessage,
   shouldClearKickoffParam,
-  type ExpertKickoffMetadata,
 } from "./expertKickoff";
 import {
   concatWithAssistantMerge,
@@ -35,7 +34,7 @@ import {
   rememberHeldFollowUp,
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
-import { isFollowUpStillHeld } from "./helpers/isFollowUpStillHeld";
+import { resendMetadata, type SendMetadata } from "./helpers/resendMetadata";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
@@ -419,18 +418,23 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage, takeQueuedMessage, heldReason } =
-    useCopilotPendingChips({
-      sessionId,
-      status,
-      messages,
-      ...("setMessages" in stream
-        ? { setMessages: stream.setMessages }
-        : {
-            appendLocalUserRows: stream.appendLocalUserRows,
-            drainedCount: stream.drainedCount,
-          }),
-    });
+  const {
+    queuedMessages,
+    queuedEntries,
+    queueMessage,
+    takeQueuedMessage,
+    heldReason,
+  } = useCopilotPendingChips({
+    sessionId,
+    status,
+    messages,
+    ...("setMessages" in stream
+      ? { setMessages: stream.setMessages }
+      : {
+          appendLocalUserRows: stream.appendLocalUserRows,
+          drainedCount: stream.drainedCount,
+        }),
+  });
 
   useCopilotNotifications(sessionId);
 
@@ -453,7 +457,7 @@ function useCopilotPageChat(
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
-    metadata?: ExpertKickoffMetadata,
+    metadata?: SendMetadata,
   ) {
     const trimmed = message.trim();
     const hasAttachments =
@@ -493,9 +497,9 @@ function useCopilotPageChat(
       }
 
       try {
-        await queueFollowUpMessage(sessionId, trimmed);
+        const queued = await queueFollowUpMessage(sessionId, trimmed);
         if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
-        queueMessage(trimmed);
+        queueMessage(trimmed, queued.pending_id);
         return;
       } catch (err) {
         // Any other failure propagates to the composer, which restores the
@@ -538,35 +542,25 @@ function useCopilotPageChat(
     }
     return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
-  // A follow-up the last turn ended without reading goes out as a new send;
-  // the server takes its waiting copy out, so Otto reads it once. One retry
-  // at a time: the turn it starts reads every held follow-up, so a second
-  // click before that turn shows would queue its message a second time.
+  // A follow-up the last turn ended without reading is resent by its id: the
+  // server takes that very message off the queue and runs it as a turn, or
+  // runs nothing if a turn read it meanwhile, so Otto never reads it twice.
+  // One at a time: the turn a retry starts reads every other held follow-up.
   const isRetryingRef = useRef(false);
-  async function retryQueuedMessage(text: string) {
+  async function retryQueuedMessage(index: number) {
+    const entry = queuedEntries[index];
     // Locked (an expert being resolved or let go): the chip stays as it is.
-    if (!sessionId || isExpertSendLocked) return;
+    if (!entry || !sessionId || isExpertSendLocked) return;
     if (isRetryingRef.current || isInflightRef.current) return;
     isRetryingRef.current = true;
-    await resendHeldFollowUp(sessionId, text).catch((err: unknown) =>
-      recoverFailedDeferredSend(text, [], err),
+    takeQueuedMessage(entry.id);
+    const metadata = entry.serverId
+      ? resendMetadata(entry.serverId)
+      : undefined;
+    await sendOrQueue(entry.text, undefined, undefined, metadata).catch(
+      (err: unknown) => recoverFailedDeferredSend(entry.text, [], err),
     );
     isRetryingRef.current = false;
-  }
-  async function resendHeldFollowUp(forSessionId: string, text: string) {
-    const stillHeld = await isFollowUpStillHeld(forSessionId, text);
-    takeQueuedMessage(text);
-    if (stillHeld) {
-      await sendOrQueue(text);
-      return;
-    }
-    // Read by another turn, or expired: never drop it without a word.
-    setInitialPrompt(text);
-    toast({
-      title: "This message is no longer waiting",
-      description:
-        "It may already have been answered. It's back in the message box in case you still want to send it.",
-    });
   }
 
   // One function for the host's lifetime that runs the latest `sendOrQueue`,

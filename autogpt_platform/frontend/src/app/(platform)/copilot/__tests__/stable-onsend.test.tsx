@@ -138,7 +138,12 @@ import { useCopilotPage } from "../useCopilotPage";
 beforeEach(() => {
   streamState.status = "ready";
   sendNewMessage.mockResolvedValue(undefined);
-  queueFollowUpMessage.mockResolvedValue(undefined);
+  queueFollowUpMessage.mockResolvedValue({
+    buffer_length: 1,
+    max_buffer_length: 10,
+    turn_in_flight: true,
+    pending_id: "pm-1",
+  });
   useCopilotUIStore.getState().setInitialPrompt(null);
 });
 
@@ -190,7 +195,7 @@ describe("useCopilotPage — stable onSend", () => {
       "session-1",
       "and also this",
     );
-    expect(queueMessage).toHaveBeenCalledWith("and also this");
+    expect(queueMessage).toHaveBeenCalledWith("and also this", "pm-1");
     expect(sendNewMessage).not.toHaveBeenCalled();
   });
 

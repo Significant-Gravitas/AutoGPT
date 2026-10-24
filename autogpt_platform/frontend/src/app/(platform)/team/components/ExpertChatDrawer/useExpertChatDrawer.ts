@@ -487,8 +487,8 @@ export function useExpertChatDrawer({
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
       try {
-        await queueFollowUpMessage(sessionId, message.text);
-        queueMessage(message.text);
+        const queued = await queueFollowUpMessage(sessionId, message.text);
+        queueMessage(message.text, queued.pending_id);
       } catch (err) {
         if (
           err instanceof Error &&

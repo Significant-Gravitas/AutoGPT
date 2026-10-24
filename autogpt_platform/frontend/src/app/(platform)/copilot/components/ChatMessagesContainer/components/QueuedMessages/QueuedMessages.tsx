@@ -15,7 +15,8 @@ interface Props {
   messages: string[];
   /** Set when nothing will answer these messages unless they are resent. */
   heldReason: HeldReason | null;
-  onRetry?: (text: string) => void;
+  /** Resends the chip at this index of `messages`. */
+  onRetry?: (index: number) => void;
   isCompact: boolean;
 }
 
@@ -53,7 +54,7 @@ export function QueuedMessages({
               variant="secondary"
               size="xs"
               leftIcon={<Icon icon={RefreshIcon} />}
-              onClick={() => onRetry(msg)}
+              onClick={() => onRetry(idx)}
             >
               Retry
             </Button>

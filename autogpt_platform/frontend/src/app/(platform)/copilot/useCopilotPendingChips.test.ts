@@ -968,27 +968,45 @@ describe("useCopilotPendingChips", () => {
   });
 });
 
+function pendingResponse(
+  messages: string[],
+  heldReason: "error" | "stopped" | "paused" | "ended" | null = null,
+) {
+  return {
+    status: 200,
+    data: {
+      count: messages.length,
+      messages,
+      // The server names every queued message by its id.
+      items: messages.map((content, index) => ({
+        id: `pm-${index + 1}`,
+        content,
+      })),
+      held_reason: heldReason,
+    },
+    headers: new Headers(),
+  } as Awaited<ReturnType<typeof getV2GetPendingMessages>>;
+}
+
 function bufferHolds(
   messages: string[],
   heldReason: "error" | "stopped" | "paused" | "ended" | null = null,
 ) {
-  mockGetPending.mockResolvedValue({
-    status: 200,
-    data: { count: messages.length, messages, held_reason: heldReason },
-    headers: new Headers(),
-  } as Awaited<ReturnType<typeof getV2GetPendingMessages>>);
+  mockGetPending.mockResolvedValue(pendingResponse(messages, heldReason));
 }
 
-describe("a follow-up the turn-start peek read before its own send returned", () => {
-  beforeEach(() => mockGetPending.mockReset());
-  afterEach(cleanup);
+const FOLLOW_UP = "What is my team working on?";
 
-  it("shows it once and never turns it into a bubble the server never stored", async () => {
-    vi.useFakeTimers();
-    try {
-      // The buffer already holds the follow-up when the turn-start peek
-      // answers: its POST landed, but the composer has not heard back yet.
-      bufferHolds(["What is my team working on?"]);
+describe.each([
+  ["start", "submitted", "streaming"],
+  ["end", "streaming", "ready"],
+] as const)(
+  "a follow-up the peek at a turn's %s reads around its own send",
+  (_, from, to) => {
+    beforeEach(() => mockGetPending.mockReset());
+    afterEach(cleanup);
+
+    function renderAt(status: ChatStatus) {
       let current: Messages = [assistantMessage(0)];
       const setMessages = vi.fn(
         (updater: Messages | ((prev: Messages) => Messages)) => {
@@ -1003,31 +1021,59 @@ describe("a follow-up the turn-start peek read before its own send returned", ()
             messages: current,
             setMessages,
           }),
-        { initialProps: { status: "submitted" as ChatStatus } },
+        { initialProps: { status } },
       );
-      view.rerender({ status: "streaming" });
+      return { view, messages: () => current };
+    }
+
+    it("shows once when the peek answers before the send does", async () => {
+      vi.useFakeTimers();
+      try {
+        // The POST landed; the peek answers before the composer hears back.
+        bufferHolds([FOLLOW_UP]);
+        const { view, messages } = renderAt(from);
+        view.rerender({ status: to });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        act(() => view.result.current.queueMessage(FOLLOW_UP, "pm-1"));
+
+        expect(view.result.current.queuedMessages).toEqual([FOLLOW_UP]);
+        // Nothing drained, so nothing becomes a bubble no row backs.
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10_000);
+        });
+        expect(storedFallbacks(messages())).toEqual([]);
+        expect(view.result.current.queuedMessages).toEqual([FOLLOW_UP]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("shows once when the send answers while the peek is out", async () => {
+      const answers: Array<(res: ReturnType<typeof pendingResponse>) => void> =
+        [];
+      mockGetPending.mockImplementation(
+        () => new Promise((resolve) => answers.push(resolve)),
+      );
+      const { view } = renderAt(from);
+      view.rerender({ status: to });
+      expect(answers.length).toBeGreaterThan(0);
+      // The send's answer lands after the GET went out, before it answers.
+      act(() => view.result.current.queueMessage(FOLLOW_UP, "pm-1"));
+      bufferHolds([FOLLOW_UP]);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      // Now the POST returns and the page queues its chip.
-      act(() => {
-        view.result.current.queueMessage("What is my team working on?");
+        answers
+          .splice(0)
+          .forEach((resolve) => resolve(pendingResponse([FOLLOW_UP])));
       });
 
-      expect(view.result.current.queuedMessages).toEqual([
-        "What is my team working on?",
-      ]);
-      // The backstop sees one buffered message for one chip: nothing drained.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(10_000);
-      });
-      expect(storedFallbacks(current)).toEqual([]);
-      expect(view.result.current.queuedMessages).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-});
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual([FOLLOW_UP]),
+      );
+    });
+  },
+);
 
 describe("follow-ups the last turn ended without reading", () => {
   beforeEach(() => mockGetPending.mockReset());
@@ -1074,7 +1120,9 @@ describe("follow-ups the last turn ended without reading", () => {
       expect(view.result.current.queuedMessages).toHaveLength(2),
     );
 
-    act(() => view.result.current.takeQueuedMessage("status?"));
+    const [status] = view.result.current.queuedEntries;
+    expect(status.serverId).toBe("pm-1");
+    act(() => view.result.current.takeQueuedMessage(status.id));
 
     expect(view.result.current.queuedMessages).toEqual(["and Monday"]);
   });

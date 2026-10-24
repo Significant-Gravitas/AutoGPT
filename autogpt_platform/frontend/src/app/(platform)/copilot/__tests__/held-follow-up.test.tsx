@@ -143,12 +143,23 @@ describe("a follow-up the last turn ended without reading", () => {
     expect(queued).toEqual([]);
   }, 15_000);
 
-  it("never resends a held chip another turn has read since, and gives its text back", async () => {
-    const posts: string[] = [];
+  it("runs nothing again when another turn read the follow-up before the Retry", async () => {
+    const bodies: StreamBody[] = [];
     server.use(
       http.post(STREAM_URL, async ({ request }) => {
-        posts.push("sent");
-        return streamSseResponse([], { abortSignal: request.signal });
+        bodies.push((await request.json()) as StreamBody);
+        // The server finds pm-1 already read by another tab's turn, so it
+        // answers "queued" and runs nothing.
+        return streamSseResponse(
+          [
+            { type: "start", messageId: "already-read" },
+            { type: "start-step" },
+            { type: "data-follow-up-queued", data: {} },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+          { abortSignal: request.signal },
+        );
       }),
     );
     renderChat();
@@ -157,22 +168,21 @@ describe("a follow-up the last turn ended without reading", () => {
       { name: /retry/i },
       { timeout: 5000 },
     );
-    // Another tab's turn read the queue in the meantime.
+    // Another tab's turn read the queue and answered it meanwhile.
     buffer.messages = [];
+    store("user", FOLLOW_UP);
+    store("assistant", ANSWER);
 
     await userEvent.setup().click(retry);
 
+    await screen.findByText(ANSWER, undefined, { timeout: 5000 });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].resend_pending_id).toBe("pm-1");
     await waitFor(() =>
       expect(screen.queryByText("Didn't go through")).toBeNull(),
     );
-    expect(posts).toEqual([]);
-    await waitFor(() =>
-      expect(
-        (screen.getByLabelText(/chat message input/i) as HTMLTextAreaElement)
-          .value,
-      ).toBe(FOLLOW_UP),
-    );
-  });
+    expect(screen.getAllByText(FOLLOW_UP)).toHaveLength(1);
+  }, 15_000);
 
   it("keeps the chip when the expert can no longer be messaged", async () => {
     const expertId = "3f8b0f7e-9f30-4a3b-a6a1-0000000000aa";
@@ -212,13 +222,14 @@ describe("a follow-up the last turn ended without reading", () => {
     expect(screen.getByText("Didn't go through")).toBeDefined();
   });
 
-  it("goes out once on Retry and gets its answer", async () => {
+  it("goes out once on Retry, by its id, and gets its answer", async () => {
     const posts: string[] = [];
+    const bodies: StreamBody[] = [];
     server.use(
       http.post(STREAM_URL, async ({ request }) => {
-        const { message = "" } = (await request.json()) as {
-          message?: string;
-        };
+        const body = (await request.json()) as StreamBody;
+        bodies.push(body);
+        const message = body.message ?? "";
         posts.push(message);
         // The server takes the held copy out of the queue and stores the row.
         buffer.messages = [];
@@ -244,6 +255,12 @@ describe("a follow-up the last turn ended without reading", () => {
 
     await screen.findByText(ANSWER, undefined, { timeout: 5000 });
     expect(posts).toEqual([FOLLOW_UP]);
+    // The server takes that very message off the queue; a second click or a
+    // retransmit carries the same key.
+    expect(bodies[0]).toMatchObject({
+      resend_pending_id: "pm-1",
+      message_id: "resend-pm-1",
+    });
     await waitFor(() =>
       expect(screen.queryByText("Didn't go through")).toBeNull(),
     );
@@ -312,10 +329,20 @@ function renderChat() {
       HttpResponse.json({
         messages: buffer.messages,
         count: buffer.messages.length,
+        items: buffer.messages.map((content, index) => ({
+          id: `pm-${index + 1}`,
+          content,
+        })),
         held_reason: buffer.messages.length > 0 ? "error" : null,
       }),
     ),
   );
+}
+
+interface StreamBody {
+  message?: string;
+  message_id?: string;
+  resend_pending_id?: string | null;
 }
 
 function store(role: "user" | "assistant", content: string) {
