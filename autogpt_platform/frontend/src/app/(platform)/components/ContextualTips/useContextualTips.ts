@@ -7,7 +7,7 @@ import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { trackFirstRun } from "@/services/onboarding/first-run-analytics";
 import { useEffect, useRef } from "react";
 import { useFirstRunTourStore } from "../FirstRunTour/store";
-import { useNoticeAdmission } from "../WorkflowsMovedNotice/useNoticeAdmission";
+import { useCompetingDialogOpen } from "../WorkflowsMovedNotice/useCompetingDialogOpen";
 import { isFirstSecondChat, peekTipSeen, setTipSeen } from "./helpers";
 import { requestTip, useContextualTipStore } from "./store";
 import { TIPS, type TipID } from "./tips";
@@ -58,18 +58,16 @@ export function useContextualTips() {
             !isSeen(id) && (!TIPS[id].requiresBilling || isBillingEnabled),
         ) ?? null)
       : null;
-  // Admission sticks once granted, so a dialog opening over a tip that is
-  // already showing has to take it down here too.
+  // Never over the walkthrough, its connect dialog or any other open
+  // dialog (the wallet, the profile menu): the tip steps aside while one is
+  // open and comes back once it closes, followed live rather than per page.
   const isBlocked = isTourOpen || isConnectToolsOpen;
-  const isAdmitted = useNoticeAdmission(
-    candidate !== null && !isBlocked,
-    userID,
-  );
-  const active = isAdmitted && !isBlocked ? candidate : null;
+  const isDialogOpen = useCompetingDialogOpen(candidate !== null && !isBlocked);
+  const active = !isBlocked && !isDialogOpen ? candidate : null;
 
   // The host outlives the tip card, which comes down and back up whenever
-  // admission is checked again (a new page, the walkthrough opening), so it
-  // is the one that knows a tip was already seen on screen.
+  // something opens over it (another dialog, the walkthrough), so it is the
+  // one that knows a tip was already seen on screen.
   const shownTips = useRef(new Set<string>());
   function reportShown(id: TipID) {
     const key = `${userID}:${id}`;

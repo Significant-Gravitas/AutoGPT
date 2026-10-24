@@ -372,8 +372,8 @@ describe("contextual tips — showing one", () => {
   });
 
   it("counts a tip as shown once, however often it is put back on screen", async () => {
-    // Moving to another page re-checks admission, which takes the tip down
-    // for a frame and puts it back, just like the walkthrough opening.
+    // Anything opening over the tip (another dialog, the walkthrough) takes
+    // it down and puts it back once it closes.
     render(<Page />);
     act(() => requestTip("first-cost"));
     expect(await screen.findByText("Where costs come from")).toBeDefined();
@@ -389,6 +389,31 @@ describe("contextual tips — showing one", () => {
       ([event]) => event === "contextual_tip_shown",
     );
     expect(shown).toEqual([["contextual_tip_shown", { tip: "first-cost" }]]);
+  });
+
+  it("steps aside while a popover is open and comes back once it closes, for later tips too", async () => {
+    // Opening the wallet or the profile menu (both role="dialog") used to
+    // shelve tips until the next page: closing it brought nothing back, and
+    // switching chats (?sessionId=) never changes the page.
+    render(<Page />);
+    act(() => requestTip("second-chat"));
+    expect(await screen.findByText("You have two chats now")).toBeDefined();
+
+    const popover = document.createElement("div");
+    popover.setAttribute("role", "dialog");
+    act(() => {
+      document.body.appendChild(popover);
+    });
+    await waitFor(() =>
+      expect(screen.queryByTestId("contextual-tip")).toBeNull(),
+    );
+
+    act(() => popover.remove());
+    expect(await screen.findByText("You have two chats now")).toBeDefined();
+
+    await userEvent.click(screen.getByRole("button", { name: "Got it" }));
+    act(() => requestTip("first-expert"));
+    expect(await screen.findByText("Experts can own tasks")).toBeDefined();
   });
 
   it("shows one tip at a time, oldest first", async () => {
