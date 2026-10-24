@@ -5,7 +5,7 @@ import {
   Sheet,
   SheetContent,
   SheetTrigger,
-} from "@/components/__legacy__/ui/sheet";
+} from "@/components/molecules/Dialog/components/SheetPrimitives";
 import { Menu } from "lucide-react";
 import { IconDashboardLayout } from "./ui/icons";
 
