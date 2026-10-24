@@ -14,13 +14,15 @@ import logging
 import os
 
 from langfuse import get_client
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
 from backend.api.features.onboarding_dump.parsing import parse_response_json
-from backend.api.features.onboarding_dump.providers import (
-    known_providers,
-    provider_lines,
-)
+from backend.api.features.onboarding_dump.providers import connectable_lines
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -44,6 +46,8 @@ MAX_PROMPTS = 6
 MAX_GREETING_CHARS = 500
 MAX_TITLE_CHARS = 120
 MAX_PROMPT_CHARS = 2_000
+MAX_INTEGRATIONS = 8
+MAX_INTEGRATION_CHARS = 60
 
 # Phosphor icon slugs the model may pick from — the frontend maps these to
 # real icon components and falls back to "sparkle" for anything else.
@@ -72,6 +76,18 @@ PROMPT_ICONS = frozenset(
     }
 )
 DEFAULT_PROMPT_ICON = "sparkle"
+
+# Sent as the system message on every generation, whichever copy of the
+# instructions is in use: the Langfuse copy wins in prod and can predate this
+# field, and the Home checklist labels each task from it. Code-owned so the
+# label never depends on a prompt edit landing.
+INTEGRATIONS_CONTRACT = """Every object in "prompts" also has \
+"integrations": an array naming each outside service the task signs in to. \
+Use the id from the integrations list for a service on it. A service the \
+task needs that is not on the list goes in by its own name ("Shopify") and \
+the app shows it as not supported yet, so prefer tasks that run entirely on \
+listed services, include at most one that needs a service not on the list, \
+and put it last. Use [] when the task needs no sign-in."""
 
 # The local fallback for the Langfuse-managed instructions. The greeting
 # diagnoses the dump so the user can see they were heard; the suggested
@@ -102,8 +118,8 @@ anything you were not told about, and never mention what you cannot do \
 or cannot reach — talk only about what you will take on.
 - "prompts": an array of 5-6 objects, each with:
   - "title": 8-14 words. Each title must feel like a small product built \
-specifically for THIS person — assembled from the exact tools, projects, \
-clients and pains they named. The reaction you are engineering is "wait, \
+specifically for THIS person — assembled from the projects, clients and \
+pains they named, and the tools they named that this platform can connect. The reaction you are engineering is "wait, \
 I can do THAT here?". Prefer compound automations that chain steps into \
 one flow (watch a source → extract what matters → draft the response → \
 deliver it on a schedule) over single actions. The test: if a title \
@@ -118,6 +134,7 @@ details from the title so work can start immediately.
 chart-bar, envelope, magnifying-glass, calendar-check, bell, \
 rocket-launch, file-text, globe, code, newspaper, users, shopping-cart, \
 chats, lightning, target, robot, clock, megaphone, currency-dollar.
+  - "integrations": see the system message.
 
 Example of the required jump in specificity (do NOT copy these, derive \
 your own from the transcript):
@@ -163,7 +180,12 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         return fallback_intro(text)
 
     instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
-    content = f"{_integrations_block()}{instructions}{text}"
+    messages: list[ChatCompletionMessageParam] = [
+        ChatCompletionSystemMessageParam(role="system", content=INTEGRATIONS_CONTRACT),
+        ChatCompletionUserMessageParam(
+            role="user", content=f"{_integrations_block()}{instructions}{text}"
+        ),
+    ]
     data = None
     # Two attempts: at temperature 0.6 an occasional generation comes back
     # truncated or malformed, and one retry is far cheaper than shipping
@@ -173,7 +195,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=_MODEL,
-                    messages=[{"role": "user", "content": content}],
+                    messages=messages,
                     temperature=0.6,
                     max_tokens=3000,
                 ),
@@ -213,13 +235,13 @@ def _integrations_block() -> str:
     of the instructions (which end with ``Transcript:``) so the whole
     static half of the message stays a stable prefix.
     """
-    lines = provider_lines(known_providers())
+    lines = connectable_lines()
     if not lines:
         return ""
     return (
-        "These are the integrations this platform can connect to. Only "
-        "promise automations that these can actually carry out, and never "
-        "name a tool that is not on this list:\n"
+        "These are the integrations this platform can connect to. Build "
+        "the automations you promise on them: a tool that is not on this "
+        "list cannot be connected yet.\n"
         f"{lines}\n\n"
     )
 
@@ -265,9 +287,22 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
                 title=title.strip()[:MAX_TITLE_CHARS],
                 prompt=prompt.strip()[:MAX_PROMPT_CHARS],
                 icon=icon if icon in PROMPT_ICONS else DEFAULT_PROMPT_ICON,
+                integrations=_parse_integrations(item.get("integrations")),
             )
         )
     return prompts
+
+
+def _parse_integrations(raw: object) -> list[str] | None:
+    """The services a prompt says it connects to; ``None`` if it said nothing."""
+    if not isinstance(raw, list):
+        return None
+    names = [
+        name.strip()[:MAX_INTEGRATION_CHARS]
+        for name in raw
+        if isinstance(name, str) and name.strip()
+    ]
+    return names[:MAX_INTEGRATIONS]
 
 
 def fallback_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:

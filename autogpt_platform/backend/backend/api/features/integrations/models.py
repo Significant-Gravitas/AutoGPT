@@ -67,6 +67,13 @@ class ProviderMetadata(BaseModel):
             "provider's ``_config.py``. ``None`` if not set."
         ),
     )
+    api_key_url: str | None = Field(
+        default=None,
+        description=(
+            "Page where the user creates or copies an API key for this "
+            "provider. Declared via ``ProviderBuilder.with_api_key_url(...)``."
+        ),
+    )
     supported_auth_types: list[CredentialsType] = Field(
         default_factory=list,
         description=(
@@ -110,6 +117,14 @@ def get_provider_description(name: str) -> str | None:
     if provider is None:
         return None
     return provider.description
+
+
+def get_api_key_url(name: str) -> str | None:
+    """Return where the user finds an API key for ``name``, if declared."""
+    provider = AutoRegistry.get_provider(name)
+    if provider is None:
+        return None
+    return provider.api_key_url
 
 
 class ProviderConstants(BaseModel):

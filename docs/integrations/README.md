@@ -181,6 +181,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
 | [Persist Information](block-integrations/data.md#persist-information) | Persists a key-value pair for use across multiple runs of an agent |
+| [Printify Get Print Options](block-integrations/printify/catalog.md#printify-get-print-options) | List who can print a Printify product type and the variants (sizes, colours) they offer, with the ids a new product needs |
+| [Printify List Products](block-integrations/printify/products.md#printify-list-products) | List the products in a Printify shop, with whether each is visible in the store |
+| [Printify List Shops](block-integrations/printify/shops.md#printify-list-shops) | List your Printify shops and the store each one publishes to (Etsy, Shopify,  |
 | [RMFG Analyze Design](block-integrations/rmfg/designs.md#rmfg-analyze-design) | Uploads a STEP file to RMFG, a manufacturer that makes and ships real sheet-metal and tube-laser parts, and returns its analyzed parts: the first step before a live quote, cart or order |
 | [RMFG Create Cart](block-integrations/rmfg/carts.md#rmfg-create-cart) | Creates an RMFG cart with a website checkout link for one or more configured designs, priced live with shipping and tax once an address is set |
 | [RMFG Create DFM Report](block-integrations/rmfg/dfm.md#rmfg-create-dfm-report) | Runs an RMFG manufacturability (DFM) check on a configured design |
@@ -745,3 +748,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Compass AI Trigger](block-integrations/compass/triggers.md#compass-ai-trigger) | This block will output the contents of the compass transcription |
 | [RMFG Event Trigger](block-integrations/rmfg/triggers.md#rmfg-event-trigger) | Triggers when an RMFG design, quote, cart or order changes |
 | [RMFG Get Image](block-integrations/rmfg/images.md#rmfg-get-image) | Downloads RMFG's rendered picture of a design or part, with holes and bends labelled |
+
+## Marketing
+
+| Block Name | Description |
+|------------|-------------|
+| [Printify Create Product](block-integrations/printify/products.md#printify-create-product) | Create a Printify product (unpublished) that prints your design on a product type, with title, description, tags and price |
+| [Printify Publish Product](block-integrations/printify/products.md#printify-publish-product) | Publish a Printify product to the store connected to its shop (for example your Etsy shop), making it live for buyers |
+| [Printify Search Catalog](block-integrations/printify/catalog.md#printify-search-catalog) | Search the Printify catalog for a product type (a blueprint), such as kiss-cut stickers, and get its blueprint id |
+| [Printify Upload Image](block-integrations/printify/uploads.md#printify-upload-image) | Upload a design image to your Printify media library and get the image id that Create Printify Product prints |

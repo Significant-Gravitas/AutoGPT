@@ -40,6 +40,7 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedProvidersResponse,
     SuggestedPrompt,
 )
+from backend.api.features.onboarding_dump.providers import label_support
 from backend.api.features.onboarding_dump.rate_limit import (
     enforce_personalization_budget,
 )
@@ -647,7 +648,7 @@ async def _extract_and_complete(
         recording_id,
         errorCode=None,
         greeting=greeting,
-        suggestedPrompts=Json([p.model_dump() for p in suggested_prompts]),
+        suggestedPrompts=Json([p.stored() for p in suggested_prompts]),
     )
     return _completed_response(transcript, input_mode)
 
@@ -756,7 +757,7 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         return IntroCardResponse(
             path="B",
             greeting=prompts.PATH_B_GREETING,
-            prompts=intro.fallback_prompts(),
+            prompts=label_support(intro.fallback_prompts()),
             team=team,
             team_pending=team_pending,
         )
@@ -769,7 +770,7 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
     return IntroCardResponse(
         path="A",
         greeting=greeting,
-        prompts=_stored_prompts(dump.suggestedPrompts),
+        prompts=label_support(_stored_prompts(dump.suggestedPrompts)),
         transcript=dump.transcript,
         team=team,
         team_pending=team_pending,
@@ -849,6 +850,7 @@ def _stored_prompts(raw: object) -> list[SuggestedPrompt]:
                 if item.get("icon") in intro.PROMPT_ICONS
                 else intro.DEFAULT_PROMPT_ICON
             ),
+            integrations=_stored_integrations(item.get("integrations")),
         )
         for item in raw
         if isinstance(item, dict)
@@ -856,6 +858,12 @@ def _stored_prompts(raw: object) -> list[SuggestedPrompt]:
         and isinstance(item.get("prompt"), str)
     ]
     return parsed or intro.fallback_prompts()
+
+
+def _stored_integrations(raw: object) -> list[str] | None:
+    if not isinstance(raw, list):
+        return None
+    return [name for name in raw if isinstance(name, str)]
 
 
 async def mark_greeting_done(user_id: str) -> None:

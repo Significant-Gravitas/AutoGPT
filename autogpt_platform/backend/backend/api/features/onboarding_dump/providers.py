@@ -7,14 +7,23 @@ two can never drift onto different views of the registry.
 """
 
 import logging
+from typing import TypeVar
 
 from backend.api.features.integrations.models import (
     get_all_provider_names,
     get_provider_description,
 )
+from backend.api.features.integrations.support import (
+    connectable_services,
+    mentioned_gaps,
+    unsupported_services,
+)
+from backend.api.features.onboarding_dump.models import SuggestedPrompt
 from backend.blocks import load_all_blocks
 
 logger = logging.getLogger(__name__)
+
+PromptT = TypeVar("PromptT", bound=SuggestedPrompt)
 
 
 def known_providers() -> dict[str, str | None]:
@@ -38,3 +47,30 @@ def provider_lines(providers: dict[str, str | None]) -> str:
         f"- {name}: {description}" if description else f"- {name}"
         for name, description in providers.items()
     )
+
+
+def connectable_lines() -> str:
+    """Every service a user can connect here, one ``- id: description`` each.
+
+    What the greeting may promise: a provider whose sign-in is not set up in
+    this deployment is left out, and the official MCP servers Otto connects
+    are in.
+    """
+    return provider_lines(
+        {service.key: service.description for service in connectable_services()}
+    )
+
+
+def label_support(prompts: list[PromptT]) -> list[PromptT]:
+    """Each prompt with ``unsupported`` worked out against the live registry.
+
+    A row stored before prompts recorded their integrations is read from its
+    text instead, for the tools we know we have no connector for.
+    """
+    for prompt in prompts:
+        prompt.unsupported = (
+            unsupported_services(prompt.integrations)
+            if prompt.integrations is not None
+            else mentioned_gaps(f"{prompt.title} {prompt.prompt}")
+        )
+    return prompts

@@ -1,0 +1,255 @@
+"""Etsy client, OAuth handler and listing forms against a mocked HTTP layer."""
+
+import time
+from unittest.mock import AsyncMock, Mock, patch
+from urllib.parse import parse_qs, urlsplit
+
+import pytest
+
+from backend.blocks.etsy._api import EtsyClient, EtsyError
+from backend.blocks.etsy._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.etsy._oauth import EtsyOAuthHandler
+from backend.blocks.etsy.images import decode_data_uri
+from backend.blocks.etsy.listings import (
+    EtsyCreateDraftListingBlock,
+    EtsyUpdateListingBlock,
+    draft_listing_form,
+    update_listing_form,
+)
+from backend.util import json
+
+SHOP = {"shop_id": 42, "shop_name": "StickerStudio", "url": "https://etsy.com/shop/s"}
+
+
+def _response(status: int, body: object) -> Mock:
+    response = Mock(ok=200 <= status < 300, status=status)
+    response.content = json.dumps(body).encode()
+    response.json.return_value = body
+    return response
+
+
+def _http(*responses: Mock) -> Mock:
+    http = Mock()
+    http.request = AsyncMock(side_effect=list(responses))
+    http.post = AsyncMock(side_effect=list(responses))
+    return http
+
+
+def _client(*responses: Mock) -> tuple[EtsyClient, Mock]:
+    http = _http(*responses)
+    with patch.object(EtsyClient, "raw_requests", return_value=http):
+        return EtsyClient(TEST_CREDENTIALS, "keystring", "shared-secret"), http
+
+
+async def test_every_request_sends_the_app_key_pair_and_the_shop_token():
+    client, http = _client(
+        _response(200, {"user_id": 7, "shop_id": 42}), _response(200, SHOP)
+    )
+
+    shop = await client.get_my_shop()
+
+    assert shop.shop_name == "StickerStudio"
+    me, shop_call = http.request.await_args_list
+    assert me.args == ("GET", "https://api.etsy.com/v3/application/users/me")
+    assert shop_call.args == ("GET", "https://api.etsy.com/v3/application/shops/42")
+    headers = me.kwargs["headers"]
+    assert headers["x-api-key"] == "keystring:shared-secret"
+    assert headers["Authorization"] == "Bearer 12345678.mock-etsy-access-token"
+
+
+async def test_an_account_without_a_shop_is_told_to_open_one():
+    client, _ = _client(_response(200, {"user_id": 7, "shop_id": None}))
+
+    with pytest.raises(EtsyError, match="no shop yet"):
+        await client.get_my_shop()
+
+
+async def test_a_signed_out_connection_asks_to_reconnect():
+    client, _ = _client(_response(401, {"error": "invalid_token"}))
+
+    with pytest.raises(EtsyError, match="Connect Etsy again"):
+        await client.list_listings(42, "active", 25)
+
+
+async def test_categories_are_flattened_with_their_path():
+    tree = {
+        "count": 1,
+        "results": [
+            {
+                "id": 1,
+                "name": "Paper",
+                "children": [{"id": 2078, "name": "Stickers", "children": []}],
+            }
+        ],
+    }
+    client, _ = _client(_response(200, tree))
+
+    categories = await client.list_categories()
+
+    assert [(c.id, c.path) for c in categories] == [
+        (1, "Paper"),
+        (2078, "Paper > Stickers"),
+    ]
+
+
+async def test_listing_image_is_sent_as_the_image_multipart_field():
+    client, http = _client(_response(200, {"listing_image_id": 9}))
+
+    await client.upload_listing_image(
+        42, 5, ("image.png", b"png", "image/png"), {"rank": "1"}
+    )
+
+    call = http.request.await_args
+    assert call.args[1].endswith("/shops/42/listings/5/images")
+    [(field, (name, handle, mime))] = call.kwargs["files"]
+    assert (field, name, handle.read(), mime) == (
+        "image",
+        "image.png",
+        b"png",
+        "image/png",
+    )
+    assert call.kwargs["data"] == {"rank": "1"}
+
+
+def _draft(**overrides) -> EtsyCreateDraftListingBlock.Input:
+    fields = {
+        "credentials": TEST_CREDENTIALS_INPUT,
+        "shop_id": 42,
+        "title": "Sleepy Cat Sticker",
+        "description": "A cat.",
+        "price": 3.99,
+        "tags": ["cat sticker", "kawaii"],
+        "taxonomy_id": 2078,
+        "shipping_profile_id": 2001,
+        **overrides,
+    }
+    return EtsyCreateDraftListingBlock.Input(**fields)
+
+
+def test_draft_listing_form_matches_what_etsy_reads():
+    assert draft_listing_form(_draft()) == {
+        "title": "Sleepy Cat Sticker",
+        "description": "A cat.",
+        "price": "3.99",
+        "quantity": "999",
+        "taxonomy_id": "2078",
+        "who_made": "i_did",
+        "when_made": "made_to_order",
+        "is_supply": "false",
+        "type": "physical",
+        "tags": "cat sticker,kawaii",
+        "shipping_profile_id": "2001",
+    }
+
+
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"shipping_profile_id": 0}, "shipping profile"),
+        ({"tags": [f"t{i}" for i in range(14)]}, "at most 13 tags"),
+        ({"price": 0}, "more than zero"),
+    ],
+)
+def test_draft_listing_form_refuses_what_etsy_would(overrides, message):
+    with pytest.raises(ValueError, match=message):
+        draft_listing_form(_draft(**overrides))
+
+
+def test_a_download_needs_no_shipping_profile():
+    form = draft_listing_form(_draft(shipping_profile_id=0, listing_type="download"))
+    assert "shipping_profile_id" not in form
+
+
+def test_update_form_sends_only_what_changes():
+    data = EtsyUpdateListingBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT, shop_id=42, listing_id=5, state="active"
+    )
+    assert update_listing_form(data) == {"state": "active"}
+
+    with pytest.raises(ValueError, match="Nothing to change"):
+        update_listing_form(
+            EtsyUpdateListingBlock.Input(
+                credentials=TEST_CREDENTIALS_INPUT, shop_id=42, listing_id=5
+            )
+        )
+
+
+def test_decode_data_uri():
+    assert decode_data_uri("data:image/jpeg;base64,aGVsbG8=") == (
+        "image.jpg",
+        b"hello",
+        "image/jpeg",
+    )
+    with pytest.raises(ValueError, match="could not be read"):
+        decode_data_uri("https://example.com/cat.png")
+
+
+def _handler() -> EtsyOAuthHandler:
+    return EtsyOAuthHandler(
+        "keystring",
+        "shared-secret",
+        "https://app.example/auth/integrations/oauth_callback",
+    )
+
+
+def test_login_url_uses_pkce_and_space_separated_scopes():
+    url = _handler().get_login_url(["shops_r", "listings_w"], "state-1", "challenge")
+
+    parts = urlsplit(url)
+    query = parse_qs(parts.query)
+    assert (
+        f"{parts.scheme}://{parts.netloc}{parts.path}"
+        == "https://www.etsy.com/oauth/connect"
+    )
+    assert query["scope"] == ["shops_r listings_w"]
+    assert query["code_challenge"] == ["challenge"]
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["client_id"] == ["keystring"]
+
+    with pytest.raises(ValueError, match="PKCE"):
+        _handler().get_login_url([], "state-1", None)
+
+
+async def test_code_exchange_stores_tokens_and_names_the_shop():
+    tokens = {
+        "access_token": "7.access",
+        "refresh_token": "7.refresh",
+        "expires_in": 3600,
+        "token_type": "Bearer",
+    }
+    http = _http(_response(200, tokens))
+    http.request = AsyncMock(
+        side_effect=[
+            _response(200, {"user_id": 7, "shop_id": 42}),
+            _response(200, SHOP),
+        ]
+    )
+    with patch.object(EtsyClient, "raw_requests", return_value=http):
+        credentials = await _handler().exchange_code_for_tokens(
+            "code-1", ["shops_r"], "verifier-1"
+        )
+
+    form = http.post.await_args.kwargs["data"]
+    assert form["grant_type"] == "authorization_code"
+    assert form["code_verifier"] == "verifier-1"
+    assert credentials.access_token.get_secret_value() == "7.access"
+    assert credentials.username == "StickerStudio"
+    assert credentials.access_token_expires_at is not None
+    assert credentials.access_token_expires_at > time.time() + 3000
+
+
+async def test_refresh_keeps_the_credential_identity():
+    tokens = {
+        "access_token": "7.new",
+        "refresh_token": "7.new-refresh",
+        "expires_in": 3600,
+    }
+    http = _http(_response(200, tokens))
+    with patch.object(EtsyClient, "raw_requests", return_value=http):
+        refreshed = await _handler().refresh_tokens(TEST_CREDENTIALS)
+
+    assert http.post.await_args.kwargs["data"]["grant_type"] == "refresh_token"
+    assert refreshed.id == TEST_CREDENTIALS.id
+    assert refreshed.username == "StickerStudio"
+    assert refreshed.refresh_token is not None
+    assert refreshed.refresh_token.get_secret_value() == "7.new-refresh"

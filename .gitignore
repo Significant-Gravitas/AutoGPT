@@ -234,3 +234,8 @@ autogpt_platform/frontend/public/vad/
 
 # Dependency and tool caches; vitest wrote one to the repo root once.
 node_modules/
+# Same trap for the Printify integration: its blocks, logo and anything else
+# named after it are source.
+!autogpt_platform/backend/backend/blocks/printify/
+!docs/integrations/block-integrations/printify/
+!autogpt_platform/frontend/public/integrations/printify.png

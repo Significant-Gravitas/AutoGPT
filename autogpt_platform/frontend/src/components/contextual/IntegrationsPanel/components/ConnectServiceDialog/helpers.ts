@@ -17,6 +17,7 @@ export interface ConnectableProvider {
   searchTerms?: string[];
   mcpServer?: ProviderMetadata["mcp_server"];
   iconId?: string;
+  apiKeyUrl?: string | null;
 }
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
@@ -120,6 +121,9 @@ export function toConnectableProviders(
     }
     if (item.name === displayProvider && !item.mcp_server) {
       provider.description = item.description;
+    }
+    if (item.api_key_url && !item.mcp_server) {
+      provider.apiKeyUrl = item.api_key_url;
     }
     byService.set(key, provider);
   }

@@ -158,6 +158,14 @@ class TestToolDiscoveryPriorityAntiPattern:
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert '"<service> MCP server"' in result
 
+    def test_a_service_nothing_covers_gets_the_not_supported_card(self):
+        """SECRT-3150: with no block and no vendor server for Printify, the
+        model asked a new user to paste a token into a hand-built HTTP
+        request. A gap is said on a card and recorded instead."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert 'run_capability(id="tool:request_integration"' in result
+        assert "Never stand in for a missing integration" in result
+
     def test_supplement_includes_the_flow_and_no_legacy_names(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         # The numbered flow gives the model a concrete template to follow,

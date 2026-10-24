@@ -1,0 +1,159 @@
+"""Printify client and blocks against a mocked HTTP layer (no real API calls)."""
+
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
+from backend.blocks.printify._api import PrintifyClient, PrintifyError
+from backend.blocks.printify._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.printify.catalog import PrintifySearchCatalogBlock
+from backend.blocks.printify.products import PrintifyCreateProductBlock, product_body
+from backend.blocks.printify.uploads import PrintifyUploadImageBlock
+from backend.data.execution import ExecutionContext
+from backend.util import json
+
+
+def _response(status: int, body: object) -> Mock:
+    content = json.dumps(body).encode()
+    response = Mock(ok=200 <= status < 300, status=status, content=content)
+    response.json.return_value = body
+    return response
+
+
+def _client(*responses: Mock) -> tuple[PrintifyClient, AsyncMock]:
+    client = PrintifyClient(TEST_CREDENTIALS)
+    request = AsyncMock(side_effect=list(responses))
+    client._requests.request = request
+    return client, request
+
+
+async def test_requests_carry_the_token_and_a_user_agent():
+    client, request = _client(
+        _response(200, [{"id": 1, "title": "Stickers", "sales_channel": "etsy"}])
+    )
+
+    shops = await client.list_shops()
+
+    assert [shop.title for shop in shops] == ["Stickers"]
+    call = request.await_args
+    assert call.args == ("GET", "https://api.printify.com/v1/shops.json")
+    assert call.kwargs["headers"]["Authorization"] == "Bearer mock-printify-token"
+    assert call.kwargs["headers"]["User-Agent"] == "AutoGPT"
+
+
+async def test_upload_sends_a_url_or_base64_contents():
+    image = {"id": "img-1", "file_name": "cat.png", "preview_url": "https://p/1"}
+    client, request = _client(_response(200, image), _response(200, image))
+
+    await client.upload_image("cat.png", url="https://example.com/cat.png")
+    await client.upload_image("cat.png", contents="aGVsbG8=")
+
+    by_url, by_contents = (call.kwargs["json"] for call in request.await_args_list)
+    assert by_url == {"file_name": "cat.png", "url": "https://example.com/cat.png"}
+    assert by_contents == {"file_name": "cat.png", "contents": "aGVsbG8="}
+
+
+async def test_a_rejected_token_says_where_to_make_a_new_one():
+    client, _ = _client(_response(401, {"message": "Unauthenticated."}))
+
+    with pytest.raises(PrintifyError, match="printify.com/app/account/api"):
+        await client.list_shops()
+
+
+async def test_a_validation_error_keeps_printifys_reason():
+    client, _ = _client(
+        _response(
+            400,
+            {
+                "status": "error",
+                "message": "Validation failed.",
+                "errors": {"reason": "Image has low quality", "code": 8203},
+            },
+        )
+    )
+
+    with pytest.raises(PrintifyError, match="Validation failed. Image has low quality"):
+        await client.create_product(1, {})
+
+
+def test_product_body_prices_every_variant_in_cents_and_centres_the_design():
+    data = PrintifyCreateProductBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT,
+        shop_id=1,
+        title="Sleepy Cat",
+        description="A cat.",
+        tags=["cat"],
+        blueprint_id=400,
+        print_provider_id=99,
+        variant_ids=[11, 12],
+        price=3.99,
+        image_id="img-1",
+    )
+
+    body = product_body(data)
+
+    assert body["variants"] == [
+        {"id": 11, "price": 399, "is_enabled": True},
+        {"id": 12, "price": 399, "is_enabled": True},
+    ]
+    assert body["print_areas"] == [
+        {
+            "variant_ids": [11, 12],
+            "placeholders": [
+                {
+                    "position": "front",
+                    "images": [
+                        {"id": "img-1", "x": 0.5, "y": 0.5, "scale": 1, "angle": 0}
+                    ],
+                }
+            ],
+        }
+    ]
+
+
+async def test_search_catalog_matches_singular_and_plural_names():
+    block = PrintifySearchCatalogBlock()
+    blueprints = [
+        {"id": 400, "title": "Kiss-Cut Stickers"},
+        {"id": 5, "title": "Unisex Heavy Cotton Tee"},
+    ]
+    client, _ = _client(_response(200, blueprints))
+    with patch("backend.blocks.printify.catalog.PrintifyClient", return_value=client):
+        outputs = [
+            output
+            async for output in block.run(
+                block.Input(credentials=TEST_CREDENTIALS_INPUT, query="stickers"),
+                credentials=TEST_CREDENTIALS,
+            )
+        ]
+
+    assert [b.id for b in outputs[0][1]] == [400]
+
+
+async def test_upload_block_sends_a_file_as_base64_and_a_url_as_is():
+    block = PrintifyUploadImageBlock()
+    upload = AsyncMock(return_value=Mock(id="img", preview_url="", width=1, height=1))
+    context = ExecutionContext(user_id="user-1", graph_exec_id="run-1")
+    with (
+        patch.object(PrintifyUploadImageBlock, "upload", upload),
+        patch(
+            "backend.blocks.printify.uploads.store_media_file",
+            AsyncMock(return_value="data:image/png;base64,aGVsbG8="),
+        ),
+    ):
+        for image in ("workspace://file-1", "https://example.com/d/cat.png"):
+            async for _ in block.run(
+                block.Input(credentials=TEST_CREDENTIALS_INPUT, image=image),
+                credentials=TEST_CREDENTIALS,
+                execution_context=context,
+            ):
+                pass
+
+    from_file, from_url = (call.args for call in upload.await_args_list)
+    assert from_file == (TEST_CREDENTIALS, "design.png", None, "aGVsbG8=")
+    assert from_url == (
+        TEST_CREDENTIALS,
+        "cat.png",
+        "https://example.com/d/cat.png",
+        None,
+    )

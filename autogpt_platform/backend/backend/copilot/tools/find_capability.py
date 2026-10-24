@@ -195,6 +195,10 @@ def _no_result_suggestions(kind: str | None) -> list[str]:
         "Try the service name alone, or a broader action ('email', 'sheet', 'http')",
         "For a service with no result, web_search '<service> MCP server' and "
         "call run_capability with the server URL as the id",
+        "If no verified vendor server exists either, the service is not "
+        "supported: run_capability(id='tool:request_integration', "
+        "input={'service': '<service>', 'use_case': '<what for>'}) tells the "
+        "user and records the request. Do this before any workaround.",
     ]
 
 
