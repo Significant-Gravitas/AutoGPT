@@ -346,7 +346,12 @@ def delayed_wake():
 
 @pytest.fixture
 def gate_on():
-    with patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)):
+    with (
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
+    ):
         yield
 
 
