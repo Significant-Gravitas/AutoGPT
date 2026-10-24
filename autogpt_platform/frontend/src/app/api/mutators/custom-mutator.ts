@@ -6,8 +6,8 @@ import {
 import * as Sentry from "@sentry/nextjs";
 
 import {
-  isAccountBannedResponse,
-  signOutBannedAccount,
+  getAccountRefusal,
+  signOutRefusedAccount,
 } from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
@@ -183,8 +183,9 @@ export const customMutator = async <
       logServerRequestFailure(failure);
     } else {
       logClientRequestFailure(failure);
-      if (isAccountBannedResponse(response.status, responseData)) {
-        signOutBannedAccount();
+      const refusal = getAccountRefusal(response.status, responseData);
+      if (refusal) {
+        signOutRefusedAccount(refusal);
       }
     }
 

@@ -22,6 +22,8 @@ describe("LogoutPage", () => {
 
   test.each([
     ["/logout?reason=banned", "/login?account=banned"],
+    ["/logout?reason=closed", "/login?account=closed"],
+    ["/logout?reason=other", "/login"],
     ["/logout", "/login"],
   ])("from %s it lands on %s", async (from, to) => {
     window.history.replaceState({}, "", from);

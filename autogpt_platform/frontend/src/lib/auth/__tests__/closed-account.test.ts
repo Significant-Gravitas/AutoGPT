@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Runs the real Better Auth handler and admin plugin with this app's auth
-// options (from ../auth) on an in-memory database: a deleted account is a
-// banned one (backend data/account_deletion.py), and signing in to it must
-// say the account is closed rather than Better Auth's default ban copy.
+// Runs the real Better Auth handler, the closed-account and admin plugins with
+// this app's auth options (from ../auth) on an in-memory database: a deleted
+// account is a banned one (backend data/account_deletion.py), and signing in
+// to it must say the account is closed, while any other ban says banned.
 
 vi.mock("pg", () => ({ Pool: vi.fn() }));
 const testDB = vi.hoisted(() => ({ current: {} as Record<string, unknown[]> }));
@@ -16,8 +16,8 @@ vi.mock("better-auth", async (importOriginal) => {
       actual.betterAuth({
         ...options,
         database: memoryAdapter(testDB.current),
-        plugins: (options.plugins ?? []).filter(
-          (plugin) => plugin.id === "admin",
+        plugins: (options.plugins ?? []).filter((plugin) =>
+          ["closed-account", "admin"].includes(plugin.id),
         ),
       }),
   };
@@ -39,6 +39,8 @@ vi.mock("../email", () => ({ sendAuthEmail: vi.fn() }));
 
 const CLOSED_ACCOUNT_MESSAGE =
   "This account is closed. If you think this is a mistake, contact contact@agpt.co.";
+const BANNED_ACCOUNT_MESSAGE =
+  "This account has been banned. If you think this is a mistake, please contact support.";
 const baseURL = "http://localhost:3000";
 const email = "closed@example.com";
 const password = "a-long-enough-password";
@@ -75,28 +77,46 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+async function signUpBanned(banReason: string | null) {
+  const auth = await createAuthHandler();
+  await auth.api.signUpEmail({ body: { email, password, name: "banned" } });
+  for (const user of auth.db.UserAuthIdentity) {
+    Object.assign(user, { banned: true, banReason, banExpires: null });
+  }
+  return auth;
+}
+
 describe("signing in to a closed account", () => {
   it("is refused with the closed-account copy", async () => {
-    const { handler, api, db } = await createAuthHandler();
-    await api.signUpEmail({ body: { email, password, name: "closed" } });
-    for (const user of db.UserAuthIdentity) {
-      Object.assign(user, {
-        banned: true,
-        banReason: "account_deleted",
-        banExpires: null,
-      });
-    }
+    const { handler, db } = await signUpBanned("account_deleted");
     const sessionsBefore = db.UserAuthSession.length;
 
     const response = await signIn(handler);
 
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({
-      code: "BANNED_USER",
+      code: "ACCOUNT_CLOSED",
       message: CLOSED_ACCOUNT_MESSAGE,
     });
     expect(db.UserAuthSession).toHaveLength(sessionsBefore);
   });
+
+  it.each([["spam"], [null]])(
+    "says banned, not closed, for a ban with reason %s",
+    async (banReason) => {
+      const { handler, db } = await signUpBanned(banReason);
+      const sessionsBefore = db.UserAuthSession.length;
+
+      const response = await signIn(handler);
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        code: "BANNED_USER",
+        message: BANNED_ACCOUNT_MESSAGE,
+      });
+      expect(db.UserAuthSession).toHaveLength(sessionsBefore);
+    },
+  );
 
   it("still signs an open account in", async () => {
     const { handler, api } = await createAuthHandler();

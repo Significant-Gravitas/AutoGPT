@@ -124,13 +124,21 @@ describe("BackendAPI._makeClientRequest 204 handling", () => {
   });
 });
 
-describe("BackendAPI on a banned account", () => {
-  const banned = JSON.stringify({
-    detail: {
-      code: "account_banned",
-      message: "This account has been banned.",
+describe.each([
+  [
+    "banned",
+    403,
+    {
+      detail: {
+        code: "account_banned",
+        message: "This account has been banned.",
+      },
     },
-  });
+  ],
+  // A tab still open after the account was deleted.
+  ["closed", 401, { detail: "This account is closed." }],
+])("BackendAPI on a %s account", (refusal, status, body) => {
+  const refused = JSON.stringify(body);
   let replace: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -138,8 +146,8 @@ describe("BackendAPI on a banned account", () => {
       .spyOn(window.location, "replace")
       .mockImplementation(() => undefined);
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
-      return new Response(banned, {
-        status: 403,
+      return new Response(refused, {
+        status,
         headers: { "Content-Type": "application/json" },
       });
     });
@@ -171,12 +179,12 @@ describe("BackendAPI on a banned account", () => {
       call(new BackendAPI("http://test", "ws://test")),
     ).rejects.toThrow();
 
-    expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
+    expect(replace).toHaveBeenCalledWith(`/logout?reason=${refusal}`);
   });
 
   class RefusedXHR {
-    status = 403;
-    responseText = banned;
+    status = status;
+    responseText = refused;
     withCredentials = false;
     upload = { addEventListener() {} };
     private onLoad: (() => void) | undefined;

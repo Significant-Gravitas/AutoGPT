@@ -161,6 +161,18 @@ async def test_send_account_deleted_email_replies_to_the_shared_inbox(send, sour
     ]
 
 
+async def test_an_email_request_gets_its_own_reason_line(send):
+    """A request made by email to privacy@ was not made in AutoGPT."""
+    await auth_email.send_account_deleted_email(
+        "sam@example.com", AccountDeletionSource.EMAIL
+    )
+
+    _, _, html, text = send.call_args.args
+    assert "You asked us by email to delete your account." in html
+    assert "You asked us by email to delete your account." in text
+    assert "You deleted your account in AutoGPT." not in html + text
+
+
 async def test_send_account_deleted_email_uses_the_configured_reply_to(
     send, monkeypatch
 ):

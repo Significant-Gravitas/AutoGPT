@@ -309,6 +309,35 @@ async def unsubscribe(email: str, fields: Fields | None = None) -> None:
     logger.info(f"Unsubscribed {pseudonym(email)} in MailerLite")
 
 
+async def find_subscriber_id(email: str) -> str | None:
+    """The subscriber's MailerLite ID, None when MailerLite has nobody by it."""
+    _require_token()
+    return await _find_subscriber_id(email)
+
+
+async def forget_subscriber(email: str) -> bool:
+    """The account was deleted: have MailerLite forget the subscriber
+    (`POST /subscribers/{id}/forget`), which removes them at once and erases
+    their data within 30 days. A plain `DELETE` would keep their data in case
+    they re-subscribe. Consent and country gates do not apply to a deletion.
+    Returns whether anyone was forgotten; someone MailerLite does not have is
+    already gone."""
+    subscriber_id = await find_subscriber_id(email)
+    if subscriber_id is None:
+        return False
+    response = await _client().post(
+        f"{API_BASE}/subscribers/{subscriber_id}/forget", headers=_headers()
+    )
+    # 404: removed since the lookup, which is the state we want.
+    if response.status not in _OK_STATUSES and response.status != 404:
+        raise MailerLiteError(
+            f"Forgetting MailerLite subscriber {pseudonym(email)} failed with "
+            f"{response.status}"
+        )
+    logger.info(f"Asked MailerLite to forget {pseudonym(email)}")
+    return response.status != 404
+
+
 async def ensure_fields() -> list[SubscriberField]:
     """Create any of our fields MailerLite does not have yet, and return the
     ones created. Idempotent, and checked once per process."""

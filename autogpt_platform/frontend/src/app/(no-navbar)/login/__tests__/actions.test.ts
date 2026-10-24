@@ -127,13 +127,13 @@ describe("login", () => {
   });
 
   it("passes a closed account's message through instead of a generic error", async () => {
-    // What the admin plugin throws once the session hook finds the user
-    // banned, with bannedUserMessage from lib/auth/auth.ts.
+    // What the closed-account plugin throws once the session hook finds the
+    // user banned for deleting the account (lib/auth/closed-account-plugin.ts).
     signInEmailMock.mockRejectedValue(
       new APIError("FORBIDDEN", {
         message:
           "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
-        code: "BANNED_USER",
+        code: "ACCOUNT_CLOSED",
       }),
     );
 
