@@ -2114,6 +2114,8 @@ async def stream_chat_post(
                 folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
                 client_message_id=client_message_id,
+                # The row the queue saves later is tagged like one saved now.
+                metadata=card_metadata,
             )
             await _accept_card_answer(session_id, message, card_owner)
             return _empty_ui_message_stream_response(follow_up_queued=True)
@@ -2569,6 +2571,8 @@ async def queue_pending_message(
             folder_ids=request.folder_ids,
             expert_id=session.expert_id,
             client_message_id=client_message_id,
+            # The row the queue saves later is tagged like one /stream saves.
+            metadata=card_metadata,
         )
     except HTTPException as exc:
         # A 429 comes after the push: the decision stays queued.

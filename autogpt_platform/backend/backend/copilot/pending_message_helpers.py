@@ -162,9 +162,9 @@ async def queue_user_message(
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
 
-    ``metadata`` lands on the user row the message is persisted as. It is
-    for internal senders only (a session messaging another session); the
-    HTTP path never passes it.
+    ``metadata`` lands on the user row the message is persisted as. Only the
+    server sets it: a session messaging another session, or the chat route
+    tagging a proposal card's decision. No request field is ever copied in.
     """
     pending = PendingMessage(
         content=message,
@@ -219,6 +219,7 @@ async def queue_pending_for_http(
     folder_ids: list[str] | None,
     expert_id: str | None,
     client_message_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -291,6 +292,7 @@ async def queue_pending_for_http(
             context=queue_context,
             file_ids=sanitized_file_ids,
             require_turn_in_flight=True,
+            metadata=metadata,
         )
     )
     try:

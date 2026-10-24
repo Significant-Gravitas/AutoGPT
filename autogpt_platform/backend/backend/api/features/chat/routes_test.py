@@ -1425,6 +1425,85 @@ def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     )
 
 
+_QUEUED_DECISION = "Approved: hire Maya (confirmation_id: c-1)."
+_QUEUED_DECISION_METADATA = {
+    "kind": "card_decision",
+    "decisions": [
+        {
+            "verdict": "approved",
+            "confirmation_id": "c-1",
+            "verb": "hire",
+            "name": "Maya",
+        }
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    "message, metadata",
+    [
+        (_QUEUED_DECISION, _QUEUED_DECISION_METADATA),
+        (_QUEUED_DECISION + "\nAnd start on Monday.", None),
+    ],
+    ids=["decision", "with-the-users-own-words"],
+)
+def test_stream_chat_tags_a_decision_it_queues_behind_a_running_turn(
+    mocker: pytest_mock.MockerFixture, message: str, metadata: dict | None
+) -> None:
+    """The row the queue saves later is tagged like one /stream saves now."""
+    _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": message})
+
+    assert response.status_code == 200
+    assert push.await_args.args[1].metadata == metadata
+
+
+@pytest.mark.parametrize(
+    "message, metadata",
+    [
+        (_QUEUED_DECISION, _QUEUED_DECISION_METADATA),
+        (_QUEUED_DECISION + "\nAnd start on Monday.", None),
+    ],
+    ids=["decision", "with-the-users-own-words"],
+)
+def test_queue_pending_message_tags_a_queued_decision(
+    mocker: pytest_mock.MockerFixture, message: str, metadata: dict | None
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": message}
+    )
+
+    assert response.status_code == 200
+    assert push.await_args.args[1].metadata == metadata
+
+
 def test_stream_chat_retransmits_of_a_started_turn_queue_nothing(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
