@@ -38,39 +38,41 @@ function delegatePart(output: unknown, state = "output-available") {
   } as unknown as MessagePart;
 }
 
-function waitingSubSession() {
-  return getGetV2GetSessionMockHandler200({
-    id: "sub-1",
-    created_at: "2026-09-28T10:00:00Z",
-    updated_at: "2026-09-28T10:00:00Z",
-    user_id: "u-1",
-    chat_status: "idle",
-    active_stream: null,
-    metadata: {},
-    messages: [
-      { role: "user", content: "Draft the PRD" },
-      {
-        role: "assistant",
-        content: "",
-        tool_calls: [
-          {
-            id: "ask-1",
-            function: {
-              name: "ask_question",
-              arguments: JSON.stringify({
-                questions: [
-                  {
-                    question: "Q4 release train or December mini-launch?",
-                    options: ["Q4", "December", "Both"],
-                  },
-                ],
-              }),
-            },
+const WAITING_SESSION = {
+  id: "sub-1",
+  created_at: "2026-09-28T10:00:00Z",
+  updated_at: "2026-09-28T10:00:00Z",
+  user_id: "u-1",
+  chat_status: "idle",
+  active_stream: null,
+  metadata: {},
+  messages: [
+    { role: "user", content: "Draft the PRD" },
+    {
+      role: "assistant",
+      content: "",
+      tool_calls: [
+        {
+          id: "ask-1",
+          function: {
+            name: "ask_question",
+            arguments: JSON.stringify({
+              questions: [
+                {
+                  question: "Q4 release train or December mini-launch?",
+                  options: ["Q4", "December", "Both"],
+                },
+              ],
+            }),
           },
-        ],
-      },
-    ],
-  });
+        },
+      ],
+    },
+  ],
+};
+
+function waitingSubSession() {
+  return getGetV2GetSessionMockHandler200(WAITING_SESSION);
 }
 
 function chain(parts: MessagePart[]) {
@@ -147,6 +149,33 @@ describe("a hand-off on the wire", () => {
         body: { message: "Q4. Keep December as a stretch note" },
       });
       expect(push).not.toHaveBeenCalled();
+    },
+    SLOW,
+  );
+
+  it(
+    "reads the teammate's thread again once the answer is in, so its next turn shows",
+    async () => {
+      let answered = false;
+      let readsAfterAnswer = 0;
+      server.use(
+        getGetV2GetSessionMockHandler200(() => {
+          if (answered) readsAfterAnswer += 1;
+          return WAITING_SESSION;
+        }),
+        getAnswerSessionMockHandler200(() => {
+          answered = true;
+          return { session_id: "sub-1", queued: false };
+        }),
+      );
+      renderWaitingHandoff();
+      await answerTheQuestion();
+
+      // The thread was idle on the question, so its poll had stopped; the
+      // answer starts its next turn, which only a fresh read can show.
+      await waitFor(() => expect(readsAfterAnswer).toBeGreaterThan(0), {
+        timeout: 8000,
+      });
     },
     SLOW,
   );

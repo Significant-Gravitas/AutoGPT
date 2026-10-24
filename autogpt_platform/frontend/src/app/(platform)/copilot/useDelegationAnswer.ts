@@ -1,8 +1,12 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useAnswerSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  getGetV2GetSessionQueryKey,
+  useAnswerSession,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useDelegationAnswerStore } from "./delegationAnswerStore";
 
@@ -21,6 +25,7 @@ function draftHref(subSessionId: string, text: string) {
  *  is drafted into the thread's composer instead, for the user to send. */
 export function useDelegationAnswer() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const recordAnswer = useDelegationAnswerStore((s) => s.recordAnswer);
   const { mutateAsync: postAnswer } = useAnswerSession();
   const [isSending, setIsSending] = useState(false);
@@ -53,13 +58,18 @@ export function useDelegationAnswer() {
     const delivery = await deliverAnswer(subSessionId, answer).finally(() =>
       setIsSending(false),
     );
-    if (delivery === "sent")
+    if (delivery === "sent") {
       recordAnswer(subSessionId, {
         question,
         text: answer,
         sentAt: Date.now(),
       });
-    else
+      // The thread sat idle on the question, so its poll had stopped. Read
+      // it again: the answer started its next turn, and a live read polls on.
+      void queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(subSessionId),
+      });
+    } else
       toast({
         title: "Couldn't send your answer",
         description: "It's drafted in the thread for you to send.",
