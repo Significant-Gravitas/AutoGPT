@@ -21,6 +21,55 @@ EMPTY = {"schema_version": 1, "advisories": []}
 POLICY = f"# Policy\n\n{sync.CREDIT_START}\nold\n{sync.CREDIT_END}\n\nHistorical credit stays.\n"
 
 
+class SafeDiagnosticsTests(unittest.TestCase):
+    def test_both_clis_log_only_allowlisted_reasons_not_exception_text(self):
+        errors = [api.PublicDataError(code) for code in api.PublicErrorCode]
+        errors += [api.PublicDataError(CANARY), ValueError(CANARY)]
+        for module, argv, dependency in (
+            (sync, ["sync", "digest"], "fetch_advisories"),
+            (publish, ["publish", "--expected-digest", "0" * 64], "update_releases"),
+        ):
+            for error in errors:
+                error.args = (CANARY,)
+                error.__cause__ = RuntimeError(CANARY)
+                output = io.StringIO()
+                with self.subTest(
+                    module=module.__name__, code=getattr(error, "code", None)
+                ), patch("sys.argv", argv), patch.object(
+                    module, dependency, side_effect=error
+                ), contextlib.redirect_stdout(
+                    output
+                ), contextlib.redirect_stderr(
+                    output
+                ), self.assertRaises(
+                    SystemExit
+                ) as raised:
+                    module.main()
+                self.assertEqual(raised.exception.code, 1)
+                self.assertNotIn(CANARY, output.getvalue())
+                self.assertNotIn("Traceback", output.getvalue())
+                if isinstance(error, api.PublicDataError):
+                    self.assertIn(error.code.value, output.getvalue())
+
+    def test_ambiguous_mapping_reports_a_reason_without_report_content(self):
+        item = advisory()
+        item["summary"] = CANARY
+        item["description"] += "\n" + CANARY
+        item["vulnerabilities"] *= 2
+        output = io.StringIO()
+        with patch("sys.argv", ["sync", "digest"]), patch.object(
+            sync, "fetch_advisories", return_value=[item]
+        ), contextlib.redirect_stdout(output), contextlib.redirect_stderr(
+            output
+        ), self.assertRaises(
+            SystemExit
+        ):
+            sync.main()
+        self.assertIn(api.PublicErrorCode.RELEASE_MAPPING.value, output.getvalue())
+        self.assertNotIn(CANARY, output.getvalue())
+        self.assertNotIn(item["ghsa_id"], output.getvalue())
+
+
 class AnonymousApiTests(unittest.TestCase):
     def test_ambient_tokens_proxies_and_credentials_are_not_used(self):
         response = MagicMock()

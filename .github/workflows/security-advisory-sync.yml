@@ -108,6 +108,7 @@ jobs:
 
   release-notes:
     needs: [public-data, credits-pr]
+    if: vars.PUBLIC_SECURITY_SYNC_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

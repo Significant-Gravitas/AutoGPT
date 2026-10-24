@@ -6,7 +6,13 @@ import os
 import subprocess
 import time
 
-from security_public_api import REPOSITORY, PublicDataError, public_json, public_pages
+from security_public_api import (
+    REPOSITORY,
+    PublicDataError,
+    PublicErrorCode,
+    public_json,
+    public_pages,
+)
 from security_public_sync import (
     TAG_PATTERN,
     current_snapshot,
@@ -29,7 +35,7 @@ def published_release(release):
 
 def patch_release(release_id, body):
     if type(release_id) is not int or release_id <= 0:
-        raise PublicDataError("Invalid release write target")
+        raise PublicDataError(PublicErrorCode.RELEASE_TARGET)
     result = subprocess.run(
         [
             "gh",
@@ -50,9 +56,7 @@ def patch_release(release_id, body):
         timeout=30,
     )
     if result.returncode:
-        raise PublicDataError(
-            "Release update failed; rerun after checking public notes"
-        )
+        raise PublicDataError(PublicErrorCode.RELEASE_UPDATE)
 
 
 def update_releases(expected_digest, *, apply=False):
@@ -82,7 +86,7 @@ def update_releases(expected_digest, *, apply=False):
             or release["tag_name"] != candidate["tag_name"]
             or release.get("immutable")
         ):
-            raise PublicDataError("Release changed; rerun the workflow")
+            raise PublicDataError(PublicErrorCode.RELEASE_CHANGED)
         body = public_release_notes(
             snapshot, release["tag_name"], release.get("body") or ""
         )
@@ -106,12 +110,14 @@ def main():
             or os.environ.get("GITHUB_REF") != "refs/heads/master"
             or not os.environ.get("GH_TOKEN")
         ):
-            raise PublicDataError("Writes require the trusted master workflow")
+            raise PublicDataError(PublicErrorCode.WRITE_CONTEXT)
         print(
             json.dumps(
                 update_releases(args.expected_digest, apply=args.apply), sort_keys=True
             )
         )
+    except PublicDataError as error:
+        parser.exit(1, f"Public release sync failed: {error.code.value}\n")
     except Exception:
         parser.exit(
             1, "Public release sync failed; no raw response or report was logged.\n"

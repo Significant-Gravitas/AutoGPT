@@ -46,6 +46,9 @@ proxy inheritance, redirects or authenticated retry. Pagination stays on this
 repository's public endpoint, with page, response-size and timeout limits.
 API failure, schema failure, incomplete pagination or ambiguous package
 attribution stops the run. There is no fallback to stale snapshots.
+Known failures log only a fixed, enumerated reason, such as a changed public
+snapshot or an ambiguous release mapping. Exception text, chained errors and
+response bodies are never printed; unexpected failures keep a generic message.
 
 The jobs have separate permissions and no shared report artifacts:
 

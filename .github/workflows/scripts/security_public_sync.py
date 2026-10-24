@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from security_public_api import PublicDataError
+from security_public_api import PublicDataError, PublicErrorCode
 from security_release_notes import (
     BASE_URL,
     END,
@@ -39,7 +39,7 @@ def validate_snapshot(snapshot):
         or snapshot["schema_version"] != 1
         or not isinstance(snapshot["advisories"], list)
     ):
-        raise PublicDataError("Invalid public snapshot schema")
+        raise PublicDataError(PublicErrorCode.SNAPSHOT_SCHEMA)
     ids = set()
     for item in snapshot["advisories"]:
         if (
@@ -49,7 +49,7 @@ def validate_snapshot(snapshot):
             or item["ghsa_id"] in ids
             or (item["cve_id"] is not None and not matches(CVE_PATTERN, item["cve_id"]))
         ):
-            raise PublicDataError("Invalid public snapshot record")
+            raise PublicDataError(PublicErrorCode.SNAPSHOT_RECORD)
         ids.add(item["ghsa_id"])
         for field, pattern in (
             ("researchers", LOGIN_PATTERN),
@@ -61,7 +61,7 @@ def validate_snapshot(snapshot):
                 or not all(matches(pattern, v) for v in values)
                 or len(set(values)) != len(values)
             ):
-                raise PublicDataError("Invalid public snapshot field")
+                raise PublicDataError(PublicErrorCode.SNAPSHOT_FIELD)
     return snapshot
 
 
@@ -69,7 +69,7 @@ def public_snapshot(advisories):
     records = []
     for advisory in advisories:
         if not isinstance(advisory, dict):
-            raise PublicDataError("Invalid public advisory record")
+            raise PublicDataError(PublicErrorCode.ADVISORY_RECORD)
         if (
             advisory.get("state") != "published"
             or not advisory.get("published_at")
@@ -77,7 +77,7 @@ def public_snapshot(advisories):
         ):
             continue
         if not matches(GHSA_PATTERN, advisory.get("ghsa_id")):
-            raise PublicDataError("Invalid published advisory identifier")
+            raise PublicDataError(PublicErrorCode.ADVISORY_ID)
         tags = set(
             re.findall(
                 re.escape(BASE_URL + "/releases/tag/") + "(" + TAG_PATTERN + ")",
@@ -85,12 +85,16 @@ def public_snapshot(advisories):
             )
         )
         cve = advisory.get("cve_id")
+        try:
+            release_tags = sorted(tag for tag in tags if fixed_in(advisory, tag))
+        except ValueError:
+            raise PublicDataError(PublicErrorCode.RELEASE_MAPPING) from None
         records.append(
             {
                 "ghsa_id": advisory["ghsa_id"],
                 "cve_id": cve if matches(CVE_PATTERN, cve) else None,
                 "researchers": accepted_researchers(advisory),
-                "release_tags": sorted(tag for tag in tags if fixed_in(advisory, tag)),
+                "release_tags": release_tags,
             }
         )
     return validate_snapshot(
@@ -104,7 +108,7 @@ def public_snapshot(advisories):
 def current_snapshot(expected_digest=None):
     snapshot = public_snapshot(fetch_advisories())
     if expected_digest is not None and snapshot_digest(snapshot) != expected_digest:
-        raise PublicDataError("Public advisories changed; rerun the workflow")
+        raise PublicDataError(PublicErrorCode.ADVISORIES_CHANGED)
     return snapshot
 
 
@@ -132,10 +136,10 @@ def managed_section(existing, start, end, section, *, append=False):
     if start not in existing and end not in existing and append:
         return existing.rstrip() + ("\n\n" if existing.strip() else "") + section + "\n"
     if existing.count(start) != 1 or existing.count(end) != 1:
-        raise PublicDataError("Expected exactly one complete managed marker pair")
+        raise PublicDataError(PublicErrorCode.MARKER_PAIR)
     left, right = existing.index(start), existing.index(end)
     if right < left:
-        raise PublicDataError("Managed markers are reversed")
+        raise PublicDataError(PublicErrorCode.MARKER_ORDER)
     return existing[:left] + section + existing[right + len(end) :]
 
 
@@ -170,7 +174,7 @@ def credit_notes(snapshot, existing):
 def public_release_notes(snapshot, tag, existing):
     validate_snapshot(snapshot)
     if not matches(TAG_PATTERN, tag):
-        raise PublicDataError("Unsupported release tag")
+        raise PublicDataError(PublicErrorCode.RELEASE_TAG)
     selected = [a for a in snapshot["advisories"] if tag in a["release_tags"]]
     if not selected and START not in existing and END not in existing:
         return existing
@@ -192,7 +196,7 @@ def public_release_notes(snapshot, tag, existing):
 def prepare_credits(root, expected_digest):
     for path in (root, root / ".github", root / SNAPSHOT_PATH, root / "SECURITY.md"):
         if path.is_symlink():
-            raise PublicDataError("Managed files must not be symlinks")
+            raise PublicDataError(PublicErrorCode.FILE_SYMLINK)
     snapshot = current_snapshot(expected_digest)
     previous = validate_snapshot(
         json.loads((root / SNAPSHOT_PATH).read_text(encoding="utf-8"))
@@ -222,6 +226,8 @@ def main():
                     prepare_credits(args.root, args.expected_digest), sort_keys=True
                 )
             )
+    except PublicDataError as error:
+        parser.exit(1, f"Public security sync failed: {error.code.value}\n")
     except Exception:
         parser.exit(
             1, "Public security sync failed; no raw response or report was logged.\n"
