@@ -184,22 +184,22 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+/* Google Drive Picker: ensure picker appears above dialogs and can receive
+   clicks. The picker is Google's own markup, so it has no slot; !important
+   beats the z-index and pointer-events Google's script writes inline. */
 [class*="picker-dialog"] {
   z-index: 10000 !important;
   pointer-events: auto !important;
 }
 
-/* When Google picker is open, lower dialog z-index so picker renders on top */
-body[data-google-picker-open="true"] [data-dialog-overlay],
-body[data-google-picker-open="true"] [data-dialog-content] {
-  z-index: 1 !important;
+/* When Google picker is open, lower dialog z-index so picker renders on top.
+   The z-index needs no !important (this selector outranks the dialogs'
+   z-50); pointer-events keeps it, since Radix writes pointer-events inline on
+   the overlay and the popup. */
+body[data-google-picker-open="true"] [data-slot="dialog-overlay"],
+body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
+  z-index: 1;
   pointer-events: none !important;
-}
-
-/* Streamdown external link dialog: "Open link" button */
-[data-streamdown="link-safety-modal"] button:last-of-type {
-  color: white;
 }
 
 /* Markdown headings: rehype-autolink-headings wraps each heading's text in an
