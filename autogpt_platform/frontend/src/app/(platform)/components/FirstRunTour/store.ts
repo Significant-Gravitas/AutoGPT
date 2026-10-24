@@ -1,3 +1,4 @@
+import { onAccountChange } from "@/lib/auth/on-account-change";
 import { create } from "zustand";
 
 // "auto": opened by itself on the first visit after onboarding.
@@ -35,3 +36,13 @@ export const useFirstRunTourStore = create<FirstRunTourState>((set) => ({
     set({ isConnectToolsOpen });
   },
 }));
+
+// An open walkthrough belongs to the account that opened it: another account
+// signing in on this tab starts with it closed.
+onAccountChange(() =>
+  useFirstRunTourStore.setState({
+    source: null,
+    stepID: null,
+    isConnectToolsOpen: false,
+  }),
+);

@@ -6,8 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const capture = vi.hoisted(() => vi.fn());
 vi.mock("posthog-js", () => ({ default: { capture } }));
 
+const auth = vi.hoisted(() => ({ userID: "user-1" as string | null }));
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "user-1" }, isLoggedIn: true }),
+  useAuth: () => ({
+    user: auth.userID ? { id: auth.userID } : null,
+    isLoggedIn: auth.userID !== null,
+  }),
 }));
 
 const onboarding = vi.hoisted(() => ({
@@ -33,6 +37,8 @@ vi.mock("@/services/usageExperience/useUsageExperience", () => ({
   }),
 }));
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { tourTarget, type TourTarget } from "@/lib/tour-targets";
 import { FirstRunTour } from "../FirstRunTour";
 import { useFirstRunTourStore } from "../store";
@@ -107,6 +113,7 @@ function openTour(source: "auto" | "menu" = "auto") {
 }
 
 beforeEach(() => {
+  auth.userID = "user-1";
   placed.clear();
   window.localStorage.clear();
   capture.mockReset();
@@ -392,10 +399,13 @@ describe("first-run walkthrough", () => {
           screen.getByRole("dialog", { name: "Work happens in chats" }),
         ).toBeDefined(),
       );
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const next = screen.getByRole("button", { name: "Next" });
-      expect(next.closest("[aria-hidden=true]")).toBeNull();
-      expect(document.activeElement).toBe(next);
+      // The card mounts again a couple of frames after the sheet: look the
+      // button up on every try, an earlier one may have been replaced.
+      await waitFor(() => {
+        const next = screen.getByRole("button", { name: "Next" });
+        expect(next.closest("[aria-hidden=true]")).toBeNull();
+        expect(document.activeElement).toBe(next);
+      });
     } finally {
       Object.defineProperty(window, "innerWidth", {
         configurable: true,
@@ -558,6 +568,28 @@ function AutoStart({
   return null;
 }
 
+describe("first-run walkthrough — whose it is", () => {
+  afterEach(() => {
+    act(() => useAuthStore.setState({ user: null }));
+  });
+
+  it("stays open through a dropped session, and closes when another account signs in", () => {
+    // A failed session check drops the user too; the same person signing
+    // back in keeps their place. Another account must not inherit it.
+    act(() => useAuthStore.setState({ user: { id: "user-1" } as User }));
+    openTour();
+
+    act(() => useAuthStore.setState({ user: null }));
+    expect(useFirstRunTourStore.getState().source).toBe("auto");
+    act(() => useAuthStore.setState({ user: { id: "user-1" } as User }));
+    expect(useFirstRunTourStore.getState().source).toBe("auto");
+
+    act(() => useAuthStore.setState({ user: { id: "user-2" } as User }));
+    // In the same tick as the sign-in: nothing user-2 opens can race it.
+    expect(useFirstRunTourStore.getState().source).toBeNull();
+  });
+});
+
 describe("first-run walkthrough — who gets it by itself", () => {
   it("opens for someone fresh out of onboarding", async () => {
     render(<AutoStart isPending onFinished={vi.fn()} />);
@@ -637,6 +669,25 @@ describe("first-run walkthrough — who gets it by itself", () => {
 
     await act(async () => {});
     expect(useFirstRunTourStore.getState().source).toBe("menu");
+  });
+
+  it("does not count a walkthrough closed while the user is signed out as their first run ending", async () => {
+    const onFinished = vi.fn();
+    const { rerender } = render(
+      <AutoStart isPending onFinished={onFinished} />,
+    );
+    await waitFor(() =>
+      expect(useFirstRunTourStore.getState().source).toBe("auto"),
+    );
+
+    // A session check fails: no user for a moment, and the walkthrough goes.
+    auth.userID = null;
+    act(() => useFirstRunTourStore.getState().close());
+    // Home stays mounted through the switch, still holding its first-run flag.
+    rerender(<AutoStart isPending onFinished={onFinished} />);
+    await act(async () => {});
+
+    expect(onFinished).not.toHaveBeenCalled();
   });
 
   it("does nothing for someone who did not just finish onboarding", async () => {

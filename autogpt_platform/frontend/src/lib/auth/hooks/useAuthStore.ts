@@ -318,7 +318,6 @@ useAuthStore.subscribe((state, previousState) => {
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
     clearCopilotCompletedSessions();
-    resetFirstRunGuidance();
   }
   // Whoever signs in claims the onboarding handoff: a different account
   // than this tab last had starts without it, however the last session
@@ -327,23 +326,6 @@ useAuthStore.subscribe((state, previousState) => {
   if (state.user && state.user.id !== previousState.user?.id)
     claimOnboardingHandoff(state.user.id);
 });
-
-// The first-run walkthrough and the tip queue are module stores too, so an
-// open walkthrough or a queued tip would otherwise carry over to the next
-// account to sign in, and record its steps against that account.
-function resetFirstRunGuidance() {
-  if (typeof window === "undefined") return;
-  Promise.all([
-    import("@/app/(platform)/components/FirstRunTour/store"),
-    import("@/app/(platform)/components/ContextualTips/store"),
-  ])
-    .then(([{ useFirstRunTourStore }, { useContextualTipStore }]) => {
-      useFirstRunTourStore.getState().close();
-      useFirstRunTourStore.getState().setConnectToolsOpen(false);
-      useContextualTipStore.setState({ requested: [] });
-    })
-    .catch(() => {});
-}
 
 // Loaded lazily: the copilot store pulls in React hooks the auth store
 // otherwise has no reason to load.

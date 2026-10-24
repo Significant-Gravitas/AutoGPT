@@ -55,6 +55,8 @@ export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
   // null in the render whose effect above opens the walkthrough.
   useEffect(() => {
     const isClosed = useFirstRunTourStore.getState().source === null;
-    if (startedFor.current && isPending && isClosed) finish();
-  }, [isPending, source, finish]);
+    // Only for the account it opened it for: one closed because another
+    // account signed in is not that account's first run being over.
+    if (startedFor.current === userID && isPending && isClosed) finish();
+  }, [isPending, source, userID, finish]);
 }

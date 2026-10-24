@@ -21,6 +21,9 @@ export function useContextualTips() {
   const requested = useContextualTipStore((store) => store.requested);
   const remove = useContextualTipStore((store) => store.remove);
   const postpone = useContextualTipStore((store) => store.postpone);
+  const shown = useContextualTipStore((store) => store.shown);
+  const markShown = useContextualTipStore((store) => store.markShown);
+  const putAway = useContextualTipStore((store) => store.putAway);
   const isBillingEnabled = useIsBillingEnabled();
   const isTourOpen = useFirstRunTourStore((store) => store.source !== null);
   const isConnectToolsOpen = useFirstRunTourStore(
@@ -29,7 +32,11 @@ export function useContextualTips() {
 
   useSecondChatMoment(isLoggedIn, userID);
 
+  // Recorded the first time a tip is on screen, so it never comes up on
+  // another visit; within this visit it may still come back (after a dialog
+  // that opened over it closes) until it is put away.
   function isSeen(id: TipID) {
+    if (shown.includes(id)) return false;
     return (
       (state?.completedSteps.includes(TIPS[id].step) ?? false) ||
       peekTipSeen(id, userID)
@@ -41,15 +48,19 @@ export function useContextualTips() {
   // is simply dropped rather than left at the head of the queue.
   useEffect(() => {
     if (!state || !userID) return;
+    // Read from the store, not this render: the tip on screen records itself
+    // in the same commit, and must not be dropped as one the user already had.
+    const shownNow = useContextualTipStore.getState().shown;
     requested
       .filter(
         (id) =>
           (TIPS[id].requiresBilling && !isBillingEnabled) ||
-          state.completedSteps.includes(TIPS[id].step) ||
-          peekTipSeen(id, userID),
+          (!shownNow.includes(id) &&
+            (state.completedSteps.includes(TIPS[id].step) ||
+              peekTipSeen(id, userID))),
       )
       .forEach(remove);
-  }, [requested, state, userID, isBillingEnabled, remove]);
+  }, [requested, shown, state, userID, isBillingEnabled, remove]);
 
   const candidate =
     state && userID
@@ -65,23 +76,22 @@ export function useContextualTips() {
   const isDialogOpen = useCompetingDialogOpen(candidate !== null && !isBlocked);
   const active = !isBlocked && !isDialogOpen ? candidate : null;
 
-  // The host outlives the tip card, which comes down and back up whenever
-  // something opens over it (another dialog, the walkthrough), so it is the
-  // one that knows a tip was already seen on screen.
-  const shownTips = useRef(new Set<string>());
+  // The first time a tip is on screen it is recorded for good, so leaving
+  // or reloading the page without "Got it" does not bring it back. The host
+  // outlives the tip card, which comes down and back up whenever something
+  // opens over it, so it counts the showing once.
   function reportShown(id: TipID) {
-    const key = `${userID}:${id}`;
-    if (shownTips.current.has(key)) return;
-    shownTips.current.add(key);
+    if (shown.includes(id)) return;
+    markShown(id);
     trackFirstRun("contextual_tip_shown", { tip: id });
+    setTipSeen(id, userID);
+    completeStep(TIPS[id].step);
   }
 
   function dismiss() {
     if (!active) return;
     trackFirstRun("contextual_tip_dismissed", { tip: active });
-    setTipSeen(active, userID);
-    completeStep(TIPS[active].step);
-    remove(active);
+    putAway(active);
   }
 
   return {

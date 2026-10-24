@@ -1,3 +1,4 @@
+import { onAccountChange } from "@/lib/auth/on-account-change";
 import { create } from "zustand";
 import type { TipID } from "./tips";
 
@@ -8,12 +9,29 @@ interface ContextualTipState {
   remove: (id: TipID) => void;
   /** Moves a tip with nothing on screen to point at behind the others. */
   postpone: (id: TipID) => void;
+  /** Tips already on screen during this visit to the app (not persisted). */
+  shown: TipID[];
+  markShown: (id: TipID) => void;
+  /** "Got it": out of the queue, and not to come back during this visit. */
+  putAway: (id: TipID) => void;
 }
 
 // Surfaces report their moment here (a second chat, a cost, an expert
 // proposal); the host decides when, and whether, the tip shows.
 export const useContextualTipStore = create<ContextualTipState>((set) => ({
   requested: [],
+  shown: [],
+  markShown(id) {
+    set((state) =>
+      state.shown.includes(id) ? state : { shown: [...state.shown, id] },
+    );
+  },
+  putAway(id) {
+    set((state) => ({
+      requested: state.requested.filter((requested) => requested !== id),
+      shown: state.shown.filter((shown) => shown !== id),
+    }));
+  },
   request(id) {
     set((state) =>
       state.requested.includes(id)
@@ -43,3 +61,9 @@ export const useContextualTipStore = create<ContextualTipState>((set) => ({
 export function requestTip(id: TipID) {
   useContextualTipStore.getState().request(id);
 }
+
+// Queued and shown tips belong to the account they came up for: another
+// account signing in on this tab starts with neither.
+onAccountChange(() =>
+  useContextualTipStore.setState({ requested: [], shown: [] }),
+);

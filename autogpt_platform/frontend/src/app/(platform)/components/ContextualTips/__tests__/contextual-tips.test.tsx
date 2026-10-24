@@ -43,6 +43,8 @@ vi.mock("@/app/(platform)/copilot/useSessionList", () => ({
 import { ExpertChangeGroup } from "@/app/(platform)/copilot/components/ToolChain/ExpertCards";
 import { BudgetLowHint } from "@/app/(platform)/copilot/components/UsageLimits/BudgetLowHint";
 import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { tourTarget } from "@/lib/tour-targets";
 import { useFirstRunTourStore } from "../../FirstRunTour/store";
 import { ContextualTips } from "../ContextualTips";
@@ -94,7 +96,7 @@ beforeEach(() => {
   capture.mockReset();
   onboarding.current = { state: { completedSteps: [] }, completeStep: vi.fn() };
   sessionList.current = { sessions: [], isLoading: false };
-  act(() => useContextualTipStore.setState({ requested: [] }));
+  act(() => useContextualTipStore.setState({ requested: [], shown: [] }));
   stubLayout();
 });
 
@@ -231,7 +233,7 @@ describe("contextual tips — the first second chat", () => {
       [2, 1, 2],
       [3, 1, 2],
     ]) {
-      act(() => useContextualTipStore.setState({ requested: [] }));
+      act(() => useContextualTipStore.setState({ requested: [], shown: [] }));
       const sessionsOf = (n: number) =>
         Array.from({ length: n }, (_, i) => ({ id: `s${i}` }));
       sessionList.current = {
@@ -416,6 +418,41 @@ describe("contextual tips — showing one", () => {
     expect(await screen.findByText("Experts can own tasks")).toBeDefined();
   });
 
+  it("is recorded the moment it shows, so leaving without Got it does not bring it back", async () => {
+    const { unmount } = render(<Page />);
+    act(() => requestTip("second-chat"));
+    await screen.findByText("You have two chats now");
+
+    expect(onboarding.current.completeStep).toHaveBeenCalledWith("CHATS_TIP");
+    expect(
+      window.localStorage.getItem("autogpt:contextual-tip-seen:second-chat"),
+    ).toBe("user-1");
+
+    // A reload: a fresh page, the same person, the same moment again.
+    unmount();
+    act(() => useContextualTipStore.setState({ requested: [], shown: [] }));
+    render(<Page />);
+    act(() => requestTip("second-chat"));
+    await act(async () => {});
+
+    expect(screen.queryByTestId("contextual-tip")).toBeNull();
+  });
+
+  it("keeps its queue through a dropped session, and drops it for another account", () => {
+    act(() => useAuthStore.setState({ user: { id: "user-1" } as User }));
+    act(() => requestTip("first-expert"));
+
+    act(() => useAuthStore.setState({ user: null }));
+    act(() => useAuthStore.setState({ user: { id: "user-1" } as User }));
+    expect(useContextualTipStore.getState().requested).toEqual([
+      "first-expert",
+    ]);
+
+    act(() => useAuthStore.setState({ user: { id: "user-2" } as User }));
+    expect(useContextualTipStore.getState().requested).toEqual([]);
+    act(() => useAuthStore.setState({ user: null }));
+  });
+
   it("shows one tip at a time, oldest first", async () => {
     render(<Page />);
     act(() => {
@@ -535,7 +572,7 @@ describe("contextual tips — showing one", () => {
     await act(async () => {});
 
     expect(screen.getByTestId("contextual-tip")).toBeDefined();
-    expect(onboarding.current.completeStep).not.toHaveBeenCalled();
+    expect(useContextualTipStore.getState().requested).toContain("second-chat");
   });
 
   it("gives way to a tip that arrives later, after it has waited alone", async () => {
