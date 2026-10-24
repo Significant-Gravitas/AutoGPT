@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 
-import { Message, MessageContent, MessageResponse } from "./message";
+import { Message, MessageContent, MessageResponse } from "./Message";
 
 const meta: Meta<typeof Message> = {
   title: "AI Elements/Message",

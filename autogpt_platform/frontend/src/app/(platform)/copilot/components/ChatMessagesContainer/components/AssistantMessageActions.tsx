@@ -3,7 +3,7 @@
 import {
   MessageAction,
   MessageActions,
-} from "@/components/ai-elements/message";
+} from "@/components/organisms/Message/Message";
 import { cn } from "@/lib/utils";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useMessageFeedback } from "../useMessageFeedback";
