@@ -12,6 +12,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Play, Plus } from "lucide-react";
 import { TooltipProvider } from "../Tooltip/BaseTooltip";
+import { Text } from "../Text/Text";
 import { Button } from "./Button";
 
 const meta: Meta<typeof Button> = {
@@ -268,7 +269,69 @@ export const AllVariants: Story = {
   render: renderAllVariants,
 };
 
+// Every variant at every size, at rest, disabled and loading.
+export const VariantMatrix: Story = {
+  render: renderVariantMatrix,
+};
+
 // Render functions as function declarations
+const MATRIX_VARIANTS = [
+  "primary",
+  "secondary",
+  "destructive",
+  "outline",
+  "ghost",
+  "icon",
+  "toggle",
+  "floating",
+  "link",
+] as const;
+
+const MATRIX_SIZES = [
+  "small",
+  "large",
+  "icon",
+  "xs",
+  "icon-xs",
+  "icon-sm",
+] as const;
+
+function renderVariantMatrix() {
+  return (
+    <div className="space-y-6 p-8">
+      {MATRIX_VARIANTS.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small-medium" tone="muted">
+            {variant}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            {MATRIX_SIZES.map((size) => (
+              <Button
+                key={size}
+                variant={variant}
+                size={size}
+                leadingIcon={PlusSignIcon}
+                aria-label={`${variant} ${size}`}
+              >
+                {size.startsWith("icon") ? null : size}
+              </Button>
+            ))}
+            <Button variant={variant} disabled>
+              Disabled
+            </Button>
+            <Button variant={variant} loading>
+              Loading
+            </Button>
+            <Button variant={variant} aria-pressed>
+              Pressed
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function renderActionButtons() {
   return (
     <div className="space-y-6">

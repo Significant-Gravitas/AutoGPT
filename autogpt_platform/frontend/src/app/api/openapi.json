@@ -8352,7 +8352,7 @@
               "application/json": {
                 "schema": {
                   "anyOf": [
-                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "$ref": "#/components/schemas/PendingExpertOnboarding" },
                     { "type": "null" }
                   ],
                   "title": "Response Get Expert Onboarding"
@@ -11876,7 +11876,7 @@
       "delete": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Erase My Memory",
-        "description": "Permanently erase the caller's entire account memory.",
+        "description": "Permanently erase the caller's entire account memory, the business\nunderstanding included.",
         "operationId": "erase_my_memory",
         "responses": {
           "200": {
@@ -12204,6 +12204,50 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/MemoryScopeOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/memory/understanding": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Forget My Business Understanding",
+        "description": "Delete what Otto keeps about the caller's work.",
+        "operationId": "forget_my_business_understanding",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgetUnderstandingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Get My Business Understanding",
+        "description": "What Otto keeps about the caller's work; every new chat starts with it.",
+        "operationId": "get_my_business_understanding",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryUnderstanding" }
               }
             }
           },
@@ -12679,7 +12723,7 @@
       "delete": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Discard Brain Dump",
-        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nStored audio is left alone. A named take still uploading is also marked\nfailed, so it no longer holds the row against the user's next take.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
         "operationId": "discard_brain_dump",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -26395,6 +26439,14 @@
         "title": "ForgetFactResponse",
         "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``).\n``resumed`` is True when the fact had already been erased by an earlier\nhard forget, and this one went on retracting and erasing what the dream\nderived from it (``graphiti/recall_forget.py``)."
       },
+      "ForgetUnderstandingResponse": {
+        "properties": {
+          "forgotten": { "type": "boolean", "title": "Forgotten" }
+        },
+        "type": "object",
+        "required": ["forgotten"],
+        "title": "ForgetUnderstandingResponse"
+      },
       "FrontendFlag": {
         "type": "string",
         "enum": [
@@ -29814,6 +29866,96 @@
         "title": "MemoryStoreResponse",
         "description": "Response when a memory is stored."
       },
+      "MemoryUnderstanding": {
+        "properties": {
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "user_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Name"
+          },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
+          "business_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Business Name"
+          },
+          "industry": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Industry"
+          },
+          "business_size": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Business Size"
+          },
+          "user_role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Role"
+          },
+          "key_workflows": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Key Workflows",
+            "default": []
+          },
+          "daily_activities": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Daily Activities",
+            "default": []
+          },
+          "pain_points": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Pain Points",
+            "default": []
+          },
+          "bottlenecks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Bottlenecks",
+            "default": []
+          },
+          "manual_tasks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Manual Tasks",
+            "default": []
+          },
+          "automation_goals": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Automation Goals",
+            "default": []
+          },
+          "current_software": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Current Software",
+            "default": []
+          },
+          "existing_automation": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Existing Automation",
+            "default": []
+          },
+          "additional_notes": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Additional Notes"
+          }
+        },
+        "type": "object",
+        "title": "MemoryUnderstanding",
+        "description": "What Otto keeps about the caller's work (``data/understanding.py``), from\nonboarding and chat; ``updated_at`` is None when nothing is kept."
+      },
       "Message": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -30890,6 +31032,14 @@
         "required": ["messages", "count"],
         "title": "PeekPendingMessagesResponse",
         "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
+      },
+      "PendingExpertOnboarding": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "PendingExpertOnboarding"
       },
       "PendingHumanReviewModel": {
         "properties": {

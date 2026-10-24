@@ -71,24 +71,18 @@ export function Select({
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
-    "rounded-xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full",
-    "placeholder:font-normal !placeholder:text-zinc-500",
+    "rounded-xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base w-full",
+    "placeholder:font-normal !placeholder:text-placeholder",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Size variants
-    size === "small" && [
-      "h-[2.25rem]",
-      "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
-    ],
-    size === "medium" && ["h-[2.875rem]", "py-2.5", "text-sm"],
+    size === "small" && ["h-9", "py-2", "text-body", "placeholder:text-body"],
+    size === "medium" && ["h-[2.875rem]", "py-2.5", "text-body leading-5"],
     // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    error && "border-1.5 border-error focus:border-error focus:ring-error",
     // Placeholder styling for SelectValue when data-placeholder is present
-    "[&[data-placeholder]>span]:text-zinc-400 [&[data-placeholder]>span]:font-normal",
+    "[&[data-placeholder]>span]:text-foreground-subtle [&[data-placeholder]>span]:font-normal",
     className,
   );
 
@@ -140,8 +134,9 @@ export function Select({
       <Text
         variant="small-medium"
         as="span"
+        tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+          "absolute left-0 top-full mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -160,7 +155,7 @@ export function Select({
           <Text
             variant={labelVariant}
             as="span"
-            className={cn("text-black", labelClassName)}
+            className={cn("text-foreground-base", labelClassName)}
           >
             {label}
           </Text>

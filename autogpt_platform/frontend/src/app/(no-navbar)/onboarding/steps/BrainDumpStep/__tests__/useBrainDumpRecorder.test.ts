@@ -1,5 +1,15 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 
 const savedMeta: Record<string, unknown>[] = [];
 
@@ -533,6 +543,22 @@ describe("useBrainDumpRecorder", () => {
       const { result } = renderHook(() => useBrainDumpRecorder());
 
       await expect(result.current.findRecoverable()).resolves.toBeNull();
+    });
+
+    it("tags its takes with the signed-in account and offers back only that account's", async () => {
+      useAuthStore.setState({ user: { id: "u1" } as User });
+      onTestFinished(() => useAuthStore.setState({ user: null }));
+      store.getMeta.mockResolvedValue(null);
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      await act(async () => {
+        await result.current.start();
+      });
+      await result.current.findRecoverable();
+
+      expect(savedMeta.length).toBeGreaterThan(0);
+      expect(savedMeta.every((meta) => meta.userID === "u1")).toBe(true);
+      expect(store.getMeta).toHaveBeenLastCalledWith("u1");
     });
 
     it("offers nothing when local storage cannot be read", async () => {

@@ -50,8 +50,8 @@ interface Props {
   defaultExpanded?: boolean;
 }
 
-// The chat derives `todos` afresh on every streamed flush; the bar only
-// renders again when the tasks themselves change.
+// memo-boundary: the chat derives `todos` afresh on every streamed flush;
+// the comparator below renders the bar again only when the tasks change.
 export const TaskProgressBar = memo(function TaskProgressBar({
   todos,
   isStreaming = false,

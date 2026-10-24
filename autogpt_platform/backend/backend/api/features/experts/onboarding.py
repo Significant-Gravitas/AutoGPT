@@ -12,29 +12,40 @@ SKIP_MESSAGE = "Let's skip the setup questions for now."
 
 
 class OnboardingMessage(BaseModel):
+    session_id: str
     role: str
     content: str
+
+
+class PendingExpertOnboarding(BaseModel):
+    session_id: str
 
 
 @router.get("/{expert_id}/onboarding", operation_id="get_expert_onboarding")
 async def get_expert_onboarding(
     expert_id: str,
     user_id: str = Security(auth.get_user_id),
-) -> ExpertOnboardingResponse | None:
+) -> PendingExpertOnboarding | None:
     expert = await experts_db.get_expert(user_id, expert_id)
     if expert is None or expert.is_archived:
         raise HTTPException(status_code=404, detail="Expert not found")
+    # Every user message counts, since any reply settles the card in its own
+    # chat; only cards, answers and skips need their text.
     messages = await query_raw_with_schema(
         """
-        SELECT m.role, m.content
+        SELECT m."sessionId" AS session_id, m.role,
+          CASE
+            WHEN m.role = 'tool' OR m.content = $3
+              OR m.content LIKE '**Here are my answers:**%'
+            THEN m.content
+            ELSE ''
+          END AS content
         FROM {schema_prefix}"ChatMessage" m
         JOIN {schema_prefix}"ChatSession" s ON s.id = m."sessionId"
         WHERE s."userId" = $1 AND s."expertId" = $2
           AND (
             (m.role = 'tool' AND m.content LIKE '%"expert_onboarding"%')
-            OR (m.role = 'user' AND (
-              m.content = $3 OR m.content LIKE '**Here are my answers:**%'
-            ))
+            OR m.role = 'user'
           )
         ORDER BY m."createdAt", m.sequence
         """,
@@ -43,13 +54,13 @@ async def get_expert_onboarding(
         SKIP_MESSAGE,
         model=OnboardingMessage,
     )
-    return pending_onboarding(messages, expert_id)
+    session_id = pending_onboarding(messages, expert_id)
+    return PendingExpertOnboarding(session_id=session_id) if session_id else None
 
 
-def pending_onboarding(
-    messages: list[OnboardingMessage], expert_id: str
-) -> ExpertOnboardingResponse | None:
-    cards: list[ExpertOnboardingResponse] = []
+def pending_onboarding(messages: list[OnboardingMessage], expert_id: str) -> str | None:
+    """The chat whose onboarding card is still waiting on the user, if any."""
+    cards: list[tuple[str, ExpertOnboardingResponse]] = []
     for message in messages:
         if message.role == "tool":
             try:
@@ -61,13 +72,15 @@ def pending_onboarding(
                 and card.expert_id == expert_id
                 and card.steps
             ):
-                cards.append(card)
+                cards.append((message.session_id, card))
         elif message.role == "user" and cards:
             if message.content == SKIP_MESSAGE or any(
-                _answers_card(message.content, card) for card in cards
+                _answers_card(message.content, card) for _, card in cards
             ):
                 return None
-    return cards[-1] if cards else None
+            # Mirrors the chat, where any reply settles the card it follows.
+            cards = [entry for entry in cards if entry[0] != message.session_id]
+    return cards[-1][0] if cards else None
 
 
 def _answers_card(content: str, card: ExpertOnboardingResponse) -> bool:

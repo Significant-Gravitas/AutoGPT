@@ -19,6 +19,7 @@ from backend.copilot.google_data_redaction import (
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tool_image import HeldImage, parse_held_image
+from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
@@ -471,6 +472,7 @@ class BaseTool:
         """
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
+            trial_reads_fresh(),
             tool_span(
                 self.name,
                 user_id=user_id,
