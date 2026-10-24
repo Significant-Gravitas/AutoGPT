@@ -305,9 +305,10 @@ def test_a_new_table_in_a_connected_account_is_shown_before_it_is_made():
         "tables": [
             {
                 "name": "Orders",
+                "description": "",
                 "fields": [
-                    {"name": "Order number", "kind": "Text"},
-                    {"name": "Total", "kind": "Money"},
+                    {"name": "Order number", "kind": "Text", "detail": ""},
+                    {"name": "Total", "kind": "Money", "detail": ""},
                 ],
             }
         ],
@@ -328,7 +329,11 @@ def test_the_preview_shows_what_the_defaults_will_create():
 
     assert subject.preview is not None
     assert [t.model_dump() for t in subject.preview.tables] == [
-        {"name": "Orders", "fields": [{"name": "Name", "kind": "Text"}]}
+        {
+            "name": "Orders",
+            "description": "",
+            "fields": [{"name": "Name", "kind": "Text", "detail": ""}],
+        }
     ]
 
 

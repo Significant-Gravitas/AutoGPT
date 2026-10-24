@@ -62,11 +62,12 @@ def test_a_new_table_is_shown_by_name_and_fields_in_plain_words():
     assert [t.model_dump() for t in preview.tables] == [
         {
             "name": "Orders",
+            "description": "",
             "fields": [
-                {"name": "Order number", "kind": "Text"},
-                {"name": "Total", "kind": "Money"},
-                {"name": "Status", "kind": "Choice of New, Shipped"},
-                {"name": "Shipped on", "kind": "Date and time"},
+                {"name": "Order number", "kind": "Text", "detail": ""},
+                {"name": "Total", "kind": "Money", "detail": "precision 2"},
+                {"name": "Status", "kind": "Choice of New, Shipped", "detail": ""},
+                {"name": "Shipped on", "kind": "Date and time", "detail": ""},
             ],
         }
     ]
@@ -109,7 +110,7 @@ def test_a_new_field_is_shown_with_its_kind():
     assert preview.ask == "Add a field to your Airtable table:"
     assert preview.object == "Notes"
     assert [f.model_dump() for f in preview.tables[0].fields] == [
-        {"name": "Notes", "kind": "Long text"}
+        {"name": "Notes", "kind": "Long text", "detail": ""}
     ]
 
 
@@ -162,24 +163,32 @@ BASE_ID_BLOCKS = [
 ]
 
 
-READ_ONLY_BLOCKS = {
-    AirtableListSchemaBlock,
-    AirtableListRecordsBlock,
-    AirtableGetRecordBlock,
+# What Airtable lets each level do: changing tables or fields, or watching a
+# base with a webhook, needs a base creator; writing records needs an editor.
+NEEDED_ACCESS = {
+    AirtableListSchemaBlock: "read",
+    AirtableListRecordsBlock: "read",
+    AirtableGetRecordBlock: "read",
+    AirtableCreateRecordsBlock: "edit",
+    AirtableCreateTableBlock: "create",
+    AirtableUpdateTableBlock: "create",
+    AirtableCreateFieldBlock: "create",
+    AirtableUpdateFieldBlock: "create",
+    AirtableWebhookTriggerBlock: "create",
 }
 
 
 @pytest.mark.parametrize("block", BASE_ID_BLOCKS, ids=lambda b: b.__name__)
 def test_a_base_is_picked_from_the_account_never_typed(block):
     """Nobody knows a base id by heart: the field asks for a pick from the
-    bases the connected account can reach. Only a block that changes the
-    base needs one the user can edit; a read works on a view-only base."""
+    bases the connected account can reach, and only from those it may use
+    for this step."""
     schema = block().input_schema.jsonschema()["properties"]["base_id"]
 
     assert schema["format"] == "airtable-base-picker"
     assert schema["resource_picker"] == {
         "provider": "airtable",
-        "editable_only": block not in READ_ONLY_BLOCKS,
+        "access": NEEDED_ACCESS[block],
     }
     assert schema["title"] == "Airtable base"
 
@@ -289,3 +298,31 @@ async def test_a_field_named_like_a_boolean_keeps_its_words():
         "description": "false",
         "options": {"choices": [{"name": "True"}, {"name": "False"}]},
     }
+
+
+def test_field_settings_and_notes_are_on_the_card_in_words():
+    """Approving a table binds every setting of its fields, so the card says
+    them rather than hiding them behind the field's kind."""
+    preview = AirtableCreateTableBlock().change_preview(
+        {
+            "table_name": "Orders",
+            "table_fields": [
+                {
+                    "name": "Total",
+                    "type": "currency",
+                    "description": "Order total with tax",
+                    "options": {"precision": 2, "symbol": "$"},
+                },
+                {
+                    "name": "Status",
+                    "type": "singleSelect",
+                    "options": {"choices": [{"name": "New"}]},
+                },
+            ],
+        }
+    )
+
+    assert preview is not None
+    total, status = preview.tables[0].fields
+    assert total.detail == "Order total with tax · precision 2 · symbol $"
+    assert status.detail == ""

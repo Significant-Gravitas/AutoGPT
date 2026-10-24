@@ -1176,26 +1176,32 @@
           "tables": [
             {
               "name": "Printify orders",
+              "description": "",
               "fields": [
                 {
                   "name": "Order number",
-                  "kind": "Text"
+                  "kind": "Text",
+                  "detail": ""
                 },
                 {
                   "name": "Customer",
-                  "kind": "Text"
+                  "kind": "Text",
+                  "detail": ""
                 },
                 {
                   "name": "Total",
-                  "kind": "Money"
+                  "kind": "Money",
+                  "detail": "precision 2"
                 },
                 {
                   "name": "Status",
-                  "kind": "Choice of New, Shipped"
+                  "kind": "Choice of New, Shipped",
+                  "detail": ""
                 },
                 {
                   "name": "Ordered on",
-                  "kind": "Date and time"
+                  "kind": "Date and time",
+                  "detail": ""
                 }
               ]
             }
@@ -1250,7 +1256,7 @@
           "description": "The Airtable base to use: a set of tables, like a spreadsheet file with several sheets.",
           "format": "airtable-base-picker",
           "resource_picker": {
-            "editable_only": true,
+            "access": "create",
             "provider": "airtable"
           },
           "secret": false,

@@ -40,7 +40,7 @@ test("a new Airtable table is shown by name and fields before it is made", async
   expect(rows).toEqual([
     "Order numberText",
     "CustomerText",
-    "TotalMoney",
+    "Totalprecision 2Money",
     "StatusChoice of New, Shipped",
     "Ordered onDate and time",
   ]);

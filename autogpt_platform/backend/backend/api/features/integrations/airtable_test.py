@@ -61,9 +61,9 @@ def test_lists_every_page_of_bases_writable_first():
     assert resp.status_code == 200
     assert resp.json() == {
         "bases": [
-            {"id": "app3", "name": "CRM", "can_edit": True},
-            {"id": "app2", "name": "Shop", "can_edit": True},
-            {"id": "app1", "name": "Old reports", "can_edit": False},
+            {"id": "app2", "name": "Shop", "access": "create"},
+            {"id": "app3", "name": "CRM", "access": "edit"},
+            {"id": "app1", "name": "Old reports", "access": "read"},
         ],
         "truncated": False,
     }

@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import type { AirtableBaseAccess } from "@/app/api/__generated__/models/airtableBaseAccess";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -28,7 +29,7 @@ const PICKER = {
   format: "airtable-base-picker",
   resource_picker: {
     provider: "airtable",
-    editable_only: true,
+    access: "create",
     credentials_id: "cred-1",
   },
 };
@@ -60,7 +61,7 @@ function pickerCard(picker: Record<string, unknown> = PICKER) {
 }
 
 function serveBases(
-  bases: { id: string; name: string; can_edit: boolean }[],
+  bases: { id: string; name: string; access: AirtableBaseAccess }[],
   onCall?: () => void,
 ) {
   server.use(
@@ -78,9 +79,9 @@ afterEach(() => {
 describe("Airtable base picker in the setup card", () => {
   it("lists the account's bases by name and sends the one picked", async () => {
     serveBases([
-      { id: "app2", name: "Shop orders", can_edit: true },
-      { id: "app3", name: "Craft fair", can_edit: true },
-      { id: "app1", name: "Wholesale prices", can_edit: false },
+      { id: "app2", name: "Shop orders", access: "create" },
+      { id: "app3", name: "Craft fair", access: "create" },
+      { id: "app1", name: "Wholesale prices", access: "read" },
     ]);
     render(<SetupRequirementsCard output={pickerCard()} />);
 
@@ -106,8 +107,8 @@ describe("Airtable base picker in the setup card", () => {
 
   it("a step that only reads can use a view-only base", async () => {
     serveBases([
-      { id: "app2", name: "Shop orders", can_edit: true },
-      { id: "app1", name: "Wholesale prices", can_edit: false },
+      { id: "app2", name: "Shop orders", access: "create" },
+      { id: "app1", name: "Wholesale prices", access: "read" },
     ]);
     render(
       <SetupRequirementsCard
@@ -115,7 +116,7 @@ describe("Airtable base picker in the setup card", () => {
           ...PICKER,
           resource_picker: {
             provider: "airtable",
-            editable_only: false,
+            access: "read",
             credentials_id: "cred-1",
           },
         })}
@@ -131,11 +132,23 @@ describe("Airtable base picker in the setup card", () => {
     expect(wholesale.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("a step that adds tables can't use a base the user may only edit", async () => {
+    serveBases([
+      { id: "app2", name: "Shop orders", access: "create" },
+      { id: "app3", name: "Team tracker", access: "edit" },
+    ]);
+    render(<SetupRequirementsCard output={pickerCard()} />);
+
+    const tracker = await screen.findByRole("radio", { name: /Team tracker/ });
+    expect(tracker.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Can't add tables")).toBeDefined();
+  });
+
   it("arrow keys move the pick past a view-only base", async () => {
     serveBases([
-      { id: "app2", name: "Shop orders", can_edit: true },
-      { id: "app1", name: "Wholesale prices", can_edit: false },
-      { id: "app3", name: "Craft fair", can_edit: true },
+      { id: "app2", name: "Shop orders", access: "create" },
+      { id: "app1", name: "Wholesale prices", access: "read" },
+      { id: "app3", name: "Craft fair", access: "create" },
     ]);
     render(<SetupRequirementsCard output={pickerCard()} />);
 

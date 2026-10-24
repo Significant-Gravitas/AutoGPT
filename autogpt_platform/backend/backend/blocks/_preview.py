@@ -10,10 +10,14 @@ class PreviewField(BaseModel):
     # The field's type as the user would say it ("Text", "Money"), never the
     # API's own name for it.
     kind: str = ""
+    # Its note and any setting the kind doesn't say ("precision 2"): the
+    # approval binds them too, so the card must show them.
+    detail: str = ""
 
 
 class PreviewTable(BaseModel):
     name: str
+    description: str = ""
     fields: list[PreviewField] = []
 
 

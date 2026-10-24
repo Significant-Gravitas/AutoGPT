@@ -35,7 +35,7 @@ class AirtableListSchemaBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field(editable_only=False)
+        base_id: str = base_id_field(access="read")
 
     class Output(BlockSchemaOutput):
         base_schema: dict = SchemaField(
@@ -79,7 +79,7 @@ class AirtableCreateTableBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(access="create")
         table_name: str = SchemaField(description="The name of the table to create")
         table_fields: list[dict] = SchemaField(
             description="Table fields with name, type, and options",
@@ -132,7 +132,7 @@ class AirtableUpdateTableBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(access="create")
         table_id: str = SchemaField(description="The table ID to update")
         table_name: str | None = SchemaField(
             description="The name of the table to update", default=None
@@ -189,7 +189,7 @@ class AirtableCreateFieldBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(access="create")
         table_id: str = SchemaField(description="The table ID to add field to")
         field_type: TableFieldType = SchemaField(
             description="The type of the field to create",
@@ -261,7 +261,7 @@ class AirtableUpdateFieldBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(access="create")
         table_id: str = SchemaField(description="The table ID containing the field")
         field_id: str = SchemaField(description="The field ID to update")
         name: str | None = SchemaField(

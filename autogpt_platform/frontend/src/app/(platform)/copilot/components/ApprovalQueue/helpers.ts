@@ -29,7 +29,9 @@ export interface ApprovalSpend {
 
 export interface PreviewTable {
   name: string;
-  fields: { name: string; kind: string }[];
+  description: string;
+  // `detail`: the field's note and any setting its kind doesn't say.
+  fields: { name: string; kind: string; detail: string }[];
 }
 
 // What a step will add to or change in a connected account, in the user's words.
@@ -136,11 +138,13 @@ export function toPreview(raw: unknown): ChangePreview | null {
       const table = asObject(t) ?? {};
       return {
         name: str(table, "name") ?? "",
+        description: str(table, "description") ?? "",
         fields: asArray(table.fields).map((f) => {
           const field = asObject(f) ?? {};
           return {
             name: str(field, "name") ?? "",
             kind: str(field, "kind") ?? "",
+            detail: str(field, "detail") ?? "",
           };
         }),
       };

@@ -2,6 +2,8 @@
 Shared configuration for all Airtable blocks using the SDK pattern.
 """
 
+from typing import Literal
+
 from backend.sdk import BlockCostType, ProviderBuilder, SchemaField
 
 from ._oauth import AirtableOAuthHandler, AirtableScope
@@ -33,13 +35,14 @@ airtable = (
 )
 
 
-def base_id_field(editable_only: bool = True) -> str:
+def base_id_field(access: Literal["read", "edit", "create"]) -> str:
     """A base the user picks from the ones their connection can reach.
 
     Copilot cards render this as a list of the account's bases, so nobody is
     asked for an id from a URL; anywhere else it stays a plain text input.
-    ``editable_only`` keeps view-only bases out of reach of a block that
-    writes; a read works on any base the account can see.
+    ``access`` is the least a base must allow for the block to work there:
+    Airtable lets only a base's creators change its tables and fields or
+    watch it with a webhook, editors write records, and anyone can read.
     """
     return SchemaField(
         title="Airtable base",
@@ -49,6 +52,6 @@ def base_id_field(editable_only: bool = True) -> str:
         ),
         format="airtable-base-picker",
         json_schema_extra={
-            "resource_picker": {"provider": "airtable", "editable_only": editable_only}
+            "resource_picker": {"provider": "airtable", "access": access}
         },
     )

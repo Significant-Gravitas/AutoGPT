@@ -37,7 +37,7 @@ class AirtableWebhookTriggerBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(access="create")
         table_id_or_name: str = SchemaField(description="Airtable table ID or name")
         payload: dict = SchemaField(hidden=True, default_factory=dict)
         events: AirtableEventSelector = SchemaField(

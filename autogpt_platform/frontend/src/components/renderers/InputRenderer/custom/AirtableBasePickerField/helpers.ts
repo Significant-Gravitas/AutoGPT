@@ -18,11 +18,32 @@ export function pickerCredentialsID(schema: unknown): string | null {
   return typeof id === "string" && id ? id : null;
 }
 
-// Only a block that changes the base needs one the user can edit; a read
-// works on a view-only base too.
-export function pickerEditableOnly(schema: unknown): boolean {
-  if (!isRecord(schema) || !isRecord(schema.resource_picker)) return true;
-  return schema.resource_picker.editable_only !== false;
+export type BaseAccess = "read" | "edit" | "create";
+
+const ACCESS_RANK: Record<BaseAccess, number> = { read: 0, edit: 1, create: 2 };
+
+// The least a base must allow for the step: Airtable lets only a base's
+// creators change its tables, editors write records, and anyone read.
+export function pickerAccess(schema: unknown): BaseAccess {
+  if (!isRecord(schema) || !isRecord(schema.resource_picker)) return "create";
+  const access = schema.resource_picker.access;
+  return access === "read" || access === "edit" ? access : "create";
+}
+
+export function allows(access: BaseAccess, needed: BaseAccess): boolean {
+  return ACCESS_RANK[access] >= ACCESS_RANK[needed];
+}
+
+// Why a base is listed but can't be picked for this step.
+export function lockedReason(access: BaseAccess): string {
+  return access === "read" ? "View only" : "Can't add tables";
+}
+
+// What to do when no base allows the step.
+export function noUsableBaseText(needed: BaseAccess): string {
+  return needed === "create"
+    ? "Otto needs to add tables, which Airtable lets only a base's creators do. Ask the owner to make you a creator, or start a new one."
+    : "You can only view these bases, so Otto can't add to them. Ask the owner to make you an editor, or start a new one.";
 }
 
 export function isAirtableBasePickerSchema(schema: unknown): boolean {

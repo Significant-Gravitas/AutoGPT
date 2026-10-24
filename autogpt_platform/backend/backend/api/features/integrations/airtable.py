@@ -2,7 +2,7 @@
 replaces asking the user for an id from a URL."""
 
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, HTTPException, Path, Security, status
@@ -22,14 +22,21 @@ creds_manager = IntegrationCredentialsManager()
 
 # Airtable pages bases a thousand at a time; past this the picker says so.
 _MAX_PAGES = 5
-_EDITABLE = frozenset({"edit", "create"})
+
+
+AirtableAccess = Literal["read", "edit", "create"]
+# Airtable's base permission levels: a creator may change tables and fields,
+# an editor may write records, and anyone else may only read.
+_ACCESS: dict[str, AirtableAccess] = {"create": "create", "edit": "edit"}
+_RANK: dict[AirtableAccess, int] = {"create": 0, "edit": 1, "read": 2}
 
 
 class AirtableBase(BaseModel):
     id: str
     name: str
-    # Read-only bases are listed but cannot be picked for a workflow that writes.
-    can_edit: bool
+    # The most the connection may do here; the picker locks a base below what
+    # the step needs.
+    access: AirtableAccess
 
 
 class AirtableBasesResponse(BaseModel):
@@ -61,7 +68,7 @@ async def list_airtable_bases(
         logger.warning(f"Airtable refused to list bases ({e.status_code})")
         raise _listing_error(e.status_code)
     return AirtableBasesResponse(
-        bases=sorted(bases, key=lambda b: (not b.can_edit, b.name.casefold())),
+        bases=sorted(bases, key=lambda b: (_RANK[b.access], b.name.casefold())),
         truncated=truncated,
     )
 
@@ -111,7 +118,7 @@ async def _all_bases(credential: Credentials) -> tuple[list[AirtableBase], bool]
             AirtableBase(
                 id=str(base["id"]),
                 name=str(base.get("name") or "Untitled base"),
-                can_edit=base.get("permissionLevel") in _EDITABLE,
+                access=_ACCESS.get(str(base.get("permissionLevel")), "read"),
             )
             for base in page.get("bases", [])
             if base.get("id")

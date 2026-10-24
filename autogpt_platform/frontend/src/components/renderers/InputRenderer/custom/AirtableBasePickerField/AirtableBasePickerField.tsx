@@ -11,8 +11,10 @@ import {
   NoBasesYet,
 } from "./components/PickerStates";
 import {
+  allows,
+  noUsableBaseText,
+  pickerAccess,
   pickerCredentialsID,
-  pickerEditableOnly,
   SEARCH_THRESHOLD,
 } from "./helpers";
 import { useAirtableBasePickerField } from "./useAirtableBasePickerField";
@@ -33,10 +35,10 @@ function BasePicker({
   const picker = useAirtableBasePickerField(credentialsID);
   const value = typeof formData === "string" ? formData : "";
   const labelID = `${fieldPathId.$id}-label`;
-  const editableOnly = pickerEditableOnly(schema);
+  const needed = pickerAccess(schema);
   const ready = !picker.isLoading && !picker.error && picker.bases.length > 0;
-  const noneEditable =
-    ready && editableOnly && picker.bases.every((base) => !base.can_edit);
+  const noneUsable =
+    ready && picker.bases.every((base) => !allows(base.access, needed));
 
   function body() {
     if (picker.isLoading) return <LoadingBases />;
@@ -60,7 +62,7 @@ function BasePicker({
         bases={picker.shown}
         value={value}
         labelID={labelID}
-        editableOnly={editableOnly}
+        needed={needed}
         onChange={(id) => onChange(id, fieldPathId.path)}
       />
     );
@@ -96,10 +98,9 @@ function BasePicker({
           No base matches “{picker.search.trim()}”.
         </Text>
       )}
-      {noneEditable && (
+      {noneUsable && (
         <Text variant="small" className="text-zinc-600">
-          You can only view these bases, so Otto can&apos;t add to them. Ask the
-          owner to make you an editor, or start a new one.
+          {noUsableBaseText(needed)}
         </Text>
       )}
       {ready && picker.truncated && (

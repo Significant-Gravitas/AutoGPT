@@ -6,27 +6,23 @@ import { isKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { useRef } from "react";
+import { allows, type BaseAccess, lockedReason } from "../helpers";
 
 interface Props {
   bases: AirtableBase[];
   value: string;
   labelID: string;
-  // A block that writes can't use a view-only base; a read can.
-  editableOnly: boolean;
+  // The least a base must allow for this step.
+  needed: BaseAccess;
   onChange: (id: string) => void;
 }
 
 /** The bases as one radiogroup: a single tab stop, arrows move and select.
- *  A view-only base is listed so the user recognises it, but can't be picked. */
-export function BaseList({
-  bases,
-  value,
-  labelID,
-  editableOnly,
-  onChange,
-}: Props) {
+ *  A base that doesn't allow the step is listed so the user recognises it,
+ *  but can't be picked, and says why. */
+export function BaseList({ bases, value, labelID, needed, onChange }: Props) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const canPick = (base: AirtableBase) => base.can_edit || !editableOnly;
+  const canPick = (base: AirtableBase) => allows(base.access, needed);
   const pickable = bases.filter(canPick);
   const selected = pickable.findIndex((base) => base.id === value);
   const activeID = pickable[selected === -1 ? 0 : selected]?.id;
@@ -80,7 +76,9 @@ export function BaseList({
           >
             <span className="min-w-0 flex-1 break-words">{base.name}</span>
             {locked && (
-              <span className="shrink-0 text-xs text-zinc-500">View only</span>
+              <span className="shrink-0 text-xs text-zinc-500">
+                {lockedReason(base.access)}
+              </span>
             )}
             {isSelected && (
               <Icon icon={Tick02Icon} size={16} className="shrink-0" />

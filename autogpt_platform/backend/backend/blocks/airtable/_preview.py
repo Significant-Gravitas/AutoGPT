@@ -1,6 +1,7 @@
 """Airtable tables and fields as the approval card shows them: the names the
 user will see in their base, and each field's type in plain words."""
 
+import json
 import re
 from typing import Any
 
@@ -46,7 +47,7 @@ _KINDS = {
 def field_kind(field_type: Any, options: Any = None) -> str:
     """``currency`` is "Money"; a select also names its choices."""
     raw = str(getattr(field_type, "value", field_type) or "")
-    kind = _KINDS.get(raw) or re.sub(r"(?<!^)(?=[A-Z])", " ", raw).capitalize()
+    kind = _KINDS.get(raw) or _words(raw).capitalize()
     choices = _choice_names(options)
     return f"{kind} of {', '.join(choices)}" if choices else kind
 
@@ -60,13 +61,15 @@ def covered_options(options: Any) -> list[str]:
     return []
 
 
-def table_preview(name: Any, fields: Any) -> PreviewTable:
+def table_preview(name: Any, fields: Any, description: Any = "") -> PreviewTable:
     return PreviewTable(
         name=str(name or ""),
+        description=str(description or ""),
         fields=[
             PreviewField(
                 name=str(field.get("name") or ""),
                 kind=field_kind(field.get("type"), field.get("options")),
+                detail=field_detail(field.get("description"), field.get("options")),
             )
             for field in _dicts(fields)
         ],
@@ -74,7 +77,25 @@ def table_preview(name: Any, fields: Any) -> PreviewTable:
 
 
 def tables_preview(tables: Any) -> list[PreviewTable]:
-    return [table_preview(t.get("name"), t.get("fields")) for t in _dicts(tables)]
+    return [
+        table_preview(t.get("name"), t.get("fields"), t.get("description"))
+        for t in _dicts(tables)
+    ]
+
+
+def field_detail(description: Any, options: Any) -> str:
+    """The field's note, then each setting its kind doesn't already say, in
+    words: ``{"precision": 2}`` reads "precision 2"."""
+    settings = (
+        [
+            f"{_words(key)} {_value(value)}"
+            for key, value in options.items()
+            if key != "choices"
+        ]
+        if isinstance(options, dict)
+        else []
+    )
+    return " · ".join([str(description), *settings] if description else settings)
 
 
 def preview(
@@ -86,6 +107,18 @@ def preview(
         tables=tables,
         covers=covers,
     )
+
+
+def _words(key: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", " ", str(key)).lower()
+
+
+def _value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(", ", ": "))
+    return str(value)
 
 
 def _dicts(value: Any) -> list[dict]:

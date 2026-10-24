@@ -20338,10 +20338,14 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "can_edit": { "type": "boolean", "title": "Can Edit" }
+          "access": {
+            "type": "string",
+            "enum": ["read", "edit", "create"],
+            "title": "Access"
+          }
         },
         "type": "object",
-        "required": ["id", "name", "can_edit"],
+        "required": ["id", "name", "access"],
         "title": "AirtableBase"
       },
       "AirtableBasesResponse": {
