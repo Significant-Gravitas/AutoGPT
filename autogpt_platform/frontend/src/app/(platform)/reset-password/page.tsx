@@ -111,9 +111,9 @@ function ResetPasswordContent() {
       }
       setDisabled(true);
       toast({
-        title: "Email Sent",
+        title: "Check your email",
         description:
-          "Password reset email sent if user exists. Please check your email.",
+          "If an account exists for this address, we've sent a reset link.",
         variant: "default",
       });
     },
