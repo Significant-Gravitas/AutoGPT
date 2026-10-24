@@ -2,10 +2,13 @@ import type { Meta, StoryObj } from "@storybook/nextjs";
 import { delay, http, HttpResponse } from "msw";
 import { SubscriptionTierSection } from "./SubscriptionTierSection";
 import { PendingChangeBanner } from "./components/PendingChangeBanner/PendingChangeBanner";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
-// The tier buttons only show with billing on: build Storybook with
-// NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT=true to see them.
+// The tier buttons only show with billing on, which the server flags answer:
+// the flags request is mocked with billing on, and the auth store marked as
+// loaded so the flags request is made.
 const SUBSCRIPTION_URL = "*/api/credits/subscription";
+const FLAGS_URL = "*/api/feature-flags";
 
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
@@ -23,6 +26,12 @@ function subscription(overrides: Record<string, unknown> = {}) {
 
 function handlers(data: Record<string, unknown>) {
   return [
+    http.get(FLAGS_URL, () =>
+      HttpResponse.json({
+        flags: { "enable-platform-payment": true },
+        configured: true,
+      }),
+    ),
     http.get(SUBSCRIPTION_URL, () => HttpResponse.json(data)),
     // A tier change never answers, so a click shows the busy state.
     http.post(SUBSCRIPTION_URL, async () => {
@@ -38,6 +47,12 @@ const meta: Meta<typeof SubscriptionTierSection> = {
   parameters: {
     layout: "padded",
   },
+  decorators: [
+    (Story) => {
+      useAuthStore.setState({ isUserLoading: false });
+      return <Story />;
+    },
+  ],
 };
 
 export default meta;
