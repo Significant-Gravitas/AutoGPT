@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 _NOT_SERVICES = frozenset({"database", "generic_webhook", "http", "mcp", "smtp"})
 
 # Tools small businesses run on that we have no connector for. Only used to
-# read free text written before tasks recorded what they connect to; whether
-# each is supported is still decided against the live registry, so one that
-# gains a connector drops out on its own.
+# read free text written before tasks recorded what they connect to: a new
+# task cannot be stored without its integrations (intro._parse_prompts), so
+# this covers older rows until they are backfilled. Whether each is
+# supported is still decided against the live registry, so one that gains
+# a connector drops out on its own.
 KNOWN_GAPS = (
     "Shopify",
     "Printful",

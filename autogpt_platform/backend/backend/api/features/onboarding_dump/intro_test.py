@@ -19,7 +19,12 @@ TRANSCRIPT = "I run a bakery and want the weekly order emails handled."
 GENERATION = {
     "greeting": "You mentioned the weekly order emails.",
     "prompts": [
-        {"title": f"Automation number {i}", "prompt": "Do it.", "icon": "sparkle"}
+        {
+            "title": f"Automation number {i}",
+            "prompt": "Do it.",
+            "icon": "sparkle",
+            "integrations": [],
+        }
         for i in range(5)
     ],
 }
@@ -136,8 +141,7 @@ async def test_each_prompt_keeps_the_integrations_it_names(client: MagicMock):
     named = {"title": "List each sticker", "prompt": "Do it.", "icon": "sparkle"}
     client.chat.completions.create.return_value = _generation_with(
         [{**named, "integrations": ["printify", " Shopify ", 7, ""]}]
-        + [{**named, "integrations": []}] * 3
-        + [named]
+        + [{**named, "integrations": []}] * 4
     )
 
     _, prompts = await intro.generate_intro(TRANSCRIPT)
@@ -147,8 +151,46 @@ async def test_each_prompt_keeps_the_integrations_it_names(client: MagicMock):
         [],
         [],
         [],
-        None,
+        [],
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_that_does_not_say_what_it_connects_to_is_never_kept(
+    client: MagicMock,
+):
+    """Stored without its integrations, nothing could warn the user that a
+    task needs a service we lack, so such a generation is asked for again."""
+    named = {"title": "List each sticker on Big Cartel", "prompt": "Do it."}
+    client.chat.completions.create.side_effect = [
+        _generation_with([named] * 5),
+        _generation_with([{**named, "integrations": ["Big Cartel"]}] * 5),
+    ]
+
+    _, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert client.chat.completions.create.await_count == 2
+    assert [p.integrations for p in prompts] == [["Big Cartel"]] * 5
+
+
+@pytest.mark.asyncio
+async def test_without_integrations_twice_the_generic_prompts_are_used(
+    client: MagicMock,
+):
+    named = {"title": "List each sticker on Big Cartel", "prompt": "Do it."}
+    client.chat.completions.create.return_value = _generation_with([named] * 5)
+
+    greeting, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == "You sell stickers."
+    assert prompts == intro.fallback_prompts()
+    assert all(p.integrations is not None for p in prompts)
+
+
+def test_the_generic_prompts_say_they_connect_to_nothing():
+    assert [p.integrations for p in intro.fallback_prompts()] == [[]] * len(
+        intro.fallback_prompts()
+    )
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ import logging
 import os
 
 from langfuse import get_client
+from openai import AsyncOpenAI
 from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionSystemMessageParam,
@@ -188,30 +189,20 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     ]
     data = None
     # Two attempts: at temperature 0.6 an occasional generation comes back
-    # truncated or malformed, and one retry is far cheaper than shipping
-    # the generic fallback to a brand-new user.
+    # truncated, malformed or without the integrations of enough prompts,
+    # and one retry is far cheaper than shipping the generic fallback to a
+    # brand-new user.
     for attempt in range(2):
-        try:
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=_MODEL,
-                    messages=messages,
-                    temperature=0.6,
-                    max_tokens=3000,
-                ),
-                timeout=_TIMEOUT_SECONDS,
-            )
-            data = parse_response_json(response.choices[0].message.content or "")
-        except Exception as e:  # degrades to the template below
-            logger.warning(
-                "Brain dump greeting generation failed (attempt %s): %s",
-                attempt + 1,
-                e,
-            )
+        generated = await _generate(client, messages, attempt)
+        if generated is None:
             continue
-        if data is not None:
+        data = generated
+        if len(_parse_prompts(data.get("prompts"))) >= MIN_PROMPTS:
             break
-        logger.warning("Brain dump greeting: non-JSON output (attempt %s)", attempt + 1)
+        logger.warning(
+            "Brain dump greeting: too few prompts with integrations (attempt %s)",
+            attempt + 1,
+        )
     if data is None:
         return fallback_intro(text)
 
@@ -225,6 +216,31 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         # generic set is better than a half-empty one.
         return greeting.strip()[:MAX_GREETING_CHARS], fallback_prompts()
     return greeting.strip()[:MAX_GREETING_CHARS], prompts[:MAX_PROMPTS]
+
+
+async def _generate(
+    client: AsyncOpenAI, messages: list[ChatCompletionMessageParam], attempt: int
+) -> dict | None:
+    """One generation, parsed; ``None`` when it failed or was not JSON."""
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=_MODEL,
+                messages=messages,
+                temperature=0.6,
+                max_tokens=3000,
+            ),
+            timeout=_TIMEOUT_SECONDS,
+        )
+        data = parse_response_json(response.choices[0].message.content or "")
+    except Exception as e:  # degrades to the template
+        logger.warning(
+            "Brain dump greeting generation failed (attempt %s): %s", attempt + 1, e
+        )
+        return None
+    if data is None:
+        logger.warning("Brain dump greeting: non-JSON output (attempt %s)", attempt + 1)
+    return data
 
 
 def _integrations_block() -> str:
@@ -270,6 +286,11 @@ async def _fetch_langfuse_prompt() -> str | None:
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
+    """The usable prompts in ``raw``.
+
+    A prompt that does not say what it connects to is dropped: stored
+    without it, nothing could tell the user it needs a service we lack.
+    """
     if not isinstance(raw, list):
         return []
     prompts = []
@@ -281,13 +302,16 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
             continue
         if not (isinstance(prompt, str) and prompt.strip()):
             continue
+        integrations = _parse_integrations(item.get("integrations"))
+        if integrations is None:
+            continue
         icon = item.get("icon")
         prompts.append(
             SuggestedPrompt(
                 title=title.strip()[:MAX_TITLE_CHARS],
                 prompt=prompt.strip()[:MAX_PROMPT_CHARS],
                 icon=icon if icon in PROMPT_ICONS else DEFAULT_PROMPT_ICON,
-                integrations=_parse_integrations(item.get("integrations")),
+                integrations=integrations,
             )
         )
     return prompts
@@ -330,7 +354,8 @@ def fallback_prompts() -> list[SuggestedPrompt]:
     """Generic starters used when generation fails or there is no dump.
 
     Phrased as things the user might genuinely want on day one, not as
-    claims about this particular user.
+    claims about this particular user. None of them needs a service, and
+    each says so.
     """
     return [
         SuggestedPrompt(
@@ -341,6 +366,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "see the format before it goes on a schedule."
             ),
             icon="calendar-check",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Get a sourced research brief on any topic in minutes, not afternoons",
@@ -350,6 +376,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "I'm currently trying to learn about."
             ),
             icon="magnifying-glass",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Put an always-on watch on competitors and get pinged the moment they move",
@@ -359,6 +386,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "and set up alerts for them."
             ),
             icon="bell",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Have your next post or newsletter drafted in your voice, ready to edit",
@@ -368,6 +396,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "how close you get."
             ),
             icon="megaphone",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Find the two tasks eating your week and hand them to an expert today",
@@ -377,5 +406,6 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "take over first and how."
             ),
             icon="robot",
+            integrations=[],
         ),
     ]
