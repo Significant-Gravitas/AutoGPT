@@ -44,24 +44,7 @@ export function CardDecisionNote({
       data-message-id={messageID}
       className="flex flex-col items-center gap-0.5 py-1"
     >
-      {decisionNotes(decisions, { readOnly }).map((note, i) => (
-        <Text
-          key={i}
-          variant="small"
-          className="flex items-center gap-1.5 text-foreground-tertiary"
-        >
-          <Icon
-            icon={note.verdict === "approved" ? Tick02Icon : Cancel01Icon}
-            size={14}
-            className={
-              note.verdict === "approved"
-                ? "text-success"
-                : "text-foreground-subtle"
-            }
-          />
-          {note.text}
-        </Text>
-      ))}
+      <DecisionNoteLines decisions={decisions} readOnly={readOnly} />
       {showQueueBadge && (
         <div className="mt-1" data-testid="queue-status-row">
           <QueueBadge sessionID={sessionID ?? null} />
@@ -69,4 +52,30 @@ export function CardDecisionNote({
       )}
     </div>
   );
+}
+
+interface LinesProps {
+  decisions: CardDecision[];
+  readOnly: boolean;
+}
+
+export function DecisionNoteLines({ decisions, readOnly }: LinesProps) {
+  return decisionNotes(decisions, { readOnly }).map((note, i) => (
+    <Text
+      key={i}
+      variant="small"
+      className="flex items-center gap-1.5 text-foreground-tertiary"
+    >
+      <Icon
+        icon={note.verdict === "approved" ? Tick02Icon : Cancel01Icon}
+        size={14}
+        className={
+          note.verdict === "approved"
+            ? "text-success"
+            : "text-foreground-subtle"
+        }
+      />
+      {note.text}
+    </Text>
+  ));
 }

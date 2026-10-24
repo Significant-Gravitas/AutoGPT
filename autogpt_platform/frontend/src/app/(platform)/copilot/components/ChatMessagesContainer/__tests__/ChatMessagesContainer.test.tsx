@@ -414,6 +414,35 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     expect(container.textContent).not.toContain("credential://");
   });
 
+  it("shows a queued card decision as a note of what was decided, without its id", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Approved: hire Maya (confirmation_id: c-queued-1).\nNot approved: do not hire Ada, discard that proposal (confirmation_id: c-queued-2).",
+        ]}
+      />,
+    );
+    expect(screen.getByText("You approved hiring Maya")).toBeDefined();
+    expect(screen.getByText("You declined hiring Ada")).toBeDefined();
+    expect(screen.getByText("Queued")).toBeDefined();
+    expect(container.textContent).not.toContain("confirmation_id");
+    expect(container.textContent).not.toContain("c-queued-1");
+  });
+
+  it("keeps a queued message the user wrote around a decision line as their message", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Approved: hire Maya (confirmation_id: c-queued-1).\nAnd start Monday.",
+        ]}
+      />,
+    );
+    expect(screen.queryByText("You approved hiring Maya")).toBeNull();
+    expect(screen.getByText(/And start Monday\./)).toBeDefined();
+  });
+
   it("renders multiple queued messages as separate bubbles", () => {
     render(
       <ChatMessagesContainer

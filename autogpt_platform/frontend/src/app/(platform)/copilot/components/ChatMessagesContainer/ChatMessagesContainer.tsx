@@ -1,5 +1,4 @@
 import { parseSpecialMarkers } from "../../helpers/messageMarkers";
-import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import {
@@ -49,6 +48,7 @@ import { VirtualTranscript } from "./components/VirtualTranscript/VirtualTranscr
 import type { TranscriptRow } from "./components/VirtualTranscript/helpers";
 import type { JumpToMessage } from "./components/VirtualTranscript/useVirtualTranscript";
 import { CardDecisionNote } from "./components/CardDecisionNote";
+import { QueuedMessage } from "./components/QueuedMessage";
 import { MessageRow } from "./components/MessageRow/MessageRow";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
@@ -59,8 +59,6 @@ import {
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
-import { Clock01Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
@@ -663,27 +661,7 @@ export function ChatMessagesContainer({
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (
-              <Message key={idx} from="user">
-                <MessageContent
-                  className={cn(
-                    "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
-                    isCompact
-                      ? "rounded-xl text-sm leading-6"
-                      : "rounded-3xl text-body-lg leading-relaxed",
-                  )}
-                >
-                  <span>
-                    <CredentialMentionText text={msg} />
-                  </span>
-                  <span
-                    // TODO(tokens): no exact role for text-slate-500
-                    className="flex items-center gap-1 text-xs text-slate-500"
-                  >
-                    <Icon icon={Clock01Icon} className="size-3" />
-                    Queued
-                  </span>
-                </MessageContent>
-              </Message>
+              <QueuedMessage key={idx} text={msg} isCompact={isCompact} />
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
             <ChatErrorBanner error={error} />

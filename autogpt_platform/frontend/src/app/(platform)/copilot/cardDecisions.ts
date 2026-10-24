@@ -63,10 +63,20 @@ export function getCardDecisions(
 ): CardDecision[] | null {
   if (message.role !== "user" || isServerWritten(message.metadata)) return null;
   if (message.parts.some((part) => part.type !== "text")) return null;
-  const decisions =
+  return namedDecisions(
     decisionsFromMetadata(message.metadata) ??
-    decisionsFromText(messageText(message));
-  // The card always names the change; a line in other words is shown as typed.
+      decisionsFromText(messageText(message)),
+  );
+}
+
+/** What a message still waiting in the queue decided, read from its text the
+ *  same way, or null when it says anything else. */
+export function getTextDecisions(text: string): CardDecision[] | null {
+  return namedDecisions(decisionsFromText(text));
+}
+
+// The card always names the change; a line in other words is shown as typed.
+function namedDecisions(decisions: CardDecision[] | null) {
   if (!decisions?.every((decision) => decision.verb && decision.name))
     return null;
   return decisions;
