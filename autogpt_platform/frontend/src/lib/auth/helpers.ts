@@ -18,15 +18,19 @@ export const PROTECTED_PAGES = [
 export const ADMIN_PAGES = ["/admin"] as const;
 
 // Page protection utilities
-export function isProtectedPage(pathname: string): boolean {
+export function isProtectedPage(pathname: string | null | undefined): boolean {
+  if (!pathname) return false;
   return PROTECTED_PAGES.some((page) => pathname.startsWith(page));
 }
 
-export function isAdminPage(pathname: string): boolean {
+export function isAdminPage(pathname: string | null | undefined): boolean {
+  if (!pathname) return false;
   return ADMIN_PAGES.some((page) => pathname.startsWith(page));
 }
 
-export function shouldRedirectOnLogout(pathname: string): boolean {
+export function shouldRedirectOnLogout(
+  pathname: string | null | undefined,
+): boolean {
   return isProtectedPage(pathname) || isAdminPage(pathname);
 }
 
@@ -54,9 +58,11 @@ export function hasWebSocketDisconnectIntent(): boolean {
 
 // Redirect utilities
 export function getRedirectPath(
-  path: string, // including query strings
+  path: string | null | undefined, // including query strings
   userRole?: string,
 ): string | null {
+  if (!path) return null;
+
   if (shouldRedirectOnLogout(path)) {
     // Preserve the original path as a 'next' parameter so user can return after login
     return `/login?next=${encodeURIComponent(path)}`;

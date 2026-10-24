@@ -50,7 +50,7 @@ export async function fetchUser(): Promise<FetchUserResult> {
 }
 
 interface ValidateSessionParams {
-  path: string;
+  path: string | null | undefined;
   currentUser: User | null;
 }
 
