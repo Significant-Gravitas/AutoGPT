@@ -88,7 +88,7 @@ function EarnCreditsHeader({
           </span>
           <span className="flex w-full items-center justify-between gap-3">
             <Text as="span" variant="small" tone="secondary">
-              {open ? "Hide onboarding tasks" : "Show onboarding tasks"}
+              Finish setup steps to get free automation credits.
             </Text>
             <Icon
               icon={ArrowDown01Icon}

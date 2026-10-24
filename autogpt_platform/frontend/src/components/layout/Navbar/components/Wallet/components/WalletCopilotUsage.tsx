@@ -38,7 +38,7 @@ export function WalletCopilotUsage() {
           )}
         </div>
         <Text variant="small" tone="secondary">
-          Your allowance for conversations with Otto and experts.
+          Covers your chats with Otto and your experts.
         </Text>
       </div>
       {usage ? (

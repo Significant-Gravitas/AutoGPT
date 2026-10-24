@@ -1,18 +1,23 @@
 "use client";
 
+import { useGetV1GetAutoTopUp } from "@/app/api/__generated__/endpoints/credits/credits";
+import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { CreditCardIcon } from "@hugeicons/core-free-icons";
+import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { useId } from "react";
 import { TaskGroup } from "../helpers";
 import { WalletCopilotUsage } from "./WalletCopilotUsage";
 import { WalletEarnCredits } from "./WalletEarnCredits";
+import { WalletTrialNote } from "./WalletTrialNote";
 
 interface Props {
   groups: TaskGroup[];
   completedSteps: string[] | undefined;
   formattedCredits: string;
+  trialNoteID: string;
   onAddCredits: () => void;
 }
 
@@ -20,13 +25,19 @@ export function WalletCompactPanel({
   groups,
   completedSteps,
   formattedCredits,
+  trialNoteID,
   onAddCredits,
 }: Props) {
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const creditsHeadingID = useId();
+  const { data: trial } = useTrialStatus();
+  const { data: autoRefill } = useGetV1GetAutoTopUp({
+    query: { select: okData },
+  });
 
   return (
     <div className="flex flex-col">
+      <WalletTrialNote id={trialNoteID} trial={trial} autoRefill={autoRefill} />
       <div className="px-5 py-4">
         <WalletCopilotUsage />
       </div>
@@ -53,7 +64,7 @@ export function WalletCompactPanel({
             </Text>
           </div>
           <Text variant="small" tone="secondary">
-            Credits used when your automations run.
+            Pays for workflow runs and paid steps, like making images.
           </Text>
         </div>
         {isPaymentEnabled && (
