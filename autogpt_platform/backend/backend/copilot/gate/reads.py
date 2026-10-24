@@ -35,7 +35,7 @@ from backend.copilot.tool_image import parse_held_image
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.data.db_accessors import experts_db
-from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
+from backend.data.workspace_scope import is_skill_package_path
 
 from . import active_mode, held
 from . import review as review_store
@@ -295,10 +295,7 @@ def is_skill_path(path: str | None) -> bool:
     registry writes there; ``write_workspace_file`` refuses these roots."""
     if not path or posixpath.normpath(path) != path:
         return False
-    if path.startswith(SKILLS_ROOT):
-        return True
-    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
-    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
+    return is_skill_package_path(path)
 
 
 def _opened_path(output: str) -> str | None:

@@ -76,6 +76,7 @@ def _make_file_mock(**overrides) -> MagicMock:
         "size_bytes": 100,
         "folder_id": None,
         "metadata": {},
+        "is_internal": False,
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
     defaults.update(overrides)
@@ -124,7 +125,35 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_include_internal_opts_into_skill_files(
+    mock_manager_cls, mock_get_workspace
+):
+    """Skill packages and Otto's working files are left out unless asked for,
+    and each listed file says whether it is one."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = [
+        _make_file(id="f1", name="dewleaf-launch-brief.md"),
+        _make_file(
+            id="f2",
+            name="SKILL.md",
+            path="/experts/e1/skills/copywriting/SKILL.md",
+            is_internal=True,
+        ),
+    ]
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files", params={"include_internal": "true"})
+
+    assert response.status_code == 200
+    assert [f["is_internal"] for f in response.json()["files"]] == [False, True]
+    assert mock_instance.list_files.call_args.kwargs["include_internal"] is True
 
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
@@ -148,6 +177,7 @@ def test_list_files_uploaded_origin_filters_on_metadata(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -172,6 +202,7 @@ def test_list_files_generated_origin_excludes_uploads(
         metadata_not_equals={"origin": "user-upload"},
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -201,6 +232,7 @@ def test_list_files_scopes_to_session_when_provided(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -624,6 +656,7 @@ def test_list_files_has_more_true_when_limit_exceeded(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -666,6 +699,7 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -691,6 +725,7 @@ def test_list_files_origin_ignored_when_session_id_set(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -714,6 +749,7 @@ def test_list_files_q_search_passed_through(mock_manager_cls, mock_get_workspace
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -737,6 +773,7 @@ def test_list_files_blank_q_becomes_none(mock_manager_cls, mock_get_workspace):
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -760,6 +797,7 @@ def test_list_files_q_and_origin_combine(mock_manager_cls, mock_get_workspace):
         metadata_not_equals={"origin": "user-upload"},
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -787,6 +825,7 @@ def test_list_files_empty_session_id_treated_as_omitted(
         metadata_not_equals=None,
         folder_id=None,
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -816,6 +855,7 @@ def test_list_files_folder_id_passed_through(mock_manager_cls, mock_get_workspac
         metadata_not_equals=None,
         folder_id="fld-1",
         root_only=False,
+        include_internal=False,
     )
 
 
@@ -839,6 +879,7 @@ def test_list_files_root_only_passed_through(mock_manager_cls, mock_get_workspac
         metadata_not_equals=None,
         folder_id=None,
         root_only=True,
+        include_internal=False,
     )
 
 
@@ -931,10 +972,11 @@ def test_get_storage_usage_returns_tier_based_limit(mocker):
         return_value=_make_workspace(),
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=100 * 1024 * 1024,  # 100 MB used
+        "backend.api.features.workspace.routes.get_workspace_size_breakdown",
+        # 100 MB used, 3 MB of it skills and working files
+        return_value=(100 * 1024 * 1024, 3 * 1024 * 1024),
     )
-    mocker.patch(
+    count = mocker.patch(
         "backend.api.features.workspace.routes.count_workspace_files",
         return_value=5,
     )
@@ -949,6 +991,10 @@ def test_get_storage_usage_returns_tier_based_limit(mocker):
     assert data["limit_bytes"] == 1024 * 1024 * 1024
     assert data["used_bytes"] == 100 * 1024 * 1024
     assert data["file_count"] == 5
+    # Skills and working files still use the quota, and are named apart.
+    assert data["internal_bytes"] == 3 * 1024 * 1024
+    # The count is of the files the user sees, not Otto's working files.
+    assert count.call_args.kwargs == {"include_internal": False}
 
 
 # -- _sanitize_filename_for_header tests --
@@ -1305,6 +1351,7 @@ def test_list_files_filters_to_the_experts_own_conversations(
         root_only=False,
         allowed_path_prefixes=["/sessions/s1/", "/sessions/s2/"],
         include_user_files=False,
+        include_internal=False,
     )
 
 

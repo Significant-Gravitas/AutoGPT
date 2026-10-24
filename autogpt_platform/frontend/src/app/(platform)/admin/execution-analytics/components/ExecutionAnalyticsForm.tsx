@@ -31,7 +31,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
