@@ -68,7 +68,9 @@ def test_valid_request_sends_and_returns_204(send_mock):
     assert VALID_BODY["url"] in text
 
 
-def test_an_undeliverable_address_answers_422_without_logging_it(send_mock, caplog):
+def test_an_undeliverable_address_answers_422_and_logs_the_type_not_the_address(
+    send_mock, caplog
+):
     send_mock.side_effect = EmailUndeliverableError(
         "Postmark refused the recipient (error 406)"
     )
@@ -77,6 +79,7 @@ def test_an_undeliverable_address_answers_422_without_logging_it(send_mock, capl
 
     assert res.status_code == 422
     assert res.json() == {"detail": "email_undeliverable"}
+    assert "Mail provider won't deliver reset_password auth email" in caplog.text
     assert VALID_BODY["to"] not in caplog.text
 
 
