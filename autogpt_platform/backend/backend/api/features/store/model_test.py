@@ -64,3 +64,19 @@ def build(model: type[pydantic.BaseModel], sub_heading: str):
     if model is StoreSubmissionRequest:
         common |= {"graph_id": "graph-1", "graph_version": 1, "slug": "lead-finder"}
     return model(**common)
+
+
+@pytest.mark.parametrize("score", [0, 6, -5, 1_000_000])
+def test_review_score_outside_1_to_5_is_rejected(score):
+    """#15304: one review with an unbounded score skews a listing's average."""
+    from .model import StoreReviewCreate
+
+    with pytest.raises(pydantic.ValidationError):
+        StoreReviewCreate(store_listing_version_id="v1", score=score)
+
+
+@pytest.mark.parametrize("score", [1, 3, 5])
+def test_review_score_within_1_to_5_is_accepted(score):
+    from .model import StoreReviewCreate
+
+    assert StoreReviewCreate(store_listing_version_id="v1", score=score).score == score
