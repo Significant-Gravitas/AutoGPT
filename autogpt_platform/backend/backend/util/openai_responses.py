@@ -11,7 +11,7 @@ def convert_tools_to_responses_format(tools: list[dict] | None) -> list[dict]:
     """Convert Chat Completions tool format to Responses API format.
 
     The Responses API uses internally-tagged polymorphism (flatter structure)
-    and functions are strict by default.
+    and explicit function strictness must be preserved.
 
     Chat Completions format:
         {"type": "function", "function": {"name": "...", "parameters": {...}}}
@@ -40,8 +40,9 @@ def convert_tools_to_responses_format(tools: list[dict] | None) -> list[dict]:
             entry: dict[str, Any] = {
                 "type": "function",
                 "name": name,
-                # Note: strict=True is default in Responses API
             }
+            if func.get("strict") is not None:
+                entry["strict"] = func["strict"]
             if func.get("description") is not None:
                 entry["description"] = func["description"]
             if func.get("parameters") is not None:
