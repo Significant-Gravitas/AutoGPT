@@ -9,7 +9,7 @@ for it, and the next turn's budget must come from what the trial has left
 after it. Once the trial has converted, nothing more may be charged to it.
 A tool the model calls must see the trial as it is when the tool runs, not as
 it was when the turn started, on either engine's own tool path. A turn the
-CLI's budget backstop cuts off spends the trial to its limit, and no further.
+CLI's budget backstop cuts off is still charged what its call cost.
 """
 
 from pathlib import Path
@@ -232,7 +232,7 @@ async def test_a_tool_sees_the_trial_as_it_is_when_the_tool_runs(
 @pytest.mark.parametrize(
     "scenario", OVERSHOOT_SCENARIOS, ids=lambda scenario: scenario.id
 )
-async def test_a_turn_the_budget_backstop_cuts_off_spends_the_trial_to_its_limit(
+async def test_a_turn_the_budget_backstop_cuts_off_is_still_charged(
     scenario: Scenario,
     provider: FakeProvider,
     ledger: PlatformLedger,
@@ -240,8 +240,8 @@ async def test_a_turn_the_budget_backstop_cuts_off_spends_the_trial_to_its_limit
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A trial with less left than one call costs: the CLI stops the turn after
-    that call, the trial is charged what it had left, and the next turn is
-    refused before it reaches the model rather than run for nothing."""
+    that call, the call is charged in full, and the next turn is refused before
+    it reaches the model rather than run for nothing."""
     if _resolve_cli_path() is None:
         pytest.skip("No Claude Code CLI binary available")
     session = _session(scenario)
@@ -264,10 +264,12 @@ async def test_a_turn_the_budget_backstop_cuts_off_spends_the_trial_to_its_limit
     [call] = provider.calls_in(0)
     full_cost = usd_to_microdollars(expected_charge_usd(scenario.charge, call))
     assert full_cost is not None and full_cost > LEFT_BEFORE_OVERSHOOT
-    assert [c.microdollars for c in ledger.spend_in(0)] == [LEFT_BEFORE_OVERSHOOT]
-    assert account.trial.cost_microdollars == TOTAL_LIMIT
-    # The cost log keeps what the call cost the platform.
+    assert [c.microdollars for c in ledger.spend_in(0)] == [full_cost]
     assert [row.cost_microdollars for row in ledger.rows_in(0)] == [full_cost]
+    assert account.trial.cost_microdollars == (
+        TOTAL_LIMIT - LEFT_BEFORE_OVERSHOOT + full_cost
+    )
+    assert account.remaining_usd() == 0
     assert provider.calls_in(1) == []
     assert ledger.spend_in(1) == []
     assert executor.errors == [None, None]

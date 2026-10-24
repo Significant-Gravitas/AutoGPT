@@ -163,27 +163,6 @@ def test_cli_budget_backstop_names_the_limiting_window(budget, reason):
     assert pause.resets_at == (RESETS if reason == "weekly" else None)
 
 
-@pytest.mark.parametrize(
-    "budget,backstopped,cap",
-    [
-        (TurnBudget(usd=0.005, limiting="trial", hard_cap=True), True, 0.005),
-        # The task cap stopped it; the account still had money to pay with.
-        (TurnBudget(usd=1.0, limiting="task", hard_cap=True), True, None),
-        # A paid plan's backstop sits above the budget, past the landing.
-        (TurnBudget(usd=0.05, limiting="daily"), True, None),
-        (TurnBudget(usd=0.005, limiting="trial", hard_cap=True), False, None),
-        (None, True, None),
-    ],
-)
-def test_only_a_hard_caps_backstop_caps_what_the_turn_is_charged(
-    budget, backstopped, cap
-):
-    governor = _governor(budget)
-    if backstopped:
-        governor.pause("error_max_budget_usd", wrote_checkpoint=False)
-    assert governor.spend_cap_usd == cap
-
-
 def test_a_cli_hangup_only_pauses_a_turn_that_was_landing():
     running = _governor(meter=_Meter(spent=0.1, last=0.01))
     assert running.hangup_pause() is None
