@@ -26,11 +26,15 @@ const PICKER = {
   advanced: false,
   description: "The Airtable base to use.",
   format: "airtable-base-picker",
-  resource_picker: { provider: "airtable", credentials_id: "cred-1" },
+  resource_picker: {
+    provider: "airtable",
+    editable_only: true,
+    credentials_id: "cred-1",
+  },
 };
 
 // What run_capability returns when a connected Airtable step has no base yet.
-function pickerCard(): SetupRequirementsResponse {
+function pickerCard(picker: Record<string, unknown> = PICKER) {
   return {
     type: "setup_requirements",
     message:
@@ -46,7 +50,7 @@ function pickerCard(): SetupRequirementsResponse {
       },
       requirements: {
         credentials: [],
-        inputs: [PICKER],
+        inputs: [picker],
         execution_modes: ["immediate"],
       },
     },
@@ -98,6 +102,33 @@ describe("Airtable base picker in the setup card", () => {
 
     await waitFor(() => expect(mockOnSend).toHaveBeenCalledTimes(1));
     expect(mockOnSend.mock.calls[0][0]).toContain('"base_id": "app2"');
+  });
+
+  it("a step that only reads can use a view-only base", async () => {
+    serveBases([
+      { id: "app2", name: "Shop orders", can_edit: true },
+      { id: "app1", name: "Wholesale prices", can_edit: false },
+    ]);
+    render(
+      <SetupRequirementsCard
+        output={pickerCard({
+          ...PICKER,
+          resource_picker: {
+            provider: "airtable",
+            editable_only: false,
+            credentials_id: "cred-1",
+          },
+        })}
+      />,
+    );
+
+    const wholesale = await screen.findByRole("radio", {
+      name: "Wholesale prices",
+    });
+    expect(wholesale.hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByText("View only")).toBeNull();
+    fireEvent.click(wholesale);
+    expect(wholesale.getAttribute("aria-checked")).toBe("true");
   });
 
   it("arrow keys move the pick past a view-only base", async () => {

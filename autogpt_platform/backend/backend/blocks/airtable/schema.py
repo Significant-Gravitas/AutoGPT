@@ -35,7 +35,7 @@ class AirtableListSchemaBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(editable_only=False)
 
     class Output(BlockSchemaOutput):
         base_schema: dict = SchemaField(

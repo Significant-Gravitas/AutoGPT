@@ -10,7 +10,11 @@ import {
   NewBaseActions,
   NoBasesYet,
 } from "./components/PickerStates";
-import { pickerCredentialsID, SEARCH_THRESHOLD } from "./helpers";
+import {
+  pickerCredentialsID,
+  pickerEditableOnly,
+  SEARCH_THRESHOLD,
+} from "./helpers";
 import { useAirtableBasePickerField } from "./useAirtableBasePickerField";
 
 export function AirtableBasePickerField(props: FieldProps) {
@@ -20,6 +24,7 @@ export function AirtableBasePickerField(props: FieldProps) {
 }
 
 function BasePicker({
+  schema,
   formData,
   onChange,
   fieldPathId,
@@ -28,8 +33,10 @@ function BasePicker({
   const picker = useAirtableBasePickerField(credentialsID);
   const value = typeof formData === "string" ? formData : "";
   const labelID = `${fieldPathId.$id}-label`;
+  const editableOnly = pickerEditableOnly(schema);
   const ready = !picker.isLoading && !picker.error && picker.bases.length > 0;
-  const noneEditable = ready && picker.bases.every((base) => !base.can_edit);
+  const noneEditable =
+    ready && editableOnly && picker.bases.every((base) => !base.can_edit);
 
   function body() {
     if (picker.isLoading) return <LoadingBases />;
@@ -53,6 +60,7 @@ function BasePicker({
         bases={picker.shown}
         value={value}
         labelID={labelID}
+        editableOnly={editableOnly}
         onChange={(id) => onChange(id, fieldPathId.path)}
       />
     );

@@ -7,6 +7,7 @@ from backend.blocks._base import BlockEffect
 from backend.blocks.airtable.bases import AirtableCreateBaseBlock
 from backend.blocks.airtable.records import (
     AirtableCreateRecordsBlock,
+    AirtableGetRecordBlock,
     AirtableListRecordsBlock,
 )
 from backend.blocks.airtable.schema import (
@@ -144,6 +145,7 @@ def test_inputs_the_model_got_wrong_still_preview_what_they_can():
 
 
 BASE_ID_BLOCKS = [
+    AirtableGetRecordBlock,
     AirtableCreateTableBlock,
     AirtableUpdateTableBlock,
     AirtableCreateFieldBlock,
@@ -155,12 +157,23 @@ BASE_ID_BLOCKS = [
 ]
 
 
+READ_ONLY_BLOCKS = {
+    AirtableListSchemaBlock,
+    AirtableListRecordsBlock,
+    AirtableGetRecordBlock,
+}
+
+
 @pytest.mark.parametrize("block", BASE_ID_BLOCKS, ids=lambda b: b.__name__)
 def test_a_base_is_picked_from_the_account_never_typed(block):
     """Nobody knows a base id by heart: the field asks for a pick from the
-    bases the connected account can reach."""
+    bases the connected account can reach. Only a block that changes the
+    base needs one the user can edit; a read works on a view-only base."""
     schema = block().input_schema.jsonschema()["properties"]["base_id"]
 
     assert schema["format"] == "airtable-base-picker"
-    assert schema["resource_picker"] == {"provider": "airtable"}
+    assert schema["resource_picker"] == {
+        "provider": "airtable",
+        "editable_only": block not in READ_ONLY_BLOCKS,
+    }
     assert schema["title"] == "Airtable base"

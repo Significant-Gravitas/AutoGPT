@@ -10,6 +10,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pydantic import SecretStr
 
 from backend.api.features.integrations.airtable import router
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.util.request import HTTPClientError
 
@@ -24,6 +25,7 @@ _CREDS = "backend.api.features.integrations.airtable.creds_manager"
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
     yield
     app.dependency_overrides.clear()
 
@@ -67,6 +69,13 @@ def test_lists_every_page_of_bases_writable_first():
     }
     assert list_bases.await_args_list[1].kwargs == {"offset": "next"}
     assert "secret-token" not in resp.text
+
+
+def test_listing_bases_checks_the_paywall():
+    """It calls Airtable, an outside service, so an account without a plan
+    is stopped like every other route that does."""
+    route = next(r for r in router.routes if r.path.endswith("/bases"))
+    assert enforce_payment_paywall in [d.call for d in route.dependant.dependencies]
 
 
 def test_someone_elses_or_another_providers_credential_is_not_found():

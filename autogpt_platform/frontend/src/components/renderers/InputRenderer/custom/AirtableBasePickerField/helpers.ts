@@ -18,6 +18,13 @@ export function pickerCredentialsID(schema: unknown): string | null {
   return typeof id === "string" && id ? id : null;
 }
 
+// Only a block that changes the base needs one the user can edit; a read
+// works on a view-only base too.
+export function pickerEditableOnly(schema: unknown): boolean {
+  if (!isRecord(schema) || !isRecord(schema.resource_picker)) return true;
+  return schema.resource_picker.editable_only !== false;
+}
+
 export function isAirtableBasePickerSchema(schema: unknown): boolean {
   return pickerCredentialsID(schema) !== null;
 }

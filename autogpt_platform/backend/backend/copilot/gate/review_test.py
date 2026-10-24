@@ -317,6 +317,21 @@ def test_a_new_table_in_a_connected_account_is_shown_before_it_is_made():
     assert payload["arguments"] == inputs
 
 
+def test_the_preview_shows_what_the_defaults_will_create():
+    """A call that leaves table_fields out still creates the block's default
+    field, so the card must show it rather than an empty table."""
+    subject = block_subject(
+        AirtableCreateTableBlock(),
+        {"base_id": "appX", "table_name": "Orders"},
+        priced=False,
+    )
+
+    assert subject.preview is not None
+    assert [t.model_dump() for t in subject.preview.tables] == [
+        {"name": "Orders", "fields": [{"name": "Name", "kind": "Text"}]}
+    ]
+
+
 def test_a_block_with_nothing_to_preview_keeps_its_run_headline():
     block = GmailSendBlock()
     payload = review_payload(

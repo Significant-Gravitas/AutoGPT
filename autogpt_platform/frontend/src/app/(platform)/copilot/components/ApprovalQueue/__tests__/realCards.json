@@ -1250,6 +1250,7 @@
           "description": "The Airtable base to use: a set of tables, like a spreadsheet file with several sheets.",
           "format": "airtable-base-picker",
           "resource_picker": {
+            "editable_only": true,
             "provider": "airtable"
           },
           "secret": false,

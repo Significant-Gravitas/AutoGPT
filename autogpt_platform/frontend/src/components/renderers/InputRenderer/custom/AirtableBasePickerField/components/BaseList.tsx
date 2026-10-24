@@ -11,14 +11,23 @@ interface Props {
   bases: AirtableBase[];
   value: string;
   labelID: string;
+  // A block that writes can't use a view-only base; a read can.
+  editableOnly: boolean;
   onChange: (id: string) => void;
 }
 
 /** The bases as one radiogroup: a single tab stop, arrows move and select.
  *  A view-only base is listed so the user recognises it, but can't be picked. */
-export function BaseList({ bases, value, labelID, onChange }: Props) {
+export function BaseList({
+  bases,
+  value,
+  labelID,
+  editableOnly,
+  onChange,
+}: Props) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const pickable = bases.filter((base) => base.can_edit);
+  const canPick = (base: AirtableBase) => base.can_edit || !editableOnly;
+  const pickable = bases.filter(canPick);
   const selected = pickable.findIndex((base) => base.id === value);
   const activeID = pickable[selected === -1 ? 0 : selected]?.id;
 
@@ -46,6 +55,7 @@ export function BaseList({ bases, value, labelID, onChange }: Props) {
     >
       {bases.map((base, index) => {
         const isSelected = base.id === value;
+        const locked = !canPick(base);
         return (
           <button
             key={base.id}
@@ -55,8 +65,8 @@ export function BaseList({ bases, value, labelID, onChange }: Props) {
             type="button"
             role="radio"
             aria-checked={isSelected}
-            aria-disabled={!base.can_edit}
-            disabled={!base.can_edit}
+            aria-disabled={locked}
+            disabled={locked}
             tabIndex={base.id === activeID ? 0 : -1}
             onClick={() => onChange(base.id)}
             onKeyDown={(event) => handleKeyDown(event, base.id)}
@@ -65,12 +75,11 @@ export function BaseList({ bases, value, labelID, onChange }: Props) {
               isSelected
                 ? "bg-white text-zinc-900 ring-2 ring-zinc-800"
                 : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-100 hover:bg-zinc-100",
-              !base.can_edit &&
-                "cursor-not-allowed text-zinc-400 hover:bg-zinc-50",
+              locked && "cursor-not-allowed text-zinc-400 hover:bg-zinc-50",
             )}
           >
             <span className="min-w-0 flex-1 break-words">{base.name}</span>
-            {!base.can_edit && (
+            {locked && (
               <span className="shrink-0 text-xs text-zinc-500">View only</span>
             )}
             {isSelected && (

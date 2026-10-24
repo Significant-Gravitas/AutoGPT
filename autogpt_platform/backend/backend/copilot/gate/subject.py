@@ -84,9 +84,16 @@ _PREVIEWED = "Nothing changes in your account until you approve."
 
 
 def _preview(block: Block, inputs: dict[str, Any]) -> ChangePreview | None:
-    """A preview that cannot be built leaves the card its raw inputs."""
+    """What the call will change, read with the block's defaults filled in so
+    an input the model left out still shows what it creates. A preview that
+    cannot be built leaves the card its raw inputs."""
     try:
-        return block.change_preview(inputs)
+        defaults = {
+            name: field.get_default(call_default_factory=True)
+            for name, field in block.input_schema.model_fields.items()
+            if not field.is_required()
+        }
+        return block.change_preview({**defaults, **inputs})
     except Exception:
         logger.warning(f"No change preview for {block.name}", exc_info=True)
         return None

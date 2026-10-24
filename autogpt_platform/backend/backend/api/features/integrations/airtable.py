@@ -5,10 +5,11 @@ import logging
 from typing import Annotated
 
 from autogpt_libs.auth import get_user_id
-from fastapi import APIRouter, HTTPException, Path, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Security, status
 from pydantic import BaseModel
 
 from backend.blocks.airtable._api import list_bases
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import Credentials, is_sdk_default
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -41,6 +42,8 @@ class AirtableBasesResponse(BaseModel):
     "/credentials/{cred_id}/bases",
     summary="List the Airtable bases a connection can reach",
     operation_id="getV1ListAirtableBases",
+    # It calls Airtable, so an account without a plan is stopped here too.
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def list_airtable_bases(
     cred_id: Annotated[str, Path(title="The Airtable credential to list with")],

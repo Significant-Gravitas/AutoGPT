@@ -1173,10 +1173,13 @@ async def prepare_block_for_execution(
     # the picker inline via FormRenderer's custom-field dispatch. Detecting
     # it here (instead of only inside execute_block's auto-creds layer)
     # saves a round trip when the caller omitted the field entirely.
+    # The prompt tells the model to pass an unpicked field as null, so an
+    # empty value is as missing as an absent one.
     picker_fields_missing = [
         f
-        for f in required_non_credential_keys - provided_input_keys
-        if is_picker_field(input_schema.get("properties", {}).get(f))
+        for f in required_non_credential_keys
+        if input_data.get(f) in (None, "")
+        and is_picker_field(input_schema.get("properties", {}).get(f))
     ]
 
     # validate_only suppresses the setup-card early-return — the caller is

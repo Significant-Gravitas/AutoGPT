@@ -37,7 +37,7 @@ class AirtableListRecordsBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(editable_only=False)
         table_id_or_name: str = SchemaField(description="Table ID or name")
         filter_formula: str = SchemaField(
             description="Airtable formula to filter records", default=""
@@ -144,7 +144,7 @@ class AirtableGetRecordBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = base_id_field()
+        base_id: str = base_id_field(editable_only=False)
         table_id_or_name: str = SchemaField(description="Table ID or name")
         record_id: str = SchemaField(description="The record ID to retrieve")
         normalize_output: bool = SchemaField(

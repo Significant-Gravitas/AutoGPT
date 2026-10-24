@@ -62,6 +62,42 @@ def _airtable_creds() -> CredentialsMetaInput:
     )
 
 
+async def _prepare(input_data: dict):
+    session = MagicMock()
+    session.session_id = _SESSION
+    session.expert_id = None
+    with (
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            AsyncMock(return_value=({"credentials": _airtable_creds()}, [])),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(side_effect=lambda d, *a, **kw: d),
+        ),
+    ):
+        return await prepare_block_for_execution(
+            block_id=AirtableCreateTableBlock().id,
+            input_data=input_data,
+            user_id=_USER,
+            session=session,
+            session_id=_SESSION,
+            dry_run=False,
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", [None, ""])
+async def test_a_base_left_empty_as_the_prompt_says_opens_the_picker(empty):
+    """The shared prompt tells the model to pass a picker input as null; a
+    null must open the card, not count as a base."""
+    result = await _prepare({"table_name": "Orders", "base_id": empty})
+
+    assert isinstance(result, SetupRequirementsResponse)
+    [picker] = result.setup_info.requirements["inputs"]
+    assert picker["name"] == "base_id"
+
+
 @pytest.mark.asyncio
 async def test_a_missing_base_opens_the_picker_instead_of_asking_in_chat():
     """Before: the call came back as 'missing workspace_id/base_id' and the
