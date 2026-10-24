@@ -24,6 +24,7 @@ Returns the created issue's ID and title for tracking or further operations.
 | team_name | Name of the team to create the issue on | str | Yes |
 | priority | Priority of the issue | int | No |
 | project_name | Name of the project to create the issue on | str | No |
+| parent_id | Parent issue UUID or identifier (for example ENG-123). Omit to create a top-level issue. | str | No |
 
 ### Outputs
 
