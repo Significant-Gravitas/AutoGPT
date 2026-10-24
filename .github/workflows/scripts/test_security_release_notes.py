@@ -1,7 +1,13 @@
+import contextlib
 import copy
+import io
+import json
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from security_release_notes import BASE_URL, END, START, release_notes
+from security_release_notes import BASE_URL, END, START, main, release_notes
 
 TAG = "autogpt-platform-beta-v0.9.0"
 
@@ -99,6 +105,85 @@ class ReleaseNotesTest(unittest.TestCase):
         self.assertTrue(result.endswith("## Contributors\nKeep this too.\n"))
         self.assertNotIn("Example fix", result)
         self.assertEqual(result.count(START), 1)
+
+    def test_multiple_packages_require_a_release_reference_for_the_patched_row(self):
+        item = advisory()
+        platform = {"ecosystem": "other", "name": "autogpt-platform"}
+        classic = {"ecosystem": "other", "name": "autogpt-classic"}
+        item["vulnerabilities"] = [
+            {"package": platform, "patched_versions": "0.8.0"},
+            {"package": classic, "patched_versions": "0.9.0"},
+        ]
+        with self.assertRaisesRegex(ValueError, "package-specific release reference"):
+            release_notes([item], TAG)
+
+        reference = json.dumps({"tag": TAG, "package": platform})
+        item["description"] += f"\n<!-- security-release: {reference} -->"
+        with self.assertRaisesRegex(ValueError, "No published advisories match"):
+            release_notes([item], TAG)
+
+        item["vulnerabilities"][0]["patched_versions"] = "0.9.0"
+        item["vulnerabilities"][1]["patched_versions"] = None
+        self.assertIn("Example fix", release_notes([item], TAG))
+
+        item["description"] = advisory()["description"]
+        reference = json.dumps({"tag": TAG + "0", "package": platform})
+        item["description"] += f"\n<!-- security-release: {reference} -->"
+        with self.assertRaisesRegex(ValueError, "package-specific release reference"):
+            release_notes([item], TAG)
+
+    def test_multiple_package_references_are_validated(self):
+        item = advisory()
+        package = {"ecosystem": "other", "name": "significantgravitas/autogpt"}
+        item["vulnerabilities"] = [
+            {"package": package, "patched_versions": "0.9.0"},
+            {"package": {"ecosystem": "other", "name": "autogpt-platform"}},
+        ]
+        for invalid in ("not-json", "null", "[]", '{"tag": "x"}'):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                item["description"] = advisory()["description"]
+                item["description"] += f"\n<!-- security-release: {invalid} -->"
+                release_notes([item], TAG)
+
+        reference = json.dumps({"tag": TAG, "package": package})
+        item["description"] = advisory()["description"]
+        item["description"] += f"\n<!-- security-release: {reference} -->"
+        self.assertIn("Example fix", release_notes([item], TAG))
+
+    def test_cli_preserves_output_when_package_attribution_is_ambiguous(self):
+        item = advisory()
+        item["vulnerabilities"] *= 2
+        with TemporaryDirectory() as directory:
+            notes = Path(directory) / "notes.md"
+            output = Path(directory) / "candidate.md"
+            notes.write_text("# Existing notes\n", encoding="utf-8")
+            output.write_text("Previous candidate\n", encoding="utf-8")
+            argv = [
+                "security_release_notes.py",
+                "--tag",
+                TAG,
+                "--notes",
+                str(notes),
+                "--output",
+                str(output),
+            ]
+            with patch("sys.argv", argv), patch(
+                "security_release_notes.fetch_advisories",
+                return_value=[advisory(), item],
+            ), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(
+                SystemExit
+            ) as error:
+                main()
+            self.assertEqual(error.exception.code, 2)
+            self.assertEqual(output.read_text(encoding="utf-8"), "Previous candidate\n")
+            with patch("sys.argv", argv), patch(
+                "security_release_notes.fetch_advisories", return_value=[advisory()]
+            ):
+                main()
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                release_notes([advisory()], TAG, "# Existing notes\n"),
+            )
 
     def test_release_links_allow_prose_punctuation_but_reject_tag_extensions(self):
         item = advisory()

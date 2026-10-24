@@ -72,6 +72,23 @@ version and an exact release link match. Withdrawn reports are excluded. It
 includes accepted researcher credits and the CVE when assigned; a CVE is not
 required for a link.
 
+An advisory with multiple package rows needs an explicit package-to-release
+mapping in its description. Add one comment for each patched package, using
+the exact ecosystem and name from that row, alongside the human-readable
+release link:
+
+```html
+<!-- security-release: {"tag": "autogpt-platform-beta-v0.9.0", "package": {"ecosystem": "other", "name": "significantgravitas/autogpt"}} -->
+```
+
+The helper requires the mapped row's patched version to match the requested
+release. A Classic row's patched version cannot establish a Platform fix, or
+vice versa. Without a mapping, an otherwise matching multi-package advisory
+stops generation so a maintainer can clarify it; it is not silently omitted.
+Single-package advisories continue to use their release link and patched
+version directly. The mapping records verified evidence, not an inferred
+equivalence between source and Docker versions.
+
 Export the release's current notes, then generate a separate candidate file:
 
 ```sh

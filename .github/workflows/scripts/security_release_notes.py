@@ -48,6 +48,30 @@ def version_number(value):
     return match[1] if match else None
 
 
+def release_packages(advisory, tag):
+    packages = []
+    for raw in re.findall(
+        r"<!-- security-release:\s*(.*?)\s*-->",
+        advisory.get("description") or "",
+        re.DOTALL,
+    ):
+        try:
+            reference = json.loads(raw)
+            package = reference["package"]
+            if not isinstance(reference["tag"], str) or not all(
+                isinstance(package[key], str) and package[key]
+                for key in ("ecosystem", "name")
+            ):
+                raise ValueError
+        except (ValueError, KeyError, TypeError) as error:
+            raise ValueError(
+                f"Invalid package-specific release reference in {advisory['ghsa_id']}"
+            ) from error
+        if reference["tag"] == tag:
+            packages.append(package)
+    return packages
+
+
 def fixed_in(advisory, tag):
     version = version_number(tag)
     if not version:
@@ -59,10 +83,23 @@ def fixed_in(advisory, tag):
         re.escape(release_url) + r"""(?=$|[\s)#?<>\]"'`]|[.,;:!]+(?=$|[\s)<>\]"'`]))""",
         advisory.get("description") or "",
     )
-    return bool(has_reference) and any(
-        version_number(vulnerability.get("patched_versions")) == version
-        for vulnerability in advisory.get("vulnerabilities") or []
-    )
+    vulnerabilities = advisory.get("vulnerabilities") or []
+    matching = [
+        vulnerability
+        for vulnerability in vulnerabilities
+        if version_number(vulnerability.get("patched_versions")) == version
+    ]
+    if not has_reference or not matching:
+        return False
+    if len(vulnerabilities) > 1:
+        packages = release_packages(advisory, tag)
+        if not packages:
+            raise ValueError(
+                f"{advisory['ghsa_id']} needs a package-specific release reference "
+                f"for {tag}; notes unchanged"
+            )
+        matching = [v for v in matching if v.get("package") in packages]
+    return bool(matching)
 
 
 def inline_text(value):
