@@ -11,6 +11,7 @@ tests patch the three integration seams — ``enqueue_copilot_turn``,
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1388,3 +1389,62 @@ class TestRefusedSpawnCleanup:
         )
 
         deleted.assert_not_awaited()
+
+
+class TestAThreadNothingReached:
+    """A send that raised at the publish leaves an empty, idle thread with no
+    stream meta. Polling it must say so, not report "running" forever: the
+    hand-off tells Otto to check this thread before sending again (Sentry)."""
+
+    def _empty_thread(self, monkeypatch, age: timedelta):
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.chat_status = "idle"
+        sub.started_at = datetime.now(UTC) - age
+        sub.metadata.delegated_by_session_id = None
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_stream(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_stream,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_young_empty_thread_is_not_picked_up_yet(
+        self, monkeypatch, mock_waiter
+    ):
+        self._empty_thread(monkeypatch, timedelta(seconds=20))
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-7",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "queued"
+        assert "Nothing has reached" in r.message
+        assert "check again" in r.message
+        mock_waiter.result_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_old_empty_thread_was_never_sent(self, monkeypatch, mock_waiter):
+        self._empty_thread(monkeypatch, timedelta(minutes=10))
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-7",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "error"
+        assert "Nothing ever reached" in r.message
+        assert "safe to send it again" in r.message
+        mock_waiter.result_mock.assert_not_awaited()
