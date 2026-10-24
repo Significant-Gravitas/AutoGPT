@@ -10,6 +10,8 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 // loaded so the flags request is made.
 const SUBSCRIPTION_URL = "*/api/credits/subscription";
 const FLAGS_URL = "*/api/feature-flags";
+// A fixed date that stays in the future, so a pending change reads as upcoming.
+const PENDING_EFFECTIVE_AT = "2099-02-15T00:00:00Z";
 
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
@@ -88,7 +90,7 @@ export const MaxWithPendingDowngrade: Story = {
           monthly_cost: 32000,
           has_active_stripe_subscription: true,
           pending_tier: "PRO",
-          pending_tier_effective_at: "2026-02-15T00:00:00Z",
+          pending_tier_effective_at: PENDING_EFFECTIVE_AT,
         }),
       ),
     },
@@ -104,7 +106,7 @@ export const ProWithPendingCancellation: Story = {
           monthly_cost: 1999,
           has_active_stripe_subscription: true,
           pending_tier: "NO_TIER",
-          pending_tier_effective_at: "2026-02-15T00:00:00Z",
+          pending_tier_effective_at: PENDING_EFFECTIVE_AT,
         }),
       ),
     },
@@ -171,7 +173,7 @@ export const BannerKeepCurrent: StoryObj<typeof PendingChangeBanner> = {
     <PendingChangeBanner
       currentTier="MAX"
       pendingTier="PRO"
-      pendingEffectiveAt="2026-02-15T00:00:00Z"
+      pendingEffectiveAt={PENDING_EFFECTIVE_AT}
       onKeepCurrent={() => {}}
       isBusy={false}
     />
@@ -183,7 +185,7 @@ export const BannerCancelling: StoryObj<typeof PendingChangeBanner> = {
     <PendingChangeBanner
       currentTier="PRO"
       pendingTier="NO_TIER"
-      pendingEffectiveAt="2026-02-15T00:00:00Z"
+      pendingEffectiveAt={PENDING_EFFECTIVE_AT}
       onKeepCurrent={() => {}}
       isBusy
     />
