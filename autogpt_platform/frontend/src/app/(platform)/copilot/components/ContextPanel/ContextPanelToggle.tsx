@@ -27,7 +27,7 @@ interface Props {
 // Sized and stroked like the sidebar's nav icons so the chat's top-right
 // controls read as the same family.
 const toggleClass =
-  "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-zinc-100 active:scale-[0.97] motion-reduce:transition-none";
+  "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-surface-hover active:scale-[0.97] motion-reduce:transition-none";
 
 /** The chat's top-right controls: the expert's integrations, the work handed
  *  to experts, the files toggle and the Computer toggle, each opening its face
@@ -85,7 +85,7 @@ export function ContextPanelToggle({
   return (
     // The same translucent pill as the thread chip on the left (ThreadHeader),
     // level with it and as tall, so the two corners read as one header.
-    <div className="mr-4 mt-3 flex shrink-0 items-center gap-1 rounded-full border border-zinc-200/70 bg-white/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
+    <div className="mr-4 mt-3 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
       {showIntegrations && expert && (
         <IntegrationsToggle expert={expert} className={toggleClass} />
       )}
@@ -110,7 +110,7 @@ export function ContextPanelToggle({
                 toggleClass,
                 "h-8",
                 documentCount > 0 ? "w-auto gap-1 px-2" : "w-8",
-                isFilesOpen && "bg-zinc-100",
+                isFilesOpen && "bg-surface-hover",
               )}
             >
               <Icon
@@ -142,7 +142,7 @@ export function ContextPanelToggle({
               className={cn(
                 toggleClass,
                 "size-8",
-                isComputerOpen && "bg-zinc-100",
+                isComputerOpen && "bg-surface-hover",
               )}
             >
               <Icon

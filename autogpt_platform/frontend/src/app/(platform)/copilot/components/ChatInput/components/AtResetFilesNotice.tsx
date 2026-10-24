@@ -15,7 +15,8 @@ export function AtResetFilesNotice({ className }: Props) {
     <div
       role="status"
       className={cn(
-        "flex w-full items-center gap-1.5 rounded-2xl bg-amber-50 px-3 py-1.5 text-sm text-amber-800",
+        // TODO(tokens): no exact role for text-amber-800
+        "flex w-full items-center gap-1.5 rounded-2xl bg-warning-surface px-3 py-1.5 text-sm text-amber-800",
         className,
       )}
     >

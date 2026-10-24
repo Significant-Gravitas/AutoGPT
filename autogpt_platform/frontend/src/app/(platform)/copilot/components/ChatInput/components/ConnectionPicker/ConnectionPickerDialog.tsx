@@ -52,7 +52,7 @@ function DialogBody({ picker, connectionLocked }: BodyProps) {
 
   if (isError) {
     return (
-      <p className="text-sm text-zinc-600">
+      <p className="text-sm text-foreground-secondary">
         AI connections are unavailable right now. Try again in a moment.
       </p>
     );
@@ -60,7 +60,7 @@ function DialogBody({ picker, connectionLocked }: BodyProps) {
 
   if (offers.length === 0) {
     return (
-      <p className="text-sm text-zinc-600">
+      <p className="text-sm text-foreground-secondary">
         No AI connection is set up yet.{" "}
         <Link href="/settings/integrations" className="underline">
           Set one up

@@ -2,22 +2,29 @@
 
 Otto keeps some files in the workspace only so they outlive a summary or a
 sandbox: large tool outputs it reads back, the build scratchpad its prompt
-asks for, the browser session it restores. The user never asked for them, so
-they must not be listed with what the user did ask for.
+asks for, the browser session it restores. The skills registry keeps every
+skill package there too (SKILL.md, its references, its LICENSE), installed
+when an expert is hired or a skill is saved. The user never asked for any of
+them as files, so they must not be listed with what the user did ask for.
 
 ``WorkspaceManager.write_file`` asks :func:`is_internal_workspace_file` once
 per write and stores the answer on the row (``UserWorkspaceFile.isInternal``),
 so every writer is covered without knowing about it. Writers that only make
 internal files say so with ``purpose`` in the metadata; the reserved names and
 directories cover files whose writer cannot (the model names
-``build_state.json`` itself). The migration that added the column applies the
-same rule, in SQL, to rows written before it.
+``build_state.json`` itself), and a skill folder covers every file in it. The
+skills registry publishes packages through its own transaction
+(``workspace_skill.publish_workspace_skill_file``), which asks the same
+question for each row it creates. The migrations that added the column and
+marked skill files apply the same rule, in SQL, to rows written before them.
 
 The rule only ever hides what it recognises: an unknown file is a deliverable.
 """
 
 import re
 from typing import Any
+
+from backend.data.workspace_scope import is_skill_package_path
 
 TOOL_OUTPUT_PURPOSE = "tool-output"
 WORKING_FILE_PURPOSE = "working-file"
@@ -44,6 +51,8 @@ def is_internal_workspace_file(
     metadata = metadata or {}
     if metadata.get("origin") == _USER_UPLOAD_ORIGIN:
         return False
+    if is_skill_package_path(path):
+        return True
     purpose = metadata.get("purpose")
     if purpose is not None:
         return purpose in _INTERNAL_PURPOSES
