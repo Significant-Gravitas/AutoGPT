@@ -121,9 +121,11 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 Full {dataType === "input" ? "Input" : "Output"} Preview
               </Text>
             </div>
-            <div
+            <Text
+              variant="small"
+              as="div"
               // TODO(tokens): no exact role: border-slate-300 #B8BFCA, bg-slate-100 #EFF1F4
-              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-caption font-medium leading-4 text-foreground-base"
+              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 font-medium leading-4 text-foreground-base"
             >
               {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
               item
@@ -135,11 +137,13 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   ? "s"
                   : ""}{" "}
               total
-            </div>
+            </Text>
           </div>
-          <div
+          <Text
+            variant="body"
+            as="div"
             // TODO(tokens): no exact role: text-gray-600 #4B5563
-            className="text-body leading-5 text-gray-600"
+            className="leading-5 text-gray-600"
           >
             {shouldGroupExecutions ? (
               <div>
@@ -180,7 +184,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 </div>
               </>
             )}
-          </div>
+          </Text>
         </div>
 
         <div className="flex-1">

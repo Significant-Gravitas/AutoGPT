@@ -6,8 +6,14 @@ describe("TextRenderer", () => {
   it("shows short text as is on the muted surface", () => {
     render(<TextRenderer value="hello" />);
     const box = screen.getByText("hello");
-    expect(box.className).toBe(
-      "break-words bg-surface-muted p-3 text-caption leading-4",
+    expect(box.tagName).toBe("DIV");
+    expect(box.className.split(" ")).toEqual(
+      expect.arrayContaining([
+        "text-caption",
+        "leading-4",
+        "bg-surface-muted",
+        "text-inherit",
+      ]),
     );
   });
 

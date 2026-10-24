@@ -8,7 +8,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useAddBlockToBuilder } from "./hooks/useAddBlockToBuilder";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
-import { blockDragPreviewStyle } from "./style";
+import { blockDragPreviewClassName, blockDragPreviewStyle } from "./style";
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -49,6 +49,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
 
     const dragPreview = document.createElement("div");
     dragPreview.style.cssText = blockDragPreviewStyle;
+    dragPreview.className = blockDragPreviewClassName;
     dragPreview.textContent = beautifyString(title || "").replace(
       / Block$/,
       "",

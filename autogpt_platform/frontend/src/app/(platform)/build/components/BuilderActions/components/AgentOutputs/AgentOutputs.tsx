@@ -27,6 +27,7 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
@@ -114,12 +115,14 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
               <SheetTitle className="text-lead">Run Outputs</SheetTitle>
               <SheetDescription className="mt-1 text-body leading-5 text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <span
+                  <Text
+                    variant="small"
+                    as="span"
                     // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00
-                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-caption font-medium leading-4 text-yellow-800"
+                    className="rounded-md bg-yellow-100 px-2 py-0.5 font-medium leading-4 text-yellow-800"
                   >
                     Beta
-                  </span>
+                  </Text>
                   <span>This feature is in beta and may contain bugs</span>
                 </span>
               </SheetDescription>

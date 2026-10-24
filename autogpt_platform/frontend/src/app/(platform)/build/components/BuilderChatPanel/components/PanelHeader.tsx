@@ -5,6 +5,7 @@ import {
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   onClose: () => void;
@@ -31,12 +32,14 @@ export function PanelHeader({
           size={18}
           className="text-violet-600"
         />
-        <span
+        <Text
+          variant="body"
+          as="span"
           // TODO(tokens): no exact role: text-slate-800 #475263
-          className="text-body font-semibold leading-5 text-slate-800"
+          className="font-semibold leading-5 text-slate-800"
         >
           Chat with Builder
-        </span>
+        </Text>
       </div>
       <div className="flex items-center gap-1">
         {canRevert && (

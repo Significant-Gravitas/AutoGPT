@@ -10,6 +10,7 @@ import {
   PlusSignCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type IncompatibleUpdateDialogProps = {
   isOpen: boolean;
@@ -59,13 +60,14 @@ export function IncompatibleUpdateDialog({
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <p
+          <Text
+            variant="body"
             // TODO(tokens): no exact role: text-gray-600 #4B5563
-            className="text-body leading-5 text-gray-600"
+            className="leading-5 text-gray-600"
           >
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
-          </p>
+          </Text>
 
           {/* Input changes - two column layout */}
           {hasInputChanges && (
@@ -188,66 +190,86 @@ function TwoColumnSection({
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
-          <div
+          <Text
+            variant="body"
+            as="div"
             // TODO(tokens): no exact role: text-gray-500 #6B7280
-            className="flex items-center gap-1.5 text-body leading-5 text-gray-500"
+            className="flex items-center gap-1.5 leading-5 text-gray-500"
           >
             {leftIcon}
             <span>{leftTitle}</span>
-          </div>
+          </Text>
           <ul className="mt-1.5 space-y-1">
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
-                <li
+                <Text
+                  variant="body"
+                  as="li"
                   key={item}
                   // TODO(tokens): no exact role: text-gray-700 #374151
-                  className="text-body leading-5 text-gray-700"
+                  className="leading-5 text-gray-700"
                 >
-                  <code className="rounded bg-error-surface px-1 py-0.5 font-mono text-caption leading-4 text-error-foreground">
+                  <Text
+                    variant="small"
+                    as="code"
+                    className="rounded bg-error-surface px-1 py-0.5 font-mono leading-4 text-error-foreground"
+                  >
                     {item}
-                  </code>
-                </li>
+                  </Text>
+                </Text>
               ))
             ) : (
-              <li
+              <Text
+                variant="body"
+                as="li"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="text-body italic leading-5 text-gray-400"
+                className="italic leading-5 text-gray-400"
               >
                 None
-              </li>
+              </Text>
             )}
           </ul>
         </div>
 
         {/* Right column - Possible solutions */}
         <div className="min-w-0">
-          <div
+          <Text
+            variant="body"
+            as="div"
             // TODO(tokens): no exact role: text-gray-500 #6B7280
-            className="flex items-center gap-1.5 text-body leading-5 text-gray-500"
+            className="flex items-center gap-1.5 leading-5 text-gray-500"
           >
             {rightIcon}
             <span>{rightTitle}</span>
-          </div>
+          </Text>
           <ul className="mt-1.5 space-y-1">
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
-                <li
+                <Text
+                  variant="body"
+                  as="li"
                   key={item}
                   // TODO(tokens): no exact role: text-gray-700 #374151
-                  className="text-body leading-5 text-gray-700"
+                  className="leading-5 text-gray-700"
                 >
-                  <code className="rounded bg-success-surface px-1 py-0.5 font-mono text-caption leading-4 text-success-foreground">
+                  <Text
+                    variant="small"
+                    as="code"
+                    className="rounded bg-success-surface px-1 py-0.5 font-mono leading-4 text-success-foreground"
+                  >
                     {item}
-                  </code>
-                </li>
+                  </Text>
+                </Text>
               ))
             ) : (
-              <li
+              <Text
+                variant="body"
+                as="li"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="text-body italic leading-5 text-gray-400"
+                className="italic leading-5 text-gray-400"
               >
                 None
-              </li>
+              </Text>
             )}
           </ul>
         </div>
@@ -275,26 +297,31 @@ function SingleColumnSection({
         {icon}
         <span className="font-medium">{title}</span>
       </div>
-      <p
+      <Text
+        variant="body"
         // TODO(tokens): no exact role: text-gray-500 #6B7280
-        className="mt-1 text-body leading-5 text-gray-500"
+        className="mt-1 leading-5 text-gray-500"
       >
         {description}
-      </p>
+      </Text>
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
-          <li
+          <Text
+            variant="body"
+            as="li"
             key={item}
             // TODO(tokens): no exact role: text-gray-700 #374151
-            className="ml-4 list-disc text-body leading-5 text-gray-700"
+            className="ml-4 list-disc leading-5 text-gray-700"
           >
-            <code
+            <Text
+              variant="small"
+              as="code"
               // TODO(tokens): no exact role: bg-gray-100 #F3F4F6
-              className="rounded bg-gray-100 px-1 py-0.5 font-mono text-caption leading-4"
+              className="rounded bg-gray-100 px-1 py-0.5 font-mono leading-4 text-inherit"
             >
               {item}
-            </code>
-          </li>
+            </Text>
+          </Text>
         ))}
       </ul>
     </div>

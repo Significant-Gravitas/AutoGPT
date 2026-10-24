@@ -2,6 +2,7 @@
 
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const TextRenderer: React.FC<{
   value: any;
@@ -15,9 +16,13 @@ export const TextRenderer: React.FC<{
       : text;
 
   return (
-    <div className="break-words bg-surface-muted p-3 text-caption leading-4">
+    <Text
+      variant="small"
+      as="div"
+      className="break-words bg-surface-muted p-3 leading-4 text-inherit"
+    >
       {truncated}
-    </div>
+    </Text>
   );
 };
 

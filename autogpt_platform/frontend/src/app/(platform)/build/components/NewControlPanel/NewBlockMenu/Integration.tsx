@@ -56,12 +56,15 @@ export const Integration: IntegrationComponent = ({
               {beautifyString(title)}
             </Text>
           )}
-          <span
+          <Text
+            variant="body"
+            as="span"
+            tone="muted"
             // TODO(tokens): no exact role: bg-[#f0f0f0] #F0F0F0
-            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-body text-foreground-tertiary group-disabled:text-foreground-subtle"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans font-medium group-disabled:text-foreground-subtle"
           >
             {number_of_blocks}
-          </span>
+          </Text>
         </div>
         <Text
           variant="small"

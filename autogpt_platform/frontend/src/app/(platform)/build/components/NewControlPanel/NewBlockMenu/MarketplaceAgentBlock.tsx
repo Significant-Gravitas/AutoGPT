@@ -105,12 +105,14 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             className="flex gap-0.5 truncate"
             onClick={(e) => e.stopPropagation()}
           >
-            <span
+            <Text
+              variant="small"
+              as="span"
               // TODO(tokens): no exact role: text-blue-700 #1D4ED8
-              className="font-sans text-caption leading-5 text-blue-700 underline"
+              className="font-sans font-medium leading-5 text-blue-700 underline"
             >
               Workflow page
-            </span>
+            </Text>
             <Icon
               icon={LinkSquare01Icon}
               // TODO(tokens): no exact role: text-blue-700 #1D4ED8

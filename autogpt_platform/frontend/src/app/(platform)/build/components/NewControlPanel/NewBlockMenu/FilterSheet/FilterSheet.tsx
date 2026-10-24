@@ -99,9 +99,13 @@ export function FilterSheet({
 
             {/* Created by section */}
             <div className="space-y-4 px-5">
-              <p className="font-sans text-body-lg font-medium leading-6 text-foreground-emphasis">
+              <Text
+                variant="large"
+                tone="emphasis"
+                className="font-sans font-medium leading-6"
+              >
                 Created by
-              </p>
+              </Text>
               <div className="space-y-2">
                 {visibleCreators.map((creator, i) => (
                   <div key={i} className="flex items-center space-x-2">
