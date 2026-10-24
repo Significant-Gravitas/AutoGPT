@@ -37,7 +37,7 @@ export function StorageUsage() {
       title={usedLabel}
       data-testid="storage-usage"
     >
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-foreground-tertiary">
         Storage
       </Text>
       <Progress
@@ -48,12 +48,13 @@ export function StorageUsage() {
         aria-valuemax={100}
         aria-label={usedLabel}
         className={cn(
-          "h-1.5 w-32 bg-zinc-100",
+          "h-1.5 w-32 bg-surface-hover",
+          // TODO(tokens): no exact role for [&>div]:bg-red-400 (#F26969); no fitting role for [&>div]:bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
           percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
         )}
       />
-      <Text variant="small" as="span" className="text-zinc-500">
-        <span className="font-medium text-zinc-700">
+      <Text variant="small" as="span" className="text-foreground-tertiary">
+        <span className="font-medium text-foreground-body">
           {formatFileSize(data.used_bytes)}
         </span>{" "}
         of {formatFileSize(data.limit_bytes)}
