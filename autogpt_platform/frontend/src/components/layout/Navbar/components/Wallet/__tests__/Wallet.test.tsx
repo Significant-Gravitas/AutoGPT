@@ -364,11 +364,11 @@ describe("Wallet explains what pays for what", () => {
     const dialog = await openWallet();
 
     const note = await screen.findByText(
-      "Nothing is charged to your card during your trial",
+      "Your card isn't charged during your trial unless you buy credits",
     );
     expect(
       screen.getByText(
-        /Your card is first charged when your plan starts on Sep 17, or if you buy credits\./,
+        /Your card is charged for your plan when it starts on Sep 17\./,
       ),
     ).toBeDefined();
     // Focus lands on the first button, so the note is the dialog's
@@ -392,7 +392,9 @@ describe("Wallet explains what pays for what", () => {
       ),
     ).toBeDefined();
     expect(
-      screen.queryByText("Nothing is charged to your card during your trial"),
+      screen.queryByText(
+        "Your card isn't charged during your trial unless you buy credits",
+      ),
     ).toBeNull();
   });
 
@@ -421,7 +423,9 @@ describe("Wallet explains what pays for what", () => {
       await screen.findByText("Your card won't be charged for a plan"),
     ).toBeDefined();
     expect(
-      screen.queryByText("Nothing is charged to your card during your trial"),
+      screen.queryByText(
+        "Your card isn't charged during your trial unless you buy credits",
+      ),
     ).toBeNull();
   });
 

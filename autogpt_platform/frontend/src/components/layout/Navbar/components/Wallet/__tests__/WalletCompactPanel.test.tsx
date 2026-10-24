@@ -293,14 +293,14 @@ describe("getTrialCardNote", () => {
 
   it("names the day the card is first charged during an active trial", () => {
     expect(getTrialCardNote(trial, noRefill)).toEqual({
-      title: "Nothing is charged to your card during your trial",
-      body: "Your card is first charged when your plan starts on Sep 17, or if you buy credits.",
+      title: "Your card isn't charged during your trial unless you buy credits",
+      body: "Your card is charged for your plan when it starts on Sep 17.",
     });
   });
 
   it("falls back to the end of the trial when the date is unknown", () => {
     expect(getTrialCardNote({ ...trial, ends_at: null }, noRefill)?.body).toBe(
-      "Your card is first charged when your plan starts at the end of your trial, or if you buy credits.",
+      "Your card is charged for your plan when your trial ends.",
     );
   });
 
@@ -320,7 +320,7 @@ describe("getTrialCardNote", () => {
   it("names auto-refill as a card charge during an active trial", () => {
     expect(getTrialCardNote(trial, autoRefill)).toEqual({
       title: "Your card is only charged for credits during your trial",
-      body: "Auto-refill is on, so it buys $10.00 of credits when your balance drops below $5.00. Your plan starts on Sep 17.",
+      body: "Auto-refill is on, so it buys $10.00 of credits when your balance is below $5.00. Your plan starts on Sep 17.",
     });
   });
 
@@ -335,7 +335,7 @@ describe("getTrialCardNote", () => {
 
   it("treats auto-refill without a threshold as off, as the backend does", () => {
     expect(getTrialCardNote(trial, { amount: 1000, threshold: 0 })?.title).toBe(
-      "Nothing is charged to your card during your trial",
+      "Your card isn't charged during your trial unless you buy credits",
     );
   });
 

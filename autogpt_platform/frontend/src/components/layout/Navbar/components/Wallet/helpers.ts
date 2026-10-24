@@ -190,11 +190,11 @@ export function getTrialCardNote(
   if (refills) {
     return {
       title: "Your card is only charged for credits during your trial",
-      body: `Auto-refill is on, so it buys ${formatCents(autoRefill.amount)} of credits when your balance drops below ${formatCents(autoRefill.threshold)}. Your plan starts ${date ? `on ${date}` : "at the end of your trial"}.`,
+      body: `Auto-refill is on, so it buys ${formatCents(autoRefill.amount)} of credits when your balance is below ${formatCents(autoRefill.threshold)}. Your plan starts ${date ? `on ${date}` : "at the end of your trial"}.`,
     };
   }
   return {
-    title: "Nothing is charged to your card during your trial",
-    body: `Your card is first charged when your plan starts ${date ? `on ${date}` : "at the end of your trial"}, or if you buy credits.`,
+    title: "Your card isn't charged during your trial unless you buy credits",
+    body: `Your card is charged for your plan ${date ? `when it starts on ${date}` : "when your trial ends"}.`,
   };
 }
