@@ -97,7 +97,7 @@ class ConditionBlock(Block):
                 value2 = value2.strip()
 
         yes_value = input_data.yes_value if input_data.yes_value is not None else value1
-        no_value = input_data.no_value if input_data.no_value is not None else value2
+        no_value = input_data.no_value if input_data.no_value is not None else value1
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
