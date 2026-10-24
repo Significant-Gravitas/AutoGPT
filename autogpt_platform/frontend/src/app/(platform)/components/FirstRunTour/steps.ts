@@ -6,26 +6,7 @@ import {
   Wallet01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-
-// The real UI the walkthrough points at. Each value is set as
-// `data-tour-target` on the element it names, so a step never depends on a
-// class name or a DOM path that a redesign could move.
-export type TourTarget =
-  | "chats"
-  | "team"
-  | "files"
-  | "workspace"
-  | "wallet"
-  | "account"
-  | "first-tasks"
-  | "composer"
-  | "menu";
-
-export const TOUR_TARGET_ATTRIBUTE = "data-tour-target";
-
-export function tourTarget(target: TourTarget) {
-  return { [TOUR_TARGET_ATTRIBUTE]: target };
-}
+import type { TourTarget } from "@/lib/tour-targets";
 
 export interface TourContext {
   isTrial: boolean;

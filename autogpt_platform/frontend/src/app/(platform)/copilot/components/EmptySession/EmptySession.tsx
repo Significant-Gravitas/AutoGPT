@@ -2,7 +2,7 @@
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
-import { tourTarget } from "@/app/(platform)/components/FirstRunTour/steps";
+import { tourTarget } from "@/lib/tour-targets";
 import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTour/useFirstRunTourAutoStart";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";

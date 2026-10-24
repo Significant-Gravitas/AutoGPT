@@ -1,6 +1,6 @@
 "use client";
 
-import { tourTarget } from "@/app/(platform)/components/FirstRunTour/steps";
+import { tourTarget } from "@/lib/tour-targets";
 import { motion, type Variants } from "framer-motion";
 import { Suspense } from "react";
 import { useJumpToRecentChats } from "../../useJumpToRecentChats";

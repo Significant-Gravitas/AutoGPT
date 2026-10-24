@@ -12,7 +12,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
-import { tourTarget } from "@/app/(platform)/components/FirstRunTour/steps";
+import { tourTarget } from "@/lib/tour-targets";
 import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
 
 interface Props {

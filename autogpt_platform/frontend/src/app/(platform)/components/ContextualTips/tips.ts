@@ -1,5 +1,5 @@
 import type { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
-import type { TourTarget } from "../FirstRunTour/steps";
+import type { TourTarget } from "@/lib/tour-targets";
 
 export type TipID = "second-chat" | "first-cost" | "first-expert";
 

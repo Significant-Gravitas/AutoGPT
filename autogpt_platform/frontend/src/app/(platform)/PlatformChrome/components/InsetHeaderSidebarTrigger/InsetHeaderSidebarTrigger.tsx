@@ -1,6 +1,6 @@
 "use client";
 
-import { tourTarget } from "@/app/(platform)/components/FirstRunTour/steps";
+import { tourTarget } from "@/lib/tour-targets";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 import { useIsChatSession } from "../../useIsChatSession";

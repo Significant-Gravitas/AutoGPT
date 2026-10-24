@@ -50,9 +50,9 @@ export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
     open("auto");
   }, [isPending, hasHadIntro, userID, open, close, finish]);
 
-  // Re-run on every change of `source`, but read the store itself: in the
-  // commit where the effect above opened the walkthrough, this render's
-  // `source` is still the null from before it opened.
+  // Runs on every change of `source` but reads the store itself: a render's
+  // `source` is the value from before its own effects ran, so it still reads
+  // null in the render whose effect above opens the walkthrough.
   useEffect(() => {
     const isClosed = useFirstRunTourStore.getState().source === null;
     if (startedFor.current && isPending && isClosed) finish();

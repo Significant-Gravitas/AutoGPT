@@ -24,10 +24,7 @@ import {
   Store01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import {
-  tourTarget,
-  type TourTarget,
-} from "@/app/(platform)/components/FirstRunTour/steps";
+import { tourTarget, type TourTarget } from "@/lib/tour-targets";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";

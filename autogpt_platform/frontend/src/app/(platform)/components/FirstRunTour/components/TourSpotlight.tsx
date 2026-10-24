@@ -7,8 +7,9 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useEffect, useId, useRef } from "react";
-import { isPartlyOffScreen, type Box } from "../helpers";
-import { stepListOf, type TourTarget } from "../steps";
+import { isPartlyOffScreen, withMenuHint, type Box } from "../helpers";
+import type { TourTarget } from "@/lib/tour-targets";
+import { stepListOf } from "../steps";
 import type { useFirstRunTour } from "../useFirstRunTour";
 import { useTourStops } from "../useTourStops";
 import { TourScrim } from "./TourScrim";
@@ -60,7 +61,10 @@ export function TourSpotlight({ tour }: Props) {
   const titleID = useId();
   const bodyID = useId();
 
-  const body = tour.bodyFor(tour.stepIndex, stop);
+  const body = withMenuHint(
+    tour.bodyFor(tour.stepIndex, stop),
+    stop?.viaMenu ?? false,
+  );
   const target = stop?.target ?? null;
   const element = stop?.element ?? null;
 
@@ -120,7 +124,6 @@ export function TourSpotlight({ tour }: Props) {
             bodyID={bodyID}
             stepNumber={tour.stepIndex + 1}
             stepCount={tour.steps.length}
-            viaMenu={stop?.viaMenu ?? false}
             isFirstStep={tour.stepIndex === 0}
             isLastStep={tour.isLastStep}
             onBack={tour.back}

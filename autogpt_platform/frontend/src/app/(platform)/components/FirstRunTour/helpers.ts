@@ -1,4 +1,5 @@
-import { TOUR_TARGET_ATTRIBUTE, type TourStep, type TourTarget } from "./steps";
+import { TOUR_TARGET_ATTRIBUTE, type TourTarget } from "@/lib/tour-targets";
+import type { TourStep } from "./steps";
 
 // The onboarding steps that mean "this person has had the first-run intro".
 // CAPABILITY_CARDS is the old four-card deck: someone who already sat through
@@ -78,6 +79,12 @@ export function resolveStop(step: TourStep): ResolvedStop {
     if (menu) return { target: "menu", element: menu, viaMenu: true };
   }
   return { target: null, element: null, viaMenu: false };
+}
+
+// On a phone the menu button stands in for a sidebar item, so the line says
+// where to look. One string for the card and for what a screen reader hears.
+export function withMenuHint(body: string, viaMenu: boolean) {
+  return viaMenu ? `${body} Open the menu to find it.` : body;
 }
 
 const SPOTLIGHT_PADDING = 6;

@@ -15,7 +15,6 @@ interface Props {
   stepNumber: number;
   stepCount: number;
   /** A phone's menu button is standing in for the sidebar target. */
-  viaMenu: boolean;
   isFirstStep: boolean;
   isLastStep: boolean;
   onBack: () => void;
@@ -33,7 +32,6 @@ export function TourStepCard({
   bodyID,
   stepNumber,
   stepCount,
-  viaMenu,
   isFirstStep,
   isLastStep,
   onBack,
@@ -68,7 +66,6 @@ export function TourStepCard({
           className="text-pretty [overflow-wrap:anywhere]"
         >
           {body}
-          {viaMenu && " Open the menu to find it."}
         </Text>
         {altAction && (
           <Button

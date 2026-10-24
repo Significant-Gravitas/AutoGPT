@@ -18,15 +18,16 @@ const WINDOW_LABEL = {
 
 export function BudgetLowHint({ usage, className }: Props) {
   const { budget, experience } = usage;
-  const isLow = budget.state === "low" && !!budget.window;
+  // The window running low, or nothing while the budget is fine.
+  const lowWindow = budget.state === "low" ? budget.window : null;
   // Running low is the moment the allowance matters, if Otto never said so.
-  useTipMoment("first-cost", isLow);
-  if (!isLow || !budget.window) return null;
+  useTipMoment("first-cost", lowWindow !== null);
+  if (!lowWindow) return null;
   const trialPercent = experience.isLifetimeTrial
     ? experience.trialPercent
     : null;
   const percent =
-    budget.window === "trial"
+    lowWindow === "trial"
       ? (trialPercent ?? budget.percentUsed)
       : budget.percentUsed;
   if (percent === null) return null;
@@ -38,9 +39,9 @@ export function BudgetLowHint({ usage, className }: Props) {
         className,
       )}
     >
-      <BudgetRing label={WINDOW_LABEL[budget.window]} percent={percent} />
+      <BudgetRing label={WINDOW_LABEL[lowWindow]} percent={percent} />
       <Text variant="small" className="!text-xs !text-foreground-tertiary">
-        {budgetLowHint(budget.window, percent)}
+        {budgetLowHint(lowWindow, percent)}
       </Text>
     </div>
   );

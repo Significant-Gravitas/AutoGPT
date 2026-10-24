@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Button } from "@/components/ui/button";
-import { tourTarget } from "@/app/(platform)/components/FirstRunTour/steps";
+import { tourTarget } from "@/lib/tour-targets";
 import { useSidebar } from "@/components/ui/sidebar";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { createContext, useContext, type ReactNode } from "react";

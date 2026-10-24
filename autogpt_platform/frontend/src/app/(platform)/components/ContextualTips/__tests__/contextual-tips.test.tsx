@@ -43,7 +43,7 @@ vi.mock("@/app/(platform)/copilot/useSessionList", () => ({
 import { ExpertChangeGroup } from "@/app/(platform)/copilot/components/ToolChain/ExpertCards";
 import { BudgetLowHint } from "@/app/(platform)/copilot/components/UsageLimits/BudgetLowHint";
 import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
-import { tourTarget } from "../../FirstRunTour/steps";
+import { tourTarget } from "@/lib/tour-targets";
 import { useFirstRunTourStore } from "../../FirstRunTour/store";
 import { ContextualTips } from "../ContextualTips";
 import { isFirstSecondChat } from "../helpers";
@@ -471,6 +471,17 @@ describe("contextual tips — showing one", () => {
       await screen.findByText("Experts can own tasks", {}, { timeout: 4000 }),
     ).toBeDefined();
     expect(screen.queryByText("Where costs come from")).toBeNull();
+  });
+
+  it("tells a screen reader to open the menu when the tip points there", async () => {
+    hidden.add("chats");
+    render(<Page />);
+    act(() => requestTip("second-chat"));
+    await screen.findByText("You have two chats now");
+
+    expect(screen.getByRole("status").textContent).toMatch(
+      /Open the menu to find it\.$/,
+    );
   });
 
   it("puts the tip away with Escape pressed inside it", async () => {

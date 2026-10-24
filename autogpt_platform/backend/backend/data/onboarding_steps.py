@@ -55,10 +55,9 @@ class OnboardingStep(StrEnum):
     # No longer rewarded but exist for analytical purposes
     BUILDER_OPEN = "BUILDER_OPEN"
     BUILDER_RUN_AGENT = "BUILDER_RUN_AGENT"
-    # Copilot home first-run: the capability-cards modal was completed or
-    # skipped. Unrewarded; recorded so it shows only once per user. Replaced
-    # by FIRST_RUN_TOUR; still accepted so a tab running the old frontend
-    # through a deploy can record it.
+    # Legacy copilot home first-run: the capability-cards modal was completed
+    # or skipped. Unrewarded. Counts as having had the first-run intro, and
+    # must stay accepted: a tab still running an older frontend records it.
     CAPABILITY_CARDS = "CAPABILITY_CARDS"
     # The guided first run over the real sidebar (chats, Team, Files, the
     # wallet, the first tasks), finished or skipped. Unrewarded; recorded so

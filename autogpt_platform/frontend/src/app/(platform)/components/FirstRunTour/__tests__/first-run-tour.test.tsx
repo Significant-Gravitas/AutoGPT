@@ -33,7 +33,7 @@ vi.mock("@/services/usageExperience/useUsageExperience", () => ({
   }),
 }));
 
-import { tourTarget, type TourTarget } from "../steps";
+import { tourTarget, type TourTarget } from "@/lib/tour-targets";
 import { FirstRunTour } from "../FirstRunTour";
 import { useFirstRunTourStore } from "../store";
 import { useFirstRunTourAutoStart } from "../useFirstRunTourAutoStart";
@@ -328,6 +328,18 @@ describe("first-run walkthrough", () => {
         "Each task gets its own chat. They all stay here, ready to pick up. Open the menu to find it.",
       ),
     ).toBeDefined();
+  });
+
+  it("tells a screen reader where to find it on a phone too", async () => {
+    hidden.add("chats");
+    renderTour();
+    openTour();
+    await screen.findByRole("dialog", { name: "Work happens in chats" });
+
+    const announcement = document.querySelector('[aria-live="polite"]');
+    expect(announcement?.textContent).toBe(
+      "Step 1 of 5. Work happens in chats. Each task gets its own chat. They all stay here, ready to pick up. Open the menu to find it.",
+    );
   });
 
   it("says the first tasks are on their way when they have not landed yet", async () => {

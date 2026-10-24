@@ -10,7 +10,7 @@ import {
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { useEffect, useId, useRef } from "react";
-import { isOnScreen, type Box } from "../FirstRunTour/helpers";
+import { isOnScreen, withMenuHint, type Box } from "../FirstRunTour/helpers";
 import { TourScrim } from "../FirstRunTour/components/TourScrim";
 import { useTourStops } from "../FirstRunTour/useTourStops";
 import { tipStepOf } from "./helpers";
@@ -77,8 +77,11 @@ function ContextualTip({
   });
   const { experience } = useUsageExperience();
   const titleID = useId();
-  const body = getTipBody(id, { isTrial: experience.isActiveTrial });
   const isMenu = stop?.target === "menu";
+  const body = withMenuHint(
+    getTipBody(id, { isTrial: experience.isActiveTrial }),
+    isMenu,
+  );
   const hasBox = isOnScreen(box);
   const giveWay = useStableCallback(onUnavailable);
 
@@ -147,7 +150,6 @@ function ContextualTip({
               className="text-pretty [overflow-wrap:anywhere]"
             >
               {body}
-              {isMenu && " Open the menu to find it."}
             </Text>
             <Button
               type="button"
