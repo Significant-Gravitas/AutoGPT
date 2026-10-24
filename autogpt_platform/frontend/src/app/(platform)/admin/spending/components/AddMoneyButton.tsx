@@ -15,7 +15,7 @@ import {
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -110,7 +110,7 @@ export function AdminAddMoneyButton({
                   <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-gray-50 px-3 text-gray-500">
                     $
                   </div>
-                  <Input
+                  <BaseInput
                     id="dollarAmount"
                     type="number"
                     step="0.01"
