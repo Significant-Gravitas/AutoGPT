@@ -62,6 +62,19 @@ def test_a_cut_brief_read_back_is_not_an_edit():
     assert edited_args("delegate_to_expert", long_args, payload) is None
 
 
+def test_an_edit_to_a_cut_brief_keeps_the_part_the_card_did_not_show():
+    """The card shows the first BRIEF_MAX_CHARS; an edit can only mean that
+    part, so the rest of the prompt the user never saw stays."""
+    head = "a" * BRIEF_MAX_CHARS
+    long_args = {**_ARGS, "prompt": head + "TAIL the user never saw"}
+    payload = _payload(brief="Q4 only. " + head[9:])
+
+    edited = edited_args("delegate_to_expert", long_args, payload)
+
+    assert edited is not None
+    assert edited["prompt"] == "Q4 only. " + head[9:] + "TAIL the user never saw"
+
+
 def test_the_brief_and_teammate_are_the_only_edits():
     edited = edited_args(
         "delegate_to_expert",

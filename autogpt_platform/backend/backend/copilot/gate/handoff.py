@@ -77,9 +77,13 @@ def edited_args(
         return None
     changed: dict[str, str] = {}
     brief = card.brief.strip()
+    prompt = str(args.get("prompt") or "")
     # A brief cut to the card's cap reads back unchanged, not as an edit.
-    if brief and card.brief != str(args.get("prompt") or "")[:BRIEF_MAX_CHARS]:
-        changed["prompt"] = brief
+    if brief and card.brief != prompt[:BRIEF_MAX_CHARS]:
+        # The card showed only the first BRIEF_MAX_CHARS, so the edit is to
+        # that part: the rest of the prompt, never on screen, stays.
+        unseen = prompt[BRIEF_MAX_CHARS:]
+        changed["prompt"] = card.brief + unseen if unseen else brief
     expert_id = card.expert_id.strip()
     if expert_id and expert_id != str(args.get("expert_id") or "").strip():
         changed["expert_id"] = expert_id
