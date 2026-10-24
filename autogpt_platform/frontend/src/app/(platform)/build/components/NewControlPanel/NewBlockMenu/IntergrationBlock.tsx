@@ -89,9 +89,8 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            className={cn(
-              "line-clamp-1 text-foreground-emphasis group-disabled:text-foreground-subtle",
-            )}
+            tone="emphasis"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             {highlightText(
               beautifyString(title).replace(/ Block$/, ""),
@@ -103,8 +102,9 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
           <Text
             variant="small"
             as="span"
+            tone="muted"
             className={cn(
-              "line-clamp-1 leading-5 text-foreground-tertiary group-disabled:text-foreground-subtle",
+              "line-clamp-1 leading-5 group-disabled:text-foreground-subtle",
             )}
           >
             {highlightText(description, highlightedText)}

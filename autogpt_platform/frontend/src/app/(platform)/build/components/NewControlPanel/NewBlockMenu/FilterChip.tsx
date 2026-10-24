@@ -39,8 +39,9 @@ export const FilterChip: React.FC<Props> = ({
         <Text
           variant="body-medium"
           as="span"
+          tone="secondary"
           className={cn(
-            "text-foreground-secondary group-hover:text-foreground-secondary group-disabled:text-foreground-subtle",
+            "group-hover:text-foreground-secondary group-disabled:text-foreground-subtle",
             // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
             selected && "text-zinc-50",
           )}

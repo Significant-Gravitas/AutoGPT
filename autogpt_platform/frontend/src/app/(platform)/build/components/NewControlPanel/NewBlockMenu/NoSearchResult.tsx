@@ -11,10 +11,10 @@ export const NoSearchResult = () => {
         className="mb-10 text-foreground-subtle"
       />
       <div className="space-y-1">
-        <Text variant="body-medium" className="text-foreground-emphasis">
+        <Text variant="body-medium" tone="emphasis">
           No match found
         </Text>
-        <Text variant="body" className="text-foreground-secondary">
+        <Text variant="body" tone="secondary">
           Try adjusting your search terms
         </Text>
       </div>

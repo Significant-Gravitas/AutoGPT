@@ -31,7 +31,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
         className="h-6 w-6 text-foreground-tertiary"
         strokeWidth={1.25}
       />
-      <Text variant="body" as="span" className="text-foreground-emphasis">
+      <Text variant="body" as="span" tone="emphasis">
         {content}
       </Text>
     </Button>

@@ -49,7 +49,7 @@ export const SuggestionContent = () => {
         {/* Recent searches */}
         {hasRecentSearches && (
           <div className="space-y-2.5 px-4">
-            <Text variant="body-medium" className="text-foreground-emphasis">
+            <Text variant="body-medium" tone="emphasis">
               Recent searches
             </Text>
             <HorizontalScroll
@@ -84,7 +84,7 @@ export const SuggestionContent = () => {
 
         {/* Integrations */}
         <div className="space-y-2.5 px-4">
-          <Text variant="body-medium" className="text-foreground-emphasis">
+          <Text variant="body-medium" tone="emphasis">
             Integrations
           </Text>
           <div className="grid grid-cols-3 grid-rows-2 gap-2">
@@ -112,7 +112,7 @@ export const SuggestionContent = () => {
 
         {/* Top blocks */}
         <div className="space-y-2.5 px-4">
-          <Text variant="body-medium" className="text-foreground-emphasis">
+          <Text variant="body-medium" tone="emphasis">
             Top blocks
           </Text>
           <div className="space-y-2">

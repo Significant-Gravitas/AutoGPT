@@ -27,7 +27,7 @@ export function MobileWarning() {
             icon={SmartPhone01Icon}
             className="h-10 w-10 text-amber-600"
           />
-          <Text variant="body" className="text-foreground-body">
+          <Text variant="body" tone="body">
             The workflow builder relies on canvas interactions that don&apos;t
             work well on this screen size. For the best experience, switch to a
             desktop browser.

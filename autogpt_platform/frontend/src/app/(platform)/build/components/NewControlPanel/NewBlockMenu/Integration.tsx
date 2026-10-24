@@ -50,7 +50,8 @@ export const Integration: IntegrationComponent = ({
           {title && (
             <Text
               variant="body-medium"
-              className="line-clamp-1 flex-1 text-foreground-body group-disabled:text-foreground-subtle"
+              tone="body"
+              className="line-clamp-1 flex-1 group-disabled:text-foreground-subtle"
             >
               {beautifyString(title)}
             </Text>
@@ -65,7 +66,8 @@ export const Integration: IntegrationComponent = ({
         <Text
           variant="small"
           as="span"
-          className="line-clamp-1 leading-5 text-foreground-tertiary group-disabled:text-foreground-subtle"
+          tone="muted"
+          className="line-clamp-1 leading-5 group-disabled:text-foreground-subtle"
         >
           {description}
         </Text>

@@ -34,12 +34,13 @@ export const MenuItem: React.FC<Props> = ({
       <Text
         variant="body-medium"
         as="span"
-        className="truncate text-foreground-emphasis"
+        tone="emphasis"
+        className="truncate"
       >
         {name}
       </Text>
       {number !== undefined && (
-        <Text variant="body" as="span" className="text-foreground-secondary">
+        <Text variant="body" as="span" tone="secondary">
           {number > 100 ? "100+" : number}
         </Text>
       )}

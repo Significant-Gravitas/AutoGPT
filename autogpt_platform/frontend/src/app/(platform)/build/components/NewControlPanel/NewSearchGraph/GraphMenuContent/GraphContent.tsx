@@ -97,7 +97,8 @@ export function GraphSearchContent({
                         <Text
                           variant="body-medium"
                           as="span"
-                          className="line-clamp-1 text-foreground-emphasis"
+                          tone="emphasis"
+                          className="line-clamp-1"
                         >
                           {nodeTitle}
                         </Text>
@@ -111,7 +112,8 @@ export function GraphSearchContent({
                         <Text
                           variant="small"
                           as="span"
-                          className="line-clamp-1 leading-5 text-foreground-tertiary"
+                          tone="muted"
+                          className="line-clamp-1 leading-5"
                         >
                           {description}
                         </Text>

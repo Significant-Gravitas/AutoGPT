@@ -63,9 +63,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            className={cn(
-              "line-clamp-1 text-foreground-emphasis group-disabled:text-foreground-subtle",
-            )}
+            tone="emphasis"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             {highlightText(title, highlightedText)}
           </Text>
@@ -75,8 +74,9 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             <Text
               variant="small"
               as="span"
+              tone="muted"
               className={cn(
-                "line-clamp-1 leading-5 text-foreground-tertiary group-disabled:text-foreground-subtle",
+                "line-clamp-1 leading-5 group-disabled:text-foreground-subtle",
               )}
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
@@ -88,8 +88,9 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           <Text
             variant="small"
             as="span"
+            tone="muted"
             className={cn(
-              "line-clamp-1 leading-5 text-foreground-tertiary group-disabled:text-foreground-subtle",
+              "line-clamp-1 leading-5 group-disabled:text-foreground-subtle",
             )}
           >
             Version {version}

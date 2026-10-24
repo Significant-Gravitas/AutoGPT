@@ -84,10 +84,10 @@ export const IntegrationBlocks = () => {
             >
               Integrations
             </Button>
-            <Text variant="body-medium" className="text-foreground-emphasis">
+            <Text variant="body-medium" tone="emphasis">
               /
             </Text>
-            <Text variant="body-medium" className="text-foreground-emphasis">
+            <Text variant="body-medium" tone="emphasis">
               {integration}
             </Text>
           </div>

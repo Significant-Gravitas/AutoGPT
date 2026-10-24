@@ -62,7 +62,7 @@ function SafeModeButton({
           ) : (
             <>
               <Icon icon={Shield01Icon} size={16} />
-              <Text variant="body" className="text-foreground-secondary">
+              <Text variant="body" tone="secondary">
                 {label}: OFF
               </Text>
             </>

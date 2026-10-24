@@ -60,7 +60,7 @@ export const AllBlocksContent = () => {
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <Text variant="body-medium" className="text-foreground-emphasis">
+              <Text variant="body-medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
               </Text>
               <span className="rounded-full bg-surface-hover px-[0.375rem] font-sans text-sm leading-5.5 text-foreground-secondary">

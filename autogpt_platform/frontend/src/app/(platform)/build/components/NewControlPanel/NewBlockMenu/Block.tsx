@@ -135,8 +135,9 @@ function BlockCard({
             <Text
               variant="body-medium"
               as="span"
+              tone="emphasis"
               className={cn(
-                "line-clamp-1 text-foreground-emphasis group-disabled:text-foreground-subtle",
+                "line-clamp-1 group-disabled:text-foreground-subtle",
               )}
             >
               {highlightText(
@@ -149,8 +150,9 @@ function BlockCard({
             <Text
               variant="small"
               as="span"
+              tone="muted"
               className={cn(
-                "line-clamp-1 leading-5 text-foreground-tertiary group-disabled:text-foreground-subtle",
+                "line-clamp-1 leading-5 group-disabled:text-foreground-subtle",
               )}
             >
               {highlightText(description, highlightedText)}
