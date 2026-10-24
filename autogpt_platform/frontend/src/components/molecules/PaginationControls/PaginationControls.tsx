@@ -2,44 +2,59 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/__legacy__/ui/button";
+import { Text } from "@/components/atoms/Text/Text";
+
+interface Props {
+  currentPage: number;
+  totalPages: number;
+  pathParam?: string;
+}
 
 export function PaginationControls({
   currentPage,
   totalPages,
   pathParam = "page",
-}: {
-  currentPage: number;
-  totalPages: number;
-  pathParam?: string;
-}) {
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const createPageUrl = (page: number) => {
+  function createPageUrl(page: number) {
     const params = new URLSearchParams(searchParams);
     params.set(pathParam, page.toString());
     return `${pathname}?${params.toString()}`;
-  };
+  }
 
-  const handlePageChange = (page: number) => {
+  function handlePageChange(page: number) {
     router.push(createPageUrl(page));
-  };
+  }
 
   return (
-    <div className="mt-4 flex items-center justify-center space-x-2">
+    <div
+      data-slot="pagination-controls"
+      className="mt-4 flex items-center justify-center space-x-2"
+    >
       <Button
         variant="outline"
+        data-slot="pagination-controls-previous"
         onClick={() => handlePageChange(currentPage - 1)}
         disabled={currentPage <= 1}
       >
         Previous
       </Button>
-      <span className="text-sm">
+      {/* Text with the label's own line height; its colour stays inherited from
+          the page, as the plain span's was. */}
+      <Text
+        variant="body"
+        as="span"
+        data-slot="pagination-controls-label"
+        className="leading-5 text-inherit"
+      >
         Page {currentPage} of {totalPages}
-      </span>
+      </Text>
       <Button
         variant="outline"
+        data-slot="pagination-controls-next"
         onClick={() => handlePageChange(currentPage + 1)}
         disabled={currentPage >= totalPages}
       >

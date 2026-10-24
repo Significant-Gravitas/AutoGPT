@@ -2,11 +2,7 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import {
-  Collapsible as BaseCollapsible,
-  CollapsibleTrigger as BaseCollapsibleTrigger,
-  CollapsibleContent as BaseCollapsibleContent,
-} from "@/components/__legacy__/ui/collapsible";
+import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -43,13 +39,13 @@ export function Collapsible({
   };
 
   return (
-    <BaseCollapsible
+    <CollapsiblePrimitive.Root
       open={openState}
       onOpenChange={handleOpenChange}
       data-slot="collapsible"
       className={cn("w-full", className)}
     >
-      <BaseCollapsibleTrigger
+      <CollapsiblePrimitive.Trigger
         data-slot="collapsible-trigger"
         className={cn(
           "flex w-full items-center justify-between text-left transition-all duration-200 hover:opacity-80",
@@ -70,15 +66,15 @@ export function Collapsible({
             )}
           />
         </div>
-      </BaseCollapsibleTrigger>
-      <BaseCollapsibleContent
+      </CollapsiblePrimitive.Trigger>
+      <CollapsiblePrimitive.Content
         data-slot="collapsible-panel"
         className={cn("overflow-hidden", contentClassName)}
       >
         <div data-slot="collapsible-panel-content" className="pt-2">
           {children}
         </div>
-      </BaseCollapsibleContent>
-    </BaseCollapsible>
+      </CollapsiblePrimitive.Content>
+    </CollapsiblePrimitive.Root>
   );
 }
