@@ -2,6 +2,8 @@
 Airtable schema and table management blocks.
 """
 
+from typing import Any
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -10,13 +12,17 @@ from backend.sdk import (
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+    ChangePreview,
     CredentialsMetaInput,
+    PreviewField,
+    PreviewTable,
     Requests,
     SchemaField,
 )
 
 from ._api import TableFieldType, create_field, create_table, update_field, update_table
-from ._config import airtable
+from ._config import airtable, base_id_field
+from ._preview import field_kind, preview, table_preview
 
 
 class AirtableListSchemaBlock(Block):
@@ -29,7 +35,7 @@ class AirtableListSchemaBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field()
 
     class Output(BlockSchemaOutput):
         base_schema: dict = SchemaField(
@@ -73,7 +79,7 @@ class AirtableCreateTableBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field()
         table_name: str = SchemaField(description="The name of the table to create")
         table_fields: list[dict] = SchemaField(
             description="Table fields with name, type, and options",
@@ -91,7 +97,16 @@ class AirtableCreateTableBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.EXTERNAL_JUDGED,
+            effect=BlockEffect.EXTERNAL,
+        )
+
+    def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
+        name = input_data.get("table_name")
+        return preview(
+            "Add a table to your Airtable:",
+            name,
+            [table_preview(name, input_data.get("table_fields"))],
+            ["table_name", "table_fields"],
         )
 
     async def run(
@@ -117,7 +132,7 @@ class AirtableUpdateTableBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field()
         table_id: str = SchemaField(description="The table ID to update")
         table_name: str | None = SchemaField(
             description="The name of the table to update", default=None
@@ -139,7 +154,15 @@ class AirtableUpdateTableBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.EXTERNAL_JUDGED,
+            effect=BlockEffect.EXTERNAL,
+        )
+
+    def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
+        return preview(
+            "Change a table in your Airtable:",
+            input_data.get("table_name"),
+            [],
+            ["table_name"],
         )
 
     async def run(
@@ -166,7 +189,7 @@ class AirtableCreateFieldBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field()
         table_id: str = SchemaField(description="The table ID to add field to")
         field_type: TableFieldType = SchemaField(
             description="The type of the field to create",
@@ -192,7 +215,24 @@ class AirtableCreateFieldBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.EXTERNAL_JUDGED,
+            effect=BlockEffect.EXTERNAL,
+        )
+
+    def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
+        name = input_data.get("name")
+        kind = field_kind(
+            input_data.get("field_type", TableFieldType.SINGLE_LINE_TEXT),
+            input_data.get("options"),
+        )
+        return preview(
+            "Add a field to your Airtable table:",
+            name,
+            [
+                PreviewTable(
+                    name="", fields=[PreviewField(name=str(name or ""), kind=kind)]
+                )
+            ],
+            ["name", "field_type", "options"],
         )
 
     async def run(
@@ -219,7 +259,7 @@ class AirtableUpdateFieldBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field()
         table_id: str = SchemaField(description="The table ID containing the field")
         field_id: str = SchemaField(description="The field ID to update")
         name: str | None = SchemaField(
@@ -241,7 +281,15 @@ class AirtableUpdateFieldBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.EXTERNAL_JUDGED,
+            effect=BlockEffect.EXTERNAL,
+        )
+
+    def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
+        return preview(
+            "Change a field in your Airtable:",
+            input_data.get("name"),
+            [],
+            ["name"],
         )
 
     async def run(

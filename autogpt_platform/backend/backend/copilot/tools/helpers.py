@@ -134,13 +134,17 @@ def get_inputs_from_schema(
 
 
 def is_picker_field(schema: Any) -> bool:
-    """A field only a platform-rendered picker can fill (e.g. Google Drive).
+    """A field a platform-rendered picker fills.
 
-    The picker attaches hidden credentials to the chosen resource, so a bare
-    ID or URL typed into the chat can never stand in for it.
+    Google Drive's picker attaches hidden credentials to the chosen file, so a
+    bare ID or URL typed into the chat can never stand in for it. A
+    ``resource_picker`` (an Airtable base) lists what the user's own account
+    holds, so they choose by name instead of digging an id out of a URL.
     """
     return isinstance(schema, dict) and (
-        schema.get("format") == "google-drive-picker" or "auto_credentials" in schema
+        schema.get("format") == "google-drive-picker"
+        or "auto_credentials" in schema
+        or "resource_picker" in schema
     )
 
 
@@ -148,19 +152,49 @@ def get_picker_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
     input_data: dict[str, Any] | None = None,
+    picker_credentials: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Inputs a setup card should render: picker-backed fields only.
 
     Every other input is collected in the chat by the CoPilot asking the
-    user, so the card carries no form for them.
+    user, so the card carries no form for them. ``picker_credentials`` maps a
+    provider to the credential the run will use, which a resource picker
+    lists with.
     """
-    return [
-        entry
+    entries = [
+        _with_picker_credentials(entry, picker_credentials or {})
         for entry in get_inputs_from_schema(
             input_schema, exclude_fields=exclude_fields, input_data=input_data
         )
         if is_picker_field(entry)
     ]
+    return [entry for entry in entries if entry is not None]
+
+
+def _with_picker_credentials(
+    entry: dict[str, Any], by_provider: dict[str, str]
+) -> dict[str, Any] | None:
+    """A resource picker lists with the account the run will use. Without
+    one there is nothing to list, so the card signs in first and the picker
+    follows when the call runs again."""
+    picker = entry.get("resource_picker")
+    if not isinstance(picker, dict):
+        return entry
+    credentials_id = by_provider.get(str(picker.get("provider")))
+    if not credentials_id:
+        return None
+    return {**entry, "resource_picker": {**picker, "credentials_id": credentials_id}}
+
+
+def _picker_message(input_schema: dict[str, Any], fields: list[str]) -> str:
+    """The card's line for a pick: shown to the user as well as the model, so
+    it names each field by its title, never its key."""
+    properties = input_schema.get("properties", {})
+    titles = [str(properties.get(f, {}).get("title") or f) for f in fields]
+    return (
+        f"Choose your {' and '.join(titles)} in the card below. The step runs "
+        "again with your choice."
+    )
 
 
 async def _charge_block_credits(
@@ -1198,12 +1232,7 @@ async def prepare_block_for_execution(
                 + bot_hint
             )
         else:
-            message = (
-                f"Block '{block.name}' needs "
-                f"{', '.join(repr(f) for f in picker_fields_missing)} "
-                "picked before it can run. Select in the card below; the "
-                "tool will re-run automatically."
-            )
+            message = _picker_message(input_schema, picker_fields_missing)
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
@@ -1221,6 +1250,10 @@ async def prepare_block_for_execution(
                         input_schema,
                         exclude_fields=credentials_fields,
                         input_data=input_data,
+                        picker_credentials={
+                            provider_slug(m.provider): m.id
+                            for m in matched_credentials.values()
+                        },
                     ),
                     "execution_modes": ["immediate"],
                 },

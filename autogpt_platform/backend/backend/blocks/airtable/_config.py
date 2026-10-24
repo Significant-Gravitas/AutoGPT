@@ -2,7 +2,7 @@
 Shared configuration for all Airtable blocks using the SDK pattern.
 """
 
-from backend.sdk import BlockCostType, ProviderBuilder
+from backend.sdk import BlockCostType, ProviderBuilder, SchemaField
 
 from ._oauth import AirtableOAuthHandler, AirtableScope
 from ._webhook import AirtableWebhookManager
@@ -31,3 +31,20 @@ airtable = (
     )
     .build()
 )
+
+
+def base_id_field() -> str:
+    """A base the user picks from the ones their connection can reach.
+
+    Copilot cards render this as a list of the account's bases, so nobody is
+    asked for an id from a URL; anywhere else it stays a plain text input.
+    """
+    return SchemaField(
+        title="Airtable base",
+        description=(
+            "The Airtable base to use: a set of tables, like a spreadsheet "
+            "file with several sheets."
+        ),
+        format="airtable-base-picker",
+        json_schema_extra={"resource_picker": {"provider": "airtable"}},
+    )

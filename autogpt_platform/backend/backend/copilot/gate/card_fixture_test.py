@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.google.gmail import GmailSendBlock
@@ -116,6 +117,25 @@ _BLOCKS: list[tuple[str, Any, dict[str, Any]]] = [
             "media_urls": ["https://cdn.acme.com/q3-chart.png"],
             "alt_text": ["Bar chart of Q3 revenue by month"],
             "shorten_links": True,
+        },
+    ),
+    (
+        "Airtable Create Table",
+        AirtableCreateTableBlock(),
+        {
+            "base_id": "appK7rB2xQ9mN4pLs",
+            "table_name": "Printify orders",
+            "table_fields": [
+                {"name": "Order number", "type": "singleLineText"},
+                {"name": "Customer", "type": "singleLineText"},
+                {"name": "Total", "type": "currency", "options": {"precision": 2}},
+                {
+                    "name": "Status",
+                    "type": "singleSelect",
+                    "options": {"choices": [{"name": "New"}, {"name": "Shipped"}]},
+                },
+                {"name": "Ordered on", "type": "dateTime"},
+            ],
         },
     ),
     (

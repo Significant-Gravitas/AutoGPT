@@ -2,7 +2,7 @@
 Airtable base operation blocks.
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -12,12 +12,14 @@ from backend.sdk import (
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+    ChangePreview,
     CredentialsMetaInput,
     SchemaField,
 )
 
 from ._api import create_base, get_base_tables, list_bases
 from ._config import airtable
+from ._preview import preview, tables_preview
 
 
 class AirtableCreateBaseBlock(Block):
@@ -30,7 +32,12 @@ class AirtableCreateBaseBlock(Block):
             description="Airtable API credentials"
         )
         workspace_id: str = SchemaField(
-            description="The workspace ID where the base will be created"
+            description=(
+                "The workspace (id starts with 'wsp') to create the base in. "
+                "Airtable's connection can't look this up, so in a chat never "
+                "ask the user for it: add tables to a base they pick instead "
+                "(Airtable Create Table, whose base is picked in a card)."
+            )
         )
         name: str = SchemaField(description="The name of the new base")
         find_existing: bool = SchemaField(
@@ -71,7 +78,15 @@ class AirtableCreateBaseBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.EXTERNAL_JUDGED,
+            effect=BlockEffect.EXTERNAL,
+        )
+
+    def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
+        return preview(
+            "Create a new Airtable base:",
+            input_data.get("name"),
+            tables_preview(input_data.get("tables")),
+            ["name", "tables"],
         )
 
     async def run(

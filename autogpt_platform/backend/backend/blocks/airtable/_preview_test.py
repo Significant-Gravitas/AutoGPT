@@ -1,0 +1,166 @@
+"""What the Airtable blocks show before they change a user's base, and how
+they ask for one."""
+
+import pytest
+
+from backend.blocks._base import BlockEffect
+from backend.blocks.airtable.bases import AirtableCreateBaseBlock
+from backend.blocks.airtable.records import (
+    AirtableCreateRecordsBlock,
+    AirtableListRecordsBlock,
+)
+from backend.blocks.airtable.schema import (
+    AirtableCreateFieldBlock,
+    AirtableCreateTableBlock,
+    AirtableListSchemaBlock,
+    AirtableUpdateFieldBlock,
+    AirtableUpdateTableBlock,
+)
+from backend.blocks.airtable.triggers import AirtableWebhookTriggerBlock
+
+ORDER_FIELDS = [
+    {"name": "Order number", "type": "singleLineText"},
+    {"name": "Total", "type": "currency", "options": {"precision": 2}},
+    {
+        "name": "Status",
+        "type": "singleSelect",
+        "options": {"choices": [{"name": "New"}, {"name": "Shipped"}]},
+    },
+    {"name": "Shipped on", "type": "dateTime"},
+]
+
+STRUCTURE_BLOCKS = [
+    AirtableCreateBaseBlock,
+    AirtableCreateTableBlock,
+    AirtableUpdateTableBlock,
+    AirtableCreateFieldBlock,
+    AirtableUpdateFieldBlock,
+]
+
+
+@pytest.mark.parametrize("block", STRUCTURE_BLOCKS, ids=lambda b: b.__name__)
+def test_changing_the_shape_of_a_base_always_asks_first(block):
+    """New or changed tables and fields land in a base the user already
+    relies on, so no supervisor may wave them through unseen."""
+    assert block().effect is BlockEffect.EXTERNAL
+
+
+def test_a_new_table_is_shown_by_name_and_fields_in_plain_words():
+    preview = AirtableCreateTableBlock().change_preview(
+        {"base_id": "appX", "table_name": "Orders", "table_fields": ORDER_FIELDS}
+    )
+
+    assert preview is not None
+    assert preview.ask == "Add a table to your Airtable:"
+    assert preview.object == "Orders"
+    assert [t.model_dump() for t in preview.tables] == [
+        {
+            "name": "Orders",
+            "fields": [
+                {"name": "Order number", "kind": "Text"},
+                {"name": "Total", "kind": "Money"},
+                {"name": "Status", "kind": "Choice of New, Shipped"},
+                {"name": "Shipped on", "kind": "Date and time"},
+            ],
+        }
+    ]
+    assert preview.covers == ["table_name", "table_fields"]
+
+
+def test_a_new_base_shows_every_table_it_creates():
+    preview = AirtableCreateBaseBlock().change_preview(
+        {
+            "workspace_id": "wspX",
+            "name": "Shop",
+            "tables": [
+                {"name": "Orders", "fields": ORDER_FIELDS[:1]},
+                {"name": "Customers", "fields": [{"name": "Email", "type": "email"}]},
+            ],
+        }
+    )
+
+    assert preview is not None
+    assert preview.ask == "Create a new Airtable base:"
+    assert preview.object == "Shop"
+    assert [(t.name, [f.kind for f in t.fields]) for t in preview.tables] == [
+        ("Orders", ["Text"]),
+        ("Customers", ["Email"]),
+    ]
+    assert preview.covers == ["name", "tables"]
+
+
+def test_a_new_field_is_shown_with_its_kind():
+    preview = AirtableCreateFieldBlock().change_preview(
+        {
+            "base_id": "appX",
+            "table_id": "tblX",
+            "name": "Notes",
+            "field_type": "multilineText",
+        }
+    )
+
+    assert preview is not None
+    assert preview.ask == "Add a field to your Airtable table:"
+    assert preview.object == "Notes"
+    assert [f.model_dump() for f in preview.tables[0].fields] == [
+        {"name": "Notes", "kind": "Long text"}
+    ]
+
+
+def test_a_rename_is_shown_under_its_new_name():
+    table = AirtableUpdateTableBlock().change_preview(
+        {"base_id": "appX", "table_id": "tblX", "table_name": "Paid orders"}
+    )
+    field = AirtableUpdateFieldBlock().change_preview(
+        {"base_id": "appX", "table_id": "tblX", "field_id": "fldX", "name": "Due"}
+    )
+
+    assert table is not None and field is not None
+    assert (table.ask, table.object) == (
+        "Change a table in your Airtable:",
+        "Paid orders",
+    )
+    assert (field.ask, field.object) == ("Change a field in your Airtable:", "Due")
+
+
+def test_a_type_the_preview_does_not_know_still_reads_as_words():
+    preview = AirtableCreateTableBlock().change_preview(
+        {"table_name": "T", "table_fields": [{"name": "Score", "type": "someNewType"}]}
+    )
+
+    assert preview is not None
+    assert preview.tables[0].fields[0].kind == "Some new type"
+
+
+def test_inputs_the_model_got_wrong_still_preview_what_they_can():
+    """The card opens on the model's raw call, before validation."""
+    preview = AirtableCreateTableBlock().change_preview(
+        {"table_name": "Orders", "table_fields": "not a list"}
+    )
+
+    assert preview is not None
+    assert preview.object == "Orders"
+    assert preview.tables[0].fields == []
+
+
+BASE_ID_BLOCKS = [
+    AirtableCreateTableBlock,
+    AirtableUpdateTableBlock,
+    AirtableCreateFieldBlock,
+    AirtableUpdateFieldBlock,
+    AirtableListSchemaBlock,
+    AirtableCreateRecordsBlock,
+    AirtableListRecordsBlock,
+    AirtableWebhookTriggerBlock,
+]
+
+
+@pytest.mark.parametrize("block", BASE_ID_BLOCKS, ids=lambda b: b.__name__)
+def test_a_base_is_picked_from_the_account_never_typed(block):
+    """Nobody knows a base id by heart: the field asks for a pick from the
+    bases the connected account can reach."""
+    schema = block().input_schema.jsonschema()["properties"]["base_id"]
+
+    assert schema["format"] == "airtable-base-picker"
+    assert schema["resource_picker"] == {"provider": "airtable"}
+    assert schema["title"] == "Airtable base"

@@ -81,7 +81,8 @@
           "object_key": "folder_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_folder",
       "editable": false,
@@ -325,7 +326,8 @@
           "object_key": "folder_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "move_agents_to_folder",
       "editable": false,
@@ -414,7 +416,8 @@
           "object_key": "schedule_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "pause_schedule",
       "editable": false,
@@ -503,7 +506,8 @@
           "object_key": "session_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "message_session",
       "editable": false,
@@ -614,7 +618,8 @@
           "object_key": "credential_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "grant_expert_credential",
       "editable": false,
@@ -703,7 +708,8 @@
           "object_key": "agent_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "edit_agent",
       "editable": false,
@@ -780,7 +786,8 @@
           "object_key": "preset_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "update_preset",
       "editable": false,
@@ -857,7 +864,8 @@
           "object_key": "preset_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -934,7 +942,8 @@
           "object_key": "routine_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "schedule_routine",
       "editable": false,
@@ -1051,7 +1060,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "install_expert_workflow",
       "editable": false,
@@ -1121,7 +1131,8 @@
           "object_key": "workflow_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "remove_expert_workflow",
       "editable": false,
@@ -1209,7 +1220,8 @@
           "object_key": "confirmation_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "confirm_expert_change",
       "editable": false,
@@ -1310,7 +1322,8 @@
           "object_key": "path"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_workspace_file",
       "editable": false,
@@ -1380,7 +1393,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -1475,7 +1489,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "schedule_followup",
       "editable": false,
@@ -1534,7 +1549,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "schedule_followup",
       "editable": false,
@@ -1623,7 +1639,8 @@
           "object_key": "expert_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delegate_to_expert",
       "editable": false,
