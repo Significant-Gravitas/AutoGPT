@@ -103,9 +103,13 @@ async def test_add_memory_returns_completed_results(mem0_transport, conversation
     ]
 
 
-@pytest.mark.parametrize("blocked_path", ["/v1/ping/", "/v1/memories/"])
-async def test_add_memory_keeps_event_loop_responsive(
-    mem0_transport, blocked_path: str
+@pytest.mark.parametrize(
+    "block_type",
+    [AddMemoryBlock, SearchMemoryBlock, GetAllMemoriesBlock, GetLatestMemoryBlock],
+)
+@pytest.mark.parametrize("block_validation", [False, True])
+async def test_memory_keeps_event_loop_responsive(
+    mem0_transport, block_type, block_validation: bool
 ):
     loop = asyncio.get_running_loop()
     entered = asyncio.Event()
@@ -113,23 +117,25 @@ async def test_add_memory_keeps_event_loop_responsive(
     results = [{"event": "ADD", "memory": "I am a vegetarian"}]
 
     def pause_request(request: httpx.Request) -> None:
-        if request.url.path == blocked_path:
+        if (request.url.path == "/v1/ping/") == block_validation:
             loop.call_soon_threadsafe(entered.set)
             if not release.wait(timeout=10):
                 raise TimeoutError("Event loop could not release the Mem0 request")
 
     def handle(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/v1/memories/"
-        assert json.loads(request.content)["async_mode"] is False
         return httpx.Response(200, json={"results": results})
 
     mem0_transport(handle, before_request=pause_request)
+    block = block_type()
+    inputs = {"credentials": TEST_CREDENTIALS_INPUT}
+    if block_type is SearchMemoryBlock:
+        inputs["query"] = "food preferences"
 
     async def collect_outputs():
         return [
             item
-            async for item in AddMemoryBlock().run(
-                AddMemoryBlock.Input(credentials=TEST_CREDENTIALS_INPUT),
+            async for item in block.run(
+                block.input_schema(**inputs),
                 credentials=TEST_CREDENTIALS,
                 user_id="user-1",
                 graph_id="workflow-1",
@@ -145,11 +151,16 @@ async def test_add_memory_keeps_event_loop_responsive(
         release.set()
         outputs = await task
 
-    assert outputs == [
-        ("results", results),
-        ("action", "ADD"),
-        ("memory", "I am a vegetarian"),
-    ]
+    if block_type is AddMemoryBlock:
+        assert outputs == [
+            ("results", results),
+            ("action", "ADD"),
+            ("memory", "I am a vegetarian"),
+        ]
+    elif block_type is GetLatestMemoryBlock:
+        assert outputs == [("memory", results[0]), ("found", True)]
+    else:
+        assert outputs == [("memories", results)]
 
 
 @pytest.mark.parametrize(

@@ -257,7 +257,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         **kwargs,
     ) -> BlockOutput:
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             filters: Filter = {
                 # This works with only one filter, so we can allow others to add on later
@@ -276,7 +276,9 @@ class SearchMemoryBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            result = client.search(input_data.query, filters=filters)
+            result = await asyncio.to_thread(
+                client.search, input_data.query, filters=filters
+            )
             yield "memories", result["results"]
 
         except Exception as e:
@@ -341,7 +343,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         **kwargs,
     ) -> BlockOutput:
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             filters: Filter = {
                 "AND": [
@@ -359,7 +361,8 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            memories = client.get_all(filters=filters)["results"]
+            result = await asyncio.to_thread(client.get_all, filters=filters)
+            memories = result["results"]
 
             yield "memories", memories
 
@@ -433,7 +436,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
         **kwargs,
     ) -> BlockOutput:
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             filters: Filter = {
                 "AND": [
@@ -451,7 +454,8 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            memories = client.get_all(filters=filters)["results"]
+            result = await asyncio.to_thread(client.get_all, filters=filters)
+            memories = result["results"]
 
             if memories:
                 # Return the latest memory (first in the list as they're sorted by recency)
