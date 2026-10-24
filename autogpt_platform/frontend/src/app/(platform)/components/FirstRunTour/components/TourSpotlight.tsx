@@ -7,7 +7,7 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useEffect, useId, useRef } from "react";
-import type { Box } from "../helpers";
+import { isPartlyOffScreen, type Box } from "../helpers";
 import { stepListOf, type TourTarget } from "../steps";
 import type { useFirstRunTour } from "../useFirstRunTour";
 import { useTourStops } from "../useTourStops";
@@ -62,6 +62,12 @@ export function TourSpotlight({ tour }: Props) {
 
   const body = tour.bodyFor(tour.stepIndex, stop);
   const target = stop?.target ?? null;
+  const element = stop?.element ?? null;
+
+  useEffect(() => {
+    if (!element || !isPartlyOffScreen(element, target)) return;
+    element.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [element, target]);
 
   // Once per step, as soon as it knows what it points at.
   const trackedStepRef = useRef<string | null>(null);

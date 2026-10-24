@@ -41,13 +41,17 @@ import { useFirstRunTourAutoStart } from "../useFirstRunTourAutoStart";
 // jsdom lays nothing out, so each tagged element gets a box here: present and
 // on screen unless listed in `hidden` (a collapsed sidebar, a closed sheet).
 const hidden = new Set<string>();
+// Targets laid out somewhere other than the default box.
+const placed = new Map<string, DOMRectInit>();
 function stubLayout() {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
       const target = this.getAttribute("data-tour-target");
       if (!target || hidden.has(target))
         return DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 });
-      return DOMRect.fromRect({ x: 10, y: 100, width: 240, height: 40 });
+      return DOMRect.fromRect(
+        placed.get(target) ?? { x: 10, y: 100, width: 240, height: 40 },
+      );
     },
   );
 }
@@ -98,6 +102,7 @@ function openTour(source: "auto" | "menu" = "auto") {
 }
 
 beforeEach(() => {
+  placed.clear();
   window.localStorage.clear();
   capture.mockReset();
   hidden.clear();
@@ -185,6 +190,34 @@ describe("first-run walkthrough", () => {
         "Your allowance and credits live here, next to your profile.",
       ),
     ).toBeDefined();
+  });
+
+  it("scrolls a target that is only partly on screen into view", async () => {
+    // The walkthrough locks page scrolling, so a target peeking over the
+    // bottom edge would otherwise get a sliver of a spotlight for good.
+    placed.set("first-tasks", {
+      x: 300,
+      y: window.innerHeight - 12,
+      width: 600,
+      height: 240,
+    });
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderTour();
+      openTour();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      act(() => useFirstRunTourStore.getState().goTo("start"));
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView.mock.contexts[0]).toBe(
+        document.querySelector('[data-tour-target="first-tasks"]'),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
   });
 
   it("leaves the wallet step out where billing is off", async () => {

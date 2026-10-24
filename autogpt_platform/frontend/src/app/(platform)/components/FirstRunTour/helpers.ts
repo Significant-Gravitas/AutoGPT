@@ -79,6 +79,24 @@ const SPOTLIGHT_PADDING = 6;
 // rows are enough to say "here". Everything else is shown whole.
 const CAPPED_TARGETS: Partial<Record<TourTarget, number>> = { chats: 220 };
 
+// Whether the part of a target the spotlight lights up runs past the edge
+// of the screen. The walkthrough locks page scrolling, so it scrolls such a
+// target in itself rather than leave a sliver of it lit.
+export function isPartlyOffScreen(
+  element: HTMLElement,
+  target: TourTarget | null,
+) {
+  const cap = (target && CAPPED_TARGETS[target]) ?? Number.POSITIVE_INFINITY;
+  const rect = element.getBoundingClientRect();
+  const bottom = Math.min(rect.bottom, rect.top + cap);
+  return (
+    rect.top < 0 ||
+    rect.left < 0 ||
+    bottom > window.innerHeight ||
+    rect.right > window.innerWidth
+  );
+}
+
 export function getSpotlightBox(
   element: HTMLElement,
   target: TourTarget | null,
