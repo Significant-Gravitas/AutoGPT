@@ -53,6 +53,9 @@ interface Props {
   onHandOff?: () => void;
   /** Takes the decision back so Approve/Decline can be chosen again. */
   onUndo?: () => void;
+  /** The turn is still streaming: answers wait until the proposals are all
+   *  in, so a click always does what its button says. */
+  waiting?: boolean;
   /** Footer control the group adds once every proposal is decided, or
    *  the sent note after. */
   action?: ReactNode;
@@ -242,6 +245,7 @@ export function ExpertChangeCard({
   onUndo,
   action,
   stepDirection,
+  waiting = false,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -351,6 +355,7 @@ export function ExpertChangeCard({
           onDecide={onDecide}
           onUndo={onUndo}
           action={action}
+          waiting={waiting}
           handoff={
             task && onDecide && onHandOff
               ? { name, task, onHandOff, onDecide }
@@ -378,6 +383,7 @@ function SoulChangeCard({
   onDecide,
   onUndo,
   action,
+  waiting = false,
 }: Props) {
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
   return (
@@ -412,6 +418,7 @@ function SoulChangeCard({
           onDecide={onDecide}
           onUndo={onUndo}
           action={action}
+          waiting={waiting}
         />
       )}
     </div>
@@ -420,7 +427,7 @@ function SoulChangeCard({
 
 type FooterProps = Pick<
   Props,
-  "pager" | "decision" | "onDecide" | "onUndo" | "action"
+  "pager" | "decision" | "onDecide" | "onUndo" | "action" | "waiting"
 > & {
   handoff?: {
     name: string;
@@ -437,6 +444,7 @@ function DecisionFooter({
   onUndo,
   action,
   handoff,
+  waiting = false,
 }: FooterProps) {
   if (handoff && !decision) {
     return (
@@ -448,6 +456,7 @@ function DecisionFooter({
           onHandOff={handoff.onHandOff}
           onHireOnly={() => handoff.onDecide("approved")}
           onDecline={() => handoff.onDecide("declined")}
+          disabled={waiting}
         />
       </div>
     );
@@ -472,6 +481,7 @@ function DecisionFooter({
             <Button
               variant="ghost"
               size="small"
+              disabled={waiting}
               onClick={() => onDecide("declined")}
               className="h-8 !min-w-0 px-3"
             >
@@ -480,6 +490,7 @@ function DecisionFooter({
             <Button
               variant="primary"
               size="small"
+              disabled={waiting}
               onClick={() => onDecide("approved")}
               className="h-8 !min-w-0 px-3"
             >
@@ -549,6 +560,7 @@ interface PartProps {
   onUndo?: () => void;
   action?: ReactNode;
   stepDirection?: StepDirection;
+  waiting?: boolean;
 }
 
 /** The expert is still being written while the row has no output — hold
@@ -565,6 +577,7 @@ export function ExpertChangePart({
   onUndo,
   action,
   stepDirection,
+  waiting,
 }: PartProps) {
   if (part.state === "output-error") return <GenericTool part={part} />;
   const output = asObject(part.output);
@@ -581,6 +594,7 @@ export function ExpertChangePart({
         onUndo={onUndo}
         action={action}
         stepDirection={stepDirection}
+        waiting={waiting}
       />
     );
   }
@@ -680,7 +694,7 @@ export function ExpertChangeGroup({
   }
 
   function decide(decision: Decision, handOff: boolean) {
-    if (!currentProposal) return;
+    if (!currentProposal || isCurrentlyStreaming) return;
     const id = currentProposal.toolCallId;
     const nextDecisions = { ...decisions, [id]: decision };
     const nextHandOffs = { ...handOffs, [id]: handOff };
@@ -788,6 +802,7 @@ export function ExpertChangeGroup({
         onUndo={currentProposal && !sent ? undo : undefined}
         action={action || undefined}
         stepDirection={direction}
+        waiting={isCurrentlyStreaming}
       />
     </div>
   );

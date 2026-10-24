@@ -79,6 +79,36 @@ describe("hiring an expert for a task already in the chat", () => {
     expect(screen.queryByRole("button", { name: "Hire only" })).toBeNull();
   });
 
+  it("waits for the stream to settle before the one-click hand-off", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ExpertChangeGroup parts={[hire("a")]} isCurrentlyStreaming />
+      </CopilotChatActionsProvider>,
+    );
+    const name = `Hire James and hand off ${TITLE}`;
+
+    for (const label of [name, "Hire only", "Decline"]) {
+      expect(screen.getByRole("button", { name: label })).toHaveProperty(
+        "disabled",
+        true,
+      );
+    }
+    await user.click(screen.getByRole("button", { name }));
+    expect(onSend).not.toHaveBeenCalled();
+
+    rerender(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ExpertChangeGroup parts={[hire("a")]} isCurrentlyStreaming={false} />
+      </CopilotChatActionsProvider>,
+    );
+    await user.click(screen.getByRole("button", { name }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(
+      `Approved: hire James to take on ${TITLE} (confirmation_id: h-a).`,
+    );
+  });
+
   it("hires without the task on Hire only", async () => {
     const user = userEvent.setup();
     renderGroup([hire("a")]);
@@ -293,4 +323,65 @@ describe("after the hire and hand-off", () => {
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
   });
+});
+
+describe("hand-off parts follow the theme", () => {
+  // Raw palette classes don't follow the dark theme; physical margins don't
+  // flip in RTL. Every hand-off state must use tokens and logical sides.
+  const RAW =
+    /\b(?:bg|text|border|ring|divide)-(?:zinc|neutral|gray|white|black|amber|slate)\b|\bml-|\bmr-/;
+  const expert = { id: "exp-james", name: "James", role: "Operations" };
+
+  // The Button atom's own classes belong to the design system, not here.
+  function classesIn(container: HTMLElement) {
+    return [container, ...container.querySelectorAll<HTMLElement>("[class]")]
+      .filter((el) => el.tagName !== "BUTTON")
+      .flatMap((el) => el.getAttribute("class")?.split(/\s+/) ?? [])
+      .filter((cls) => RAW.test(cls.replace(/^[a-z-]+:/, "")));
+  }
+
+  it("uses only design tokens on the proposal card", () => {
+    const part = hire("a");
+    (part.output as { handoff: { brief: string } }).handoff.brief =
+      `${BRIEF} ${BRIEF}`;
+    const { container } = render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ExpertChangeGroup parts={[part]} />
+      </CopilotChatActionsProvider>,
+    );
+    const section = screen.getByRole("region", { name: "First task" });
+    expect(classesIn(section)).toEqual([]);
+    const actions = screen
+      .getByRole("button", { name: "Hire only" })
+      .closest("div.flex-wrap-reverse") as HTMLElement;
+    expect(classesIn(actions)).toEqual([]);
+    expect(container).toBeDefined();
+  });
+
+  it.each(["started", "queued", "unconfirmed", "failed"])(
+    "uses only design tokens on the %s row",
+    (status) => {
+      const { container } = render(
+        <ExpertChangeCard
+          output={{
+            type: "expert_change_applied",
+            applied: true,
+            kind: "hire",
+            expert,
+            handoff: {
+              title: TITLE,
+              status,
+              link: status === "failed" ? null : "/copilot?sessionId=t",
+            },
+          }}
+        />,
+      );
+      const row = (screen.queryByRole("status") ??
+        screen
+          .getByText(/Printify order pipeline/)
+          .closest("div")) as HTMLElement;
+      expect(classesIn(row)).toEqual([]);
+      expect(container).toBeDefined();
+    },
+  );
 });

@@ -32,24 +32,24 @@ export function HandoffTaskBlock({ task }: TaskProps) {
   return (
     <section
       aria-labelledby={labelId}
-      className="ml-[42px] mt-3 rounded-2xl bg-zinc-50 px-3 py-2.5"
+      className="ms-[42px] mt-3 rounded-2xl bg-surface-muted px-3 py-2.5"
     >
       <p
         id={labelId}
-        className="flex items-center gap-1.5 text-xs font-medium text-zinc-500"
+        className="flex items-center gap-1.5 text-xs font-medium text-foreground-tertiary"
       >
         <Icon icon={Task01Icon} size={14} aria-hidden />
         First task
       </p>
-      <p className="mt-1 text-sm font-medium text-zinc-800 [overflow-wrap:anywhere]">
+      <p className="mt-1 text-sm font-medium text-foreground-emphasis [overflow-wrap:anywhere]">
         {task.title}
       </p>
       <p
         id={briefId}
         className={
           long && !expanded
-            ? "mt-0.5 line-clamp-2 text-sm text-zinc-500 [overflow-wrap:anywhere]"
-            : "mt-0.5 whitespace-pre-line text-sm text-zinc-500 [overflow-wrap:anywhere]"
+            ? "mt-0.5 line-clamp-2 text-sm text-foreground-tertiary [overflow-wrap:anywhere]"
+            : "mt-0.5 whitespace-pre-line text-sm text-foreground-tertiary [overflow-wrap:anywhere]"
         }
       >
         {task.brief}
@@ -60,7 +60,7 @@ export function HandoffTaskBlock({ task }: TaskProps) {
           aria-expanded={expanded}
           aria-controls={briefId}
           onClick={() => setExpanded(!expanded)}
-          className="mt-1 rounded text-xs font-medium text-zinc-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-800"
+          className="mt-1 rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
         >
           {expanded ? "Show less" : "Show all"}
         </button>
@@ -75,6 +75,7 @@ interface ActionsProps {
   onHandOff: () => void;
   onHireOnly: () => void;
   onDecline: () => void;
+  disabled?: boolean;
 }
 
 /** Hire and hand off is the answer the card expects, so it is the one
@@ -88,6 +89,7 @@ export function HandoffActions({
   onHandOff,
   onHireOnly,
   onDecline,
+  disabled = false,
 }: ActionsProps) {
   return (
     <div className="ms-auto flex max-w-full flex-wrap-reverse items-center justify-end gap-2">
@@ -95,6 +97,7 @@ export function HandoffActions({
         <Button
           variant="ghost"
           size="small"
+          disabled={disabled}
           onClick={onDecline}
           className="h-8 !min-w-0 px-3"
         >
@@ -103,6 +106,7 @@ export function HandoffActions({
         <Button
           variant="secondary"
           size="small"
+          disabled={disabled}
           onClick={onHireOnly}
           className="h-8 !min-w-0 px-3"
         >
@@ -112,6 +116,7 @@ export function HandoffActions({
       <Button
         variant="primary"
         size="small"
+        disabled={disabled}
         onClick={onHandOff}
         className="h-auto min-h-8 !min-w-0 max-w-full whitespace-normal !rounded-2xl px-3.5 py-1.5 text-center [overflow-wrap:anywhere]"
       >
@@ -132,12 +137,12 @@ export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
     return (
       <div
         role="status"
-        className="flex items-start gap-2 border-t border-zinc-100 px-4 py-3 text-sm text-zinc-600"
+        className="flex items-start gap-2 border-t border-separator px-4 py-3 text-sm text-foreground-secondary"
       >
         <Icon
           icon={Alert02Icon}
           size={16}
-          className="mt-0.5 shrink-0 text-amber-600"
+          className="mt-0.5 shrink-0 text-warning-foreground"
           aria-hidden
         />
         <p className="min-w-0 [overflow-wrap:anywhere]">
@@ -147,14 +152,14 @@ export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
     );
   }
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-zinc-100 px-4 py-3">
-      <p className="min-w-[min(100%,14rem)] flex-1 text-sm text-zinc-600 [overflow-wrap:anywhere]">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-separator px-4 py-3">
+      <p className="min-w-[min(100%,14rem)] flex-1 text-sm text-foreground-secondary [overflow-wrap:anywhere]">
         <HandoffSentence outcome={outcome} expertName={expertName} />
       </p>
       {outcome.link && (
         <NextLink
           href={outcome.link}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-800"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-base bg-surface px-3 py-1.5 text-sm font-medium text-foreground-emphasis shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
         >
           Open {possessive(expertName)} chat
           <Icon
@@ -170,7 +175,9 @@ export function HandoffStatusRow({ outcome, expertName }: StatusProps) {
 }
 
 function HandoffSentence({ outcome, expertName }: StatusProps) {
-  const name = <span className="font-medium text-zinc-800">{expertName}</span>;
+  const name = (
+    <span className="font-medium text-foreground-emphasis">{expertName}</span>
+  );
   if (outcome.status === "unconfirmed") {
     return (
       <>

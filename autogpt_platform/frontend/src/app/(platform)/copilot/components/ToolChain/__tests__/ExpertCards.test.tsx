@@ -455,14 +455,22 @@ describe("expert approval", () => {
     expect(screen.queryByRole("button", { name: "Undo decline" })).toBeNull();
   });
 
-  it("holds the send until the stream has settled", async () => {
+  it("takes no answer until the stream has settled, then sends on one click", async () => {
     const user = userEvent.setup();
     const { rerender } = renderGroup([proposal("Otto", "a")], {
       isCurrentlyStreaming: true,
     });
 
-    await user.click(screen.getByRole("button", { name: "Approve" }));
-    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
+    // Another proposal can still land and turn this into a pager, so an
+    // answer now could not do what the button says.
+    const approve = screen.getByRole("button", { name: "Approve" });
+    expect(approve).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Decline" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.click(approve);
+    expect(onSend).not.toHaveBeenCalled();
 
     rerender(
       <CopilotChatActionsProvider onSend={onSend}>
@@ -473,9 +481,10 @@ describe("expert approval", () => {
       </CopilotChatActionsProvider>,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Send decisions" }),
-    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Otto (confirmation_id: c-a).",
+    );
   });
 
   it("offers no send without a chat actions provider", async () => {
