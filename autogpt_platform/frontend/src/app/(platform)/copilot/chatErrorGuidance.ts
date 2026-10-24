@@ -30,8 +30,7 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     };
   if (error instanceof SendNotDeliveredError)
     return {
-      title:
-        "Your message didn't go through, so it's back in the message box. Send it again.",
+      title: "Your message didn't go through. Send it again.",
       action: null,
     };
   if (error instanceof ChatUnavailableError || status === 404)

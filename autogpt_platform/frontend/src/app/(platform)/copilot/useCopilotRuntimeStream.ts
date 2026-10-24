@@ -46,6 +46,8 @@ import {
   type TurnRuntime,
 } from "./stream/turnRuntime";
 import type { PersistedRow } from "./stream/turnLog";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { SESSION_COMPOSER_ID } from "./components/SendAtReset/helpers";
 import { useCopilotStop } from "./useCopilotStop";
 
 const NOTICE_TEXT = {
@@ -154,8 +156,18 @@ export function useCopilotRuntimeStream({
     // resend, never a newer send's, and its bubble is already gone. (A
     // kickoff never lands here: the runtime leaves it to the kickoff hook.)
     if (error instanceof SendNotDeliveredError) {
-      if (error.text && isComposerEmpty()) setInitialPrompt(error.text);
-      if (coord.lastSubmittedMessageText === error.text) clearRecovery();
+      if (!error.text) return;
+      if (isComposerEmpty()) {
+        setInitialPrompt(error.text);
+        if (coord.lastSubmittedMessageText === error.text) clearRecovery();
+        return;
+      }
+      // A new draft is in the composer: keep the recovery slot, as a refused
+      // send does, and show the text so it can be sent again.
+      toast({
+        title: "Your earlier message didn't go through",
+        description: error.text,
+      });
       return;
     }
     handleStreamError({
@@ -452,10 +464,11 @@ function textOf(input: { parts: UIMessage["parts"] }) {
   return input.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 }
 
+// An open chat's composer, or the new-chat one; a draft in either is kept.
 function isComposerEmpty() {
-  const composer = document.getElementById(
-    "chat-input",
-  ) as HTMLTextAreaElement | null;
+  const composer = document.querySelector<HTMLTextAreaElement>(
+    `#${SESSION_COMPOSER_ID}, #chat-input`,
+  );
   return !composer || composer.value.length === 0;
 }
 
