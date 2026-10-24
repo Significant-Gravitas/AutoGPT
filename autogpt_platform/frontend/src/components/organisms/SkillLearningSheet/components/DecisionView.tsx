@@ -36,7 +36,7 @@ export function DecisionView({
   return (
     <section
       aria-label="Needs your decision"
-      className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3"
+      className="flex flex-col gap-3 rounded-xl border border-warning-border bg-warning-surface/60 p-3"
     >
       <Text variant="small-medium" tone="primary">
         Needs your decision
@@ -46,7 +46,7 @@ export function DecisionView({
       </Text>
       <ul className="flex flex-col gap-2" aria-label="Proposed changes by step">
         {changes.map((change) => (
-          <li key={change.step} className="rounded-md bg-white p-2">
+          <li key={change.step} className="rounded-md bg-surface p-2">
             <Text variant="small-medium" tone="primary">
               {change.step}
             </Text>

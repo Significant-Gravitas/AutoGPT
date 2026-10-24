@@ -195,7 +195,9 @@ export function HostScopedCredentialsModal({
     >
       <Dialog.Content>
         {schema.description && (
-          <p className="mb-4 text-sm text-zinc-600">{schema.description}</p>
+          <p className="mb-4 text-sm text-foreground-secondary">
+            {schema.description}
+          </p>
         )}
 
         <Form {...form}>

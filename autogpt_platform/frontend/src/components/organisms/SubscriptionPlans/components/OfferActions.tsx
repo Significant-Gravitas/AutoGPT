@@ -24,7 +24,7 @@ export function OfferActions(props: Props) {
           size="small"
           className="w-full"
           loading={props.isStartingTrial}
-          disabled={props.isStartingTrial}
+          disabled={props.isStartingTrial || props.isUpdatingTier}
           onClick={props.onStartTrial}
         >
           {action}
@@ -56,11 +56,10 @@ export function OfferActions(props: Props) {
 
 function PaidPlanAction({
   plan,
-  billing,
   isUpdatingTier,
+  isStartingTrial,
   selectedPlan,
   onSelectPlan,
-  goalSurface,
   inline = false,
   price,
 }: Props & { inline?: boolean; price?: string | null }) {
@@ -73,15 +72,14 @@ function PaidPlanAction({
       type="button"
       variant={inline ? "link" : plan.highlighted ? "primary" : "secondary"}
       size="small"
-      className={inline ? "h-auto min-w-0 p-0 text-xs text-zinc-500" : "w-full"}
-      unmask={!inline}
+      className={
+        inline
+          ? "h-auto min-w-0 p-0 text-xs text-foreground-tertiary"
+          : "w-full"
+      }
       loading={isUpdatingTier && selectedPlan === plan.key}
-      disabled={isUpdatingTier}
+      disabled={isUpdatingTier || isStartingTrial}
       onClick={handleSelect}
-      data-fast-goal="plan_cta_click"
-      data-fast-goal-plan={plan.key.toLowerCase()}
-      data-fast-goal-cycle={billing}
-      data-fast-goal-surface={goalSurface}
     >
       {plan.cta}
       {price && ` · ${price}`}
@@ -92,12 +90,12 @@ function PaidPlanAction({
 function TrialActionDetails(props: Props) {
   const { paidActionPrice } = getPlanPresentation(props.plan, props);
   return (
-    <Text variant="small" tone="muted" unmask={false}>
+    <Text variant="small" tone="muted">
       Card required. No subscription charge today.{" "}
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-zinc-500"
+        className="h-auto min-w-0 p-0 text-xs text-foreground-tertiary"
         onClick={props.onTrialDetails}
       >
         Trial details
@@ -113,7 +111,6 @@ function AlternativeTrial({
   offer,
   onBillingChange,
   isStartingTrial,
-  goalSurface,
 }: Props & {
   offer: NonNullable<SubscriptionPlansProps["trialOffer"]>;
 }) {
@@ -126,16 +123,13 @@ function AlternativeTrial({
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-purple-500"
+        className="h-auto min-w-0 p-0 text-xs text-brand"
         disabled={isStartingTrial}
         onClick={handleSwitchCycle}
-        data-fast-goal="paywall_billing_toggle"
-        data-fast-goal-cycle={offer.billing_cycle}
-        data-fast-goal-surface={goalSurface}
       >
         Try {plan.name} for {offer.duration_days} days instead
       </Button>
-      <Text variant="small" tone="muted" unmask={false}>
+      <Text variant="small" tone="muted">
         Renews at {formatTrialPrice(offer)} + applicable tax.
       </Text>
     </div>

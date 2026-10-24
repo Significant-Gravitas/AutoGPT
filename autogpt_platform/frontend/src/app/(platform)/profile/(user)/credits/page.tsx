@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -42,7 +43,10 @@ function CoPilotUsageSection() {
   return (
     <div className="my-6 space-y-4">
       <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
-      <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+      <div
+        // TODO(tokens): no exact role (border-neutral-200 #E5E5E5)
+        className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4"
+      >
         {usage.daily && (
           <UsageBar
             label="Today"
@@ -87,6 +91,8 @@ export default function CreditsPage() {
   const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
+  const checkoutRedirect = useCheckoutRedirect();
+  const [isRequestingTopUp, setIsRequestingTopUp] = useState(false);
 
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [topUpTransactions, setTopUpTransactions] = useState<
@@ -132,10 +138,15 @@ export default function CreditsPage() {
 
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isRequestingTopUp || checkoutRedirect.isRedirecting) return;
     const form = e.currentTarget;
     const amount =
       parseInt(new FormData(form).get("topUpAmount") as string) * 100;
-    requestTopUp(amount).catch(toastOnFail("request top-up"));
+    setIsRequestingTopUp(true);
+    requestTopUp(amount)
+      .then(() => checkoutRedirect.markRedirecting())
+      .catch(toastOnFail("request top-up"))
+      .finally(() => setIsRequestingTopUp(false));
   };
 
   const submitAutoTopUpConfig = (e: React.FormEvent<HTMLFormElement>) => {
@@ -153,7 +164,10 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <h1
+        // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100); SECRT-3152 rare size (sm:text-[35px])
+        className="mb-6 text-heading font-normal leading-inherit text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]"
+      >
         Billing
       </h1>
 
@@ -167,15 +181,21 @@ export default function CreditsPage() {
         <div className="space-y-4">
           <h3 className="text-lg font-medium">Top-up Credits</h3>
 
-          <p className="mb-6 text-neutral-600 dark:text-neutral-400">
+          <p
+            // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
+            className="mb-6 text-neutral-600 dark:text-neutral-400"
+          >
             {topupStatus === "success" && (
-              <span className="text-green-500">
+              <span
+                // TODO(tokens): no exact role (text-green-500 #16A34A)
+                className="text-green-500"
+              >
                 Your payment was successful. Your credits will be updated
                 shortly. Try refreshing the page in case it is not updated.
               </span>
             )}
             {topupStatus === "cancel" && (
-              <span className="text-red-500">
+              <span className="text-error">
                 Payment failed. Your payment method has not been charged.
               </span>
             )}
@@ -185,6 +205,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="topUpAmount"
+                // TODO(tokens): no exact role (text-neutral-700 #404040)
                 className="mb-1 block text-neutral-700"
               >
                 Top-up amount (USD), minimum $5:
@@ -197,12 +218,17 @@ export default function CreditsPage() {
                 min="5"
                 step="1"
                 defaultValue={5}
+                // TODO(tokens): no exact role (border-slate-200 #CFD4DB, dark:border-slate-700, dark:bg-slate-800)
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
             </div>
 
-            <Button type="submit" className="w-full">
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
+            >
               Top-up
             </Button>
           </form>
@@ -214,6 +240,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="threshold"
+                // TODO(tokens): no exact role (text-neutral-700 #404040)
                 className="mb-1 block text-neutral-700"
               >
                 When my balance goes below this amount:
@@ -230,6 +257,7 @@ export default function CreditsPage() {
                 placeholder="Refill threshold, minimum $5"
                 min="5"
                 step="1"
+                // TODO(tokens): no exact role (border-slate-200 #CFD4DB, dark:border-slate-700, dark:bg-slate-800)
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
@@ -238,6 +266,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="autoTopUpAmount"
+                // TODO(tokens): no exact role (text-neutral-700 #404040)
                 className="mb-1 block text-neutral-700"
               >
                 Automatically refill my balance with this amount:
@@ -252,6 +281,7 @@ export default function CreditsPage() {
                 placeholder="Refill amount, minimum $5"
                 min="5"
                 step="1"
+                // TODO(tokens): no exact role (border-slate-200 #CFD4DB, dark:border-slate-700, dark:bg-slate-800)
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
@@ -295,7 +325,10 @@ export default function CreditsPage() {
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
           <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
-          <p className="text-neutral-600">
+          <p
+            // TODO(tokens): no exact role (text-neutral-600 #525252)
+            className="text-neutral-600"
+          >
             You can manage your cards and see your payment history in the
             billing portal.
           </p>
@@ -310,7 +343,12 @@ export default function CreditsPage() {
           {/* Transaction History */}
           <h3 className="text-lg font-medium">Transaction History</h3>
           {transactionHistory.transactions.length === 0 && (
-            <p className="text-neutral-600">No transactions found.</p>
+            <p
+              // TODO(tokens): no exact role (text-neutral-600 #525252)
+              className="text-neutral-600"
+            >
+              No transactions found.
+            </p>
           )}
           <Table
             className={
@@ -343,7 +381,8 @@ export default function CreditsPage() {
                   {/* Make it green if it's positive, red if it's negative */}
                   <TableCell
                     className={
-                      transaction.amount > 0 ? "text-green-500" : "text-red-500"
+                      // TODO(tokens): no exact role (text-green-500 #16A34A)
+                      transaction.amount > 0 ? "text-green-500" : "text-error"
                     }
                   >
                     <b>{formatCredits(transaction.amount)}</b>

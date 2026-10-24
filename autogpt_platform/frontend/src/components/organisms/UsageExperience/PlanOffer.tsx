@@ -59,28 +59,34 @@ export function PlanOffer({
   return (
     <section
       aria-label={`${name} plan`}
+      // TODO(tokens): no role for the purple-200 border or the purple-50 to
+      // blue-50 gradient.
       className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-5 sm:p-6"
     >
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-purple-200 bg-white text-purple-600 min-[360px]:flex">
+          <span
+            // TODO(tokens): no role for the purple-200 border or purple-600
+            // icon.
+            className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-purple-200 bg-surface text-purple-600 min-[360px]:flex"
+          >
             <Icon icon={SparklesIcon} size={20} />
           </span>
           <div>
             <Text variant="h4" className="!text-xl">
               {name}
             </Text>
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" tone="muted">
               Billed {cycle}
             </Text>
           </div>
         </div>
         {amount && (
           <div className="shrink-0 text-right">
-            <Text variant="h4" className="!text-2xl" unmask={!freshUsage}>
+            <Text variant="h4" className="!text-2xl">
               {amount}
             </Text>
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" tone="muted">
               per {cycle === "yearly" ? "year" : "month"} + tax
             </Text>
           </div>
@@ -90,11 +96,13 @@ export function PlanOffer({
         {features.map((feature) => (
           <li
             key={feature}
-            className="flex gap-2.5 text-sm leading-5 text-zinc-700"
+            className="flex gap-2.5 text-sm leading-5 text-foreground-body"
           >
             <Icon
               icon={Tick02Icon}
               size={16}
+              // TODO(tokens): no role for the purple-600 icon; brand-hover is a
+              // hover fill.
               className="mt-0.5 shrink-0 text-purple-600"
             />
             {feature}
@@ -105,7 +113,6 @@ export function PlanOffer({
         className="w-full"
         onClick={onUpgrade}
         disabled={disabled}
-        unmask={!freshUsage}
         rightIcon={<Icon icon={ArrowRight02Icon} size={16} />}
       >
         {actionLabel ??
@@ -115,10 +122,7 @@ export function PlanOffer({
               ? `Start Pro now${amount ? ` · ${amount}` : ""}`
               : "Start Pro")}
       </Button>
-      <Text
-        variant="small"
-        className="mt-3 text-center !text-xs !text-zinc-500"
-      >
+      <Text variant="small" tone="muted" className="mt-3 text-center !text-xs">
         {freshUsage
           ? "You’ll see the full charge before you pay."
           : tier === "MAX"

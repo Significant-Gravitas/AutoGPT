@@ -30,6 +30,7 @@ export function TrialCardContent({
     error,
     retry,
     isStarting,
+    isBlocked,
     isCanceling,
     isResuming,
     startTrial,
@@ -45,6 +46,7 @@ export function TrialCardContent({
       <Skeleton
         className={cn(
           "w-full",
+          // TODO(tokens): no radius token for 18px.
           isBilling ? "h-28 rounded-[18px]" : "h-36 rounded-2xl",
         )}
       />
@@ -63,6 +65,7 @@ export function TrialCardContent({
         <TrialOffer
           trial={trial}
           isStarting={isStarting}
+          isBlocked={isBlocked}
           onStart={startTrial}
         />
       ) : (
@@ -107,11 +110,17 @@ export function TrialCardContent({
   return (
     <section
       aria-label="AutoGPT trial"
+      // TODO(tokens): no role for the zinc-300 to zinc-500 gradient border.
       className="w-full rounded-2xl bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px"
     >
-      <div className="relative overflow-hidden rounded-[15px] bg-white p-5 md:p-6">
+      <div
+        // TODO(tokens): no radius token for 15px, the 16px card inside its 1px
+        // border.
+        className="relative overflow-hidden rounded-[15px] bg-surface p-5 md:p-6"
+      >
         <div
           aria-hidden
+          // TODO(tokens): no token for the purple and indigo radial glow.
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(168,85,247,0.10),transparent_60%),radial-gradient(120%_60%_at_100%_100%,rgba(99,102,241,0.06),transparent_60%)]"
         />
         <div className="relative">{body}</div>

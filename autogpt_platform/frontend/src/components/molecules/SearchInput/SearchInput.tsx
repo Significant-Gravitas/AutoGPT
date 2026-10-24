@@ -17,14 +17,17 @@ interface Props {
   disabled?: boolean;
   loading?: boolean;
   maxLength?: number;
+  name?: string;
+  autoComplete?: string;
+  spellCheck?: boolean;
   size?: "xsmall" | "small" | "medium";
   className?: string;
 }
 
 const sizeStyles = {
-  xsmall: "h-7 rounded-md pl-8 pr-7 text-xs leading-5",
-  small: "h-[36px] pl-10 pr-9 text-sm leading-[22px]",
-  medium: "h-[46px] pl-12 pr-10 text-sm leading-[22px]",
+  xsmall: "h-7 rounded-md pl-8 pr-7 text-caption leading-5",
+  small: "h-[36px] pl-10 pr-9 text-body leading-5.5",
+  medium: "h-[46px] pl-12 pr-10 text-body leading-5.5",
 } as const;
 
 const iconOffset = {
@@ -43,6 +46,9 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
       disabled,
       loading,
       maxLength,
+      name,
+      autoComplete,
+      spellCheck,
       size = "medium",
       className,
     },
@@ -68,6 +74,9 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           aria-label={ariaLabel ?? placeholder}
           disabled={disabled}
           maxLength={maxLength}
+          name={name}
+          autoComplete={autoComplete}
+          spellCheck={spellCheck}
           className={cn(
             "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
             sizeStyles[size],

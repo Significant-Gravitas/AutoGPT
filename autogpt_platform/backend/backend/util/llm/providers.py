@@ -48,9 +48,11 @@ from pydantic.dataclasses import dataclass
 
 from backend.data.llm_registry.llm_models import (
     CLAUDE_5_FAMILY_PREFIXES,
+    MODEL_DATE_SUFFIX_RE,
     strip_anthropic_vendor_prefix,
 )
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.egress_proxy import egress_proxy_url
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -67,7 +69,7 @@ from backend.util.openai_responses import (
     extract_responses_tool_calls,
     extract_responses_usage,
 )
-from backend.util.request import validate_url_host
+from backend.util.request import parse_url, validate_url_host
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -161,6 +163,51 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
     )
 
 
+# Anthropic's newest models reject a forced ``tool_choice`` (``{"type":
+# "tool", ...}`` or ``{"type": "any"}``) with a 400 — ``tool_choice: type
+# "tool" and "any" are not supported for this model.`` — on the Messages API
+# and on the Message Batches API, where it only comes back hours later in the
+# result rows. ``tool_use.structured_tool_choice`` sends ``auto`` to these
+# models instead. The dream pass's sync call also retries once with ``auto``
+# on that exact error (``is_forced_tool_choice_rejection``), so an unlisted
+# model self-heals there; batch submissions rely on this list alone.
+#
+# Maintained apart from the temperature list above because the two
+# restrictions cover different models: every Claude 5 model and Opus 4.7/4.8
+# reject ``temperature``, but only these reject a forced tool — Sonnet 5 and
+# Opus 5 still honour one. Hence exact native slugs rather than family
+# prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
+# after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
+# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
+# Mythos 5.1 line; add a model here when it documents the same for another.
+_ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
+    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+)
+
+
+def anthropic_accepts_forced_tool_choice(model: str) -> bool:
+    """False for a model that answers a forced ``tool_choice`` with a 400,
+    in any spelling: ``anthropic/claude-opus-5.5``, ``claude-opus-5-5`` or a
+    dated snapshot of either."""
+    native = strip_anthropic_vendor_prefix(model).replace(".", "-")
+    return (
+        MODEL_DATE_SUFFIX_RE.sub("", native)
+        not in _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED
+    )
+
+
+def is_forced_tool_choice_rejection(exc: BaseException) -> bool:
+    """Whether *exc* is Anthropic's 400 for a forced ``tool_choice`` on a
+    model that takes none: an ``anthropic.BadRequestError`` reading
+    ``tool_choice: type "tool" and "any" are not supported for this
+    model.`` Nothing else counts, not even another error quoting that text:
+    a 5xx or a failure of our own is not a reason to drop the forced tool."""
+    if not isinstance(exc, anthropic.BadRequestError):
+        return False
+    error_text = str(exc).lower()
+    return "tool_choice" in error_text and "not supported" in error_text
+
+
 # ---------------------------------------------------------------------------
 # Result + submission carriers
 # ---------------------------------------------------------------------------
@@ -183,6 +230,7 @@ class ProviderResponse:
     tool_calls: list[ToolContentBlock] | None = None
     reasoning: str | None = None
     cost_usd: float | None = None
+    stop_reason: str | None = None
     # Provider-native response object for callers that need raw access.
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_response: Any = Field(default=None, repr=False, exclude=True)
@@ -550,7 +598,9 @@ async def _call_anthropic_messages(
     an_tools = convert_openai_tool_fmt_to_anthropic(tools)
     # Cache tool definitions alongside the system prompt — placing
     # cache_control on the last tool caches all tool schemas as a
-    # single prefix; reads cost 10% of normal input tokens.
+    # single prefix. Cache reads bill at a fraction of the input rate:
+    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1 (the
+    # catalog's provider cache-read prices carry each model's figure).
     if isinstance(an_tools, list) and an_tools:
         an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
 
@@ -657,6 +707,7 @@ async def _call_anthropic_messages(
         or 0,
         tool_calls=tool_calls,
         reasoning=reasoning,
+        stop_reason=resp.stop_reason,
         raw_response=resp,
     )
 
@@ -710,6 +761,46 @@ async def _call_groq(
 # Ollama (local-runner chat API)
 # ---------------------------------------------------------------------------
 
+_OLLAMA_DEFAULT_PORT = 11434
+_SCHEME_PORTS = {"http": 80, "https": 443}
+
+
+def _ollama_url(host: str) -> str:
+    """*host* as a URL naming the port Ollama's client would connect to: 11434
+    for a host given with neither scheme nor port, otherwise its scheme's."""
+    url = parse_url(host)
+    # parse_url adds "http://" itself to a host that names no scheme.
+    scheme_given = "://" in host.replace("\\", "/")
+    port = _SCHEME_PORTS.get(url.scheme) if scheme_given else _OLLAMA_DEFAULT_PORT
+    if url.port is None and port is not None:
+        url = url._replace(netloc=f"{url.netloc}:{port}")
+    return url.geturl()
+
+
+def _configured_ollama_url() -> httpx.URL | None:
+    try:
+        return httpx.URL(_ollama_url(settings.config.ollama_host))
+    except (ValueError, httpx.InvalidURL):
+        return None
+
+
+async def _scope_ollama_key(request: httpx.Request) -> None:
+    """Drop the process's OLLAMA_API_KEY, which ollama.AsyncClient sends with
+    every request, redirects included, unless this request goes to the
+    configured Ollama endpoint itself, in scheme, host and port alike.
+
+    Being trusted is not enough: trust ignores the scheme, lets any port
+    through for an entry configured without one, and covers the copilot's chat
+    endpoint. httpx also keeps the header on an http-to-https redirect."""
+    url, configured = request.url, _configured_ollama_url()
+    # Both read by httpx: IDNA-encoded host, a scheme's default port as None.
+    if configured is None or (url.scheme, url.raw_host, url.port) != (
+        configured.scheme,
+        configured.raw_host,
+        configured.port,
+    ):
+        request.headers.pop("authorization", None)
+
 
 async def _call_ollama(
     *,
@@ -727,7 +818,16 @@ async def _call_ollama(
 
     # SSRF guard — the host can be user-supplied (block-layer input
     # field), so it must match an operator-configured trust list.
-    await validate_url_host(ollama_host, trusted_hostnames=_trusted_ollama_hostnames())
+    checked, is_trusted, _ = await validate_url_host(
+        _ollama_url(ollama_host), trusted_hostnames=_trusted_ollama_hostnames()
+    )
+    if checked.port == 0:
+        # Ollama's client reads port 0 as no port and connects to its default.
+        raise ValueError(f"Ollama host {ollama_host!r} has an invalid port")
+    # Connect to the URL that was checked, never the raw input: Ollama's own
+    # parser reads some spellings (a backslash before "@", a leading "//") as a
+    # different host.
+    host = checked.geturl()
 
     # ``num_predict`` is Ollama's OUTPUT token cap. ``num_ctx`` (the
     # input context window) is deliberately left at the model default —
@@ -737,14 +837,13 @@ async def _call_ollama(
     if temperature is not None:
         options["temperature"] = temperature
 
-    client = ollama.AsyncClient(
-        host=ollama_host, timeout=request_timeout(timeout_seconds)
-    )
-    response = await client.chat(
+    response = await _send_ollama_chat(
+        host,
+        is_trusted=is_trusted,
+        timeout_seconds=timeout_seconds,
         model=model,
         messages=messages,
-        stream=False,
-        format="json" if force_json_output else None,
+        json_format=force_json_output,
         options=options,
     )
     return ProviderResponse(
@@ -753,6 +852,51 @@ async def _call_ollama(
         completion_tokens=response.eval_count or 0,
         raw_response=response,
     )
+
+
+async def _send_ollama_chat(
+    host: str,
+    *,
+    is_trusted: bool,
+    timeout_seconds: float,
+    model: str,
+    messages: list[dict],
+    json_format: bool,
+    options: dict[str, Any],
+) -> ollama.ChatResponse:
+    """Send one chat to the checked *host*, connecting the way its trust
+    allows."""
+    client_kwargs: dict[str, Any] = {
+        "host": host,
+        "timeout": request_timeout(timeout_seconds),
+        "event_hooks": {"request": [_scope_ollama_key]},
+    }
+    if not is_trusted:
+        # The host passed the address check, but ollama.AsyncClient hands the
+        # name to httpx, which resolves it again to connect and follows
+        # redirects on its own: a changed DNS answer or a redirect could still
+        # reach an internal address. The egress proxy checks every address it
+        # dials, on every hop. Trusted operator hosts connect without it: they
+        # are usually loopback, which the public-only proxy refuses.
+        client_kwargs["proxy"] = egress_proxy_url()
+
+    client = ollama.AsyncClient(**client_kwargs)
+    try:
+        return await client.chat(
+            model=model,
+            messages=messages,
+            stream=False,
+            format="json" if json_format else None,
+            options=options,
+        )
+    except httpx.ProxyError as e:
+        if is_trusted:
+            raise
+        # httpx's wording names a proxy the user never configured.
+        raise ConnectionError(
+            f"Could not connect to Ollama at {host}: it is unreachable or "
+            "not on a public address."
+        ) from e
 
 
 def _trusted_ollama_hostnames() -> list[str]:
@@ -1299,6 +1443,21 @@ class BatchResultRow:
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_result: Any = Field(default=None, repr=False, exclude=True)
 
+    def with_content(self, content: str) -> BatchResultRow:
+        """This row with *content* in place of the provider's text, every
+        other field kept: the dream callback stores the JSON it parsed out
+        of a text answer."""
+        return BatchResultRow(
+            custom_id=self.custom_id,
+            content=content,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cache_read_tokens=self.cache_read_tokens,
+            cache_creation_tokens=self.cache_creation_tokens,
+            error=self.error,
+            raw_result=self.raw_result,
+        )
+
 
 async def poll_batch(
     *, provider: ProviderLiteral, provider_batch_id: str, api_key: str
@@ -1377,6 +1536,11 @@ async def download_batch_results(
                     output_tokens=output_tokens,
                     cache_read_tokens=cache_read,
                     cache_creation_tokens=cache_creation,
+                    error=(
+                        "max_tokens"
+                        if message is not None and message.stop_reason == "max_tokens"
+                        else None
+                    ),
                     raw_result=entry,
                 )
             )
@@ -1416,28 +1580,24 @@ def _anthropic_answer_blocks(
 def _anthropic_content_to_text(message: anthropic.types.Message | None) -> str:
     """Flatten an Anthropic ``message.content`` blob into a string.
 
-    Three shapes the BatchExecutor's downstream parser handles:
-      * Single ``text`` block → return its ``text``.
-      * Single ``tool_use`` block → return ``json.dumps(input)``. This
-        is the "structured output" path (forced ``tool_choice`` makes
-        Claude emit exactly one tool_use block; the dream pass parses
-        the JSON straight into a Pydantic model).
-      * Multi-block / unknown → join all ``text`` blocks with newlines.
+    Two shapes the BatchExecutor's downstream parser handles:
+      * A ``tool_use`` block → ``json.dumps(input)`` of the first one. This
+        is the "structured output" path: the dream pass offers one output
+        tool, forced where the model accepts that (exactly one tool_use
+        block) and left to the model's choice (``auto``) where it doesn't,
+        in which case a short text block can come before the call. The
+        dream pass parses the JSON straight into a Pydantic model.
+      * No ``tool_use`` block → the ``text`` blocks joined with newlines
+        (a single text block comes back as is).
 
     Returns ``""`` when the message is missing or empty.
     """
     content = _anthropic_answer_blocks(message)
-    if not content:
-        return ""
-    first = content[0]
-    first_type = first.type
-    if first_type == "tool_use" and len(content) == 1:
-        return json_module.dumps(getattr(first, "input", {}) or {})
-    if first_type == "text" and len(content) == 1:
-        return getattr(first, "text", "") or ""
-    # Multi-block fallback — concatenate text blocks.
-    parts: list[str] = []
-    for block in content:
-        if getattr(block, "type", None) == "text":
-            parts.append(getattr(block, "text", "") or "")
-    return "\n".join(parts)
+    tool_use = next((block for block in content if block.type == "tool_use"), None)
+    if tool_use is not None:
+        return json_module.dumps(getattr(tool_use, "input", {}) or {})
+    return "\n".join(
+        getattr(block, "text", "") or ""
+        for block in content
+        if getattr(block, "type", None) == "text"
+    )

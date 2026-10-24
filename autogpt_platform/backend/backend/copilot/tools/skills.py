@@ -65,6 +65,7 @@ from backend.data.db_accessors import (
     skill_deletion_db,
     skill_versions_db,
     workspace_db,
+    workspace_skill_db,
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
@@ -97,7 +98,8 @@ from backend.data.workspace_scope import (
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.workspace import WorkspaceManager
+from backend.util.settings import Config
+from backend.util.workspace import SkillPackageFile, WorkspaceManager
 from backend.util.workspace_storage import compute_file_checksum
 
 if TYPE_CHECKING:
@@ -354,6 +356,14 @@ def budget_origin(skill: ParsedSkill) -> str:
     """The budget a stored skill fills: its recorded origin, or the owner's
     for a row that has none."""
     return skill.origin or SKILL_ORIGIN_USER
+
+
+def _keeps_install(origin: str | None, baseline: SkillBaseline | None) -> bool:
+    """An installed copy that records its install stays installed when its
+    owner edits it: the write keeps its marketplace origin and the baseline a
+    later update merges into. :func:`_write_skill` and
+    :func:`saved_skill_limit_reached` both decide by this."""
+    return origin == SKILL_ORIGIN_MARKETPLACE and baseline is not None
 
 
 def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | None:
@@ -1146,7 +1156,8 @@ async def store_user_skills(
 ) -> list[StoredSkill | Exception]:
     """:func:`store_user_skill` for several skills under one write lock and
     one listing of the owner's folder; returns each write's outcome in order,
-    so one bad skill fails alone."""
+    so one bad skill fails alone. File/storage configuration is read once
+    per batch; each package still checks the current storage quota."""
     outcomes: list[StoredSkill | Exception | None] = []
     prepared: list[tuple[int, _PreparedSkill]] = []
     for write in writes:
@@ -1167,12 +1178,9 @@ async def store_user_skills(
         existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
         same_origin = {s.name for s in existing if budget_origin(s) == origin}
         owners = {s.name for s in existing if s.origin == SKILL_ORIGIN_USER}
-        copies = {
-            s.name: s
-            for s in existing
-            if s.origin == SKILL_ORIGIN_MARKETPLACE and s.baseline is not None
-        }
+        copies = {s.name: s for s in existing if _keeps_install(s.origin, s.baseline)}
         stored: list[tuple[int, str]] = []
+        config: Config | None = None
         for index, skill in prepared:
             # A batch outlasts one lease, so renew it before each skill. Once
             # it is lost another writer may hold the key: finish best-effort,
@@ -1206,8 +1214,17 @@ async def store_user_skills(
                         )
                     )
                 is_new = skill.parsed.name not in same_origin
+                if config is None:
+                    config = Config()
                 checksums = await _write_skill(
-                    manager, skill, expert_id, origin, same_origin, owners, copies
+                    manager,
+                    skill,
+                    expert_id,
+                    origin,
+                    same_origin,
+                    owners,
+                    copies,
+                    config,
                 )
             except Exception as e:
                 outcomes[index] = e
@@ -1514,6 +1531,7 @@ async def _write_skill(
     same_origin: set[str],
     owners: set[str],
     copies: Mapping[str, ParsedSkill],
+    config: Config,
 ) -> frozenset[str]:
     """Write one prepared package; return the SHA-256 of every file written.
 
@@ -1550,61 +1568,46 @@ async def _write_skill(
         metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
     stale = await _stale_files(manager, folder, name, skill)
-    # The root is what indexes the skill, so it goes last: a new skill
-    # that fails part-way is never indexed.  An upsert cannot be made
-    # atomic here — the old bytes are gone once overwritten.  Serial
-    # because ``write_file``'s quota check is read-then-write.
-    existing_paths = {f.path for f in stale}
     current = {f.path: f for f in stale}
     written: set[str] = set()
     checksums: set[str] = set()
-    try:
-        for entry in skill.files or []:
-            path = f"{folder}/{name}/{entry.relative_path}"
-            written.add(path)
-            digest = compute_file_checksum(entry.content)
-            kept = current.get(path)
-            if (
-                kept is not None
-                and kept.checksum == digest
-                and kept.is_executable == entry.is_executable
-            ):
-                # Same bytes already there: a delta write leaves it alone.
-                checksums.add(digest)
-                continue
-            await manager.write_file(
-                content=entry.content,
-                filename=entry.relative_path.rsplit("/", 1)[-1],
+    changed: list[SkillPackageFile] = []
+    for entry in skill.files or []:
+        path = f"{folder}/{name}/{entry.relative_path}"
+        written.add(path)
+        digest = compute_file_checksum(entry.content)
+        checksums.add(digest)
+        kept = current.get(path)
+        if (
+            kept is not None
+            and kept.checksum == digest
+            and kept.is_executable == entry.is_executable
+        ):
+            # Same bytes already there: a delta write leaves it alone.
+            continue
+        changed.append(
+            SkillPackageFile(
                 path=path,
-                mime_type=None,
-                overwrite=True,
-                metadata=({_META_EXECUTABLE: True} if entry.is_executable else None),
-                scanned_checksums=skill.scanned_checksums,
+                content=entry.content,
+                metadata={_META_EXECUTABLE: True} if entry.is_executable else None,
             )
-            checksums.add(digest)
-        await _delete_paths(
-            manager,
-            {f.path for f in stale if f.path not in written},
-            stale,
-            strict=True,
         )
-        skill_md = skill.rendered.encode("utf-8")
-        await manager.write_file(
-            content=skill_md,
-            filename="SKILL.md",
+    skill_md = skill.rendered.encode("utf-8")
+    # One change for the whole package: a failure leaves the previous
+    # package as it was, never new files beside an old SKILL.md.
+    await manager.write_skill_package(
+        root=SkillPackageFile(
             path=_skill_md_path(name, expert_id),
+            content=skill_md,
             mime_type="text/markdown",
-            overwrite=True,
             metadata=metadata,
-            scanned_checksums=skill.scanned_checksums,
-        )
-        checksums.add(compute_file_checksum(skill_md))
-    except Exception:
-        # Not a rollback: a file already here keeps the new bytes, so an
-        # upsert can fail mixed. Undo only what this call created — deleting
-        # the rest would turn a failed write into a lost file.
-        await _delete_paths(manager, written - existing_paths)
-        raise
+        ),
+        files=changed,
+        removed_paths=sorted(f.path for f in stale if f.path not in written),
+        scanned_checksums=skill.scanned_checksums,
+        config=config,
+    )
+    checksums.add(compute_file_checksum(skill_md))
     return frozenset(checksums)
 
 
@@ -1630,30 +1633,6 @@ async def _stale_files(
             f"'{name}' changed while its update was prepared; it is compared again"
         )
     return [info for path, info in listed.items() if path != SKILL_MD]
-
-
-async def _delete_paths(
-    manager: WorkspaceManager,
-    paths: set[str],
-    known: list[SkillFileInfo] | None = None,
-    *,
-    strict: bool = False,
-) -> None:
-    """Require stale-file removal for exact replacements; cleanup is best-effort."""
-    ids = {f.path: f.file_id for f in known or []}
-    for path in paths:
-        try:
-            file_id = ids.get(path)
-            if file_id is None:
-                info = await manager.get_file_info_by_path(path)
-                if info is None:
-                    continue
-                file_id = info.id
-            await manager.delete_file(file_id)
-        except Exception:
-            if strict:
-                raise
-            logger.warning("[skills] failed to delete %s", path, exc_info=True)
 
 
 async def _parse_skill_from_workspace(
@@ -1898,6 +1877,28 @@ async def invalidate_skills_index_cache(
         pass
 
 
+async def saved_skill_limit_reached(
+    user_id: str, expert_id: str | None, name: str
+) -> bool:
+    """Whether saving ``name`` as the owner's skill would need a saved-skill
+    slot the owner no longer has, by the same count of live roots the
+    workspace enforces. A marketplace copy that records its install stays
+    installed when edited (:func:`_keeps_install`) and needs no saved slot;
+    any other root moves into, or already fills, the saved budget."""
+    workspace = await workspace_db().get_or_create_workspace(user_id)
+    path = _skill_md_path(name, expert_id)
+    root = await workspace_db().get_workspace_file_by_path(workspace.id, path)
+    meta = root.metadata if root is not None and root.metadata else {}
+    origin = (
+        SKILL_ORIGIN_MARKETPLACE
+        if _keeps_install(_skill_origin(meta), _baseline_from_metadata(meta))
+        else SKILL_ORIGIN_USER
+    )
+    return not await workspace_skill_db().skill_root_has_room(
+        workspace.id, path, origin
+    )
+
+
 async def list_user_skills(
     user_id: str,
     expert_id: str | None = None,
@@ -2044,8 +2045,10 @@ async def _reconcile_marketplace_copies(
             "[skills] could not read active marketplace versions", exc_info=True
         )
         return skills
-    manager = await _get_user_skill_manager(user_id, scope)
     backoff = await _read_update_backoff(user_id, expert_id)
+    # Looked up for the first copy that is actually updated: on most cold
+    # turns every copy is current, and the lookup is a database round trip.
+    manager: WorkspaceManager | None = None
     flags: dict[str, str] = {}
     rewritten: list[str] = []
     failed: dict[str, str] = {}
@@ -2072,6 +2075,8 @@ async def _reconcile_marketplace_copies(
         # An attempt spends budget whether or not it lands, so copies that
         # cannot be updated bound the turn like the ones that can.
         budget -= 1
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current

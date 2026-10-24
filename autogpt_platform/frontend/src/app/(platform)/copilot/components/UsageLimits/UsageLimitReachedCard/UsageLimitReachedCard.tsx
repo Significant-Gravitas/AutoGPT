@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -19,6 +20,10 @@ import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
 export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
   const state = useUsageLimitReachedCard(props);
+  // Relative to the clock, so read on every render rather than cached.
+  const resetSentence = useReadEveryRender(() =>
+    state.wait ? budgetResetSentence(state.wait) : null,
+  );
   if (state.isLoading || (!state.experience.blocked && !state.isError))
     return null;
   const copy = usagePresentation(state.experience, state.offer.usageMultiplier);
@@ -63,17 +68,13 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
               ? budgetOutTitle(state.wait.window)
               : copy.noticeTitle}
       </Text>
-      <Text
-        variant="small"
-        unmask={!due}
-        className="mt-2 !leading-5 !text-zinc-500"
-      >
+      <Text variant="small" className="mt-2 !leading-5 !text-zinc-500">
         {state.isRefreshing
           ? "Refreshing your plan and usage…"
           : state.isError
             ? "Your work is saved. Try again to check your allowance."
             : state.wait
-              ? budgetResetSentence(state.wait)
+              ? resetSentence
               : copy.description}
       </Text>
       {state.wait && (
@@ -89,7 +90,6 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             size="small"
             onClick={state.upgrade}
             disabled={state.offer.disabled}
-            unmask={!state.experience.freshProUsage}
             rightIcon={<Icon icon={ArrowRight02Icon} size={14} />}
           >
             {getUsageOfferAction(state.experience, state.offer)}

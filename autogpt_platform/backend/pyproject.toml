@@ -8,7 +8,8 @@ packages = [{ include = "backend", format = "sdist" }]
 
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.14"
+python = ">=3.11,<3.14"
+async-timeout = {version = "^5.0.1", python = "<3.11"}
 aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = ">=3.5,<5.0"
@@ -26,7 +27,7 @@ discord-py = "^2.5.2"
 e2b = "^2.15.2"
 e2b-code-interpreter = "^2.0"
 elevenlabs = "^1.50.0"
-falkordb = "^1.1.2"
+falkordb = "^1.7.0"
 fastapi = "^0.128.6"
 feedparser = "^6.0.11"
 flake8 = "^7.3.0"
@@ -38,13 +39,19 @@ gravitasml = "^0.1.4"
 graphiti-core = ">=0.28.2,<0.31.0"
 groq = ">=0.30,<1.8"
 html2text = "^2024.2.26"
+# SOCKS support for the egress proxy that untrusted Ollama hosts connect through.
+httpx = { extras = ["socks"], version = "^0.28.1" }
 jinja2 = "^3.1.6"
 jsonref = "^1.1.0"
 jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
 launchdarkly-server-sdk = "^9.14.1"
+markdown-it-py = "^4.0.0"
 mem0ai = "^0.1.115"
-moviepy = "^2.1.2"
+# Pinned to an upstream master commit until a moviepy release allows pillow 13
+# (every release up to 2.2.1 caps pillow below 12). Switch back to the release
+# then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057.
+moviepy = { git = "https://github.com/Zulko/moviepy.git", rev = "4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec" }
 ollama = "^0.6.1"
 openai = "^1.97.1"
 orjson = "^3.10.0"
@@ -106,15 +113,15 @@ pymssql = "^2.3.2"
 pymysql = "^1.1.1"
 pyarrow = "^23.0.0"
 sqlparse = ">=0.5.5,<0.7.0"
-pillow = ">=9.1.0,<12"
+pillow = ">=13.0.0,<14"
 pypdfium2 = "^5.8.0"
 tavily-python = ">=0.7.26,<0.9.0"
+publicsuffixlist = "1.1.0.20261010"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = ">=38.2,<41.0"
-httpx = "^0.28.1"
 isort = "^5.13.2"
 poethepoet = ">=0.41,<0.49"
 pre-commit = "^4.4.0"
@@ -122,7 +129,7 @@ pyright = "^1.1.407"
 pytest-cov = "^7.1.0"
 pytest-mock = "^3.15.1"
 pytest-watcher = "^0.6.3"
-ruff = ">=0.15,<0.17"
+ruff = ">=0.15,<0.18"
 # NOTE: please insert new dependencies in their alphabetical location
 
 [build-system]
@@ -153,6 +160,7 @@ export-api-schema = "backend.cli.generate_openapi_json:main"
 gen-prisma-stub = "scripts.gen_prisma_types_stub:main"
 brain-dump-eval = "backend.api.features.onboarding_dump.brain_dump_eval:main"
 expert-style-eval = "backend.copilot.eval.style.runner:main"
+memory-schedule-backfill = "backend.copilot.dream.registry_backfill:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
 publish-skills-catalog = "backend.cli.publish_skills_catalog:main"
 

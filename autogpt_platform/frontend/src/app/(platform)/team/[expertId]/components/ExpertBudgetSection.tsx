@@ -27,7 +27,9 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
       aria-label={`${expert.name} budget`}
       style={
         color
-          ? { color: `color-mix(in srgb, ${color} 55%, #18181b)` }
+          ? {
+              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
+            }
           : undefined
       }
       className={cn("flex w-full shrink-0 flex-col gap-1.5", className)}
@@ -47,14 +49,13 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
             size="icon-xs"
             leadingIcon={PencilEdit02Icon}
             aria-label="Edit budget"
-            className={cn(color && "text-inherit hover:bg-white/50")}
+            className={cn(color && "text-inherit hover:bg-surface/50")}
             onClick={() => setIsEditOpen(true)}
           />
         </div>
         <Text
           variant="body-medium"
           tone="secondary"
-          unmask={false}
           className={cn("tabular-nums", color && "!text-inherit")}
         >
           {weeklySpend

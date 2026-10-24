@@ -109,14 +109,16 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.DRAFT]: {
     label: "Draft",
     Icon: Clock01Icon,
-    pillClass: "bg-zinc-100 text-zinc-700 ring-1 ring-inset ring-zinc-200",
+    pillClass:
+      "bg-surface-hover text-foreground-body ring-1 ring-inset ring-border-base",
     dotClass: "bg-zinc-400",
   },
   [SubmissionStatus.PENDING]: {
     label: "In review",
     Icon: Clock01Icon,
-    pillClass: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
-    dotClass: "bg-amber-500",
+    pillClass:
+      "bg-warning-surface text-amber-800 ring-1 ring-inset ring-warning-border",
+    dotClass: "bg-warning",
   },
   [SubmissionStatus.APPROVED]: {
     label: "Approved",

@@ -25,6 +25,8 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.user import is_user_banned
+
 from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
@@ -652,11 +654,19 @@ async def refresh_tokens(
     if rt.expiresAt < now:
         raise InvalidGrantError("refresh token expired")
 
-    # Revoke old refresh token
-    await PrismaOAuthRefreshToken.prisma().update(
-        where={"token": token_hash},
+    # Before the revoke, so the app's grant still works once a ban is lifted.
+    if await is_user_banned(rt.userId):
+        raise InvalidGrantError("the account this token belongs to is banned")
+
+    # Revoke the old token atomically: the checks above read a snapshot, so two
+    # concurrent refreshes can both pass them. Only the request whose
+    # conditional write flips revokedAt from NULL may mint new tokens.
+    revoked = await PrismaOAuthRefreshToken.prisma().update_many(
+        where={"token": token_hash, "revokedAt": None},
         data={"revokedAt": now},
     )
+    if revoked != 1:
+        raise InvalidGrantError("refresh token has been revoked")
 
     # Create new access and refresh tokens with same scopes
     scopes = [APIPermission(s) for s in rt.scopes]
@@ -739,6 +749,8 @@ async def introspect_token(
     if token_type_hint != "refresh_token":
         try:
             token_info, app = await validate_access_token(token)
+            if await is_user_banned(token_info.user_id):
+                return TokenIntrospectionResult(active=False)
             return TokenIntrospectionResult(
                 active=True,
                 scopes=list(s.value for s in token_info.scopes),
@@ -759,7 +771,9 @@ async def introspect_token(
     if refresh_token and refresh_token.revokedAt is None:
         # Check if valid (not expired)
         now = datetime.now(timezone.utc)
-        if refresh_token.expiresAt > now:
+        if refresh_token.expiresAt > now and not await is_user_banned(
+            refresh_token.userId
+        ):
             app = await get_oauth_application_by_id(refresh_token.applicationId)
             return TokenIntrospectionResult(
                 active=True,

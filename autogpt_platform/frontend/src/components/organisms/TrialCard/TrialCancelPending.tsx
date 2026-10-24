@@ -27,12 +27,16 @@ export function TrialCancelPending({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <TrialTitle>Your trial</TrialTitle>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
-          <span aria-hidden className="size-1.5 rounded-full bg-zinc-400" />
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-body">
+          <span
+            // TODO(tokens): no surface role for the zinc-400 status dot.
+            aria-hidden
+            className="size-1.5 rounded-full bg-zinc-400"
+          />
           Cancellation pending
         </span>
       </div>
-      <Text variant="body" unmask={false} className="!text-zinc-800">
+      <Text variant="body" className="!text-foreground-emphasis">
         Cancellation confirmed. Your trial will not convert to a paid plan and
         your card won&apos;t be charged. Trial access ends{" "}
         <strong className="font-semibold">
@@ -41,7 +45,7 @@ export function TrialCancelPending({
         .
       </Text>
       {trial.ends_at ? (
-        <Text variant="small" unmask={false} className="!text-zinc-500">
+        <Text variant="small" tone="muted">
           Resume to keep the trial and start {trialPlanLabels[offer.tier]} on{" "}
           {formatTrialEndDate(trial.ends_at)} at {formatPlanPrice(offer)}, plus
           applicable tax.

@@ -13,12 +13,12 @@ export function TrialDetails({ offer }: Props) {
       <Text variant="body" tone="secondary">
         {offer.duration_days} days to put AutoGPT to work.
       </Text>
-      <dl className="divide-y divide-zinc-200 border-y border-zinc-200">
+      <dl className="divide-y divide-border-base border-y border-border-base">
         <div className="flex justify-between gap-4 py-4">
           <Text as="dt" variant="body">
             Today
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatPlanAmount(0, offer.currency)}
           </Text>
         </div>
@@ -26,7 +26,7 @@ export function TrialDetails({ offer }: Props) {
           <Text as="dt" variant="body">
             After {offer.duration_days} days
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatTrialPrice(offer)}
           </Text>
         </div>

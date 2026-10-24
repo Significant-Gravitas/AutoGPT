@@ -24,7 +24,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.ONBOARDING_BRAIN_DUMP,
+    useGetFlag: () => false,
   };
 });
 
@@ -512,6 +512,72 @@ describe("ConnectToolsPanel — inline API key flow", () => {
     expect(
       screen.getByRole("heading", { name: "Connect AutoGPT to GitHub" }),
     ).toBeDefined();
+  });
+});
+
+describe("ConnectToolsPanel — without a plan", () => {
+  it("points to the plans instead of reporting a failed save", async () => {
+    stubPanel();
+    server.use(
+      http.post(CREATE_CREDENTIALS_URL, () =>
+        HttpResponse.json(
+          { detail: "A subscription is required." },
+          { status: 402 },
+        ),
+      ),
+    );
+
+    renderPanel();
+    const user = await openGithub();
+    await user.click(screen.getByRole("button", { name: /API Key/ }));
+    await user.type(await screen.findByLabelText("Name"), "Work key");
+    await user.type(
+      screen.getByLabelText("API key", { selector: "input" }),
+      "<test-api-key>",
+    );
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Connecting a service needs an active plan",
+        }),
+      ),
+    );
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Couldn't save API key" }),
+    );
+  });
+});
+
+describe("ConnectToolsPanel — OAuth without a plan", () => {
+  it("points to the plans before any sign-in window opens", async () => {
+    stubPanel();
+    server.use(
+      http.get(OAUTH_LOGIN_URL, () =>
+        HttpResponse.json(
+          { detail: "A subscription is required." },
+          { status: 402 },
+        ),
+      ),
+    );
+
+    renderPanel();
+    const user = await openGithub();
+    await user.click(screen.getByRole("button", { name: /OAuth/ }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Connecting a service needs an active plan",
+        }),
+      ),
+    );
+    expect(openOAuthPopup).not.toHaveBeenCalled();
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "OAuth connection failed" }),
+    );
   });
 });
 

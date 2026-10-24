@@ -37,11 +37,11 @@ export function CancelTrialDialog({ trial, isCanceling, onCancel }: Props) {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-3">
-          <Text variant="body" className="!text-zinc-800">
+          <Text variant="body" className="!text-foreground-emphasis">
             Your trial won&apos;t convert to a paid plan and your card
             won&apos;t be charged.
           </Text>
-          <Text variant="body" unmask={false} className="!text-zinc-800">
+          <Text variant="body" className="!text-foreground-emphasis">
             You keep full access until{" "}
             <strong className="font-semibold">
               {formatTrialEnd(trial.ends_at)}

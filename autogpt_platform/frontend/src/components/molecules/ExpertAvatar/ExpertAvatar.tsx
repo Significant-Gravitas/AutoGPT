@@ -76,7 +76,7 @@ export function ExpertAvatar({
         <AvatarFallback
           accessibleLabel={name ? `${name}, AI Expert` : "AI Expert"}
         >
-          <span className="text-sm">
+          <span className="text-body leading-5">
             {name?.slice(0, 1).toUpperCase() ?? "?"}
           </span>
         </AvatarFallback>

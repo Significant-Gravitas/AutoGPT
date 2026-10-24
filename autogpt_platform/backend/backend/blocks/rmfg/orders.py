@@ -79,6 +79,7 @@ class RMFGGetOrderBlock(Block):
                 ("amount_total_cents", 28849),
             ],
             test_mock={"get_order": lambda *args, **kwargs: TEST_ORDER},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

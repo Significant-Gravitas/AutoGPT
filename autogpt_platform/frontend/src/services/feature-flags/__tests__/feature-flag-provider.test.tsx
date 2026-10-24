@@ -1,6 +1,11 @@
 import { act, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
+});
 import { FeatureFlagProvider } from "../feature-flag-provider";
 import { Flag, useFlagStatus } from "../use-get-flag";
 
@@ -49,7 +54,7 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 
 function HireProbe() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { enabled, ready } = useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
   return (
     <span>
       hire: {String(enabled)} ready: {String(ready)}
@@ -170,7 +175,7 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
     });
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
 
-    ld.flags = { "hire-experts": true };
+    ld.flags = { "generic-trigger-agents": true };
     rerender(
       <FeatureFlagProvider>
         <HireProbe />

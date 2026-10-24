@@ -8,13 +8,20 @@ import {
   isFromBot,
   isInjectedIframeProbe,
   isNextRSCNavigationFallback,
+  stripLogUserPII,
+  stripSpanDataPII,
+  stripSpanPII,
+  stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
-import { setupSessionReplay } from "@/lib/session-replay";
+import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
+import { holdReplayBackFor, setupSessionReplay } from "@/lib/session-replay";
+import { createPostHogSentryProcessor } from "@/services/analytics/sentry-posthog";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
 const dsn = environment.getSentryDSN();
+const mirrorSentryEvent = createPostHogSentryProcessor(dsn);
 
 Sentry.init({
   dsn,
@@ -32,22 +39,36 @@ Sentry.init({
   // (e.g., from browser extensions or CDN-loaded CSS)
   ignoreErrors: CLIENT_IGNORE_ERRORS,
 
+  // Errors are reported without consent (legitimate interest), so they carry
+  // the user id only: no email, and Sentry is told not to infer the IP address.
+  sendDefaultPii: false,
+
   // Next's handled RSC fetch fallback reaches us only through console capture
   // and falls back to a full navigation, so it is noise (BUILDER-3QB).
   // Crawlers render our pages too; what breaks for them is not a user's bug.
   // A failed API request the request logger reports, titled by its route,
   // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
   // Some browsers inject a script that logs every cross-origin iframe it may
-  // not read (BUILDER-943).
+  // not read (BUILDER-943). URLs are masked last: the request logger's match
+  // needs the URL as it was requested.
   beforeSend(event) {
+    stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
-    return isNextRSCNavigationFallback(event) ? null : event;
+    if (isNextRSCNavigationFallback(event)) return null;
+    // Mirror last: after our filters (an integration would run before
+    // beforeSend) and on the stripped, URL-masked event, so PostHog never
+    // gets an email, IP address or credential Sentry doesn't keep either.
+    return mirrorSentryEvent(redactEventURLs(event));
   },
   beforeSendTransaction(event) {
-    return isFromBot(navigator.userAgent) ? null : event;
+    return isFromBot(navigator.userAgent)
+      ? null
+      : stripSpanPII(stripUserPII(redactEventURLs(event)));
   },
+  beforeSendSpan: (span) => redactSpanURLs(stripSpanDataPII(span)),
+  beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features
   integrations: [
@@ -92,13 +113,18 @@ Sentry.init({
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
-  // Set profilesSampleRate to 1.0 to profile every transaction.
-  // Since profilesSampleRate is relative to tracesSampleRate,
-  // the final profiling rate can be computed as tracesSampleRate * profilesSampleRate
-  // For example, a tracesSampleRate of 0.5 and profilesSampleRate of 0.5 would
-  // result in 25% of transactions being profiled (0.5*0.5=0.25)
-  profilesSampleRate: 1.0,
+  // Profiling samples the main thread every 10 ms for as long as a transaction
+  // lasts (up to 30 s a page load), so profiling every transaction slowed every
+  // session down. It is relative to tracesSampleRate, so with every transaction
+  // traced, 1 in 10 is profiled. Traces stay at 100%: the backend's
+  // traces_sampler follows the browser's decision for the requests it receives.
+  profilesSampleRate: 0.1,
   enableLogs: true,
 });
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+export function onRouterTransitionStart(
+  ...args: Parameters<typeof Sentry.captureRouterTransitionStart>
+) {
+  Sentry.captureRouterTransitionStart(...args);
+  holdReplayBackFor(args[0]);
+}

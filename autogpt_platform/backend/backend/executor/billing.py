@@ -9,7 +9,7 @@ from backend.blocks import get_block
 from backend.blocks._base import Block
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.execution import NodeExecutionEntry
+from backend.data.execution import ExecutionStatus, NodeExecutionEntry
 from backend.data.expert_spend import add_weekly_spend, add_weekly_spend_sync
 from backend.data.model import NodeExecutionStats
 from backend.notifications.alert_causes import LowBalanceCause, ZeroBalanceCause
@@ -75,12 +75,14 @@ async def clear_insufficient_funds_notifications(user_id: str) -> int:
 
 
 def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bool:
-    """Whether any BLOCK_COSTS entry matches this input — even if pre-flight is 0.
+    """Whether any non-free BLOCK_COSTS entry matches this input — even if
+    pre-flight is 0.
 
     Used to guard dynamic-cost blocks (SECOND/ITEMS/COST_USD) whose
     pre-flight cost is 0 but whose post-flight reconciliation will debit
     a real amount. A user with non-positive balance must not be allowed
-    to start such a block.
+    to start such a block. Free entries (e.g. Ollama models, Jev's BYOK
+    price) never debit, so they don't count.
     """
     from backend.data.block_cost_config import BLOCK_COSTS
 
@@ -89,7 +91,10 @@ def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bo
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
-    return any(_is_cost_filter_match(bc.cost_filter, input_data) for bc in block_costs)
+    return any(
+        not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
+        for bc in block_costs
+    )
 
 
 def resolve_block_cost(
@@ -218,6 +223,32 @@ def charge_usage(
         add_weekly_spend_sync(node_exec.execution_context.expert_id, total_cost)
 
     return total_cost, remaining_balance, block_pre_flight
+
+
+def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
+    """What a re-dispatched node still has billed, for its reconciliation to
+    settle against. Its first dispatch was charged and this one is not (#15272).
+
+    - REVIEW: the run that parked the block returned without doing anything,
+      and ``on_node_execution`` reconciled it as a COMPLETED run with empty
+      stats. That settled the charge down to the block's price for empty
+      stats: the run price for per-run blocks, 0 for usage-priced ones. (A
+      SECOND-priced park would have settled to 1 credit, since a sub-second
+      run bills one unit; no block that can pause is SECOND-priced.) That
+      price is returned, so the resumed run settles to one run's cost.
+    - RUNNING: the pod died before reconciling, so the pre-flight charge still
+      stands. ``None`` makes reconciliation read the block's pre-flight price,
+      which equals that charge unless the price changed in between.
+    """
+    if node_exec.redispatched_from != ExecutionStatus.REVIEW:
+        return None
+    block = get_block(node_exec.block_id)
+    if not block:
+        return None
+    settled, _ = block_usage_cost(
+        block=block, input_data=node_exec.inputs, stats=NodeExecutionStats()
+    )
+    return settled
 
 
 async def charge_reconciled_usage(
@@ -355,10 +386,15 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     (``increment_execution_count``). Nested tool executions are sub-steps
     of a single block run from the user's perspective and should not push
     them into higher per-execution cost tiers.
+
+    Pins ``node_exec.pre_flight_charge`` to the block cost actually spent,
+    so the post-flight reconciliation settles against what the wallet paid
+    (as the main queue does), not against a re-derived catalogue estimate.
     """
 
     def _run():
-        total_cost, remaining, _ = charge_usage(node_exec, 0)
+        total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
+        node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
             handle_low_balance(
                 get_db_client(), node_exec.user_id, remaining, total_cost
@@ -437,7 +473,7 @@ def handle_insufficient_funds_notif(
         data=ZeroBalanceCause(
             cta_path="/settings/billing",
             agent=agent_name,
-            shortfall_display=f"{shortfall / 100:,.2f}",
+            shortfall_display=f"${shortfall / 100:,.2f}",
         ).model_dump(mode="json"),
     )
 
@@ -524,7 +560,7 @@ def _low_balance_cause(
     the alert says the balance is low without naming a date.
     """
     daily_rate = db_client.get_recent_daily_spend(user_id)
-    balance_display = f"{current_balance / 100:,.2f} credits"
+    balance_display = f"${current_balance / 100:,.2f}"
     scheduled_agents = db_client.count_scheduled_agents(user_id)
 
     if daily_rate <= 0:
@@ -539,7 +575,7 @@ def _low_balance_cause(
     return LowBalanceCause(
         cta_path="/settings/billing",
         days_left=days_left,
-        daily_rate_display=f"{daily_rate / 100:,.2f} credits",
+        daily_rate_display=f"${daily_rate / 100:,.2f}",
         balance_display=balance_display,
         runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
         scheduled_agents=scheduled_agents,

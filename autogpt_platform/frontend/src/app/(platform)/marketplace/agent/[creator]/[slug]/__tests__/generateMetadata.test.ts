@@ -9,12 +9,21 @@ const mockNotFound = vi.hoisted(() =>
 );
 const mockGetServerUser = vi.hoisted(() => vi.fn());
 const mockPrefetchLibrary = vi.hoisted(() => vi.fn());
+const mockPrefetchStoreAgents = vi.hoisted(() => vi.fn());
+const mockGetClientIPToken = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ notFound: mockNotFound }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-forwarded-for": "203.0.113.7" }),
+}));
 
 vi.mock("@/app/api/__generated__/endpoints/store/store", () => ({
   getV2GetSpecificAgent: mockGetSpecificAgent,
   prefetchGetV2GetSpecificAgentQuery: vi.fn(),
-  prefetchGetV2ListStoreAgentsQuery: vi.fn(),
+  prefetchGetV2ListStoreAgentsQuery: mockPrefetchStoreAgents,
+}));
+
+vi.mock("@/lib/auth/client-ip-token", () => ({
+  getClientIPToken: mockGetClientIPToken,
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/library/library", () => ({
@@ -39,6 +48,8 @@ describe("generateMetadata", () => {
     mockGetServerUser.mockResolvedValue({ user: null });
     mockNotFound.mockClear();
     mockPrefetchLibrary.mockClear();
+    mockPrefetchStoreAgents.mockClear();
+    mockGetClientIPToken.mockResolvedValue(null);
   });
 
   describe.each([
@@ -88,11 +99,27 @@ describe("generateMetadata", () => {
     );
   });
 
-  test("previews the agent's own name, description and image", async () => {
+  test("searches for similar agents as the visitor, by their signed IP", async () => {
+    mockGetClientIPToken.mockResolvedValue("signed");
+    mockGetSpecificAgent.mockResolvedValue({ status: 200, data: {} });
+
+    await MarketplaceAgentPage({ params: Promise.resolve(params) });
+
+    const [visitorHeaders] = mockGetClientIPToken.mock.calls[0];
+    expect(visitorHeaders.get("x-forwarded-for")).toBe("203.0.113.7");
+    expect(mockPrefetchStoreAgents).toHaveBeenCalledWith(
+      expect.anything(),
+      { search_query: "an agent" },
+      { request: { headers: { "X-Client-IP-Token": "signed" } } },
+    );
+  });
+
+  test("previews the agent's own name, sub-heading and image", async () => {
     mockGetSpecificAgent.mockResolvedValue({
       data: {
         agent_name: "An Agent",
-        description: "What the agent does",
+        sub_heading: "Summarises yesterday's runs",
+        description: "- a bullet\n- another bullet\nand a long tail",
         agent_image: ["https://cdn.example.com/agent.png"],
       },
     });
@@ -103,12 +130,36 @@ describe("generateMetadata", () => {
 
     expect(metadata.title).toBe("An Agent - AutoGPT Marketplace");
     expect(metadata.openGraph?.title).toBe("An Agent - AutoGPT Marketplace");
-    expect(metadata.openGraph?.description).toBe("What the agent does");
+    expect(metadata.openGraph?.description).toBe("Summarises yesterday's runs");
     expect(metadata.openGraph?.images).toEqual([
       "https://cdn.example.com/agent.png",
     ]);
     expect(metadata.twitter).toMatchObject({ card: "summary_large_image" });
   });
+
+  test.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["whitespace-only", "   "],
+  ])(
+    "falls back to the agent name when sub_heading is %s",
+    async (_label, sub_heading) => {
+      mockGetSpecificAgent.mockResolvedValue({
+        data: {
+          agent_name: "An Agent",
+          sub_heading,
+          description: "The long listing description",
+          agent_image: [],
+        },
+      });
+
+      const metadata = await generateMetadata({
+        params: Promise.resolve(params),
+      });
+
+      expect(metadata.openGraph?.description).toBe("An Agent");
+    },
+  );
 
   test("uses only the first image when the listing carries several", async () => {
     mockGetSpecificAgent.mockResolvedValue({

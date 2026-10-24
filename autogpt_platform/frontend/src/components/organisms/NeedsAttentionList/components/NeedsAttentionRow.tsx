@@ -38,7 +38,7 @@ export function NeedsAttentionRow({
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
+    <div className="flex items-center gap-3 rounded-xl border border-border-base bg-surface p-3">
       <ExpertAvatar
         name={review.expert_name ?? null}
         avatarUrl={review.expert_avatar_url ?? null}
@@ -48,7 +48,7 @@ export function NeedsAttentionRow({
           {title}
         </Text>
         {subtitle ? (
-          <Text variant="small" className="truncate text-zinc-500">
+          <Text variant="small" tone="muted" className="truncate">
             {subtitle}
           </Text>
         ) : null}

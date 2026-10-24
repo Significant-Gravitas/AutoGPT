@@ -7,13 +7,9 @@ import { ExpertConnectServiceDialog } from "../../[expertId]/components/ExpertIn
 import { SetupNeededRow } from "./components/SetupNeededRow";
 import { useSetupNeeded } from "./useSetupNeeded";
 
-interface Props {
-  enabled: boolean;
-}
-
 /** Everything still standing between the team's scheduled workflows and
  *  their schedules, one row per gap with the one action that closes it. */
-export function SetupNeeded({ enabled }: Props) {
+export function SetupNeeded() {
   const {
     items,
     isConnectable,
@@ -23,7 +19,7 @@ export function SetupNeeded({ enabled }: Props) {
     handleConnected,
     allow,
     isGranting,
-  } = useSetupNeeded({ enabled });
+  } = useSetupNeeded();
 
   if (items.length === 0) return null;
 
@@ -37,10 +33,11 @@ export function SetupNeeded({ enabled }: Props) {
         <Icon
           icon={Alert01Icon}
           size={14}
+          // TODO(tokens): no exact role: text-amber-600 #D97706
           className="text-amber-600"
           aria-hidden
         />
-        <Text variant="small-medium" as="h2" className="!text-zinc-700">
+        <Text variant="small-medium" as="h2" className="!text-foreground-body">
           Setup needed ({items.length})
         </Text>
       </div>

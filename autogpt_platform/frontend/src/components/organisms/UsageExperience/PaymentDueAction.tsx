@@ -30,7 +30,6 @@ export function PaymentDueAction({
         target="_blank"
         rel="noopener noreferrer"
         size={size}
-        unmask={false}
         className={stacked ? "w-full" : undefined}
         rightIcon={
           <Icon
@@ -44,7 +43,8 @@ export function PaymentDueAction({
       </Button>
       <Text
         variant="small"
-        className={cn("!text-xs !text-zinc-500", stacked && "text-center")}
+        tone="muted"
+        className={cn("!text-xs", stacked && "text-center")}
       >
         Opens a secure Stripe page. You can use a different card there.
       </Text>

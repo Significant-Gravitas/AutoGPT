@@ -34,7 +34,7 @@ export function Avatar({
   className,
   children,
   ...props
-}: AvatarProps): JSX.Element {
+}: AvatarProps): React.JSX.Element {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [hasImage, setHasImage] = useState<boolean>(false);
 
@@ -59,8 +59,12 @@ export function Avatar({
 }
 
 export interface AvatarImageProps
-  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
+  extends Omit<
+    React.ImgHTMLAttributes<HTMLImageElement>,
+    "src" | "width" | "height"
+  > {
   as?: "NextImage" | "img";
+  src?: string;
   width?: number;
   height?: number;
   fill?: boolean;
@@ -94,7 +98,7 @@ export function AvatarImage({
   priority,
   unoptimized,
   ...rest
-}: AvatarImageProps): JSX.Element | null {
+}: AvatarImageProps): React.JSX.Element | null {
   const { setIsLoaded, setHasImage, hasImage } = useAvatarContext();
 
   const normalizedSrc = typeof src === "string" ? src.trim() : src;
@@ -187,7 +191,7 @@ export function AvatarFallback({
   square = false,
   accessibleLabel,
   ...props
-}: AvatarFallbackProps): JSX.Element | null {
+}: AvatarFallbackProps): React.JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
@@ -198,7 +202,7 @@ export function AvatarFallback({
       <span
         aria-hidden="true"
         className={cn(
-          "absolute inset-0 rounded-full bg-zinc-100",
+          "absolute inset-0 rounded-full bg-surface-hover",
           square && "rounded-none",
           className,
         )}
@@ -220,7 +224,9 @@ export function AvatarFallback({
       aria-hidden={accessibleLabel ? undefined : "true"}
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
-        // svg stretched to fill so the marble always matches the avatar size
+        // svg stretched to fill so the marble always matches the avatar size.
+        // TODO(tokens): no text role is 18px/28px (text-lg) and no colour
+        // role is neutral-600 #525252.
         "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
         !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,

@@ -1,5 +1,8 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-gray-500 #6B7280.
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
@@ -15,7 +18,7 @@ import {
   getV2GetUserRateLimit,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import { RateLimitDisplay } from "../../rate-limits/components/RateLimitDisplay";
+import { RateLimitDisplay } from "./RateLimitDisplay";
 import { GaugeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
