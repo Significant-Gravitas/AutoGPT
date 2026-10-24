@@ -731,16 +731,19 @@ def test_personal_org_owner_passes_real_context_resolution(
     tested is that the personal-org fallback yields owner rights, which a
     hand-built RequestContext could not prove.
     """
-    mock_prisma.orgmember.find_first = AsyncMock(return_value=Mock(orgId="personal-1"))
-    mock_prisma.orgmember.find_unique = AsyncMock(return_value=_org_member(owner=True))
+    personal_membership = _org_member(owner=True)
+    personal_membership.orgId = "personal-1"
+    mock_prisma.orgmember.find_first = AsyncMock(return_value=personal_membership)
 
     resp = client.get("/api/credits")
 
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"credits": 1000}
-    # The personal-org fallback ran (no X-Org-Id header was supplied) and its
-    # org id is what the credit model was resolved against.
+    # The personal-org fallback ran (no X-Org-Id header was supplied), its
+    # membership row is the one validated, and its org id is what the credit
+    # model was resolved against.
     mock_prisma.orgmember.find_first.assert_awaited_once()
+    mock_prisma.orgmember.find_unique.assert_not_awaited()
     assert credit_stubs.get_credit_model.await_args.args[1] == "personal-1"
 
 
