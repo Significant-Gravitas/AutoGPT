@@ -277,7 +277,9 @@ class ListLibraryAgentsBlock(Block):
                 agent_version=agent.graph_version,
                 agent_name=agent.name,
                 description=getattr(agent, "description", ""),
-                creator=getattr(agent, "creator", ""),
+                creator=getattr(agent, "creator_name", None)
+                or getattr(agent, "creator", "")
+                or "",
                 is_archived=getattr(agent, "is_archived", False),
                 categories=getattr(agent, "categories", []),
             )
