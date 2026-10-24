@@ -507,7 +507,7 @@ export const ChatContainer = ({
           {sessionId && isSessionNotFound ? (
             <SessionNotFound />
           ) : sessionId ? (
-            <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
+            <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
               <div className="absolute right-0 top-0 z-30">
                 <ContextPanelToggle
                   sessionId={sessionId}

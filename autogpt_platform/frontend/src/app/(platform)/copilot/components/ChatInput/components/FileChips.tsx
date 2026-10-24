@@ -75,8 +75,8 @@ export function FileChips({
                   <Icon
                     icon={isFolder ? Folder01Icon : getFileTypeIcon(mimeType)}
                     className={cn(
-                      "h-3.5 w-3.5 shrink-0 text-zinc-900",
-                      stacked && "text-zinc-400",
+                      "h-3.5 w-3.5 shrink-0 text-foreground-strong",
+                      stacked && "text-foreground-subtle",
                     )}
                   />
                 );
@@ -119,9 +119,10 @@ export function FileChips({
                       isFolder ? `Folder: ${name}, ${count}` : undefined
                     }
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700",
+                      "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-sm text-foreground-body",
                       stacked &&
-                        "gap-1.5 border border-zinc-200 bg-white py-[3px] pl-2 pr-1.5 text-xs text-zinc-900 shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
+                        // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.02)]
+                        "gap-1.5 border border-border-base bg-surface py-[3px] pl-2 pr-1.5 text-xs text-foreground-strong shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
                     )}
                   >
                     {isPreviewableImage(mimeType) ? (
@@ -135,12 +136,14 @@ export function FileChips({
                     )}
                     <span className="max-w-[160px] truncate">{name}</span>
                     {count ? (
-                      <span className="shrink-0 text-zinc-500">· {count}</span>
+                      <span className="shrink-0 text-foreground-tertiary">
+                        · {count}
+                      </span>
                     ) : null}
                     {showSpinner ? (
                       <Icon
                         icon={Loading03Icon}
-                        className="ml-0.5 h-3 w-3 animate-spin text-zinc-400"
+                        className="ml-0.5 h-3 w-3 animate-spin text-foreground-subtle"
                       />
                     ) : (
                       <button
@@ -150,8 +153,9 @@ export function FileChips({
                         }
                         onClick={() => onRemove(index)}
                         className={cn(
-                          "ml-0.5 rounded-full p-0.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600",
-                          stacked && "hover:bg-zinc-100 hover:text-zinc-900",
+                          "ml-0.5 rounded-full p-0.5 text-foreground-subtle transition-colors hover:bg-surface-active hover:text-foreground-secondary",
+                          stacked &&
+                            "hover:bg-surface-hover hover:text-foreground-strong",
                         )}
                       >
                         <Icon icon={Cancel01Icon} className="h-3 w-3" />

@@ -8,6 +8,8 @@ import os
 from collections import deque
 from typing import Any, Optional
 
+from pydantic import Field
+
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     get_current_sandbox,
@@ -318,6 +320,10 @@ class WorkspaceFileMetadataResponse(ToolResponseBase):
     preview: str | None = None  # First 500 chars for text files
 
 
+# What write_workspace_file stamps on every file it writes.
+AGENT_CREATED_METADATA = {"origin": "agent-created"}
+
+
 class WorkspaceWriteResponse(ToolResponseBase):
     """Response after writing a file to workspace."""
 
@@ -332,6 +338,9 @@ class WorkspaceWriteResponse(ToolResponseBase):
     download_url: str
     source: str | None = None  # "content", "base64", or "copied from <path>"
     content_preview: str | None = None  # First 200 chars for text files
+    # Otto's own working file (e.g. build_state.json), as the write marked it.
+    # For the activity log only; neither the model nor the client sees it.
+    is_internal: bool = Field(default=False, exclude=True)
 
 
 class WorkspaceDeleteResponse(ToolResponseBase):
@@ -959,7 +968,8 @@ class WriteWorkspaceFileTool(BaseTool):
         result: ToolResponseBase,
         **kwargs,
     ) -> ActivityEventDraft | None:
-        if not isinstance(result, WorkspaceWriteResponse):
+        # A working file is Otto's bookkeeping, not work delivered.
+        if not isinstance(result, WorkspaceWriteResponse) or result.is_internal:
             return None
         return ActivityEventDraft(
             category="FILE",
@@ -1056,7 +1066,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 path=path,
                 mime_type=mime_type,
                 overwrite=overwrite,
-                metadata={"origin": "agent-created"},
+                metadata=AGENT_CREATED_METADATA,
             )
 
             # Build informative source label and message.
@@ -1105,6 +1115,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 content_preview=preview,
                 message=msg,
                 session_id=session_id,
+                is_internal=rec.is_internal,
             )
         except VirusDetectedError as e:
             logger.warning(f"Virus detected in uploaded file: {e.threat_name}")

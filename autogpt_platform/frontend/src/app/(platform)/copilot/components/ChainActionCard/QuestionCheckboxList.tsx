@@ -89,8 +89,8 @@ export const QuestionCheckboxList = forwardRef<
             className={
               "flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-base leading-snug transition-all " +
               (isSelected
-                ? "bg-white text-zinc-900 ring-2 ring-zinc-800"
-                : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-100 hover:bg-zinc-100")
+                ? "bg-surface text-foreground-strong ring-2 ring-action"
+                : "bg-surface-muted text-foreground-body ring-1 ring-separator hover:bg-surface-hover")
             }
           >
             <span>{option}</span>
@@ -98,8 +98,8 @@ export const QuestionCheckboxList = forwardRef<
               className={
                 "flex size-5 shrink-0 items-center justify-center rounded-md transition-colors " +
                 (isSelected
-                  ? "bg-zinc-800 text-white"
-                  : "ring-1 ring-inset ring-zinc-300")
+                  ? "bg-action text-action-foreground"
+                  : "ring-1 ring-inset ring-border-strong")
               }
             >
               {isSelected && <Icon icon={Tick02Icon} size={13} />}
