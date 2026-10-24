@@ -55,12 +55,14 @@ class ResolvedSkill(BaseModel):
 
     ``name`` is what goes on ``Expert.skills``. ``marketplace_slug`` is set for
     a Hub listing, whose SKILL.md is installed into the expert's folder; a
-    library skill is copied from the user's own folder instead.
+    custom library skill is copied from the user's own folder instead.
+    Confirmed builtins need no copy, even when their name differs from the slug.
     """
 
     attachment: RaiseAttachment
     name: str
     marketplace_slug: str | None = None
+    is_builtin: bool = False
 
 
 class ResolvedRaiseAttachments(BaseModel):
@@ -69,11 +71,41 @@ class ResolvedRaiseAttachments(BaseModel):
 
     @property
     def skill_names(self) -> list[str]:
-        return [skill.name for skill in self.skills]
+        return list(dict.fromkeys(skill.name for skill in self.skills))
 
     @property
     def library_skill_names(self) -> list[str]:
-        return [s.name for s in self.skills if s.marketplace_slug is None]
+        return list(
+            dict.fromkeys(
+                s.name
+                for s in self.skills
+                if s.marketplace_slug is None and not s.is_builtin
+            )
+        )
+
+
+def _failed_skill_names_without_survivors(
+    skills: list[ResolvedSkill],
+    marketplace_failures: list[RaiseAttachmentFailure],
+    failed_library_copies: set[str],
+) -> set[str]:
+    uninstalled = {_attachment_key(failure) for failure in marketplace_failures}
+    failed_names = failed_library_copies | {
+        skill.name
+        for skill in skills
+        if _attachment_key(skill.attachment) in uninstalled
+    }
+    surviving_names = {
+        skill.name
+        for skill in skills
+        if skill.is_builtin
+        or (skill.marketplace_slug is None and skill.name not in failed_library_copies)
+        or (
+            skill.marketplace_slug is not None
+            and _attachment_key(skill.attachment) not in uninstalled
+        )
+    }
+    return failed_names - surviving_names
 
 
 async def resolve_attachments(
@@ -84,7 +116,7 @@ async def resolve_attachments(
     skills: list[ResolvedSkill] = []
     seen: set[tuple[str, str, str]] = set()
     for attachment in attachments:
-        key = _dedupe_key(attachment)
+        key = _attachment_key(attachment)
         if key in seen:
             continue
         seen.add(key)
@@ -247,7 +279,7 @@ async def _resolve_skill(user_id: str, attachment: RaiseAttachment) -> ResolvedS
         return ResolvedSkill(attachment=attachment, name=slug, marketplace_slug=slug)
     default = get_default_skill_with_body(slug)
     if default is not None:
-        return ResolvedSkill(attachment=attachment, name=default.name)
+        return ResolvedSkill(attachment=attachment, name=default.name, is_builtin=True)
     stored = await read_user_skill_with_body(user_id, slug)
     if stored is None:
         raise RaiseAttachmentUnavailableError("skill", "library", slug)
@@ -331,7 +363,9 @@ async def _existing_listing_workflow(
     )
 
 
-def _dedupe_key(attachment: RaiseAttachment) -> tuple[str, str, str]:
+def _attachment_key(
+    attachment: RaiseAttachment | RaiseAttachmentFailure,
+) -> tuple[str, str, str]:
     attachment_id = attachment.id
     # Both skill sources are slugs, which are case-insensitive.
     if attachment.kind == "skill":
