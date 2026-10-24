@@ -61,7 +61,7 @@ export function KitSearchField({
           type="button"
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute right-2.5 top-1/2 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-zinc-100 hover:text-foreground"
+          className="absolute right-2.5 top-1/2 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-surface-hover hover:text-foreground"
         >
           <Icon icon={Cancel01Icon} size={14} aria-hidden />
         </button>

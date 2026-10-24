@@ -25,8 +25,10 @@ export function RecoveryPrompt({
       <Text variant="h5">Pick up where you left off?</Text>
       <Text variant="body" tone="muted">
         We kept the{" "}
-        <span className="text-zinc-900">{formatElapsed(durationSecs)}</span> you
-        already recorded.
+        <span className="text-foreground-strong">
+          {formatElapsed(durationSecs)}
+        </span>{" "}
+        you already recorded.
       </Text>
       <div className="flex w-full flex-col items-center gap-2">
         <Button size="small" onClick={onResume} className="w-full max-w-xs">

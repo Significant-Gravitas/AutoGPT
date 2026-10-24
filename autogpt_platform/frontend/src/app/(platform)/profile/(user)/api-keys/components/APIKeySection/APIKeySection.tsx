@@ -58,8 +58,10 @@ export function APIKeysSection() {
                       }
                       className={
                         key.status === "ACTIVE"
-                          ? "border-green-600 bg-green-100 text-green-800"
-                          : "border-red-600 bg-red-100 text-red-800"
+                          ? // TODO(tokens): no exact role (bg-green-100 #B7E2C7, text-green-800 #0C5A29)
+                            "border-success bg-green-100 text-green-800"
+                          : // TODO(tokens): no exact role (bg-red-100 #FDECEC, text-red-800 #832525)
+                            "border-error-hover bg-red-100 text-red-800"
                       }
                     >
                       {key.status}

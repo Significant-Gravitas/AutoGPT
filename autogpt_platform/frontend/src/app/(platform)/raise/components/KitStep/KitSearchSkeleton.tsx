@@ -43,7 +43,8 @@ function ShimmerBar({ delay, className }: ShimmerBarProps) {
       aria-hidden
       style={{ animationDelay: `${delay * 140}ms` }}
       className={cn(
-        "block animate-shimmer bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)] bg-[length:200%_100%] [animation-duration:1.4s] [animation-timing-function:linear] motion-reduce:animate-none motion-reduce:bg-zinc-100",
+        // TODO(tokens): no exact role (bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)])
+        "block animate-shimmer bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)] bg-[length:200%_100%] [animation-duration:1.4s] [animation-timing-function:linear] motion-reduce:animate-none motion-reduce:bg-surface-hover",
         className,
       )}
     />

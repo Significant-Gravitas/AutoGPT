@@ -40,24 +40,28 @@ export function RecentMemoriesCard({
   onForgetEverything,
 }: Props) {
   return (
-    <div className="flex flex-col rounded-[18px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+    <div className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
       <div className="flex items-baseline justify-between gap-3">
         <Text variant="body-medium" as="span" className="text-textBlack">
           {isExpanded ? "All memories" : "Recent memories"}
         </Text>
         {total !== null && total > 0 ? (
-          <Text variant="small" as="span" className="shrink-0 text-zinc-500">
+          <Text
+            variant="small"
+            as="span"
+            className="shrink-0 text-foreground-tertiary"
+          >
             {total === 1 ? "1 memory" : `${total} memories`}
           </Text>
         ) : null}
       </div>
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-foreground-tertiary">
         {isExpanded
           ? "Everything this memory holds, newest first. Forget any of them."
           : "The latest things this memory has learned. Forget any of them."}
       </Text>
 
-      <div className="mt-2 flex flex-col divide-y divide-zinc-100">
+      <div className="mt-2 flex flex-col divide-y divide-separator">
         {isLoading ? (
           <div className="flex flex-col gap-2 py-3">
             <Skeleton className="h-5 w-3/4" />
@@ -65,7 +69,11 @@ export function RecentMemoriesCard({
             <Skeleton className="h-5 w-4/5" />
           </div>
         ) : facts.length === 0 ? (
-          <Text variant="small" as="p" className="py-3 text-zinc-500">
+          <Text
+            variant="small"
+            as="p"
+            className="py-3 text-foreground-tertiary"
+          >
             Nothing remembered yet. Memories show up here as you chat.
           </Text>
         ) : (
@@ -128,14 +136,14 @@ function MemoryRow({ fact, onForget }: MemoryRowProps) {
       <Text
         variant="small"
         as="span"
-        className="hidden shrink-0 text-zinc-400 sm:inline"
+        className="hidden shrink-0 text-foreground-subtle sm:inline"
       >
         {formatWhen(fact.created_at)}
       </Text>
       <Button
         variant="ghost"
         size="small"
-        className="h-7 !min-w-0 shrink-0 px-2 text-zinc-600"
+        className="h-7 !min-w-0 shrink-0 px-2 text-foreground-secondary"
         onClick={() => onForget(fact.uuid)}
       >
         Forget

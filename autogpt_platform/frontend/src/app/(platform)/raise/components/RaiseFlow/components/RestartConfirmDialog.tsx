@@ -19,7 +19,7 @@ export function RestartConfirmDialog({ open, onOpenChange, onConfirm }: Props) {
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-800">
+          <Text variant="body" className="text-foreground-emphasis">
             This clears every answer you have given so far and takes you back to
             the first question. It cannot be undone.
           </Text>
