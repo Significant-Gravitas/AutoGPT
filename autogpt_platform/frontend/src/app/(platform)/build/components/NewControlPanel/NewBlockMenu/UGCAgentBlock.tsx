@@ -1,5 +1,5 @@
 import { Button } from "@/components/__legacy__/ui/button";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";

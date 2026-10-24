@@ -1,7 +1,7 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import React, { Fragment } from "react";
 import { IntegrationBlock } from "../IntergrationBlock";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useIntegrationBlocks } from "./useIntegrationBlocks";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";

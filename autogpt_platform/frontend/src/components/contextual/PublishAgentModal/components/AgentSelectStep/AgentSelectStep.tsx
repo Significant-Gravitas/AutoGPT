@@ -7,7 +7,7 @@ import { Select } from "../../../../atoms/Select/Select";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
