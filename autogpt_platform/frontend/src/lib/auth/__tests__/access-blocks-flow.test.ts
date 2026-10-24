@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SIGN_IN_BLOCKED_CODE, SIGN_UP_BLOCKED_CODE } from "../access-blocks";
 import { Resolver } from "node:dns/promises";
-import {
-  DISPOSABLE_EMAIL_CODE,
-  UNDELIVERABLE_EMAIL_CODE,
-} from "../disposable-email";
+import { DISPOSABLE_EMAIL_CODE } from "../disposable-email";
+import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 
 // Runs the real Better Auth handler with this app's auth options, as
 // email-verification-flow.test.ts does, to prove the hooks refuse and log
@@ -201,7 +199,8 @@ describe("IP and email domain blocks", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
       code: UNDELIVERABLE_EMAIL_CODE,
-      message: "Please use a real email address you can receive mail at.",
+      message:
+        "We can't deliver email to this address. Check it, or use a different one.",
     });
     expect(testDB.current.UserAuthIdentity).toHaveLength(0);
   });
