@@ -87,6 +87,24 @@ class _Turn:
         return [call.args[1] for call in self.publish.await_args_list]
 
 
+class _Stream:
+    """The published stream of a turn that sends *chunks* and ends."""
+
+    def __init__(self, *chunks) -> None:
+        self._chunks = list(chunks)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._chunks:
+            raise StopAsyncIteration
+        return self._chunks.pop(0)
+
+    async def aclose(self) -> None:
+        return None
+
+
 class _EmptyStream:
     def __aiter__(self):
         return self
@@ -136,7 +154,23 @@ async def test_a_refused_turn_ends_paused_without_running():
     assert pause_of(marker) == PAUSE
     turn.save.assert_awaited_once_with(turn.session)
     turn.complete.assert_awaited_once_with(
-        "sess-1", error_message=None, error_code=None, turn_id="turn-1"
+        "sess-1", error_message=None, error_code=None, turn_id="turn-1", paused=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_the_engine_ends_at_a_limit_reports_its_pause_at_the_end():
+    """Follow-ups a paused turn left unread are reported as paused, not as a
+    turn that simply finished."""
+    turn = _Turn(_session())
+    turn.stream = MagicMock(
+        return_value=_Stream(StreamTurnPaused(pause=PAUSE.as_part()))
+    )
+
+    await turn.run(_entry(), AsyncMock(return_value=None))
+
+    turn.complete.assert_awaited_once_with(
+        "sess-1", error_message=None, error_code=None, turn_id="turn-1", paused=True
     )
 
 
@@ -166,6 +200,7 @@ async def test_an_unreadable_allowance_fails_the_turn_closed():
         error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
         error_code=RATE_LIMIT_UNAVAILABLE_CODE,
         turn_id="turn-1",
+        paused=False,
     )
 
 
@@ -286,7 +321,7 @@ async def test_a_block_turn_past_its_allowance_runs_on_credits_and_pays_its_cost
         assert charge["metadata"].block == "AutoPilotBlock"
     windows.assert_not_awaited()
     turn.complete.assert_awaited_once_with(
-        "sess-1", error_message=None, error_code=None, turn_id="turn-1"
+        "sess-1", error_message=None, error_code=None, turn_id="turn-1", paused=False
     )
 
 
@@ -376,6 +411,7 @@ async def test_an_unreadable_allowance_fails_a_block_turn_closed_too(credits):
         error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
         error_code=RATE_LIMIT_UNAVAILABLE_CODE,
         turn_id="turn-1",
+        paused=False,
     )
 
 
@@ -394,4 +430,5 @@ async def test_an_unreadable_balance_fails_a_block_turn_closed(credits):
         error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
         error_code=RATE_LIMIT_UNAVAILABLE_CODE,
         turn_id="turn-1",
+        paused=False,
     )

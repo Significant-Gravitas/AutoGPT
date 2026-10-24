@@ -2,7 +2,7 @@ import type { UIMessage } from "ai";
 import type { StoredAttachmentPart } from "./helpers/workspaceAttachments";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { ExpertKickoffMetadata } from "./expertKickoff";
+import type { SendMetadata } from "./helpers/resendMetadata";
 import { getMessageSnapshotDigest } from "./helpers/messageSnapshotDigest";
 
 /**
@@ -56,7 +56,7 @@ const defaultCoord: SessionCoord = {
 export interface PendingFirstSend {
   text: string;
   files: File[];
-  metadata?: ExpertKickoffMetadata;
+  metadata?: SendMetadata;
 }
 
 export interface PendingUploadAttachment {

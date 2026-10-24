@@ -968,6 +968,166 @@ describe("useCopilotPendingChips", () => {
   });
 });
 
+function pendingResponse(
+  messages: string[],
+  heldReason: "error" | "stopped" | "paused" | "ended" | null = null,
+) {
+  return {
+    status: 200,
+    data: {
+      count: messages.length,
+      messages,
+      // The server names every queued message by its id.
+      items: messages.map((content, index) => ({
+        id: `pm-${index + 1}`,
+        content,
+      })),
+      held_reason: heldReason,
+    },
+    headers: new Headers(),
+  } as Awaited<ReturnType<typeof getV2GetPendingMessages>>;
+}
+
+function bufferHolds(
+  messages: string[],
+  heldReason: "error" | "stopped" | "paused" | "ended" | null = null,
+) {
+  mockGetPending.mockResolvedValue(pendingResponse(messages, heldReason));
+}
+
+const FOLLOW_UP = "What is my team working on?";
+
+describe.each([
+  ["start", "submitted", "streaming"],
+  ["end", "streaming", "ready"],
+] as const)(
+  "a follow-up the peek at a turn's %s reads around its own send",
+  (_, from, to) => {
+    beforeEach(() => mockGetPending.mockReset());
+    afterEach(cleanup);
+
+    function renderAt(status: ChatStatus) {
+      let current: Messages = [assistantMessage(0)];
+      const setMessages = vi.fn(
+        (updater: Messages | ((prev: Messages) => Messages)) => {
+          current = typeof updater === "function" ? updater(current) : updater;
+        },
+      );
+      const view = renderHook(
+        ({ status }: { status: ChatStatus }) =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status,
+            messages: current,
+            setMessages,
+          }),
+        { initialProps: { status } },
+      );
+      return { view, messages: () => current };
+    }
+
+    it("shows once when the peek answers before the send does", async () => {
+      vi.useFakeTimers();
+      try {
+        // The POST landed; the peek answers before the composer hears back.
+        bufferHolds([FOLLOW_UP]);
+        const { view, messages } = renderAt(from);
+        view.rerender({ status: to });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        act(() => view.result.current.queueMessage(FOLLOW_UP, "pm-1"));
+
+        expect(view.result.current.queuedMessages).toEqual([FOLLOW_UP]);
+        // Nothing drained, so nothing becomes a bubble no row backs.
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10_000);
+        });
+        expect(storedFallbacks(messages())).toEqual([]);
+        expect(view.result.current.queuedMessages).toEqual([FOLLOW_UP]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("shows once when the send answers while the peek is out", async () => {
+      const answers: Array<(res: ReturnType<typeof pendingResponse>) => void> =
+        [];
+      mockGetPending.mockImplementation(
+        () => new Promise((resolve) => answers.push(resolve)),
+      );
+      const { view } = renderAt(from);
+      view.rerender({ status: to });
+      expect(answers.length).toBeGreaterThan(0);
+      // The send's answer lands after the GET went out, before it answers.
+      act(() => view.result.current.queueMessage(FOLLOW_UP, "pm-1"));
+      bufferHolds([FOLLOW_UP]);
+      await act(async () => {
+        answers
+          .splice(0)
+          .forEach((resolve) => resolve(pendingResponse([FOLLOW_UP])));
+      });
+
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual([FOLLOW_UP]),
+      );
+    });
+  },
+);
+
+describe("follow-ups the last turn ended without reading", () => {
+  beforeEach(() => mockGetPending.mockReset());
+  afterEach(cleanup);
+
+  function renderIdle(status: ChatStatus = "ready") {
+    return renderHook(
+      ({ status }: { status: ChatStatus }) =>
+        useCopilotPendingChips({
+          sessionId: "s1",
+          status,
+          messages: [],
+          setMessages: vi.fn(),
+        }),
+      { initialProps: { status } },
+    );
+  }
+
+  it("are reported as held after a reload, with why", async () => {
+    bufferHolds(["What is my team working on?"], "error");
+
+    const view = renderIdle();
+
+    await waitFor(() => expect(view.result.current.heldReason).toBe("error"));
+    expect(view.result.current.queuedMessages).toEqual([
+      "What is my team working on?",
+    ]);
+  });
+
+  it("read as queued again once a turn runs, which will read them", async () => {
+    bufferHolds(["status?"], "stopped");
+    const view = renderIdle();
+    await waitFor(() => expect(view.result.current.heldReason).toBe("stopped"));
+
+    view.rerender({ status: "submitted" });
+
+    expect(view.result.current.heldReason).toBeNull();
+  });
+
+  it("leave the strip when one is taken out to be sent again", async () => {
+    bufferHolds(["status?", "and Monday"], "ended");
+    const view = renderIdle();
+    await waitFor(() =>
+      expect(view.result.current.queuedMessages).toHaveLength(2),
+    );
+
+    const [status] = view.result.current.queuedEntries;
+    expect(status.serverId).toBe("pm-1");
+    act(() => view.result.current.takeQueuedMessage(status.id));
+
+    expect(view.result.current.queuedMessages).toEqual(["and Monday"]);
+  });
+});
+
 /** Run `render`, then let Node report every rejection nothing handled. */
 async function unhandledRejectionsDuring<T>(render: () => T) {
   const reasons: unknown[] = [];

@@ -127,6 +127,20 @@ async def list_queued_sessions(user_id: str):
     )
 
 
+async def queue_position(user_id: str, session_id: str) -> int | None:
+    """Where *session_id* waits in the user's queue, 1 for next; None when it
+    is not queued or the queue can't be read (the position is informational)."""
+    try:
+        queued = await list_queued_sessions(user_id)
+    except Exception:
+        logger.warning(f"Could not read the turn queue of user {user_id}")
+        return None
+    return next(
+        (i for i, s in enumerate(queued, start=1) if s.session_id == session_id),
+        None,
+    )
+
+
 class SessionNotIdle(Exception):
     """The session already has a turn queued or running, so a spawned child
     cannot be queued into it."""

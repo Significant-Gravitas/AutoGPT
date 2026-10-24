@@ -3,6 +3,7 @@ import {
   ChatUnavailableError,
   isUnexpectedRefusal,
   MessageTooLongError,
+  SendNotDeliveredError,
 } from "./stream/turnRuntime";
 
 export type ChatErrorAction = "sign-in" | "new-chat" | "plans";
@@ -26,6 +27,11 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     return {
       title: "You're signed out. Sign in again to keep chatting.",
       action: "sign-in",
+    };
+  if (error instanceof SendNotDeliveredError)
+    return {
+      title: "Your message didn't go through. Send it again.",
+      action: null,
     };
   if (error instanceof ChatUnavailableError || status === 404)
     return {

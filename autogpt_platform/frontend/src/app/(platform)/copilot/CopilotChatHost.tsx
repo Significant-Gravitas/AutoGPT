@@ -92,6 +92,8 @@ function ChatHostView({
     onStartTask,
     onEnqueue,
     queuedMessages,
+    queuedHeldReason,
+    retryQueuedMessage,
     isLoadingSession,
     isSessionError,
     isSessionNotFound,
@@ -166,6 +168,8 @@ function ChatHostView({
           onStop={stop}
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
+          queuedHeldReason={queuedHeldReason}
+          onRetryQueuedMessage={retryQueuedMessage}
           isUploadingFiles={isUploadingFiles}
           pendingSend={pendingSend}
           hasMoreMessages={hasMoreMessages}

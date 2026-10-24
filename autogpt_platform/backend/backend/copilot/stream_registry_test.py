@@ -415,6 +415,76 @@ async def test_mark_session_completed_skip_error_publish_emits_no_stream_error()
     assert any(isinstance(c, stream_registry.StreamError) for c in published)
 
 
+@pytest.mark.parametrize(
+    "error_message, paused, reason",
+    [
+        ("The response stopped.", False, "error"),
+        ("Operation cancelled", False, "stopped"),
+        (None, True, "paused"),
+        (None, False, "ended"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_mark_session_completed_reports_follow_ups_the_turn_left_unread(
+    error_message: str | None, paused: bool, reason: str
+):
+    """Whatever the turn ended on, follow-ups still queued are reported before
+    its finish, so the client never shows them as queued for nobody."""
+    publish_mock = AsyncMock()
+    held = stream_registry.StreamFollowUpHeld(reason=reason, count=1)
+    hold_mock = AsyncMock(return_value=held)
+    with (
+        patch.object(
+            stream_registry,
+            "get_redis_async",
+            new=AsyncMock(return_value=_FakeRedis({"status": "running"})),
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+        patch.object(stream_registry, "hold_follow_ups_at_turn_end", new=hold_mock),
+    ):
+        await stream_registry.mark_session_completed(
+            "sess-1", error_message=error_message, turn_id="turn-1", paused=paused
+        )
+
+    hold_mock.assert_awaited_once_with("sess-1", "turn-1", reason)
+    published = [call.args[1] for call in publish_mock.call_args_list]
+    assert held in published
+    assert published.index(held) < next(
+        i
+        for i, chunk in enumerate(published)
+        if isinstance(chunk, stream_registry.StreamFinish)
+    )
+    if error_message:
+        assert published.index(held) < next(
+            i
+            for i, chunk in enumerate(published)
+            if isinstance(chunk, stream_registry.StreamError)
+        )
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_holds_nothing_when_another_end_won():
+    """A late duplicate completion must not re-report the follow-ups."""
+    hold_mock = AsyncMock()
+    with (
+        patch.object(
+            stream_registry,
+            "get_redis_async",
+            new=AsyncMock(return_value=_FakeRedis({"status": "completed"})),
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=False)
+        ),
+        patch.object(stream_registry, "hold_follow_ups_at_turn_end", new=hold_mock),
+    ):
+        assert await stream_registry.mark_session_completed("sess-1") is False
+
+    hold_mock.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_mark_session_completed_republishes_the_error_code():
     """The executor re-publishes a turn's error here; without its code the

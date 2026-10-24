@@ -142,8 +142,8 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
       try {
-        await queueFollowUpMessage(sessionId, trimmed);
-        queueMessage(trimmed);
+        const queued = await queueFollowUpMessage(sessionId, trimmed);
+        queueMessage(trimmed, queued.pending_id);
       } catch (err) {
         // The turn finished while we were queueing — send normally instead.
         if (

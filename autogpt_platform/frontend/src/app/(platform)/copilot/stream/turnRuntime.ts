@@ -6,6 +6,7 @@ import type { FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { streamRequestBody } from "../copilotStreamTransport";
+import { getKickoffExpertIdFromMetadata } from "../expertKickoff";
 import {
   CopilotAuthError,
   getCopilotAuthHeaders,
@@ -150,13 +151,23 @@ interface Connection {
   prompt: string | null;
   /** The backend queued this send behind the session's running turn. */
   followUp: boolean;
+  /** The backend stored this send's prompt; its turn waits for a free slot. */
+  turnQueued: boolean;
+  /** An expert's hidden kickoff, which the kickoff hook recovers itself. */
+  kickoff: boolean;
 }
 
 /** What the classification needs to know about a connection that is gone. */
 type Lost = Pick<
   Connection,
   "turnId" | "openedAt" | "syntheticError" | "prompt"
->;
+> &
+  Partial<
+    Pick<
+      Connection,
+      "followUp" | "turnQueued" | "frames" | "closedByClient" | "kickoff"
+    >
+  >;
 
 type ConnectionEnd =
   | { kind: "closed" }
@@ -290,6 +301,7 @@ export class TurnRuntime {
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
       prompt: message.id,
+      kickoff: getKickoffExpertIdFromMetadata(message.metadata) !== null,
     });
   }
 
@@ -458,6 +470,7 @@ export class TurnRuntime {
       body?: string;
       extraHeaders?: object;
       prompt?: string;
+      kickoff?: boolean;
     } = {},
     asRotation = false,
   ) {
@@ -473,7 +486,9 @@ export class TurnRuntime {
       closedByClient: false,
       syntheticError: null,
       prompt: init.prompt ?? null,
+      kickoff: init.kickoff ?? false,
       followUp: false,
+      turnQueued: false,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -546,6 +561,11 @@ export class TurnRuntime {
       frame.chunk.type === "data-follow-up-queued"
     ) {
       conn.followUp = true;
+    } else if (
+      frame.kind === "synthetic" &&
+      frame.chunk.type === "data-turn-queued"
+    ) {
+      conn.turnQueued = true;
     }
     this.emit();
   }
@@ -785,8 +805,52 @@ export class TurnRuntime {
         end.kind === "failed" && end.error instanceof Error
           ? end.error
           : new Error(lost.syntheticError ?? "The connection closed early.");
+    } else if (this.sendWentNowhere(lost, end)) {
+      // The stream closed cleanly, yet no turn took the prompt and the
+      // backend neither queued it nor stored it: say so, never sit idle.
+      this.error = new SendNotDeliveredError(
+        this.takeUnsentPrompt(lost.prompt),
+      );
+      this.emitNow();
+      this.handlers.onError?.(this.error, null);
+      return;
     }
     this.emitNow();
+  }
+
+  // The lost send's own prompt, by key: a newer send may sit after it.
+  private takeUnsentPrompt(key: string | null) {
+    const index = this.segments.findIndex(
+      (s) =>
+        s.key === key &&
+        s.kind === "user" &&
+        s.origin === "sent" &&
+        s.sequence === null,
+    );
+    const prompt = this.segments[index];
+    if (prompt?.kind !== "user") return "";
+    this.segments.splice(index, 1);
+    if (this.segments.length === 0) this.ownedFrom = null;
+    return prompt.message.parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("");
+  }
+
+  // Only a stream the server answered and closed says so: a send this tab
+  // gave up on for silence, heartbeats or not, may still be running there.
+  private sendWentNowhere(lost: Lost, end: ConnectionEnd) {
+    return (
+      end.kind === "closed" &&
+      !lost.closedByClient &&
+      // A kickoff already stored is answered with a bare stream too.
+      !lost.kickoff &&
+      (lost.frames ?? 0) > 0 &&
+      lost.prompt !== null &&
+      !lost.followUp &&
+      !lost.turnQueued &&
+      !this.runningTurn() &&
+      !this.lostSendLanded(lost.prompt)
+    );
   }
 
   // The send arrived: its prompt took a row, or the turn after it is followed.
@@ -1554,6 +1618,15 @@ export class MessageTooLongError extends SendRefusedError {
   constructor(message: string, status: number) {
     super(message, status);
     this.name = "MessageTooLongError";
+  }
+}
+
+/** A send's stream closed without any turn, queue or row taking it. */
+export class SendNotDeliveredError extends Error {
+  /** `text` is what was sent, for the composer to offer again. */
+  constructor(readonly text = "") {
+    super("The message was not delivered.");
+    this.name = "SendNotDeliveredError";
   }
 }
 

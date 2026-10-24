@@ -32,6 +32,8 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     release_client_message,
     stash_pending_for_persist,
+    take_pending_message_by_id,
+    was_pending_message_read,
 )
 from backend.copilot.tool_image import ToolImage
 
@@ -45,6 +47,7 @@ class _FakeRedis:
         # handle both and our tests exercise both.
         self.lists: dict[str, list[str | bytes]] = {}
         self.strings: dict[str, str] = {}
+        self.sets: dict[str, set[str]] = {}
         self.ttls: dict[str, int | None] = {}
         self.published: list[tuple[str, str]] = []
 
@@ -97,6 +100,14 @@ class _FakeRedis:
             return list(lst[start:])
         return list(lst[start : stop + 1])
 
+    async def lrem(self, key: str, count: int, value: str) -> int:
+        lst = self.lists.get(key, [])
+        for index, item in enumerate(lst):
+            if (item.decode() if isinstance(item, bytes) else item) == value:
+                del lst[index]
+                return 1
+        return 0
+
     async def delete(self, key: str) -> int:
         if key in self.lists:
             del self.lists[key]
@@ -111,6 +122,15 @@ class _FakeRedis:
         self.strings[key] = value
         self.ttls[key] = ex
         return True
+
+    async def sadd(self, key: str, *members: str) -> int:
+        bucket = self.sets.setdefault(key, set())
+        before = len(bucket)
+        bucket.update(members)
+        return len(bucket) - before
+
+    async def sismember(self, key: str, member: str) -> int:
+        return int(member in self.sets.get(key, set()))
 
     async def get(self, key: str) -> str | None:
         return self.strings.get(key)
@@ -557,6 +577,47 @@ async def test_peek_pending_messages_returns_all_without_consuming(
 
 
 @pytest.mark.asyncio
+async def test_drain_returns_what_it_popped_even_when_the_held_marker_cannot_be_cleared(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await push_pending_message("sess1", PendingMessage(content="status?"))
+
+    async def failing_delete(key: str) -> int:
+        raise ConnectionError("redis blip")
+
+    monkeypatch.setattr(fake_redis, "delete", failing_delete)
+
+    drained = await drain_pending_messages("sess1")
+
+    assert [m.content for m in drained] == ["status?"]
+
+
+@pytest.mark.asyncio
+async def test_take_pending_message_by_id_takes_that_message_once(
+    fake_redis: _FakeRedis,
+) -> None:
+    await push_pending_message("sess1", PendingMessage(id="a", content="status?"))
+    await push_pending_message("sess1", PendingMessage(id="b", content="status?"))
+
+    taken = await take_pending_message_by_id("sess1", "b")
+
+    assert taken is not None and taken.id == "b"
+    assert [m.id for m in await peek_pending_messages("sess1")] == ["a"]
+    assert await take_pending_message_by_id("sess1", "b") is None
+    assert await was_pending_message_read("sess1", "b")
+
+
+@pytest.mark.asyncio
+async def test_a_drain_records_what_it_read(fake_redis: _FakeRedis) -> None:
+    await push_pending_message("sess1", PendingMessage(id="a", content="status?"))
+
+    await drain_pending_messages("sess1")
+
+    assert await was_pending_message_read("sess1", "a")
+    assert not await was_pending_message_read("sess1", "never-queued")
+
+
+@pytest.mark.asyncio
 async def test_peek_pending_messages_empty_buffer(fake_redis: _FakeRedis) -> None:
     """Peek on a missing key returns an empty list without raising."""
     result = await peek_pending_messages("no_such_session")
@@ -896,7 +957,7 @@ async def test_client_message_reservation_is_short_and_acceptance_long(
     await claim_client_message("sess-1", "msg-a", "first")
     assert fake_redis.ttls[key] == pm_module._CLIENT_MESSAGE_RESERVE_TTL_SECONDS
     await accept_client_message("sess-1", "msg-a", "first")
-    assert fake_redis.ttls[key] == pm_module._PENDING_TTL_SECONDS
+    assert fake_redis.ttls[key] == pm_module.PENDING_TTL_SECONDS
 
 
 @pytest.mark.asyncio

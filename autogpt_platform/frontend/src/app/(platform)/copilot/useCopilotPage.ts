@@ -24,7 +24,6 @@ import {
   getKickoffAttemptToken,
   isKickoffMessage,
   shouldClearKickoffParam,
-  type ExpertKickoffMetadata,
 } from "./expertKickoff";
 import {
   concatWithAssistantMerge,
@@ -35,6 +34,7 @@ import {
   rememberHeldFollowUp,
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
+import { resendMetadata, type SendMetadata } from "./helpers/resendMetadata";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
@@ -45,6 +45,7 @@ import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
 import { useExpertKickoff } from "./useExpertKickoff";
+import { useFollowQueuedTurn } from "./useFollowQueuedTurn";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
@@ -417,7 +418,13 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const {
+    queuedMessages,
+    queuedEntries,
+    queueMessage,
+    takeQueuedMessage,
+    heldReason,
+  } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -450,7 +457,7 @@ function useCopilotPageChat(
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
-    metadata?: ExpertKickoffMetadata,
+    metadata?: SendMetadata,
   ) {
     const trimmed = message.trim();
     const hasAttachments =
@@ -490,9 +497,9 @@ function useCopilotPageChat(
       }
 
       try {
-        await queueFollowUpMessage(sessionId, trimmed);
+        const queued = await queueFollowUpMessage(sessionId, trimmed);
         if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
-        queueMessage(trimmed);
+        queueMessage(trimmed, queued.pending_id);
         return;
       } catch (err) {
         // Any other failure propagates to the composer, which restores the
@@ -535,6 +542,27 @@ function useCopilotPageChat(
     }
     return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
+  // A follow-up the last turn ended without reading is resent by its id: the
+  // server takes that very message off the queue and runs it as a turn, or
+  // runs nothing if a turn read it meanwhile, so Otto never reads it twice.
+  // One at a time: the turn a retry starts reads every other held follow-up.
+  const isRetryingRef = useRef(false);
+  async function retryQueuedMessage(index: number) {
+    const entry = queuedEntries[index];
+    // Locked (an expert being resolved or let go): the chip stays as it is.
+    if (!entry || !sessionId || isExpertSendLocked) return;
+    if (isRetryingRef.current || isInflightRef.current) return;
+    isRetryingRef.current = true;
+    takeQueuedMessage(entry.id);
+    const metadata = entry.serverId
+      ? resendMetadata(entry.serverId)
+      : undefined;
+    await sendOrQueue(entry.text, undefined, undefined, metadata).catch(
+      (err: unknown) => recoverFailedDeferredSend(entry.text, [], err),
+    );
+    isRetryingRef.current = false;
+  }
+
   // One function for the host's lifetime that runs the latest `sendOrQueue`,
   // so the chat actions and the composer keep their props across flushes.
   const onSend = useStableCallback(
@@ -612,6 +640,9 @@ function useCopilotPageChat(
       heldFollowUps.length > 0
         ? [...queuedMessages, ...heldFollowUps]
         : queuedMessages,
+    // Locally held follow-ups are still on their way, never held by the server.
+    queuedHeldReason: heldFollowUps.length > 0 ? null : heldReason,
+    retryQueuedMessage,
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,
@@ -642,6 +673,13 @@ function useCopilotPageChat(
 export function useCopilotPage() {
   const session = useCopilotPageSession();
   const stream = useCopilotStream(session.streamArgs);
+  // The runtime chat follows a turn queued at the running cap itself.
+  useFollowQueuedTurn({
+    enabled: !!session.sessionId,
+    sessionChatStatus: session.sessionChatStatus,
+    refetchSession: session.streamArgs.refetchSession,
+    followBackendTurn: stream.followBackendTurn,
+  });
   return useCopilotPageChat(session, stream);
 }
 

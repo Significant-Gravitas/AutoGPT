@@ -1,3 +1,4 @@
+import type { PeekPendingMessagesResponseHeldReason } from "@/app/api/__generated__/models/peekPendingMessagesResponseHeldReason";
 import {
   getGetV2GetCopilotUsageMockHandler200,
   getGetV2GetPendingMessagesMockHandler200,
@@ -134,6 +135,8 @@ export function renderHost(
     searchParams?: string;
     /** Follow-ups the backend still holds in the session's pending buffer. */
     pendingMessages?: string[];
+    /** Why the last turn left `pendingMessages` unread, if it did. */
+    pendingHeldReason?: PeekPendingMessagesResponseHeldReason;
     /** Replaces the default session GET, e.g. to answer it with an error. */
     sessionResponse?: HttpHandler;
     /** Mount under React Strict Mode, as the dev server does: every effect
@@ -172,6 +175,12 @@ export function renderHost(
     getGetV2GetPendingMessagesMockHandler200({
       count: opts.pendingMessages?.length ?? 0,
       messages: opts.pendingMessages ?? [],
+      // Stable ids, as the server gives every queued message one.
+      items: (opts.pendingMessages ?? []).map((content, index) => ({
+        id: `pm-${index + 1}`,
+        content,
+      })),
+      held_reason: opts.pendingHeldReason ?? null,
     }),
     // useCopilotStop POSTs here when the user clicks Stop. The default
     // Orval handler returns random faker fields; pin to a deterministic

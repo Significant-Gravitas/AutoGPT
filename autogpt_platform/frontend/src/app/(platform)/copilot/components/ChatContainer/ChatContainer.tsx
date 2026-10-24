@@ -63,6 +63,7 @@ import {
   stripLegacyKickoffMarker,
   type ExpertKickoffMetadata,
 } from "../../expertKickoff";
+import type { HeldReason } from "../../useCopilotPendingChips";
 
 export interface ChatContainerProps {
   isUsageRefused?: boolean;
@@ -115,6 +116,9 @@ export interface ChatContainerProps {
   onEnqueue?: (message: string) => void | Promise<void>;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
+  /** Set when nothing will answer `queuedMessages` unless they are resent. */
+  queuedHeldReason?: HeldReason | null;
+  onRetryQueuedMessage?: (index: number) => void;
   isUploadingFiles?: boolean;
   /** The message whose attachments are still uploading, shown as a
    *  placeholder bubble until the real one lands in `messages`. */
@@ -174,6 +178,8 @@ export const ChatContainer = ({
   onStop,
   onEnqueue,
   queuedMessages,
+  queuedHeldReason,
+  onRetryQueuedMessage,
   isUploadingFiles,
   pendingSend,
   hasMoreMessages,
@@ -532,6 +538,8 @@ export const ChatContainer = ({
                 onRetry={handleRetry}
                 turnStats={turnStats}
                 queuedMessages={queuedMessages}
+                queuedHeldReason={queuedHeldReason}
+                onRetryQueuedMessage={onRetryQueuedMessage}
                 pendingSend={pendingSend}
                 bottomContentPadding={usageCardHeight + composerTabInset}
                 expertIdentity={expertIdentity}

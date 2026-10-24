@@ -7,8 +7,14 @@ const HEARTBEAT_MS = 10_000;
 // The route's listener checks the meta after each empty read of this length.
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
-// What the route answers a send it queued: framing, no ids, no turn.
-const QUEUED_STREAM = emptyStream();
+// What the route answers a send it queued at the running cap: no ids, no turn.
+const QUEUED_STREAM = emptyStream({
+  type: "data-turn-queued",
+  data: { position: 1 },
+  transient: true,
+});
+// A send no turn, queue or row took: framing and nothing else.
+const EMPTY_STREAM = emptyStream();
 // What it answers a send it queued behind the turn already running.
 const FOLLOW_UP_STREAM = emptyStream({
   type: "data-follow-up-queued",
@@ -39,6 +45,10 @@ type Responder = (request: { method: string; url: URL }) =>
   | "silent"
   // The backend queued the send behind a turn already running.
   | "follow-up-queued"
+  // The route closed the send's stream without taking it anywhere.
+  | "empty"
+  // A heartbeat, then nothing: the route went quiet mid-send.
+  | "heartbeat-then-silent"
   | { status: number; body: unknown };
 
 /**
@@ -84,6 +94,20 @@ export function fakeBackend(turn: RecordedTurn) {
         status: 200,
         headers: { "content-type": "text/event-stream" },
       });
+    if (answer === "empty")
+      return new Response(EMPTY_STREAM, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    if (answer === "heartbeat-then-silent")
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(": heartbeat\n\n"));
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
     if (answer === "silent")
       return new Response(new ReadableStream<Uint8Array>(), {
         status: 200,

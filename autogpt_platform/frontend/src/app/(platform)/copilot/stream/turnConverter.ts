@@ -105,6 +105,8 @@ function applyChunk(log: TurnLog, entryId: string, chunk: WireChunk): TurnLog {
     case "data-checkpoint":
       return recordCheckpoint(log, entryId, record(chunk.data));
     case "data-cursor":
+    // The page reads held follow-ups from the pending queue once the turn ends.
+    case "data-follow-up-held":
       return log;
     case "data-provider-failure":
       return {

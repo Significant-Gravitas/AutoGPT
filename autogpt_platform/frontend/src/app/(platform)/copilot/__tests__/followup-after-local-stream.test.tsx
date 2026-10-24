@@ -321,6 +321,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       buffer_length: 1,
       max_buffer_length: 10,
       turn_in_flight: true,
+      pending_id: "pm-second",
     });
     streamState.status = "ready";
     rerender();
@@ -333,7 +334,8 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
       undefined,
     );
-    expect(queueMessage).toHaveBeenCalledWith("second");
+    // The chip carries the server's id for the queued message.
+    expect(queueMessage).toHaveBeenCalledWith("second", "pm-second");
     // Both held copies are released: one went out, one is now the
     // backend's chip.
     await waitFor(() => expect(result.current.queuedMessages).toEqual([]));
@@ -345,11 +347,12 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       buffer_length: 1,
       max_buffer_length: 10,
       turn_in_flight: true,
+      pending_id: "pm-and-then",
     });
     const { result } = renderHook(() => useCopilotPage());
     await result.current.onSend("and then?");
 
-    expect(queueMessage).toHaveBeenCalledWith("and then?");
+    expect(queueMessage).toHaveBeenCalledWith("and then?", "pm-and-then");
     expect(sendNewMessage).not.toHaveBeenCalled();
   });
 
