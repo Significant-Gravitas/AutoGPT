@@ -129,9 +129,14 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
             )}
           />
         </span>
-        <span className="shrink-0 font-sans text-sm text-foreground-tertiary">
+        <Text
+          variant="body"
+          as="span"
+          tone="muted"
+          className="shrink-0 leading-5"
+        >
           {group.done ? "Done" : `$${group.amount.toFixed(2)}`}
-        </span>
+        </Text>
       </button>
 
       {open && group.rows.map((row) => <EarnTaskRow key={row.key} row={row} />)}
@@ -146,9 +151,14 @@ function EarnTaskRow({ row }: { row: EarnRow }) {
         <StatusIcon done={row.done} />
         <Text variant="body">{row.label}</Text>
       </div>
-      <span className="shrink-0 font-sans text-sm text-foreground-tertiary">
+      <Text
+        variant="body"
+        as="span"
+        tone="muted"
+        className="shrink-0 leading-5"
+      >
         {row.done ? "Done" : `$${row.amount.toFixed(2)}`}
-      </span>
+      </Text>
     </div>
   );
 }
