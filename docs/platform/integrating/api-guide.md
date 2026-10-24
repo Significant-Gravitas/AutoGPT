@@ -16,7 +16,7 @@ This Swagger UI documentation includes all available endpoints, request/response
 
 ## Authentication Methods
 
-The External API supports two authentication methods:
+The External API supports three authentication methods:
 
 ### 1. API Keys
 
@@ -28,11 +28,21 @@ X-API-Key: your_api_key_here
 ```
 
 API keys are ideal for:
-- Server-to-server integrations
-- Personal scripts and automation
-- Backend services
+- Personal scripts and quick experiments
+- Tools that run on your own machine
 
-### 2. OAuth 2.0 (Single Sign-On)
+### 2. Keyless access (recommended for CI jobs, servers and websites)
+
+Code running on GitHub Actions, Vercel, GitLab CI, Google Cloud or your own server can call the API without an API key. It proves where it runs with the identity token its platform gives it, and swaps that for an AutoGPT token that expires within the hour. There is no secret to store, leak or rotate:
+
+```http
+GET /external-api/v1/blocks
+Authorization: Bearer agpt_wt_...
+```
+
+See the [Keyless API Access guide](keyless-access.md) for setup on each platform.
+
+### 3. OAuth 2.0 (Single Sign-On)
 
 For applications that need to act on behalf of users, use OAuth 2.0. This allows users to authorize your application to access their AutoGPT resources.
 
@@ -45,7 +55,7 @@ See the [OAuth Integration Guide](oauth-guide.md) for complete OAuth implementat
 
 ## Available Scopes
 
-When using OAuth, request only the scopes your application needs:
+API keys, keyless workloads and OAuth applications all use the same scopes. Grant only the ones your integration needs:
 
 | Scope | Description |
 |-------|-------------|

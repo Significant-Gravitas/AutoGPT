@@ -8,7 +8,7 @@ from pydantic import BaseModel
 class APIAuthorizationInfo(BaseModel):
     user_id: str
     scopes: list[APIKeyPermission]
-    type: Literal["oauth", "api_key"]
+    type: Literal["oauth", "api_key", "workload"]
     created_at: datetime
     expires_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None

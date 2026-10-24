@@ -5,6 +5,7 @@ import {
   Key01Icon,
   MessageMultiple01Icon,
   PlugSocketIcon,
+  ShieldKeyIcon,
   SlidersHorizontalIcon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
@@ -36,6 +37,11 @@ export const settingsNavItems: SettingsNavItem[] = [
   },
   { label: "Bots", href: "/settings/bots", Icon: MessageMultiple01Icon },
   { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: Key01Icon },
+  {
+    label: "Keyless Access",
+    href: "/settings/keyless-access",
+    Icon: ShieldKeyIcon,
+  },
   {
     label: "Creator Dashboard",
     href: "/settings/creator-dashboard",

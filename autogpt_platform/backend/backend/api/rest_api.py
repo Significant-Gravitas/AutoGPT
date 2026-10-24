@@ -79,6 +79,7 @@ import backend.api.features.subscription_activation_routes as subscription_activ
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
+import backend.api.features.workload_identity.routes as workload_identity_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
 import backend.data.autopilot_migrate
@@ -400,6 +401,11 @@ app.include_router(
     api_keys_routes.router,
     tags=["v1", "api-keys"],
     prefix="/api/api-keys",
+)
+app.include_router(
+    workload_identity_routes.router,
+    tags=["v1", "workload-identity"],
+    prefix="/api/workload-identities",
 )
 app.include_router(
     skills_routes.router,

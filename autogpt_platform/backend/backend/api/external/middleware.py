@@ -11,6 +11,12 @@ from backend.data.auth.oauth import (
     OAuthAccessTokenInfo,
     validate_access_token,
 )
+from backend.data.auth.workload_identity import (
+    WORKLOAD_TOKEN_PREFIX,
+    InvalidWorkloadTokenError,
+    WorkloadTokenInfo,
+    validate_workload_token,
+)
 from backend.data.user import is_user_banned
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -61,12 +67,14 @@ async def require_auth(
     """
     Unified authentication middleware supporting both API keys and OAuth tokens.
 
-    Supports two authentication methods, which are checked in order:
+    Supports these authentication methods, which are checked in order:
     1. X-API-Key header (existing API key authentication)
-    2. Authorization: Bearer <token> header (OAuth access token)
+    2. Authorization: Bearer <token> header: a workload token (minted by the
+       token-exchange grant for a workload's OIDC token) or an OAuth access token
 
     Returns:
-        APIAuthorizationInfo: base class of both APIKeyInfo and OAuthAccessTokenInfo.
+        APIAuthorizationInfo: base class of APIKeyInfo, WorkloadTokenInfo and
+        OAuthAccessTokenInfo.
     """
     # Try API key first
     if api_key is not None:
@@ -77,6 +85,9 @@ async def require_auth(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
+
+    if bearer is not None and bearer.credentials.startswith(WORKLOAD_TOKEN_PREFIX):
+        return await _require_workload_token(bearer.credentials)
 
     # Try OAuth bearer token
     if bearer is not None:
@@ -92,6 +103,15 @@ async def require_auth(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Missing authentication. Provide API key or access token.",
     )
+
+
+async def _require_workload_token(token: str) -> WorkloadTokenInfo:
+    try:
+        token_info = await validate_workload_token(token)
+    except InvalidWorkloadTokenError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    await _refuse_banned_owner(token_info)
+    return token_info
 
 
 async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:

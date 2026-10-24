@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.data.user import is_user_banned
 
 from .base import APIAuthorizationInfo
+from .workload_identity import cleanup_expired_workload_tokens
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()  # Only used for client secret hashing (Scrypt)
@@ -853,6 +854,7 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
     - Expired authorization codes (10 min TTL)
     - Expired access tokens (1 hour TTL)
     - Expired refresh tokens (30 day TTL)
+    - Expired workload tokens (minted by the token-exchange grant)
 
     Returns a dict with counts of deleted tokens by type.
     """
@@ -877,6 +879,7 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
         "authorization_codes": codes_result,
         "access_tokens": access_result,
         "refresh_tokens": refresh_result,
+        "workload_access_tokens": await cleanup_expired_workload_tokens(),
     }
 
     total = sum(deleted.values())

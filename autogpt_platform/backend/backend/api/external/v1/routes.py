@@ -19,6 +19,7 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.auth.workload_identity import WorkloadTokenInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.executor.utils import (
@@ -235,7 +236,7 @@ async def execute_graph(
             organization_id=org_id,
             team_id=team_id,
             trigger=ExecutionTrigger.API,
-            trigger_ref=auth.id if isinstance(auth, APIKeyInfo) else auth.type,
+            trigger_ref=_credential_ref(auth),
         )
         return {"id": graph_exec.id}
     except UserPaywalledError:
@@ -457,3 +458,12 @@ async def get_store_creator(
     username = urllib.parse.unquote(username).lower()
     creator = await store_cache._get_cached_creator_details(username=username)
     return creator
+
+
+def _credential_ref(auth: APIAuthorizationInfo) -> str:
+    """Which credential started a run: its API key or workload identity ID."""
+    if isinstance(auth, APIKeyInfo):
+        return auth.id
+    if isinstance(auth, WorkloadTokenInfo):
+        return auth.workload_identity_id
+    return auth.type
