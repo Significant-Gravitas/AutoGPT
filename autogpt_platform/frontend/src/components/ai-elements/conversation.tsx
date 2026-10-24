@@ -67,18 +67,12 @@ export const ConversationEmptyState = ({
         {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
         {icon && <div className="text-neutral-500">{icon}</div>}
         <div className="space-y-1">
-          {/* Text's 22px body line-height and #141414 would change these:
-              the heading keeps 20px and the colour it inherits. */}
-          <Text
-            variant="body-medium"
-            as="h3"
-            className="leading-5 text-inherit"
-          >
+          <Text variant="body-medium-tight" tone="inherit" as="h3">
             {title}
           </Text>
           {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
           {description && (
-            <Text variant="body" as="p" className="leading-5 text-neutral-500">
+            <Text variant="body-tight" as="p" className="text-neutral-500">
               {description}
             </Text>
           )}
