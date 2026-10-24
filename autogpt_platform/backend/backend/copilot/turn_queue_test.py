@@ -298,7 +298,7 @@ async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
             "assistant",
             turn_queue.TURN_CANCELLED,
         )
-        assert note["metadata"] == {turn_queue._REFUSED_KEY: True}
+        assert note["metadata"] == {turn_queue.QUEUED_TURN_REFUSED_KEY: True}
     else:
         release.assert_not_awaited()
         db.add_chat_message.assert_not_awaited()

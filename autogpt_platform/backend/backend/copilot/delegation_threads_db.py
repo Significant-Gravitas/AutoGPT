@@ -20,6 +20,7 @@ from backend.copilot.db import _PENDING_QUESTION_SESSION_COLUMNS as SESSION_COLU
 from backend.copilot.delegation_db import delegated_session_sql
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
+from backend.copilot.turn_queue import QUEUED_TURN_REFUSED_KEY, TURN_CANCELLED
 from backend.data import db
 
 ThreadStatus = Literal[
@@ -37,7 +38,8 @@ class DelegatedThread(BaseModel):
     status: ThreadStatus
 
 
-# $1 user, $2 expert, $3 parent, $4/$5 error prefixes, $6 the stop marker.
+# $1 user, $2 expert, $3 parent, $4/$5 error prefixes, $6 the stop marker,
+# $7 the queue's refusal flag, $8 its note for a turn stopped while queued.
 _THREADS = (
     'WITH d AS (SELECT s."id", s."createdAt", CASE '
     "WHEN s.\"chatStatus\" = 'running' THEN 'running' "
@@ -46,13 +48,17 @@ _THREADS = (
     "THEN 'needs_input' "
     # Idle, yet the turn never answered: it died before a reply or a marker.
     "WHEN last.\"role\" IS DISTINCT FROM 'assistant' THEN 'failed' "
+    # Never started: the queue's note closes it, stopped or refused.
+    "WHEN last.\"metadata\" -> $7::text = 'true'::jsonb "
+    "THEN CASE WHEN last.\"content\" = $8 THEN 'cancelled' ELSE 'failed' END "
     "WHEN position($4 in COALESCE(last.\"content\", '')) = 1 "
     "OR position($5 in COALESCE(last.\"content\", '')) = 1 "
     'THEN CASE WHEN position($6 in last."content") > 0 '
     "THEN 'cancelled' ELSE 'failed' END "
     "ELSE 'completed' END AS status "
     'FROM {schema_prefix}"ChatSession" s LEFT JOIN LATERAL ('
-    'SELECT m."role", m."content" FROM {schema_prefix}"ChatMessage" m '
+    'SELECT m."role", m."content", m."metadata" '
+    'FROM {schema_prefix}"ChatMessage" m '
     'WHERE m."sessionId" = s."id" ORDER BY m."sequence" DESC LIMIT 1'
     ") last ON true "
     'WHERE s."userId" = $1 AND '
@@ -72,8 +78,8 @@ async def list_delegated_threads(
     """The newest *limit* delegated threads matching *filters*, in any of
     *statuses* (every status when None)."""
     rows = await db.query_raw_with_schema(
-        _THREADS + 'SELECT "id", status FROM d WHERE ($7::text[] IS NULL OR '
-        'status = ANY($7::text[])) ORDER BY "createdAt" DESC LIMIT $8',
+        _THREADS + 'SELECT "id", status FROM d WHERE ($9::text[] IS NULL OR '
+        'status = ANY($9::text[])) ORDER BY "createdAt" DESC LIMIT $10',
         *_params(user_id, filters),
         statuses,
         limit,
@@ -95,7 +101,7 @@ async def count_threads_started_since(
     rows = await db.query_raw_with_schema(
         _THREADS + "SELECT COUNT(*) AS n FROM d "
         # The column holds UTC without a zone; the driver binds timestamptz.
-        "WHERE \"createdAt\" >= ($7::timestamptz AT TIME ZONE 'UTC')",
+        "WHERE \"createdAt\" >= ($9::timestamptz AT TIME ZONE 'UTC')",
         *_params(user_id, filters),
         since,
     )
@@ -121,6 +127,8 @@ def _params(user_id: str, filters: DelegationFilter) -> tuple[str | None, ...]:
         COPILOT_ERROR_PREFIX,
         COPILOT_RETRYABLE_ERROR_PREFIX,
         CANCELLED_MESSAGE,
+        QUEUED_TURN_REFUSED_KEY,
+        TURN_CANCELLED,
     )
 
 

@@ -26,6 +26,11 @@ from backend.api.features.experts.delegations import (
 )
 from backend.copilot.constants import COPILOT_ERROR_PREFIX
 from backend.copilot.delegation_list_db import HELD_HANDOFF_PREFIX
+from backend.copilot.turn_queue import (
+    QUEUE_UNAVAILABLE,
+    QUEUED_TURN_REFUSED_KEY,
+    TURN_CANCELLED,
+)
 from backend.data.db import prisma as db_client
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -324,6 +329,36 @@ async def test_a_group_filter_takes_every_status_its_chip_shows(team):
     assert [r.sub_session_id for r in failed.delegations] == [ids["failed"]]
     assert failed.total == failed.summary.failed == 2
     assert [r.status for r in asked.delegations] == ["needs_input"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_turn_that_never_started_reads_as_stopped_or_failed(team):
+    """A queued hand-off the user stopped, or one the queue refused, closes
+    on the queue's note rather than a reply: stopped, and failed."""
+    user_id, expert_id, otto = team
+    brief = "[Delegated task from Otto.]\n\n"
+    notes = {"stopped": TURN_CANCELLED, "refused": QUEUE_UNAVAILABLE}
+    ids = {}
+    for minutes, (name, note) in enumerate(notes.items()):
+        sid = await _thread(user_id, otto, expert_id, minutes, [("user", brief + name)])
+        await ChatMessage.prisma().create(
+            data={
+                "sessionId": sid,
+                "role": "assistant",
+                "content": note,
+                "sequence": 1,
+                "metadata": SafeJson({QUEUED_TURN_REFUSED_KEY: True}),
+            }
+        )
+        ids[sid] = name
+
+    response = await list_delegations(user_id, parent_session_id=otto)
+
+    assert {ids[r.sub_session_id]: r.status for r in response.delegations} == {
+        "stopped": "cancelled",
+        "refused": "failed",
+    }
+    assert response.summary.failed == 2
 
 
 @pytest.mark.asyncio(loop_scope="session")

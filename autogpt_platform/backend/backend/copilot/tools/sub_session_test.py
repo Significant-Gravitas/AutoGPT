@@ -909,7 +909,7 @@ class TestGetSubSessionResult:
 
     @pytest.mark.parametrize(
         "prior_metadata",
-        [None, {turn_queue._REFUSED_KEY: True}],
+        [None, {turn_queue.QUEUED_TURN_REFUSED_KEY: True}],
         ids=["stale-result", "stale-refusal"],
     )
     @pytest.mark.asyncio

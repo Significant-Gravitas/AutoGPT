@@ -106,11 +106,15 @@ export function resolveLiveStatus({
 }
 
 const CANCELLED_TEXT = "Operation cancelled";
+// The queue's note on a turn stopped before it started (turn_queue.py).
+const CANCELLED_BEFORE_START_TEXT =
+  "This task was cancelled before it started.";
 
 /** How an idle thread's last turn ended, read the way Otto's Delegations
  *  list reads it: a turn that died before replying, or ended on an error,
- *  failed, and one that ended on the cancel marker was stopped. With no
- *  transcript to read, the poll still says it finished. */
+ *  failed, and one that ended on the cancel marker was stopped. A turn that
+ *  never started ends on the queue's note: stopped, or refused (failed).
+ *  With no transcript to read, the poll still says it finished. */
 export function settledStatusOf(
   session: SessionDetailResponse,
 ): "completed" | "failed" | "cancelled" {
@@ -118,6 +122,8 @@ export function settledStatusOf(
   if (!last) return "completed";
   if (last.role !== "assistant") return "failed";
   const content = typeof last.content === "string" ? last.content : "";
+  if (asObject(last.metadata)?.queued_turn_refused === true)
+    return content === CANCELLED_BEFORE_START_TEXT ? "cancelled" : "failed";
   if (
     content.startsWith(COPILOT_ERROR_PREFIX) ||
     content.startsWith(COPILOT_RETRYABLE_ERROR_PREFIX)

@@ -92,6 +92,29 @@ describe("resolveLiveStatus", () => {
     ).toBe("completed");
   });
 
+  it("reads a hand-off that never started by the queue's note", () => {
+    function settled(...messages: Record<string, unknown>[]) {
+      return resolve("queued", {
+        session: { chat_status: "idle", messages } as SessionDetailResponse,
+      });
+    }
+    const brief = { role: "user", content: "Draft the PRD" };
+    expect(
+      settled(brief, {
+        role: "assistant",
+        content: "This task was cancelled before it started.",
+        metadata: { queued_turn_refused: true },
+      }),
+    ).toBe("cancelled");
+    expect(
+      settled(brief, {
+        role: "assistant",
+        content: "Could not queue this task right now; try again shortly.",
+        metadata: { queued_turn_refused: true },
+      }),
+    ).toBe("failed");
+  });
+
   it("follows the polled session over the frozen transcript", () => {
     expect(resolve("running")).toBe("completed");
     expect(resolve("needs-input", { isLive: true })).toBe("running");

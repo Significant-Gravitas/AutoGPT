@@ -14,6 +14,7 @@ from backend.copilot.markers import (
     append_error_marker,
     has_trailing_marker,
     is_error_marker,
+    persist_error_marker,
     provider_failure_of,
 )
 from backend.copilot.model import ChatMessage, ChatSession
@@ -264,3 +265,78 @@ class TestTheFailureReachesTheDatabase:
         rows = captured.get("messages")
         assert rows, "no rows reached the database layer"
         assert rows[0]["metadata"] == {"provider_failure": {"kind": "auth_expired"}}
+
+
+class TestAThreadEndedOutsideItsEngineSaysSo:
+    """A stop can end a turn where its engine writes no marker of its own
+    (the baseline engine, or before any engine ran): the executor closes the
+    stored thread on one, unless the engine already did."""
+
+    @pytest.mark.asyncio
+    async def test_a_thread_with_no_marker_gets_one(
+        self, mocker: pytest_mock.MockerFixture
+    ) -> None:
+        stored = _session(
+            [
+                ChatMessage(role="user", content="Draft the brief"),
+                ChatMessage(role="assistant", content="Here is the first half"),
+            ]
+        )
+        mocker.patch(
+            "backend.copilot.markers.get_chat_session",
+            new=AsyncMock(return_value=stored),
+        )
+        append = mocker.patch(
+            "backend.copilot.markers.append_and_save_message",
+            new=AsyncMock(return_value=stored),
+        )
+
+        assert await persist_error_marker("s1", "Operation cancelled", retryable=False)
+
+        session_id, row = append.await_args.args
+        assert session_id == "s1"
+        assert row.role == "assistant"
+        assert row.content == f"{COPILOT_ERROR_PREFIX} Operation cancelled"
+
+    @pytest.mark.asyncio
+    async def test_a_thread_the_engine_already_closed_is_left_alone(
+        self, mocker: pytest_mock.MockerFixture
+    ) -> None:
+        stored = _session(
+            [
+                ChatMessage(role="user", content="Draft the brief"),
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_ERROR_PREFIX} Operation cancelled",
+                ),
+            ]
+        )
+        mocker.patch(
+            "backend.copilot.markers.get_chat_session",
+            new=AsyncMock(return_value=stored),
+        )
+        append = mocker.patch(
+            "backend.copilot.markers.append_and_save_message", new=AsyncMock()
+        )
+
+        assert not await persist_error_marker(
+            "s1", "Operation cancelled", retryable=False
+        )
+        append.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_missing_thread_writes_nothing(
+        self, mocker: pytest_mock.MockerFixture
+    ) -> None:
+        mocker.patch(
+            "backend.copilot.markers.get_chat_session",
+            new=AsyncMock(return_value=None),
+        )
+        append = mocker.patch(
+            "backend.copilot.markers.append_and_save_message", new=AsyncMock()
+        )
+
+        assert not await persist_error_marker(
+            "s1", "Operation cancelled", retryable=False
+        )
+        append.assert_not_awaited()

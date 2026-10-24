@@ -39,6 +39,7 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
 )
 from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.markers import persist_error_marker
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -108,6 +109,10 @@ RATE_LIMIT_UNAVAILABLE_MESSAGE = (
 # waits for normal cleanup so late stream writes do not race the manager, but it
 # must still escape to the sync fail-close safety net if cleanup wedges.
 _CANCEL_GRACE_SECONDS = 5.0
+
+# The cancel marker is written inside that grace, ahead of marking the turn
+# done; a wedged store gives up on the marker, never on ending the turn.
+_CANCEL_MARKER_TIMEOUT_SECONDS = 2.0
 
 # How long to wait before logging again that a cancelled turn is still draining.
 _CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
@@ -318,6 +323,29 @@ def _cascade_cancel(entry: CoPilotExecutionEntry, started_at: datetime) -> None:
         cancel_delegated_children(entry.session_id, entry.user_id, started_at),
         name=f"cancel-children-{entry.session_id[:12]}",
     )
+
+
+async def _close_on_cancel_marker(
+    session_id: str, log: "CoPilotLogMetadata | TruncatedLogger"
+) -> None:
+    """End a stopped turn's stored thread on the cancel marker.
+
+    The SDK engine writes it when the cancel reaches it as CancelledError;
+    the baseline engine, a stop that closes the stream first, and a stop
+    before any engine ran write nothing, which leaves a reload, and every
+    reader of the thread, taking the stop for a finished or a dead turn.
+    Before the turn is marked done: that wakes the next turn and tells a
+    waiting client to read the thread. Best-effort, as the rest of teardown.
+    """
+    try:
+        await asyncio.wait_for(
+            persist_error_marker(
+                session_id, stream_registry.CANCELLED_MESSAGE, retryable=False
+            ),
+            timeout=_CANCEL_MARKER_TIMEOUT_SECONDS,
+        )
+    except Exception as marker_err:
+        log.error(f"Failed to persist the cancel marker: {marker_err}")
 
 
 async def _refuse_turn(
@@ -1023,6 +1051,8 @@ class CoPilotProcessor:
                 )
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
+                if error_msg == stream_registry.CANCELLED_MESSAGE:
+                    await _close_on_cancel_marker(entry.session_id, log)
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id,
