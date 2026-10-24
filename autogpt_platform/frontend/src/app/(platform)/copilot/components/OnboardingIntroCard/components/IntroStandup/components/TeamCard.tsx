@@ -74,9 +74,9 @@ export function TeamCard({ team }: Props) {
                   {member.area}
                 </Text>
               </div>
-              {member.job && (
+              {member.schedule && (
                 <Text variant="small" tone="secondary" className="text-pretty">
-                  {member.job}
+                  {member.schedule}
                 </Text>
               )}
             </div>

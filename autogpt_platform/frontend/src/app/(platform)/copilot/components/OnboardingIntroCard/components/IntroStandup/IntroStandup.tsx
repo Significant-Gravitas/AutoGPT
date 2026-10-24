@@ -13,7 +13,7 @@ interface Props {
 }
 
 /** The rest of Otto's first turn after the greeting: the team he hired for
- *  the user, each hire's day-one job and setup status, and one ask. */
+ *  the user, each hire's running schedule and setup status, and one ask. */
 export function IntroStandup({ path, disabled, onAnswer }: Props) {
   const {
     team,

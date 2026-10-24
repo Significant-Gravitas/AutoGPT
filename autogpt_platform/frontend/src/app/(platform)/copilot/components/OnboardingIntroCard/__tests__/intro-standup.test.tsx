@@ -208,7 +208,7 @@ beforeEach(() => {
 });
 
 describe("Otto's first turn on Home — the team", () => {
-  it("lists the hires with their day-one job and status, three at a time", async () => {
+  it("lists the hires with their status, three at a time", async () => {
     serve({
       hires: [
         nadia,
@@ -229,9 +229,6 @@ describe("Otto's first turn on Home — the team", () => {
     const rows = within(team).getAllByRole("listitem");
     expect(rows).toHaveLength(3);
     expect(rows[0].textContent).toContain("Content Marketer");
-    expect(rows[0].textContent).toContain(
-      "Drafts Monday's newsletter from last week's posts",
-    );
     expect(within(rows[0]).getByRole("status").textContent).toBe("Ready");
     expect(within(rows[1]).getByRole("status").textContent).toBe("Setting up");
     expect(within(rows[2]).getByRole("status").textContent).toBe("Working");
@@ -242,7 +239,70 @@ describe("Otto's first turn on Home — the team", () => {
     expect(within(team).queryByRole("link", { name: /Chat/ })).toBeNull();
   });
 
-  it("falls back to the first installed workflow when the template promises nothing", async () => {
+  it("shows a hire's running schedule, and nothing for a hire with nothing scheduled", async () => {
+    serve({
+      hires: [
+        {
+          ...nadia,
+          workflows: [
+            {
+              graph_id: "g",
+              name: "Personal Newsletter",
+              schedule_cron: "40 7 * * *",
+              schedule_id: "schedule-1",
+            } as never,
+          ],
+        },
+        robin,
+        {
+          ...frankie,
+          workflows: [
+            {
+              graph_id: "g",
+              name: "Daily agenda",
+              schedule_cron: "0 8 * * *",
+              schedule_id: null,
+            } as never,
+          ],
+        },
+      ],
+    });
+    renderHome();
+
+    const rows = within(await findTeam()).getAllByRole("listitem");
+    expect(rows[0].textContent).toContain(
+      "Personal Newsletter · Every day at 07:40",
+    );
+    // The template's day-one job is a promise, not something queued.
+    expect(rows[1].textContent).not.toContain("Triages");
+    expect(rows[2].textContent).not.toContain("Daily agenda");
+    expect(rows[2].textContent).not.toContain("Every day");
+  });
+
+  it("shows no schedule for a hire whose schedules are paused", async () => {
+    serve({
+      hires: [
+        {
+          ...nadia,
+          schedules_paused_at: new Date("2026-10-24T09:00:00Z"),
+          workflows: [
+            {
+              graph_id: "g",
+              name: "Personal Newsletter",
+              schedule_cron: "40 7 * * *",
+              schedule_id: "schedule-1",
+            } as never,
+          ],
+        },
+      ],
+    });
+    renderHome();
+
+    const [row] = within(await findTeam()).getAllByRole("listitem");
+    expect(row.textContent).not.toContain("Personal Newsletter");
+  });
+
+  it("offers the first installed workflow when the template promises nothing", async () => {
     serve({
       hires: [
         makeExpert({
@@ -255,8 +315,11 @@ describe("Otto's first turn on Home — the team", () => {
     });
     renderHome();
 
-    const team = await findTeam();
-    expect(within(team).getByText("Lead list")).toBeDefined();
+    const ask = await findAsk();
+    expect(
+      within(ask).getByRole("button", { name: "Max: Lead list" }),
+    ).toBeDefined();
+    expect((await findTeam()).textContent).not.toContain("Lead list");
   });
 
   it.each(["allow", "inputs", "workflow"] as const)(

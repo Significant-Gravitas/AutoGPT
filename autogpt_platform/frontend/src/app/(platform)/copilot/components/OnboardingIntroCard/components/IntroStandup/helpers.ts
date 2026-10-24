@@ -2,6 +2,7 @@ import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { ExpertSetupItem } from "@/app/api/__generated__/models/expertSetupItem";
 import type { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 
 export type MemberStatus =
@@ -16,7 +17,10 @@ export type MemberStatus =
 export interface TeamMember {
   expert: Expert;
   area: string;
-  job: string | null;
+  /** A schedule the install created and that is not paused. */
+  schedule: string | null;
+  /** A job the user can ask for; nothing runs it until they do. */
+  offer: string | null;
   status: MemberStatus;
 }
 
@@ -56,7 +60,8 @@ export function buildTeam(args: {
   return args.hires.map((expert) => ({
     expert,
     area: expert.job_title || getExpertRoleLabel(expert.role),
-    job: getDayOneJob(
+    schedule: getRunningSchedule(expert),
+    offer: getDayOneOffer(
       expert,
       dayOneByTemplate.get(expert.source_template_id ?? "") ?? [],
     ),
@@ -110,9 +115,21 @@ function getSetupGaps(setupItems: ExpertSetupItem[]) {
   return gaps;
 }
 
-// The template's day-one promise, as its creator wrote it; a hire whose
-// template has none shows the first workflow it installed.
-function getDayOneJob(
+// A cron with no schedule id never got a schedule; the status names that gap.
+function getRunningSchedule(expert: Expert) {
+  if (expert.schedules_paused_at) return null;
+  const workflow = expert.workflows.find(
+    (workflow) => workflow.schedule_id && workflow.schedule_cron,
+  );
+  if (!workflow?.schedule_cron) return null;
+  const cadence = safeHumanizeCronExpression(workflow.schedule_cron);
+  const when = /^(Every|On day)\b/.test(cadence) ? cadence : "Scheduled";
+  return workflow.name ? `${workflow.name} · ${when}` : when;
+}
+
+// The template's day-one job, offered for the user to pick; a hire whose
+// template has none offers the first workflow it installed.
+function getDayOneOffer(
   expert: Expert,
   dayOne: NonNullable<ExpertTemplate["day_one"]>,
 ) {
@@ -158,12 +175,12 @@ export function chooseAsk(args: {
   if (connect) return connect;
 
   const choices = args.team
-    .filter((member) => member.job && member.status !== "failed")
+    .filter((member) => member.offer && member.status !== "failed")
     .slice(0, MAX_CHOICES)
     .map((member) => ({
       expertId: member.expert.id,
-      label: `${member.expert.name}: ${member.job}`,
-      message: `Let's start with ${member.expert.name}'s day-one job: ${member.job}.`,
+      label: `${member.expert.name}: ${member.offer}`,
+      message: `Let's start with ${member.expert.name}'s day-one job: ${member.offer}.`,
     }));
   if (choices.length > 0) return { kind: "pick", choices };
 
