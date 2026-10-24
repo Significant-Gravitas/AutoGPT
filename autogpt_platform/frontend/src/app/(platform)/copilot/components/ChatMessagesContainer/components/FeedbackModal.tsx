@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/atoms/Input/Input";
 import { useState } from "react";
 
 interface Props {
@@ -40,7 +40,9 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
           <p className="text-sm text-muted-foreground">
             Your feedback helps us improve. Share details below.
           </p>
-          <Textarea
+          <Input
+            bare
+            type="textarea"
             placeholder="Tell us what went wrong or could be improved..."
             value={comment}
             onChange={(e) => setComment(e.target.value)}

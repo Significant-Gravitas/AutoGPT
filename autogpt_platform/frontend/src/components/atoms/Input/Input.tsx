@@ -7,7 +7,12 @@ import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { BaseInput, type BaseInputProps } from "./BaseInput";
 import { useInput } from "./useInput";
-import { BareInput, type BareInputProps } from "./BareInput";
+import {
+  BareInput,
+  BareTextarea,
+  type BareInputProps,
+  type BareTextareaProps,
+} from "./BareInput";
 import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -50,16 +55,30 @@ export interface TextFieldProps
 }
 
 // `<Input bare>` renders only the element, as the deleted components/ui/input
-// did; anything else is the labelled field. The field's signature comes last,
-// so ComponentProps<typeof Input> stays the field's props.
-export const Input = forwardRef<InputElement, TextFieldProps | BareInputProps>(
-  function Input(props, ref) {
-    if ("bare" in props && props.bare) {
-      return <BareInput {...props} ref={ref as React.Ref<HTMLInputElement>} />;
+// and textarea did; anything else is the labelled field. The field's
+// signature comes last, so ComponentProps<typeof Input> stays the field's.
+export const Input = forwardRef<
+  InputElement,
+  TextFieldProps | BareInputProps | BareTextareaProps
+>(function Input(props, ref) {
+  if ("bare" in props && props.bare) {
+    if (props.type === "textarea") {
+      return (
+        <BareTextarea
+          {...(props as BareTextareaProps)}
+          ref={ref as React.Ref<HTMLTextAreaElement>}
+        />
+      );
     }
-    return <TextField {...(props as TextFieldProps)} ref={ref} />;
-  },
-) as unknown as typeof BareInput & typeof TextField;
+    return (
+      <BareInput
+        {...(props as BareInputProps)}
+        ref={ref as React.Ref<HTMLInputElement>}
+      />
+    );
+  }
+  return <TextField {...(props as TextFieldProps)} ref={ref} />;
+}) as unknown as typeof BareTextarea & typeof BareInput & typeof TextField;
 
 const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
   {
