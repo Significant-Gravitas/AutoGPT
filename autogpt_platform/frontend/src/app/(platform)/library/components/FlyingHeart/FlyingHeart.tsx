@@ -63,7 +63,7 @@ export function FlyingHeart({
           <Icon
             icon={FavouriteIcon}
             size={24}
-            className="text-red-500 drop-shadow-md"
+            className="text-error drop-shadow-md"
           />
         </motion.div>
       )}

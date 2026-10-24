@@ -25,8 +25,9 @@ export const ScrollableTabsList = React.forwardRef<
   }, [activeValue]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div data-slot="scrollable-tabs-list-root" className="relative" ref={ref}>
       <div
+        data-slot="scrollable-tabs-list"
         className={cn(
           "inline-flex w-full items-center justify-start border-b border-separator",
           className,
@@ -37,6 +38,7 @@ export const ScrollableTabsList = React.forwardRef<
       </div>
       {activeTabElement && (
         <div
+          data-slot="scrollable-tabs-indicator"
           className="transition-left transition-right absolute bottom-0 h-0.5 bg-brand-hover duration-200 ease-in-out"
           style={{
             left: activeTabElement.offsetLeft,

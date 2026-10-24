@@ -41,7 +41,7 @@ export function AutoRefillDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-foreground-tertiary">
             Top up your balance automatically when it dips below the threshold
             you set.
           </Text>
@@ -59,13 +59,14 @@ export function AutoRefillDialog({
             onChange={setRefillAmount}
           />
 
-          <div className="flex items-start gap-2 rounded-[12px] bg-amber-50 px-3 py-2">
+          <div className="flex items-start gap-2 rounded-[12px] bg-warning-surface px-3 py-2">
             <Icon
               icon={Alert01Icon}
               size={18}
+              // TODO(tokens): no exact role (text-amber-600 #D97706)
               className="mt-0.5 shrink-0 text-amber-600"
             />
-            <Text variant="small" as="span" className="text-amber-700">
+            <Text variant="small" as="span" className="text-warning-foreground">
               As a safety mechanism, auto-refill will only trigger once per
               task. Keep this in mind when budgeting to ensure your balance does
               not hit zero and your tasks don&apos;t pause mid-run.
