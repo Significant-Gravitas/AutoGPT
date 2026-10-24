@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
@@ -84,8 +85,8 @@ export function ContextPanelToggle({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
+              variant="compact-ghost"
+              size="compact-icon"
               onClick={() => toggleContextPanelTab("files")}
               aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
                 documentCount > 0
@@ -105,9 +106,13 @@ export function ContextPanelToggle({
                 className="!size-4 text-sidebar-foreground/90"
               />
               {documentCount > 0 && (
-                <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+                <Text
+                  variant="small-medium"
+                  as="span"
+                  className="tabular-nums leading-4 text-sidebar-foreground/90"
+                >
                   {documentCount}
-                </span>
+                </Text>
               )}
             </Button>
           </TooltipTrigger>
@@ -121,8 +126,8 @@ export function ContextPanelToggle({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
+              variant="compact-ghost"
+              size="compact-icon"
               onClick={handleComputerToggle}
               aria-label={isComputerOpen ? "Hide computer" : "Open computer"}
               aria-pressed={isComputerOpen}

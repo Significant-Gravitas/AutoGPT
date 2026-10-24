@@ -1,13 +1,12 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { Button as AtomButton } from "@/components/atoms/Button/Button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
@@ -19,7 +18,12 @@ import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type {
+  ButtonHTMLAttributes,
+  ComponentProps,
+  HTMLAttributes,
+  ReactElement,
+} from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { LinkSafetyModalProps } from "streamdown";
@@ -53,7 +57,7 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
+      "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-body leading-5",
       "group-[.is-user]:w-fit",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-neutral-950",
       "group-[.is-assistant]:text-neutral-950",
@@ -77,9 +81,16 @@ export const MessageActions = ({
   </div>
 );
 
-export type MessageActionProps = ComponentProps<typeof Button> & {
+// Callers name the compact ghost icon look of the deleted ui/button by its old
+// names; these maps keep that API.
+const MESSAGE_ACTION_VARIANT = { ghost: "compact-ghost" } as const;
+const MESSAGE_ACTION_SIZE = { "icon-sm": "compact-icon-sm" } as const;
+
+export type MessageActionProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   tooltip?: string;
   label?: string;
+  variant?: keyof typeof MESSAGE_ACTION_VARIANT;
+  size?: keyof typeof MESSAGE_ACTION_SIZE;
 };
 
 export const MessageAction = ({
@@ -93,9 +104,9 @@ export const MessageAction = ({
 }: MessageActionProps) => {
   const button = (
     <Button
-      size={size}
+      size={MESSAGE_ACTION_SIZE[size]}
       type="button"
-      variant={variant}
+      variant={MESSAGE_ACTION_VARIANT[variant]}
       // A finger needs a bigger target than the 32px icon box.
       className={cn("[@media(pointer:coarse)]:size-10", className)}
       {...props}
@@ -248,7 +259,8 @@ export const MessageBranchSelector = ({
   );
 };
 
-export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
+export type MessageBranchPreviousProps =
+  ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const MessageBranchPrevious = ({
   children,
@@ -261,9 +273,9 @@ export const MessageBranchPrevious = ({
       aria-label="Previous branch"
       disabled={totalBranches <= 1}
       onClick={goToPrevious}
-      size="icon-sm"
+      size="compact-icon-sm"
       type="button"
-      variant="ghost"
+      variant="compact-ghost"
       {...props}
     >
       {children ?? <ChevronLeftIcon size={14} />}
@@ -271,7 +283,7 @@ export const MessageBranchPrevious = ({
   );
 };
 
-export type MessageBranchNextProps = ComponentProps<typeof Button>;
+export type MessageBranchNextProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const MessageBranchNext = ({
   children,
@@ -284,9 +296,9 @@ export const MessageBranchNext = ({
       aria-label="Next branch"
       disabled={totalBranches <= 1}
       onClick={goToNext}
-      size="icon-sm"
+      size="compact-icon-sm"
       type="button"
-      variant="ghost"
+      variant="compact-ghost"
       {...props}
     >
       {children ?? <ChevronRightIcon size={14} />}
@@ -354,12 +366,12 @@ function ExternalLinkModal({
           {url}
         </Text>
         <Dialog.Footer>
-          <AtomButton variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </AtomButton>
-          <AtomButton variant="primary" onClick={onConfirm}>
+          </Button>
+          <Button variant="primary" onClick={onConfirm}>
             Open link
-          </AtomButton>
+          </Button>
         </Dialog.Footer>
       </Dialog.Content>
     </Dialog>
@@ -438,13 +450,13 @@ export const MessageResponse = memo(function MessageResponse({
         "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
         // Raycast-style markdown tables: a rounded card with a quiet small-caps
         // header, hairline row separators and tabular figures.
-        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-[13px] [&_table]:tabular-nums",
+        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-body-sm [&_table]:tabular-nums [&_table]:leading-inherit",
         "[&_tbody]:bg-transparent [&_thead]:bg-message-table-header",
-        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-[0.06em] [&_th]:text-indigo-950/70",
+        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-caption-sm [&_th]:font-medium [&_th]:uppercase [&_th]:leading-inherit [&_th]:tracking-[0.06em] [&_th]:text-indigo-950/70",
         "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
-        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-[13px] [&_td]:leading-5 [&_td]:text-zinc-700 [&_td]:transition-colors",
+        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-body-sm [&_td]:leading-5 [&_td]:text-zinc-700 [&_td]:transition-colors",
         "[&_td_strong]:font-medium [&_td_strong]:text-zinc-950",
-        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-[12px] [&_td_code]:text-zinc-700",
+        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-caption [&_td_code]:leading-inherit [&_td_code]:text-zinc-700",
         "[&_tbody_tr:last-child_td]:border-b-0",
         "[&_tbody_tr:hover_td]:bg-zinc-50",
         className,

@@ -42,6 +42,8 @@ export function Button(props: ButtonProps) {
   const ariaLabel =
     "aria-label" in restProps ? restProps["aria-label"] : undefined;
 
+  const isCompact =
+    typeof variant === "string" && variant.startsWith("compact-");
   const isIconOnly =
     variant === "icon" || (size != null && ICON_ONLY_SIZES.has(size));
   const shouldShowTooltip = isIconOnly && ariaLabel && !loading && withTooltip;
@@ -81,9 +83,15 @@ export function Button(props: ButtonProps) {
         />
       )}
       {!loading && resolvedLeftIcon}
-      <span data-slot="button-label" className="contents">
-        {children}
-      </span>
+      {/* The compact family renders its children bare, as the deleted
+          components/ui/button did, so its DOM stays the same. */}
+      {isCompact ? (
+        children
+      ) : (
+        <span data-slot="button-label" className="contents">
+          {children}
+        </span>
+      )}
       {!loading && rightIcon}
     </>
   );
