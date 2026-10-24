@@ -174,6 +174,10 @@ function useUncheckedHires(args: {
   const installing = (args.hires ?? [])
     .filter((expert) => expert.setup_status === "installing")
     .map((expert) => expert.id);
+  // A failed install created no schedules, so there is nothing to re-read.
+  const failedInstalls = (args.hires ?? [])
+    .filter((expert) => expert.setup_status === "failed")
+    .map((expert) => expert.id);
   const installingKey = installing.join(",");
   const [seenKey, setSeenKey] = useState<string | null>(null);
   const [finished, setFinished] = useState({ ids: [] as string[], at: 0 });
@@ -182,7 +186,9 @@ function useUncheckedHires(args: {
   if (args.hires && installingKey !== seenKey) {
     const left = (seenKey ?? "")
       .split(",")
-      .filter((id) => id && !installing.includes(id));
+      .filter(
+        (id) => id && !installing.includes(id) && !failedInstalls.includes(id),
+      );
     setSeenKey(installingKey);
     if (left.length > 0) {
       // Hires a re-read has already covered stay checked.

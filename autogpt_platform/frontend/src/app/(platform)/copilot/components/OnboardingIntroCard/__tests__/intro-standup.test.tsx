@@ -589,6 +589,33 @@ describe("Otto's first turn on Home — the one ask", () => {
     expect(statusOf(0)).toBe("Ready");
   }, 30_000);
 
+  it("shows a hire whose install failed as failed, without waiting on a setup re-read", async () => {
+    serve({
+      hires: (read) => [
+        { ...nadia, setup_status: read === 1 ? "installing" : "failed" },
+      ],
+    });
+    let setupReads = 0;
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => {
+        setupReads += 1;
+        return setupReads === 1
+          ? HttpResponse.json([])
+          : HttpResponse.json({ detail: "down" }, { status: 500 });
+      }),
+    );
+    renderHome();
+
+    const team = await findTeam();
+    await waitFor(
+      () =>
+        expect(within(team).getByRole("status").textContent).toBe(
+          "Setup didn't finish",
+        ),
+      { timeout: 10_000 },
+    );
+  }, 20_000);
+
   it("waits for the day-one jobs before asking, so the choices never change under the cursor", async () => {
     serve({
       hires: [
