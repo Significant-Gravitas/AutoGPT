@@ -251,6 +251,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         lastSubmittedMessageText: null,
         lastSubmittedKickoffExpertId: null,
         lastSubmittedKickoffAttemptToken: null,
+        lastSubmittedWasResend: false,
       });
       expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
       const userRows =

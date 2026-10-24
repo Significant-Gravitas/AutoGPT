@@ -21,6 +21,7 @@ import {
   getKickoffExpertIdFromMetadata,
   withKickoffLock,
 } from "./expertKickoff";
+import { getResendPendingId } from "./helpers/resendMetadata";
 import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
@@ -139,7 +140,8 @@ export function useCopilotRuntimeStream({
     // and drop the bubble.
     function restoreUnsentSend() {
       if (!coord.lastSubmittedMessageText) return;
-      if (kickoffExpertId) clearRecovery();
+      // A refused Retry is still held on the server and its chip comes back.
+      if (kickoffExpertId || coord.lastSubmittedWasResend) clearRecovery();
       else if (isComposerEmpty()) {
         setInitialPrompt(coord.lastSubmittedMessageText);
         clearRecovery();
@@ -157,6 +159,15 @@ export function useCopilotRuntimeStream({
     // kickoff never lands here: the runtime leaves it to the kickoff hook.)
     if (error instanceof SendNotDeliveredError) {
       if (!error.text) return;
+      // A Retry the server didn't run is still its held chip, or already in
+      // the chat: never a composer copy as well.
+      if (
+        coord.lastSubmittedWasResend &&
+        coord.lastSubmittedMessageText === error.text
+      ) {
+        clearRecovery();
+        return;
+      }
       if (isComposerEmpty()) {
         setInitialPrompt(error.text);
         if (coord.lastSubmittedMessageText === error.text) clearRecovery();
@@ -246,6 +257,7 @@ export function useCopilotRuntimeStream({
       lastSubmittedKickoffExpertId: getKickoffExpertIdFromMetadata(metadata),
       lastSubmittedKickoffAttemptToken:
         getKickoffAttemptTokenFromMetadata(metadata),
+      lastSubmittedWasResend: getResendPendingId(metadata) !== null,
     });
     await runtime.send(input, copilotModel);
   }

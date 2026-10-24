@@ -44,12 +44,18 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
+const streamPath = vi.hoisted(() => ({ runtime: false }));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return { ...actual, useGetFlag: () => false };
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === "copilot-stream-runtime" ? streamPath.runtime : false,
+  };
 });
 
 const FOLLOW_UP = "What is my team working on right now?";
@@ -71,6 +77,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  streamPath.runtime = false;
   resetChatRuntimes();
   server.resetHandlers();
 });
@@ -268,6 +275,46 @@ describe("a follow-up the last turn ended without reading", () => {
   }, 15_000);
 });
 
+describe.each([
+  ["AI SDK", false],
+  ["stream runtime", true],
+] as const)("a Retry the server refuses, on the %s stack", (_, runtime) => {
+  beforeEach(() => {
+    streamPath.runtime = runtime;
+  });
+
+  it.each([
+    [429, "You've reached your usage limit. Try again later."],
+    [402, "Choose a plan to keep going."],
+  ])(
+    "stays a held chip, not also composer text, when the Retry is refused (%i)",
+    async (status, detail) => {
+      server.use(
+        // Refused before the server took the follow-up: it still waits there.
+        http.post(STREAM_URL, () => HttpResponse.json({ detail }, { status })),
+      );
+      renderChat();
+      const retry = await screen.findByRole(
+        "button",
+        { name: /retry/i },
+        { timeout: 5000 },
+      );
+
+      await userEvent.setup().click(retry);
+
+      expect(
+        await screen.findByText("Didn't go through", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(composer().value).toBe("");
+      expect(screen.getAllByText(FOLLOW_UP)).toHaveLength(1);
+    },
+    15_000,
+  );
+});
+
 describe("a send the server queued behind a turn this tab did not see", () => {
   it("shows once, as a Queued chip, not also as a sent bubble no row backs", async () => {
     buffer.messages = [];
@@ -337,6 +384,12 @@ function renderChat() {
       }),
     ),
   );
+}
+
+function composer() {
+  return document.querySelector<HTMLTextAreaElement>(
+    "#chat-input-session, #chat-input",
+  )!;
 }
 
 interface StreamBody {

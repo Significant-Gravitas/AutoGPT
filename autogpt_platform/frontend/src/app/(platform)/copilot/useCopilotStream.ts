@@ -30,6 +30,7 @@ import {
   getKickoffExpertIdFromMetadata,
   withKickoffLock,
 } from "./expertKickoff";
+import { getResendPendingId } from "./helpers/resendMetadata";
 import {
   deduplicateMessages,
   extractSendMessageText,
@@ -280,7 +281,9 @@ export function useCopilotStream({
           // user's composer — drop the recovery slot instead of restoring
           // it. Its bubble below is dropped too; the once-per-expert
           // pending latch expires so a later visit can retry the kickoff.
-          if (kickoffExpertId) {
+          // A refused Retry is still held on the server and its chip comes
+          // back, so the composer would make it a second copy.
+          if (kickoffExpertId || coord.lastSubmittedWasResend) {
             useCopilotStreamStore.getState().updateCoord(sessionId, {
               lastSubmittedMessageText: null,
               lastSubmittedKickoffExpertId: null,
@@ -590,6 +593,7 @@ export function useCopilotStream({
         lastSubmittedMessageText: text,
         lastSubmittedKickoffExpertId: kickoffExpertId,
         lastSubmittedKickoffAttemptToken: kickoffAttemptToken,
+        lastSubmittedWasResend: getResendPendingId(metadata) !== null,
       });
     }
     setHasSentThisMount(true);

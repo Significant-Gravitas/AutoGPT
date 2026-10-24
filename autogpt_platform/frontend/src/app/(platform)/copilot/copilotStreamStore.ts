@@ -15,6 +15,9 @@ import { getMessageSnapshotDigest } from "./helpers/messageSnapshotDigest";
  *
  * - lastSubmittedMessageText: blocks duplicate POSTs on resume. Meaningful
  *   across visits.
+ * - lastSubmittedWasResend: that send was a Retry of a held follow-up. Its
+ *   text lives in the server's queue, so a refusal never puts it back in the
+ *   composer as well (the held chip returns instead).
  *
  * (Previously also tracked `lastChunkId` as a cursor for incremental resume
  * via `?last_chunk_id=…`. That optimisation is unsafe with AI SDK v5's
@@ -29,12 +32,14 @@ export interface SessionCoord {
   lastSubmittedMessageText: string | null;
   lastSubmittedKickoffExpertId: string | null;
   lastSubmittedKickoffAttemptToken: string | null;
+  lastSubmittedWasResend: boolean;
 }
 
 const defaultCoord: SessionCoord = {
   lastSubmittedMessageText: null,
   lastSubmittedKickoffExpertId: null,
   lastSubmittedKickoffAttemptToken: null,
+  lastSubmittedWasResend: false,
 };
 
 /**
