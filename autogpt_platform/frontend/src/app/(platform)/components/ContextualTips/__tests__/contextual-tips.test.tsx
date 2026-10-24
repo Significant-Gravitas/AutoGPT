@@ -312,6 +312,26 @@ describe("contextual tips — showing one", () => {
     expect(await screen.findByText("Where costs come from")).toBeDefined();
   });
 
+  it("counts a tip as shown once, however often it is put back on screen", async () => {
+    // Moving to another page re-checks admission, which takes the tip down
+    // for a frame and puts it back, just like the walkthrough opening.
+    render(<Page />);
+    act(() => requestTip("first-cost"));
+    expect(await screen.findByText("Where costs come from")).toBeDefined();
+
+    act(() => useFirstRunTourStore.getState().open("menu"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("contextual-tip")).toBeNull(),
+    );
+    act(() => useFirstRunTourStore.getState().close());
+    expect(await screen.findByText("Where costs come from")).toBeDefined();
+
+    const shown = capture.mock.calls.filter(
+      ([event]) => event === "contextual_tip_shown",
+    );
+    expect(shown).toEqual([["contextual_tip_shown", { tip: "first-cost" }]]);
+  });
+
   it("shows one tip at a time, oldest first", async () => {
     render(<Page />);
     act(() => {

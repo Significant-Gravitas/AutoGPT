@@ -67,6 +67,17 @@ export function useContextualTips() {
   );
   const active = isAdmitted && !isBlocked ? candidate : null;
 
+  // The host outlives the tip card, which comes down and back up whenever
+  // admission is checked again (a new page, the walkthrough opening), so it
+  // is the one that knows a tip was already seen on screen.
+  const shownTips = useRef(new Set<string>());
+  function reportShown(id: TipID) {
+    const key = `${userID}:${id}`;
+    if (shownTips.current.has(key)) return;
+    shownTips.current.add(key);
+    trackFirstRun("contextual_tip_shown", { tip: id });
+  }
+
   function dismiss() {
     if (!active) return;
     trackFirstRun("contextual_tip_dismissed", { tip: active });
@@ -78,6 +89,7 @@ export function useContextualTips() {
   return {
     active,
     dismiss,
+    reportShown,
     // Nothing on screen to point at yet: let the next tip have its turn.
     postponeActive: () => active && postpone(active),
   };
