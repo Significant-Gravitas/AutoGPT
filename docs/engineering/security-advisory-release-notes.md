@@ -9,7 +9,9 @@ publish its private advisories.
 
 1. Verify the fix in the release tag, not only on `dev`. Record the first release
    containing the fix. Distinguish a partial mitigation from a complete fix.
-2. Add a link to that release in the advisory's Fix or Release references section.
+2. Add a link to that release in the advisory's description text, for example
+   under a Fix or Release references heading. The helper searches the API's
+   `description` field; a link only in `references[].url` is insufficient.
    Use numeric versions in package metadata; explain the corresponding Git tag
    in the description. Do not replace the first fixed version with the latest
    release used for validation.

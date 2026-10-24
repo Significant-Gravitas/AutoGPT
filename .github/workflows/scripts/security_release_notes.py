@@ -79,6 +79,7 @@ def fixed_in(advisory, tag):
             "Use a stable release tag, such as autogpt-platform-beta-v0.9.0"
         )
     release_url = f"{BASE_URL}/releases/tag/{tag}"
+    # Accept closing delimiters and prose punctuation without matching tag extensions.
     has_reference = re.search(
         re.escape(release_url) + r"""(?=$|[\s)#?<>\]"'`]|[.,;:!]+(?=$|[\s)<>\]"'`]))""",
         advisory.get("description") or "",
