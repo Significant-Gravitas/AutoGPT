@@ -2,12 +2,25 @@ import { cn } from "@/lib/utils";
 
 interface Props extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;
+  /** `translucent` is the dark wash of the deleted components/ui/skeleton,
+   *  which takes its tint from whatever sits behind it. */
+  variant?: "solid" | "translucent";
 }
 
-export function Skeleton({ className, ...props }: Props) {
+// TODO(tokens): no role holds neutral-900 #171717, the translucent wash.
+const variantClassName = {
+  solid: "bg-surface-hover",
+  translucent: "bg-neutral-900/10",
+} as const;
+
+export function Skeleton({ className, variant = "solid", ...props }: Props) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-surface-hover", className)}
+      className={cn(
+        "animate-pulse rounded-md",
+        variantClassName[variant],
+        className,
+      )}
       {...props}
     />
   );

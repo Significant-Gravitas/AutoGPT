@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useCopilotUIStore } from "../../../../store";
 import { downloadArtifact } from "../../../ArtifactPanel/downloadArtifact";
 import { fileItemToArtifactRef } from "../FilesTab/helpers";
@@ -34,9 +34,9 @@ export function ArtifactsTab({ sessionId }: Props) {
   if (isLoading) {
     return (
       <div className="mx-auto flex w-full max-w-[17rem] flex-col gap-2 p-3">
-        <Skeleton className="h-12 w-full rounded-2xl" />
-        <Skeleton className="h-12 w-full rounded-2xl" />
-        <Skeleton className="h-12 w-full rounded-2xl" />
+        <Skeleton variant="translucent" className="h-12 w-full rounded-2xl" />
+        <Skeleton variant="translucent" className="h-12 w-full rounded-2xl" />
+        <Skeleton variant="translucent" className="h-12 w-full rounded-2xl" />
       </div>
     );
   }

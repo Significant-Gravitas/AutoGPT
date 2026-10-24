@@ -3,7 +3,7 @@
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
 import { Suspense, useState } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { ArtifactErrorBoundary } from "./ArtifactErrorBoundary";
@@ -111,7 +111,10 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="relative flex items-center justify-center p-4">
       {!loaded && (
-        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+        <Skeleton
+          variant="translucent"
+          className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md"
+        />
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -155,7 +158,10 @@ function ArtifactVideo({ src }: { src: string }) {
   return (
     <div className="relative flex items-center justify-center p-4">
       {!loaded && (
-        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+        <Skeleton
+          variant="translucent"
+          className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md"
+        />
       )}
       <video
         src={withCacheBust(src, retryNonce)}
