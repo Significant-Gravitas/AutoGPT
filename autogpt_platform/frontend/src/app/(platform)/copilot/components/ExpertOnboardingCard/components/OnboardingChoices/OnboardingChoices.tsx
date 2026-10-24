@@ -82,10 +82,11 @@ export function OnboardingChoices({
                 onClick={() => choose(option)}
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-base leading-snug outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 sm:py-2.5 sm:text-[15px] [@media(hover:none)]:min-h-11",
+                  // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+                  "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-base leading-snug outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 sm:py-2.5 sm:text-body-md sm:leading-snug [@media(hover:none)]:min-h-11",
                   isSelected
-                    ? "bg-zinc-900 text-white"
-                    : "bg-zinc-50 text-zinc-800 ring-1 ring-zinc-100 hover:bg-zinc-100",
+                    ? "bg-action-hover text-action-foreground"
+                    : "bg-surface-muted text-foreground-emphasis ring-1 ring-separator hover:bg-surface-hover",
                 )}
               >
                 <LetterBadge index={index} isSelected={isSelected} />
@@ -111,13 +112,15 @@ export function OnboardingChoices({
           onKeyDown={handleTextKeyDown}
           placeholder={isMultiple ? "Add your own answer" : "Type your answer"}
           // 16px on phones: iOS zooms the page into any smaller text field.
-          className="resize-none rounded-md bg-zinc-50 px-4 py-3 text-base leading-relaxed text-zinc-800 ring-1 ring-zinc-200 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400 sm:text-[15px]"
+          // TODO(tokens): no fitting role for focus:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+          className="resize-none rounded-md bg-surface-muted px-4 py-3 text-base leading-relaxed text-foreground-emphasis ring-1 ring-border-base transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-zinc-400 sm:text-body-md sm:leading-relaxed"
         />
       ) : (
         <button
           type="button"
           onClick={startTyping}
-          className="flex w-full items-center gap-3 rounded-md border border-dashed border-zinc-200 px-3 py-3 text-left text-base text-zinc-500 outline-none transition-colors hover:bg-zinc-50 hover:text-zinc-700 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 sm:py-2.5 sm:text-[15px] [@media(hover:none)]:min-h-11"
+          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+          className="flex w-full items-center gap-3 rounded-md border border-dashed border-border-base px-3 py-3 text-left text-base text-foreground-tertiary outline-none transition-colors hover:bg-surface-muted hover:text-foreground-body focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 sm:py-2.5 sm:text-body-md [@media(hover:none)]:min-h-11"
         >
           <LetterBadge index={options.length} isSelected={false} />
           Other
@@ -140,8 +143,8 @@ function LetterBadge({ index, isSelected }: LetterBadgeProps) {
       className={cn(
         "flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-medium [@media(hover:none)]:hidden",
         isSelected
-          ? "bg-white/15 text-white"
-          : "bg-white text-zinc-500 ring-1 ring-zinc-200",
+          ? "bg-surface/15 text-action-foreground"
+          : "bg-surface text-foreground-tertiary ring-1 ring-border-base",
       )}
     >
       {getOptionLetter(index)}

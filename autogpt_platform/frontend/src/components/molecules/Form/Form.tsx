@@ -32,6 +32,7 @@ function Form<TFieldValues extends FieldValues = FieldValues>({
     <FormProvider {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
+        data-slot="form"
         className={cn("space-y-4", className)}
         {...props}
       >
@@ -104,7 +105,12 @@ const FormItem = React.forwardRef<
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div ref={ref} className={cn("space-y-2", className)} {...props} />
+      <div
+        ref={ref}
+        data-slot="form-item"
+        className={cn("space-y-2", className)}
+        {...props}
+      />
     </FormItemContext.Provider>
   );
 });
@@ -119,6 +125,7 @@ const FormLabel = React.forwardRef<
   return (
     <LabelPrimitive.Root
       ref={ref}
+      data-slot="form-label"
       className={cn(error && "text-error", className)}
       htmlFor={formItemId}
       {...props}
@@ -137,6 +144,7 @@ const FormControl = React.forwardRef<
   return (
     <Slot
       ref={ref}
+      data-slot="form-control"
       id={formItemId}
       aria-describedby={
         !error
@@ -160,6 +168,7 @@ const FormDescription = React.forwardRef<
     <p
       ref={ref}
       id={formDescriptionId}
+      data-slot="form-description"
       // TODO(tokens): no role for neutral-500 (#737373).
       className={cn(
         "font-sans text-caption font-normal leading-4.5 text-neutral-500",
@@ -186,6 +195,7 @@ const FormMessage = React.forwardRef<
     <p
       ref={ref}
       id={formMessageId}
+      data-slot="form-message"
       className={cn(
         "font-sans text-caption font-medium leading-4.5 text-error",
         className,

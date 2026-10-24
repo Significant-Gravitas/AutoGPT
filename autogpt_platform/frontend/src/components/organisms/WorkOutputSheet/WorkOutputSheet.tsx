@@ -110,7 +110,11 @@ function WorkOutputBody({
 
   if (isLoading) {
     return (
-      <div className="space-y-3" data-testid="work-output-loading">
+      <div
+        data-slot="work-output-sheet-loading"
+        className="space-y-3"
+        data-testid="work-output-loading"
+      >
         <Skeleton className="h-6 w-2/3" />
         <Skeleton className="h-40 w-full" />
       </div>
@@ -133,7 +137,10 @@ function WorkOutputBody({
 
   if (outputType === "doc" && typeof primary === "string") {
     return (
-      <div className="prose prose-sm max-w-none">
+      <div
+        data-slot="work-output-sheet-doc"
+        className="prose prose-sm max-w-none"
+      >
         <MessageResponse>{primary}</MessageResponse>
       </div>
     );
@@ -163,6 +170,7 @@ function OutputImage({
       alt={title}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
+      data-slot="work-output-sheet-image"
       className="max-h-[70vh] w-full rounded-xl object-contain"
     />
   );
@@ -184,8 +192,11 @@ function OutputTable({
     rows.length > visibleRows.length || allColumns.length > columns.length;
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
+    <div data-slot="work-output-sheet-table" className="space-y-3">
+      <div
+        data-slot="work-output-sheet-table-actions"
+        className="flex justify-end"
+      >
         <Button
           variant="secondary"
           size="small"
@@ -217,13 +228,23 @@ interface OutputTablePreviewProps {
 
 function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
   return (
-    <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-border-base">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="bg-surface-muted text-left">
+    <div
+      data-slot="work-output-sheet-table-preview"
+      className="overflow-x-auto rounded-xl ring-1 ring-inset ring-border-base"
+    >
+      <table
+        data-slot="work-output-sheet-table-grid"
+        className="w-full border-collapse text-sm"
+      >
+        <thead data-slot="work-output-sheet-table-head">
+          <tr
+            data-slot="work-output-sheet-table-head-row"
+            className="bg-surface-muted text-left"
+          >
             {columns.map((column) => (
               <th
                 key={column}
+                data-slot="work-output-sheet-table-header-cell"
                 className="px-3 py-2 font-medium text-foreground-secondary"
               >
                 {column}
@@ -231,11 +252,19 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody data-slot="work-output-sheet-table-body">
           {rows.map((row, index) => (
-            <tr key={index} className="border-t border-separator">
+            <tr
+              key={index}
+              data-slot="work-output-sheet-table-row"
+              className="border-t border-separator"
+            >
               {columns.map((column) => (
-                <td key={column} className="px-3 py-2 text-foreground-body">
+                <td
+                  key={column}
+                  data-slot="work-output-sheet-table-cell"
+                  className="px-3 py-2 text-foreground-body"
+                >
                   {cellText(row[column])}
                 </td>
               ))}
@@ -270,7 +299,11 @@ function OutputTableTruncationNotice({
       {runLink ? (
         <>
           {" — "}
-          <Link href={runLink} className="underline">
+          <Link
+            href={runLink}
+            data-slot="work-output-sheet-truncation-link"
+            className="underline"
+          >
             open the full run
           </Link>{" "}
           for everything
@@ -290,7 +323,7 @@ function RunLinkFallback({ runLink }: { runLink?: string | null }) {
     );
   }
   return (
-    <div className="space-y-3">
+    <div data-slot="work-output-sheet-fallback" className="space-y-3">
       <Text variant="body" tone="muted">
         Open the full run to inspect its output.
       </Text>

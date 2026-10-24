@@ -18,6 +18,7 @@ export function BaseFooter({
 
   return ctx.isLargeScreen ? (
     <div
+      data-slot="dialog-footer"
       className={cn("flex justify-end gap-4 pt-6", className)}
       data-testid={testId}
       style={style}
@@ -26,6 +27,7 @@ export function BaseFooter({
     </div>
   ) : (
     <div
+      data-slot="drawer-footer"
       className={cn("flex w-full items-end justify-end gap-4 pt-6", className)}
       data-testid={testId}
     >

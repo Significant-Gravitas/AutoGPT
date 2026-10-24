@@ -38,12 +38,19 @@ export function NeedsAttentionRow({
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border-base bg-surface p-3">
+    <div
+      data-slot="needs-attention-row"
+      className="flex items-center gap-3 rounded-xl border border-border-base bg-surface p-3"
+    >
       <ExpertAvatar
         name={review.expert_name ?? null}
         avatarUrl={review.expert_avatar_url ?? null}
       />
-      <Link href={getReviewLink(review)} className="min-w-0 flex-1">
+      <Link
+        href={getReviewLink(review)}
+        data-slot="needs-attention-row-link"
+        className="min-w-0 flex-1"
+      >
         <Text variant="body-medium" className="truncate">
           {title}
         </Text>
@@ -53,7 +60,10 @@ export function NeedsAttentionRow({
           </Text>
         ) : null}
       </Link>
-      <div className="flex shrink-0 items-center gap-2">
+      <div
+        data-slot="needs-attention-row-actions"
+        className="flex shrink-0 items-center gap-2"
+      >
         <Button
           variant="primary"
           size="small"
@@ -81,7 +91,11 @@ export function NeedsAttentionRow({
           {isConfirmingDecline ? "Confirm" : "Decline"}
         </Button>
       </div>
-      <span aria-live="polite" className="sr-only">
+      <span
+        aria-live="polite"
+        data-slot="needs-attention-row-announcement"
+        className="sr-only"
+      >
         {isConfirmingDecline ? `Tap again to decline: ${title}` : ""}
       </span>
     </div>
