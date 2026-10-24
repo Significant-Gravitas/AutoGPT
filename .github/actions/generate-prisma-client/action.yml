@@ -1,0 +1,29 @@
+name: Generate Prisma client
+description: Generate the backend's Prisma client and type stub, with the Prisma CLI cached and its download retried
+runs:
+  using: composite
+  steps:
+    # The installed prisma-python names the CLI version, engine hash and directory,
+    # so no version is written down here.
+    - name: Resolve the Prisma CLI cache
+      id: cli
+      shell: bash
+      working-directory: autogpt_platform/backend
+      run: |
+        info=$(poetry run prisma py version --json)
+        echo "dir=$(jq -r '."binary-cache-dir"' <<<"$info")" >> "$GITHUB_OUTPUT"
+        echo "key=prisma-cli-${RUNNER_OS}-${RUNNER_ARCH}-$(jq -r '[.platform, .prisma, ."expected-engine-version"] | join("-")' <<<"$info")" >> "$GITHUB_OUTPUT"
+
+    - name: Cache the Prisma CLI
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ${{ steps.cli.outputs.dir }}
+        key: ${{ steps.cli.outputs.key }}
+
+    - name: Generate Prisma client
+      shell: bash
+      working-directory: autogpt_platform/backend
+      run: |
+        bash "$GITHUB_WORKSPACE/.github/scripts/install-prisma-cli-with-retry.sh"
+        poetry run prisma generate
+        poetry run gen-prisma-stub
