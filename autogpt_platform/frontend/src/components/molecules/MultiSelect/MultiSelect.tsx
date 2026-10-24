@@ -1,12 +1,13 @@
 "use client";
 
 import { Badge } from "@/components/__legacy__/ui/badge";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Command,
   CommandItem,
   CommandEmpty,
   CommandList,
-} from "@/components/__legacy__/ui/command";
+} from "./components/Command";
 import { cn } from "@/lib/utils";
 import { Command as CommandPrimitive } from "cmdk";
 import { X as RemoveIcon, Check } from "lucide-react";
@@ -144,6 +145,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
         <Command
           ref={ref}
           onKeyDown={handleKeyDown}
+          data-slot="multi-select"
           className={cn(
             "flex flex-col overflow-visible bg-transparent",
             className,
@@ -174,8 +176,9 @@ const MultiSelectorTrigger = forwardRef<
   return (
     <div
       ref={ref}
+      data-slot="multi-select-trigger"
       className={cn(
-        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-sm",
+        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-body leading-5",
         className,
       )}
       {...props}
@@ -189,16 +192,31 @@ const MultiSelectorTrigger = forwardRef<
           )}
           variant={"secondary"}
         >
-          <span className="text-xs">{item}</span>
+          {/* Text at the label's own line height; colour and weight stay
+              inherited from the badge, as the plain span's were. */}
+          <Text
+            variant="small"
+            as="span"
+            data-slot="multi-select-badge-label"
+            className="leading-4 text-inherit [font-weight:inherit]"
+          >
+            {item}
+          </Text>
           <button
+            data-slot="multi-select-remove"
             aria-label={`Remove ${item} option`}
             aria-roledescription="button to remove option"
             type="button"
             onMouseDown={mousePreventDefault}
             onClick={() => onValueChange(item)}
           >
-            <span className="sr-only">Remove {item} option</span>
-            <RemoveIcon className="h-4 w-4 hover:stroke-destructive" />
+            <span data-slot="multi-select-remove-label" className="sr-only">
+              Remove {item} option
+            </span>
+            <RemoveIcon
+              data-slot="multi-select-remove-icon"
+              className="h-4 w-4 hover:stroke-destructive"
+            />
           </button>
         </Badge>
       ))}
@@ -217,6 +235,7 @@ const MultiSelectorInput = forwardRef<
     useMultiSelect();
   return (
     <CommandPrimitive.Input
+      data-slot="multi-select-input"
       {...props}
       ref={ref}
       value={inputValue}
@@ -241,7 +260,11 @@ const MultiSelectorContent = forwardRef<
 >(({ children, className }, ref) => {
   const { open } = useMultiSelect();
   return (
-    <div ref={ref} className={cn("relative mt-2", className)}>
+    <div
+      ref={ref}
+      data-slot="multi-select-content"
+      className={cn("relative mt-2", className)}
+    >
       {open && children}
     </div>
   );
@@ -256,14 +279,20 @@ const MultiSelectorList = forwardRef<
   return (
     <CommandList
       ref={ref}
+      data-slot="multi-select-list"
       className={cn(
-        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg dark:scrollbar-thumb-muted",
+        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg",
         className,
       )}
     >
       {children}
-      <CommandEmpty>
-        <span className="text-muted-foreground">No results found</span>
+      <CommandEmpty data-slot="multi-select-empty">
+        <span
+          data-slot="multi-select-empty-text"
+          className="text-muted-foreground"
+        >
+          No results found
+        </span>
       </CommandEmpty>
     </CommandList>
   );
@@ -288,6 +317,7 @@ const MultiSelectorItem = forwardRef<
   return (
     <CommandItem
       ref={ref}
+      data-slot="multi-select-item"
       {...props}
       onSelect={() => {
         onValueChange(value);
@@ -302,7 +332,9 @@ const MultiSelectorItem = forwardRef<
       onMouseDown={mousePreventDefault}
     >
       {children}
-      {isIncluded && <Check className="h-4 w-4" />}
+      {isIncluded && (
+        <Check data-slot="multi-select-item-check" className="h-4 w-4" />
+      )}
     </CommandItem>
   );
 });
