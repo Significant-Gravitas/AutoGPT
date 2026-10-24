@@ -31,7 +31,7 @@ export function EditNameDialog({ currentName }: Props) {
     if (!trimmed) return;
 
     setIsSaving(true);
-    try {
+    async function save() {
       // preferred_name is also written by onboarding's "What should I call you?"
       const res = await fetch("/api/auth/user", {
         method: "PUT",
@@ -61,9 +61,10 @@ export function EditNameDialog({ currentName }: Props) {
       }
       setIsOpen(false);
       toast({ title: "Name updated" });
-    } finally {
-      setIsSaving(false);
     }
+    await save().finally(() => {
+      setIsSaving(false);
+    });
   }
 
   return (
@@ -75,7 +76,8 @@ export function EditNameDialog({ currentName }: Props) {
       <Dialog.Trigger>
         <button
           type="button"
-          className="ml-1 inline-flex items-center text-violet-500 transition-colors hover:text-violet-700"
+          // TODO(tokens): no exact role for text-violet-500
+          className="ml-1 inline-flex items-center text-violet-500 transition-colors hover:text-accent-strong"
         >
           <Icon icon={PencilIcon} size={16} />
         </button>

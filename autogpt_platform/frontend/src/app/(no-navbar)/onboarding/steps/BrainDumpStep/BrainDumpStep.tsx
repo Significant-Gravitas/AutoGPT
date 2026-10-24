@@ -70,7 +70,7 @@ export function BrainDumpStep() {
               variant="ghost"
               size="xs"
               onClick={dump.handleSkip}
-              className="text-zinc-400 hover:text-zinc-700"
+              className="text-foreground-subtle hover:text-foreground-body"
             >
               Skip for now
             </Button>
@@ -117,6 +117,7 @@ export function BrainDumpStep() {
                 <TypedFallback
                   value={dump.typedText}
                   onChange={dump.setTypedText}
+                  isTooLong={dump.isTypedTooLong}
                   onSubmit={dump.handleSubmitTyped}
                 />
               ) : isRecording ? (
@@ -157,6 +158,7 @@ export function BrainDumpStep() {
             <RecoveryPrompt
               durationSecs={dump.recoverable.durationSecs}
               onResume={dump.handleResumeRecovered}
+              onDownload={dump.handleDownloadRecording}
               onDiscard={dump.handleDiscardRecovered}
             />
           </RevealItem>
@@ -165,6 +167,8 @@ export function BrainDumpStep() {
         {dump.screen === "failed" && (
           <RevealItem>
             <FailureState
+              mode={dump.submittedMode}
+              reason={dump.failureReason}
               onDownload={dump.handleDownloadRecording}
               onSkip={dump.handleSkip}
             />
@@ -195,7 +199,9 @@ export function BrainDumpStep() {
                     onClick={dump.showTyping}
                     className="underline underline-offset-4"
                   >
-                    type instead
+                    {dump.submittedMode === "typed"
+                      ? "edit your text"
+                      : "type instead"}
                   </Button>
                 )}
                 {isTyping && !dump.isMicBlocked && (

@@ -80,7 +80,7 @@ export function ExpertSkillsSection({
       </div>
       {learning.enabled ? (
         <div
-          className="mb-3 flex flex-col gap-2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
+          className="mb-3 flex flex-col gap-2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
           data-testid="expert-learning-summary"
         >
           <Text variant="small" tone="secondary">
@@ -110,18 +110,20 @@ export function ExpertSkillsSection({
               key="book"
               icon={BookOpen01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
               key="bulb"
               icon={BulbIcon}
               size={22}
-              className="text-amber-500"
+              className="text-warning"
             />,
             <Icon
               key="sparkles"
               icon={SparklesIcon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}

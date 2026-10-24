@@ -26,7 +26,7 @@ export function EmptyState({ content, compact = false }: Props) {
     return (
       <Text
         variant="body"
-        className="px-2 py-6 text-zinc-500"
+        className="px-2 py-6 text-foreground-tertiary"
         data-testid="artifacts-empty"
       >
         {content.title}
@@ -62,12 +62,12 @@ export function EmptyState({ content, compact = false }: Props) {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-zinc-900">
+          <Text variant="h3" className="text-foreground-strong">
             {content.title}
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-zinc-500">
+          <Text variant="body" className="text-foreground-tertiary">
             {content.description}
           </Text>
         </motion.div>
@@ -174,18 +174,17 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
   const cx = x + width / 2;
   const cy = y + height / 2;
 
+  // TODO(tokens): no fitting role for the skeleton-line fill #E4E4E7; #E4E4E7 is border, a border colour
   return (
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path
         d={`M${x + 12} ${y}H${x + width - fold}L${x + width} ${y + fold}V${y + height - 12}a12 12 0 0 1-12 12H${x + 12}a12 12 0 0 1-12-12V${y + 12}a12 12 0 0 1 12-12Z`}
-        fill="white"
-        stroke="#E4E4E7"
+        className="fill-card stroke-border"
         strokeWidth={1}
       />
       <path
         d={`M${x + width - fold} ${y}V${y + fold}H${x + width}`}
-        fill="#F4F4F5"
-        stroke="#E4E4E7"
+        className="fill-muted stroke-border"
         strokeWidth={1}
       />
       {[0, 1, 2, 3].map((line) => (

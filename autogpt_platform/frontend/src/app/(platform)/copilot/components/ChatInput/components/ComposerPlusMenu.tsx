@@ -98,7 +98,7 @@ export function ComposerPlusMenu({
             data-testid="composer-plus-button"
             disabled={disabled}
             className={cn(
-              "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+              "border-transparent bg-transparent text-foreground-base shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-base",
               className,
               disabled && "opacity-40",
             )}
@@ -180,7 +180,7 @@ export function ComposerPlusMenu({
 
 function CapLabel() {
   return (
-    <span className="ml-auto pl-3 text-xs text-zinc-500">
+    <span className="ml-auto pl-3 text-xs text-foreground-tertiary">
       {MAX_ATTACHMENTS} max
     </span>
   );

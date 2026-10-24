@@ -33,7 +33,7 @@ export const MultiSelectField = (props: FieldProps) => {
         values={selection}
         onValuesChange={handleValuesChange}
       >
-        <MultiSelectorTrigger className="rounded-3xl border border-zinc-200 bg-white px-2 shadow-none">
+        <MultiSelectorTrigger className="rounded-3xl border border-border-base bg-surface px-2 shadow-none">
           <MultiSelectorInput
             placeholder={
               (schema as any).placeholder ?? `Select ${displayName}...`

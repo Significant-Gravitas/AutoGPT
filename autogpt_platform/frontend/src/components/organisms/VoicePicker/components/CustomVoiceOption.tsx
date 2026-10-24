@@ -36,7 +36,7 @@ export function CustomVoiceOption({
       <label
         htmlFor={`${textareaId}-choice`}
         className={cn(
-          "mb-2 block cursor-pointer text-xs font-semibold uppercase tracking-[0.12em]",
+          "mb-2 block cursor-pointer text-xs font-semibold uppercase tracking-caps",
           labelClassName ?? "text-accent",
         )}
       >

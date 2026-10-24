@@ -5,7 +5,6 @@ import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import {
   CLAMP_LINES,
-  CODE_MAX_LINES,
   fieldKind,
   formattedText,
   humanize,
@@ -25,7 +24,7 @@ interface Props {
 export function FieldValue({ name, value, clipped, format }: Props) {
   const kind = fieldKind(name, value);
   const shortened = clipped ? (
-    <span className="ml-1 text-zinc-400">(shortened)</span>
+    <span className="ml-1 text-foreground-subtle">(shortened)</span>
   ) : null;
   const formatted = formattedText(format, value);
   if (formatted) return <span>{formatted}</span>;
@@ -37,8 +36,10 @@ export function FieldValue({ name, value, clipped, format }: Props) {
       return (
         <pre
           translate="no"
-          className="overflow-auto whitespace-pre-wrap rounded-lg bg-zinc-900 px-3 py-2 font-mono text-[0.8125rem] leading-5 text-zinc-100"
-          style={{ maxHeight: `${CODE_MAX_LINES * 1.25 + 1}rem` }}
+          // max-h-64: twelve lines at leading-5 plus py-2.
+          // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the
+          // dark code surface.
+          className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-action-hover px-3 py-2 font-mono text-body-sm leading-5 text-zinc-100"
         >
           {String(value)}
           {shortened}
@@ -55,10 +56,10 @@ export function FieldValue({ name, value, clipped, format }: Props) {
       );
     case "object":
       return (
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-l border-zinc-200 pl-3">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-l border-border-base pl-3">
           {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
             <div key={k} className="contents">
-              <dt className="text-zinc-500">{humanize(k)}</dt>
+              <dt className="text-foreground-tertiary">{humanize(k)}</dt>
               <dd className="min-w-0">
                 {v === REDACTED ? (
                   <Hidden />
@@ -75,10 +76,10 @@ export function FieldValue({ name, value, clipped, format }: Props) {
     case "json":
       return (
         <details className="group">
-          <summary className="cursor-pointer text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
+          <summary className="cursor-pointer text-foreground-secondary underline decoration-border-strong underline-offset-2 hover:text-foreground-strong">
             View as JSON
           </summary>
-          <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-800">
+          <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-xs text-foreground-emphasis">
             {JSON.stringify(value, null, 2)}
           </pre>
         </details>
@@ -105,14 +106,14 @@ function LongText({ text, shortened }: LongTextProps) {
       <div
         tabIndex={open ? 0 : undefined}
         className={cn(
-          "w-full rounded-lg bg-zinc-50 px-3 py-2",
+          "w-full rounded-lg bg-surface-muted px-3 py-2",
           open &&
-            "max-h-96 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300",
+            "max-h-96 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong",
         )}
       >
         <p
+          // line-clamp-3 is CLAMP_LINES.
           className={cn("whitespace-pre-wrap", !open && "line-clamp-3")}
-          style={{ WebkitLineClamp: open ? undefined : CLAMP_LINES }}
         >
           {text}
           {shortened}
@@ -136,7 +137,7 @@ function LongText({ text, shortened }: LongTextProps) {
 
 function Hidden() {
   return (
-    <span className="text-zinc-500">
+    <span className="text-foreground-tertiary">
       <span aria-hidden="true">•••••••• </span>hidden
     </span>
   );

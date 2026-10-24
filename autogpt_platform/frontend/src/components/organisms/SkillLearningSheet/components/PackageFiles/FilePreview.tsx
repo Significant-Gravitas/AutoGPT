@@ -15,7 +15,11 @@ export function FilePreview({ file, label }: Props) {
         {file.is_executable ? " · Executable" : ""}
       </Text>
       {file.content != null ? (
-        <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-900 p-3 text-xs text-zinc-100">
+        <pre
+          // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the dark
+          // code surface.
+          className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-action-hover p-3 text-xs text-zinc-100"
+        >
           {file.content ||
             (file.content_truncated ? "(preview unavailable)" : "(empty file)")}
         </pre>

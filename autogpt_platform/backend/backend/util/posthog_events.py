@@ -98,6 +98,7 @@ class PostHogEvent(StrEnum):
     EMAIL_OPENED = "email_opened"
     EMAIL_CLICKED = "email_clicked"
     EMAIL_BOUNCED = "email_bounced"
+    EMAIL_COMPLAINED = "email_complained"
 
 
 class PlannedPostHogEvent(StrEnum):

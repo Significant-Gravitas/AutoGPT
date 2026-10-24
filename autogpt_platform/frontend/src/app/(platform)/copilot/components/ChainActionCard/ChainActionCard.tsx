@@ -83,10 +83,14 @@ export function ChainActionCard({
   return (
     <div className="my-2 flex flex-col gap-2">
       {(rows.length > 0 || mcp.length > 0) && (
-        <div className="overflow-hidden rounded-3xl border border-zinc-100 bg-white">
-          <div className="flex items-center gap-2.5 border-b border-zinc-100 px-4 py-3">
-            <Icon icon={PlugSocketIcon} size={18} className="text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-900">
+        <div className="overflow-hidden rounded-3xl border border-separator bg-surface">
+          <div className="flex items-center gap-2.5 border-b border-separator px-4 py-3">
+            <Icon
+              icon={PlugSocketIcon}
+              size={18}
+              className="text-foreground-subtle"
+            />
+            <span className="text-sm font-medium text-foreground-strong">
               Plug in what this needs
             </span>
           </div>
@@ -97,19 +101,19 @@ export function ChainActionCard({
             <McpConnectorRow key={request.id} request={request} />
           ))}
           {remaining.length > 0 && rows.length + mcpRows.length > 1 && (
-            <div className="border-t border-zinc-100 px-4 py-2.5">
-              <span className="text-sm text-zinc-500">
+            <div className="border-t border-separator px-4 py-2.5">
+              <span className="text-sm text-foreground-tertiary">
                 Still to connect: {remaining.join(", ")}
               </span>
             </div>
           )}
-          <div className="border-t border-zinc-100 px-4 py-3">
-            <span className="text-sm text-zinc-500">
+          <div className="border-t border-separator px-4 py-3">
+            <span className="text-sm text-foreground-tertiary">
               Looking for something else?{" "}
               <button
                 type="button"
                 onClick={() => openModal("integrations")}
-                className="font-medium text-zinc-900 underline underline-offset-2"
+                className="font-medium text-foreground-strong underline underline-offset-2"
               >
                 Browse all connectors
               </button>
@@ -121,7 +125,7 @@ export function ChainActionCard({
       <InputsSection requests={inputs} />
 
       {hasQuestions && (
-        <div className="overflow-hidden rounded-3xl border border-zinc-100 bg-white">
+        <div className="overflow-hidden rounded-3xl border border-separator bg-surface">
           <QuestionsSection
             requests={questions}
             isReady={questionsReady}
