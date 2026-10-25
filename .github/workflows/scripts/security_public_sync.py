@@ -22,8 +22,8 @@ CREDIT_START = "<!-- security-credits:start -->"
 CREDIT_END = "<!-- security-credits:end -->"
 GHSA_PATTERN = r"GHSA-[a-z0-9]{4}(?:-[a-z0-9]{4}){2}"
 CVE_PATTERN = r"CVE-\d{4}-\d{4,}"
-# Names researchers chose to be credited by, as SECURITY.md listed them before the
-# credits were generated. Add one only when a researcher asks for it.
+# Names researchers asked to be credited by, shown beside their handle in SECURITY.md
+# and release notes. Add one only at the researcher's request.
 RESEARCHER_NAMES = {
     "1024wlsdud": "Dirstibone",
     "DavidCarliez": "David Carliez",

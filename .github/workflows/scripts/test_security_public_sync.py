@@ -221,6 +221,21 @@ class AnonymousApiTests(unittest.TestCase):
         ), self.assertRaisesRegex(api.PublicDataError, "repeated"):
             api.public_pages(endpoint, "state=published")
 
+    def test_pagination_stops_at_the_page_limit(self):
+        endpoint = "security-advisories"
+        numbers = iter(range(1, api.MAX_PAGES + 2))
+
+        def read(path):
+            number = next(numbers)
+            link = f"{api.API_ROOT}{endpoint}?per_page=100&state=published&page={number + 1}"
+            return [{"id": number}], {"Link": f'<{link}>; rel="next"'}
+
+        with patch.object(api, "public_json", side_effect=read) as reader:
+            with self.assertRaises(api.PublicDataError) as raised:
+                api.public_pages(endpoint, "state=published")
+        self.assertIs(raised.exception.code, api.PublicErrorCode.PAGE_LIMIT)
+        self.assertEqual(reader.call_count, api.MAX_PAGES)
+
 
 class PublicProjectionTests(unittest.TestCase):
     def test_committed_snapshot_and_generated_credits_obey_the_public_schema(self):
@@ -761,6 +776,18 @@ class ReleaseWriterTests(unittest.TestCase):
             publish.update_releases(self.digest, apply=True)
         self.assertIs(raised.exception.code, api.PublicErrorCode.RELEASE_CHANGED)
         write.assert_not_called()
+
+    def test_release_body_must_be_text_or_null(self):
+        for body in (None, "", "Notes"):
+            with self.subTest(body=body):
+                self.assertTrue(
+                    publish.published_release(dict(self.release, body=body))
+                )
+        for body in (0, False, [], {}, ["Notes"]):
+            with self.subTest(body=body):
+                self.assertFalse(
+                    publish.published_release(dict(self.release, body=body))
+                )
 
     def test_writes_keep_the_current_latest_release(self):
         newer_tag = "autogpt-platform-beta-v1.0.0"

@@ -31,7 +31,8 @@ def published_release(release):
         and release.get("draft") is False
         and bool(release.get("published_at"))
         and matches(TAG_PATTERN, release.get("tag_name"))
-        and isinstance(release.get("body") or "", str)
+        # GitHub returns null for a release with no notes.
+        and (release.get("body") is None or isinstance(release["body"], str))
     )
 
 
