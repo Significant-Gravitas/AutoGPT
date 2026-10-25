@@ -1,6 +1,6 @@
-import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 const buttonGroupVariants = cva(
@@ -36,19 +36,16 @@ function ButtonGroup({
   );
 }
 
-function ButtonGroupText({
-  className,
-  asChild = false,
-  ...props
-}: React.ComponentProps<"div"> & {
-  asChild?: boolean;
-}) {
-  const Comp = asChild ? Slot : "div";
-
+function ButtonGroupText({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <Comp
+    <Text
+      variant="body-medium-tight"
+      tone="inherit"
+      as="div"
       className={cn(
-        "shadow-xs flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-100 px-4 text-body font-medium leading-5 dark:border-neutral-800 dark:bg-neutral-800 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
+        // TODO(tokens): no exact role for border-neutral-200 #E5E5E5, bg-neutral-100
+        // #F5F5F5 or dark:border-neutral-800 / dark:bg-neutral-800 #262626
+        "shadow-xs flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-100 px-4 dark:border-neutral-800 dark:bg-neutral-800 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
         className,
       )}
       {...props}
