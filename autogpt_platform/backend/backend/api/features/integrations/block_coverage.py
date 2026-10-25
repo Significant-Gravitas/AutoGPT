@@ -2,14 +2,15 @@
 
 Two things the support check needs and no provider metadata holds for every
 connector: the sign-ins a provider's blocks accept (older connectors such as
-Slack declare theirs only on their blocks' credentials fields), and the
-products those blocks cover, read from their names (``GmailSendBlock`` is
-Gmail, ``GoogleSheetsAppendRowBlock`` is Sheets).
+Slack declare theirs only on their blocks' credentials fields), and the words
+of their names, which say what they cover (``GoogleSheetsAppendRowBlock``
+covers sheets). The words include verbs, so they qualify a vendor's name
+("Google Sheets"), never stand for a product on their own.
 """
 
 import logging
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from pydantic import BaseModel
 
@@ -28,9 +29,6 @@ class ProviderBlocks(BaseModel):
     """Credential types accepted by the provider's blocks that can run."""
     products: frozenset[str] = frozenset()
     """Every word of its blocks' names, singular: what the blocks cover."""
-    leads: frozenset[str] = frozenset()
-    """The first word of its blocks' names that no other provider's block
-    starts with: a product's own name ("gmail")."""
 
 
 @cached(ttl_seconds=3600)
@@ -38,7 +36,6 @@ def blocks_by_provider() -> dict[str, ProviderBlocks]:
     """Each provider a block takes credentials for. Loads the blocks."""
     types: dict[str, set[str]] = defaultdict(set)
     words: dict[str, set[str]] = defaultdict(set)
-    leads: dict[str, set[str]] = defaultdict(set)
     for block_id, block_cls in load_all_blocks().items():
         try:
             block = block_cls()
@@ -51,15 +48,11 @@ def blocks_by_provider() -> dict[str, ProviderBlocks]:
             for provider, accepted in _types_by_provider(info):
                 key = provider_key(provider)
                 words[key].update(name_words)
-                leads[key].update(name_words[:1])
                 if not block.disabled:  # a block that cannot run takes nothing
                     types[key].update(accepted)
-    shared = Counter(lead for found in leads.values() for lead in found)
     return {
         key: ProviderBlocks(
-            auth_types=frozenset(types[key]),
-            products=frozenset(words[key]),
-            leads=frozenset(lead for lead in leads[key] if shared[lead] == 1),
+            auth_types=frozenset(types[key]), products=frozenset(words[key])
         )
         for key in words
     }

@@ -30,6 +30,7 @@ from backend.integrations.oauth import DEVICE_HANDLERS_BY_NAME
 from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.providers import provider_key
 from backend.integrations.service_identity import catalog_slug
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,9 @@ class ConnectableService(BaseModel):
     """What its blocks cover (``block_coverage``); empty for a service with
     no blocks, such as an MCP catalog server, which is the vendor's whole
     surface."""
-    leads: frozenset[str] = frozenset()
+    product_names: frozenset[str] = frozenset()
+    """Products its description names ("Gmail, Drive, Calendar, Sheets"),
+    normalized: each is the provider on its own."""
 
 
 def connectable_services() -> list[ConnectableService]:
@@ -96,7 +99,7 @@ def connectable_services() -> list[ConnectableService]:
                 name=name.replace("_", " ").title(),
                 description=get_provider_description(name),
                 products=blocks.products,
-                leads=blocks.leads,
+                product_names=described_products(get_provider_description(name)),
             )
         )
     keys = {service.key for service in services}
@@ -162,11 +165,56 @@ def unsupported_in_task(
     services: list[ConnectableService] | None = None,
 ) -> list[str]:
     """The tools a task needs that we cannot connect: the ones it declares,
-    and the known ones its text names. The text is read whatever the
-    declaration says, since the model that wrote it can leave a tool out
-    (``[]`` on a Shopify task)."""
+    and the ones its text names that we know of, our known gaps and every
+    vendor on the platform (connectable here or not). The text is read
+    whatever the declaration says, since the model that wrote it can leave
+    a tool out (``[]`` on a Shopify task)."""
     declared = [canonical_name(name) for name in integrations or []]
-    return unsupported_services([*declared, *_known_gaps_in(text)], services)
+    named = [*_known_gaps_in(text), *_vendors_named_in(text)]
+    return unsupported_services([*declared, *named], services)
+
+
+def described_products(description: str | None) -> frozenset[str]:
+    """The products a provider's description names, when it names them:
+    "Gmail, Drive, Calendar, Sheets" does, every item capitalised;
+    "Subreddits, posts, and comments" lists kinds of things."""
+    items = [
+        item.strip()
+        for item in re.split(r",|\band\b", description or "")
+        if item.strip()
+    ]
+    if len(items) < 2 or not all(item[0].isupper() for item in items):
+        return frozenset()
+    return frozenset(_normalize(item) for item in items)
+
+
+def _vendors_named_in(text: str) -> list[str]:
+    """Each vendor the platform knows that ``text`` names, as written.
+    Only a capitalised mention counts, so "the notion of" is not Notion."""
+    return [match.group(0) for match in _vendor_pattern().finditer(text)]
+
+
+@cached(ttl_seconds=3600)
+def _vendor_pattern() -> re.Pattern[str]:
+    """Every provider (connectable here or not) and MCP catalog server, by
+    the names people write: "google maps", "googlemaps", "Customer.io"."""
+    try:
+        keys = {*get_all_provider_names(), *block_coverage.blocks_by_provider()}
+    except Exception:  # static providers still answer
+        keys = set(get_all_provider_names())
+    names = {
+        form
+        for key in keys - _NOT_SERVICES
+        for form in (key.replace("_", " "), key.replace("_", ""))
+    }
+    names |= {
+        _PARENTHETICAL.sub("", entry.display_name).strip()
+        for entry in get_mcp_catalog()
+    }
+    alternatives = "|".join(
+        re.escape(name) for name in sorted(names - {""}, key=len, reverse=True)
+    )
+    return re.compile(rf"\b(?=[A-Z])(?i:{alternatives})\b")
 
 
 def canonical_name(name: str) -> str:
@@ -200,7 +248,7 @@ def _match(name: str, services: list[ConnectableService]) -> ConnectableService 
         vendor = (_normalize(service.key), _normalize(service.name))
         if words[0] in vendor and _covers(service, words[1:]):
             return service
-        if len(words) == 1 and singular(words[0]) in service.leads:
+        if wanted & service.product_names:
             return service
     return None
 

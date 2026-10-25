@@ -195,7 +195,7 @@ GOOGLE = ConnectableService(
     key="google",
     name="Google",
     products=frozenset({"google", "sheet", "doc", "drive", "calendar", "gmail"}),
-    leads=frozenset({"gmail"}),
+    product_names=frozenset({"gmail", "drive", "calendar", "sheets"}),
 )
 NOTION = ConnectableService(
     key="notion", name="Notion", products=frozenset({"notion", "page", "database"})
@@ -240,3 +240,34 @@ def test_the_live_registry_knows_what_googles_blocks_cover(mocker: MockerFixture
     assert support.find_connectable("Gmail").key == "google"
     assert support.find_connectable("Google Analytics") is None
     assert support.find_connectable("Slack Huddles") is None
+    # Block names lead with verbs too (BanSubredditUserBlock): not products.
+    assert support.find_connectable("Ban") is None
+    assert support.find_connectable("Validate") is None
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Thank each new follower on Twitter", ["Twitter"]),
+        ("Log each order in Google Sheets", ["Google"]),
+        ("Post the weekly update to Reddit", ["Reddit"]),
+        ("Open an issue on GitHub for each bug", ["GitHub"]),  # as written
+        ("Work out the notion of a perfect sticker", []),  # a word, not Notion
+        ("Draft the post in Printify's voice", []),  # connectable here
+    ],
+)
+def test_a_task_naming_a_service_we_know_but_cannot_connect_is_labelled(
+    mocker: MockerFixture, text: str, expected: list[str]
+):
+    """A task that declares no integrations ([]) still says it needs a
+    service the platform knows (a provider, a product its blocks cover, an
+    MCP server) when this deployment cannot connect it: Google without its
+    OAuth app, Reddit, GitHub, Notion."""
+    mocker.patch.object(support, "oauth_client_credentials", return_value=None)
+    services = [
+        s
+        for s in support.connectable_services()
+        if s.key not in {"github", "notion", "reddit"}
+    ]
+
+    assert support.unsupported_in_task([], text, services) == expected
