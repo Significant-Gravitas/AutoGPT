@@ -61,11 +61,13 @@ export const AllBlocksContent = () => {
               <Text variant="body-medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
               </Text>
+              {/* TODO(tokens): #EFEFF0 is surface-hover (a hover fill) and
+                  separator (a border); no role holds it as a static fill. */}
               <Text
                 variant="body"
                 as="span"
                 tone="secondary"
-                className="rounded-full bg-surface-hover px-[0.375rem]"
+                className="rounded-full bg-zinc-100 px-[0.375rem]"
               >
                 {category.total_blocks}
               </Text>
@@ -103,11 +105,18 @@ export const AllBlocksContent = () => {
               {category.total_blocks > category.blocks.length && (
                 <Button
                   variant={"legacy-link"}
-                  className="px-0 font-sans text-body text-foreground-secondary underline hover:text-foreground-emphasis"
+                  className="px-0 text-foreground-secondary hover:text-foreground-emphasis"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
-                  see all
+                  <Text
+                    variant="body-medium"
+                    as="span"
+                    tone="inherit"
+                    className="underline"
+                  >
+                    see all
+                  </Text>
                 </Button>
               )}
             </div>

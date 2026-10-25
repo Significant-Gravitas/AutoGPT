@@ -93,11 +93,13 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             Version {version}
           </Text>
 
+          {/* TODO(tokens): #DADADC is surface-active (a pressed fill) and
+              border-base (a border); no role holds it as a static fill. */}
           <Text
             variant="small-medium-loose"
             as="span"
             tone="muted"
-            className="rounded-[0.75rem] bg-surface-active px-[0.5rem]"
+            className="rounded-[0.75rem] bg-zinc-200 px-[0.5rem]"
           >
             Your Workflow
           </Text>

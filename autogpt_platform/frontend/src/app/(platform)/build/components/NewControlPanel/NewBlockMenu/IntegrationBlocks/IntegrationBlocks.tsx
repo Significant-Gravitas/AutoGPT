@@ -74,12 +74,14 @@ export const IntegrationBlocks = () => {
           <div className="flex items-center gap-1">
             <Button
               variant={"legacy-link"}
-              className="p-0 font-sans text-body font-medium text-foreground-emphasis"
+              className="p-0 text-foreground-emphasis"
               onClick={() => {
                 setIntegration(undefined);
               }}
             >
-              Integrations
+              <Text variant="body-medium" as="span" tone="inherit">
+                Integrations
+              </Text>
             </Button>
             <Text variant="body-medium" tone="emphasis">
               /

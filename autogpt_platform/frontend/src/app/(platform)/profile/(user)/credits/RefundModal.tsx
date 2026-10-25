@@ -98,9 +98,9 @@ export const RefundModal = ({
               </Text>
             ) : (
               <div className="space-y-2">
-                <label className="text-body font-medium leading-5">
+                <Text variant="body-medium-tight" as="label" tone="inherit">
                   Select Transaction
-                </label>
+                </Text>
                 <Select
                   value={selectedTransactionId}
                   onValueChange={setSelectedTransactionId}
@@ -133,11 +133,10 @@ export const RefundModal = ({
             )}
 
             <div className="space-y-2">
-              <label
-                htmlFor="refundReason"
-                className="text-body font-medium leading-5"
-              >
-                Reason for Refund
+              <label htmlFor="refundReason">
+                <Text variant="body-medium-tight" as="span" tone="inherit">
+                  Reason for Refund
+                </Text>
               </label>
               <Textarea
                 id="refundReason"
