@@ -33,6 +33,7 @@ def test_concurrent_initialization_reuses_one_client(
     settings = Mock()
     settings.secrets.posthog_api_key = "test-key"
     settings.secrets.posthog_host = "https://example.com"
+    settings.config.sentry_release = ""
     factory = Mock(side_effect=create_client)
     monkeypatch.setattr(posthog_client, "_client", None)
     monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
@@ -52,7 +53,9 @@ def test_concurrent_initialization_reuses_one_client(
         assert first.result(timeout=5) is client
         assert second.result(timeout=5) is client
 
-    factory.assert_called_once_with("test-key", host="https://example.com")
+    factory.assert_called_once_with(
+        "test-key", host="https://example.com", super_properties={}
+    )
 
 
 def test_disabled_analytics_does_not_create_a_client(
@@ -128,6 +131,7 @@ def test_capture_adds_the_base_properties_last(monkeypatch: pytest.MonkeyPatch) 
             "source": "chat_copilot",
         },
         uuid=None,
+        timestamp=None,
     )
 
 
@@ -181,6 +185,189 @@ def test_capture_never_raises_on_a_bad_event(monkeypatch: pytest.MonkeyPatch) ->
     client.capture.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "returned, side_effect, queued",
+    [
+        ("event-uuid", None, True),
+        # The client returns None for an event it dropped, such as on a full
+        # queue.
+        (None, None, False),
+        (None, RuntimeError("posthog down"), False),
+    ],
+    ids=["queued", "dropped", "raised"],
+)
+def test_capture_says_whether_the_client_queued_the_event(
+    monkeypatch: pytest.MonkeyPatch, returned, side_effect, queued: bool
+) -> None:
+    client = Mock()
+    client.capture.return_value = returned
+    client.capture.side_effect = side_effect
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    assert posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED) is queued
+
+
+def test_capture_queues_nothing_without_a_user_or_a_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: None)
+
+    assert posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED) is False
+    assert posthog_client.capture(None, PostHogEvent.CHAT_TOOL_CALLED) is False
+
+
+def test_capture_on_a_client_of_its_own_leaves_the_shared_one_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shared = Mock()
+    own = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: shared)
+
+    assert posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED, client=own)
+
+    own.capture.assert_called_once()
+    shared.capture.assert_not_called()
+
+
+def test_a_client_of_its_own_gets_the_options_the_shared_one_lacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Mock()
+    settings.secrets.posthog_api_key = "test-key"
+    settings.secrets.posthog_host = "https://example.com"
+    settings.config.sentry_release = ""
+    factory = Mock()
+    on_error = Mock()
+    monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
+    monkeypatch.setattr(posthog_client, "Posthog", factory)
+
+    assert posthog_client.new_posthog_client(on_error=on_error) is factory.return_value
+    factory.assert_called_once_with(
+        "test-key", host="https://example.com", super_properties={}, on_error=on_error
+    )
+    # The shared client is not created or replaced on the way.
+    assert posthog_client._client is None
+
+
+@pytest.mark.parametrize(
+    ("sentry_release", "expected"),
+    [("0123abcd\n", {"revision": "0123abcd"}), ("", {})],
+    ids=["revision set", "no revision"],
+)
+def test_every_event_a_client_sends_carries_the_revision(
+    monkeypatch: pytest.MonkeyPatch, sentry_release: str, expected: dict[str, str]
+) -> None:
+    settings = Mock()
+    settings.secrets.posthog_api_key = "phc_test"
+    settings.secrets.posthog_host = "http://127.0.0.1:9"
+    settings.config.sentry_release = sentry_release
+    monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
+    sent: list[dict] = []
+    # Returning None drops each event after the client has built it.
+    client = posthog_client.new_posthog_client(
+        super_properties={"cohort": "beta"}, before_send=sent.append, sync_mode=True
+    )
+    assert client is not None
+
+    posthog_client.capture("user-1", PostHogEvent.AI_METRIC, client=client)
+    client.set(distinct_id="user-1", properties={"plan": "pro"})
+    client.shutdown()
+
+    assert [
+        {k: v for k, v in event["properties"].items() if k in ("revision", "cohort")}
+        for event in sent
+    ] == [{"cohort": "beta", **expected}] * 2
+
+
+def test_no_client_of_its_own_when_analytics_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Mock()
+    settings.secrets.posthog_api_key = ""
+    factory = Mock()
+    monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
+    monkeypatch.setattr(posthog_client, "Posthog", factory)
+
+    assert posthog_client.new_posthog_client(on_error=Mock()) is None
+    factory.assert_not_called()
+
+
+@pytest.fixture
+def own_client(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    """The run's own client. `own_client.on_error` is the callback the run
+    gave it for uploads that failed for good."""
+    client = Mock()
+
+    def new_client(**options: object) -> Mock:
+        client.on_error = options["on_error"]
+        return client
+
+    monkeypatch.setattr(posthog_client, "new_posthog_client", new_client)
+    return client
+
+
+def _sends(
+    count: int, refused: frozenset[str] = frozenset()
+) -> list[posthog_client.Send]:
+    """One send per distinct id "0".."count-1"; those in `refused` report the
+    client didn't take them."""
+    return [
+        (str(i), lambda client, i=str(i): client.capture(i) and i not in refused)
+        for i in range(count)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_send_each_sends_all_flushing_as_it_goes_then_shuts_down(
+    own_client: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(posthog_client, "FLUSH_EVERY", 2)
+
+    assert await posthog_client.send_each(_sends(5)) == 0
+
+    assert [c.args[0] for c in own_client.capture.call_args_list] == list("01234")
+    # After the second and the fourth; shutting down flushes the rest.
+    assert own_client.flush.call_count == 2
+    own_client.shutdown.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_send_each_counts_each_distinct_id_posthog_did_not_take_once(
+    own_client: Mock,
+) -> None:
+    """Refused when queued, or in an upload that still failed after the
+    client's retries, which reaches `on_error` by the end of the shutdown."""
+    own_client.shutdown.side_effect = lambda: own_client.on_error(
+        RuntimeError("503"), [{"distinct_id": "1"}, {"distinct_id": "3"}]
+    )
+
+    assert await posthog_client.send_each(_sends(4, frozenset({"1", "2"}))) == 3
+
+
+@pytest.mark.asyncio
+async def test_send_each_shuts_the_client_down_even_when_a_send_raises(
+    own_client: Mock,
+) -> None:
+    def broken(_client: object) -> bool:
+        raise RuntimeError("bug")
+
+    with pytest.raises(RuntimeError, match="bug"):
+        await posthog_client.send_each([("0", broken)])
+    own_client.shutdown.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_send_each_without_posthog_raises_before_sending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(posthog_client, "new_posthog_client", lambda **_: None)
+    send = Mock()
+
+    with pytest.raises(RuntimeError, match="PostHog is not configured"):
+        await posthog_client.send_each([("0", send)])
+    send.assert_not_called()
+
+
 def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -196,3 +383,65 @@ def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
     assert kwargs["uuid"] == str(
         uuid.uuid5(uuid.NAMESPACE_URL, "user-1:briefing_delivered:briefing:b-1")
     )
+
+
+@pytest.fixture
+def shared_client(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+    return client
+
+
+def test_an_event_an_admin_caused_as_the_user_is_marked(shared_client: Mock) -> None:
+    token = posthog_client.set_impersonated(True)
+    try:
+        posthog_client.capture(
+            "user-1", PostHogEvent.AGENT_RUN_STARTED, {"impersonated": False}
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+    assert shared_client.capture.call_args.kwargs["properties"]["impersonated"] is True
+
+
+def test_an_event_the_user_caused_carries_no_mark(shared_client: Mock) -> None:
+    posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+
+    assert "impersonated" not in shared_client.capture.call_args.kwargs["properties"]
+
+
+def test_an_admin_acting_as_the_user_never_sets_their_person(
+    shared_client: Mock,
+) -> None:
+    token = posthog_client.set_impersonated(True)
+    try:
+        queued = posthog_client.capture(
+            "user-1",
+            PostHogEvent.SET_PERSON_PROPERTIES,
+            {"$set": {"onboarding_role": "Other"}},
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+    assert queued is False
+    shared_client.capture.assert_not_called()
+
+
+def test_an_event_joins_the_browser_session_of_its_request(
+    shared_client: Mock,
+) -> None:
+    token = posthog_client.set_session_id("0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f")
+    try:
+        posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+        posthog_client.capture(
+            "user-1", PostHogEvent.AGENT_RUN_STARTED, {"$session_id": "own"}
+        )
+    finally:
+        posthog_client.reset_session_id(token)
+    posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+
+    sent = [c.kwargs["properties"] for c in shared_client.capture.call_args_list]
+    assert sent[0]["$session_id"] == "0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f"
+    assert sent[1]["$session_id"] == "own"
+    assert "$session_id" not in sent[2]

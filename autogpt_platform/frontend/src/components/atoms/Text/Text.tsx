@@ -13,12 +13,14 @@ type CustomProps = {
   variant: Variant;
   as?: As;
   size?: Variant;
-  /** Semantic colour: primary zinc-900, secondary zinc-600, muted zinc-500, danger red-600. */
+  /** Semantic colour role; see `tones` in helpers.ts for each value. */
   tone?: Tone;
   className?: string;
+  /** With `as="label"`: the id of the control the label names. */
+  htmlFor?: string;
   /**
-   * Adds the sentry-unmask class for static text visibility in replays.
-   * Disable when rendering user-provided or dynamic content.
+   * Shows the text in session replays, which mask all text by default.
+   * Only for static copy that is the same for every user.
    */
   unmask?: boolean;
 };
@@ -34,7 +36,7 @@ export function Text({
   size,
   tone,
   className = "",
-  unmask = true,
+  unmask = false,
   ...rest
 }: TextProps) {
   const variantClasses = variants[size || variant] || variants.body;
@@ -49,6 +51,7 @@ export function Text({
   return React.createElement(
     Element,
     {
+      "data-slot": "text",
       className: combinedClassName,
       ...rest,
     },

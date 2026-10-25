@@ -8,7 +8,6 @@ takes its siblings down with it so a restart cannot double-consume.
 
 import asyncio
 import inspect
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,16 +17,12 @@ from postmarker.exceptions import ClientError
 
 from backend.notifications import notifications as delivery
 from backend.notifications.notifications import NotificationManager
+from backend.util.process import AppProcess
 
 
 @pytest.fixture(scope="session")
 def server() -> None:
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 def _manager() -> NotificationManager:
@@ -640,3 +635,15 @@ async def test_every_consumer_declares_how_its_queue_is_ordered():
         delivery.AUDIENCE_QUEUE: delivery.Ordering.AS_PUBLISHED,
         delivery.PASS_WORK_QUEUE: delivery.Ordering.COMMUTATIVE,
     }
+
+
+# ── stopped during start-up ────────────────────────────────────────────────
+
+
+def test_cleanup_of_a_manager_stopped_before_run_finishes_the_chain(mocker):
+    """Sentry AUTOGPT-SERVER-A7H: a SIGTERM before `run()` created the loop."""
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+
+    NotificationManager().cleanup()
+
+    process_cleanup.assert_called_once_with()

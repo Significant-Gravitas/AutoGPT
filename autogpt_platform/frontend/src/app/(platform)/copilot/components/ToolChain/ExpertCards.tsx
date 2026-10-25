@@ -17,12 +17,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 
 interface Props {
@@ -54,10 +54,10 @@ export type Decision = "approved" | "declined";
 // Same shell as the chain's action card (connect / inputs / questions) so
 // every "your turn" card in the thread reads as one family.
 const SHELL =
-  "w-full overflow-hidden rounded-3xl border border-zinc-100 bg-white";
-const HEADER = "flex items-center gap-2.5 border-b border-zinc-100 px-4 py-3";
+  "w-full overflow-hidden rounded-3xl border border-separator bg-surface";
+const HEADER = "flex items-center gap-2.5 border-b border-separator px-4 py-3";
 const FOOTER =
-  "flex items-center justify-between gap-2 border-t border-zinc-100 px-4 py-3";
+  "flex items-center justify-between gap-2 border-t border-separator px-4 py-3";
 
 type ExpertKind = "hire" | "raise" | "update";
 
@@ -96,16 +96,24 @@ function headerFor(
 
 interface Proposal {
   toolCallId: string;
-  kind: ExpertKind | null;
+  kind: ExpertKind | "soul" | null;
   name: string;
   confirmationId: string;
 }
 
-/** A hire/raise preview the user can still say yes or no to. */
+/** A hire/raise/Soul preview the user can still say yes or no to. */
 function proposalOf(part: ToolUIPart): Proposal | null {
   const output = asObject(part.output);
   if (!output || output.applied === true) return null;
   const confirmationId = str(output, "confirmation_id");
+  if (confirmationId && isSoulChange(output)) {
+    return {
+      toolCallId: part.toolCallId,
+      kind: "soul",
+      name: "your Soul",
+      confirmationId,
+    };
+  }
   const preview = asObject(output.preview);
   if (!confirmationId || !preview) return null;
   return {
@@ -116,16 +124,25 @@ function proposalOf(part: ToolUIPart): Proposal | null {
   };
 }
 
+// gate/card_approval.py reads the Approved line as the answer to the confirm.
 function decisionLine(proposal: Proposal, decision: Decision): string {
   const verb =
     proposal.kind === "hire"
       ? "hire"
-      : proposal.kind === "update"
+      : proposal.kind === "update" || proposal.kind === "soul"
         ? "update"
         : "create";
   return decision === "approved"
     ? `Approved: ${verb} ${proposal.name} (confirmation_id: ${proposal.confirmationId}).`
     : `Not approved: do not ${verb} ${proposal.name}, discard that proposal (confirmation_id: ${proposal.confirmationId}).`;
+}
+
+function withoutDecision(
+  decisions: Record<string, Decision>,
+  toolCallId: string,
+) {
+  const { [toolCallId]: _, ...rest } = decisions;
+  return rest;
 }
 
 function toExpertArtifact(
@@ -206,8 +223,8 @@ export function ExpertChangeCard({
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon icon={header.icon} size={18} className="text-zinc-400" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
+        <Icon icon={header.icon} size={18} className="text-foreground-subtle" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground-strong">
           {header.title}
         </span>
       </div>
@@ -229,10 +246,12 @@ export function ExpertChangeCard({
             size={32}
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium text-zinc-800">
+            <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
               {name}
             </p>
-            {role && <p className="truncate text-xs text-zinc-400">{role}</p>}
+            {role && (
+              <p className="truncate text-xs text-foreground-subtle">{role}</p>
+            )}
           </div>
           {showDetails && (
             <Button
@@ -251,7 +270,7 @@ export function ExpertChangeCard({
           <p
             key={`${artifactId ?? name}-summary`}
             className={cn(
-              "pl-[42px] pt-2 text-sm text-zinc-500",
+              "pl-[42px] pt-2 text-sm text-foreground-tertiary",
               stepDirection &&
                 "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
@@ -264,63 +283,172 @@ export function ExpertChangeCard({
         {hasCharter && !panelAvailable && showCharter && (
           <div className="flex flex-col gap-1 pl-[42px] pt-1.5">
             {tagline && about && (
-              <p className="text-sm text-zinc-500">{about}</p>
+              <p className="text-sm text-foreground-tertiary">{about}</p>
             )}
             {boundaries && (
-              <p className="text-sm text-zinc-400">Stops at: {boundaries}</p>
+              <p className="text-sm text-foreground-subtle">
+                Stops at: {boundaries}
+              </p>
             )}
           </div>
         )}
       </div>
       {showFooter && (
-        <div className={FOOTER}>
-          <div className="min-w-0">{pager}</div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {decision && onUndo && (
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={onUndo}
-                leftIcon={<Icon icon={UndoIcon} size={14} />}
-                className="h-8 !min-w-0 px-3"
-              >
-                {decision === "approved" ? "Unapprove" : "Undo decline"}
-              </Button>
-            )}
-            {!decision && onDecide && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="small"
-                  onClick={() => onDecide("declined")}
-                  className="h-8 !min-w-0 px-3"
-                >
-                  Decline
-                </Button>
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={() => onDecide("approved")}
-                  className="h-8 !min-w-0 px-3"
-                >
-                  Approve
-                </Button>
-              </>
-            )}
-            {action}
-          </div>
-        </div>
+        <DecisionFooter
+          pager={pager}
+          decision={decision}
+          onDecide={onDecide}
+          onUndo={onUndo}
+          action={action}
+        />
       )}
     </div>
   );
+}
+
+const SOUL_LABELS: Record<string, string> = {
+  identity: "Identity and personality",
+  voice_preferences: "Voice",
+  boundaries: "Boundaries",
+};
+
+/** A Soul edit the expert proposes for itself, or the one it just saved:
+ *  each changed field as it will read, with what it was. Labels match the
+ *  team page's Soul editor (SoulDrawer). */
+function SoulChangeCard({
+  output,
+  pager,
+  decision = null,
+  onDecide,
+  onUndo,
+  action,
+}: Props) {
+  const showFooter = !!pager || !!onDecide || !!decision || !!action;
+  return (
+    <div className={SHELL}>
+      <div className={HEADER}>
+        <Icon
+          icon={PencilEdit02Icon}
+          size={18}
+          className="text-foreground-subtle"
+        />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground-strong">
+          {output.applied === true ? "Soul updated" : "Update Soul"}
+        </span>
+      </div>
+      <div className="flex flex-col gap-3 px-4 py-3">
+        {soulChanges(output).map((change) => (
+          <section key={change.field} className="flex flex-col gap-0.5">
+            <p className="text-xs font-medium text-foreground-body">
+              {SOUL_LABELS[change.field] ?? change.field}
+            </p>
+            <p className="whitespace-pre-line text-sm text-foreground-body">
+              {change.after || "Empty"}
+            </p>
+            {change.before && (
+              <p className="line-clamp-2 text-xs text-foreground-subtle">
+                Was: {change.before}
+              </p>
+            )}
+          </section>
+        ))}
+      </div>
+      {showFooter && (
+        <DecisionFooter
+          pager={pager}
+          decision={decision}
+          onDecide={onDecide}
+          onUndo={onUndo}
+          action={action}
+        />
+      )}
+    </div>
+  );
+}
+
+type FooterProps = Pick<
+  Props,
+  "pager" | "decision" | "onDecide" | "onUndo" | "action"
+>;
+
+function DecisionFooter({
+  pager,
+  decision = null,
+  onDecide,
+  onUndo,
+  action,
+}: FooterProps) {
+  return (
+    <div className={FOOTER}>
+      <div className="min-w-0">{pager}</div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {decision && onUndo && (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={onUndo}
+            leftIcon={<Icon icon={UndoIcon} size={14} />}
+            className="h-8 !min-w-0 px-3"
+          >
+            {decision === "approved" ? "Unapprove" : "Undo decline"}
+          </Button>
+        )}
+        {!decision && onDecide && (
+          <>
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={() => onDecide("declined")}
+              className="h-8 !min-w-0 px-3"
+            >
+              Decline
+            </Button>
+            <Button
+              variant="primary"
+              size="small"
+              onClick={() => onDecide("approved")}
+              className="h-8 !min-w-0 px-3"
+            >
+              Approve
+            </Button>
+          </>
+        )}
+        {action}
+      </div>
+    </div>
+  );
+}
+
+function isSoulChange(output: Record<string, unknown>): boolean {
+  return str(output, "type") === "expert_soul_updated";
+}
+
+function soulChanges(output: Record<string, unknown>) {
+  const changes = Array.isArray(output.changes) ? output.changes : [];
+  return changes.flatMap((item) => {
+    const change = asObject(item);
+    const field = change ? str(change, "field") : null;
+    if (!change || !field) return [];
+    return [
+      {
+        field,
+        before: str(change, "before") ?? "",
+        after: str(change, "after") ?? "",
+      },
+    ];
+  });
 }
 
 export function ExpertChangeCardSkeleton() {
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon icon={UserAdd01Icon} size={18} className="text-zinc-400" />
-        <span className="text-sm font-medium text-zinc-900">
+        <Icon
+          icon={UserAdd01Icon}
+          size={18}
+          className="text-foreground-subtle"
+        />
+        <span className="text-sm font-medium text-foreground-strong">
           Create an Expert
         </span>
       </div>
@@ -369,8 +497,9 @@ export function ExpertChangePart({
   if (part.state === "output-error") return <GenericTool part={part} />;
   const output = asObject(part.output);
   if (output) {
+    const Card = isSoulChange(output) ? SoulChangeCard : ExpertChangeCard;
     return (
-      <ExpertChangeCard
+      <Card
         output={output}
         artifactId={part.toolCallId}
         pager={pager}
@@ -382,7 +511,9 @@ export function ExpertChangePart({
       />
     );
   }
-  return isCurrentlyStreaming ? <ExpertChangeCardSkeleton /> : null;
+  // The skeleton is an expert's shape; a Soul edit waits for its diff.
+  const soul = SOUL_CHANGE_TOOLS.has(part.type.slice("tool-".length));
+  return isCurrentlyStreaming && !soul ? <ExpertChangeCardSkeleton /> : null;
 }
 
 function isVisibleExpertPart(
@@ -448,8 +579,7 @@ export function ExpertChangeGroup({
 
   function undo() {
     if (!currentProposal) return;
-    const { [currentProposal.toolCallId]: _, ...rest } = decisions;
-    setDecisions(rest);
+    setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
   }
 
   function send() {
@@ -460,13 +590,12 @@ export function ExpertChangeGroup({
     // The card stays marked sent because the message is already in the
     // thread for Retry — the failure only needs saying.
     void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "it is still in the thread, use Retry to send it again",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
       }),
     );
     setSent(true);
@@ -479,7 +608,7 @@ export function ExpertChangeGroup({
         aria-label="Previous expert"
         disabled={current === 0}
         onClick={() => goTo(current - 1)}
-        className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+        className="flex size-6 items-center justify-center rounded-lg text-foreground-subtle transition-colors enabled:hover:bg-surface-hover enabled:hover:text-foreground-secondary disabled:opacity-35"
       >
         <Icon icon={ArrowLeft01Icon} size={14} />
       </button>
@@ -496,12 +625,14 @@ export function ExpertChangeGroup({
               "rounded-full transition-all duration-300",
               i === current ? "size-2.5 border-2" : "size-2 border",
               decisions[toolCallId] === "approved"
-                ? "border-emerald-500 bg-emerald-500"
+                ? // TODO(tokens): no exact role for border-emerald-500, bg-emerald-500
+                  "border-emerald-500 bg-emerald-500"
                 : decisions[toolCallId] === "declined"
-                  ? "border-red-400 bg-red-400"
+                  ? // TODO(tokens): no exact role for border-red-400, bg-red-400
+                    "border-red-400 bg-red-400"
                   : i === current
-                    ? "border-zinc-800"
-                    : "border-zinc-300",
+                    ? "border-action"
+                    : "border-border-strong",
             )}
           />
         ))}
@@ -511,11 +642,11 @@ export function ExpertChangeGroup({
         aria-label="Next expert"
         disabled={isLast}
         onClick={() => goTo(current + 1)}
-        className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+        className="flex size-6 items-center justify-center rounded-lg text-foreground-subtle transition-colors enabled:hover:bg-surface-hover enabled:hover:text-foreground-secondary disabled:opacity-35"
       >
         <Icon icon={ArrowRight01Icon} size={14} />
       </button>
-      <span className="text-xs text-zinc-400">
+      <span className="text-xs text-foreground-subtle">
         {current + 1} of {visible.length}
       </span>
     </div>
@@ -525,7 +656,7 @@ export function ExpertChangeGroup({
   // this group, so the send waits for the stream to settle.
   const canSend = !readOnly && !!actions && allDecided && !isCurrentlyStreaming;
   const action = sent ? (
-    <span className="flex items-center gap-1 text-xs text-zinc-400">
+    <span className="flex items-center gap-1 text-xs text-foreground-subtle">
       <Icon icon={Tick02Icon} size={14} />
       Sent
     </span>

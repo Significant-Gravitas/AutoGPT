@@ -40,7 +40,11 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
       <Text variant="h3" size="large-semibold">
         Notifications
       </Text>
-      <Text variant="body" className="mt-2 text-slate-400">
+      <Text
+        // TODO(tokens): no exact role (text-slate-400 #8A97A8)
+        variant="body"
+        className="mt-2 text-slate-400"
+      >
         Billing and account messages are always sent — they are about your
         account, not a promotion.
       </Text>
@@ -60,7 +64,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
                       Briefing
                     </Text>
                     <Text variant="body">
-                      What your agents got done, at around 07:30 your time.
+                      What your workflows got done, at around 07:30 your time.
                       Never sent when nothing ran.
                     </Text>
                   </div>
@@ -117,7 +121,8 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
                       Marketplace reviews
                     </Text>
                     <Text variant="body">
-                      When an agent you submitted is approved or needs changes.
+                      When a workflow you submitted is approved or needs
+                      changes.
                     </Text>
                   </div>
                   <FormControl>

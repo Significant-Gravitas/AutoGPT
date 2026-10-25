@@ -1,8 +1,10 @@
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { getGetV2GetCopilotUsageQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import {
   useEffect,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -33,6 +35,7 @@ import { useCopilotUIStore, type CopilotLlmModel } from "./store";
 import {
   createAssistantRunJoiner,
   createTailRenderer,
+  statsOfAssistantRuns,
 } from "./stream/renderTail";
 import {
   getTurnRuntime,
@@ -102,6 +105,8 @@ export function useCopilotRuntimeStream({
     fingerprint: string;
   } | null>(null);
 
+  // Kept as a memo: getting a runtime bumps it in the registry and can
+  // dispose an idle one, so it runs once per session.
   const runtime = useMemo(
     () => (sessionId ? getTurnRuntime(sessionId) : null),
     [sessionId],
@@ -111,8 +116,60 @@ export function useCopilotRuntimeStream({
     runtime?.getSnapshot ?? emptySnapshot,
     runtime?.getSnapshot ?? emptySnapshot,
   );
-  const isUserStoppingRef = useRef(false);
-  isUserStoppingRef.current = snapshot.stopped;
+  const isUserStoppingRef = useRef(snapshot.stopped);
+  useInsertionEffect(() => {
+    isUserStoppingRef.current = snapshot.stopped;
+  });
+
+  function handleError(error: Error, rawFailure: unknown) {
+    if (!sessionId) return;
+    const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+    const kickoffExpertId = coord.lastSubmittedKickoffExpertId;
+    const kickoffAttemptToken = coord.lastSubmittedKickoffAttemptToken;
+    const clearRecovery = () =>
+      useCopilotStreamStore.getState().updateCoord(sessionId, {
+        lastSubmittedMessageText: null,
+        lastSubmittedKickoffExpertId: null,
+        lastSubmittedKickoffAttemptToken: null,
+      });
+    // The backend refuses a turn over our cap (429) or without a plan (402)
+    // before persisting its prompt: put the text back in an empty composer
+    // and drop the bubble.
+    function restoreUnsentSend() {
+      if (!coord.lastSubmittedMessageText) return;
+      if (kickoffExpertId) clearRecovery();
+      else if (isComposerEmpty()) {
+        setInitialPrompt(coord.lastSubmittedMessageText);
+        clearRecovery();
+      }
+      runtime?.dropUnsentUserRow();
+    }
+    handleStreamError({
+      error,
+      providerFailure: parseProviderFailure(rawFailure),
+      onRateLimit: (message, limitFailure, origin) => {
+        restoreUnsentSend();
+        if (limitFailure && origin === "provider") {
+          dismissedProviderFailureRef.current = null;
+          setProviderLimit(limitFailure);
+        } else {
+          setPlatformLimitFailure(limitFailure ?? null);
+          setRateLimitMessage(limitFailure?.message || message);
+        }
+      },
+      onReconnect: () => runtime?.ensureConnected(),
+      onPaywall: restoreUnsentSend,
+      isUserStoppingRef,
+    });
+    if (!kickoffExpertId) return;
+    if (userId && kickoffAttemptToken) {
+      void withKickoffLock(userId, kickoffExpertId, async () => {
+        clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
+      }).catch(() => undefined);
+    }
+    clearRecovery();
+    runtime?.dropUnsentUserRow();
+  }
 
   useEffect(() => {
     if (!runtime) return;
@@ -134,8 +191,16 @@ export function useCopilotRuntimeStream({
     if (runtime && sessionView) runtime.observe(sessionView);
   }, [runtime, sessionView]);
 
-  const cut = snapshot.ownedFrom ?? prospectiveCut(runtime, sessionView);
+  // `wouldAttach` reads the runtime's own state, so this is read on every
+  // render rather than cached on the runtime and view.
+  const cut = useReadEveryRender(
+    () => snapshot.ownedFrom ?? prospectiveCut(runtime, sessionView),
+  );
   const history = useSessionHistory(sessionId, sessionView, cut);
+  // These memos stay with the compiler on. The renderer and the joiner hold
+  // the caches that keep a bubble's object, and so its key, for the life of
+  // the mount, so each is created once (per session); and the page's effects
+  // depend on the identity of `messages`.
   const renderTail = useMemo(
     () => createTailRenderer(sessionId ?? ""),
     [sessionId],
@@ -149,56 +214,13 @@ export function useCopilotRuntimeStream({
         : [],
     [sessionId, joinAssistantRuns, history.messages, tail.messages],
   );
-  const turnStats = useMemo(
-    () => withLatestUser(messages, history.stats, tail.stats),
-    [messages, history.stats, tail.stats],
+  const turnStats = withLatestUser(
+    messages,
+    statsOfAssistantRuns(
+      [...history.messages, ...tail.messages],
+      new Map([...history.stats, ...tail.stats]),
+    ),
   );
-
-  function handleError(error: Error, rawFailure: unknown) {
-    if (!sessionId) return;
-    const coord = useCopilotStreamStore.getState().getCoord(sessionId);
-    const kickoffExpertId = coord.lastSubmittedKickoffExpertId;
-    const kickoffAttemptToken = coord.lastSubmittedKickoffAttemptToken;
-    const clearRecovery = () =>
-      useCopilotStreamStore.getState().updateCoord(sessionId, {
-        lastSubmittedMessageText: null,
-        lastSubmittedKickoffExpertId: null,
-        lastSubmittedKickoffAttemptToken: null,
-      });
-    handleStreamError({
-      error,
-      providerFailure: parseProviderFailure(rawFailure),
-      onRateLimit: (message, limitFailure, origin) => {
-        // The backend refuses a turn over our cap before persisting its
-        // prompt: put the text back in an empty composer and drop the bubble.
-        if (coord.lastSubmittedMessageText) {
-          if (kickoffExpertId) clearRecovery();
-          else if (isComposerEmpty()) {
-            setInitialPrompt(coord.lastSubmittedMessageText);
-            clearRecovery();
-          }
-          runtime?.dropUnsentUserRow();
-        }
-        if (limitFailure && origin === "provider") {
-          dismissedProviderFailureRef.current = null;
-          setProviderLimit(limitFailure);
-        } else {
-          setPlatformLimitFailure(limitFailure ?? null);
-          setRateLimitMessage(limitFailure?.message || message);
-        }
-      },
-      onReconnect: () => runtime?.ensureConnected(),
-      isUserStoppingRef,
-    });
-    if (!kickoffExpertId) return;
-    if (userId && kickoffAttemptToken) {
-      void withKickoffLock(userId, kickoffExpertId, async () => {
-        clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
-      }).catch(() => undefined);
-    }
-    clearRecovery();
-    runtime?.dropUnsentUserRow();
-  }
 
   async function sendMessage(input: SendInput) {
     if (!runtime || !sessionId) return;
@@ -228,7 +250,7 @@ export function useCopilotRuntimeStream({
 
   useEffect(() => {
     if (!sessionId || !rawSessionMessages?.length) return;
-    const historical = latestProviderFailure(
+    const latest = latestProviderFailure(
       rawSessionMessages,
       sessionAuthProvider
         ? {
@@ -237,6 +259,10 @@ export function useCopilotRuntimeStream({
           }
         : null,
     );
+    // The dialog answers a spent quota, as on the live path. Reopening it for
+    // an expired login or a refused prompt would tell the user they hit a
+    // limit they never hit.
+    const historical = latest?.kind === "usage_limit" ? latest : null;
     const dismissed = dismissedProviderFailureRef.current;
     if (
       historical &&
@@ -316,14 +342,19 @@ function useSessionHistory(
   view: SessionView | null,
   cut: number | null,
 ) {
-  const retained = useRef(new Map<number, PersistedRow>());
+  const [retained, setRetained] = useState(() => ({
+    view: null as SessionView | null,
+    rows: new Map<number, PersistedRow>(),
+  }));
+  let retainedRows = retained.rows;
+  if (retained.view !== view) {
+    retainedRows = retainRows(retained.rows, view);
+    setRetained({ view, rows: retainedRows });
+  }
+  // Kept as a memo with the compiler on: `messages` heads the list the page's
+  // effects depend on.
   return useMemo(() => {
-    for (const raw of view?.messages ?? []) {
-      const row = raw as PersistedRow;
-      if (typeof row.sequence === "number")
-        retained.current.set(row.sequence, row);
-    }
-    const rows = [...retained.current.values()]
+    const rows = [...retainedRows.values()]
       .filter((row) => cut === null || (row.sequence ?? 0) < cut)
       .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
     const converted = sessionId
@@ -336,7 +367,19 @@ function useSessionHistory(
       stats: converted.stats,
       oldestSequence: rows[0]?.sequence ?? null,
     };
-  }, [sessionId, view, cut]);
+  }, [sessionId, view, cut, retainedRows]);
+}
+
+function retainRows(
+  retained: ReadonlyMap<number, PersistedRow>,
+  view: SessionView | null,
+) {
+  const next = new Map(retained);
+  for (const raw of view?.messages ?? []) {
+    const row = raw as PersistedRow;
+    if (typeof row.sequence === "number") next.set(row.sequence, row);
+  }
+  return next;
 }
 
 // Before the runtime attaches to a running turn, its persisted rows are
@@ -351,13 +394,8 @@ function prospectiveCut(runtime: TurnRuntime | null, view: SessionView | null) {
   return sequences.length ? Math.max(...sequences) + 1 : 0;
 }
 
-function withLatestUser(
-  messages: UIMessage[],
-  historyStats: TurnStatsMap,
-  tailStats: TurnStatsMap,
-) {
-  const stats: TurnStatsMap = new Map(historyStats);
-  tailStats.forEach((value, key) => stats.set(key, value));
+function withLatestUser(messages: UIMessage[], merged: TurnStatsMap) {
+  const stats: TurnStatsMap = new Map(merged);
   const latestUser = messages.findLast((m) => m.role === "user");
   stats.forEach((value, key) => {
     if (value.isLatestUserMessage && key !== latestUser?.id) {

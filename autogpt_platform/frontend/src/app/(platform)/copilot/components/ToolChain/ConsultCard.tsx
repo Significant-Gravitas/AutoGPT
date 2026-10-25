@@ -11,7 +11,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD } from "./ResultCards";
-import { asObject, str } from "./resultHelpers";
+import { asObject, str, unescapePromptTags } from "./resultHelpers";
 
 interface Props {
   output: Record<string, unknown>;
@@ -27,17 +27,18 @@ const VERDICTS: Record<string, VerdictStyle> = {
   pass: {
     label: "No objection",
     icon: CheckmarkCircle02Icon,
-    chip: "bg-green-50 text-green-700",
+    chip: "bg-success-surface text-success-foreground",
   },
   block: {
     label: "Blocked",
     icon: Alert02Icon,
-    chip: "bg-red-50 text-red-600",
+    // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
+    chip: "bg-error-surface text-red-600",
   },
   insufficient: {
     label: "Not checked",
     icon: HelpCircleIcon,
-    chip: "bg-amber-50 text-amber-700",
+    chip: "bg-warning-surface text-warning-foreground",
   },
 };
 
@@ -46,7 +47,8 @@ const VERDICTS: Record<string, VerdictStyle> = {
  *  right, and whether an override in the reply below it was honest.
  *
  *  `reason` and `quotes` are model output conditioned on a user-editable Soul,
- *  so they render as plain text — never markdown, never HTML. */
+ *  so they render as plain text — never markdown, never HTML. The backend
+ *  tag-escapes them for the model; the card shows them as written. */
 export function ConsultVerdictCard({ output }: Props) {
   const verdict = str(output, "verdict") ?? "";
   const style = VERDICTS[verdict];
@@ -54,11 +56,12 @@ export function ConsultVerdictCard({ output }: Props) {
   if (!style || !reviewer) return null;
 
   const quotes = Array.isArray(output.quotes)
-    ? output.quotes.filter(
-        (q): q is string => typeof q === "string" && !!q.trim(),
-      )
+    ? output.quotes
+        .filter((q): q is string => typeof q === "string" && !!q.trim())
+        .map(unescapePromptTags)
     : [];
-  const reason = str(output, "reason");
+  const escapedReason = str(output, "reason");
+  const reason = escapedReason ? unescapePromptTags(escapedReason) : null;
 
   return (
     <div className={cn(CARD, "w-full rounded-3xl p-2.5")}>
@@ -69,10 +72,13 @@ export function ConsultVerdictCard({ output }: Props) {
           size={28}
         />
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium" className="truncate text-zinc-800">
+          <Text
+            variant="body-medium"
+            className="truncate text-foreground-emphasis"
+          >
             {str(reviewer, "name") ?? "A teammate"}
           </Text>
-          <Text variant="small" className="truncate text-zinc-500">
+          <Text variant="small" className="truncate text-foreground-tertiary">
             {str(reviewer, "role") ?? "checked this"}
           </Text>
         </div>
@@ -87,7 +93,7 @@ export function ConsultVerdictCard({ output }: Props) {
         </span>
       </div>
       {reason ? (
-        <Text variant="small" className="mt-2 px-0.5 text-zinc-600">
+        <Text variant="small" className="mt-2 px-0.5 text-foreground-secondary">
           {reason}
         </Text>
       ) : null}
@@ -96,9 +102,9 @@ export function ConsultVerdictCard({ output }: Props) {
           {quotes.map((quote, index) => (
             <li
               key={`${index}-${quote}`}
-              className="border-l-2 border-zinc-200 pl-2 text-zinc-500"
+              className="border-l-2 border-border-base pl-2 text-foreground-tertiary"
             >
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-foreground-tertiary">
                 {quote}
               </Text>
             </li>

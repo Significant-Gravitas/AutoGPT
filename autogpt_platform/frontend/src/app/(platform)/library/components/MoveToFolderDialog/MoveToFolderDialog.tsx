@@ -51,14 +51,14 @@ export function MoveToFolderDialog({
         setIsOpen(false);
         setSearch("");
         toast({
-          title: "Agent moved",
+          title: "Workflow moved",
           description: `"${agentName}" has been moved.`,
         });
       },
       onError: () => {
         toast({
           title: "Error",
-          description: "Failed to move agent. Please try again.",
+          description: "Failed to move workflow. Please try again.",
           variant: "destructive",
         });
       },
@@ -119,7 +119,7 @@ export function MoveToFolderDialog({
           <div className="max-h-[280px] overflow-y-auto">
             {folders.length === 0 ? (
               <div className="flex h-20 items-center justify-center">
-                <Text variant="small" className="text-zinc-400">
+                <Text variant="small" className="text-foreground-subtle">
                   No folders found
                 </Text>
               </div>
@@ -135,7 +135,7 @@ export function MoveToFolderDialog({
                     <span className="text-lg">📂</span>
                     <div className="flex flex-col items-start">
                       <Text variant="small-medium">My Library (root)</Text>
-                      <Text variant="small" className="text-zinc-400">
+                      <Text variant="small" className="text-foreground-subtle">
                         Remove from folder
                       </Text>
                     </div>
@@ -153,9 +153,11 @@ export function MoveToFolderDialog({
                     <span className="text-lg">{folder.icon ?? "📁"}</span>
                     <div className="flex flex-col items-start">
                       <Text variant="small-medium">{folder.name}</Text>
-                      <Text variant="small" className="text-zinc-400">
+                      <Text variant="small" className="text-foreground-subtle">
                         {folder.agent_count ?? 0}{" "}
-                        {(folder.agent_count ?? 0) === 1 ? "agent" : "agents"}
+                        {(folder.agent_count ?? 0) === 1
+                          ? "workflow"
+                          : "workflows"}
                       </Text>
                     </div>
                   </Button>

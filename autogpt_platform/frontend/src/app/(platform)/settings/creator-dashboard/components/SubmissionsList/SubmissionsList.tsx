@@ -94,7 +94,7 @@ export function SubmissionsList({
             Submissions
           </Text>
         </div>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           {submissions.length} of {totalCount}
         </Text>
       </div>
@@ -103,7 +103,7 @@ export function SubmissionsList({
         <SearchInput
           value={searchInput}
           onChange={onSearchChange}
-          placeholder="Search by agent or listing name"
+          placeholder="Search by workflow or listing name"
           aria-label="Search submissions"
           maxLength={100}
           loading={isFetching}
@@ -111,12 +111,12 @@ export function SubmissionsList({
         />
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="overflow-hidden rounded-[18px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div>
           <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="border-b border-zinc-100 bg-zinc-50/60">
-                <ColumnHeader label="Agent" />
+              <tr className="border-b border-separator bg-surface-muted/60">
+                <ColumnHeader label="Workflow" />
                 <ColumnHeader
                   label="Status"
                   width="140px"
@@ -210,7 +210,7 @@ export function SubmissionsList({
           </table>
         </div>
         {pagination && onPageChange ? (
-          <div className="border-t border-zinc-100">
+          <div className="border-t border-separator">
             <Pagination
               pagination={pagination}
               onPageChange={onPageChange}

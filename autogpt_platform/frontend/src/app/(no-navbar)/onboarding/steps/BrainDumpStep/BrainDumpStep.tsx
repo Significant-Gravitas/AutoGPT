@@ -18,6 +18,8 @@ import { OrbControlButton } from "./components/OrbControlButton";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
 
 const FAILURE_HEADLINE = "That didn't go through.";
+const MIC_UNAVAILABLE_COPY =
+  "We couldn't open your microphone. You can write it instead.";
 const TYPING_HEADLINE = "Write to me about your work";
 // "Catch" fits a mishearing, not a typed answer — the typed reject asks
 // for more instead of implying the system misheard.
@@ -32,7 +34,6 @@ export function BrainDumpStep() {
   const dump = useBrainDumpStep();
   const isRecording = dump.screen === "recording";
   const isProcessing = dump.screen === "processing";
-  const isMicScreen = dump.screen === "rest" || isRecording;
   const isTyping = dump.screen === "typing";
   const showPrivacyNote =
     dump.screen !== "failed" &&
@@ -52,7 +53,7 @@ export function BrainDumpStep() {
     <>
       <RevealGroup
         className={cn(
-          "-mt-44 flex w-full flex-col items-center gap-8 px-4",
+          "flex w-full flex-col items-center gap-6 px-4",
           isTyping ? "w-[calc(100vw-3rem)] max-w-3xl" : "max-w-2xl",
         )}
       >
@@ -71,7 +72,7 @@ export function BrainDumpStep() {
               variant="ghost"
               size="xs"
               onClick={dump.handleSkip}
-              className="text-zinc-400 hover:text-zinc-700"
+              className="text-foreground-subtle hover:text-foreground-body"
             >
               Skip for now
             </Button>
@@ -82,7 +83,7 @@ export function BrainDumpStep() {
           <RevealItem>
             <SwapFade
               swapKey={isRecording ? "timer" : "headline"}
-              className="flex h-10 items-center justify-center"
+              className="flex min-h-10 items-center justify-center"
             >
               {isRecording ? (
                 <ElapsedTime seconds={dump.elapsedSeconds} />
@@ -97,6 +98,14 @@ export function BrainDumpStep() {
               )}
             </SwapFade>
           </RevealItem>
+          {dump.screen === "rest" && (
+            <RevealItem>
+              <Text variant="body" tone="muted" className="max-w-lg">
+                Tell me what you do and what eats up your week. Two or three
+                minutes is plenty. You can type instead if you prefer.
+              </Text>
+            </RevealItem>
+          )}
         </div>
 
         {orbScreen && (
@@ -105,14 +114,12 @@ export function BrainDumpStep() {
             className="flex w-full flex-col items-center gap-4"
           >
             <MicButton screen={orbScreen} audioStream={dump.audioStream} />
-            {/* One fixed-height slot holds whichever control the screen
-                needs, so switching between the mic, the recording controls
-                and the composer never moves the avatar or the headline. */}
-            <div className="flex min-h-[236px] w-full flex-col items-center">
+            <div className="flex w-full flex-col items-center">
               {isTyping ? (
                 <TypedFallback
                   value={dump.typedText}
                   onChange={dump.setTypedText}
+                  isTooLong={dump.isTypedTooLong}
                   onSubmit={dump.handleSubmitTyped}
                 />
               ) : isRecording ? (
@@ -125,10 +132,23 @@ export function BrainDumpStep() {
                   isOffline={dump.isOffline}
                 />
               ) : orbScreen === "rest" ? (
-                <RestActions
-                  onTalk={dump.handleStart}
-                  onWrite={dump.showTyping}
-                />
+                <>
+                  <RestActions
+                    onTalk={dump.handleStart}
+                    onWrite={dump.showTyping}
+                    writeFirst={dump.isMicUnavailable}
+                  />
+                  {dump.isMicUnavailable && (
+                    <Text
+                      variant="body"
+                      tone="muted"
+                      role="alert"
+                      className="mt-3 text-center"
+                    >
+                      {MIC_UNAVAILABLE_COPY}
+                    </Text>
+                  )}
+                </>
               ) : (
                 orbScreen === "failed" && (
                   <OrbControlButton
@@ -138,25 +158,12 @@ export function BrainDumpStep() {
                 )
               )}
             </div>
-            {/* Both slots keep their height across rest → recording →
-                processing, so advancing a screen swaps their contents without
-                nudging the orb or the headline. Failure has its own layout
-                below the orb and needs neither. */}
-            {orbScreen !== "failed" && !isRecording && (
-              <>
-                <div className="flex h-10 w-full items-center justify-center">
-                  <SwapFade
-                    swapKey={orbScreen}
-                    className="flex w-full justify-center"
-                  >
-                    <OrbCaption
-                      screen={orbScreen}
-                      reachedTimeLimit={dump.reachedTimeLimit}
-                    />
-                  </SwapFade>
-                </div>
-                <div className="flex h-10 items-center justify-center" />
-              </>
+            {isProcessing && (
+              <Text variant="body" tone="muted" className="text-center">
+                {dump.reachedTimeLimit
+                  ? TIME_LIMIT_CAPTION
+                  : "Got it. One second…"}
+              </Text>
             )}
           </RevealItem>
         )}
@@ -166,6 +173,7 @@ export function BrainDumpStep() {
             <RecoveryPrompt
               durationSecs={dump.recoverable.durationSecs}
               onResume={dump.handleResumeRecovered}
+              onDownload={dump.handleDownloadRecording}
               onDiscard={dump.handleDiscardRecovered}
             />
           </RevealItem>
@@ -174,6 +182,8 @@ export function BrainDumpStep() {
         {dump.screen === "failed" && (
           <RevealItem>
             <FailureState
+              mode={dump.submittedMode}
+              reason={dump.failureReason}
               onDownload={dump.handleDownloadRecording}
               onSkip={dump.handleSkip}
             />
@@ -191,53 +201,50 @@ export function BrainDumpStep() {
             />
           </RevealItem>
         )}
+        {!isRecording &&
+          (isTyping ||
+            dump.screen === "failed" ||
+            dump.screen === "recovery") && (
+            <div className="flex justify-center">
+              <SwapFade swapKey={dump.screen}>
+                {dump.screen === "failed" && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={dump.showTyping}
+                    className="underline underline-offset-4"
+                  >
+                    {dump.submittedMode === "typed"
+                      ? "edit your text"
+                      : "type instead"}
+                  </Button>
+                )}
+                {isTyping && !dump.isMicBlocked && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={dump.showRecording}
+                    className="underline underline-offset-4"
+                  >
+                    record instead
+                  </Button>
+                )}
+                {dump.screen === "recovery" && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={dump.handleTypeInsteadOfRecovered}
+                    className="underline underline-offset-4"
+                  >
+                    type instead
+                  </Button>
+                )}
+              </SwapFade>
+            </div>
+          )}
+
+        {showPrivacyNote && !isRecording && <PrivacyNote />}
       </RevealGroup>
-
-      {/* Viewport-anchored, and kept outside the reveal group: an ancestor
-          that animates `filter` or `transform` would turn these into
-          absolutely positioned elements. */}
-      {!isRecording &&
-        (isMicScreen ||
-          isTyping ||
-          dump.screen === "failed" ||
-          dump.screen === "recovery") && (
-          <div className="fixed inset-x-0 bottom-32 flex justify-center px-4">
-            <SwapFade swapKey={dump.screen}>
-              {dump.screen === "failed" && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={dump.showTyping}
-                  className="underline underline-offset-4"
-                >
-                  type instead
-                </Button>
-              )}
-              {isTyping && !dump.isMicBlocked && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={dump.showRecording}
-                  className="underline underline-offset-4"
-                >
-                  record instead
-                </Button>
-              )}
-              {dump.screen === "recovery" && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={dump.handleTypeInsteadOfRecovered}
-                  className="underline underline-offset-4"
-                >
-                  type instead
-                </Button>
-              )}
-            </SwapFade>
-          </div>
-        )}
-
-      {showPrivacyNote && !isRecording && <PrivacyNote />}
     </>
   );
 }
@@ -261,22 +268,4 @@ function stateHeadline(
   if (screen === "insufficient")
     return INSUFFICIENT_HEADLINES[insufficientMode];
   return restHeadline;
-}
-
-function OrbCaption({
-  screen,
-  reachedTimeLimit,
-}: {
-  screen: OrbScreen;
-  reachedTimeLimit: boolean;
-}) {
-  if (screen === "processing") {
-    return (
-      <Text variant="body" tone="muted">
-        {reachedTimeLimit ? TIME_LIMIT_CAPTION : "Got it. One second…"}
-      </Text>
-    );
-  }
-
-  return null;
 }

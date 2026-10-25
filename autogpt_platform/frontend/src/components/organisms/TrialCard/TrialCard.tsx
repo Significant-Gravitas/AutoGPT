@@ -3,7 +3,9 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { cn } from "@/lib/utils";
+import { TrialCanceledDialog } from "./TrialCanceledDialog/TrialCanceledDialog";
 import { TrialOffer } from "./TrialOffer";
 import { TrialStatus } from "./TrialStatus";
 import { useTrialCard } from "./useTrialCard";
@@ -29,9 +31,15 @@ export function TrialCardContent({
     error,
     retry,
     isStarting,
+    isBlocked,
     isCanceling,
+    isResuming,
     startTrial,
     cancelTrial,
+    resumeTrial,
+    showCanceledDialog,
+    dismissCanceledDialog,
+    subscribeNow,
   } = controller;
   const isBilling = returnTo === "billing";
   if (isLoading)
@@ -39,6 +47,7 @@ export function TrialCardContent({
       <Skeleton
         className={cn(
           "w-full",
+          // TODO(tokens): no radius token for 18px.
           isBilling ? "h-28 rounded-[18px]" : "h-36 rounded-2xl",
         )}
       />
@@ -57,6 +66,7 @@ export function TrialCardContent({
         <TrialOffer
           trial={trial}
           isStarting={isStarting}
+          isBlocked={isBlocked}
           onStart={startTrial}
         />
       ) : (
@@ -65,43 +75,56 @@ export function TrialCardContent({
           trial={trial}
           isCanceling={isCanceling}
           onCancel={cancelTrial}
+          isResuming={isResuming}
+          onResume={resumeTrial}
         />
       )}
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-destructive">
+        <p
+          role="alert"
+          data-slot="trial-card-content-error"
+          className="mt-3 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : null}
+      <TrialCanceledDialog
+        trial={trial}
+        isOpen={showCanceledDialog}
+        isResuming={isResuming}
+        onResume={resumeTrial}
+        onSubscribe={subscribeNow}
+        onClose={dismissCanceledDialog}
+      />
     </>
   );
   if (isBilling)
     return (
       <section
         aria-label="AutoGPT trial"
-        className="flex w-full flex-col gap-2"
+        data-slot="trial-card-content"
+        className="flex w-full flex-col gap-2 py-4"
       >
-        <div className="flex items-center gap-2 px-4">
+        <div data-slot="trial-card-content-heading" className="sr-only">
           <Text variant="body-medium" as="span" className="text-textBlack">
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>
-        <div className="rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+        <div data-slot="trial-card-content-body" className="w-full">
           {body}
         </div>
       </section>
     );
   return (
-    <section
-      aria-label="AutoGPT trial"
-      className="w-full rounded-2xl bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px"
+    <AttentionCard.Root
+      asChild
+      variant="featured"
+      density="roomy"
+      className="w-full"
     >
-      <div className="relative overflow-hidden rounded-[15px] bg-white p-5 md:p-6">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(168,85,247,0.10),transparent_60%),radial-gradient(120%_60%_at_100%_100%,rgba(99,102,241,0.06),transparent_60%)]"
-        />
-        <div className="relative">{body}</div>
-      </div>
-    </section>
+      <section aria-label="AutoGPT trial" data-slot="trial-card-content">
+        {body}
+      </section>
+    </AttentionCard.Root>
   );
 }

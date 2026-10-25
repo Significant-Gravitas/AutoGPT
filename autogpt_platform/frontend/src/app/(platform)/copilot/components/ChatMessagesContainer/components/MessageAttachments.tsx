@@ -11,7 +11,10 @@ import {
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
+import { isPreviewableImage } from "../../ArtifactPanel/helpers";
+import type { ArtifactRef } from "../../../store";
 import { filePartToArtifactRef } from "../helpers";
+import { MessageImageThumbnail } from "./MessageImageThumbnail";
 import {
   Download04Icon,
   File02Icon,
@@ -65,8 +68,21 @@ export function MessageAttachments({
 }: Props) {
   if (files.length === 0 && folders.length === 0) return null;
 
+  const { images, otherFiles } = splitUserImages(files, isUser, filePattern);
+
   return (
     <div className="mt-2 flex flex-col gap-2">
+      {images.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {images.map((image, i) => (
+            <MessageImageThumbnail
+              key={`image-${image.id}-${i}`}
+              artifact={image}
+              readOnly={readOnly}
+            />
+          ))}
+        </div>
+      )}
       {folders.map((folder) => (
         <FolderAttachmentCard
           key={folder.id}
@@ -74,7 +90,7 @@ export function MessageAttachments({
           readOnly={readOnly}
         />
       ))}
-      {files.map((file, i) => {
+      {otherFiles.map((file, i) => {
         const artifactRef = filePartToArtifactRef(
           file,
           isUser ? "user-upload" : "agent",
@@ -95,14 +111,17 @@ export function MessageAttachments({
             key={`${file.filename}-${i}`}
             className={`inline-block rounded-lg border p-1.5 ${
               isUser
-                ? "border-purple-300 bg-purple-50"
-                : "border-neutral-200 bg-neutral-50"
+                ? // TODO(tokens): no exact role for border-purple-300, bg-purple-50
+                  "border-purple-300 bg-purple-50"
+                : // TODO(tokens): no exact role for border-neutral-200
+                  "border-neutral-200 bg-background"
             }`}
           >
             {rendered}
             <div
               className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
-                isUser ? "text-zinc-600" : "text-neutral-500"
+                // TODO(tokens): no exact role for text-neutral-500
+                isUser ? "text-foreground-secondary" : "text-neutral-500"
               }`}
             >
               <span className="truncate">{file.filename || "file"}</span>
@@ -121,19 +140,21 @@ export function MessageAttachments({
         ) : isUser ? (
           <div
             key={`${file.filename}-${i}`}
+            // TODO(tokens): no exact role for border-purple-300, bg-purple-100
             className="min-w-0 rounded-lg border border-purple-300 bg-purple-100 p-3"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   icon={File02Icon}
+                  // TODO(tokens): no exact role for text-neutral-400
                   className="h-5 w-5 shrink-0 text-neutral-400"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-zinc-800">
+                  <p className="truncate text-sm font-medium text-foreground-emphasis">
                     {file.filename || "file"}
                   </p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-zinc-800">
+                  <p className="mt-0.5 truncate font-mono text-xs text-foreground-emphasis">
                     {file.mediaType || "file"}
                   </p>
                 </div>
@@ -143,6 +164,7 @@ export function MessageAttachments({
                   href={file.url}
                   download
                   aria-label="Download file"
+                  // TODO(tokens): no exact role for text-purple-400; no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
                   className="shrink-0 text-purple-400 hover:text-purple-600"
                 >
                   <Icon icon={Download04Icon} className="h-5 w-5" />
@@ -159,6 +181,7 @@ export function MessageAttachments({
                     href={file.url}
                     download
                     aria-label="Download file"
+                    // TODO(tokens): no exact role for text-neutral-400, hover:text-neutral-600
                     className="shrink-0 text-neutral-400 hover:text-neutral-600"
                   >
                     <Icon icon={Download04Icon} className="h-5 w-5" />
@@ -169,6 +192,7 @@ export function MessageAttachments({
               <div className="flex items-center gap-2">
                 <Icon
                   icon={File02Icon}
+                  // TODO(tokens): no exact role for text-neutral-400
                   className="h-5 w-5 shrink-0 text-neutral-400"
                 />
                 <div className="min-w-0">
@@ -186,6 +210,25 @@ export function MessageAttachments({
   );
 }
 
+/** Images the user sent show as pictures; everything else keeps its card. */
+function splitUserImages(
+  files: FileUIPart[],
+  isUser: boolean | undefined,
+  filePattern: RegExp | undefined,
+) {
+  const images: ArtifactRef[] = [];
+  const otherFiles: FileUIPart[] = [];
+  for (const file of files) {
+    const ref =
+      isUser && isPreviewableImage(file.mediaType)
+        ? filePartToArtifactRef(file, "user-upload", filePattern)
+        : null;
+    if (ref) images.push(ref);
+    else otherFiles.push(file);
+  }
+  return { images, otherFiles };
+}
+
 function FolderAttachmentCard({
   folder,
   readOnly,
@@ -194,13 +237,20 @@ function FolderAttachmentCard({
   readOnly?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-lg border border-purple-300 bg-purple-100 p-3">
-      <Icon icon={Folder01Icon} size={20} className="shrink-0 text-zinc-700" />
+    <div
+      // TODO(tokens): no exact role for border-purple-300, bg-purple-100
+      className="flex min-w-0 items-center gap-3 rounded-lg border border-purple-300 bg-purple-100 p-3"
+    >
+      <Icon
+        icon={Folder01Icon}
+        size={20}
+        className="shrink-0 text-foreground-body"
+      />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-zinc-800">
+        <span className="truncate text-sm font-medium text-foreground-emphasis">
           {folder.name}
         </span>
-        <span className="text-xs text-zinc-600">
+        <span className="text-xs text-foreground-secondary">
           {/* The part counts direct files only, so zero is not "Empty". */}
           {folder.fileCount > 0
             ? `Folder · ${folderSummary(folder.fileCount, 0)}`
@@ -212,7 +262,8 @@ function FolderAttachmentCard({
         <Link
           href={`/artifacts?folder=${encodeURIComponent(folder.id)}`}
           aria-label={`Open folder ${folder.name} in Files`}
-          className="shrink-0 rounded-md p-1 text-zinc-500 transition-colors hover:bg-purple-200 hover:text-zinc-800"
+          // TODO(tokens): no exact role for hover:bg-purple-200
+          className="shrink-0 rounded-md p-1 text-foreground-tertiary transition-colors hover:bg-purple-200 hover:text-foreground-emphasis"
         >
           <Icon icon={LinkSquare01Icon} size={16} />
         </Link>

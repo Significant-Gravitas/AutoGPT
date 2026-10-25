@@ -33,10 +33,8 @@ describe("useNewSettingsRedirect", () => {
   });
 
   const mappings: [string, string][] = [
-    ["/profile", "/settings/profile"],
     ["/profile/dashboard", "/settings/creator-dashboard"],
     ["/profile/credits", "/settings/billing"],
-    ["/profile/integrations", "/settings/integrations"],
     ["/profile/api-keys", "/settings/api-keys"],
   ];
 
