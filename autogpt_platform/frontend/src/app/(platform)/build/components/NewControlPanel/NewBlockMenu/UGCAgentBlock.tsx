@@ -40,7 +40,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
     <Button
       className={cn(
         "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-surface-muted p-[0.625rem] pr-[0.875rem] text-start shadow-none",
-        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
+        // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41, SECRT-3154)
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}
       {...rest}
@@ -83,7 +84,9 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             </Text>
           )}
 
-          <span className="font-sans text-foreground-subtle">•</span>
+          <Text variant="body-medium-tight" as="span" tone="subtle">
+            •
+          </Text>
 
           <Text
             variant="small-loose"
@@ -98,7 +101,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             variant="small-medium-loose"
             as="span"
             tone="muted"
-            className={cn("rounded-[0.75rem] bg-surface-active px-[0.5rem]")}
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+            className={cn("rounded-[0.75rem] bg-zinc-200 px-[0.5rem]")}
           >
             Your Workflow
           </Text>
@@ -135,19 +139,35 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-surface-hover p-[0.625rem] pr-[0.875rem]",
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 p-[0.625rem] pr-[0.875rem]",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-[0.375rem] bg-surface-active" />
+      <Skeleton
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+        className="h-[3.125rem] w-[5.625rem] rounded-[0.375rem] bg-zinc-200"
+      />
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
+        <Skeleton
+          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+          className="h-[1.375rem] w-24 rounded bg-zinc-200"
+        />
         <div className="flex items-center gap-1">
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
+          <Skeleton
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+            className="h-5 w-16 rounded bg-zinc-200"
+          />
+          <Skeleton
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+            className="h-5 w-16 rounded bg-zinc-200"
+          />
         </div>
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-surface-active" />
+      <Skeleton
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+        className="h-7 w-7 rounded-[0.5rem] bg-zinc-200"
+      />
     </Skeleton>
   );
 };

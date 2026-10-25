@@ -433,9 +433,16 @@ export function MCPToolDialog({
               <button
                 onClick={() => setShowManualToken(true)}
                 // TODO(tokens): no exact role: text-gray-500 #6B7280, hover:text-gray-700 #374151; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle); no fitting role for dark:hover:text-gray-200 #E5E7EB; #E5E7EB is sidebar-border (a border colour)
-                className="text-caption leading-4 text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
-                or enter an API credential manually
+                <Text
+                  variant="small-tight-underline"
+                  as="span"
+                  tone="inherit"
+                  className="block"
+                >
+                  or enter an API credential manually
+                </Text>
               </button>
             )}
 
@@ -447,13 +454,18 @@ export function MCPToolDialog({
                   onChange={selectScheme}
                   disabled={loading || oauthLoading}
                   className="flex flex-col gap-2"
-                  labelClassName="text-body leading-5 font-medium"
+                  labelVariant="body-medium-tight"
                   selectClassName="h-10 rounded-md border border-input bg-background px-3 text-body leading-5"
                 />
 
-                <Label htmlFor="mcp-auth-token" className="text-body leading-5">
+                <Text
+                  variant="body-medium-tight"
+                  as="label"
+                  tone="inherit"
+                  htmlFor="mcp-auth-token"
+                >
                   {mcpAuthTokenLabel(manualAuthScheme)}
-                </Label>
+                </Text>
                 <Input
                   id="mcp-auth-token"
                   aria-describedby="mcp-auth-token-hint"
@@ -612,8 +624,6 @@ function MCPToolCard({
       className={`group flex flex-col rounded-lg border text-left transition-colors ${
         selected
           ? // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-blue-400 #60A5FA, dark:bg-blue-950 #172554
-            // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-blue-400 #60A5FA, dark:bg-blue-950 #172554
-            // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-blue-400 #60A5FA, dark:bg-blue-950 #172554
             "border-info bg-info-surface dark:border-blue-400 dark:bg-blue-950"
           : // TODO(tokens): no exact role: hover:border-gray-300 #D1D5DB, hover:bg-gray-50 #F9FAFB; no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154)
             // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700 #475263, dark:hover:border-slate-600 #5B6A7E, dark:hover:bg-slate-800 #475263
@@ -682,11 +692,14 @@ function MCPToolCard({
 
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
-        <div
+        <Text
+          variant="small-tight"
+          as="div"
+          tone="inherit"
           // TODO(tokens): no exact role: border-gray-100 #F3F4F6, bg-gray-50/50 #F9FAFB; dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700 #475263, dark:bg-slate-800/50 #475263
           className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-800/50"
         >
-          <table className="w-full text-caption leading-4">
+          <table className="w-full">
             <thead>
               <tr
                 // TODO(tokens): no exact role: border-gray-100 #F3F4F6; dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700 #475263
@@ -694,21 +707,27 @@ function MCPToolCard({
               >
                 <th
                   // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                  className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
                 >
-                  Parameter
+                  <Text variant="small-medium-tight" as="span" tone="inherit">
+                    Parameter
+                  </Text>
                 </th>
                 <th
                   // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                  className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
                 >
-                  Type
+                  <Text variant="small-medium-tight" as="span" tone="inherit">
+                    Type
+                  </Text>
                 </th>
                 <th
                   // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                  className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
                 >
-                  Description
+                  <Text variant="small-medium-tight" as="span" tone="inherit">
+                    Description
+                  </Text>
                 </th>
               </tr>
             </thead>
@@ -723,17 +742,24 @@ function MCPToolCard({
                   >
                     <td
                       // TODO(tokens): no exact role: text-gray-700 #374151; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-300 #D1D5DB
-                      className="px-2 py-1 font-mono text-caption-sm leading-inherit text-gray-700 dark:text-gray-300"
+                      className="px-2 py-1 text-gray-700 dark:text-gray-300"
                     >
-                      {name}
-                      {required.has(name) && (
-                        <span
-                          // TODO(tokens): no exact role: text-red-400 #F26969
-                          className="ml-0.5 text-red-400"
-                        >
-                          *
-                        </span>
-                      )}
+                      <Text
+                        variant="caption-sm-mono"
+                        as="span"
+                        tone="inherit"
+                        className="block"
+                      >
+                        {name}
+                        {required.has(name) && (
+                          <span
+                            // TODO(tokens): no exact role: text-red-400 #F26969
+                            className="ml-0.5 text-red-400"
+                          >
+                            *
+                          </span>
+                        )}
+                      </Text>
                     </td>
                     <td
                       // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
@@ -752,7 +778,7 @@ function MCPToolCard({
               })}
             </tbody>
           </table>
-        </div>
+        </Text>
       )}
 
       {/* Toggle details */}
@@ -764,9 +790,11 @@ function MCPToolCard({
             setExpanded((prev) => !prev);
           }}
           // TODO(tokens): no exact role: border-gray-100 #F3F4F6, hover:text-gray-600 #4B5563; no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle); dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700 #475263, dark:text-gray-500 #6B7280, dark:hover:text-gray-300 #D1D5DB
-          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-tiny leading-inherit text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
+          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
         >
-          {expanded ? "Hide details" : "Show details"}
+          <Text variant="tiny-inherit" as="span" tone="inherit">
+            {expanded ? "Hide details" : "Show details"}
+          </Text>
           <Icon
             icon={ArrowDown01Icon}
             className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}

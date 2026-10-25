@@ -145,7 +145,9 @@ export const RunInputDialog = ({
                       className="size-5 transition-transform group-hover:scale-110"
                     />
                   )}
-                  <span className="font-semibold">Manual Run</span>
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                    Manual Run
+                  </Text>
                 </Button>
               )}
               {purpose === "schedule" && (
@@ -160,7 +162,9 @@ export const RunInputDialog = ({
                     icon={Clock01Icon}
                     className="size-5 transition-transform group-hover:scale-110"
                   />
-                  <span className="font-semibold">Schedule Run</span>
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                    Schedule Run
+                  </Text>
                 </Button>
               )}
             </div>

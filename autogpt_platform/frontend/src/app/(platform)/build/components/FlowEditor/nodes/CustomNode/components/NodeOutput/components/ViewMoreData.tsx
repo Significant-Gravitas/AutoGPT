@@ -60,9 +60,11 @@ export const ViewMoreData = ({
         <Button
           variant="secondary"
           size="small"
-          className="h-fit w-fit min-w-0 !text-caption !leading-4"
+          className="h-fit w-fit min-w-0"
         >
-          View More
+          <Text variant="small-medium-tight" as="span" tone="inherit">
+            View More
+          </Text>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>

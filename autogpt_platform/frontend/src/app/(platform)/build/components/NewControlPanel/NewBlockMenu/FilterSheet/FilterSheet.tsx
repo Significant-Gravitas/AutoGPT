@@ -128,10 +128,12 @@ export function FilterSheet({
               {creators.length > INITIAL_CREATORS_TO_SHOW && (
                 <Button
                   variant={"link"}
-                  className="m-0 p-0 font-sans text-body font-medium text-foreground-emphasis underline hover:text-foreground-secondary"
+                  className="m-0 p-0 text-foreground-emphasis hover:text-foreground-secondary"
                   onClick={handleToggleShowMoreCreators}
                 >
-                  {displayedCreatorsCount < creators.length ? "More" : "Less"}
+                  <Text variant="body-medium" as="span" tone="inherit">
+                    {displayedCreatorsCount < creators.length ? "More" : "Less"}
+                  </Text>
                 </Button>
               )}
             </div>

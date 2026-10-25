@@ -108,7 +108,9 @@ function SubAgentUpdateAvailableBar({
               <Icon icon={Alert01Icon} className="h-4 w-4 text-warning" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              <p className="font-medium">Incompatible changes detected</p>
+              <Text variant="small-medium-lh-normal" tone="inherit">
+                Incompatible changes detected
+              </Text>
               <Text
                 variant="small-tight"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
@@ -125,13 +127,15 @@ function SubAgentUpdateAvailableBar({
         variant={isCompatible ? "primary" : "outline"}
         onClick={onUpdate}
         className={cn(
-          "h-7 text-caption leading-4",
+          "h-7",
           // TODO(tokens): no exact role: text-amber-600 #D97706
           !isCompatible &&
             "border-warning text-amber-600 hover:bg-warning-surface",
         )}
       >
-        Update
+        <Text variant="small-medium-tight" as="span" tone="inherit">
+          Update
+        </Text>
       </Button>
     </div>
   );
