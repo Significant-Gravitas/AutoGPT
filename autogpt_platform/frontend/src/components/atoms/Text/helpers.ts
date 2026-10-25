@@ -30,6 +30,10 @@ export const variants = {
     "font-poppins text-heading font-medium text-foreground-base tracking-tight",
   h4: "font-poppins text-heading-sm font-medium text-foreground-base",
   h5: "font-poppins text-body-lg font-medium leading-6 text-foreground-base",
+  // The h5 size and line-height at semibold (the wallet panel title).
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
+  "h5-semibold":
+    "font-poppins text-body-lg font-semibold leading-6 text-foreground-base",
 
   // Body Text
   lead: "font-sans text-lead font-normal text-foreground-base",
@@ -187,6 +191,7 @@ export const variantElementMap: Record<Variant, As> = {
   h4: "h4",
   h5: "h5",
   "h3-tracking-tight": "h3",
+  "h5-semibold": "h5",
   lead: "p",
   "lead-medium": "p",
   "lead-semibold": "p",
