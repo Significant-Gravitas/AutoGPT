@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
@@ -118,6 +118,7 @@ function BlockCard({
   return (
     <>
       <Button
+        variant="legacy-default"
         draggable={!isMCPBlock}
         data-id={blockDataId}
         className={cn(
@@ -136,7 +137,7 @@ function BlockCard({
               variant="body-medium"
               as="span"
               tone="emphasis"
-              className={cn("line-clamp-1 group-disabled:text-zinc-400")}
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
@@ -149,7 +150,7 @@ function BlockCard({
               variant="small-loose"
               as="span"
               tone="muted"
-              className={cn("line-clamp-1 group-disabled:text-zinc-400")}
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(description, highlightedText)}
             </Text>
