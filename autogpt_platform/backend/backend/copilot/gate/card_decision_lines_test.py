@@ -7,6 +7,7 @@ cannot drift apart without one side failing.
 """
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -80,6 +81,18 @@ def test_an_odd_line_is_a_decision_exactly_when_the_chat_reads_one(
     case: dict,
 ) -> None:
     assert bool(parse_card_decisions(case["text"])) is case["decides"]
+
+
+def test_a_long_run_of_whitespace_is_read_in_linear_time() -> None:
+    """A line is user text of any length: trimming it must not backtrack.
+    The bound is ~1000x the linear cost; a quadratic trim takes minutes."""
+    line = "x" + "\t" * 50_000 + "x"
+
+    started = time.monotonic()
+    parse_card_decisions(line)
+    card_decision_metadata(line)
+
+    assert time.monotonic() - started < 2
 
 
 def test_a_decision_in_other_words_stays_the_users_message() -> None:

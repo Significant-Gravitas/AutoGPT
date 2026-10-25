@@ -147,8 +147,15 @@ function decisionsFromText(text: string): CardDecision[] | null {
 
 // Trimmed from both ends of a line, by the gate's _trim too: whitespace,
 // control characters and a BOM. trim() and Python's strip() each miss some.
+// Scanned from each end, not matched, so a long run inside costs one pass.
+const EDGE_CHAR = /^[\s\p{Cc}\ufeff]$/u;
+
 function trimLine(line: string): string {
-  return line.replace(/^[\s\p{Cc}\ufeff]+|[\s\p{Cc}\ufeff]+$/gu, "");
+  let start = 0;
+  let end = line.length;
+  while (start < end && EDGE_CHAR.test(line[start])) start++;
+  while (end > start && EDGE_CHAR.test(line[end - 1])) end--;
+  return line.slice(start, end);
 }
 
 function parseLine(line: string): CardDecision[] {

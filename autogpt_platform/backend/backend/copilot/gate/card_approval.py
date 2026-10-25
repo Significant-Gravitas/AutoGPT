@@ -32,9 +32,16 @@ _DECISION = re.compile(
     r"^(?P<verdict>Approved|Not approved): (?P<subject>[^\r\u2028\u2029]+) "
     r"\(confirmation_id: (?P<id>[^\s()]+)\)\.$"
 )
-# Trimmed from both ends of a line, by the chat's trimLine too: whitespace,
-# control characters and a BOM. str.strip() and String.trim() each miss some.
-_EDGES = re.compile(r"^[\s\x00-\x1f\x7f-\x9f\ufeff]+|[\s\x00-\x1f\x7f-\x9f\ufeff]+$")
+# Trimmed from both ends of a line, by the chat's trimLine too: control
+# characters, the whitespace both languages' \s share, and a BOM. Plain
+# str.strip() and String.trim() each miss some. A set, not a regex, so a long
+# run inside a line costs one pass.
+_EDGE_CHARS = (
+    "".join(chr(c) for c in (*range(0x20), *range(0x7F, 0xA0)))
+    + " \u00a0\u1680"
+    + "".join(chr(c) for c in range(0x2000, 0x200B))
+    + "\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
 _APPROVED_SUBJECT = re.compile(r"^(?P<verb>hire|create|update) (?P<name>.+)$")
 _DECLINED_SUBJECT = re.compile(
     r"^do not (?P<verb>hire|create|update) (?P<name>.+), discard that proposal$"
@@ -190,7 +197,7 @@ def _lines(message: str) -> list[str]:
 
 
 def _trim(line: str) -> str:
-    return _EDGES.sub("", line)
+    return line.strip(_EDGE_CHARS)
 
 
 def _parse_line(line: str) -> CardDecision | None:

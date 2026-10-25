@@ -67,6 +67,16 @@ describe("card decision lines", () => {
     expect(getCardDecisions(userRow(c.text)) !== null).toBe(c.decides);
   });
 
+  it("reads a long run of whitespace in linear time", () => {
+    // User text of any length: the bound is ~1000x the linear cost.
+    const line = "x" + "\t".repeat(50_000) + "x";
+
+    const started = performance.now();
+    getCardDecisions(userRow(line));
+
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
   it("prefers what the server recorded over the row's text", () => {
     const decisions = getCardDecisions(
       userRow("Approved: hire Maya (confirmation_id: c-1).", {
