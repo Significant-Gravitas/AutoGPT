@@ -56,7 +56,10 @@ class SafeDiagnosticsTests(unittest.TestCase):
         item = advisory()
         item["summary"] = CANARY
         item["description"] += "\n" + CANARY
-        item["vulnerabilities"] *= 2
+        item["vulnerabilities"] = [
+            {"patched_versions": "0.9.0"},
+            {"patched_versions": "0.8.0"},
+        ]
         output = io.StringIO()
         with patch("sys.argv", ["sync", "digest"]), patch.object(
             sync, "fetch_advisories", return_value=[item]
@@ -361,6 +364,28 @@ class PublicProjectionTests(unittest.TestCase):
         self.assertEqual(
             sync.public_snapshot([item])["advisories"][0]["release_tags"], [TAG]
         )
+
+    def test_rows_that_agree_on_the_fixed_version_need_no_mapping(self):
+        item = advisory()
+        item["vulnerabilities"] = [
+            {
+                "package": {"ecosystem": "other", "name": name},
+                "vulnerable_version_range": "< 0.9.0",
+                "patched_versions": fixed,
+            }
+            for name, fixed in (
+                ("autogpt-platform-beta", "0.9.0"),
+                ("significantgravitas/autogpt", "v0.9.0"),
+                ("autogpt-platform-backend", None),
+            )
+        ]
+        self.assertEqual(
+            sync.public_snapshot([item])["advisories"][0]["release_tags"], [TAG]
+        )
+        item["vulnerabilities"][2]["patched_versions"] = "0.8.0"
+        with self.assertRaises(api.PublicDataError) as raised:
+            sync.public_snapshot([item])
+        self.assertIs(raised.exception.code, api.PublicErrorCode.RELEASE_MAPPING)
 
     def test_changed_public_data_or_malformed_markers_do_not_overwrite_files(self):
         with TemporaryDirectory() as directory:

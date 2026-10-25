@@ -123,7 +123,7 @@ class ReleaseNotesTest(unittest.TestCase):
             release_notes([item], TAG)
 
         item["vulnerabilities"][0]["patched_versions"] = "0.9.0"
-        item["vulnerabilities"][1]["patched_versions"] = None
+        item["vulnerabilities"][1]["patched_versions"] = "0.8.0"
         self.assertIn("Example fix", release_notes([item], TAG))
 
         item["description"] = advisory()["description"]
@@ -137,7 +137,10 @@ class ReleaseNotesTest(unittest.TestCase):
         package = {"ecosystem": "other", "name": "significantgravitas/autogpt"}
         item["vulnerabilities"] = [
             {"package": package, "patched_versions": "0.9.0"},
-            {"package": {"ecosystem": "other", "name": "autogpt-platform"}},
+            {
+                "package": {"ecosystem": "other", "name": "autogpt-platform"},
+                "patched_versions": "0.8.0",
+            },
         ]
         for invalid in ("not-json", "null", "[]", '{"tag": "x"}'):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
@@ -152,7 +155,10 @@ class ReleaseNotesTest(unittest.TestCase):
 
     def test_cli_preserves_output_when_package_attribution_is_ambiguous(self):
         item = advisory()
-        item["vulnerabilities"] *= 2
+        item["vulnerabilities"] = [
+            {"patched_versions": "0.9.0"},
+            {"patched_versions": "0.8.0"},
+        ]
         with TemporaryDirectory() as directory:
             notes = Path(directory) / "notes.md"
             output = Path(directory) / "candidate.md"

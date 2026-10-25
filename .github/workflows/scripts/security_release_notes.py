@@ -94,7 +94,10 @@ def fixed_in(advisory, tag):
     ]
     if not has_reference or not matching:
         return False
-    if len(vulnerabilities) > 1:
+    # Rows that agree on the fixed version (e.g. the Platform source and its Docker image,
+    # both patched in 0.9.0) can't be misattributed; only disagreeing rows need a mapping.
+    patched = {version_number(v.get("patched_versions")) for v in vulnerabilities}
+    if len(patched - {None}) > 1:
         packages = release_packages(advisory, tag)
         if not packages:
             raise ValueError(
