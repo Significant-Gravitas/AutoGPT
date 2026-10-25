@@ -3,9 +3,9 @@ import {
   dataFile,
   describeData,
   previewColumns,
-  stepFailed,
   summarizeData,
 } from "../commandOutput";
+import { stepFailed } from "../stepOutcome";
 
 describe("summarizeData", () => {
   it("reads CSV with quoted commas as one table", () => {
@@ -132,10 +132,22 @@ describe("stepFailed", () => {
 
   it("lets through only exit 1 from a predicate command that runs last", () => {
     expect(stepFailed("grep -q TBD brief.md", exit(1))).toBe(false);
-    expect(stepFailed("cd drafts && test -f brief.md", exit(1))).toBe(false);
+    expect(stepFailed("cd drafts; test -f brief.md", exit(1))).toBe(false);
+    expect(stepFailed("ls drafts\ntest -f brief.md", exit(1))).toBe(false);
     expect(stepFailed("! [ -d drafts ]", exit(1))).toBe(false);
     expect(stepFailed("grep -q TBD brief.md", exit(2))).toBe(true);
     expect(stepFailed("grep -q x a && wc -l a", exit(1))).toBe(true);
+  });
+
+  it("calls exit 1 from an && or || chain a failure: any link may have set it", () => {
+    expect(stepFailed("cd drafts && test -f brief.md", exit(1))).toBe(true);
+    expect(stepFailed("cd missing && grep -q TBD brief.md", exit(1))).toBe(
+      true,
+    );
+    expect(stepFailed("grep -q TBD brief.md && echo found", exit(1))).toBe(
+      true,
+    );
+    expect(stepFailed("test -f a || grep -q x b", exit(1))).toBe(true);
   });
 
   it("reads a quoted | or ; as part of the argument, not a new command", () => {

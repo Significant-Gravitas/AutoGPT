@@ -18,64 +18,6 @@ const SAMPLE_ROWS = 3;
 const SAMPLE_COLUMNS = 4;
 const SAMPLE_FIELDS = 4;
 
-// Exit 1 from these means "no" (no match, not there, files differ), not that
-// the step broke. Any other non-zero exit, or one from any other command, is a
-// failure: `curl -f` exits 22, and scripts report errors on stdout.
-const ANSWERS_NO = /^(?:grep|egrep|fgrep|rg|test|\[\[?|diff|cmp)(?:\s|$)/;
-
-/** Whether a shell step failed. Only an expected "no" is let through: exit 1
- *  from a predicate command that runs last (`grep -q`, `test -f`, `diff`). */
-export function stepFailed(
-  command: string | null,
-  output: Record<string, unknown> | null,
-): boolean {
-  if (!output) return false;
-  if (output.type === "error" || output.timed_out === true) return true;
-  const exitCode = output.exit_code;
-  if (typeof exitCode !== "number" || exitCode === 0) return false;
-  return !(exitCode === 1 && command && ANSWERS_NO.test(lastCommand(command)));
-}
-
-/** The last command of a list or pipeline. A `|`, `;` or `&` inside quotes
- *  (`grep -Eq "TBD|TODO"`), after a backslash or in a redirection (`2>&1`)
- *  is part of the command, not a separator. */
-function lastCommand(command: string): string {
-  const parts: string[] = [];
-  let current = "";
-  let quote: "'" | '"' | null = null;
-  for (let i = 0; i < command.length; i++) {
-    const char = command[i];
-    if (char === "\\" && quote !== "'") {
-      current += char + (command[i + 1] ?? "");
-      i++;
-    } else if (quote) {
-      if (char === quote) quote = null;
-      current += char;
-    } else if (char === "'" || char === '"') {
-      quote = char;
-      current += char;
-    } else if (
-      /[|;\n]/.test(char) ||
-      (char === "&" && !isRedirect(command, i))
-    ) {
-      parts.push(current);
-      current = "";
-    } else current += char;
-  }
-  parts.push(current);
-  const last =
-    parts
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .pop() ?? "";
-  return last.replace(/^!\s*/, "");
-}
-
-/** An `&` in `2>&1`, `>&2` or `&>log` redirects output; it ends no command. */
-function isRedirect(command: string, at: number): boolean {
-  return /[<>]/.test(command[at - 1] ?? "") || command[at + 1] === ">";
-}
-
 /** The columns a preview shows, first few: those whose name and every
  *  sampled value are plain. A column of paths, commands or ids is left out
  *  whole; its values stay behind technical details and in the download. */
