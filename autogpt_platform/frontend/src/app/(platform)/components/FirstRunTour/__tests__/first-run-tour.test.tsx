@@ -1,6 +1,7 @@
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capture = vi.hoisted(() => vi.fn());
@@ -355,6 +356,25 @@ describe("first-run walkthrough", () => {
       expect(screen.getByTestId("sidebar-state").textContent).toBe("collapsed"),
     );
     expect(document.cookie).toContain("sidebar_open=false");
+  });
+
+  it("still opens the collapsed sidebar when its effects run twice (StrictMode, a remount)", async () => {
+    render(
+      <StrictMode>
+        <SidebarProvider defaultOpen={false}>
+          <SidebarState />
+          <Targets />
+          <FirstRunTour />
+        </SidebarProvider>
+      </StrictMode>,
+    );
+    openTour();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("sidebar-state").textContent).toBe("open"),
+    );
+    await act(async () => {});
+    expect(screen.getByTestId("sidebar-state").textContent).toBe("open");
   });
 
   it("leaves the sidebar collapsed if the person collapses it during the walkthrough", async () => {

@@ -58,8 +58,10 @@ export function useFirstRunTour() {
   }, [isOpen, isMobile, isSidebarOpen, setSidebarOpen]);
   // The setter changes identity as the sidebar opens; hand back on unmount.
   const giveSidebarBack = useStableCallback(() => {
-    if (sidebarLoan.current === "borrowed")
-      setSidebarOpen(false, { persist: false });
+    if (sidebarLoan.current !== "borrowed") return;
+    setSidebarOpen(false, { persist: false });
+    // A remount (StrictMode runs effects twice) borrows it afresh.
+    sidebarLoan.current = "pending";
   });
   useEffect(() => giveSidebarBack, [giveSidebarBack]);
 
