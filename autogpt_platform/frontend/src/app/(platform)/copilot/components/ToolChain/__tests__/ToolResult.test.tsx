@@ -953,6 +953,30 @@ describe("ToolResult", () => {
       expect(screen.getByText("No command provided.")).toBeDefined();
     });
 
+    it("shows a result stored as a JSON string once, without its plumbing fields", async () => {
+      const user = userEvent.setup();
+      const stored = JSON.stringify({
+        type: "bash_exec",
+        message: "Command executed with status code 0",
+        session_id: "sess-123",
+        stdout: "launch notes ready",
+        stderr: "",
+        exit_code: 0,
+      });
+      const { container } = render(
+        <ToolResult
+          row={row(stored, "bash_exec", { command: "cat notes.txt" })}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getAllByText("launch notes ready")).toHaveLength(1);
+      expect(container.textContent).not.toContain("sess-123");
+      expect(container.textContent).not.toContain("Command executed");
+    });
+
     it("keeps an oversized bash result's preview under technical details", async () => {
       const user = userEvent.setup();
       const envelope = [

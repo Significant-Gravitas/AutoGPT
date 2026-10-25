@@ -55,8 +55,9 @@ export function CommandResult({ row }: Props) {
         <div className="flex w-full flex-col gap-1.5">
           <Terminal row={row} />
           {refusal && <p className="text-xs text-error">{refusal}</p>}
-          {/* Output too large for the chat arrives as a preview envelope. */}
-          {typeof row.output === "string" && (
+          {/* Output too large for the chat arrives as a preview envelope: a
+              string that is not the JSON response the terminal reads. */}
+          {typeof row.output === "string" && !output && (
             <KeyValueList value={row.output} />
           )}
         </div>
