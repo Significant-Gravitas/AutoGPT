@@ -172,7 +172,9 @@ export function useCopilotRuntimeStream({
     });
     // A card decision the server refused is the card's protocol: left on
     // screen, its unsaved row reads as the card's answer, so it goes and the
-    // card asks again. Only that row: the send memory outlives the send.
+    // card asks again. Only that row: the send memory outlives the send. The
+    // chat is read again, since a route can save the row and still fail (a
+    // turn that never started): then the card shows that answer instead.
     const newest = runtime?.getSnapshot().segments.at(-1);
     if (
       !keepsUnsentRow &&
@@ -183,6 +185,7 @@ export function useCopilotRuntimeStream({
     ) {
       clearRecovery();
       runtime?.dropUnsentUserRow();
+      void refetchSession().catch(() => undefined);
     }
     if (!kickoffExpertId) return;
     if (userId && kickoffAttemptToken) {

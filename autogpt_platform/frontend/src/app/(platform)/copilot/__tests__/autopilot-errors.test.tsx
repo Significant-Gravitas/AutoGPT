@@ -1,6 +1,7 @@
 import {
   getGetV2ListChatConnectionsMockHandler200,
   getGetV2GetCopilotUsageMockHandler200,
+  getGetV2GetSessionMockHandler200,
   getPutV2ChangeTheConnectionAnExistingChatRunsOnMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
@@ -75,6 +76,82 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
         ? flagState.billing
         : false,
 }));
+
+const STREAM_URL = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
+const CARD_LINE = "Approved: hire Maya (confirmation_id: c-1).";
+
+function cardRow(sequence: number, role: string, content: string) {
+  return {
+    id: `db-${sequence}`,
+    role,
+    content,
+    tool_call_id: null,
+    tool_calls: null,
+    sequence,
+    duration_ms: null,
+    created_at: `2026-05-13T00:0${sequence}:00Z`,
+    metadata: null,
+  };
+}
+
+// A hire card, as the chat stores it: the ask, the call, its proposal.
+const HIRE_CARD_ROWS = [
+  cardRow(1, "user", "Get someone to run marketing."),
+  {
+    ...cardRow(2, "assistant", ""),
+    tool_calls: [
+      {
+        id: "call-hire",
+        type: "function",
+        function: { name: "hire_expert", arguments: '{"name":"Maya"}' },
+      },
+    ],
+  },
+  {
+    ...cardRow(
+      3,
+      "tool",
+      JSON.stringify({
+        type: "expert_change_proposed",
+        message: "Nothing hired yet.",
+        session_id: TEST_SESSION_ID,
+        applied: false,
+        confirmation_id: "c-1",
+        preview: { kind: "hire", name: "Maya", role: "Marketing" },
+      }),
+    ),
+    tool_call_id: "call-hire",
+  },
+];
+
+async function approveAndSend() {
+  const user = userEvent.setup();
+  await user.click(await findCardButton("Approve"));
+  await user.click(await findCardButton("Send decisions"));
+}
+
+// The card's own button: the page's review panels have an Approve too.
+async function findCardButton(name: string) {
+  const [title] = await screen.findAllByText("Hire an expert", undefined, {
+    timeout: 5000,
+  });
+  for (let el = title.parentElement; el; el = el.parentElement) {
+    const button = within(el).queryAllByRole("button", { name })[0];
+    if (button) return button;
+  }
+  throw new Error(`The card has no ${name} button`);
+}
+
+function settle() {
+  return new Promise((resolve) => setTimeout(resolve, 1000));
+}
+
+function expectCardAnswered() {
+  expect(
+    screen.queryAllByRole("button", { name: "Send decisions" }),
+  ).toHaveLength(0);
+  expect(screen.getAllByText(/by you/).length).toBeGreaterThan(0);
+}
 
 beforeEach(() => {
   resetChatRuntimes();
@@ -376,6 +453,72 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(screen.getByText("You approved hiring Maya")).toBeDefined();
     });
+
+    it("keeps a card answered while the server holds its decision behind a running turn", async () => {
+      let queued = false;
+      renderHost({ sessionOverride: { messages: HIRE_CARD_ROWS } });
+      // A turn the tab does not know of runs on the server: the send is
+      // queued behind it, and the stream says only that.
+      server.use(
+        http.post(STREAM_URL, () => {
+          queued = true;
+          return streamSseResponse([
+            { type: "start", messageId: "queued-follow-up" },
+            { type: "start-step" },
+            { type: "data-follow-up-queued", data: {} },
+            { type: "finish-step" },
+            { type: "finish" },
+          ]);
+        }),
+        http.get("*/api/chat/sessions/:sessionId/messages/pending", () =>
+          HttpResponse.json({
+            count: queued ? 1 : 0,
+            messages: queued ? [CARD_LINE] : [],
+          }),
+        ),
+      );
+
+      await approveAndSend();
+      await waitFor(() => expect(queued).toBe(true));
+      await settle();
+
+      expectCardAnswered();
+    }, 20000);
+
+    it("shows the saved answer when the send failed after its row was saved", async () => {
+      // The route saved the row, then failed to start the turn: the send
+      // errors, and the chat holds the answer all the same.
+      let saved = false;
+      renderHost({ sessionOverride: { messages: HIRE_CARD_ROWS } });
+      server.use(
+        http.post(STREAM_URL, () => {
+          saved = true;
+          return HttpResponse.json(
+            { detail: "dispatch failed" },
+            { status: 500 },
+          );
+        }),
+        getGetV2GetSessionMockHandler200(() => ({
+          id: TEST_SESSION_ID,
+          created_at: "2026-05-13T00:00:00Z",
+          updated_at: "2026-05-13T00:00:00Z",
+          user_id: "test-user",
+          chat_status: "idle",
+          messages: saved
+            ? [...HIRE_CARD_ROWS, cardRow(4, "user", CARD_LINE)]
+            : HIRE_CARD_ROWS,
+          has_more_messages: false,
+          oldest_sequence: null,
+          active_stream: null,
+          metadata: { dry_run: false, builder_graph_id: null },
+        })),
+      );
+
+      await approveAndSend();
+      await waitFor(() => expect(saved).toBe(true));
+
+      await waitFor(() => expectCardAnswered(), { timeout: 8000 });
+    }, 20000);
 
     it("surfaces an HTTP 500 response as a visible error", async () => {
       server.use(
