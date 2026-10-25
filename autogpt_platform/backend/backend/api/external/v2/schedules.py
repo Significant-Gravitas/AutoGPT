@@ -100,9 +100,15 @@ async def create_schedule(
 ) -> AgentRunSchedule:
     """Create a new execution schedule for a graph."""
     graph_id = request.graph_id
+    # Without a version get_graph returns the newest, which can be a draft.
+    version = request.graph_version
+    if version is None:
+        version = await graph_db.get_active_graph_version(
+            graph_id, auth.user_id, organization_id=auth.organization_id
+        )
     graph = await graph_db.get_graph(
         graph_id=graph_id,
-        version=request.graph_version,
+        version=version,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
     )

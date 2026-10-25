@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
+from fastapi import HTTPException
 from prisma.enums import APIKeyPermission
 from pydantic import ValidationError
 
@@ -11,7 +12,7 @@ from backend.util.exceptions import NotFoundError
 
 from .models import AgentRunScheduleCreateRequest
 from .pagination import PageRequest
-from .schedules import delete_schedule, list_all_schedules
+from .schedules import create_schedule, delete_schedule, list_all_schedules
 from .tenancy import TenantContext
 
 _AUTH = TenantContext(
@@ -99,3 +100,31 @@ def test_an_unknown_timezone_is_refused_before_it_reaches_the_scheduler() -> Non
         graph_id="graph-1", name="daily", cron="0 9 * * *", timezone="Europe/Paris"
     )
     assert request.timezone == "Europe/Paris"
+
+
+@pytest.mark.parametrize("requested, scheduled", [(None, 3), (5, 5)])
+async def test_a_schedule_without_a_version_runs_the_active_one(
+    mocker: pytest_mock.MockFixture, requested: int | None, scheduled: int
+) -> None:
+    """The newest version can be a draft; the request says the active one."""
+    mocker.patch(
+        "backend.data.graph.get_active_graph_version",
+        new_callable=AsyncMock,
+        return_value=3,
+    )
+    get_graph = mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=None
+    )
+
+    with pytest.raises(HTTPException):
+        await create_schedule(
+            request=AgentRunScheduleCreateRequest(
+                graph_id="graph-1",
+                name="daily",
+                cron="0 9 * * *",
+                graph_version=requested,
+            ),
+            auth=_AUTH,
+        )
+
+    assert get_graph.await_args.kwargs["version"] == scheduled
