@@ -101,4 +101,28 @@ describe("Input textSize", () => {
     expect(classes).not.toContain("text-body");
     expect(classes).toContain("placeholder:text-body");
   });
+
+  it("leaves a medium input's size unchanged by default", () => {
+    render(<Input id="q" label="Search" hideLabel />);
+    const classes = screen.getByRole("textbox").className.split(" ");
+    expect(classes).not.toContain("text-body-md");
+  });
+
+  it("sets text-body-md on medium text and amount inputs for body-md", () => {
+    render(
+      <>
+        <Input id="q" label="Search" hideLabel textSize="body-md" />
+        <Input
+          id="amount"
+          label="Amount"
+          hideLabel
+          type="amount"
+          textSize="body-md"
+        />
+      </>,
+    );
+    for (const box of screen.getAllByRole("textbox")) {
+      expect(box.className.split(" ")).toContain("text-body-md");
+    }
+  });
 });

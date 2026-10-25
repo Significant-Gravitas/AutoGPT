@@ -173,7 +173,11 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
               bodyTextClass,
               "placeholder:text-body",
             ],
-            size === "medium" && ["h-[2.875rem]", "py-2.5"],
+            size === "medium" && [
+              "h-[2.875rem]",
+              "py-2.5",
+              textSize === "body-md" && "text-body-md",
+            ],
           )}
           placeholder={placeholder || label}
           // CurrencyInput gives unformatted numeric string in value param
@@ -222,6 +226,8 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           size === "medium" && [
             "h-[2.875rem]", // 46px (current default)
             "py-2.5",
+            // Medium sets no size by default; body-md is opt-in.
+            textSize === "body-md" && "text-body-md",
           ],
         )}
         placeholder={placeholder || label}
