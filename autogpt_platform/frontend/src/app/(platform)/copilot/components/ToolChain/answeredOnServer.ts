@@ -1,13 +1,14 @@
 import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
-import { answeredIdsInRows } from "../../cardDecisions";
+import { answersInRows, type Decision } from "../../cardDecisions";
+import type { AnsweredCardState } from "./AnsweredCardsContext";
 
 const PAGE_SIZE = 100;
 // Past this the card sends as it would; the chat route still refuses a
 // second answer.
 const MAX_PAGES = 20;
 
-/** The cards the stored chat already answered, so a tab opened before another
- *  one answered sends only what is still open. An answer always comes after
+/** The cards the stored chat already answered, and how, so a tab opened
+ *  before another one answered sends only what is still open. An answer always comes after
  *  its card, so this reads back from the newest row until every card in
  *  `confirmationIds` is in view. Null when the chat could not be read: the
  *  card then sends as it would, and the chat route still refuses a second
@@ -15,7 +16,7 @@ const MAX_PAGES = 20;
 export async function answeredIdsOnServer(
   sessionId: string,
   confirmationIds: string[],
-): Promise<Set<string> | null> {
+): Promise<Map<string, Decision> | null> {
   const rows: unknown[] = [];
   let beforeSequence: number | undefined;
   try {
@@ -34,7 +35,7 @@ export async function answeredIdsOnServer(
   } catch {
     return null;
   }
-  return answeredIdsInRows(rows);
+  return answersInRows(rows);
 }
 
 // The card's own row names its confirmation id, and is older than any answer.
@@ -44,4 +45,20 @@ function mentions(rows: unknown[], confirmationId: string) {
     const { content } = row as Record<string, unknown>;
     return typeof content === "string" && content.includes(confirmationId);
   });
+}
+
+/** The chat's answers, with the ones a check found on the server added until
+ *  the chat's own copy of them arrives: a card a stale tab finds answered
+ *  shows that answer at once, not its buttons until the refetch lands. */
+export function withAnswersFoundOnServer(
+  fromChat: ReadonlyMap<string, AnsweredCardState>,
+  found: ReadonlyMap<string, Decision>,
+): ReadonlyMap<string, AnsweredCardState> {
+  const missing = [...found].filter(([id]) => !fromChat.has(id));
+  if (missing.length === 0) return fromChat;
+  const answered = new Map(fromChat);
+  for (const [id, verdict] of missing) {
+    answered.set(id, { verdict, at: null, messageID: "" });
+  }
+  return answered;
 }

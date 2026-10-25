@@ -237,21 +237,21 @@ function messageText(
     .trim();
 }
 
-/** The cards a chat's stored rows answered, read from the raw rows of
- *  GET /sessions/{id}: what a tab opened before another one answered checks
- *  before it sends. */
-export function answeredIdsInRows(rows: unknown[]): Set<string> {
-  const ids = new Set<string>();
+/** What a chat's stored rows answered, card by card (a later line wins),
+ *  read from the raw rows of GET /sessions/{id}: what a tab opened before
+ *  another one answered checks before it sends, and shows meanwhile. */
+export function answersInRows(rows: unknown[]): Map<string, Decision> {
+  const answers = new Map<string, Decision>();
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
     const { role, content, metadata } = row as Record<string, unknown>;
     if (role !== "user") continue;
     const text = typeof content === "string" ? content : "";
-    for (const { confirmationId } of rowDecisions(metadata, text)) {
-      if (confirmationId) ids.add(confirmationId);
+    for (const { verdict, confirmationId } of rowDecisions(metadata, text)) {
+      if (confirmationId) answers.set(confirmationId, verdict);
     }
   }
-  return ids;
+  return answers;
 }
 
 // Every decision line in a row, not only a row made of them, as for the gate.

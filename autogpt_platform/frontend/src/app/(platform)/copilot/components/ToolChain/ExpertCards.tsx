@@ -25,7 +25,10 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { AnsweredCardsContext } from "./AnsweredCardsContext";
-import { answeredIdsOnServer } from "./answeredOnServer";
+import {
+  answeredIdsOnServer,
+  withAnswersFoundOnServer,
+} from "./answeredOnServer";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 
@@ -586,8 +589,14 @@ export function ExpertChangeGroup({
   const [direction, setDirection] = useState<StepDirection | undefined>();
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [sent, setSent] = useState(false);
+  const [foundOnServer, setFoundOnServer] = useState<
+    ReadonlyMap<string, Decision>
+  >(() => new Map());
   const actions = useContext(CopilotChatActionsContext);
-  const answered = useContext(AnsweredCardsContext);
+  const answered = withAnswersFoundOnServer(
+    useContext(AnsweredCardsContext),
+    foundOnServer,
+  );
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
@@ -648,6 +657,17 @@ export function ExpertChangeGroup({
     const toSend = answeredNow
       ? open.filter((proposal) => !answeredNow.has(proposal.confirmationId))
       : open;
+    if (answeredNow) {
+      // What the check found shows now; the refetch brings the chat's copy.
+      setFoundOnServer(
+        new Map(
+          open.flatMap((proposal) => {
+            const verdict = answeredNow.get(proposal.confirmationId);
+            return verdict ? [[proposal.confirmationId, verdict] as const] : [];
+          }),
+        ),
+      );
+    }
     if (toSend.length === 0) {
       // Nothing to send: the refetch shows the answers that stand.
       setSent(false);

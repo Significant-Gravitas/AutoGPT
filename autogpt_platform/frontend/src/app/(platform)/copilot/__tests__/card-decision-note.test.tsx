@@ -453,6 +453,9 @@ describe("a proposal card the chat already answered", () => {
     expect(onSend).not.toHaveBeenCalled();
     // Nothing is in flight: the card waits for the refetch, not on "Sent".
     await waitFor(() => expect(screen.queryByText("Sent")).toBeNull());
+    // Nor does it ask again meanwhile: it shows the answer the check found.
+    expectNoDecisionButtons();
+    expect(screen.getByText("Approved")).toBeDefined();
   });
 
   it("in a stale tab, finds another tab's answer older than the newest page", async () => {
