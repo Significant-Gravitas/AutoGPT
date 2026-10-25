@@ -18,7 +18,7 @@ import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-expe
 import { requestComposerVoice } from "@/services/onboarding/composer-voice-request";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { buildTeam, chooseAsk, joinNames } from "./helpers";
+import { buildTeam, chooseAsk, type ConnectAsk, joinNames } from "./helpers";
 
 const COMPOSER_INPUT_ID = "chat-input-empty";
 const SETUP_RETRIES = 3;
@@ -27,7 +27,8 @@ export function useIntroStandup({ path }: { path: string }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [connectDismissed, setConnectDismissed] = useState(false);
-  const [isConnectOpen, setIsConnectOpen] = useState(false);
+  // The ask the open dialog was opened for; a re-read can move the live one.
+  const [connecting, setConnecting] = useState<ConnectAsk | null>(null);
 
   const hiresQuery = useListExperts({
     query: {
@@ -90,21 +91,22 @@ export function useIntroStandup({ path }: { path: string }) {
     : null;
 
   async function handleConnected(credential: CredentialsMetaResponse) {
-    setIsConnectOpen(false);
-    if (ask?.kind !== "connect") return;
+    const target = connecting;
+    setConnecting(null);
+    if (!target) return;
     const results = await Promise.allSettled(
-      ask.expertIds.map((expertId) =>
+      target.expertIds.map((expertId) =>
         grant({ expertId, data: { credential_ids: [credential.id] } }).then(
           () => invalidateExpertGrantQueries(queryClient, expertId),
         ),
       ),
     );
-    const failed = ask.names.filter(
+    const failed = target.names.filter(
       (_, index) => results[index].status === "rejected",
     );
     if (failed.length > 0) {
       toast({
-        title: `Couldn't give ${joinNames(failed)} access to ${ask.service}`,
+        title: `Couldn't give ${joinNames(failed)} access to ${target.service}`,
         description: "You can finish it on the Team page.",
         variant: "destructive",
       });
@@ -118,9 +120,9 @@ export function useIntroStandup({ path }: { path: string }) {
   return {
     team,
     ask,
-    isConnectOpen,
-    openConnect: () => setIsConnectOpen(true),
-    closeConnect: () => setIsConnectOpen(false),
+    connecting,
+    openConnect: () => setConnecting(ask?.kind === "connect" ? ask : null),
+    closeConnect: () => setConnecting(null),
     handleConnected,
     dismissConnect: () => setConnectDismissed(true),
     startVoice: requestComposerVoice,

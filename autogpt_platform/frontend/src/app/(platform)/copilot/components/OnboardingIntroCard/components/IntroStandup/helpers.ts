@@ -32,6 +32,8 @@ export type IntroAsk =
   | { kind: "dump" }
   | null;
 
+export type ConnectAsk = Extract<NonNullable<IntroAsk>, { kind: "connect" }>;
+
 export const VISIBLE_MEMBERS = 3;
 
 export function buildTeam(args: {

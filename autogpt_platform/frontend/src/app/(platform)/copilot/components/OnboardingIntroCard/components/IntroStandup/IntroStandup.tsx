@@ -18,7 +18,7 @@ export function IntroStandup({ path, disabled }: Props) {
   const {
     team,
     ask,
-    isConnectOpen,
+    connecting,
     openConnect,
     closeConnect,
     handleConnected,
@@ -42,11 +42,11 @@ export function IntroStandup({ path, disabled }: Props) {
           canRecord={canRecord}
         />
       )}
-      {ask?.kind === "connect" && isConnectOpen && (
+      {connecting && (
         <ExpertConnectServiceDialog
           open
-          expertName={joinNames(ask.names)}
-          initialProviderId={ask.provider}
+          expertName={joinNames(connecting.names)}
+          initialProviderId={connecting.provider}
           onClose={closeConnect}
           onConnected={handleConnected}
         />

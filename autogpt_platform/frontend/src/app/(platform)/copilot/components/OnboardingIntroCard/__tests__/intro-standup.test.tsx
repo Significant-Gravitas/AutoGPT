@@ -750,6 +750,74 @@ describe("Otto's first turn on Home — the one ask", () => {
     expect(ask.textContent).not.toContain("Triages");
   });
 
+  it("grants the connection to the hires the dialog opened for, though the ask moves on meanwhile", async () => {
+    const granted: string[] = [];
+    serve({
+      hires: (read) => [
+        nadia,
+        { ...robin, setup_status: read === 1 ? "installing" : "ready" },
+        { ...frankie, setup_status: read === 1 ? "installing" : "ready" },
+      ],
+      setup: (rosterReads) =>
+        rosterReads > 1
+          ? [
+              makeSetupItem("nadia"),
+              makeSetupItem("robin", { providers: ["linear"] }),
+              makeSetupItem("frankie", { providers: ["linear"] }),
+            ]
+          : [makeSetupItem("nadia")],
+    });
+    server.use(
+      getGetV1ListProvidersMockHandler([
+        { name: "notion", supported_auth_types: ["api_key"] },
+        { name: "linear", supported_auth_types: ["api_key"] },
+      ]),
+      http.post("/api/proxy/api/integrations/notion/credentials", () =>
+        HttpResponse.json(
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "api_key",
+            title: "N",
+          },
+          { status: 201 },
+        ),
+      ),
+      http.post(
+        "/api/proxy/api/experts/:expertId/credentials",
+        ({ params }) => {
+          granted.push(String(params.expertId));
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+    renderHome();
+
+    fireEvent.click(
+      within(await findAsk()).getByRole("button", { name: "Connect Notion" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    // Robin and Frankie finish installing behind the dialog, both on Linear.
+    await screen.findByRole(
+      "button",
+      { name: "Connect Linear", hidden: true },
+      { timeout: 8_000 },
+    );
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: /API Key/ }),
+    );
+    await userEvent.type(
+      await within(dialog).findByPlaceholderText("My Notion key"),
+      "N",
+    );
+    await userEvent.type(within(dialog).getByPlaceholderText("sk-..."), "x");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Continue" }),
+    );
+
+    await waitFor(() => expect(granted).toEqual(["nadia"]));
+  }, 20_000);
+
   it("names only the hires whose grant failed", async () => {
     serve({
       hires: [nadia, robin, frankie],
