@@ -72,9 +72,11 @@ export const extendedButtonVariants = cva(
 // `legacy-*` variant renders a plain <button> with these classes and the
 // children as they are.
 // TODO(tokens): no role is neutral-900 #171717, neutral-200 #E5E5E5 or
-// neutral-100 #F5F5F5. Only shadcn's `background` holds neutral-50 #FAFAFA, and
-// it is the page background, not a text colour. The dark: classes never apply
-// (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
+// neutral-100 #F5F5F5. legacy-default's text-neutral-50 #FAFAFA stays raw:
+// `primary-foreground` holds that value in :root but is 24 24 27 under .dark,
+// so it would not render the same there (`background`, `sidebar` and
+// `sidebar-primary-foreground` hold it too, for other roles). The dark: classes
+// never apply (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
 export const legacyButtonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-md text-body leading-5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50",
   {
@@ -83,7 +85,7 @@ export const legacyButtonVariants = cva(
         "legacy-default":
           "bg-neutral-900 text-neutral-50 shadow hover:bg-neutral-900/90 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50/90",
         "legacy-destructive":
-          "bg-error text-neutral-50 shadow-sm hover:bg-error/90 dark:bg-red-900 dark:text-neutral-50 dark:hover:bg-red-900/90",
+          "bg-error text-destructive-foreground shadow-sm hover:bg-error/90 dark:bg-red-900 dark:text-neutral-50 dark:hover:bg-red-900/90",
         "legacy-outline":
           "border border-neutral-200 bg-surface shadow-sm hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:bg-neutral-800 dark:hover:text-neutral-50",
         "legacy-ghost":
