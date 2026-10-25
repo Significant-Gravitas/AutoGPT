@@ -172,7 +172,7 @@ def researcher_links(logins):
     return ", ".join(links)
 
 
-def credit_notes(snapshot, existing):
+def acknowledgments(snapshot, existing):
     logins = sorted(
         {
             login
@@ -227,7 +227,7 @@ def prepare_credits(root, expected_digest):
         json.loads((root / SNAPSHOT_PATH).read_text(encoding="utf-8"))
     )
     security = root / "SECURITY.md"
-    updated = credit_notes(snapshot, security.read_text(encoding="utf-8"))
+    updated = acknowledgments(snapshot, security.read_text(encoding="utf-8"))
     difference = changes(previous, snapshot)
     security.write_text(updated, encoding="utf-8")
     (root / SNAPSHOT_PATH).write_text(snapshot_text(snapshot), encoding="utf-8")

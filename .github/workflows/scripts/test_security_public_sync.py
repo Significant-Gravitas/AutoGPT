@@ -229,7 +229,7 @@ class PublicProjectionTests(unittest.TestCase):
             json.loads((root / sync.SNAPSHOT_PATH).read_text(encoding="utf-8"))
         )
         security = (root / "SECURITY.md").read_text(encoding="utf-8")
-        self.assertEqual(sync.credit_notes(snapshot, security), security)
+        self.assertEqual(sync.acknowledgments(snapshot, security), security)
 
     def test_end_to_end_canaries_do_not_reach_files_logs_or_release_sections(self):
         public = advisory()
@@ -395,7 +395,7 @@ class PublicProjectionTests(unittest.TestCase):
         snapshot = sync.public_snapshot([item])
         self.assertEqual(snapshot["advisories"][0]["researchers"], ["researcher"])
         for text in (
-            sync.credit_notes(snapshot, POLICY),
+            sync.acknowledgments(snapshot, POLICY),
             sync.public_release_notes(snapshot, TAG, ""),
         ):
             self.assertIn("@researcher", text)
@@ -409,7 +409,7 @@ class PublicProjectionTests(unittest.TestCase):
         )
         snapshot = sync.public_snapshot([item])
         named = "Joshua Rogers ([@MegaManSec](https://github.com/MegaManSec))"
-        credits = sync.credit_notes(snapshot, POLICY)
+        credits = sync.acknowledgments(snapshot, POLICY)
         self.assertIn(f"- {named}\n", credits)
         self.assertIn("- [@researcher](https://github.com/researcher)\n", credits)
         self.assertIn(named, sync.public_release_notes(snapshot, TAG, ""))
