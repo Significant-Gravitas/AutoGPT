@@ -61,10 +61,10 @@ export function RecentChats() {
   if (!sessions.length) {
     return (
       <Text
-        variant="body"
+        variant="body-tight"
         as="p"
         // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        className="px-2 py-2 leading-5 text-neutral-500"
+        className="px-2 py-2 text-neutral-500"
       >
         No conversations yet
       </Text>
@@ -113,10 +113,10 @@ export function RecentChats() {
             <div className="flex items-center gap-1.5 px-2 pb-1.5 text-foreground-tertiary">
               <Icon icon={PinIcon} className="size-3.5" />
               <Text
-                variant="small-medium"
+                variant="small-medium-tight"
                 as="span"
                 tone="muted"
-                className="truncate leading-4"
+                className="truncate"
               >
                 Pinned
               </Text>
