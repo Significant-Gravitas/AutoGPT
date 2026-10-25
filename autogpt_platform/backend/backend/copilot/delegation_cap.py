@@ -4,6 +4,10 @@ With ``ask_before_over_cap`` on, a thread that spends its per-delegation cap
 is stopped and parked on a question to the user instead of failing: raise the
 cap by a fixed step and carry on, or stop there. The answer arrives through
 ``answer_session`` like any other; this module recognises it and applies it.
+
+Every write here goes to the thread's row alone and then drops the cached
+session, so the next turn and every reader see it: the turn that landed on
+the cap cached its own copy just before.
 """
 
 import logging
@@ -12,7 +16,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel
 
 from backend.copilot.executor.utils import enqueue_cancel_task
-from backend.copilot.model import PendingQuestion
+from backend.copilot.model import PendingQuestion, invalidate_session_cache
 from backend.data.db_accessors import chat_db, delegation_db
 
 logger = logging.getLogger(__name__)
@@ -61,6 +65,7 @@ async def park_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
         datetime.now(UTC),
         options=CAP_OPTIONS,
     )
+    await invalidate_session_cache(session_id)
 
 
 async def hold_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
@@ -72,6 +77,7 @@ async def hold_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
         await park_at_cap(session_id, user_id, cap_usd)
     else:
         await delegation_db().stop_delegation_at_cap(session_id, user_id)
+        await invalidate_session_cache(session_id)
 
 
 async def asks_over_cap(user_id: str) -> bool:
@@ -87,6 +93,7 @@ async def asks_over_cap(user_id: str) -> bool:
 async def stop_at_cap(session_id: str, user_id: str) -> None:
     """The user chose "Stop": record it, and make sure nothing still runs."""
     await delegation_db().stop_delegation_at_cap(session_id, user_id)
+    await invalidate_session_cache(session_id)
     await enqueue_cancel_task(session_id)
 
 
@@ -101,6 +108,9 @@ async def raise_cap(
     cap = await delegation_db().raise_delegation_cap(
         session_id, user_id, by_usd, question.asked_at.isoformat()
     )
+    # Before the turn it resumes starts: that turn reads the session from the
+    # cache, where the turn that landed on the cap left the old cap.
+    await invalidate_session_cache(session_id)
     return (
         f"[The user raised this hand-off's budget by ${by_usd:.2f} to "
         f"${cap:.2f}. Carry on with the task where you left off.]"

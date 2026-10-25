@@ -123,6 +123,10 @@ def stub_sub_session_costs(monkeypatch):
         "backend.copilot.delegation_cap",
     ):
         monkeypatch.setattr(f"{module}.delegation_db", MagicMock(return_value=client))
+    # The cap writes drop the cached session after their row write.
+    monkeypatch.setattr(
+        "backend.copilot.delegation_cap.invalidate_session_cache", AsyncMock()
+    )
     # A thread's cap is read fresh from its row; with no row, what the caller
     # already knows stands.
     monkeypatch.setattr(

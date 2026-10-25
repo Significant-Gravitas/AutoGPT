@@ -10,6 +10,7 @@ from backend.copilot.delegation_cap import (
     cap_question,
     parse_cap_answer,
 )
+from backend.copilot.delegation_settings import DelegationSettings
 from backend.copilot.model import PendingQuestion
 
 
@@ -55,6 +56,7 @@ def seams(monkeypatch):
     cancel = AsyncMock()
     monkeypatch.setattr(delegation_cap, "delegation_db", lambda: db)
     monkeypatch.setattr(delegation_cap, "enqueue_cancel_task", cancel)
+    monkeypatch.setattr(delegation_cap, "invalidate_session_cache", AsyncMock())
     return db, cancel
 
 
@@ -80,3 +82,45 @@ async def test_stop_records_it_and_cancels_any_turn(seams):
 
     db.stop_delegation_at_cap.assert_awaited_once_with("t1", "u1")
     cancel.assert_awaited_once_with("t1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "write",
+    ["raise", "stop", "park", "hold-ask", "hold-stop"],
+)
+async def test_every_cap_write_drops_the_cached_session(monkeypatch, write):
+    """Each writes the thread's row alone, while the turn that landed on the
+    cap has just cached its own copy. The next turn reads that cache: a
+    stale cap lands it again at once, and a missing question reads Done."""
+    order: list[str] = []
+    db = MagicMock()
+    db.raise_delegation_cap = AsyncMock(
+        side_effect=lambda *_a: order.append("row") or 3.0
+    )
+    db.stop_delegation_at_cap = AsyncMock(side_effect=lambda *_a: order.append("row"))
+    db.get_delegation_settings = AsyncMock(
+        return_value=DelegationSettings(ask_before_over_cap=write != "hold-stop")
+    )
+    chat = MagicMock(
+        set_session_pending_question=AsyncMock(
+            side_effect=lambda *_a, **_k: order.append("row")
+        )
+    )
+    invalidate = AsyncMock(side_effect=lambda *_a: order.append("cache"))
+    monkeypatch.setattr(delegation_cap, "delegation_db", lambda: db)
+    monkeypatch.setattr(delegation_cap, "chat_db", lambda: chat)
+    monkeypatch.setattr(delegation_cap, "enqueue_cancel_task", AsyncMock())
+    monkeypatch.setattr(delegation_cap, "invalidate_session_cache", invalidate)
+
+    if write == "raise":
+        await delegation_cap.raise_cap("t1", "u1", 1.0, _parked())
+    elif write == "stop":
+        await delegation_cap.stop_at_cap("t1", "u1")
+    elif write == "park":
+        await delegation_cap.park_at_cap("t1", "u1", 2.0)
+    else:
+        await delegation_cap.hold_at_cap("t1", "u1", 2.0)
+
+    assert order == ["row", "cache"]
+    invalidate.assert_awaited_once_with("t1")

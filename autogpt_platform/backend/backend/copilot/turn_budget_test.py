@@ -238,3 +238,17 @@ async def test_a_thread_without_a_cap_keeps_its_budget():
         assert await within_delegation_cap(budget, "alice", _thread(None)) == budget
         assert await within_delegation_cap(None, "alice", _thread(2.0)) is None
     db.get_session_costs.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_trial_hand_off_keeps_its_hard_cap_when_the_cap_binds():
+    """A trial's allowance is real money with no plan behind it, so its
+    backstop sits exactly on the budget. Cut to the hand-off's cap, the
+    budget is still the trial's: the backstop must not gain headroom."""
+    budget = TurnBudget(usd=5.0, limiting="trial", hard_cap=True)
+    db = MagicMock(get_session_costs=AsyncMock(return_value={}))
+    with patch(f"{_MOD}.delegation_db", return_value=db):
+        capped = await within_delegation_cap(budget, "alice", _thread(2.0))
+    assert (capped.usd, capped.limiting, capped.cap_usd) == (2.0, "task", 2.0)
+    assert capped.hard_cap is True
+    assert capped.resets_at is None

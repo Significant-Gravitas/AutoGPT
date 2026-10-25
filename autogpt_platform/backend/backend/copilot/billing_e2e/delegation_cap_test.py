@@ -96,6 +96,8 @@ async def test_a_delegated_turn_stops_at_its_cap_and_waits_on_the_user(
     )
     monkeypatch.setattr(delegation_cap, "chat_db", lambda: row)
     monkeypatch.setattr(delegation_cap, "delegation_db", lambda: settings)
+    dropped = AsyncMock(side_effect=lambda *_a: order.append("cache dropped"))
+    monkeypatch.setattr(delegation_cap, "invalidate_session_cache", dropped)
     completed = stream_registry.mark_session_completed
     assert isinstance(completed, AsyncMock)
     marked_done = completed.side_effect
@@ -129,7 +131,7 @@ async def test_a_delegated_turn_stops_at_its_cap_and_waits_on_the_user(
     assert last.metadata and last.metadata[PAUSE_KEY]["cap_usd"] == CAP_USD
     # Held for the user before the turn was marked done, which is what the
     # waiting parent wakes on.
-    assert order == ["parked", "done"]
+    assert order == ["parked", "cache dropped", "done"]
     session_id, user_id, question = row.set_session_pending_question.await_args.args[:3]
     assert (session_id, user_id) == (session.session_id, session.user_id)
     assert question == delegation_cap.cap_question(CAP_USD)

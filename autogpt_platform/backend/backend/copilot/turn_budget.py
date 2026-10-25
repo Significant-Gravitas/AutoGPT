@@ -109,7 +109,10 @@ async def within_delegation_cap(
     left = await delegation_cap_left_usd(user_id, session, cap)
     if left >= budget.usd:
         return budget
-    return TurnBudget(usd=left, limiting="task", cap_usd=cap)
+    # Still the account's money: a trial's hard cap stays a hard cap.
+    return budget.model_copy(
+        update={"usd": left, "limiting": "task", "resets_at": None, "cap_usd": cap}
+    )
 
 
 async def delegation_cap_left_usd(
