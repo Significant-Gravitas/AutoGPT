@@ -745,7 +745,7 @@ function MCPToolCard({
                       className="px-2 py-1 text-gray-700 dark:text-gray-300"
                     >
                       <Text
-                        variant="caption-sm-mono"
+                        variant="caption-sm-mono-inherit"
                         as="span"
                         tone="inherit"
                         className="block"

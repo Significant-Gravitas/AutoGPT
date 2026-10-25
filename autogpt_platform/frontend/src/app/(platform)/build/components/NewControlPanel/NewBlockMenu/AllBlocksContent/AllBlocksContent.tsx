@@ -106,7 +106,7 @@ export const AllBlocksContent = () => {
               {category.total_blocks > category.blocks.length && (
                 <Button
                   variant={"link"}
-                  className="px-0 text-foreground-secondary hover:text-foreground-emphasis"
+                  className="px-0 text-foreground-secondary underline hover:text-foreground-emphasis"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
