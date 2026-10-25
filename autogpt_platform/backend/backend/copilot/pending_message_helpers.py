@@ -288,8 +288,7 @@ async def queue_pending_for_http(
                 "for session=%s",
                 session_id,
             )
-            if on_queued is not None:
-                await on_queued()
+            await _finish_queued(session_id, None, claim_owner, on_queued)
             return await already_accepted_response(session_id)
         if claim == "reserved":
             raise client_message_in_progress_error()
@@ -329,10 +328,7 @@ async def queue_pending_for_http(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
-    if client_message_id is not None:
-        await accept_client_message(session_id, client_message_id, claim_owner)
-    if on_queued is not None:
-        await on_queued()
+    await _finish_queued(session_id, client_message_id, claim_owner, on_queued)
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -362,10 +358,41 @@ async def _settle_cancelled_push(
         queued = (await push).turn_in_flight
     except Exception:
         queued = False
+    if queued:
+        await _mark_queued(session_id, client_message_id, owner, on_queued)
+    elif client_message_id is not None:
+        await release_client_message(session_id, client_message_id, owner)
+
+
+async def _finish_queued(
+    session_id: str,
+    client_message_id: str | None,
+    owner: str,
+    on_queued: Callable[[], Awaitable[None]] | None,
+) -> None:
+    """The message is in the queue: mark the send taken, as one step that
+    finishes even if the caller is cancelled meanwhile. Cut short, the send
+    would be given back (its key, its card claim and approvals) while the
+    message it sent stays queued."""
+    mark = asyncio.ensure_future(
+        _mark_queued(session_id, client_message_id, owner, on_queued)
+    )
+    try:
+        await asyncio.shield(mark)
+    except asyncio.CancelledError:
+        await finish_despite_cancellation(mark)
+        raise
+
+
+async def _mark_queued(
+    session_id: str,
+    client_message_id: str | None,
+    owner: str,
+    on_queued: Callable[[], Awaitable[None]] | None,
+) -> None:
     if client_message_id is not None:
-        settle = accept_client_message if queued else release_client_message
-        await settle(session_id, client_message_id, owner)
-    if queued and on_queued is not None:
+        await accept_client_message(session_id, client_message_id, owner)
+    if on_queued is not None:
         await on_queued()
 
 

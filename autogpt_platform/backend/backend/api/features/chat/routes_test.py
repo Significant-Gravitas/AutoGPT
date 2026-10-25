@@ -1180,6 +1180,80 @@ async def test_queue_pending_message_keeps_a_cancelled_push_that_landed(
     withdraw.assert_not_awaited()
 
 
+@pytest.mark.parametrize("cancelled_in", ["client-key", "card-claim"])
+async def test_queue_pending_message_settles_a_landed_push_despite_a_cancellation(
+    mocker: pytest_mock.MockerFixture, cancelled_in: str
+) -> None:
+    """The push landed, then the request is cancelled while it marks the
+    send taken: first its client key, then the card's claim. The decision is
+    queued, so both must finish and nothing may be given back."""
+    _mock_stream_queue_internals(mocker)
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.claim_client_message",
+        new_callable=AsyncMock,
+        return_value="claimed",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value=_claimed("claimed"),
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+    withdraw = mocker.patch(
+        "backend.api.features.chat.routes.withdraw_card_approvals",
+        new_callable=AsyncMock,
+    )
+    settling = asyncio.Event()
+    go_on = asyncio.Event()
+    finished: list[str] = []
+
+    def slow(step: str):
+        async def run(*args: object, **kwargs: object) -> None:
+            if step == cancelled_in:
+                settling.set()
+                await go_on.wait()
+            finished.append(step)
+
+        return run
+
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.accept_client_message",
+        side_effect=slow("client-key"),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.accept_claim",
+        side_effect=slow("card-claim"),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as http:
+        send = asyncio.create_task(
+            http.post(
+                "/sessions/sess-1/messages/pending",
+                json={
+                    "message": "Approved: hire Maya (confirmation_id: c-1).",
+                    "message_id": "click-1",
+                },
+            )
+        )
+        await settling.wait()
+        send.cancel()
+        await asyncio.sleep(0)
+        go_on.set()
+        with pytest.raises(asyncio.CancelledError):
+            await send
+
+    assert finished == ["client-key", "card-claim"]
+    release.assert_not_awaited()
+    withdraw.assert_not_awaited()
+
+
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
