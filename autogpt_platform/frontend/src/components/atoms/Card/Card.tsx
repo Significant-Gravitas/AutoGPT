@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { HTMLAttributes, ReactNode } from "react";
 
@@ -55,10 +56,13 @@ export function CardDescription({
   ...props
 }: HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p
+    <Text
+      variant="body-tight"
+      as="p"
       data-slot="card-description"
-      // TODO(tokens): no exact role: text-neutral-500 #737373.
-      className={cn("text-body leading-5 text-neutral-500", className)}
+      // TODO(tokens): no exact role: text-neutral-500 #737373. The dark: class
+      // is the legacy card's, kept verbatim.
+      className={cn("text-neutral-500 dark:text-neutral-400", className)}
       {...props}
     />
   );
