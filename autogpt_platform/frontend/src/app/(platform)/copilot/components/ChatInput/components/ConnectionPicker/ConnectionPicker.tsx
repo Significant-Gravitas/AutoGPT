@@ -75,7 +75,9 @@ export function ConnectionPicker({
 
   if (isError) {
     return (
-      <span
+      <Text
+        variant="small-medium-tight"
+        as="span"
         aria-label="AI connections unavailable"
         className={cn(
           "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-destructive",
@@ -83,15 +85,8 @@ export function ConnectionPicker({
         )}
       >
         <Icon icon={AlertCircleIcon} size={14} />
-        <Text
-          variant="small-medium-tight"
-          as="span"
-          tone="inherit"
-          className="hidden sm:inline"
-        >
-          Connections unavailable
-        </Text>
-      </span>
+        <span className="hidden sm:inline">Connections unavailable</span>
+      </Text>
     );
   }
 
