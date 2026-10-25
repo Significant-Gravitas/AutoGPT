@@ -135,9 +135,8 @@ function BlockCard({
             <Text
               variant="body-medium"
               as="span"
-              className={cn(
-                "line-clamp-1 text-zinc-800 group-disabled:text-zinc-400",
-              )}
+              tone="emphasis"
+              className={cn("line-clamp-1 group-disabled:text-zinc-400")}
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
@@ -149,9 +148,8 @@ function BlockCard({
             <Text
               variant="small-loose"
               as="span"
-              className={cn(
-                "line-clamp-1 text-zinc-500 group-disabled:text-zinc-400",
-              )}
+              tone="muted"
+              className={cn("line-clamp-1 group-disabled:text-zinc-400")}
             >
               {highlightText(description, highlightedText)}
             </Text>

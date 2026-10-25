@@ -90,9 +90,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
-  // Keeps the parent's line height, like the raw size it replaced.
-  "caption-sm-mono-inherit":
-    "font-mono text-caption-sm font-normal leading-inherit text-foreground-base",
+  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
+  "caption-sm-mono":
+    "font-mono text-caption-sm font-normal text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-loose":
     "font-sans text-caption font-normal leading-5 text-foreground-base",
@@ -102,6 +102,12 @@ export const variants = {
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-medium-tight":
     "font-sans text-body-lg font-medium leading-6 text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl": "font-sans text-2xl font-normal text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1 (text-sm leading-none); body plus leading-none.
   "body-medium-lh-none":
     "font-sans text-body font-medium leading-none text-foreground-base",
@@ -177,10 +183,13 @@ export const variantElementMap: Record<Variant, As> = {
   "small-mono-bold-tight": "code",
   "tiny-inherit": "span",
   "small-relaxed": "p",
-  "caption-sm-mono-inherit": "span",
+  "caption-sm-mono": "span",
   "small-loose": "p",
   "small-medium-loose": "p",
   "large-medium-tight": "p",
+  "lg-semibold": "h3",
+  "2xl-bold": "div",
+  "2xl": "span",
   "body-medium-lh-none": "span",
   "body-medium-lh-snug": "p",
   "small-lh-tight": "p",
