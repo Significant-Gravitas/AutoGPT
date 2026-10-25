@@ -97,7 +97,7 @@ export function ContextPanelToggle({
               className={cn(
                 toggleClass,
                 "h-8",
-                documentCount > 0 ? "w-auto gap-1 px-2" : "w-8",
+                documentCount > 0 ? "w-auto gap-1 px-2 tabular-nums" : "w-8",
                 isFilesOpen && "bg-surface-hover",
               )}
             >
@@ -109,7 +109,7 @@ export function ContextPanelToggle({
                 <Text
                   variant="small-medium-tight"
                   as="span"
-                  className="tabular-nums text-sidebar-foreground/90"
+                  className="text-sidebar-foreground/90"
                 >
                   {documentCount}
                 </Text>
