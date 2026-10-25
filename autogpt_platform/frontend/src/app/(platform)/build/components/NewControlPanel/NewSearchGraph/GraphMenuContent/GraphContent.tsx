@@ -45,10 +45,10 @@ export function GraphSearchContent({
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
           <Text
-            variant="small"
+            variant="small-tight"
             as="div"
             tone="muted"
-            className="px-4 pt-3 leading-4"
+            className="px-4 pt-3"
           >
             Found {filteredNodes.length} node
             {filteredNodes.length !== 1 ? "s" : ""}
@@ -58,10 +58,10 @@ export function GraphSearchContent({
           <div role="listbox" className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
               <Text
-                variant="body"
+                variant="body-tight"
                 as="div"
                 tone="muted"
-                className="flex h-32 items-center justify-center leading-5"
+                className="flex h-32 items-center justify-center"
               >
                 {trimmedQuery
                   ? "No nodes found matching your search"
@@ -114,10 +114,10 @@ export function GraphSearchContent({
                         </Text>
                         {hasCustomName && (
                           <Text
-                            variant="small"
+                            variant="small-loose"
                             as="span"
                             tone="muted"
-                            className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2 leading-5"
+                            className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2"
                           >
                             {nodeType}
                           </Text>
@@ -125,10 +125,10 @@ export function GraphSearchContent({
                       </div>
                       {description && (
                         <Text
-                          variant="small"
+                          variant="small-loose"
                           as="span"
                           tone="muted"
-                          className="line-clamp-1 leading-5"
+                          className="line-clamp-1"
                         >
                           {description}
                         </Text>

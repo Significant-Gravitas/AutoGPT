@@ -67,9 +67,9 @@ function AccountMentionComposer({ expertId }: Props) {
           {attachments.map((name) => (
             <Text
               key={name}
-              variant="body"
+              variant="body-tight"
               as="span"
-              className="rounded-lg bg-surface-hover px-2 py-1 leading-5 text-foreground"
+              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground"
             >
               {name}
             </Text>
