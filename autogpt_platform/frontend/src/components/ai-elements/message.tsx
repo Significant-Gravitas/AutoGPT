@@ -440,7 +440,7 @@ export const MessageResponse = memo(function MessageResponse({
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-surface",
         // TODO(tokens): no fitting role for [&_a]:text-blue-500 #3B82F6: info is a
-        // status colour, not link copy
+        // status colour and sidebar-ring a focus ring, not link copy
         "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
         // Raycast-style markdown tables: a rounded card with a quiet small-caps
         // header, hairline row separators and tabular figures.
@@ -457,9 +457,10 @@ export const MessageResponse = memo(function MessageResponse({
         "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
         "[&_td]:border-b [&_td]:border-separator [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-foreground-body [&_td]:transition-colors",
         // TODO(tokens): no fitting role for [&_td_strong]:text-zinc-950 #09090B
-        // (foreground turns #FAFAFA under .dark), [&_td_code]:bg-zinc-100 #EFEFF0
-        // (surface-hover is a hover fill) or the row hover bg-zinc-50 #F9F9FA
-        // (surface-muted is a resting fill)
+        // (foreground, card-foreground and popover-foreground turn #FAFAFA under
+        // .dark), [&_td_code]:bg-zinc-100 #EFEFF0 (surface-hover is a hover fill,
+        // separator a border) or the row hover bg-zinc-50 #F9F9FA (surface-muted
+        // is a resting fill)
         "[&_td_strong]:font-medium [&_td_strong]:text-zinc-950",
         "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-foreground-body",
         "[&_tbody_tr:last-child_td]:border-b-0",
