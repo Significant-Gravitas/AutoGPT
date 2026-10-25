@@ -55,7 +55,7 @@ A `422` lists every field that failed in `details.errors`. `loc` is the path to 
 {
   "error": {
     "code": "validation_error",
-    "message": "Invalid data for POST /external-api/v2/schedules",
+    "message": "Invalid data for POST /api/v2/schedules",
     "details": {
       "errors": [
         {

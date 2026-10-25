@@ -11,7 +11,7 @@ API v1 (`/external-api/v1/...`) is deprecated and **stops working on 2027-02-01*
 
 ## What changes
 
-* **Base URL.** `/external-api/v1` becomes `/external-api/v2`.
+* **Base URL.** `/external-api/v1` becomes `/api/v2`.
 * **Runs go through your library.** v1 ran a graph by graph ID and version. v2 runs a **library agent**: look it up once with `GET /graphs/{graph_id}/library-agent`, then run it with `POST /library/agents/{agent_id}/runs`.
 * **Permissions.** `RUN_AGENT` replaces `EXECUTE_GRAPH`, reading runs needs `READ_RUN`, and most v2 areas have their own read and write permissions. A v1 key usually needs new permissions; see the table below.
 * **Lists are paginated.** Every list endpoint takes `limit` and `cursor` and returns `{"items", "next_cursor", "total_count"}`. Code that expected a bare array must read `items` and follow `next_cursor`.
@@ -77,7 +77,7 @@ The v2 run object returns everything at once: `status`, `outputs` keyed by outpu
 ## Checklist
 
 1. Add the v2 permissions your calls need to the key, or create a new key. Check with `GET /me`.
-2. Change the base URL to `/external-api/v2`.
+2. Change the base URL to `/api/v2`.
 3. Replace graph runs with library-agent runs, and send an `Idempotency-Key`.
 4. Read `items` and follow `next_cursor` on every list.
 5. Parse errors from `error.code`.

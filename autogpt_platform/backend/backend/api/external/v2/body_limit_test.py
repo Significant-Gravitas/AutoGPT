@@ -150,10 +150,10 @@ async def test_the_cap_follows_the_path_inside_the_mounted_app(
         await JSONResponse({}, status_code=201)(scope, receive, send)
 
     upload = _scope(
-        "/external-api/v2/files/upload",
+        "/api/v2/files/upload",
         headers=[(b"content-length", str(50 * MiB).encode())],
     )
-    upload["root_path"] = "/external-api/v2"
+    upload["root_path"] = "/api/v2"
     sent = await _call(BodySizeLimitMiddleware(app), upload, _chunks(b""))
 
     assert called

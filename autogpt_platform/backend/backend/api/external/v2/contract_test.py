@@ -95,7 +95,7 @@ async def test_the_served_spec_lists_only_the_declared_servers(
     ]
 
     response = await served.endpoint(
-        Request({"type": "http", "root_path": "/_agpt/external-api/v2"})
+        Request({"type": "http", "root_path": "/_agpt/api/v2"})
     )
 
     assert [s["url"] for s in json.loads(response.body)["servers"]] == declared

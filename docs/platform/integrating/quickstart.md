@@ -33,21 +33,21 @@ Put the key and your instance's base URL in environment variables. Every example
 {% tabs %}
 {% tab title="AutoGPT Cloud" %}
 ```bash
-export AUTOGPT_API_URL="https://backend.agpt.co/external-api/v2"
+export AUTOGPT_API_URL="https://backend.agpt.co/api/v2"
 export AUTOGPT_API_KEY="agpt_..."
 ```
 {% endtab %}
 
 {% tab title="Self-hosted (Docker Compose)" %}
 ```bash
-export AUTOGPT_API_URL="http://localhost:8006/external-api/v2"
+export AUTOGPT_API_URL="http://localhost:8006/api/v2"
 export AUTOGPT_API_KEY="agpt_..."
 ```
 {% endtab %}
 
 {% tab title="Self-hosted (single container)" %}
 ```bash
-export AUTOGPT_API_URL="http://localhost:3000/_agpt/external-api/v2"
+export AUTOGPT_API_URL="http://localhost:3000/_agpt/api/v2"
 export AUTOGPT_API_KEY="agpt_..."
 ```
 {% endtab %}
@@ -58,7 +58,7 @@ If your instance runs on another host or port, change the URL to match. [Cloud a
 The cURL examples use Bash syntax; on Windows, run them in Git Bash or WSL. To use the Python or TypeScript scripts from PowerShell, set the variables with `$env:AUTOGPT_API_URL = "..."` and `$env:AUTOGPT_API_KEY = "agpt_..."`. In a project, keep both in a `.env` file that's in `.gitignore`:
 
 ```dotenv
-AUTOGPT_API_URL=https://backend.agpt.co/external-api/v2
+AUTOGPT_API_URL=https://backend.agpt.co/api/v2
 AUTOGPT_API_KEY=agpt_...
 ```
 {% endstep %}
@@ -91,7 +91,7 @@ If you get something else, fix it before going on:
 | --- | --- |
 | `401 unauthorized` | The key is wrong or revoked, or the header name is not `X-API-Key`. |
 | `403 forbidden` | The key lacks **Identity**, or you are no longer a member of the organization it was created in. The message says which. |
-| `404` | `AUTOGPT_API_URL` is wrong. It must end in `/external-api/v2`. |
+| `404` | `AUTOGPT_API_URL` is wrong. It must end in `/api/v2`. |
 | `429` with `5 requests per 60s` | The API didn't recognise a key, so the request counted as anonymous: after five `401`s in a minute, you get this instead. Check the key and header, then wait a minute. |
 | A connection error | The instance isn't running at that address. |
 {% endstep %}

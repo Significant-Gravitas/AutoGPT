@@ -129,14 +129,14 @@ Content-Type: application/json
 Include the access token in API requests:
 
 ```http
-GET /external-api/v2/library/agents
+GET /api/v2/library/agents
 Authorization: Bearer agpt_xt_...
 ```
 
 **For SSO:** If you requested the `IDENTITY` scope, fetch user info to identify the user:
 
 ```http
-GET /external-api/v2/me
+GET /api/v2/me
 Authorization: Bearer agpt_xt_...
 ```
 

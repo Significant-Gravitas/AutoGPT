@@ -21,9 +21,9 @@ Every endpoint in these docs is relative to the base URL of your instance. Put i
 
 | Where AutoGPT runs | Base URL (`AUTOGPT_API_URL`) | Create API keys at |
 | --- | --- | --- |
-| AutoGPT Cloud | `https://backend.agpt.co/external-api/v2` | [platform.agpt.co/settings/api-keys](https://platform.agpt.co/settings/api-keys) |
-| Self-hosted with Docker Compose | `http://localhost:8006/external-api/v2` | `http://localhost:3000/settings/api-keys` |
-| Self-hosted single container | `http://localhost:3000/_agpt/external-api/v2` | `http://localhost:3000/settings/api-keys` |
+| AutoGPT Cloud | `https://backend.agpt.co/api/v2` | [platform.agpt.co/settings/api-keys](https://platform.agpt.co/settings/api-keys) |
+| Self-hosted with Docker Compose | `http://localhost:8006/api/v2` | `http://localhost:3000/settings/api-keys` |
+| Self-hosted single container | `http://localhost:3000/_agpt/api/v2` | `http://localhost:3000/settings/api-keys` |
 
 Self-hosted on another machine or domain? Replace `localhost` and the port with yours. [Cloud and self-hosted](environments.md) explains how to find and check the right URL.
 
@@ -32,7 +32,7 @@ Self-hosted on another machine or domain? Replace `localhost` and the port with 
 Create an API key with the **Identity** permission, then:
 
 ```bash
-export AUTOGPT_API_URL="https://backend.agpt.co/external-api/v2"
+export AUTOGPT_API_URL="https://backend.agpt.co/api/v2"
 export AUTOGPT_API_KEY="agpt_..."
 
 curl -s "$AUTOGPT_API_URL/me" -H "X-API-Key: $AUTOGPT_API_KEY"
@@ -58,7 +58,7 @@ For tools and AI agents, everything on this site is available as plain text:
 
 | Resource | URL |
 | --- | --- |
-| OpenAPI 3.1 spec (served by every instance) | `$AUTOGPT_API_URL/openapi.json`, e.g. [backend.agpt.co/external-api/v2/openapi.json](https://backend.agpt.co/external-api/v2/openapi.json) |
+| OpenAPI 3.1 spec (served by every instance) | `$AUTOGPT_API_URL/openapi.json`, e.g. [backend.agpt.co/api/v2/openapi.json](https://backend.agpt.co/api/v2/openapi.json) |
 | Interactive API explorer (served by every instance) | `$AUTOGPT_API_URL/docs` (Swagger UI) and `$AUTOGPT_API_URL/redoc` |
 | Index of every docs page, for LLMs | [agpt.co/docs/llms.txt](https://agpt.co/docs/llms.txt) |
 | Every docs page in one file | [agpt.co/docs/llms-full.txt](https://agpt.co/docs/llms-full.txt) |
@@ -70,7 +70,7 @@ For tools and AI agents, everything on this site is available as plain text:
 
 | Version | Status | Path |
 | --- | --- | --- |
-| **v2** | Current. Use it for everything new. | `/external-api/v2/...` |
+| **v2** | Current. Use it for everything new. | `/api/v2/...` |
 | v1 | Deprecated. Stops working on 2027-02-01; last day of service 2027-01-31. | `/external-api/v1/...` |
 
 Within v2, changes are additive: new endpoints, new optional parameters and new response fields can appear at any time, so ignore fields you don't recognise. Anything that would break a working integration ships as a new version.

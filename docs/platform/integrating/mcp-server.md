@@ -11,9 +11,9 @@ AutoGPT runs a [Model Context Protocol](https://modelcontextprotocol.io) server 
 
 | Where AutoGPT runs | MCP server URL |
 | --- | --- |
-| AutoGPT Cloud | `https://backend.agpt.co/external-api/v2/mcp/` |
-| Self-hosted with Docker Compose | `http://localhost:8006/external-api/v2/mcp/` |
-| Self-hosted single container | `http://localhost:3000/_agpt/external-api/v2/mcp/` |
+| AutoGPT Cloud | `https://backend.agpt.co/api/v2/mcp/` |
+| Self-hosted with Docker Compose | `http://localhost:8006/api/v2/mcp/` |
+| Self-hosted single container | `http://localhost:3000/_agpt/api/v2/mcp/` |
 
 It is `$AUTOGPT_API_URL/mcp/`. Keep the trailing slash: without it the server redirects, and some clients don't follow redirects.
 
@@ -65,7 +65,7 @@ Add the server to `~/.codex/config.toml`. Codex reads the key from the environme
 {% code title="~/.codex/config.toml" %}
 ```toml
 [mcp_servers.autogpt]
-url = "https://backend.agpt.co/external-api/v2/mcp/"
+url = "https://backend.agpt.co/api/v2/mcp/"
 bearer_token_env_var = "AUTOGPT_API_KEY"
 ```
 {% endcode %}
@@ -81,7 +81,7 @@ Add the server to `.cursor/mcp.json` in your project, or `~/.cursor/mcp.json` fo
 {
   "mcpServers": {
     "autogpt": {
-      "url": "https://backend.agpt.co/external-api/v2/mcp/",
+      "url": "https://backend.agpt.co/api/v2/mcp/",
       "headers": {
         "Authorization": "Bearer ${env:AUTOGPT_API_KEY}"
       }
@@ -101,7 +101,7 @@ Add the server to `.vscode/mcp.json`. VS Code asks for the key the first time an
   "servers": {
     "autogpt": {
       "type": "http",
-      "url": "https://backend.agpt.co/external-api/v2/mcp/",
+      "url": "https://backend.agpt.co/api/v2/mcp/",
       "headers": {
         "Authorization": "Bearer ${input:autogpt-api-key}"
       }
@@ -132,7 +132,7 @@ Claude Desktop starts local servers, so bridge to the remote one with [`mcp-remo
       "args": [
         "-y",
         "mcp-remote",
-        "https://backend.agpt.co/external-api/v2/mcp/",
+        "https://backend.agpt.co/api/v2/mcp/",
         "--header",
         "Authorization:${AUTOGPT_AUTH_HEADER}"
       ],

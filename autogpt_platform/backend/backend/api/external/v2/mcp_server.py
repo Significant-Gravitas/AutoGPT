@@ -161,9 +161,9 @@ UNSCOPED_EXTERNAL_TOOLS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-# The path `/mcp` ends up on, counting from the origin: the external API is
-# mounted at /external-api, v2 inside it, the MCP app inside that.
-MCP_RESOURCE_PATH = "/external-api/v2/mcp"
+# The path `/mcp` ends up on, counting from the origin: v2 is mounted at
+# /api/v2, the MCP app inside it.
+MCP_RESOURCE_PATH = "/api/v2/mcp"
 
 # RFC 9728 §3.1: the well-known segment is inserted between host and resource
 # path, so this is the URL a client derives — and it is on the origin root.
@@ -222,7 +222,7 @@ def protected_resource_metadata() -> ProtectedResourceMetadata:
     """RFC 9728 metadata for the MCP server, to be served at the ORIGIN root.
 
     FastMCP registers this document inside the `/mcp` sub-app, so it lands at
-    `/external-api/v2/mcp/.well-known/oauth-protected-resource/external-api/v2/mcp`
+    `/api/v2/mcp/.well-known/oauth-protected-resource/api/v2/mcp`
     while a client — following the `resource_metadata` FastMCP itself puts in
     `WWW-Authenticate` — asks the origin root for it and gets a 404. The root
     app serves this instead; see `WELL_KNOWN_PROTECTED_RESOURCE_PATH`.

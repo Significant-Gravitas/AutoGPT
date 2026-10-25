@@ -74,16 +74,16 @@ v2_app = FastAPI(
     root_path_in_servers=False,
     servers=[
         {
-            "url": "https://backend.agpt.co/external-api/v2",
+            "url": "https://backend.agpt.co/api/v2",
             "description": "AutoGPT Cloud",
         },
         {
-            "url": "{origin}/external-api/v2",
+            "url": "{origin}/api/v2",
             "description": "Self-hosted with Docker Compose",
             "variables": {"origin": {"default": "http://localhost:8006"}},
         },
         {
-            "url": "{origin}/_agpt/external-api/v2",
+            "url": "{origin}/_agpt/api/v2",
             "description": "Self-hosted single container",
             "variables": {"origin": {"default": "http://localhost:3000"}},
         },

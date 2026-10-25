@@ -102,6 +102,7 @@ from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
+from .external.v2.app import v2_app
 from .external.v2.mcp_server import (
     WELL_KNOWN_PROTECTED_RESOURCE_PATH,
     mcp_mount,
@@ -590,6 +591,8 @@ app.include_router(
 register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
+# No route of this app may start with /api/v<n>; rest_api_test.py checks it.
+app.mount("/api/v2", v2_app)
 
 
 @app.get(

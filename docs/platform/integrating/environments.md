@@ -10,7 +10,7 @@ icon: server
 AutoGPT Cloud and self-hosted AutoGPT run the same API. An integration only needs to know two things: the instance's base URL and an API key created on that instance. Keep both in configuration, not in code:
 
 ```bash
-AUTOGPT_API_URL=https://backend.agpt.co/external-api/v2
+AUTOGPT_API_URL=https://backend.agpt.co/api/v2
 AUTOGPT_API_KEY=agpt_...
 ```
 
@@ -18,14 +18,14 @@ AUTOGPT_API_KEY=agpt_...
 
 | Where AutoGPT runs | `AUTOGPT_API_URL` |
 | --- | --- |
-| AutoGPT Cloud | `https://backend.agpt.co/external-api/v2` |
-| Self-hosted with Docker Compose ([setup guide](../getting-started.md)) | `http://localhost:8006/external-api/v2` |
-| Self-hosted single container ([setup guide](../single-container.md)) | `http://localhost:3000/_agpt/external-api/v2` |
+| AutoGPT Cloud | `https://backend.agpt.co/api/v2` |
+| Self-hosted with Docker Compose ([setup guide](../getting-started.md)) | `http://localhost:8006/api/v2` |
+| Self-hosted single container ([setup guide](../single-container.md)) | `http://localhost:3000/_agpt/api/v2` |
 
 For an instance on another machine or domain:
 
-* **Docker Compose:** the API is served by the `rest_server` service on port `8006`. Use the address where that port is reachable, plus `/external-api/v2`, e.g. `https://autogpt-api.example.com/external-api/v2` behind a reverse proxy.
-* **Single container:** use the container's `AUTOGPT_PUBLIC_URL` plus `/_agpt/external-api/v2`, e.g. `https://autogpt.example.com/_agpt/external-api/v2`.
+* **Docker Compose:** the API is served by the `rest_server` service on port `8006`. Use the address where that port is reachable, plus `/api/v2`, e.g. `https://autogpt-api.example.com/api/v2` behind a reverse proxy.
+* **Single container:** use the container's `AUTOGPT_PUBLIC_URL` plus `/_agpt/api/v2`, e.g. `https://autogpt.example.com/_agpt/api/v2`.
 
 The web app, where you create API keys, is on port `3000` in both self-hosted setups: `http://localhost:3000/settings/api-keys`.
 
@@ -78,14 +78,14 @@ Read the base URL and key from configuration, and the same code runs against eit
 ```python
 import os
 
-API_URL = os.environ.get("AUTOGPT_API_URL", "https://backend.agpt.co/external-api/v2").rstrip("/")
+API_URL = os.environ.get("AUTOGPT_API_URL", "https://backend.agpt.co/api/v2").rstrip("/")
 HEADERS = {"X-API-Key": os.environ["AUTOGPT_API_KEY"]}
 ```
 {% endtab %}
 
 {% tab title="TypeScript" %}
 ```typescript
-const API_URL = (process.env.AUTOGPT_API_URL ?? "https://backend.agpt.co/external-api/v2").replace(/\/$/, "");
+const API_URL = (process.env.AUTOGPT_API_URL ?? "https://backend.agpt.co/api/v2").replace(/\/$/, "");
 const HEADERS = { "X-API-Key": process.env.AUTOGPT_API_KEY! };
 ```
 {% endtab %}

@@ -401,9 +401,9 @@ async def test_a_cached_verification_is_reused_only_for_the_same_credential(
 @pytest.mark.parametrize(
     "path, bucket",
     [
-        ("/external-api/v2/openapi.json", "anon-docs:"),
-        ("/external-api/v2/docs", "anon-docs:"),
-        ("/external-api/v2/library/agents", "anon:"),
+        ("/api/v2/openapi.json", "anon-docs:"),
+        ("/api/v2/docs", "anon-docs:"),
+        ("/api/v2/library/agents", "anon:"),
     ],
 )
 async def test_reading_the_docs_without_a_key_has_its_own_bucket(
@@ -420,7 +420,7 @@ async def test_reading_the_docs_without_a_key_has_its_own_bucket(
         pass
 
     scope = _scope()
-    scope.update(path=path, root_path="/external-api/v2")
+    scope.update(path=path, root_path="/api/v2")
     await GlobalRateLimitMiddleware(app)(scope, _receive, send)
 
     assert redis.incr.await_args.args[0].startswith(f"rl:v2:global:{bucket}")

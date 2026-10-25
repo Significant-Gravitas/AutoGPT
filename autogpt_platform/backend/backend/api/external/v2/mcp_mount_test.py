@@ -2,7 +2,7 @@
 
 Starlette never runs a mounted app's lifespan, and FastMCP starts the session
 manager that every request goes through in its lifespan. Mounted as-is, every
-request to `/external-api/v2/mcp/` was a 500: "Task group is not initialized".
+request to `/api/v2/mcp/` was a 500: "Task group is not initialized".
 """
 
 import contextlib

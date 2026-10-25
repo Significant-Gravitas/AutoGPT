@@ -1,5 +1,7 @@
 """The external API's own addresses, as the host app mounts it."""
 
+from urllib.parse import urljoin
+
 import fastapi
 import fastapi.testclient
 import pytest
@@ -14,12 +16,16 @@ def client() -> fastapi.testclient.TestClient:
     return fastapi.testclient.TestClient(host, follow_redirects=False)
 
 
-def test_the_root_redirects_to_v2s_docs_not_the_hosts(
-    client: fastapi.testclient.TestClient,
+@pytest.mark.parametrize("prefix", ["", "/_agpt"])
+def test_the_root_redirects_to_v2s_docs_behind_any_proxy_prefix(
+    client: fastapi.testclient.TestClient, prefix: str
 ) -> None:
     response = client.get("/external-api/")
 
-    assert response.headers["location"] == "/external-api/v2/docs"
+    page = f"https://example.com{prefix}/external-api/"
+    assert urljoin(page, response.headers["location"]) == (
+        f"https://example.com{prefix}/api/v2/docs"
+    )
 
 
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/versions.json"])

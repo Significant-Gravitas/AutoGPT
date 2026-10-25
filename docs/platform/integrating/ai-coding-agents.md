@@ -36,7 +36,7 @@ Configuration:
   keeps them in a .env file, load it the way this project's stack normally does. If either
   is missing, stop and ask me for it. Don't print, log or commit the key. Keep both
   configurable: the same code has to work against AutoGPT Cloud
-  (https://backend.agpt.co/external-api/v2) and a self-hosted instance.
+  (https://backend.agpt.co/api/v2) and a self-hosted instance.
 - Send the key as the X-API-Key header on every request.
 - The key needs Identity, Read Library, Write Library, Write Graph, Run Agent, Read Run
   and Read Integrations for the steps below. GET /me lists what it has under scopes.
@@ -95,7 +95,7 @@ To have your assistant run and build agents directly instead of writing code, co
 Connect yourself to the AutoGPT Platform MCP server.
 
 - Server URL: $AUTOGPT_API_URL/mcp/ (keep the trailing slash). On AutoGPT Cloud that is
-  https://backend.agpt.co/external-api/v2/mcp/.
+  https://backend.agpt.co/api/v2/mcp/.
 - Transport: Streamable HTTP. Auth: the header "Authorization: Bearer <key>", with the key
   read from the AUTOGPT_API_KEY environment variable. Never write the key itself into a
   config file that is committed.
@@ -137,7 +137,7 @@ Coding agents read standing instructions from `AGENTS.md` (Codex, Cursor, Copilo
 ## AutoGPT Platform API
 
 - Use API v2 only. Base URL from AUTOGPT_API_URL (AutoGPT Cloud:
-  https://backend.agpt.co/external-api/v2). Key from AUTOGPT_API_KEY, sent as X-API-Key.
+  https://backend.agpt.co/api/v2). Key from AUTOGPT_API_KEY, sent as X-API-Key.
   Never print, log or commit the key.
 - Check endpoints and fields against $AUTOGPT_API_URL/openapi.json and the docs at
   https://agpt.co/docs/llms.txt before using them. Don't guess.
@@ -166,7 +166,7 @@ An [Agent Skill](https://agentskills.io) gives an agent the same rules, but load
 ```markdown
 ---
 name: autogpt-api
-description: Integrate with the AutoGPT Platform API v2 - run AutoGPT agents, read their outputs, build agent graphs, manage files, schedules and credentials, on AutoGPT Cloud or a self-hosted instance. Use when code calls AutoGPT, agpt.co, backend.agpt.co or /external-api/v2.
+description: Integrate with the AutoGPT Platform API v2 - run AutoGPT agents, read their outputs, build agent graphs, manage files, schedules and credentials, on AutoGPT Cloud or a self-hosted instance. Use when code calls AutoGPT, agpt.co, backend.agpt.co or /api/v2.
 ---
 
 # AutoGPT Platform API v2
@@ -176,7 +176,7 @@ description: Integrate with the AutoGPT Platform API v2 - run AutoGPT agents, re
 2. Fetch $AUTOGPT_API_URL/openapi.json and use only the endpoints and fields in it.
 
 ## Configuration
-- AUTOGPT_API_URL: base URL ending in /external-api/v2. Cloud: https://backend.agpt.co/external-api/v2. Self-hosted: http://localhost:8006/external-api/v2 (Docker Compose) or http://localhost:3000/_agpt/external-api/v2 (single container).
+- AUTOGPT_API_URL: base URL ending in /api/v2. Cloud: https://backend.agpt.co/api/v2. Self-hosted: http://localhost:8006/api/v2 (Docker Compose) or http://localhost:3000/_agpt/api/v2 (single container).
 - AUTOGPT_API_KEY: starts with agpt_. Send as X-API-Key. Never print, log or commit it.
 - Check both with GET /me before anything else (401 bad key, 404 bad URL, 403 missing permission).
 
@@ -204,7 +204,7 @@ Graph = nodes (block_id + input_default) + links (source_id/source_name -> sink_
 | Mistake | Fix |
 | --- | --- |
 | Calling `/external-api/v1/...` endpoints remembered from training data | Use v2 and check the instance's `openapi.json`. |
-| A base URL without `/external-api/v2`, or with `/api` | Use the URL from the [base URL table](environments.md#base-urls) exactly. |
+| A base URL that doesn't end in `/api/v2`, such as the bare `/api` | Use the URL from the [base URL table](environments.md#base-urls) exactly. |
 | Running with the graph ID | Runs take the library agent ID. Look it up with `GET /graphs/{graph_id}/library-agent`. |
 | Treating the `202` from starting a run as the result | Poll `GET /runs/{run_id}` until a final status. |
 | Polling forever, or every 100 ms | Back off from about 1 s to 10 s and set a deadline. Every poll counts toward the 200-per-minute limit. |
