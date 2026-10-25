@@ -99,26 +99,46 @@ describe("useChangelog", () => {
   ])(
     "for an account created %s the release, shows it: %s",
     async (_when, createdAt, shown) => {
-      server.use(
-        http.get(CHANGELOG_INDEX_MD_URL, () =>
-          HttpResponse.text(
-            "| [October 8 – October 14](/docs/platform/changelog/changelog/october-8-october-14-2026.md) | Redesigned wallet |",
-          ),
-        ),
-      );
-      useAuthStore.setState({
-        user: { id: "u1", created_at: createdAt } as User,
-      });
-      vi.useFakeTimers();
-      const { result } = renderHook(() => useChangelog());
+      const { result } = await renderOctoberReleaseFor(createdAt);
 
-      await vi.waitFor(() =>
-        expect(result.current.latestEntry?.slug).toBe(
-          "october-8-october-14-2026",
-        ),
-      );
-      await act(() => vi.advanceTimersByTimeAsync(2000));
       expect(result.current.isVisible).toBe(shown);
+      // A skipped release stays unseen, for an older account on this browser.
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+        shown ? OCTOBER : null,
+      );
     },
   );
+
+  it("hides a showing popup when the session switches to a newer account", async () => {
+    const { result } = await renderOctoberReleaseFor("2026-10-01T08:00:00Z");
+    expect(result.current.isVisible).toBe(true);
+
+    act(() =>
+      useAuthStore.setState({
+        user: { id: "u2", created_at: "2026-10-20T08:00:00Z" } as User,
+      }),
+    );
+
+    expect(result.current.isVisible).toBe(false);
+  });
 });
+
+const OCTOBER = "october-8-october-14-2026";
+
+async function renderOctoberReleaseFor(createdAt: string) {
+  server.use(
+    http.get(CHANGELOG_INDEX_MD_URL, () =>
+      HttpResponse.text(
+        `| [October 8 – October 14](/docs/platform/changelog/changelog/${OCTOBER}.md) | Redesigned wallet |`,
+      ),
+    ),
+  );
+  useAuthStore.setState({ user: { id: "u1", created_at: createdAt } as User });
+  vi.useFakeTimers();
+  const hook = renderHook(() => useChangelog());
+  await vi.waitFor(() =>
+    expect(hook.result.current.latestEntry?.slug).toBe(OCTOBER),
+  );
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  return hook;
+}

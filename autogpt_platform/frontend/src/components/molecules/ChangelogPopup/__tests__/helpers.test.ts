@@ -46,6 +46,7 @@ describe("isReleaseBeforeAccount", () => {
     ["december-18-2025-january-8-2026", "2026-01-05T00:00:00Z", false],
     ["december-18-2025-january-8-2026", "2026-01-09T00:00:00Z", true],
     ["v0-6-63", "2027-01-01T00:00:00Z", false],
+    ["february-30-2026", "2026-03-05T00:00:00Z", false],
     ["october-8-october-14-2026", undefined, false],
   ])("%s for an account created %s: %s", (slug, createdAt, expected) => {
     expect(isReleaseBeforeAccount(release(slug), createdAt)).toBe(expected);

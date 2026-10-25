@@ -59,6 +59,13 @@ function getReleaseLastDay(slug: string): Date | null {
   const match = /([a-z]+)-(\d{1,2})-(\d{4})$/.exec(slug);
   if (!match) return null;
   const month = MONTHS.indexOf(match[1]);
+  const [year, day] = [Number(match[3]), Number(match[2])];
   if (month === -1) return null;
-  return new Date(Date.UTC(Number(match[3]), month, Number(match[2])));
+  const date = new Date(Date.UTC(year, month, day));
+  // Date.UTC rolls an impossible date over: "february-30" becomes March 2.
+  const exists =
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month &&
+    date.getUTCDate() === day;
+  return exists ? date : null;
 }
