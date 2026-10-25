@@ -6,6 +6,7 @@ built without the registry offers integrations we do not have.
 """
 
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -99,17 +100,40 @@ async def test_the_coverage_rule_rides_along_with_the_langfuse_copy(
 
 
 @pytest.mark.asyncio
-async def test_an_over_long_greeting_ends_at_a_sentence(client: MagicMock):
-    sentence = "You have a problem with the oven and the ordering. "
-    long_greeting = sentence * 20
+@pytest.mark.parametrize(
+    "long_greeting, ending",
+    [
+        ("You have a problem with the oven and the ordering. " * 20, "."),
+        # The only sentence end is too early to keep, so it stops at a word.
+        ("Hi there. " + "your oven and your ordering " * 40, "…"),
+    ],
+    ids=["many sentences", "one early sentence"],
+)
+async def test_an_over_long_greeting_keeps_most_of_itself(
+    client: MagicMock, long_greeting: str, ending: str
+):
     client.chat.completions.create.return_value.choices[0].message.content = json.dumps(
         {**GENERATION, "greeting": long_greeting}
     )
 
     greeting, _ = await intro.generate_intro(TRANSCRIPT)
 
-    assert len(greeting) <= intro.MAX_GREETING_CHARS
-    assert greeting.endswith("ordering.")
+    kept = greeting.removesuffix("…")
+    assert intro.MAX_GREETING_CHARS // 2 < len(greeting) <= intro.MAX_GREETING_CHARS
+    assert greeting.endswith(ending)
+    assert long_greeting.startswith(kept) and long_greeting[len(kept)] == " "
+
+
+def test_both_copies_of_the_instructions_ask_for_the_same_length():
+    """The fallback instructions must not cap the greeting below what the
+    system message allows, and the clip must sit above both."""
+    asked = {
+        int(n)
+        for text in (intro._LOCAL_PROMPT, intro.COVERAGE_CONTRACT)
+        for n in re.findall(r"(\d+) characters", text)
+    }
+    assert asked == {intro.GREETING_CHAR_LIMIT}
+    assert intro.GREETING_CHAR_LIMIT < intro.MAX_GREETING_CHARS
 
 
 def test_the_local_prompt_asks_for_the_head_of_ai_voice():

@@ -44,6 +44,9 @@ LANGFUSE_PROMPT_CACHE_TTL_SECONDS = 300
 
 MIN_PROMPTS = 5
 MAX_PROMPTS = 6
+# Asked of the model by both copies of the instructions; MAX_GREETING_CHARS
+# clips what comes back.
+GREETING_CHAR_LIMIT = 600
 MAX_GREETING_CHARS = 650
 MAX_TITLE_CHARS = 120
 MAX_PROMPT_CHARS = 2_000
@@ -78,19 +81,19 @@ DEFAULT_PROMPT_ICON = "sparkle"
 
 # Sent as the system message on every generation, whichever copy of the
 # instructions is in use: the Langfuse copy wins in prod and predates it.
-COVERAGE_CONTRACT = """Leave out none of the problems the user described. \
+COVERAGE_CONTRACT = f"""Leave out none of the problems the user described. \
 The greeting names every one, grouping those that belong together. Name a \
 problem no workflow or expert can take over too (a machine, a recipe, \
 on-site hardware, a personal decision), as something you will work through \
 with them yourself, never as a job for the team. When the transcript has \
 such a problem, make the last suggested prompt that work. The greeting may \
-run to 600 characters when it has to."""
+run to {GREETING_CHAR_LIMIT} characters when it has to."""
 
 # The local fallback for the Langfuse-managed instructions. The greeting
 # diagnoses the dump so the user can see they were heard; the suggested
 # prompts are what turn that into an action. A Langfuse edit must keep the
 # same JSON contract — a malformed generation degrades to the template.
-_LOCAL_PROMPT = """You are Otto, this user's built-in Head of AI. \
+_LOCAL_PROMPT = f"""You are Otto, this user's built-in Head of AI. \
 You are theirs alone, never shared, and you run a team for them: you can \
 build real recurring automations (watch sources, draft content, send \
 digests, run agents while they sleep) and you can bring in experts to own \
@@ -99,7 +102,7 @@ dump about their work. Write the greeting they will see when they first \
 open the app.
 
 Return ONLY valid JSON with exactly these keys:
-- "greeting": 2-3 sentences, max 450 characters, second person, warm and \
+- "greeting": 2-3 sentences, max {GREETING_CHAR_LIMIT} characters, second person, warm and \
 concrete. Diagnose, the way a consultant would on day one: name the \
 specific problems you heard in their own terms ("you have a marketing \
 problem and a support problem"), then say you are putting a team \
@@ -264,13 +267,17 @@ async def _fetch_langfuse_prompt() -> str | None:
 
 
 def _clip_greeting(greeting: str) -> str:
-    """``greeting`` within the cap, ended at a sentence rather than mid-word."""
+    """``greeting`` within the cap, at its last sentence end if that keeps most
+    of it, otherwise at a word boundary."""
     text = greeting.strip()
     if len(text) <= MAX_GREETING_CHARS:
         return text
+    window = text[: MAX_GREETING_CHARS + 1]
+    end = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+    if end >= MAX_GREETING_CHARS // 2:
+        return text[: end + 1]
     cut = text[:MAX_GREETING_CHARS]
-    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-    return cut[: end + 1] if end > 0 else cut
+    return cut[: cut.rfind(" ")].rstrip(",;:") + "…"
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
