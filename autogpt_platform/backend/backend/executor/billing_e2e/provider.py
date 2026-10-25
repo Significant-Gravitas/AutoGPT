@@ -4,14 +4,16 @@ It answers the Orchestrator's calls (they offer tools) by calling the first
 tool it was offered a set number of times, then finishing, and it answers the
 AI block the agent calls as a tool (its calls offer none) with text, or with
 an error when the run is scripted to fail its tool calls. It keeps an invoice
-of every reply, and each billed reply reports one million input tokens, so it
-costs the platform exactly the model's price per million input tokens.
+of every reply, with the time each call came in, and each billed reply reports
+one million input tokens, so it costs the platform exactly the model's price
+per million input tokens.
 """
 
+import time
 from typing import Literal
 
 from aiohttp import web
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 INPUT_TOKENS_PER_REPLY = 1_000_000
 
@@ -19,6 +21,7 @@ INPUT_TOKENS_PER_REPLY = 1_000_000
 class Reply(BaseModel):
     caller: Literal["agent", "tool"]
     billed: bool
+    at: float = Field(default_factory=time.monotonic)
 
 
 class FakeAnthropic:
@@ -45,6 +48,14 @@ class FakeAnthropic:
 
     def calls(self, caller: Literal["agent", "tool"]) -> int:
         return sum(r.caller == caller for r in self.replies)
+
+    def tool_call_delays(self) -> list[float]:
+        """Seconds from each agent reply to the tool call that came next."""
+        return [
+            tool.at - agent.at
+            for agent, tool in zip(self.replies, self.replies[1:])
+            if agent.caller == "agent" and tool.caller == "tool"
+        ]
 
     def billed(self) -> int:
         """How many replies the provider billed the platform for."""

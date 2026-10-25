@@ -9,7 +9,8 @@ invoice of every reply. Nothing in the executor or in billing is replaced; the
 one seam is the queue, where this test picks up the run and hands it to its
 pod instead of the shared test server's executor, which would call the real
 Anthropic API. The test reads only what a user sees afterwards: their wallet
-balance and the cost on the run page.
+balance and the cost on the run page. It also checks the agent's tool, which
+runs on the agent's own key, starts as soon as the agent calls it.
 """
 
 import asyncio
@@ -43,6 +44,11 @@ MODEL = LLMModel("claude-sonnet-5-5")
 PRICE_PER_REPLY = int(TOKEN_COST[MODEL].input * INPUT_TOKENS_PER_REPLY / 1_000_000)
 # The agent calls its tool twice, then answers: three agent replies.
 TOOL_CALLS = 2
+# The most a tool's model call may trail the agent's request for it. A tool
+# that had to wait for the agent's hold on their shared key to expire would
+# start a minute after the agent took it. On time it follows in about a second,
+# so this leaves a slow runner room on both sides.
+TOOL_CALL_DELAY_LIMIT_S = 30
 PLATFORM_ANTHROPIC_KEY = "billing-e2e-platform-key"  # pragma: allowlist secret
 
 # An executor pod, as a deployment runs one: the executor's worker takes the
@@ -129,6 +135,9 @@ async def test_an_agent_run_costs_what_its_model_calls_cost(
     assert paid == billed_replies * PRICE_PER_REPLY
     assert run is not None and run.stats is not None
     assert run.stats.cost == paid
+    # Each tool call reached the model as soon as the agent asked for it.
+    delays = model.tool_call_delays()
+    assert delays and max(delays) < TOOL_CALL_DELAY_LIMIT_S, delays
 
 
 def _agent_with_an_ai_tool() -> graph_model.Graph:
