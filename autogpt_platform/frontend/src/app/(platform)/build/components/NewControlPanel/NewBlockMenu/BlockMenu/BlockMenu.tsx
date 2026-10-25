@@ -46,6 +46,7 @@ export const BlockMenu = () => {
         side="right"
         align="start"
         sideOffset={16}
+        // TODO(tokens): no exact role: shadow-[…] #000000
         className="absolute h-[80vh] w-[46.625rem] overflow-hidden border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="blocks-control-popover-content"
       >
