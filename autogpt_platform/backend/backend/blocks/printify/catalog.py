@@ -20,6 +20,7 @@ from backend.sdk import (
     BlockSchemaOutput,
     SchemaField,
 )
+from backend.util.text import singular
 
 MAX_RESULTS = 50
 
@@ -183,11 +184,4 @@ class PrintifyGetPrintOptionsBlock(Block):
 
 def _matches(blueprint: PrintifyBlueprint, words: list[str]) -> bool:
     text = f"{blueprint.title} {blueprint.brand} {blueprint.model}".lower()
-    return all(word in text or _singular(word) in text for word in words)
-
-
-def _singular(word: str) -> str:
-    """One plural "s" off ("stickers" is sticker); "glass" and "boss" stay."""
-    if word.endswith("s") and not word.endswith("ss"):
-        return word[:-1]
-    return word
+    return all(word in text or singular(word) in text for word in words)

@@ -170,6 +170,7 @@ async def test_search_catalog_matches_singular_and_plural_names():
     [
         ("glass", [7]),  # not "gla": a double s is not a plural
         ("boss", []),  # not "bo", which is in "Bottle"
+        ("ads", []),  # not "ad", which is in "Mouse Pad"
         ("stickers", [400]),
     ],
 )
@@ -181,6 +182,7 @@ async def test_search_catalog_takes_off_one_plural_s_at_most(
         {"id": 400, "title": "Kiss-Cut Stickers"},
         {"id": 7, "title": "Glass Mug"},
         {"id": 9, "title": "Water Bottle"},
+        {"id": 13, "title": "Mouse Pad"},
     ]
     client, _ = _client(_response(200, blueprints))
     with patch("backend.blocks.printify.catalog.PrintifyClient", return_value=client):

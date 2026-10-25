@@ -18,6 +18,7 @@ from backend.blocks import load_all_blocks
 from backend.data.model import CredentialsFieldInfo
 from backend.integrations.providers import provider_key
 from backend.util.cache import cached
+from backend.util.text import singular
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +63,6 @@ def name_words_of(block_name: str) -> list[str]:
     """``GoogleSheetsAppendRowBlock`` as ["google", "sheet", "append", "row"]."""
     found = [singular(word.lower()) for word in _CAMEL_WORD.findall(block_name)]
     return [word for word in found if word != "block"]
-
-
-def singular(word: str) -> str:
-    """One plural "s" off ("sheets" is sheet); "glass" and "boss" stay."""
-    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
-        return word[:-1]
-    return word
 
 
 def _types_by_provider(info: CredentialsFieldInfo) -> list[tuple[str, frozenset]]:

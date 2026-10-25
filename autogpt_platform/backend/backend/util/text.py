@@ -202,3 +202,12 @@ def split_camelcase(text: str) -> str:
         lambda m: _CAMELCASE_EXCEPTIONS[m.group()], result
     )
     return result
+
+
+def singular(word: str) -> str:
+    """One plural "s" off a lowercase word ("stickers" is sticker); a
+    double "s" ("glass", "boss") and a word of three letters or fewer
+    ("ads", "gas") stay as written."""
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word

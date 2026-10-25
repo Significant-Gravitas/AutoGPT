@@ -19,7 +19,7 @@ from collections.abc import Iterable
 from pydantic import BaseModel
 
 from backend.api.features.integrations import block_coverage
-from backend.api.features.integrations.block_coverage import ProviderBlocks, singular
+from backend.api.features.integrations.block_coverage import ProviderBlocks
 from backend.api.features.integrations.models import (
     get_all_provider_names,
     get_provider_description,
@@ -31,6 +31,7 @@ from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.providers import provider_key
 from backend.integrations.service_identity import catalog_slug
 from backend.util.cache import cached
+from backend.util.text import singular
 
 logger = logging.getLogger(__name__)
 
@@ -93,13 +94,14 @@ def connectable_services() -> list[ConnectableService]:
         blocks = from_blocks.get(name, ProviderBlocks())
         if name in _NOT_SERVICES or not _can_sign_in(name, blocks.auth_types):
             continue
+        description = get_provider_description(name)
         services.append(
             ConnectableService(
                 key=name,
                 name=name.replace("_", " ").title(),
-                description=get_provider_description(name),
+                description=description,
                 products=blocks.products,
-                product_names=described_products(get_provider_description(name)),
+                product_names=described_products(description),
             )
         )
     keys = {service.key for service in services}
@@ -235,9 +237,11 @@ def _known_gaps_in(text: str) -> list[str]:
 def _match(name: str, services: list[ConnectableService]) -> ConnectableService | None:
     """Match on any spelling; on the vendor's own name followed by products
     its blocks cover ("Google Sheets" is Google's, "Google Analytics" is
-    not); or on one word naming a product only one provider's blocks lead
-    with ("Gmail"). Only the vendor's own id or full name counts as the
-    vendor, so "Customer support" is not Customer.io."""
+    not); or on a product its description names (``described_products``:
+    "Gmail" is in Google's "Gmail, Drive, Calendar, Sheets", so editing that
+    description changes what counts as Google's). Only the vendor's own id
+    or full name counts as the vendor, so "Customer support" is not
+    Customer.io."""
     wanted = _forms(name)
     if not wanted:
         return None

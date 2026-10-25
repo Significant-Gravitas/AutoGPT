@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from backend.util.text import TextFormatter
+from backend.util.text import TextFormatter, singular
 
 
 @pytest.fixture
@@ -126,3 +126,19 @@ def test_over_boundary_range(fmt: TextFormatter):
     """range(10001) exceeds the limit — should fail."""
     with pytest.raises((ValueError, OverflowError)):
         asyncio.run(fmt.format_string("{{ range(10001) | list }}"))
+
+
+@pytest.mark.parametrize(
+    "word, expected",
+    [
+        ("stickers", "sticker"),
+        ("sheets", "sheet"),
+        ("glass", "glass"),
+        ("boss", "boss"),
+        ("ads", "ads"),  # three letters: "ad" would match "Mouse Pad"
+        ("gas", "gas"),
+        ("mug", "mug"),
+    ],
+)
+def test_singular_takes_one_plural_s_off_longer_words(word: str, expected: str):
+    assert singular(word) == expected
