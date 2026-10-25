@@ -655,6 +655,9 @@ async def get_graph_executions(
         execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
         order_by: Field to order by. Defaults to "createdAt"
         order_direction: Sort direction. Defaults to "desc"
+        organization_id: Only executions stored in this org. An exact match,
+            unlike in `get_graph_executions_paginated`, where it also lists the
+            org's executions the user can see
         deleted: List the executions deleted from history instead of the
             visible ones
     """
