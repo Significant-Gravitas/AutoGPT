@@ -51,6 +51,8 @@ export const variants = {
   "body-medium-tight":
     "font-sans text-body font-medium leading-5 text-foreground-base",
   "body-semibold": "font-sans text-body font-semibold text-foreground-base",
+  // A search match inside a body-medium title.
+  "body-bold": "font-sans text-body font-bold text-foreground-base",
   // Struck through, e.g. a field whose connection is broken.
   "body-line-through":
     "font-sans text-body font-normal line-through text-foreground-base",
@@ -94,6 +96,10 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-loose":
     "font-sans text-caption font-normal leading-5 text-foreground-base",
+  // A search match inside a small-loose description. TODO(tokens): no role
+  // is 0.75rem/1.25rem; caption plus leading-5.
+  "small-bold-loose":
+    "font-sans text-caption font-bold leading-5 text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
@@ -103,6 +109,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
+  // Keeps the parent's line height, e.g. a link inside an Alert paragraph.
+  "small-medium-inherit":
+    "font-sans text-caption font-medium leading-inherit text-foreground-base",
   // Keeps the parent's line height, like the raw size it replaced.
   "tiny-inherit":
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
@@ -160,6 +169,7 @@ export const variantElementMap: Record<Variant, As> = {
   "body-medium": "p",
   "body-tight": "p",
   "body-semibold": "p",
+  "body-bold": "p",
   "body-line-through": "p",
   "body-tight-italic": "p",
   "body-medium-tight": "p",
@@ -178,8 +188,10 @@ export const variantElementMap: Record<Variant, As> = {
   "small-mono-tight": "code",
   "small-medium-mono-tight": "code",
   "small-loose": "p",
+  "small-bold-loose": "p",
   "small-medium-loose": "p",
   "small-relaxed": "p",
+  "small-medium-inherit": "span",
   "tiny-inherit": "span",
   "caption-sm-mono-inherit": "span",
   label: "span",

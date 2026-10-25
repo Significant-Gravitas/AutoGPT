@@ -42,7 +42,9 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
                 }
                 className="underline"
               >
-                Workflow Library
+                <Text variant="small-medium-inherit" as="span" tone="inherit">
+                  Workflow Library
+                </Text>
               </Link>
               {!isNodeSaved && " (after saving the workflow)"}.
             </Text>

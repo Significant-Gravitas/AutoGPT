@@ -179,7 +179,7 @@ export const getTypeDisplayInfo = (schema: any) => {
     integer: "!text-blue-500",
     // TODO(tokens): no exact role: !text-yellow-500 #F5C000
     boolean: "!text-yellow-500",
-    // TODO(tokens): no fitting role for !text-purple-500 #7733F5; #7733F5 is brand (a button fill), and this colours a type label (QUALITY 41, SECRT-3154)
+    // TODO(tokens): no fitting role for !text-purple-500 #7733F5; #7733F5 is brand (a button fill), and this colours a type label (QUALITY 41)
     object: "!text-purple-500",
     // TODO(tokens): no exact role: !text-indigo-500 #6366F1
     array: "!text-indigo-500",

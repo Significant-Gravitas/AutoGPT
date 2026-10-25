@@ -40,7 +40,10 @@ export function GraphSearchContent({
         onKeyDown={handleKeyDown}
       />
 
-      <Separator className="h-[1px] w-full text-foreground-disabled" />
+      <Separator
+        // TODO(tokens): no fitting role for text-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (disabled text) and border-strong (a border colour), and this is a static divider (QUALITY 41(c))
+        className="h-[1px] w-full text-zinc-300"
+      />
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
@@ -96,8 +99,9 @@ export function GraphSearchContent({
                     className={cn(
                       "flex h-16 w-full cursor-pointer items-center gap-3 rounded-[0.75rem] bg-surface-muted px-[0.875rem] py-[0.625rem]",
                       index === selectedIndex
-                        ? // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
-                          "bg-zinc-100 ring-1 ring-border-strong"
+                        ? // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
+                          // TODO(tokens): no fitting role for ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
+                          "bg-zinc-100 ring-1 ring-zinc-300"
                         : "hover:bg-surface-hover",
                     )}
                     onClick={() => onNodeSelect(node.id)}
@@ -118,7 +122,7 @@ export function GraphSearchContent({
                             variant="small-loose"
                             as="span"
                             tone="muted"
-                            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+                            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
                             className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2"
                           >
                             {nodeType}

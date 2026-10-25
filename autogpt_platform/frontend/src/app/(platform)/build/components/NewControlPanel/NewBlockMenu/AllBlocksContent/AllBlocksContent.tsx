@@ -54,7 +54,10 @@ export const AllBlocksContent = () => {
       {categories?.map((category, index) => (
         <Fragment key={category.name}>
           {index > 0 && (
-            <Separator className="h-[1px] w-full text-foreground-disabled" />
+            <Separator
+              // TODO(tokens): no fitting role for text-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (disabled text) and border-strong (a border colour), and this is a static divider (QUALITY 41(c))
+              className="h-[1px] w-full text-zinc-300"
+            />
           )}
 
           {/* Category Section */}
@@ -67,7 +70,7 @@ export const AllBlocksContent = () => {
                 variant="body"
                 as="span"
                 tone="secondary"
-                // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+                // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
                 className="rounded-full bg-zinc-100 px-[0.375rem]"
               >
                 {category.total_blocks}

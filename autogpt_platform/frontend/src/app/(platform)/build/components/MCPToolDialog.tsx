@@ -458,14 +458,11 @@ export function MCPToolDialog({
                   selectClassName="h-10 rounded-md border border-input bg-background px-3 text-body leading-5"
                 />
 
-                <Text
-                  variant="body-medium-tight"
-                  as="label"
-                  tone="inherit"
-                  htmlFor="mcp-auth-token"
-                >
-                  {mcpAuthTokenLabel(manualAuthScheme)}
-                </Text>
+                <Label htmlFor="mcp-auth-token">
+                  <Text variant="body-medium-tight" as="span" tone="inherit">
+                    {mcpAuthTokenLabel(manualAuthScheme)}
+                  </Text>
+                </Label>
                 <Input
                   id="mcp-auth-token"
                   aria-describedby="mcp-auth-token-hint"
@@ -624,7 +621,8 @@ function MCPToolCard({
       className={`group flex flex-col rounded-lg border text-left transition-colors ${
         selected
           ? // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-blue-400 #60A5FA, dark:bg-blue-950 #172554
-            "border-info bg-info-surface dark:border-blue-400 dark:bg-blue-950"
+            // TODO(tokens): no fitting role for border-blue-500 #3B82F6; #3B82F6 is info (a status colour), and this marks a selected card (QUALITY 41(c)); no fitting role for bg-blue-50 #EFF6FF; #EFF6FF is info-surface (a status fill), and this marks a selected card (QUALITY 41(c))
+            "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950"
           : // TODO(tokens): no exact role: hover:border-gray-300 #D1D5DB, hover:bg-gray-50 #F9FAFB; no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154)
             // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700 #475263, dark:hover:border-slate-600 #5B6A7E, dark:hover:bg-slate-800 #475263
             "border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800"

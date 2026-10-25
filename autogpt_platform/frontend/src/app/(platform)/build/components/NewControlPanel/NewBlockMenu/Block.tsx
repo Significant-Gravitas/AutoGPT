@@ -123,8 +123,8 @@ function BlockCard({
         data-id={blockDataId}
         className={cn(
           "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-surface-muted px-[0.875rem] py-[0.625rem] text-start shadow-none",
-          // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41, SECRT-3154)
-          "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
+          // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
+          "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
           isMCPBlock && "hover:cursor-pointer",
           className,
         )}
@@ -157,7 +157,7 @@ function BlockCard({
                 "line-clamp-1 group-disabled:text-foreground-subtle",
               )}
             >
-              {highlightText(description, highlightedText)}
+              {highlightText(description, highlightedText, "small-bold-loose")}
             </Text>
           )}
         </div>
@@ -188,21 +188,21 @@ function BlockCard({
 const BlockSkeleton = () => {
   return (
     <Skeleton
-      // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+      // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
       className="flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]"
     >
       <div className="flex flex-1 flex-col items-start gap-0.5">
         <Skeleton
-          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
           className="h-[1.375rem] w-24 rounded bg-zinc-200"
         />
         <Skeleton
-          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
           className="h-5 w-32 rounded bg-zinc-200"
         />
       </div>
       <Skeleton
-        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
         className="h-7 w-7 rounded-[0.5rem] bg-zinc-200"
       />
     </Skeleton>

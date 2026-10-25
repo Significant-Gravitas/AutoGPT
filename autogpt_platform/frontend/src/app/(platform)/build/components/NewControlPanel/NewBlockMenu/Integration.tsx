@@ -28,7 +28,8 @@ export const Integration: IntegrationComponent = ({
     <Button
       className={cn(
         "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-surface-muted px-[0.875rem] py-[0.625rem] text-start shadow-none",
-        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-muted active:ring-1 active:ring-border-strong disabled:pointer-events-none",
+        // TODO(tokens): no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-muted active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
         className,
       )}
       {...rest}
@@ -85,28 +86,28 @@ const IntegrationSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
         "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]",
         className,
       )}
     >
       <Skeleton
-        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
         className="h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-zinc-200"
       />
       <div className="flex flex-1 flex-col items-start gap-0.5">
         <div className="flex w-full items-center justify-between">
           <Skeleton
-            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
             className="h-[1.375rem] w-24 rounded bg-zinc-200"
           />
           <Skeleton
-            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
             className="h-[1.375rem] w-[1.6875rem] rounded-[1.25rem] bg-zinc-200"
           />
         </div>
         <Skeleton
-          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41, SECRT-3154)
+          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
           className="h-5 w-[80%] rounded bg-zinc-200"
         />
       </div>

@@ -130,7 +130,7 @@ export const NodeCost = ({
 
   if (display.kind === "free") {
     return (
-      <div className="mr-3 flex items-center gap-1 text-body-lg font-light leading-6">
+      <div className="mr-3 flex items-center gap-1">
         <Icon icon={Coins02Icon} className="h-3 w-3" />
         <Text variant="small-medium">Free</Text>
       </div>
@@ -140,7 +140,7 @@ export const NodeCost = ({
   if (display.kind === "token-rate") {
     return (
       <div
-        className="mr-3 flex items-center gap-1 text-body-lg font-light leading-6"
+        className="mr-3 flex items-center gap-1"
         title={tokenRateTooltip(display)}
       >
         <Icon icon={Coins02Icon} className="h-3 w-3" />
@@ -155,7 +155,7 @@ export const NodeCost = ({
   if (display.kind === "by-usd") {
     return (
       <div
-        className="mr-3 flex items-center gap-1 text-body-lg font-light leading-6"
+        className="mr-3 flex items-center gap-1"
         title="Pay-as-you-go pricing. Final charge matches the provider's per-token rate plus a 1.5× margin."
       >
         <Icon icon={Coins02Icon} className="h-3 w-3" />
@@ -165,10 +165,7 @@ export const NodeCost = ({
   }
 
   return (
-    <div
-      className="mr-3 flex items-center gap-1 text-body-lg font-light leading-6"
-      title={display.note}
-    >
+    <div className="mr-3 flex items-center gap-1" title={display.note}>
       <Icon icon={Coins02Icon} className="h-3 w-3" />
       <Text variant="small-medium">{display.amountText}</Text>
       <Text variant="small">{` ${display.suffix}`}</Text>
