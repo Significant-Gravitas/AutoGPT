@@ -34,6 +34,55 @@ def test_tool_names_are_caught_but_not_the_english_words_they_resemble():
     ]
 
 
+def test_sdk_tool_names_that_are_not_words_are_caught():
+    assert technical_terms("I used Glob to find the drafts.", _TOOLS) == ["Glob"]
+    assert technical_terms("Grep found two TBD lines.", _TOOLS) == ["Grep"]
+
+
+def test_sdk_tool_names_that_are_words_are_caught_only_as_tools():
+    for reply, terms in [
+        ("I opened it with the Read tool.", ["Read"]),
+        ("Then `Edit` fixed the date.", ["Edit"]),
+        ("I handed it to the Task tool and a Bash tool.", ["Task", "Bash"]),
+        ("Read the brief, then Edit the post. Task list below.", []),
+        ("Write me a caption; it's a big bash on Friday.", []),
+        ("A glob of serum goes a long way.", []),
+    ]:
+        assert technical_terms(reply, _TOOLS) == terms
+
+
+def test_single_segment_paths_are_caught():
+    reply = "I put the copy in /tmp and the notes in ~/drafts, then ./out."
+    assert technical_terms(reply, _TOOLS) == ["/tmp", "~/drafts", "./out"]
+    assert technical_terms("Look in `/workspace` for it.", _TOOLS) == ["/workspace"]
+
+
+def test_slashes_in_prose_are_not_paths():
+    reply = "Open 24/7, and/or by appointment; sizes S/M/L at Rs 899 / 30ml."
+    assert technical_terms(reply, _TOOLS) == []
+
+
+def test_plain_file_names_are_caught():
+    reply = "I saved report.pdf, pitch-deck.pptx and logo.png for you."
+    assert technical_terms(reply, _TOOLS) == [
+        "report.pdf",
+        "pitch-deck.pptx",
+        "logo.png",
+    ]
+    assert technical_terms("Also budget.docx and orders.sql.", _TOOLS) == [
+        "budget.docx",
+        "orders.sql",
+    ]
+
+
+def test_document_kinds_in_prose_are_not_file_names():
+    reply = (
+        "Here is the PDF report and a PNG logo, e.g. for Instagram. "
+        "Shop at dewleaf.in, 9 a.m. to 6 p.m."
+    )
+    assert technical_terms(reply, _TOOLS) == []
+
+
 def test_file_paths_and_shell_commands_are_caught():
     reply = (
         "Patched ~/workspace/dewleaf/brief.md with sed -i 's/TBD/25 Nov/' and "

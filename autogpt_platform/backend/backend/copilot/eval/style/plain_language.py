@@ -13,19 +13,41 @@ from backend.copilot.tools import TOOL_REGISTRY
 
 from .models import ExpertSummary
 
-# SDK built-ins with compound names; "Read" or "Write" alone are English words.
-TOOL_NAMES = frozenset(TOOL_REGISTRY) | {"TodoWrite", "WebFetch", "WebSearch"}
+# SDK built-ins with compound names; the single-word ones are below.
+TOOL_NAMES = frozenset(TOOL_REGISTRY) | {
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
+    "MultiEdit",
+    "NotebookEdit",
+}
 
 _LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
 _CAPABILITY_ID = re.compile(r"\btool:[a-z_]+")
-# Starts a line, or follows a space, quote, bracket or inline-code backtick.
+# SDK built-ins named by one word. "Glob" and "Grep" are never English as
+# written; "Read", "Edit" and the rest are, so they count only when shown as a
+# tool: as inline code, or before "tool" ("the Read tool").
+_SDK_TOOL = re.compile(
+    r"\b(Glob|Grep)\b|`(Read|Write|Edit|Bash|Task)`"
+    r"|\b(Read|Write|Edit|Bash|Task)(?=\s+tool\b)"
+)
+# A path segment never ends in a dot, so a sentence's full stop stays out.
+_SEGMENT = r"\.?[\w-]+(?:\.[\w-]+)*"
+# Starts a line, or follows a space, quote, bracket or inline-code backtick:
+# two or more segments, one after ~ or ./, or a system root alone ("/tmp").
+# "and/or", "24/7" and "Rs 899 / 30ml" match none of these.
 _PATH = re.compile(
-    r"(?:(?<=[\s`'\"(])|^)(?:~|\.{1,2})?/[\w.-]+(?:/[\w.-]+)+", re.MULTILINE
+    rf"(?:(?<=[\s`'\"(])|^)(?:(?:~|\.{{1,2}})?/{_SEGMENT}(?:/{_SEGMENT})+"
+    rf"|(?:~|\.{{1,2}})/{_SEGMENT}"
+    r"|/(?:tmp|etc|home|usr|var|opt|root|bin|dev|mnt|srv|workspace)\b)",
+    re.MULTILINE,
 )
 # A script counts by its file name ("index.js"); "Next.js" or "Node.js" is a
-# product name, not a file.
+# product name, not a file. A document counts by its extension ("report.pdf");
+# "the PDF report" names a kind of file, not a file.
 _FILE_NAME = re.compile(
-    r"\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|log|xlsx)\b"
+    r"\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|log|sql|xml|ipynb"
+    r"|xlsx?|docx?|pptx?|pdf|png|jpe?g|gif|svg|webp|zip)\b"
     r"|\b[a-z0-9_][\w-]*\.(?:js|ts)\b"
 )
 _COMMAND = re.compile(
@@ -84,6 +106,8 @@ def technical_terms(text: str, tool_names: Iterable[str]) -> list[str]:
     """Every technical token in ``text``, in the order the checks run, once each."""
     remaining = _LINK.sub(_link_label, text)
     found: list[str] = []
+    found += [m[1] or m[2] or m[3] for m in _SDK_TOOL.finditer(remaining)]
+    remaining = _SDK_TOOL.sub(" ", remaining)
     for pattern in (_CAPABILITY_ID, _tool_pattern(tool_names), _PATH, _FILE_NAME):
         found += pattern.findall(remaining)
         remaining = pattern.sub(" ", remaining)
