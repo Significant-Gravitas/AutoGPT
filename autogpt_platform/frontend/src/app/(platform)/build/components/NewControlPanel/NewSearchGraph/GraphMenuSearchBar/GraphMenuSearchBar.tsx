@@ -45,7 +45,7 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
         onKeyDown={onKeyDown}
         placeholder={"Search this workflow for blocks, inputs, outputs..."}
         className={cn(
-          "m-0 border-none p-0 font-sans text-body-lg font-normal leading-6 text-zinc-800 shadow-none outline-none",
+          "m-0 border-none p-0 font-sans text-body-lg font-normal leading-6 text-foreground-emphasis shadow-none outline-none",
           "placeholder:text-zinc-400 focus:shadow-none focus:outline-none focus:ring-0",
         )}
         autoFocus
