@@ -179,3 +179,17 @@ async def test_the_cap_is_raised_and_stopped_for_the_owner_only(users):
     await stop_delegation_at_cap(thread, alice)
     row = await PrismaChatSession.prisma().find_unique(where={"id": thread})
     assert row is not None and row.metadata["delegation_cap_stopped"] is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raising_the_cap_lifts_an_earlier_stop(users):
+    """Stopped at the cap, then the thread landed again and the user raised
+    it: the thread runs on, so it no longer reads stopped."""
+    alice, _ = users
+    thread = await _session(alice, {"delegation_cap_usd": 2.0})
+    await stop_delegation_at_cap(thread, alice)
+
+    assert await raise_delegation_cap(thread, alice, 1.0, "q1") == 3.0
+
+    row = await PrismaChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None and "delegation_cap_stopped" not in row.metadata

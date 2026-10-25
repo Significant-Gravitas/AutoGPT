@@ -147,10 +147,12 @@ async def enforce_cap(
     cap = state.cap_usd
     if cap is None:
         return response
-    if state.stopped:
-        return _cap_reached(response, cap, actor)
+    # A question parked after a stop is the newer state: the thread landed on
+    # its cap again (the user wrote in it) and asks once more.
     if state.parked:
         return _awaiting_raise(response, cap, actor)
+    if state.stopped:
+        return _cap_reached(response, cap, actor)
     if response.cost_usd is None or response.cost_usd < cap:
         return response
     if response.status not in ("running", "queued"):

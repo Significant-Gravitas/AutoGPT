@@ -114,13 +114,15 @@ async def raise_delegation_cap(
     the cap after the call.
 
     ``question_key`` names the cap question being answered: a second raise for
-    the same question (a retried answer) leaves the cap as it is. Writes only
-    those keys, like ``set_session_pending_question``, so a turn in flight
-    cannot round-trip a stale copy of the metadata over them.
+    the same question (a retried answer) leaves the cap as it is. A raise
+    lifts an earlier stop at the cap, since the thread runs on from it. Writes
+    only those keys, like ``set_session_pending_question``, so a turn in
+    flight cannot round-trip a stale copy of the metadata over them.
     """
     await db.execute_raw_with_schema(
         'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
-        "COALESCE(\"metadata\", '{{}}'::jsonb) || jsonb_build_object("
+        "(COALESCE(\"metadata\", '{{}}'::jsonb) - 'delegation_cap_stopped') "
+        "|| jsonb_build_object("
         "'delegation_cap_usd', "
         "COALESCE((\"metadata\" ->> 'delegation_cap_usd')::float, 0) + $3::float, "
         "'delegation_cap_raised_for', $4::text) "

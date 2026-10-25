@@ -473,3 +473,17 @@ async def test_a_poll_reads_a_parked_cap_before_the_cost_log_catches_up(
     r = await _poll(monkeypatch, thread, running=False)
 
     assert (r.status, r.question) == ("needs_input", _CAP_QUESTION.text)
+
+
+@pytest.mark.asyncio
+async def test_a_question_parked_after_a_stop_is_what_the_thread_waits_on(
+    monkeypatch, settings_db, cancel, parked
+):
+    """The user chose Stop, later wrote in the expert's thread, and the turn
+    landed on the cap again and asked: the question is the current state."""
+    thread = _thread(pending_question=_CAP_QUESTION, delegation_cap_stopped=True)
+    thread.metadata.delegation_cap_usd = 2.0
+
+    r = await _poll(monkeypatch, thread, running=False)
+
+    assert (r.status, r.question) == ("needs_input", _CAP_QUESTION.text)
