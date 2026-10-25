@@ -3291,7 +3291,9 @@ class Scheduler(AppService):
                 )
 
     def cleanup(self):
-        if self._scheduler is not None:
+        # `run_service` builds the scheduler before it starts it, and a stopped
+        # scheduler's `shutdown()` raises.
+        if self._scheduler is not None and self._scheduler.running:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
 
