@@ -10,7 +10,11 @@ const meta: Meta<typeof Carousel> = {
 export default meta;
 type Story = StoryObj<typeof Carousel>;
 
-function Slides({ count }: { count: number }) {
+interface Props {
+  count: number;
+}
+
+function Slides({ count }: Props) {
   return (
     <CarouselContent>
       {Array.from({ length: count }, (_, i) => (

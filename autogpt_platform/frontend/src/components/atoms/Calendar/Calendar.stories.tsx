@@ -11,7 +11,11 @@ const meta: Meta<typeof Calendar> = {
 export default meta;
 type Story = StoryObj<typeof Calendar>;
 
-function Single({ initial }: { initial?: Date }) {
+interface Props {
+  initial?: Date;
+}
+
+function Single({ initial }: Props) {
   const [selected, setSelected] = useState<Date | undefined>(initial);
   return (
     <Calendar
