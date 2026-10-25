@@ -99,6 +99,7 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
+  "body-semibold": "font-sans text-body font-semibold text-foreground-base",
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-medium-tight":
     "font-sans text-body-lg font-medium leading-6 text-foreground-base",
@@ -177,6 +178,7 @@ export const variantElementMap: Record<Variant, As> = {
   "caption-sm-mono": "span",
   "small-loose": "p",
   "small-medium-loose": "p",
+  "body-semibold": "p",
   "large-medium-tight": "p",
   "lg-semibold": "h3",
   "2xl-bold": "div",
