@@ -54,7 +54,7 @@ export const NewSaveControl = () => {
         data-id="save-control-popover-content"
         className="w-96 max-w-[400px] rounded-xlarge"
       >
-        <Card className="border-none">
+        <Card className="border-none dark:bg-slate-900">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
@@ -116,7 +116,7 @@ export const NewSaveControl = () => {
                   variant="primary"
                   type="submit"
                   size="small"
-                  className="w-full"
+                  className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
                   disabled={isSaving}

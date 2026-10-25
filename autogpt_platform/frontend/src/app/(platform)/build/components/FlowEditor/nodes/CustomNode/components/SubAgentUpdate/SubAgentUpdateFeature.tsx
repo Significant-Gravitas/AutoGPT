@@ -84,14 +84,21 @@ function SubAgentUpdateAvailableBar({
   onUpdate,
 }: SubAgentUpdateAvailableBarProps): React.ReactElement {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-info-surface px-3 py-2">
+    <div
+      // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-blue-900/30 #1E3A8A
+      className="flex items-center justify-between gap-2 rounded-t-xl bg-info-surface px-3 py-2 dark:bg-blue-900/30"
+    >
       <div className="flex items-center gap-2">
-        <Icon icon={ArrowUp02Icon} className="h-4 w-4 text-info-foreground" />
+        <Icon
+          icon={ArrowUp02Icon}
+          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-blue-400 #60A5FA
+          className="h-4 w-4 text-info-foreground dark:text-blue-400"
+        />
         <Text
           variant="body-tight"
           as="span"
-          // TODO(tokens): no exact role: text-blue-700 #1D4ED8
-          className="text-blue-700"
+          // TODO(tokens): no exact role: text-blue-700 #1D4ED8; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-blue-300 #93C5FD
+          className="text-blue-700 dark:text-blue-300"
         >
           Update available (v{currentVersion} → v{latestVersion})
         </Text>

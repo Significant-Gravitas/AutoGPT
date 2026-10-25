@@ -85,14 +85,23 @@ export function ResolutionModeBar({
   };
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-warning-surface px-3 py-2">
+    <div
+      // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-amber-900/30 #78350F
+      className="flex items-center justify-between gap-2 rounded-t-xl bg-warning-surface px-3 py-2 dark:bg-amber-900/30"
+    >
       <div className="flex items-center gap-2">
         <Icon
           icon={Alert01Icon}
-          // TODO(tokens): no exact role: text-amber-600 #D97706
-          className="h-4 w-4 text-amber-600"
+          // TODO(tokens): no exact role: text-amber-600 #D97706; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-400 #FBBF24
+          className="h-4 w-4 text-amber-600 dark:text-amber-400"
         />
-        <Text variant="body-tight" tone="warning" as="span">
+        <Text
+          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-300 #FCD34D
+          className="dark:text-amber-300"
+          variant="body-tight"
+          tone="warning"
+          as="span"
+        >
           Remove incompatible connections
         </Text>
         <Tooltip>
