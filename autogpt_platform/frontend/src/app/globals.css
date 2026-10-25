@@ -184,9 +184,7 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Google Drive Picker: ensure picker appears above dialogs and can receive
-   clicks. The picker is Google's own markup, so it has no slot; !important
-   beats the z-index and pointer-events Google's script writes inline. */
+/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
 [class*="picker-dialog"] {
   z-index: 10000 !important;
   pointer-events: auto !important;
@@ -200,6 +198,11 @@ body[data-google-picker-open="true"] [data-slot="dialog-overlay"],
 body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   z-index: 1 !important;
   pointer-events: none !important;
+}
+
+/* Streamdown external link dialog: "Open link" button */
+[data-streamdown="link-safety-modal"] button:last-of-type {
+  color: white;
 }
 
 /* Markdown headings: rehype-autolink-headings wraps each heading's text in an

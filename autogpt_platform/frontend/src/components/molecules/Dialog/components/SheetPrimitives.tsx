@@ -9,11 +9,16 @@ import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
 
+// With `asChild` the child is the trigger element and keeps its own slot.
 const SheetTrigger = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Trigger>
 >((props, ref) => (
-  <SheetPrimitive.Trigger ref={ref} data-slot="sheet-trigger" {...props} />
+  <SheetPrimitive.Trigger
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "sheet-trigger" })}
+    {...props}
+  />
 ));
 SheetTrigger.displayName = SheetPrimitive.Trigger.displayName;
 
@@ -80,7 +85,9 @@ const SheetContent = React.forwardRef<
         className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity data-[state=open]:bg-neutral-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none dark:ring-offset-neutral-950 dark:data-[state=open]:bg-neutral-800 dark:focus:ring-neutral-300"
       >
         <Cross2Icon data-slot="sheet-close-icon" className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span data-slot="sheet-close-label" className="sr-only">
+          Close
+        </span>
       </SheetPrimitive.Close>
       {children}
     </SheetPrimitive.Content>

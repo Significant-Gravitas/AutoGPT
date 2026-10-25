@@ -8,11 +8,16 @@ import { cn } from "@/lib/utils";
 
 const Dialog = DialogPrimitive.Root;
 
+// With `asChild` the child is the trigger element and keeps its own slot.
 const DialogTrigger = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Trigger>
 >((props, ref) => (
-  <DialogPrimitive.Trigger ref={ref} data-slot="dialog-trigger" {...props} />
+  <DialogPrimitive.Trigger
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "dialog-trigger" })}
+    {...props}
+  />
 ));
 DialogTrigger.displayName = DialogPrimitive.Trigger.displayName;
 
@@ -129,7 +134,9 @@ const DialogContent = React.forwardRef<
           className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity data-[state=open]:bg-neutral-100 data-[state=open]:text-neutral-500 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none dark:ring-offset-neutral-950 dark:data-[state=open]:bg-neutral-800 dark:data-[state=open]:text-neutral-400 dark:focus:ring-neutral-300"
         >
           <Cross2Icon data-slot="dialog-close-icon" className="h-4 w-4" />
-          <span className="sr-only">Close</span>
+          <span data-slot="dialog-close-label" className="sr-only">
+            Close
+          </span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>

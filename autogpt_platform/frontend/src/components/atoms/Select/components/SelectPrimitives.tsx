@@ -13,11 +13,16 @@ import { cn } from "@/lib/utils";
 
 const Select = SelectPrimitive.Root;
 
+// With `asChild` the child is the element and keeps its own slot.
 const SelectGroup = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Group>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Group>
 >((props, ref) => (
-  <SelectPrimitive.Group ref={ref} data-slot="select-group" {...props} />
+  <SelectPrimitive.Group
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "select-group" })}
+    {...props}
+  />
 ));
 SelectGroup.displayName = SelectPrimitive.Group.displayName;
 
@@ -25,7 +30,11 @@ const SelectValue = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Value>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Value>
 >((props, ref) => (
-  <SelectPrimitive.Value ref={ref} data-slot="select-value" {...props} />
+  <SelectPrimitive.Value
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "select-value" })}
+    {...props}
+  />
 ));
 SelectValue.displayName = SelectPrimitive.Value.displayName;
 
@@ -66,7 +75,7 @@ const SelectScrollUpButton = React.forwardRef<
     )}
     {...props}
   >
-    <ChevronUpIcon />
+    <ChevronUpIcon data-slot="select-scroll-up-icon" />
   </SelectPrimitive.ScrollUpButton>
 ));
 SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
@@ -84,7 +93,7 @@ const SelectScrollDownButton = React.forwardRef<
     )}
     {...props}
   >
-    <ChevronDownIcon />
+    <ChevronDownIcon data-slot="select-scroll-down-icon" />
   </SelectPrimitive.ScrollDownButton>
 ));
 SelectScrollDownButton.displayName =
@@ -146,7 +155,7 @@ const SelectItem = React.forwardRef<
       className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center"
     >
       <SelectPrimitive.ItemIndicator data-slot="select-item-indicator">
-        <CheckIcon className="h-4 w-4" />
+        <CheckIcon data-slot="select-item-check-icon" className="h-4 w-4" />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText data-slot="select-item-text">
