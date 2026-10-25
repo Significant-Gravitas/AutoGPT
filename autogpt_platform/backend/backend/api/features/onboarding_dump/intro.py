@@ -187,8 +187,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             role="user", content=f"{_integrations_block()}{instructions}{text}"
         ),
     ]
-    greeting: str | None = None
-    prompts: list[SuggestedPrompt] = []
+    best: tuple[str, list[SuggestedPrompt]] | None = None
     # Two attempts: at temperature 0.6 an occasional generation comes back
     # truncated, malformed, without a greeting or without the integrations
     # of enough prompts, and one retry is far cheaper than shipping the
@@ -196,25 +195,55 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     # attempt, and greeting and prompts always come from the same one.
     for attempt in range(2):
         generated = await _generate(client, messages, attempt)
-        candidate = _greeting_of(generated)
-        if generated is None or candidate is None:
+        greeting = _greeting_of(generated)
+        if generated is None or greeting is None:
             continue
-        candidate_prompts = _parse_prompts(generated.get("prompts"))
-        if greeting is None or len(candidate_prompts) > len(prompts):
-            greeting, prompts = candidate, candidate_prompts
-        if len(prompts) >= MIN_PROMPTS:
+        parsed = _parse_prompts(generated.get("prompts"))
+        if best is None or _rank(parsed) > _rank(best[1]):
+            best = (greeting, parsed)
+        if len(_declared(best[1])) >= MIN_PROMPTS:
             break
         logger.warning(
             "Brain dump greeting: too few prompts with integrations (attempt %s)",
             attempt + 1,
         )
-    if greeting is None:
+    if best is None:
         return fallback_intro(text)
-    if len(prompts) < MIN_PROMPTS:
-        # A greeting with two suggestions under it looks broken; the
-        # generic set is better than a half-empty one.
-        return greeting, fallback_prompts()
-    return greeting, prompts[:MAX_PROMPTS]
+    greeting, parsed = best
+    return greeting, _usable_prompts(parsed)
+
+
+def _usable_prompts(parsed: list[SuggestedPrompt]) -> list[SuggestedPrompt]:
+    """The prompts to show: the ones that declare their integrations; or,
+    when the model left that out of too many, all of its prompts, so a
+    model that ignores the field costs the labels' precision rather than
+    every new user their own tasks (each label still reads the task's
+    text); or the generic set, when there are too few to look whole."""
+    declared = _declared(parsed)
+    if len(declared) >= MIN_PROMPTS:
+        return declared[:MAX_PROMPTS]
+    if len(parsed) >= MIN_PROMPTS:
+        logger.warning(
+            "Brain dump greeting: the model left out integrations on "
+            "%s of %s prompts; keeping them, labelled from their text",
+            len(parsed) - len(declared),
+            len(parsed),
+        )
+        return parsed[:MAX_PROMPTS]
+    # A greeting with two suggestions under it looks broken; the generic
+    # set is better than a half-empty one.
+    return fallback_prompts()
+
+
+def _declared(prompts: list[SuggestedPrompt]) -> list[SuggestedPrompt]:
+    return [prompt for prompt in prompts if prompt.integrations is not None]
+
+
+def _rank(prompts: list[SuggestedPrompt]) -> tuple[bool, int, int]:
+    """Better attempts first: enough declared prompts, then more of them,
+    then more prompts at all."""
+    declared = len(_declared(prompts))
+    return declared >= MIN_PROMPTS, declared, len(prompts)
 
 
 def _greeting_of(data: dict | None) -> str | None:
@@ -293,11 +322,9 @@ async def _fetch_langfuse_prompt() -> str | None:
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
-    """The usable prompts in ``raw``.
-
-    A prompt that does not say what it connects to is dropped: stored
-    without it, nothing could tell the user it needs a service we lack.
-    """
+    """The usable prompts in ``raw``. One that does not say what it
+    connects to keeps ``integrations=None`` ("not declared"), which the
+    caller prefers to avoid (``_usable_prompts``)."""
     if not isinstance(raw, list):
         return []
     prompts = []
@@ -310,8 +337,6 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
         if not (isinstance(prompt, str) and prompt.strip()):
             continue
         integrations = _parse_integrations(item.get("integrations"))
-        if integrations is None:
-            continue
         icon = item.get("icon")
         prompts.append(
             SuggestedPrompt(

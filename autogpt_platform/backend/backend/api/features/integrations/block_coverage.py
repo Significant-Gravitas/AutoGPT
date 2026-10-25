@@ -29,14 +29,19 @@ class ProviderBlocks(BaseModel):
     auth_types: frozenset[str] = frozenset()
     """Credential types accepted by the provider's blocks that can run."""
     products: frozenset[str] = frozenset()
-    """Every word of its blocks' names, singular: what the blocks cover."""
+    """Every word of the names of its blocks that can run, singular: what
+    they cover. A disabled block covers nothing ("GitHub Checks" with its
+    check-run blocks off)."""
+    has_blocks: bool = False
+    """Whether it has any block at all, enabled or not: a provider whose
+    blocks are all off covers nothing, unlike one that never had blocks."""
 
 
 @cached(ttl_seconds=3600)
 def blocks_by_provider() -> dict[str, ProviderBlocks]:
     """Each provider a block takes credentials for. Loads the blocks."""
     types: dict[str, set[str]] = defaultdict(set)
-    words: dict[str, set[str]] = defaultdict(set)
+    words: dict[str, set[str]] = {}
     for block_id, block_cls in load_all_blocks().items():
         try:
             block = block_cls()
@@ -48,12 +53,16 @@ def blocks_by_provider() -> dict[str, ProviderBlocks]:
         for info in infos:
             for provider, accepted in _types_by_provider(info):
                 key = provider_key(provider)
+                words.setdefault(key, set())
+                if block.disabled:  # a block that cannot run covers nothing
+                    continue
                 words[key].update(name_words)
-                if not block.disabled:  # a block that cannot run takes nothing
-                    types[key].update(accepted)
+                types[key].update(accepted)
     return {
         key: ProviderBlocks(
-            auth_types=frozenset(types[key]), products=frozenset(words[key])
+            auth_types=frozenset(types[key]),
+            products=frozenset(words[key]),
+            has_blocks=True,
         )
         for key in words
     }

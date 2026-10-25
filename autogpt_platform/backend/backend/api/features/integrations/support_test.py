@@ -124,13 +124,13 @@ def test_an_oauth_only_provider_needs_its_app_configured(mocker: MockerFixture):
     """Google declares OAuth even where no app is set up; it only counts once
     a user here could actually finish the sign-in."""
     _without_oauth_apps(mocker)
-    assert support.find_connectable("Google Sheets") is None
+    assert support.find_connectable("Google") is None
     assert support.find_connectable("Reddit") is None
 
     mocker.patch.object(
         support, "oauth_client_credentials", return_value=("id", "secret")
     )
-    found = support.find_connectable("Google Sheets")
+    found = support.find_connectable("Google")
     assert found is not None and found.key == "google"
 
 
@@ -185,9 +185,11 @@ def test_a_credential_type_counts_only_from_a_block_that_can_run(
             block_coverage, "load_all_blocks", return_value={"off": block(True)}
         )
         scan.cache_clear()
-        # The disabled block still says what Acme covers, not how to sign in.
+        # A disabled block offers neither a sign-in nor what it would cover,
+        # though Acme still counts as a provider with blocks.
         assert scan()["acme_legacy"].auth_types == frozenset()
-        assert scan()["acme_legacy"].products == frozenset({"acme", "send"})
+        assert scan()["acme_legacy"].products == frozenset()
+        assert scan()["acme_legacy"].has_blocks
     finally:
         scan.cache_clear()
 
@@ -216,9 +218,13 @@ GOOGLE = ConnectableService(
     name="Google",
     products=frozenset({"google", "sheet", "doc", "drive", "calendar", "gmail"}),
     product_names=frozenset({"gmail", "drive", "calendar", "sheets"}),
+    has_blocks=True,
 )
 NOTION = ConnectableService(
-    key="notion", name="Notion", products=frozenset({"notion", "page", "database"})
+    key="notion",
+    name="Notion",
+    products=frozenset({"notion", "page", "database"}),
+    has_blocks=True,
 )
 CANVA_MCP = ConnectableService(key="canva", name="Canva")  # no blocks
 
@@ -253,11 +259,17 @@ def test_a_vendors_name_counts_only_with_products_its_blocks_cover(
     assert (found.key if found else None) == key
 
 
-def test_the_live_registry_knows_what_googles_blocks_cover(mocker: MockerFixture):
+def test_the_live_registry_counts_only_what_enabled_blocks_cover(
+    mocker: MockerFixture,
+):
+    """GitHub's issue blocks run; its two check-run blocks are disabled
+    (blocks/github/checks.py), so "GitHub Checks" is not something it can
+    do here."""
     mocker.patch.object(support, "oauth_client_credentials", return_value=("i", "s"))
 
-    assert support.find_connectable("Google Sheets").key == "google"
-    assert support.find_connectable("Gmail").key == "google"
+    assert support.find_connectable("GitHub Issues").key == "github"
+    assert support.find_connectable("GitHub Checks") is None
+    assert support.find_connectable("Gmail").key == "google"  # its description
     assert support.find_connectable("Google Analytics") is None
     assert support.find_connectable("Slack Huddles") is None
     # Block names lead with verbs too (BanSubredditUserBlock): not products.
@@ -269,7 +281,7 @@ def test_the_live_registry_knows_what_googles_blocks_cover(mocker: MockerFixture
     "text, expected",
     [
         ("Thank each new follower on Twitter", ["Twitter"]),
-        ("Log each order in Google Sheets", ["Google"]),
+        ("Log each order in Google Sheets", ["Google Sheets"]),
         ("Post the weekly update to Reddit", ["Reddit"]),
         ("Open an issue on GitHub for each bug", ["GitHub"]),  # as written
         ("Work out the notion of a perfect sticker", []),  # a word, not Notion
@@ -289,5 +301,29 @@ def test_a_task_naming_a_service_we_know_but_cannot_connect_is_labelled(
         for s in support.connectable_services()
         if s.key not in {"github", "notion", "reddit"}
     ]
+
+    assert support.unsupported_in_task([], text, services) == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Track weekly traffic in Google Analytics", ["Google Analytics"]),
+        ("Block focus time in Notion Calendar", ["Notion Calendar"]),
+        ("Pull rankings from Google Search Console", ["Google Search Console"]),
+        ("Log each order in Google Sheets", []),
+        ("Add To Notion And Google Sheets", []),  # Title Case, not products
+        ("Post the update to Notion every Monday", []),
+        ("Write the plan in Notion Monday morning", []),
+        ("Ping Me When A New Notion Page Goes Live", []),  # page is Notion's
+        ("Open The Google Analytics Dashboard", ["Google Analytics Dashboard"]),
+    ],
+)
+def test_a_vendor_in_task_text_is_read_with_its_product(
+    mocker: MockerFixture, text: str, expected: list[str]
+):
+    """With ``integrations: []``, "Google Analytics" must not pass as the
+    connectable Google: the words naming its product are read with it."""
+    services = [GOOGLE, NOTION]
 
     assert support.unsupported_in_task([], text, services) == expected

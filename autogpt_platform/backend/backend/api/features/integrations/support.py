@@ -60,6 +60,20 @@ KNOWN_GAPS = (
     "Etsy",
 )
 
+# Capitalised words after a vendor's name that do not name its product: the
+# small words of a Title Case title ("Add To Notion And Google Sheets") and
+# days and months ("post in Slack Monday morning").
+_NOT_PRODUCT_WORDS = frozenset(
+    {
+        *("a", "an", "and", "as", "at", "by", "each", "every", "for", "from"),
+        *("in", "into", "of", "on", "or", "the", "then", "to", "via", "with"),
+        *("my", "our", "your", "is", "are", "if", "when", "daily", "weekly"),
+        *("monday", "tuesday", "wednesday", "thursday", "friday"),
+        *("saturday", "sunday", "today", "tomorrow"),
+        *("january", "february", "march", "april", "may", "june", "july"),
+        *("august", "september", "october", "november", "december"),
+    }
+)
 # Words for how a vendor is reached rather than what it does: "Printify API"
 # is Printify.
 _ACCESS_WORDS = frozenset(
@@ -74,9 +88,10 @@ class ConnectableService(BaseModel):
     name: str
     description: str | None = None
     products: frozenset[str] = frozenset()
-    """What its blocks cover (``block_coverage``); empty for a service with
-    no blocks, such as an MCP catalog server, which is the vendor's whole
-    surface."""
+    """What its blocks that can run cover (``block_coverage``)."""
+    has_blocks: bool = False
+    """False for a service with no blocks, such as an MCP catalog server,
+    which is the vendor's whole surface."""
     product_names: frozenset[str] = frozenset()
     """Products its description names ("Gmail, Drive, Calendar, Sheets"),
     normalized: each is the provider on its own."""
@@ -101,6 +116,7 @@ def connectable_services() -> list[ConnectableService]:
                 name=name.replace("_", " ").title(),
                 description=description,
                 products=blocks.products,
+                has_blocks=blocks.has_blocks,
                 product_names=described_products(description),
             )
         )
@@ -171,8 +187,12 @@ def unsupported_in_task(
     vendor on the platform (connectable here or not). The text is read
     whatever the declaration says, since the model that wrote it can leave
     a tool out (``[]`` on a Shopify task)."""
+    services = connectable_services() if services is None else services
     declared = [canonical_name(name) for name in integrations or []]
-    named = [*_known_gaps_in(text, capitalised=True), *_vendors_named_in(text)]
+    named = [
+        *_known_gaps_in(text, capitalised=True),
+        *_unconnectable_vendors_in(text, services),
+    ]
     return unsupported_services([*declared, *named], services)
 
 
@@ -190,10 +210,22 @@ def described_products(description: str | None) -> frozenset[str]:
     return frozenset(_normalize(item) for item in items)
 
 
-def _vendors_named_in(text: str) -> list[str]:
-    """Each vendor the platform knows that ``text`` names, as written.
-    Only a capitalised mention counts, so "the notion of" is not Notion."""
-    return [match.group(0) for match in _vendor_pattern().finditer(text)]
+def _unconnectable_vendors_in(
+    text: str, services: list[ConnectableService]
+) -> list[str]:
+    """Each vendor the platform knows that ``text`` names, with its product,
+    as written, when that cannot be connected here. Only a capitalised
+    mention counts, so "the notion of" is not Notion. The first word after
+    the vendor is its product ("Google Analytics"); later ones may be the
+    sentence going on in a Title Case title ("Printify Product Goes Live"),
+    so they are kept in the name but not judged."""
+    found = []
+    for match in _vendor_pattern().finditer(text):
+        mention = match.group(0)
+        head = mention.split()[: len(match.group("vendor").split()) + 1]
+        if _match(" ".join(head), services) is None:
+            found.append(mention)
+    return found
 
 
 @cached(ttl_seconds=3600)
@@ -216,7 +248,12 @@ def _vendor_pattern() -> re.Pattern[str]:
     alternatives = "|".join(
         re.escape(name) for name in sorted(names - {""}, key=len, reverse=True)
     )
-    return re.compile(rf"\b(?=[A-Z])(?i:{alternatives})\b")
+    joiners = "|".join(sorted(_NOT_PRODUCT_WORDS))
+    # The vendor, then up to two capitalised words naming its product
+    # ("Google Analytics", "Google Search Console"), so the whole name is
+    # checked: "Google" alone would pass as supported.
+    product = rf"(?:\s+(?!(?i:{joiners})\b)[A-Z][A-Za-z0-9]*){{0,2}}"
+    return re.compile(rf"\b(?=[A-Z])(?P<vendor>(?i:{alternatives}))\b{product}")
 
 
 def canonical_name(name: str) -> str:
@@ -263,7 +300,7 @@ def _match(name: str, services: list[ConnectableService]) -> ConnectableService 
 
 def _covers(service: ConnectableService, words: list[str]) -> bool:
     """Whether the words after a vendor's name are products it covers."""
-    if not service.products:
+    if not service.has_blocks:
         return True
     return all(
         word in _ACCESS_WORDS or singular(word) in service.products for word in words

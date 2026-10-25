@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
+from backend.api.features.integrations import support
 from backend.api.features.onboarding_dump import intro
+from backend.api.features.onboarding_dump.providers import label_support
 
 TRANSCRIPT = "I run a bakery and want the weekly order emails handled."
 
@@ -174,25 +176,50 @@ async def test_a_prompt_that_does_not_say_what_it_connects_to_is_never_kept(
 
 
 @pytest.mark.asyncio
-async def test_without_integrations_twice_the_generic_prompts_are_used(
-    client: MagicMock,
+async def test_a_model_that_ignores_integrations_keeps_the_users_own_tasks(
+    client: MagicMock, mocker: MockerFixture
 ):
-    named = {"title": "List each sticker on Big Cartel", "prompt": "Do it."}
+    """If the production model leaves the field out every time, the user
+    keeps their own tasks rather than the generic set: they are asked for
+    once more, kept as "not declared", and labelled from their text."""
+    mocker.patch.object(
+        support,
+        "connectable_services",
+        return_value=[support.ConnectableService(key="printify", name="Printify")],
+    )
+    named = {"title": "List each sticker on Shopify", "prompt": "Do it."}
     client.chat.completions.create.return_value = _generation_with([named] * 5)
 
     greeting, prompts = await intro.generate_intro(TRANSCRIPT)
 
+    assert client.chat.completions.create.await_count == 2
     assert greeting == "You sell stickers."
-    assert prompts == intro.fallback_prompts()
-    assert all(p.integrations is not None for p in prompts)
+    assert [p.title for p in prompts] == ["List each sticker on Shopify"] * 5
+    assert all(p.integrations is None for p in prompts)
+    assert [p.unsupported for p in label_support(prompts)] == [["Shopify"]] * 5
+
+
+@pytest.mark.asyncio
+async def test_prompts_that_declare_their_integrations_keep_them_beside_ones_that_do_not(
+    client: MagicMock,
+):
+    named = {"title": "List each sticker", "prompt": "Do it."}
+    client.chat.completions.create.return_value = _generation_with(
+        [{**named, "integrations": ["printify"]}] * 3 + [named] * 2
+    )
+
+    _, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert [p.integrations for p in prompts] == [["printify"]] * 3 + [None] * 2
 
 
 @pytest.mark.parametrize("unreadable", [[7], [""], [None, "  "]])
 def test_integrations_with_no_usable_name_say_nothing(unreadable: list):
     """Only an empty array means "no sign-in"; one whose every entry is
-    unusable stood for some service, so the prompt is not kept."""
+    unusable stood for some service, so it counts as not declared."""
     named = {"title": "List each sticker", "prompt": "Do it."}
-    assert intro._parse_prompts([{**named, "integrations": unreadable}]) == []
+    [parsed] = intro._parse_prompts([{**named, "integrations": unreadable}])
+    assert parsed.integrations is None
     assert intro._parse_prompts([{**named, "integrations": []}])[0].integrations == []
 
 
