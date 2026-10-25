@@ -31,11 +31,15 @@ type StepLike = {
   when?: { show?: () => void; hide?: () => void };
 };
 
+// The steps keep their edge subscription and mouseup handler on the current
+// step, so it must be the same object on every call for hide to remove them.
+const currentStep: Record<string, unknown> = {};
+
 const tour = {
   next: vi.fn(),
   back: vi.fn(),
   show: vi.fn(),
-  getCurrentStep: () => ({}),
+  getCurrentStep: () => currentStep,
 };
 
 function mount(steps: StepLike[], id: string) {
@@ -52,6 +56,7 @@ function classes(selector: string) {
 describe("tutorial requirement and connection status", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    for (const key of Object.keys(currentStep)) delete currentStep[key];
     nodes.first = null;
     nodes.second = null;
   });
@@ -129,15 +134,19 @@ describe("tutorial requirement and connection status", () => {
     } as never);
     const steps = createConnectionSteps(tour) as StepLike[];
 
-    mount(steps, "connect-blocks-output").when?.show?.();
+    const output = mount(steps, "connect-blocks-output");
+    output.when?.show?.();
     expect(classes("#connection-status-output")).toEqual(
       expect.arrayContaining(["bg-success-surface", "text-success"]),
     );
+    output.when?.hide?.();
 
-    mount(steps, "connect-blocks-input").when?.show?.();
+    const input = mount(steps, "connect-blocks-input");
+    input.when?.show?.();
     expect(classes("#connection-status-input")).toEqual(
       expect.arrayContaining(["bg-success-surface", "text-success"]),
     );
+    input.when?.hide?.();
   });
 
   it("turns both connection steps green when the edge is drawn after they show", () => {
@@ -149,7 +158,8 @@ describe("tutorial requirement and connection status", () => {
     ]) {
       useEdgeStore.setState({ edges: [] });
       tour.next.mockClear();
-      mount(steps, id).when?.show?.();
+      const step = mount(steps, id);
+      step.when?.show?.();
       expect(classes(status)).toEqual(
         expect.arrayContaining(["bg-warning-surface", "text-amber-600"]),
       );
@@ -162,6 +172,7 @@ describe("tutorial requirement and connection status", () => {
       );
       vi.advanceTimersByTime(500);
       expect(tour.next).toHaveBeenCalledTimes(1);
+      step.when?.hide?.();
     }
   });
 });
