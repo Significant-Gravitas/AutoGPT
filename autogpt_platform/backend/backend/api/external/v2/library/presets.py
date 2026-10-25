@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
+from backend.api.features.experts import experts_db
 from backend.api.features.library import db as library_db
 from backend.api.features.library import triggers
 from backend.api.features.library.model import (
@@ -124,6 +125,11 @@ async def create_preset(
             credentials=request.credentials_inputs,
             is_active=request.is_active,
         ),
+        # As on the internal routes: a graph one hired expert installed runs as
+        # that expert's, under its budget and pause.
+        expert_id=await experts_db.resolve_expert_for_graph(
+            auth.user_id, request.graph_id
+        ),
     )
     return AgentPreset.from_internal(preset)
 
@@ -161,6 +167,9 @@ async def setup_trigger(
         description=request.description,
         trigger_config=request.trigger_config,
         agent_credentials=request.credentials_inputs,
+        expert_id=await experts_db.resolve_expert_for_graph(
+            auth.user_id, request.graph_id
+        ),
     )
     return AgentPreset.from_internal(preset)
 

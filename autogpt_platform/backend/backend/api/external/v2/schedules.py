@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
+from backend.api.features.experts import experts_db
 from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.data import graph as graph_db
 from backend.data.tenancy import get_user_team_ids
@@ -137,6 +138,9 @@ async def create_schedule(
         user_timezone=user_timezone,
         organization_id=auth.organization_id,
         team_id=auth.team_id,
+        # As on the internal route: a graph one hired expert installed runs as
+        # that expert's, under its budget and pause.
+        expert_id=await experts_db.resolve_expert_for_graph(auth.user_id, graph_id),
     )
 
     return AgentRunSchedule.from_internal(result)

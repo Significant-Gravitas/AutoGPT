@@ -20,6 +20,7 @@ from backend.util.exceptions import ConflictError, ExpertRunPausedError
 
 from ..models import (
     AgentPreset,
+    AgentPresetCreateRequest,
     AgentPresetRunRequest,
     AgentPresetUpdateRequest,
     AgentTriggerSetupRequest,
@@ -175,6 +176,52 @@ async def test_a_trigger_s_settings_are_not_checked_as_graph_inputs(
     assert add.await_args.kwargs["inputs"]["secret_token"] == TRIGGER_SECRET
 
 
+@pytest.mark.parametrize("route", ["create", "setup-trigger"])
+async def test_a_preset_for_a_graph_a_hired_expert_installed_is_that_expert_s(
+    mocker: pytest_mock.MockFixture, route: str
+):
+    """As on the internal routes, so its runs meet the expert's budget and pause."""
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value="expert-1",
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(input_schema={"properties": {}}),
+    )
+    save = mocker.patch(
+        (
+            "backend.api.features.library.db.create_preset"
+            if route == "create"
+            else "backend.api.features.library.triggers.setup_triggered_preset"
+        ),
+        new_callable=AsyncMock,
+        return_value=_preset(),
+    )
+
+    if route == "create":
+        await presets.create_preset(
+            request=AgentPresetCreateRequest(
+                name="Preset", graph_id="graph-1", graph_version=1
+            ),
+            auth=_key(),
+        )
+    else:
+        await presets.setup_trigger(
+            request=AgentTriggerSetupRequest(
+                name="On delivery",
+                graph_id="graph-1",
+                graph_version=1,
+                trigger_config={},
+            ),
+            auth=_key(),
+        )
+
+    assert save.await_args.kwargs["expert_id"] == "expert-1"
+
+
 def test_the_hidden_settings_are_every_trigger_block_s_secret_inputs():
     """Read from the blocks, so a new trigger's secret is hidden without a list."""
     assert {"secret_token", "signing_secret"} <= presets.secret_trigger_inputs()
@@ -218,6 +265,11 @@ async def test_setting_up_a_trigger_returns_its_secret_settings_once(
 ):
     mocker.patch(
         "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=Mock()
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value=None,
     )
     mocker.patch(
         "backend.api.features.library.triggers.setup_triggered_preset",

@@ -128,3 +128,33 @@ async def test_a_schedule_without_a_version_runs_the_active_one(
         )
 
     assert get_graph.await_args.kwargs["version"] == scheduled
+
+
+async def test_a_schedule_for_a_graph_a_hired_expert_installed_is_that_expert_s(
+    mocker: pytest_mock.MockFixture, scheduler: Mock
+) -> None:
+    """As on the internal route, so its runs meet the expert's budget and pause."""
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value="expert-1",
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(input_schema={"properties": {}}, version=1),
+    )
+    scheduler.add_execution_schedule = AsyncMock(return_value=Mock())
+
+    await create_schedule(
+        request=AgentRunScheduleCreateRequest(
+            graph_id="graph-1",
+            graph_version=1,
+            name="daily",
+            cron="0 9 * * *",
+            timezone="Europe/Paris",
+        ),
+        auth=_AUTH,
+    )
+
+    assert scheduler.add_execution_schedule.await_args.kwargs["expert_id"] == "expert-1"
