@@ -109,6 +109,13 @@ const COLOR_ROLES = [
   "info",
   "info-foreground",
   "info-surface",
+  "builder-canvas",
+  "builder-grid",
+  "node-surface",
+  "node-border",
+  "node-selected",
+  "edge",
+  "handle",
 ] as const;
 
 const roleColors = Object.fromEntries(
