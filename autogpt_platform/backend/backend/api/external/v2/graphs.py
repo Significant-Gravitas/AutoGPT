@@ -100,7 +100,7 @@ async def get_graph(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph #{graph_id} not found.",
         )
-    return Graph.from_internal(graph)
+    return Graph.from_internal(_shared_if_not_owner(graph, auth.user_id))
 
 
 @graphs_router.post(
@@ -290,7 +290,10 @@ async def list_graph_versions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph #{graph_id} not found.",
         )
-    return page.paged([Graph.from_internal(g) for g in graphs], total_count)
+    return page.paged(
+        [Graph.from_internal(_shared_if_not_owner(g, auth.user_id)) for g in graphs],
+        total_count,
+    )
 
 
 @graphs_router.put(
@@ -556,3 +559,11 @@ async def _get_graph_version(
         include_subgraphs=True,
         organization_id=organization_id,
     )
+
+
+def _shared_if_not_owner(
+    graph: graph_db.GraphModel, user_id: str
+) -> graph_db.GraphModel:
+    """As the internal graph routes answer: anyone but the owner, a colleague
+    included, gets the copy without the owner's ids, credentials and secrets."""
+    return graph if graph.user_id == user_id else graph.shared_copy()

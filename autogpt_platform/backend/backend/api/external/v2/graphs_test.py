@@ -689,3 +689,52 @@ async def _library_version(user_id: str, graph_id: str) -> int:
     entry = await library_db.get_library_agent_by_graph_id(user_id, graph_id)
     assert entry
     return entry.graph_version
+
+
+_OWNERS_SECRET = "owner-secret-do-not-leak"
+
+
+@pytest.mark.parametrize("reader", ["get_graph", "list_graph_versions"])
+@pytest.mark.parametrize("owner, shared", [("user-1", False), ("user-2", True)])
+async def test_a_graph_someone_else_owns_is_read_as_its_shared_copy(
+    mocker: pytest_mock.MockFixture, reader: str, owner: str, shared: bool
+) -> None:
+    """As on the internal routes: no owner's ids, credentials or secret inputs."""
+    graph = graph_db.make_graph_model(
+        GraphCreateRequest(
+            name="Agent",
+            nodes=[
+                GraphNode(
+                    id="trigger",
+                    block_id=GenericWebhookTriggerBlock().id,
+                    input_default={"secret_token": _OWNERS_SECRET},
+                )
+            ],
+            links=[],
+        ).to_internal(id="graph-1", version=1),
+        owner,
+    ).model_copy(update={"organization_id": "org-1"})
+    mocker.patch(
+        "backend.api.external.v2.graphs._get_graph_version",
+        new_callable=AsyncMock,
+        return_value=graph,
+    )
+    mocker.patch.object(
+        graph_db, "count_graph_versions", new_callable=AsyncMock, return_value=1
+    )
+    mocker.patch.object(
+        graph_db, "get_graph_all_versions", new_callable=AsyncMock, return_value=[graph]
+    )
+
+    if reader == "get_graph":
+        body = (
+            await get_graph(graph_id="graph-1", version=None, auth=_AUTH)
+        ).model_dump_json()
+    else:
+        page = await list_graph_versions(
+            graph_id="graph-1", page=PageRequest(limit=20), auth=_AUTH
+        )
+        body = page.model_dump_json()
+
+    assert (_OWNERS_SECRET not in body) is shared
+    assert ('"organization_id":"org-1"' not in body) is shared
