@@ -9,7 +9,7 @@ import {
   DialogTrigger,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { LuCopy } from "react-icons/lu";
-import { Label } from "@/components/__legacy__/ui/label";
+import { Label } from "@/components/atoms/Label/Label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
