@@ -30,6 +30,7 @@ import {
 } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
+import { legacyButtonVariants } from "@/components/atoms/Button/helpers";
 import {
   Select,
   SelectContent,
@@ -110,11 +111,10 @@ function Calendar({
             ? "[&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
             : "[&:has([aria-selected])]:rounded-md",
         ),
-        // The legacy ghost Button's classes, as cn() merged them.
-        // TODO(tokens): no exact role: hover:bg-neutral-100 #F5F5F5,
-        // hover:text-neutral-900 #171717.
-        day_button:
-          "inline-flex items-center justify-center whitespace-nowrap rounded-md text-body leading-5 transition-colors focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50 h-8 w-8 p-0 font-normal aria-selected:opacity-100",
+        day_button: cn(
+          legacyButtonVariants({ variant: "legacy-ghost" }),
+          "h-8 w-8 p-0 font-normal aria-selected:opacity-100",
+        ),
         range_start: "range-start",
         range_end: "range-end",
         // TODO(tokens): no exact role: bg-neutral-900 #171717,
