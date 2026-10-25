@@ -6,6 +6,7 @@ from backend.blocks.text import (
     MAX_REGEX_PATTERN_LENGTH,
     MAX_REGEX_TEXT_LENGTH,
     REGEX_TIMEOUT_SECONDS,
+    ExtractTextInformationBlock,
     MatchTextPatternBlock,
 )
 
@@ -109,3 +110,55 @@ async def test_match_text_pattern_rejects_oversized_text_before_search(mocker):
         await _collect_outputs(block, input_data)
 
     search.assert_not_called()
+
+
+NO_MATCH_OUTPUTS = [
+    ("negative", "order 42"),
+    ("matched_results", []),
+    ("matched_count", 0),
+]
+
+
+@pytest.mark.asyncio
+async def test_extract_text_information_uses_timeout_for_every_pattern(mocker):
+    block = ExtractTextInformationBlock()
+    finditer = mocker.patch(
+        "backend.blocks.text.regex.finditer",
+        return_value=iter([]),
+    )
+    input_data = block.Input(text="order 42", pattern=r"\d\d")
+
+    await _collect_outputs(block, input_data)
+
+    finditer.assert_called_once_with(
+        r"\d\d",
+        "order 42",
+        flags=mocker.ANY,
+        timeout=REGEX_TIMEOUT_SECONDS,
+    )
+
+
+@pytest.mark.asyncio
+async def test_extract_text_information_returns_no_matches_when_the_regex_times_out(
+    mocker,
+):
+    block = ExtractTextInformationBlock()
+    mocker.patch(
+        "backend.blocks.text.regex.finditer",
+        side_effect=TimeoutError,
+    )
+    input_data = block.Input(text="order 42", pattern=r"\d\d")
+
+    assert await _collect_outputs(block, input_data) == NO_MATCH_OUTPUTS
+
+
+@pytest.mark.asyncio
+async def test_extract_text_information_skips_an_oversized_pattern(mocker):
+    block = ExtractTextInformationBlock()
+    finditer = mocker.patch("backend.blocks.text.regex.finditer")
+    # Matches "order" and is valid, but too long to compile safely
+    pattern = "order" + "(?:)" * (MAX_REGEX_PATTERN_LENGTH // 4 + 1)
+    input_data = block.Input(text="order 42", pattern=pattern)
+
+    assert await _collect_outputs(block, input_data) == NO_MATCH_OUTPUTS
+    finditer.assert_not_called()
