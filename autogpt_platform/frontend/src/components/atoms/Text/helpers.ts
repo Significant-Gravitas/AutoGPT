@@ -14,7 +14,8 @@ export type As =
   | "li"
   | "dt"
   | "dd"
-  | "pre";
+  | "pre"
+  | "button";
 
 // Typography comes from the size roles in tailwind.config.ts; each bundles
 // its line-height. TODO(tokens): SECRT-3152, the rem-based heading tracking
