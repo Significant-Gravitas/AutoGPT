@@ -60,7 +60,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           variant="large-semibold-tight"
           as="h2"
           tone="primary"
-          className="shrink-0 px-6 pb-1 pt-6"
+          className="mx-6 mb-1 mt-6 shrink-0"
         >
           {TAB_TITLES[activeTab]}
         </Text>
@@ -90,11 +90,10 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
           <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
-            <SheetTitle
-              // TODO(tokens): no role holds 18px (text-lg); the type scale goes 16px (body-lg) to 20px (lead). SECRT-3152
-              className="text-lg font-semibold text-foreground-strong"
-            >
-              {TAB_TITLES[activeTab]}
+            <SheetTitle>
+              <Text as="span" variant="lg-semibold" tone="primary">
+                {TAB_TITLES[activeTab]}
+              </Text>
             </SheetTitle>
           </SheetHeader>
           {content}
