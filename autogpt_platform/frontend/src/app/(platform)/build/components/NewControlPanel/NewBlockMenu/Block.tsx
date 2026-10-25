@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes, memo, useState } from "react";
@@ -117,6 +118,7 @@ function BlockCard({
   return (
     <>
       <Button
+        variant="legacy-default"
         draggable={!isMCPBlock}
         data-id={blockDataId}
         className={cn(
@@ -131,25 +133,27 @@ function BlockCard({
       >
         <div className="flex flex-1 flex-col items-start gap-0.5">
           {title && (
-            <span
-              className={cn(
-                "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-              )}
+            <Text
+              variant="body-medium"
+              as="span"
+              tone="emphasis"
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
                 highlightedText,
               )}
-            </span>
+            </Text>
           )}
           {description && (
-            <span
-              className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-              )}
+            <Text
+              variant="small-loose"
+              as="span"
+              tone="muted"
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(description, highlightedText)}
-            </span>
+            </Text>
           )}
         </div>
         <div
