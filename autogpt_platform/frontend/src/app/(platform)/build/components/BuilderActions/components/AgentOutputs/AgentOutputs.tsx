@@ -118,8 +118,8 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   <Text
                     variant="small-medium-tight"
                     as="span"
-                    // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00
-                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800"
+                    // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00; dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-yellow-900/30 #675100, dark:text-yellow-400 #F7CD33
+                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
                   >
                     Beta
                   </Text>
