@@ -49,8 +49,8 @@ async def record_card_decisions(
 ) -> None:
     """Called by the chat route for a message the user sent, and by nothing else.
 
-    ``by`` is the send that recorded the approval (its claim owner), so an
-    approval can be withdrawn as that send's and no one else's."""
+    ``by`` is the request that recorded the approval ("owner|attempt"), so
+    an approval can be withdrawn as that request's and no one else's."""
     decisions = parse_card_decisions(message)
     if not decisions:
         return
@@ -89,10 +89,13 @@ async def withdraw_card_approvals(
         )
 
 
-# Only an approval still recorded by that send goes.
+# Only an approval still recorded by that request goes: the token is the
+# request ("owner|attempt"), or a send ("owner"), matching any of its attempts.
 _WITHDRAW_RECORDED_BY = """
 for i = 1, #ARGV, 2 do
-  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[i + 1] then
+  local value = redis.call('HGET', KEYS[1], ARGV[i])
+  local by = ARGV[i + 1]
+  if value and (value == by or string.sub(value, 1, #by + 1) == by .. '|') then
     redis.call('HDEL', KEYS[1], ARGV[i])
   end
 end
@@ -103,9 +106,10 @@ return 1
 async def withdraw_card_approvals_recorded_by(
     user_id: str, session_id: str, senders: Mapping[str, str]
 ) -> None:
-    """Withdraw approvals by confirmation id, each only while the send named
-    for it is the one that recorded it: a send that answered since keeps its
-    approval."""
+    """Withdraw approvals by confirmation id, each only while the request
+    named for it recorded it: ``senders`` maps an id to "owner|attempt" for
+    one request, or to "owner" for any attempt of that send. A request that
+    answered since keeps its approval."""
     pairs = [
         part
         for cid, sender in senders.items()

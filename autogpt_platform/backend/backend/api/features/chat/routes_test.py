@@ -905,9 +905,8 @@ def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
         "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
     )
     withdraw = mocker.patch(
-        "backend.api.features.chat.routes.withdraw_card_approvals",
+        "backend.api.features.chat.routes.withdraw_card_approvals_recorded_by",
         new_callable=AsyncMock,
-        create=True,
     )
 
     response = client.post(
@@ -919,14 +918,13 @@ def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
     )
 
     assert response.status_code == 429
-    release.assert_awaited_once_with(
-        "sess-1",
-        ["c-1"],
-        chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1"),
-        ANY,
-    )
-    # Nothing was saved: the approval it recorded must not let a confirm pass.
-    withdraw.assert_awaited_once_with(test_user_id, "sess-1", ["c-1"])
+    owner = chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1")
+    release.assert_awaited_once_with("sess-1", ["c-1"], owner, ANY)
+    # Nothing was saved: the approval this request recorded, and only that one,
+    # must not let a confirm pass.
+    user, session, recorders = withdraw.await_args.args
+    assert (user, session, list(recorders)) == (test_user_id, "sess-1", ["c-1"])
+    assert recorders["c-1"].startswith(f"{owner}|")
 
 
 def test_queue_pending_message_queues_the_users_words_but_not_a_second_answer(
@@ -1142,7 +1140,7 @@ async def test_queue_pending_message_keeps_a_cancelled_push_that_landed(
         "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
     )
     withdraw = mocker.patch(
-        "backend.api.features.chat.routes.withdraw_card_approvals",
+        "backend.api.features.chat.routes.withdraw_card_approvals_recorded_by",
         new_callable=AsyncMock,
     )
     pushing = asyncio.Event()
@@ -1204,7 +1202,7 @@ async def test_queue_pending_message_settles_a_landed_push_despite_a_cancellatio
         "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
     )
     withdraw = mocker.patch(
-        "backend.api.features.chat.routes.withdraw_card_approvals",
+        "backend.api.features.chat.routes.withdraw_card_approvals_recorded_by",
         new_callable=AsyncMock,
     )
     settling = asyncio.Event()
@@ -1309,6 +1307,48 @@ async def test_a_late_recovery_does_not_take_back_a_fresher_answer(
     answer_b = await tab_b
 
     assert answer_b.admission == "refused"
+    assert await approved_on_card(
+        "confirm_expert_change",
+        {"confirmation_id": "c-1"},
+        test_user_id,
+        session_id,
+    )
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize("successor", ["tab-b", "click-1"], ids=["other-tab", "retry"])
+async def test_a_stalled_send_that_fails_late_keeps_its_successors_approval(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, successor: str
+) -> None:
+    """A send claims the card, then stalls past its lease. Another tab, or a
+    retry of the same send, takes the card over, records its approval and
+    saves. When the stalled send finally fails and gives back what it took,
+    the successor's approval must stand, or its confirm is refused."""
+    session_id = f"s-{uuid4()}"
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    mocker.patch(
+        "backend.copilot.gate.card_decided._saved_rows",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    mocker.patch("backend.copilot.gate.card_decided._PENDING_LEASE_MS", 200)
+    stalled = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, "click-1", has_attachments=False
+    )
+    assert stalled.admission == "claimed"
+
+    await asyncio.sleep(0.3)  # the stalled send's lease lapses
+    taken_over = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, successor, has_attachments=False
+    )
+    assert taken_over.admission == "claimed"
+    await chat_routes._accept_card_answer(session_id, taken_over)
+
+    await chat_routes._release_card_answer(test_user_id, session_id, stalled)
+
     assert await approved_on_card(
         "confirm_expert_change",
         {"confirmation_id": "c-1"},

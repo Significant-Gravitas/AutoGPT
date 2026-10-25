@@ -55,7 +55,7 @@ from backend.copilot.gate.card_approval import (
     parse_card_decisions,
     record_card_decisions,
     strip_card_decisions,
-    withdraw_card_approvals,
+    withdraw_card_approvals_recorded_by,
 )
 from backend.copilot.gate.card_decided import (
     accept_claim,
@@ -393,7 +393,7 @@ async def _admit_card_answer(
                 user_id,
                 session_id,
                 strip_card_decisions(answer.message, others),
-                by=owner,
+                by=f"{owner}|{answer.attempt}",
             )
             if claim.result == "claimed":
                 answer.admission = "claimed"
@@ -442,7 +442,12 @@ async def _release_card_answer(
     if saved := [cid for cid in ids if cid not in gone]:
         await accept_claim(session_id, saved, answer.owner, answer.attempt)
     if gone:
-        await withdraw_card_approvals(user_id, session_id, gone)
+        # Only this request's own approvals: past its lease, another request
+        # may hold the card now, with an approval of its own.
+        recorder = f"{answer.owner}|{answer.attempt}"
+        await withdraw_card_approvals_recorded_by(
+            user_id, session_id, {cid: recorder for cid in gone}
+        )
         await release_claim(session_id, gone, answer.owner, answer.attempt)
 
 
