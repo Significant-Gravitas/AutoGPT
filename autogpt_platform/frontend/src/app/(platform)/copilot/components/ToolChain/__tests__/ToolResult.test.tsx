@@ -993,7 +993,9 @@ describe("ToolResult", () => {
       const realCreate = URL.createObjectURL;
       const realRevoke = URL.revokeObjectURL;
       URL.createObjectURL = createObjectURL;
-      URL.revokeObjectURL = vi.fn();
+      const revokeObjectURL = vi.fn();
+      URL.revokeObjectURL = revokeObjectURL;
+      const timers = vi.spyOn(window, "setTimeout");
       // A real browser downloads the blob; the test DOM would navigate to it.
       const clicked = vi
         .spyOn(HTMLAnchorElement.prototype, "click")
@@ -1002,6 +1004,7 @@ describe("ToolResult", () => {
         URL.createObjectURL = realCreate;
         URL.revokeObjectURL = realRevoke;
         clicked.mockRestore();
+        timers.mockRestore();
       });
       render(
         <ToolResult
@@ -1028,10 +1031,101 @@ describe("ToolResult", () => {
       await user.click(screen.getByRole("button", { name: "Download CSV" }));
       expect(createObjectURL).toHaveBeenCalledTimes(1);
       expect(await created[0].text()).toBe(csv);
+      // Revoked only after the download has had time to start.
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      const revoke = timers.mock.calls.find(([, delay]) => (delay ?? 0) > 0);
+      expect(revoke).toBeDefined();
+      (revoke?.[0] as () => void)();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview");
       expect(clicked).toHaveBeenCalledTimes(1);
       expect((clicked.mock.contexts[0] as HTMLAnchorElement).download).toBe(
         "table.csv",
       );
+    });
+
+    it("never previews a path, command or id held in a table's cells", () => {
+      const csv = [
+        "date,source,step,ref,status",
+        "2026-11-10,~/workspace/dewleaf/brief.md,sed -i s/TBD/25/ brief.md,2616d1f1-16bb-43c0-9f0e-6a7c2a9d0b11,done",
+        "2026-11-13,~/workspace/dewleaf/plan.md,cat plan,7a1b2c3d-16bb-43c0-9f0e-6a7c2a9d0b11,draft",
+        "2026-11-17,~/workspace/dewleaf/calendar.csv,git status,9f8e7d6c-16bb-43c0-9f0e-6a7c2a9d0b11,draft",
+      ].join("\n");
+      const { container } = render(
+        <ToolResult
+          row={row({ stdout: csv, exit_code: 0 }, "bash_exec", {
+            command: "cat log.csv",
+          })}
+        />,
+      );
+
+      const table = screen.getByRole("table", { name: "Table preview" });
+      const headers = within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent);
+      expect(headers).toEqual(["date", "status"]);
+      expect(
+        within(table).getAllByRole("cell", { name: "draft" }),
+      ).toHaveLength(2);
+      for (const leak of [
+        "~/workspace",
+        "sed -i",
+        "git status",
+        "cat plan",
+        "2616d1f1",
+      ])
+        expect(container.textContent).not.toContain(leak);
+    });
+
+    it("keeps only the download when every column of a table is technical", () => {
+      const csv = [
+        "path,command",
+        "~/workspace/a/brief.md,sed -i s/a/b/ brief.md",
+        "~/workspace/a/plan.md,cat plan",
+        "~/workspace/a/notes.md,git status",
+      ].join("\n");
+      const { container } = render(
+        <ToolResult
+          row={row({ stdout: csv, exit_code: 0 }, "bash_exec", {
+            command: "cat paths.csv",
+          })}
+        />,
+      );
+
+      expect(screen.queryByRole("table")).toBeNull();
+      expect(screen.getByText("3 rows · path, command")).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Download CSV" }),
+      ).toBeDefined();
+      expect(container.textContent).not.toContain("~/workspace");
+      expect(container.textContent).not.toContain("sed -i");
+    });
+
+    it("never previews a JSON field whose value is a path, command or id", () => {
+      const json = JSON.stringify({
+        launch: "2026-11-25",
+        brief: "~/workspace/dewleaf/brief.md",
+        next_step: "cd ~/workspace && cat brief.md",
+        run: "2616d1f1-16bb-43c0-9f0e-6a7c2a9d0b11",
+        check: "git status",
+        price: 899,
+      });
+      const { container } = render(
+        <ToolResult
+          row={row({ stdout: json, exit_code: 0 }, "bash_exec", {
+            command: "cat brief.json",
+          })}
+        />,
+      );
+
+      expect(screen.getByText("2026-11-25")).toBeDefined();
+      expect(screen.getByText("899")).toBeDefined();
+      for (const leak of [
+        "~/workspace",
+        "cat brief.md",
+        "2616d1f1",
+        "git status",
+      ])
+        expect(container.textContent).not.toContain(leak);
     });
 
     it("previews JSON printed by a bash step field by field, never as raw JSON", () => {

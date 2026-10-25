@@ -15,6 +15,8 @@ import {
 } from "./commandOutput";
 import { CARD } from "./ResultCards";
 
+const REVOKE_AFTER_MS = 10_000;
+
 interface Props {
   summary: DataSummary;
   /** What the step printed, as the file the user can download. */
@@ -33,7 +35,8 @@ export function DataPreview({ summary, text }: Props) {
     link.href = url;
     link.download = file.name;
     link.click();
-    URL.revokeObjectURL(url);
+    // Revoked once the download has started; revoking at once can cancel it.
+    setTimeout(() => URL.revokeObjectURL(url), REVOKE_AFTER_MS);
   }
 
   return (
@@ -79,7 +82,7 @@ interface TablePreviewProps {
 }
 
 function TablePreview({ summary }: TablePreviewProps) {
-  const columns = previewColumns(summary.columns);
+  const columns = previewColumns(summary.columns, summary.sample);
   if (columns.length === 0) return null;
   const more = summary.rows - summary.sample.length;
   return (

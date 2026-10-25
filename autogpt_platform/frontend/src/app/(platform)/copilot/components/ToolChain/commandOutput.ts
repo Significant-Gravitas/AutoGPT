@@ -76,11 +76,20 @@ function isRedirect(command: string, at: number): boolean {
   return /[<>]/.test(command[at - 1] ?? "") || command[at + 1] === ">";
 }
 
-/** The columns a preview shows: the plain ones, first few. */
-export function previewColumns(columns: string[]): number[] {
+/** The columns a preview shows, first few: those whose name and every
+ *  sampled value are plain. A column of paths, commands or ids is left out
+ *  whole; its values stay behind technical details and in the download. */
+export function previewColumns(
+  columns: string[],
+  sample: string[][] = [],
+): number[] {
   return columns
     .map((name, index) => ({ name, index }))
-    .filter(({ name }) => !looksTechnical(name))
+    .filter(
+      ({ name, index }) =>
+        !looksTechnical(name) &&
+        sample.every((cells) => !looksTechnical(cells[index] ?? "")),
+    )
     .slice(0, SAMPLE_COLUMNS)
     .map(({ index }) => index);
 }
@@ -153,8 +162,9 @@ function summarizeJSON(text: string): DataSummary | null {
     sample: entries
       .filter(
         ([key, item]) =>
+          ["string", "number", "boolean"].includes(typeof item) &&
           !looksTechnical(key) &&
-          ["string", "number", "boolean"].includes(typeof item),
+          !looksTechnical(String(item)),
       )
       .slice(0, SAMPLE_FIELDS)
       .map(([key, item]) => [key, String(item)]),

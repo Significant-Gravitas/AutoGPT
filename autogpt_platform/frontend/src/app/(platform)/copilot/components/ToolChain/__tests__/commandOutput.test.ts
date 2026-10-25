@@ -173,6 +173,18 @@ describe("dataFile and previewColumns", () => {
     );
   });
 
+  it("leaves out a column whose sampled values are technical", () => {
+    expect(
+      previewColumns(
+        ["date", "file", "status"],
+        [
+          ["2026-11-10", "~/workspace/a/brief.md", "done"],
+          ["2026-11-13", "notes", "draft"],
+        ],
+      ),
+    ).toEqual([0, 2]);
+  });
+
   it("previews the first four plain columns", () => {
     expect(previewColumns(["~/x/y", "a", "b", "c", "d", "e"])).toEqual([
       1, 2, 3, 4,
