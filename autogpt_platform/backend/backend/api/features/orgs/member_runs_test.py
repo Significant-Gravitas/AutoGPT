@@ -117,17 +117,32 @@ async def test_a_run_that_wont_stop_doesnt_fail_the_removal(steps, caplog):
     ] == [logging.WARNING]
 
 
+@pytest.mark.parametrize(
+    "failing, still_stopped",
+    [(False, {"deleted-run"}), (True, {"run-1", "run-2"})],
+    ids=["visible-lookup-fails", "deleted-lookup-fails"],
+)
 @pytest.mark.asyncio
-async def test_a_failed_lookup_doesnt_fail_the_removal(steps, caplog):
-    """The member is already out of the org, so the request succeeds and the
-    failure is logged. Retrying it would find no member to remove."""
-    steps.lookup.side_effect = ConnectionError("database unavailable")
+async def test_a_failed_lookup_doesnt_fail_the_removal(
+    steps, caplog, failing: bool, still_stopped: set[str]
+):
+    """The member is already out of the org, so the request succeeds, the
+    failure is logged, and the runs the other lookup found are still stopped.
+    Retrying the request would find no member to remove."""
+    find = steps.lookup.side_effect
+
+    def lookup(**kwargs):
+        if kwargs["deleted"] is failing:
+            raise ConnectionError("database unavailable")
+        return find(**kwargs)
+
+    steps.lookup.side_effect = lookup
 
     with caplog.at_level(logging.WARNING, logger=member_runs.__name__):
         await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
 
     steps.remove.assert_awaited_once()
-    steps.stop.assert_not_awaited()
+    assert set(_waits(steps.stop)) == still_stopped
     assert [
         record.levelno for record in caplog.records if MEMBER_ID in record.message
     ] == [logging.WARNING]

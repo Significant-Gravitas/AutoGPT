@@ -26,20 +26,13 @@ async def stop_member_runs(org_id: str, user_id: str) -> None:
     they were a member is stopped there rather than left running, billed to
     the org. That includes runs they deleted from their history, as deleting
     a run doesn't stop it. The removal has already happened, so nothing here
-    fails it: a lookup or a stop that fails is logged.
+    fails it: a lookup or a stop that fails is logged, and the runs the other
+    lookup found are still stopped.
     """
-    try:
-        visible, deleted = await asyncio.gather(
-            _unfinished_runs(org_id, user_id, deleted=False),
-            _unfinished_runs(org_id, user_id, deleted=True),
-        )
-    except Exception:
-        logger.warning(
-            f"Couldn't look up the runs of user {user_id}, who was removed "
-            f"from org {org_id}, to stop them",
-            exc_info=True,
-        )
-        return
+    visible, deleted = await asyncio.gather(
+        _unfinished_runs(org_id, user_id, deleted=False),
+        _unfinished_runs(org_id, user_id, deleted=True),
+    )
     await asyncio.gather(
         *[_stop(org_id, user_id, run.id) for run in visible],
         # Lookups skip deleted runs, so a deleted one's stop can only send its
@@ -52,12 +45,20 @@ async def stop_member_runs(org_id: str, user_id: str) -> None:
 async def _unfinished_runs(
     org_id: str, user_id: str, deleted: bool
 ) -> list[GraphExecutionMeta]:
-    return await execution_db.get_graph_executions(
-        user_id=user_id,
-        organization_id=org_id,
-        statuses=UNFINISHED_STATUSES,
-        deleted=deleted,
-    )
+    try:
+        return await execution_db.get_graph_executions(
+            user_id=user_id,
+            organization_id=org_id,
+            statuses=UNFINISHED_STATUSES,
+            deleted=deleted,
+        )
+    except Exception:
+        logger.warning(
+            f"Couldn't look up the {'deleted ' if deleted else ''}runs of user "
+            f"{user_id}, who was removed from org {org_id}, to stop them",
+            exc_info=True,
+        )
+        return []
 
 
 async def _stop(
