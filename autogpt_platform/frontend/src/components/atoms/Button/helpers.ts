@@ -67,6 +67,55 @@ export const extendedButtonVariants = cva(
   },
 );
 
+// The rounded-md shadcn looks the app drew before the design system, kept at
+// today's pixels until each screen moves to one of the variants above. Picking a
+// `legacy-*` variant renders a plain <button> with these classes and the
+// children as they are.
+// TODO(tokens): no role is neutral-900 #171717, neutral-200 #E5E5E5 or
+// neutral-100 #F5F5F5. Only shadcn's `background` holds neutral-50 #FAFAFA, and
+// it is the page background, not a text colour. The dark: classes never apply
+// (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
+export const legacyButtonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-body leading-5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        "legacy-default":
+          "bg-neutral-900 text-neutral-50 shadow hover:bg-neutral-900/90 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50/90",
+        "legacy-destructive":
+          "bg-error text-neutral-50 shadow-sm hover:bg-error/90 dark:bg-red-900 dark:text-neutral-50 dark:hover:bg-red-900/90",
+        "legacy-outline":
+          "border border-neutral-200 bg-surface shadow-sm hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:bg-neutral-800 dark:hover:text-neutral-50",
+        "legacy-ghost":
+          "hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50",
+        "legacy-link":
+          "text-neutral-900 underline-offset-4 hover:underline dark:text-neutral-50",
+      },
+      size: {
+        "legacy-default": "h-9 px-4 py-2",
+        "legacy-sm": "h-8 rounded-md px-3 text-caption leading-4",
+        "legacy-icon": "h-9 w-9",
+      },
+    },
+    defaultVariants: {
+      size: "legacy-default",
+    },
+  },
+);
+
+type LegacyButtonVariant = NonNullable<
+  VariantProps<typeof legacyButtonVariants>["variant"]
+>;
+
+const LEGACY_BUTTON_VARIANTS: ReadonlySet<string> =
+  new Set<LegacyButtonVariant>([
+    "legacy-default",
+    "legacy-destructive",
+    "legacy-outline",
+    "legacy-ghost",
+    "legacy-link",
+  ]);
+
 export const BUTTON_ICON_SIZE = {
   small: 16,
   large: 18,
@@ -109,4 +158,19 @@ type ButtonAsLink = BaseButtonProps &
     disabled?: boolean;
   };
 
-export type ButtonProps = ButtonAsButton | ButtonAsLink;
+export type LegacyButtonProps = Omit<
+  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "size"
+> & {
+  variant: LegacyButtonVariant;
+  size?: VariantProps<typeof legacyButtonVariants>["size"];
+  ref?: React.Ref<HTMLButtonElement>;
+  as?: "button";
+  href?: never;
+};
+
+export type ButtonProps = ButtonAsButton | ButtonAsLink | LegacyButtonProps;
+
+export function isLegacyButton(props: ButtonProps): props is LegacyButtonProps {
+  return props.variant != null && LEGACY_BUTTON_VARIANTS.has(props.variant);
+}

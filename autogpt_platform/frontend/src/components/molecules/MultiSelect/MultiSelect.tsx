@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Command,
@@ -190,7 +190,7 @@ const MultiSelectorTrigger = forwardRef<
             "flex items-center gap-1 rounded-xl px-1 pl-2",
             activeIndex === index && "ring-2 ring-muted-foreground",
           )}
-          variant={"secondary"}
+          variant="secondary"
         >
           <Text
             variant="small-semibold-tight"
