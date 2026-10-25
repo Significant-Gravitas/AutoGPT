@@ -12,11 +12,18 @@ import { useControlPanelStore } from "../../../../stores/controlPanelStore";
 import { Block } from "../Block";
 import { IntegrationBlock } from "../IntergrationBlock";
 
-const blockData = {
+const blockData: BlockInfo = {
   id: "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
   name: "CalculatorBlock",
+  description: "Performs a mathematical operation on two numbers.",
+  inputSchema: {},
+  outputSchema: {},
+  costs: [],
+  categories: [],
+  contributors: [],
+  staticOutput: false,
   uiType: "Standard",
-} as unknown as BlockInfo;
+};
 
 function dragStart(card: HTMLElement) {
   const event = createEvent.dragStart(card, {
