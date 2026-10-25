@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { PromptInput, PromptInputTextarea } from "../prompt-input";
+import { PromptInput, PromptInputTextarea } from "../PromptInput";
 
 function renderComposer() {
   const onSubmit = vi.fn();
