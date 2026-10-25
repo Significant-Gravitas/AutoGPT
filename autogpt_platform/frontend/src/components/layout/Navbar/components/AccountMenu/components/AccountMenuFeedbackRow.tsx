@@ -44,7 +44,8 @@ export function AccountMenuFeedbackRow() {
       <Text
         variant="body-tight"
         as="span"
-        className="relative z-10 flex-1 truncate text-inherit"
+        tone="inherit"
+        className="relative z-10 flex-1 truncate"
       >
         Give feedback
       </Text>
