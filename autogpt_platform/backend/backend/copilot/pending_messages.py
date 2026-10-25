@@ -384,29 +384,25 @@ async def drain_pending_messages(
 ) -> list[PendingMessage]:
     """Atomically pop all pending messages for *session_id*.
 
-    Returns them in enqueue order (oldest first). Text-only consumers
-    stop before the first image, atomically removing just the inspected
-    prefix if it has not changed. Other consumers drain with ``LPOP``.
+    Returns them in enqueue order (oldest first). Every drain removes just
+    the prefix it inspected, atomically and only if it has not changed;
+    text-only consumers stop that prefix before the first image. The ids are
+    marked taken before they leave the queue (see ``pending_message_waiting``).
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
 
-    if text_only:
-        items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
-        prefix: list[str] = []
-        for item in items:
-            payload = _decode_redis_item(item)
-            try:
-                message = _from_buffer(json.loads(payload))
-            except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
-                prefix.append(payload)
-                continue
-            if message.model_image is not None:
-                break
-            prefix.append(payload)
-        lpop_result = await pop_matching_list_prefix(redis, key, prefix)
-    else:
-        lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
+    items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
+    prefix: list[str] = []
+    for item in items:
+        payload = _decode_redis_item(item)
+        if text_only and _carries_image(payload):
+            break
+        prefix.append(payload)
+    # Marked taken before they leave the queue: a sender whose push raised
+    # asks whether its message landed, and it must never be in neither place.
+    await _mark_taken(redis, session_id, _ids_in(prefix))
+    lpop_result = await pop_matching_list_prefix(redis, key, prefix)
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)
@@ -431,7 +427,6 @@ async def drain_pending_messages(
             len(messages),
             session_id,
         )
-        await _mark_taken(redis, session_id, messages)
     return messages
 
 
@@ -439,15 +434,32 @@ def _taken_key(session_id: str) -> str:
     return f"{_TAKEN_KEY_PREFIX}{{{session_id}}}"
 
 
-async def _mark_taken(
-    redis: Any, session_id: str, messages: list[PendingMessage]
-) -> None:
+def _carries_image(payload: str) -> bool:
+    try:
+        return _from_buffer(json.loads(payload)).model_image is not None
+    except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+        return False
+
+
+def _ids_in(payloads: list[str]) -> list[str]:
+    ids: list[str] = []
+    for payload in payloads:
+        try:
+            ids.append(_from_buffer(json.loads(payload)).id)
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+            continue
+    return ids
+
+
+async def _mark_taken(redis: Any, session_id: str, ids: list[str]) -> None:
     """Remember which messages a drain took. A sender whose push raised after
     its write landed asks whether its message was queued; once a turn has
     drained (and perhaps saved) it, the queue alone no longer says so."""
+    if not ids:
+        return
     try:
         key = _taken_key(session_id)
-        await cast("Any", redis.sadd(key, *[message.id for message in messages]))
+        await cast("Any", redis.sadd(key, *ids))
         await cast("Any", redis.expire(key, _PENDING_TTL_SECONDS))
     except Exception:
         logger.warning(

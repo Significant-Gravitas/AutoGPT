@@ -788,7 +788,8 @@ async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeyp
         fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
     )
     assert await drain_and_format_for_injection("images", log_prefix="test") == ""
-    assert [message.content for message in await drain_pending_messages("images")] == [
+    # Read the queue itself: every drain now pops through the same script.
+    assert [message.content for message in await peek_pending_messages("images")] == [
         "before"
     ]
 
@@ -806,7 +807,8 @@ async def test_text_hook_does_not_pop_a_prefix_another_consumer_changed(
 
     monkeypatch.setattr(fake_redis, "eval", concurrent_drain)
     assert await drain_and_format_for_injection("images", log_prefix="test") == ""
-    assert [message.content for message in await drain_pending_messages("images")] == [
+    # Read the queue itself: every drain now pops through the same script.
+    assert [message.content for message in await peek_pending_messages("images")] == [
         "new"
     ]
 

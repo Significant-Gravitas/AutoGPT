@@ -1626,6 +1626,43 @@ async def test_a_push_that_errors_is_settled_by_whether_it_landed(
     assert (retry == "accepted") is (landed != "never")
 
 
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize("text_only", [True, False], ids=["mid-turn", "turn-start"])
+async def test_a_message_leaving_the_queue_is_never_in_neither_place(
+    mocker: pytest_mock.MockerFixture, text_only: bool
+) -> None:
+    """A push whose reply was lost asks whether its message landed while a
+    turn drains it. At the moment it leaves the queue it must already count
+    as taken, or the sender gives back the answers of a queued decision."""
+    session_id = f"s-{uuid4()}"
+    message = PendingMessage(content="Approved: hire Maya (confirmation_id: c-1).")
+    await pending_messages_module.push_pending_message(session_id, message)
+    pop = pending_messages_module.pop_matching_list_prefix
+    seen: list[bool | None] = []
+
+    async def pop_then_ask(*args: object, **kwargs: object):
+        popped = await pop(*args, **kwargs)
+        seen.append(
+            await pending_messages_module.pending_message_waiting(
+                session_id, message.id
+            )
+        )
+        return popped
+
+    mocker.patch.object(
+        pending_messages_module, "pop_matching_list_prefix", side_effect=pop_then_ask
+    )
+    drained = await pending_messages_module.drain_pending_messages(
+        session_id, text_only=text_only
+    )
+
+    assert [m.id for m in drained] == [message.id]
+    assert seen == [True]
+
+
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
