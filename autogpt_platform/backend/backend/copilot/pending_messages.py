@@ -536,6 +536,24 @@ async def stash_pending_for_persist(
         )
 
 
+async def pending_message_waiting(session_id: str, message_id: str) -> bool | None:
+    """Whether the message with this id waits in the session's queue, or in
+    the persist queue a drain moves it to. None when Redis cannot say."""
+    try:
+        waiting = [
+            *await peek_pending_messages(session_id),
+            *await peek_pending_for_persist(session_id),
+        ]
+    except Exception:
+        logger.warning(
+            "pending_messages: could not look for message in session=%s",
+            session_id,
+            exc_info=True,
+        )
+        return None
+    return any(message.id == message_id for message in waiting)
+
+
 async def peek_pending_for_persist(session_id: str) -> list[PendingMessage]:
     """The drained messages still waiting to be saved as rows, unconsumed."""
     redis = await get_redis_async()

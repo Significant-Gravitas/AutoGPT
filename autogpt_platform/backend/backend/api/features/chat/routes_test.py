@@ -1562,6 +1562,66 @@ def test_stream_chat_answers_nothing_for_a_copy_of_an_accepted_send(
     release.assert_awaited_once()
 
 
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize("landed", [True, False], ids=["landed", "never-landed"])
+async def test_a_push_that_errors_is_settled_by_whether_it_landed(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, landed: bool
+) -> None:
+    """The queue's write commits, then its reply is lost (a timeout, a
+    reset): the push raises though the decision is queued. Its approval and
+    claim must stand, and a retry of the same send must not queue a second
+    copy. A push that raised before writing gives them back as before."""
+    session_id = f"s-{uuid4()}"
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    mocker.patch(
+        "backend.copilot.gate.card_decided._saved_rows",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    async def push_then_lose_the_reply(
+        session: str, message: PendingMessage, **_: object
+    ) -> int:
+        if landed:
+            await pending_messages_module.push_pending_message(session, message)
+        raise ConnectionError("reply lost")
+
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        side_effect=push_then_lose_the_reply,
+    )
+    answer = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, "click-1", has_attachments=False
+    )
+
+    with pytest.raises(ConnectionError):
+        await chat_routes._queue_card_answer(
+            test_user_id,
+            session_id,
+            answer,
+            context=None,
+            file_ids=None,
+            folder_ids=None,
+            expert_id=None,
+            client_message_id="click-1",
+        )
+
+    approved = await approved_on_card(
+        "confirm_expert_change",
+        {"confirmation_id": "c-1"},
+        test_user_id,
+        session_id,
+    )
+    assert approved is landed
+    retry = await pending_messages_module.claim_client_message(
+        session_id, "click-1", "retry"
+    )
+    assert (retry == "accepted") is landed
+
+
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

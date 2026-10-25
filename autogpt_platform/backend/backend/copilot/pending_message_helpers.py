@@ -33,6 +33,7 @@ from backend.copilot.pending_messages import (
     finish_despite_cancellation,
     peek_pending_count,
     pending_message_text,
+    pending_message_waiting,
     push_pending_message,
     push_pending_message_if_session_running,
     release_client_message,
@@ -156,6 +157,7 @@ async def queue_user_message(
     require_turn_in_flight: bool = False,
     metadata: dict[str, Any] | None = None,
     card_owner: str | None = None,
+    pending_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -169,6 +171,8 @@ async def queue_user_message(
     tagging a proposal card's decision. No request field is ever copied in.
     ``card_owner`` is the claim owner of the card decisions the message
     carries; it stays in the queue, for a Stop that drops the message.
+    ``pending_id`` names the queued message, so a caller whose push errored
+    can look for it.
     """
     pending = PendingMessage(
         content=message,
@@ -176,6 +180,7 @@ async def queue_user_message(
         context=context,
         metadata=metadata or None,
         card_owner=card_owner,
+        id=pending_id or str(uuid.uuid4()),
     )
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
@@ -299,6 +304,7 @@ async def queue_pending_for_http(
         if claim == "reserved":
             raise client_message_in_progress_error()
 
+    pending_id = str(uuid.uuid4())
     push = asyncio.ensure_future(
         queue_user_message(
             session_id=session_id,
@@ -308,6 +314,7 @@ async def queue_pending_for_http(
             require_turn_in_flight=True,
             metadata=metadata,
             card_owner=card_owner,
+            pending_id=pending_id,
         )
     )
     try:
@@ -319,13 +326,23 @@ async def queue_pending_for_http(
         await finish_despite_cancellation(
             asyncio.ensure_future(
                 _settle_cancelled_push(
-                    push, session_id, client_message_id, claim_owner, on_queued
+                    push,
+                    session_id,
+                    client_message_id,
+                    claim_owner,
+                    on_queued,
+                    pending_id,
                 )
             )
         )
         raise
     except BaseException:
-        if client_message_id is not None:
+        # The write can commit before the error (a reply lost to a timeout
+        # or a reset): settle by whether the message is queued, not by the
+        # error, or its sender's answers go back for a message still queued.
+        if await pending_message_waiting(session_id, pending_id):
+            await _finish_queued(session_id, client_message_id, claim_owner, on_queued)
+        elif client_message_id is not None:
             await release_client_message(session_id, client_message_id, claim_owner)
         raise
     if not response.turn_in_flight:
@@ -360,11 +377,13 @@ async def _settle_cancelled_push(
     client_message_id: str | None,
     owner: str,
     on_queued: Callable[[], Awaitable[None]] | None,
+    pending_id: str,
 ) -> None:
     try:
         queued = (await push).turn_in_flight
     except Exception:
-        queued = False
+        # Raised, yet perhaps written first: the queue says which.
+        queued = bool(await pending_message_waiting(session_id, pending_id))
     if queued:
         await _mark_queued(session_id, client_message_id, owner, on_queued)
     elif client_message_id is not None:
