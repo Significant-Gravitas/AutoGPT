@@ -11,7 +11,8 @@ export const NodeBadges = ({
     <Badge
       key={category.category}
       className={cn(
-        "rounded-full border border-slate-500 bg-slate-100 text-black shadow-none",
+        // TODO(tokens): no exact role: border-slate-500 #64748B, bg-slate-100 #EFF1F4
+        "rounded-full border border-slate-500 bg-slate-100 text-foreground-base shadow-none",
       )}
     >
       {beautifyString(category.category.toLowerCase())}

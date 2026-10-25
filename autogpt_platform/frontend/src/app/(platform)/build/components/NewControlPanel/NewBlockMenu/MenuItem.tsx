@@ -26,7 +26,8 @@ export const MenuItem: React.FC<Props> = ({
       data-id={menuItemType ? `menu-item-${menuItemType}` : undefined}
       className={cn(
         "flex h-[2.375rem] w-[12.875rem] justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0",
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0",
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
         selected && "bg-zinc-100",
         className,
       )}
