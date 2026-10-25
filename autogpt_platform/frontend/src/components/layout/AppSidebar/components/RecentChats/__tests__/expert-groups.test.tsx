@@ -2,7 +2,7 @@ import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endp
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,

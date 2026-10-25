@@ -494,11 +494,6 @@ class OAuthState(BaseModel):
     initiated_by_api_key_id: Optional[str] = None
     """ID of the API key that initiated this OAuth flow"""
 
-    @property
-    def is_external(self) -> bool:
-        """Whether this OAuth flow was initiated via external API."""
-        return self.callback_url is not None
-
 
 class UserMetadata(BaseModel):
     integration_credentials: list[Credentials] = Field(default_factory=list)

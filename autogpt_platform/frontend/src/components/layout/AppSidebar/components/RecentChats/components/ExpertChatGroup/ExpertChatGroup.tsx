@@ -18,7 +18,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/molecules/Collapsible/Collapsible";
-import { SidebarMenu } from "@/components/ui/sidebar";
+import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";

@@ -27,8 +27,14 @@ def _convert_bools(
     return obj
 
 
+class AirtableWebhookEvent(str, Enum):
+    TABLE_DATA = "tableData"
+    TABLE_FIELDS = "tableFields"
+    TABLE_METADATA = "tableMetadata"
+
+
 class WebhookFilters(BaseModel):
-    dataTypes: list[str]
+    dataTypes: list[AirtableWebhookEvent]
     changeTypes: list[str] | None = None
     fromSources: list[str] | None = None
     sourceOptions: dict | None = None
