@@ -26,7 +26,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
-from ._utils import github_repo_path
+from ._utils import canonical_repo_url, normalize_repo_path
 
 
 class GithubListCommitsBlock(Block):
@@ -164,7 +164,7 @@ class GithubListCommitsBlock(Block):
         credentials: GithubCredentials, input_data: Input
     ) -> list[Output.CommitItem]:
         api = get_api(credentials)
-        repo_url = input_data.repo_url
+        repo_url = canonical_repo_url(input_data.repo_url)
         commits_url = repo_url + "/commits"
         params = {"sha": input_data.branch}
         if input_data.path:
@@ -187,7 +187,7 @@ class GithubListCommitsBlock(Block):
         data = await get_paginated(
             api, commits_url, limit=limit, params=params, start_page=start_page
         )
-        repo_path = github_repo_path(repo_url)
+        repo_path = normalize_repo_path(repo_url)
         return [
             GithubListCommitsBlock.Output.CommitItem(
                 sha=c["sha"],
@@ -315,6 +315,7 @@ class GithubMultiFileCommitBlock(Block):
         files: list[FileOperationInput],
     ) -> tuple[str, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         safe_branch = quote(branch, safe="")
 
         # 1. Get the latest commit SHA for the branch
@@ -413,7 +414,7 @@ class GithubMultiFileCommitBlock(Block):
                 f"You can recover by manually updating the branch to {new_commit_sha}."
             ) from e
 
-        repo_path = github_repo_path(repo_url)
+        repo_path = normalize_repo_path(repo_url)
         commit_web_url = f"https://github.com/{repo_path}/commit/{new_commit_sha}"
         return new_commit_sha, commit_web_url
 

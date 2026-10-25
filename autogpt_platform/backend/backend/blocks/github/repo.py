@@ -22,7 +22,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
-from ._utils import github_repo_path, normalize_repo_path
+from ._utils import canonical_repo_url, normalize_repo_path
 
 
 class GithubListTagsBlock(Block):
@@ -97,9 +97,10 @@ class GithubListTagsBlock(Block):
         credentials: GithubCredentials, repo_url: str, limit: int
     ) -> list[Output.TagItem]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         tags_url = repo_url + "/tags"
         data = await get_paginated(api, tags_url, limit=limit)
-        repo_path = github_repo_path(repo_url)
+        repo_path = normalize_repo_path(repo_url)
         tags: list[GithubListTagsBlock.Output.TagItem] = [
             {
                 "name": tag["name"],
@@ -458,7 +459,7 @@ class GithubListReleasesBlock(Block):
         credentials: GithubCredentials, input_data: Input
     ) -> list[Output.ReleaseItem]:
         api = get_api(credentials)
-        releases_url = input_data.repo_url + "/releases"
+        releases_url = canonical_repo_url(input_data.repo_url) + "/releases"
 
         # The releases endpoint has no filter params, so we filter client-side
         published_after = _parse_timestamp(input_data.published_after)
@@ -703,6 +704,7 @@ class GithubListStargazersBlock(Block):
         credentials: GithubCredentials, repo_url: str, limit: int
     ) -> list[Output.StargazerItem]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         stargazers_url = repo_url + "/stargazers"
         data = await get_paginated(api, stargazers_url, limit=limit)
         stargazers: list[GithubListStargazersBlock.Output.StargazerItem] = [
@@ -798,7 +800,7 @@ class GithubGetRepositoryInfoBlock(Block):
     @staticmethod
     async def get_repo_info(credentials: GithubCredentials, repo_url: str) -> dict:
         api = get_api(credentials)
-        response = await api.get(repo_url)
+        response = await api.get(canonical_repo_url(repo_url))
         return response.json()
 
     async def run(
@@ -877,6 +879,7 @@ class GithubForkRepositoryBlock(Block):
         organization: str,
     ) -> tuple[str, str, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         forks_url = repo_url + "/forks"
         data: dict[str, str] = {}
         if organization:
@@ -939,8 +942,7 @@ class GithubStarRepositoryBlock(Block):
     @staticmethod
     async def star_repo(credentials: GithubCredentials, repo_url: str) -> str:
         api = get_api(credentials, convert_urls=False)
-        repo_path = github_repo_path(repo_url)
-        owner, repo = repo_path.split("/")
+        owner, repo = normalize_repo_path(repo_url).split("/")
         await api.put(
             f"https://api.github.com/user/starred/{owner}/{repo}",
             headers={"Content-Length": "0"},
