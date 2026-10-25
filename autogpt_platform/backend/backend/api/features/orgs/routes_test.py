@@ -5,6 +5,7 @@ cases. Tests are organized by domain and mock at the Prisma boundary so the
 actual logic in db.py / routes.py / team_db.py is exercised.
 """
 
+import inspect
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -1264,8 +1265,8 @@ class TestInvitationAcceptance:
     async def test_accept_invitation_into_a_personal_org_raises_value_error(
         self, test_user_id
     ):
-        """Accepting creates the same OrgMember row POST /members does, so the
-        personal-org guard has to cover this path too."""
+        """Accepting is what creates the OrgMember row, so the personal-org
+        guard has to cover it."""
         from backend.api.features.orgs.invitation_routes import accept_invitation
 
         self.prisma.orginvitation.find_unique = AsyncMock(
@@ -1375,6 +1376,22 @@ class TestInvitationAcceptance:
         self.prisma.orginvitation.update.assert_called_once()
         update_data = self.prisma.orginvitation.update.call_args[1]["data"]
         assert "revokedAt" in update_data
+
+
+def test_an_org_member_is_added_only_by_their_own_acceptance():
+    """An admin invites; membership starts when the invitee accepts."""
+    from fastapi.routing import APIRoute
+
+    from backend.api.rest_api import app
+
+    adders = {
+        f"{method} {route.path}"
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and "add_org_member" in inspect.getsource(route.endpoint)
+        for method in route.methods
+    }
+    assert adders == {"POST /api/invitations/{token}/accept"}
 
 
 class TestInvitationListPending:

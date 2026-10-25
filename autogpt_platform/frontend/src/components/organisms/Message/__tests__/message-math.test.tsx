@@ -1,6 +1,6 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageResponse } from "../message";
+import { MessageResponse } from "../Message";
 
 // KaTeX keeps the TeX source in a MathML annotation, so prose assertions have to
 // read the document with the rendered formulas taken out.
