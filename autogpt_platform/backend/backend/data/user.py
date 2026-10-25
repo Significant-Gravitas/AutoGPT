@@ -50,6 +50,7 @@ from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.product_analytics import track_signup_completed
 from backend.util.settings import Settings
+from backend.util.sql import escape_like
 
 if TYPE_CHECKING:
     from backend.integrations.credentials_store import IntegrationCredentialsStore
@@ -409,11 +410,13 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
     query = query.strip()
     if not query or len(query) < 3:
         return []
+    # `contains` is an unescaped ILIKE: match `_` and `%` literally.
+    pattern = escape_like(query)
     users = await prisma.user.find_many(
         where={
             "OR": [
-                {"email": {"contains": query, "mode": "insensitive"}},
-                {"name": {"contains": query, "mode": "insensitive"}},
+                {"email": {"contains": pattern, "mode": "insensitive"}},
+                {"name": {"contains": pattern, "mode": "insensitive"}},
             ],
         },
         take=limit,
@@ -1145,11 +1148,6 @@ async def _unsubscribe_from_marketing(user_id: str, email: str) -> None:
         )
 
 
-def _escape_like(value: str) -> str:
-    """`value` as a literal LIKE/ILIKE pattern (backslash is the default escape)."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 async def record_marketing_opt_out_by_email(email: str, source: str) -> str | None:
     """Record that the account at `email` refused marketing, from `source`.
 
@@ -1166,7 +1164,7 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
             # and `%` are wildcards: escape them so only this address matches,
             # and act only when exactly one account does.
             matches = await PrismaUser.prisma().find_many(
-                where={"email": {"equals": _escape_like(email), "mode": "insensitive"}},
+                where={"email": {"equals": escape_like(email), "mode": "insensitive"}},
                 take=2,
             )
             row = matches[0] if len(matches) == 1 else None
