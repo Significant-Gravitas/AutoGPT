@@ -256,7 +256,10 @@ export function AllTones() {
 //=============================================================================
 export function PinnedLineHeights() {
   const pinned = textVariants.filter((variant) =>
-    /-(tight|loose|relaxed|inherit|lh-[a-z0-9]+)(-tracking)?$/.test(variant),
+    // `-tracking-tight` pins letter-spacing, not line height.
+    /(?<!-tracking)-(tight|loose|relaxed|inherit|lh-[a-z0-9]+)(-tracking)?$/.test(
+      variant,
+    ),
   );
   return (
     <div className="space-y-3 p-8 leading-[30px]">
