@@ -23,7 +23,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
 import { Label } from "@/components/__legacy__/ui/label";
 import {
   Select,
@@ -35,7 +36,6 @@ import {
 import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
-import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   usePostV2GenerateExecutionAnalytics,
@@ -331,7 +331,7 @@ export function ExecutionAnalyticsForm() {
             <Label htmlFor="graph_id">
               Graph ID <span className="text-error">*</span>
             </Label>
-            <Input
+            <BaseInput
               id="graph_id"
               value={formData.graph_id}
               onChange={(e) => handleInputChange("graph_id", e.target.value)}
@@ -342,7 +342,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="graph_version">Graph Version</Label>
-            <Input
+            <BaseInput
               id="graph_version"
               type="number"
               value={formData.graph_version || ""}
@@ -358,7 +358,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="user_id">User ID</Label>
-            <Input
+            <BaseInput
               id="user_id"
               value={formData.user_id || ""}
               onChange={(e) => handleInputChange("user_id", e.target.value)}
@@ -368,7 +368,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="created_after">Created After</Label>
-            <Input
+            <BaseInput
               id="created_after"
               type="datetime-local"
               value={formData.created_after || ""}
@@ -420,12 +420,7 @@ export function ExecutionAnalyticsForm() {
                   }
                 />
                 <Label htmlFor="skip_existing">
-                  <Text
-                    variant="body-medium-tight"
-                    as="span"
-                    tone="inherit"
-                    className="block"
-                  >
+                  <Text variant="body-medium-tight" as="span" tone="inherit">
                     Skip executions that already have activity status and
                     correctness score
                   </Text>
@@ -440,12 +435,7 @@ export function ExecutionAnalyticsForm() {
                   onCheckedChange={(checked) => setShowAccuracyChart(!!checked)}
                 />
                 <Label htmlFor="show_accuracy_chart">
-                  <Text
-                    variant="body-medium-tight"
-                    as="span"
-                    tone="inherit"
-                    className="block"
-                  >
+                  <Text variant="body-medium-tight" as="span" tone="inherit">
                     Show accuracy trends chart and historical data visualization
                   </Text>
                 </Label>
@@ -466,7 +456,7 @@ export function ExecutionAnalyticsForm() {
                   rows={6}
                   className="resize-y"
                 />
-                <Text variant="body-tight" as="p" className="text-gray-600">
+                <Text variant="body-tight" className="text-gray-600">
                   Customize how the AI evaluates execution success and failure.
                   Leave empty to use the default prompt shown above.
                 </Text>
@@ -487,7 +477,7 @@ export function ExecutionAnalyticsForm() {
                   rows={8}
                   className="resize-y"
                 />
-                <Text variant="body-tight" as="p" className="text-gray-600">
+                <Text variant="body-tight" className="text-gray-600">
                   Customize the analysis instructions. Use{" "}
                   <code className="rounded bg-gray-100 px-1">
                     {"{{GRAPH_NAME}}"}
