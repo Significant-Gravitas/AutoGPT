@@ -83,17 +83,18 @@ export const IntegrationBlocks = () => {
                 Integrations
               </Text>
             </Button>
-            <Text variant="body-medium" as="p" className="text-zinc-800">
+            <Text variant="body-medium" as="p" tone="emphasis">
               /
             </Text>
-            <Text variant="body-medium" as="p" className="text-zinc-800">
+            <Text variant="body-medium" as="p" tone="emphasis">
               {integration}
             </Text>
           </div>
           <Text
             variant="body"
             as="span"
-            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 text-zinc-500 group-disabled:text-zinc-400"
+            tone="muted"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-zinc-400"
           >
             {totalBlocks}
           </Text>
