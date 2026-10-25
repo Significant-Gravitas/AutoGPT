@@ -34,7 +34,11 @@ from starlette import status
 from starlette.applications import Starlette
 from starlette.types import Receive, Scope, Send
 
-from backend.api.external.middleware import VerifiedCredential, verified_credential
+from backend.api.external.middleware import (
+    VerifiedCredential,
+    owner_is_banned,
+    verified_credential,
+)
 from backend.api.external.v2.errors import error_response
 from backend.api.external.v2.mcp_calls import (
     check_arguments,
@@ -376,6 +380,9 @@ class ExternalAPITokenVerifier(TokenVerifier):
     async def _tenanted(
         self, token: str, auth: APIAuthorizationInfo
     ) -> TenantedAccessToken | None:
+        if await owner_is_banned(auth):
+            logger.warning(f"Rejecting MCP token for banned user {auth.user_id}")
+            return None
         try:
             organization_id, team_id = await resolve_credential_tenancy(auth)
         except NotAuthorizedError as e:

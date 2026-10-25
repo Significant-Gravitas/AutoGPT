@@ -22,6 +22,7 @@ from backend.api.external.v2.models import SearchContentType
 from backend.api.external.v2.pagination import PageRequest
 from backend.api.external.v2.tenancy import TenantContext, require_auth
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.auth.oauth import ACCESS_TOKEN_PREFIX
 from backend.data.model import APIKeyCredentials, is_sdk_default
 from backend.integrations.credentials_store import SYSTEM_CREDENTIAL_IDS
 from backend.integrations.providers import ProviderName
@@ -268,7 +269,49 @@ async def test_a_transient_auth_failure_in_the_limiter_does_not_fail_the_request
     assert calls.count == 2
 
 
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"X-API-Key": "k"},
+        {"Authorization": "Bearer k"},
+        {"Authorization": f"Bearer {ACCESS_TOKEN_PREFIX}t"},
+    ],
+    ids=["api-key", "api-key-as-bearer", "access-token"],
+)
+@pytest.mark.parametrize("state, status", [("banned", 403), ("unbanned", 200)])
+def test_a_banned_owners_credential_reaches_no_v2_route(
+    auth_row, headers: dict[str, str], state: str, status: int
+) -> None:
+    owner = _owner(auth_row(state))
+
+    with (
+        mock.patch(
+            "backend.api.external.middleware.validate_api_key",
+            new=mock.AsyncMock(return_value=owner),
+        ),
+        mock.patch(
+            "backend.api.external.middleware.validate_access_token",
+            new=mock.AsyncMock(return_value=(owner, None)),
+        ),
+    ):
+        response = _client().get("/probe", headers=headers)
+
+    assert response.status_code == status, response.text
+    if status == 403:
+        assert response.json()["error"]["details"]["code"] == "account_banned"
+
+
 # ---------------------------------------------------------------------------
+
+
+def _owner(user_id: str) -> APIAuthorizationInfo:
+    return APIAuthorizationInfo(
+        user_id=user_id,
+        scopes=list(APIKeyPermission),
+        type="api_key",
+        created_at=datetime.now(tz=timezone.utc),
+        organization_id=ORG_ID,
+    )
 
 
 def _tenant(scopes: Optional[list[APIKeyPermission]] = None) -> TenantContext:

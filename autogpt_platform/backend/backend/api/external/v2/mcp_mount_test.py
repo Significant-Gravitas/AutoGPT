@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import fastapi
+import pytest
 import pytest_mock
 from fastapi.testclient import TestClient
 
@@ -20,7 +21,7 @@ from backend.api.external.v2.mcp_server import (
     TenantedAccessToken,
 )
 from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.auth.oauth import InvalidTokenError
+from backend.data.auth.oauth import ACCESS_TOKEN_PREFIX, InvalidTokenError
 
 INITIALIZE = {
     "jsonrpc": "2.0",
@@ -160,3 +161,36 @@ async def test_a_token_shaped_bearer_is_never_tried_as_an_api_key_over_mcp(
 
     assert await ExternalAPITokenVerifier().verify_token("agpt_xt_forged") is None
     validate_key.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["agpt_key", f"{ACCESS_TOKEN_PREFIX}token"],
+    ids=["api-key", "access-token"],
+)
+@pytest.mark.parametrize("state, admitted", [("banned", False), ("unbanned", True)])
+async def test_a_banned_owners_credential_gets_no_mcp_session(
+    mocker: pytest_mock.MockFixture, auth_row, token: str, state: str, admitted: bool
+) -> None:
+    owner = APIAuthorizationInfo(
+        user_id=auth_row(state), scopes=[], type="api_key", created_at=datetime.now(UTC)
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_api_key",
+        new_callable=AsyncMock,
+        return_value=owner,
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_access_token",
+        new_callable=AsyncMock,
+        return_value=(owner, None),
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.resolve_credential_tenancy",
+        new_callable=AsyncMock,
+        return_value=("org-1", None),
+    )
+
+    verified = await ExternalAPITokenVerifier().verify_token(token)
+
+    assert (verified is not None) is admitted
