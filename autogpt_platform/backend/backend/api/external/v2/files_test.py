@@ -157,6 +157,29 @@ def quota_bytes(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
     )
 
 
+async def test_the_listing_leaves_out_otto_s_working_files(
+    mocker: pytest_mock.MockFixture,
+):
+    """Otto's scratch files and skill packages are not the user's files."""
+    mocker.patch(
+        "backend.api.external.v2.files.get_workspace",
+        new=mock.AsyncMock(return_value=mock.Mock(id=WORKSPACE_ID)),
+    )
+    count = mocker.patch(
+        "backend.api.external.v2.files.count_workspace_files",
+        new=mock.AsyncMock(return_value=0),
+    )
+    listed = mocker.patch(
+        "backend.api.external.v2.files.list_workspace_files",
+        new=mock.AsyncMock(return_value=[]),
+    )
+
+    await list_files(page=PageRequest(limit=25), auth=_auth())
+
+    assert count.await_args.kwargs["include_internal"] is False
+    assert listed.await_args.kwargs["include_internal"] is False
+
+
 def test_a_successful_upload_reports_the_upload_cap_not_the_global_one(
     workspace: dict[str, WorkspaceFile], mocker: pytest_mock.MockFixture
 ) -> None:
@@ -261,7 +284,7 @@ def workspace(
     )
     mocker.patch(
         "backend.api.external.v2.files.count_workspace_files",
-        new=mock.AsyncMock(side_effect=lambda _: len(files)),
+        new=mock.AsyncMock(side_effect=lambda _, **__: len(files)),
     )
     mocker.patch(
         "backend.api.external.v2.files.list_workspace_files",

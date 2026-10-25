@@ -50,11 +50,13 @@ async def list_files(
     if workspace is None:
         return page.paged([], total_count=0)
 
-    total_count = await count_workspace_files(workspace.id)
+    # Otto's working files and skill packages stay out, as on the Files page.
+    total_count = await count_workspace_files(workspace.id, include_internal=False)
     files = await list_workspace_files(
         workspace_id=workspace.id,
         limit=page.limit,
         offset=(page.page - 1) * page.limit,
+        include_internal=False,
     )
 
     return page.paged(
