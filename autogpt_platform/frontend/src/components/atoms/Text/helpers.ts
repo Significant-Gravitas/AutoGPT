@@ -38,6 +38,9 @@ export const variants = {
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-tight":
     "font-sans text-body font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-medium-tight":
+    "font-sans text-body font-medium leading-5 text-foreground-base",
   // Keeps the parent's line height, like the raw size it replaced.
   "body-sm-medium-inherit":
     "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
@@ -51,6 +54,7 @@ export const variants = {
     "font-sans text-caption font-medium leading-4 text-foreground-base max-md:text-body max-md:leading-5",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  "small-mono": "font-mono text-caption font-normal text-foreground-base",
 
   // Label Text
   label:
@@ -97,11 +101,13 @@ export const variantElementMap: Record<Variant, As> = {
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
+  "body-medium-tight": "p",
   "body-sm-medium-inherit": "p",
   "body-sm-medium-inherit-touch": "p",
   "small-medium-tight-touch": "p",
   small: "p",
   "small-medium": "p",
+  "small-mono": "p",
   label: "span",
   eyebrow: "span",
 };
