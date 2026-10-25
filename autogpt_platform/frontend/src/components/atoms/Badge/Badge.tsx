@@ -56,7 +56,9 @@ const chipSizes: Record<ChipSize, string> = {
 // fit the solid chip's neutral-50.
 // TODO(tokens): destructive holds #EF4444 in :root but #7F1D1D (127 29 29) in
 // .dark (the dark destructive fill), so it doesn't fit the destructive chip's
-// red-500. destructive-foreground stays: it is #FAFAFA (250 250 250) in :root
+// red-500. The `error` role also holds #EF4444 in both themes, but it is the
+// error-state colour for text and borders, not a chip fill (rule 13 pair for
+// SECRT-3154). destructive-foreground stays: it is #FAFAFA (250 250 250) in :root
 // and .dark alike, the text on the destructive fill.
 const chipVariants: Record<ChipVariant, string> = {
   solid:
