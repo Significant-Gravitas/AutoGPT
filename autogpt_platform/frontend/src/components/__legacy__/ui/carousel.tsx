@@ -7,7 +7,8 @@ import useEmblaCarousel, {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import * as React from "react";
 
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import type { LegacyButtonProps } from "@/components/atoms/Button/helpers";
 import { cn } from "@/lib/utils";
 import { isKey } from "@/lib/keyboard";
 
@@ -198,10 +199,16 @@ CarouselItem.displayName = "CarouselItem";
 
 const CarouselPrevious = React.forwardRef<
   HTMLButtonElement,
-  React.ComponentProps<typeof Button> & { afterClick?: () => void }
+  Partial<LegacyButtonProps> & { afterClick?: () => void }
 >(
   (
-    { className, afterClick, variant = "outline", size = "icon", ...props },
+    {
+      className,
+      afterClick,
+      variant = "legacy-outline",
+      size = "legacy-icon",
+      ...props
+    },
     ref,
   ) => {
     const { orientation, scrollPrev, canScrollPrev } = useCarousel();
@@ -237,10 +244,16 @@ CarouselPrevious.displayName = "CarouselPrevious";
 
 const CarouselNext = React.forwardRef<
   HTMLButtonElement,
-  React.ComponentProps<typeof Button> & { afterClick?: () => void }
+  Partial<LegacyButtonProps> & { afterClick?: () => void }
 >(
   (
-    { className, afterClick, variant = "outline", size = "icon", ...props },
+    {
+      className,
+      afterClick,
+      variant = "legacy-outline",
+      size = "legacy-icon",
+      ...props
+    },
     ref,
   ) => {
     const { orientation, scrollNext, canScrollNext } = useCarousel();
