@@ -1,8 +1,12 @@
+import { Text } from "@/components/atoms/Text/Text";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 import { PromptInputSubmit } from "@/components/organisms/PromptInput/PromptInput";
-import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+} from "@/components/molecules/InputGroup/InputGroup";
 import { CredentialMentionEditor } from "../../CredentialMention/CredentialMentionEditor";
 import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMentionMarkdown";
 import { CARD_SEND_BUTTON_CLASS } from "../helpers";
@@ -36,12 +40,15 @@ function AccountMentionComposer({ expertId }: Props) {
     <div className="w-full max-w-2xl pt-80">
       {sent && (
         <div className="mb-8 flex justify-end">
-          <div
+          <Text
+            as="div"
+            variant="large-loose"
+            tone="primary"
             data-testid="sent-message"
-            className="max-w-full whitespace-pre-wrap rounded-3xl bg-surface-hover px-4 py-2.5 text-base leading-8 text-foreground-strong"
+            className="max-w-full whitespace-pre-wrap rounded-3xl bg-surface-hover px-4 py-2.5"
           >
             <CredentialMentionMarkdown>{sent}</CredentialMentionMarkdown>
-          </div>
+          </Text>
         </div>
       )}
       <form
@@ -61,12 +68,14 @@ function AccountMentionComposer({ expertId }: Props) {
         )}
         <InputGroup className="flex-col gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:ring-0">
           {attachments.map((name) => (
-            <span
+            <Text
               key={name}
-              className="rounded-lg bg-surface-hover px-2 py-1 text-sm"
+              variant="body-tight"
+              as="span"
+              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground"
             >
               {name}
-            </span>
+            </Text>
           ))}
           <CredentialMentionEditor
             value={value}
