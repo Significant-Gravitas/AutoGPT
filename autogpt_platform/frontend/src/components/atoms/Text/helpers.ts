@@ -54,6 +54,7 @@ export const variants = {
     "font-mono text-body font-normal leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  "small-mono": "font-mono text-caption font-normal text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-tight":
     "font-sans text-caption font-normal leading-4 text-foreground-base",
@@ -130,6 +131,7 @@ export const variantElementMap: Record<Variant, As> = {
   "body-mono-tight": "code",
   small: "p",
   "small-medium": "p",
+  "small-mono": "p",
   "small-tight": "p",
   "small-medium-tight": "p",
   "small-relaxed": "p",
