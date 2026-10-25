@@ -150,7 +150,7 @@ export function SearchCommandModal({
                   : undefined
               }
               autoComplete="off"
-              className="h-9 border-0 bg-transparent px-0 text-body-lg leading-6 text-foreground shadow-none placeholder:text-foreground-body focus-visible:ring-0"
+              className="h-9 border-0 bg-transparent px-0 text-foreground shadow-none placeholder:text-foreground-body focus-visible:ring-0"
             />
             {isLoading && isSearching ? (
               <LoadingSpinner
