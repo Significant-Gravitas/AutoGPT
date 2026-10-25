@@ -2288,6 +2288,10 @@ async def stream_chat_post(
             )
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff or resume_stored_resend:
+            # Raised inside this handler, so the outer clause that frees the
+            # client key never sees it: free it here, or a quick Retry under
+            # the same key waits on it and fails.
+            await release_client_message_claim()
             await _put_back_unless_stored(session_id, message_id, resent)
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
