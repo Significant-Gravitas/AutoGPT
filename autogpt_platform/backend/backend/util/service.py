@@ -198,10 +198,12 @@ class BaseAppService(AppProcess, ABC):
         # thread closes the loop right after run_forever() returns, so a
         # closed loop here means that thread is already gone (loop crash or
         # repeated cleanup) and there is nothing left to stop — scheduling
-        # onto it would raise "Event loop is closed" mid-shutdown.
-        if not self.shared_event_loop.is_closed():
+        # onto it would raise "Event loop is closed" mid-shutdown. A service
+        # stopped before `run()` created the loop has none at all.
+        loop = getattr(self, "shared_event_loop", None)
+        if loop is not None and not loop.is_closed():
             try:
-                self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+                loop.call_soon_threadsafe(loop.stop)
             except RuntimeError:
                 # The loop thread closed the loop between the check above and
                 # the scheduling call; equivalent to the is_closed() case.
