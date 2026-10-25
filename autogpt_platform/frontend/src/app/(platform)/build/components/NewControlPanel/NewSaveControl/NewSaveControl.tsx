@@ -57,7 +57,10 @@ export const NewSaveControl = () => {
         data-id="save-control-popover-content"
         className="w-96 max-w-[400px] rounded-xlarge border-neutral-200 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
       >
-        <Card className="border-none dark:bg-slate-900">
+        <Card
+          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-900 #2A313A
+          className="border-none dark:bg-slate-900"
+        >
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
@@ -119,6 +122,7 @@ export const NewSaveControl = () => {
                   variant="primary"
                   type="submit"
                   size="small"
+                  // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-700 #475263, dark:text-slate-100 #EFF1F4, dark:hover:bg-slate-800 #475263
                   className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"

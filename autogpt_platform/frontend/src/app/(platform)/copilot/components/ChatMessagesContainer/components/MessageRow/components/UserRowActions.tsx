@@ -1,4 +1,4 @@
-import { MessageActions } from "@/components/ai-elements/message";
+import { MessageActions } from "@/components/organisms/Message/Message";
 import { CopyButton } from "../../CopyButton";
 import { QueueBadge } from "../../QueueBadge";
 

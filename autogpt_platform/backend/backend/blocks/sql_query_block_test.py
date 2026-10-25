@@ -406,31 +406,28 @@ async def _collect_outputs(
 class TestSQLQueryBlockRunSSRF:
     """SSRF protection tests exercised through the block's run() method."""
 
-    async def test_private_ip_127_rejected(self):
-        """Scenario 6: loopback 127.0.0.1 must be blocked."""
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "::1",
+            "fe80::1",
+            "::ffff:127.0.0.1",
+            "fd00::1",
+        ],
+    )
+    async def test_private_ip_rejected(self, host: str):
+        """Loopback, private and link-local hosts, IPv4 and IPv6, must be blocked."""
         block = SQLQueryBlock()
         creds = _make_credentials()
-        input_data = _make_input(creds, host="127.0.0.1")
-        # Mock check_host_allowed to simulate the real SSRF check raising
+        input_data = _make_input(creds, host=host)
         block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
             side_effect=ValueError(
-                "Access to blocked or private IP address 127.0.0.1 "
-                "for hostname 127.0.0.1 is not allowed."
-            )
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "Blocked host" in outputs["error"]
-
-    async def test_private_ip_10_rejected(self):
-        """Scenario 7: internal 10.x.x.x must be blocked."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="10.0.0.1")
-        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
-            side_effect=ValueError(
-                "Access to blocked or private IP address 10.0.0.1 "
-                "for hostname 10.0.0.1 is not allowed."
+                f"Access to blocked or private IP address {host} "
+                f"for hostname {host} is not allowed."
             )
         )
         outputs = await _collect_outputs(block, input_data, creds)
@@ -454,36 +451,6 @@ class TestSQLQueryBlockRunSSRF:
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         assert "host" in outputs["error"].lower()
-
-    async def test_private_ip_172_rejected(self):
-        """172.16.x.x private range must be blocked."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="172.16.0.1")
-        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
-            side_effect=ValueError(
-                "Access to blocked or private IP address 172.16.0.1 "
-                "for hostname 172.16.0.1 is not allowed."
-            )
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "Blocked host" in outputs["error"]
-
-    async def test_private_ip_192_168_rejected(self):
-        """192.168.x.x private range must be blocked."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="192.168.1.1")
-        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
-            side_effect=ValueError(
-                "Access to blocked or private IP address 192.168.1.1 "
-                "for hostname 192.168.1.1 is not allowed."
-            )
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "Blocked host" in outputs["error"]
 
 
 @pytest.mark.asyncio
@@ -623,35 +590,28 @@ class TestSQLQueryBlockWriteMode:
         assert outputs["row_count"] == 0
         assert outputs["affected_rows"] == 1
 
-    async def test_update_allowed(self):
-        """UPDATE should succeed when read_only=False."""
+    @pytest.mark.parametrize(
+        "query,affected",
+        [
+            pytest.param("UPDATE users SET name = 'Bob' WHERE id = 1", 1, id="update"),
+            pytest.param("DELETE FROM users WHERE id = 1", 1, id="delete"),
+            pytest.param(
+                "UPDATE users SET active = true WHERE last_login > '2024-01-01'",
+                42,
+                id="update-many",
+            ),
+        ],
+    )
+    async def test_write_returns_affected_rows(self, query: str, affected: int):
+        """UPDATE and DELETE succeed when read_only=False and report affected_rows."""
         block = SQLQueryBlock()
         creds = _make_credentials()
-        input_data = _make_input(
-            creds,
-            query="UPDATE users SET name = 'Bob' WHERE id = 1",
-            read_only=False,
-        )
+        input_data = _make_input(creds, query=query, read_only=False)
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 1, False)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], affected, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
-        assert outputs["affected_rows"] == 1
-
-    async def test_delete_allowed(self):
-        """DELETE should succeed when read_only=False."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(
-            creds,
-            query="DELETE FROM users WHERE id = 1",
-            read_only=False,
-        )
-        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 1, False)  # type: ignore[assignment]
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" not in outputs
-        assert outputs["affected_rows"] == 1
+        assert outputs["affected_rows"] == affected
 
     async def test_create_table_allowed(self):
         """CREATE TABLE should succeed when read_only=False."""
@@ -710,21 +670,6 @@ class TestSQLQueryBlockWriteMode:
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         assert "Blocked host" in outputs["error"]
-
-    async def test_affected_rows_returned_for_write(self):
-        """Write queries return affected_rows count."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(
-            creds,
-            query="UPDATE users SET active = true WHERE last_login > '2024-01-01'",
-            read_only=False,
-        )
-        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 42, False)  # type: ignore[assignment]
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" not in outputs
-        assert outputs["affected_rows"] == 42
 
     async def test_select_in_write_mode_no_affected_rows(self):
         """SELECT in write mode still returns results, not affected_rows."""
@@ -951,71 +896,6 @@ class TestSQLQueryBlockDNSPinning:
 # Security gap tests: IPv6 SSRF, writable CTEs, timeout/max_rows enforcement,
 # and password scrubbing in error messages.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-class TestSQLQueryBlockIPv6SSRF:
-    """IPv6 loopback and link-local addresses must be blocked."""
-
-    async def test_ipv6_loopback_rejected(self):
-        """IPv6 loopback (::1) must be blocked just like 127.0.0.1."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="::1")
-        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
-            side_effect=ValueError(
-                "Access to blocked or private IP address ::1 "
-                "for hostname ::1 is not allowed."
-            )
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "Blocked host" in outputs["error"]
-
-    async def test_ipv6_link_local_rejected(self):
-        """IPv6 link-local (fe80::) must be blocked."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="fe80::1")
-        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
-            side_effect=ValueError(
-                "Access to blocked or private IP address fe80::1 "
-                "for hostname fe80::1 is not allowed."
-            )
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "Blocked host" in outputs["error"]
-
-    async def test_ipv6_mapped_ipv4_loopback_rejected(self):
-        """IPv4-mapped IPv6 loopback (::ffff:127.0.0.1) must be blocked."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="::ffff:127.0.0.1")
-        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
-            side_effect=ValueError(
-                "Access to blocked or private IP address ::ffff:127.0.0.1 "
-                "for hostname ::ffff:127.0.0.1 is not allowed."
-            )
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "Blocked host" in outputs["error"]
-
-    async def test_ipv6_unique_local_rejected(self):
-        """IPv6 unique-local (fd00::) must be blocked like RFC1918."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="fd00::1")
-        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
-            side_effect=ValueError(
-                "Access to blocked or private IP address fd00::1 "
-                "for hostname fd00::1 is not allowed."
-            )
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "Blocked host" in outputs["error"]
 
 
 class TestWritableCTEBlocked:
