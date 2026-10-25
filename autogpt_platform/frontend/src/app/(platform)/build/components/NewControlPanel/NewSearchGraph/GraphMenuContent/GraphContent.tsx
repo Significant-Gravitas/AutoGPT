@@ -117,6 +117,7 @@ export function GraphSearchContent({
                             variant="small-loose"
                             as="span"
                             tone="muted"
+                            // TODO(tokens): SECRT-3154 no static-fill role for bg-zinc-200 (#DADADC); surface-active is an active-state role and border-base a border role
                             className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2"
                           >
                             {nodeType}
