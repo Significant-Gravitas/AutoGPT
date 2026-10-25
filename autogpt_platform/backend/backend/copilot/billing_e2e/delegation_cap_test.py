@@ -114,6 +114,7 @@ async def test_a_delegated_turn_stops_at_its_cap_and_waits_on_the_user(
     provider.turn = ledger.turn = account.turn = 0
     session.messages.append(ChatMessage(role="user", content=PROMPT))
     await run_turn(session, PROMPT)
+    await ledger.settle()
 
     assert executor.errors == [None]
     if scenario.engine == "baseline":
