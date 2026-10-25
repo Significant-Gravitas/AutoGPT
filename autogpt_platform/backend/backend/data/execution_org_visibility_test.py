@@ -101,6 +101,17 @@ async def test_a_users_runs_can_be_listed_for_one_org(mock_exec_client):
 
     where = mock_exec_client.find_many.call_args.kwargs["where"]
     assert (where["userId"], where["organizationId"]) == ("u-1", "org-1")
+    assert where["isDeleted"] is False
+
+
+@pytest.mark.asyncio
+async def test_runs_deleted_from_history_can_be_listed(mock_exec_client):
+    """Deleting a run hides it without stopping it, so the runs stopped when
+    a member is removed include the ones they deleted."""
+    await get_graph_executions(user_id="u-1", organization_id="org-1", deleted=True)
+
+    where = mock_exec_client.find_many.call_args.kwargs["where"]
+    assert where["isDeleted"] is True
 
 
 @pytest.mark.asyncio

@@ -30,17 +30,22 @@ def _admin_ctx() -> RequestContext:
 
 @pytest.fixture
 def steps(mocker):
-    """Patches removal, the run lookup and stopping a run, recording the order
-    they happen in. The member has two runs going in the org."""
+    """Patches removal, the run lookups and stopping a run, recording the order
+    they happen in. The member has two runs going in the org, and a third they
+    deleted from their history."""
     order: list[str] = []
     org_db = mocker.patch("backend.api.features.orgs.routes.org_db")
     org_db.remove_org_member = AsyncMock(
         side_effect=lambda *_, **__: order.append("removed")
     )
-    runs = [SimpleNamespace(id="run-1"), SimpleNamespace(id="run-2")]
+    runs = {
+        False: [SimpleNamespace(id="run-1"), SimpleNamespace(id="run-2")],
+        True: [SimpleNamespace(id="deleted-run")],
+    }
     execution_db = mocker.patch("backend.api.features.orgs.member_runs.execution_db")
     execution_db.get_graph_executions = AsyncMock(
-        side_effect=lambda **_: order.append("looked up") or runs
+        side_effect=lambda **kwargs: order.append("looked up")
+        or runs[kwargs["deleted"]]
     )
     stop = mocker.patch(
         "backend.api.features.orgs.member_runs.stop_graph_execution",
@@ -54,24 +59,42 @@ def steps(mocker):
     )
 
 
+def _waits(stop: AsyncMock) -> dict[str, float]:
+    """How long each stopped run's stop waited for it to end, by run id."""
+    calls = stop.await_args_list
+    assert {call.kwargs["user_id"] for call in calls} == {MEMBER_ID}
+    return {call.kwargs["graph_exec_id"]: call.kwargs["wait_timeout"] for call in calls}
+
+
 @pytest.mark.asyncio
 async def test_removing_a_member_stops_their_unfinished_runs_in_the_org(steps):
     await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
 
-    assert steps.order == ["removed", "looked up"]
-    lookup = steps.lookup.await_args.kwargs
-    assert (lookup["user_id"], lookup["organization_id"]) == (MEMBER_ID, ORG_ID)
-    assert set(lookup["statuses"]) == {
-        ExecutionStatus.QUEUED,
-        ExecutionStatus.INCOMPLETE,
-        ExecutionStatus.RUNNING,
-        ExecutionStatus.REVIEW,
+    assert steps.order == ["removed", "looked up", "looked up"]
+    for call in steps.lookup.await_args_list:
+        lookup = call.kwargs
+        assert (lookup["user_id"], lookup["organization_id"]) == (MEMBER_ID, ORG_ID)
+        assert set(lookup["statuses"]) == {
+            ExecutionStatus.QUEUED,
+            ExecutionStatus.INCOMPLETE,
+            ExecutionStatus.RUNNING,
+            ExecutionStatus.REVIEW,
+        }
+    waits = _waits(steps.stop)
+    assert (waits["run-1"], waits["run-2"]) == (15.0, 15.0)
+
+
+@pytest.mark.asyncio
+async def test_a_run_deleted_from_history_is_stopped_too(steps):
+    """Deleting a run hides it without stopping it. Lookups can't see it, so
+    its stop sends the cancel without waiting to see it end."""
+    await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+
+    assert {call.kwargs["deleted"] for call in steps.lookup.await_args_list} == {
+        False,
+        True,
     }
-    stopped = {
-        (call.kwargs["user_id"], call.kwargs["graph_exec_id"])
-        for call in steps.stop.await_args_list
-    }
-    assert stopped == {(MEMBER_ID, "run-1"), (MEMBER_ID, "run-2")}
+    assert _waits(steps.stop)["deleted-run"] == 0
 
 
 @pytest.mark.asyncio
@@ -79,7 +102,7 @@ async def test_a_run_that_wont_stop_doesnt_fail_the_removal(steps, caplog):
     """The member is already out of the org; the other runs are still stopped,
     and the one that wasn't is logged."""
 
-    async def stop(user_id: str, graph_exec_id: str) -> None:
+    async def stop(user_id: str, graph_exec_id: str, wait_timeout: float) -> None:
         if graph_exec_id == "run-1":
             raise TimeoutError("still stopping")
 
@@ -88,12 +111,25 @@ async def test_a_run_that_wont_stop_doesnt_fail_the_removal(steps, caplog):
     with caplog.at_level(logging.WARNING, logger=member_runs.__name__):
         await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
 
-    assert {call.kwargs["graph_exec_id"] for call in steps.stop.await_args_list} == {
-        "run-1",
-        "run-2",
-    }
+    assert set(_waits(steps.stop)) == {"run-1", "run-2", "deleted-run"}
     assert [
         record.levelno for record in caplog.records if "run-1" in record.message
+    ] == [logging.WARNING]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_lookup_doesnt_fail_the_removal(steps, caplog):
+    """The member is already out of the org, so the request succeeds and the
+    failure is logged. Retrying it would find no member to remove."""
+    steps.lookup.side_effect = ConnectionError("database unavailable")
+
+    with caplog.at_level(logging.WARNING, logger=member_runs.__name__):
+        await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+
+    steps.remove.assert_awaited_once()
+    steps.stop.assert_not_awaited()
+    assert [
+        record.levelno for record in caplog.records if MEMBER_ID in record.message
     ] == [logging.WARNING]
 
 

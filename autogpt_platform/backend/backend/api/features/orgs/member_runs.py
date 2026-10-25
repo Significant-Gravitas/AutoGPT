@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from backend.data import execution as execution_db
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.executor.utils import stop_graph_execution
 
 logger = logging.getLogger(__name__)
@@ -24,17 +24,49 @@ async def stop_member_runs(org_id: str, user_id: str) -> None:
 
     Called once they've been removed from the org: a run they started while
     they were a member is stopped there rather than left running, billed to
-    the org. A run that fails to stop is logged and doesn't fail the removal.
+    the org. That includes runs they deleted from their history, as deleting
+    a run doesn't stop it. The removal has already happened, so nothing here
+    fails it: a lookup or a stop that fails is logged.
     """
-    runs = await execution_db.get_graph_executions(
-        user_id=user_id, organization_id=org_id, statuses=UNFINISHED_STATUSES
-    )
-    await asyncio.gather(*[_stop(org_id, user_id, run.id) for run in runs])
-
-
-async def _stop(org_id: str, user_id: str, graph_exec_id: str) -> None:
     try:
-        await stop_graph_execution(user_id=user_id, graph_exec_id=graph_exec_id)
+        visible, deleted = await asyncio.gather(
+            _unfinished_runs(org_id, user_id, deleted=False),
+            _unfinished_runs(org_id, user_id, deleted=True),
+        )
+    except Exception:
+        logger.warning(
+            f"Couldn't look up the runs of user {user_id}, who was removed "
+            f"from org {org_id}, to stop them",
+            exc_info=True,
+        )
+        return
+    await asyncio.gather(
+        *[_stop(org_id, user_id, run.id) for run in visible],
+        # Lookups skip deleted runs, so a deleted one's stop can only send its
+        # cancel, not wait to see it end. That's enough: only a running one
+        # would carry on, since a deleted run is never resumed or picked up.
+        *[_stop(org_id, user_id, run.id, wait_timeout=0) for run in deleted],
+    )
+
+
+async def _unfinished_runs(
+    org_id: str, user_id: str, deleted: bool
+) -> list[GraphExecutionMeta]:
+    return await execution_db.get_graph_executions(
+        user_id=user_id,
+        organization_id=org_id,
+        statuses=UNFINISHED_STATUSES,
+        deleted=deleted,
+    )
+
+
+async def _stop(
+    org_id: str, user_id: str, graph_exec_id: str, wait_timeout: float = 15.0
+) -> None:
+    try:
+        await stop_graph_execution(
+            user_id=user_id, graph_exec_id=graph_exec_id, wait_timeout=wait_timeout
+        )
     except Exception:
         logger.warning(
             f"Couldn't stop run #{graph_exec_id} of user {user_id}, "

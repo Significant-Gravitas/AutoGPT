@@ -643,6 +643,7 @@ async def get_graph_executions(
     order_direction: Literal["asc", "desc"] = "desc",
     expert_id: Optional[str] = None,
     organization_id: Optional[str] = None,
+    deleted: bool = False,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -654,9 +655,11 @@ async def get_graph_executions(
         execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
         order_by: Field to order by. Defaults to "createdAt"
         order_direction: Sort direction. Defaults to "desc"
+        deleted: List the executions deleted from history instead of the
+            visible ones
     """
     where_filter: AgentGraphExecutionWhereInput = {
-        "isDeleted": False,
+        "isDeleted": deleted,
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
