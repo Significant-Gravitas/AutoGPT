@@ -205,7 +205,7 @@ const CustomDropdown = ({
     >
       <SelectTrigger
         data-slot="calendar-dropdown-trigger"
-        className="w-[120px] space-x-2 bg-surface text-body leading-5"
+        className="w-[120px] space-x-2 bg-surface"
       >
         <SelectValue data-slot="calendar-dropdown-value" placeholder="Select" />
       </SelectTrigger>
