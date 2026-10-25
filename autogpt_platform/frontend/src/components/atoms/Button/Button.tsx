@@ -11,11 +11,15 @@ import {
   ButtonProps,
   extendedButtonVariants,
   ICON_ONLY_SIZES,
+  isLegacyButton,
 } from "./helpers";
+import { LegacyButton } from "./LegacyButton";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function Button(props: ButtonProps) {
+  if (isLegacyButton(props)) return <LegacyButton {...props} />;
+
   const {
     className,
     variant,
