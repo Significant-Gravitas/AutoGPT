@@ -13,12 +13,22 @@ MAX_EXPONENT = 1000  # Max allowed exponent in ** operations
 MAX_RANGE = 10_000  # Max items from range()
 MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
+MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a format() field
+
+# The size fields of one %-style conversion, e.g. "%-12.4f" -> ("12", "4")
+_FORMAT_FIELD_SIZES = re.compile(r"%[-+ #0]*(\d*)(?:\.(\d*))?")
 
 
 def format_filter_for_jinja2(value, format_string=None):
-    if format_string:
-        return format_string % float(value)
-    return value
+    if not format_string:
+        return value
+    # The width and precision decide how much the % operator allocates
+    for width, precision in _FORMAT_FIELD_SIZES.findall(format_string):
+        if max(int(width or 0), int(precision or 0)) > MAX_FORMAT_FIELD_SIZE:
+            raise OverflowError(
+                f"Format field too large (max {MAX_FORMAT_FIELD_SIZE} characters)"
+            )
+    return format_string % float(value)
 
 
 class TextFormatter:

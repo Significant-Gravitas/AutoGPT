@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from backend.util.text import TextFormatter
+from backend.util.text import MAX_FORMAT_FIELD_SIZE, TextFormatter
 
 
 @pytest.fixture
@@ -126,3 +126,39 @@ def test_over_boundary_range(fmt: TextFormatter):
     """range(10001) exceeds the limit — should fail."""
     with pytest.raises((ValueError, OverflowError)):
         asyncio.run(fmt.format_string("{{ range(10001) | list }}"))
+
+
+# --- The format filter's field sizes are capped ---
+
+
+@pytest.mark.asyncio
+async def test_format_filter_pads_within_the_cap(fmt: TextFormatter):
+    result = await fmt.format_string(
+        "{{ 5 | format('%" + str(MAX_FORMAT_FIELD_SIZE) + ".3f') }}"
+    )
+    assert len(result) == MAX_FORMAT_FIELD_SIZE
+    assert result.endswith("5.000")
+
+
+@pytest.mark.asyncio
+async def test_huge_format_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string(
+            "{{ 0 | format('%" + str(MAX_FORMAT_FIELD_SIZE + 1) + "f') }}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_huge_format_precision_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string(
+            "{{ 0 | format('%." + str(MAX_FORMAT_FIELD_SIZE + 1) + "f') }}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_huge_format_width_blocked_in_a_later_field(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string(
+            "{{ 0 | format('%%%" + str(MAX_FORMAT_FIELD_SIZE + 1) + "f') }}"
+        )
