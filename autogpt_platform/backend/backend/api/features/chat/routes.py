@@ -390,7 +390,10 @@ async def _admit_card_answer(
             # already answered must not hand out that approval a second time.
             others = set(ids) - claim.claimed
             await record_card_decisions(
-                user_id, session_id, strip_card_decisions(answer.message, others)
+                user_id,
+                session_id,
+                strip_card_decisions(answer.message, others),
+                by=owner,
             )
             if claim.result == "claimed":
                 answer.admission = "claimed"

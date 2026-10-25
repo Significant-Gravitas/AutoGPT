@@ -10,13 +10,14 @@ import logging
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.copilot.gate.answers_in_flight import answers_on_their_way
 from backend.copilot.gate.card_approval import (
     CARD_DECISION_KIND,
     parse_card_decisions,
     withdraw_card_approvals,
+    withdraw_card_approvals_recorded_by,
 )
 from backend.copilot.model import ChatMessage, get_chat_session
 from backend.data.redis_client import get_redis_async
@@ -32,6 +33,9 @@ class CardClaim(BaseModel):
     result: ClaimResult
     # The cards that were answered already, when ``result`` is "answered".
     answered: frozenset[str] = frozenset()
+    # The claim each answered card held when it was read ("owner|accepted"),
+    # so clearing a lost one can never clear a claim made since.
+    seen: dict[str, str] = Field(default_factory=dict)
     # The cards this claim took, when ``result`` is "claimed".
     claimed: frozenset[str] = frozenset()
 
@@ -53,7 +57,8 @@ _SERVER_WRITTEN_KEYS = frozenset(
 # could (a killed worker): saving or queueing takes seconds.
 _PENDING_LEASE_MS = 60_000
 # All or nothing: a request that names an id someone else holds takes none.
-# {0, ids...}: answered already, by someone else; {3}: someone else's still
+# {0, id, claim, id, claim...}: answered already, by someone else, and the
+# claim each held; {3}: someone else's still
 # pending; {4}: another attempt of this send is still pending; {1, ids...}:
 # claimed now, those ids; {2}: this send's answer was already accepted.
 _CLAIM = """
@@ -71,6 +76,7 @@ for i = 5, #ARGV do
   elseif value ~= accepted then
     if string.sub(value, -9) == '|accepted' then
       table.insert(answered, ARGV[i])
+      table.insert(answered, value)
     else
       local deadline = tonumber(string.match(value, '|(%d+)$'))
       if deadline and deadline > now then
@@ -103,16 +109,17 @@ for i = 3, #ARGV do
 end
 return 1
 """
-# An accepted answer that was lost goes; one accepted since, or still
-# pending, is someone's and stays.
-_FORGET_ACCEPTED = """
-for i = 1, #ARGV do
-  local value = redis.call('HGET', KEYS[1], ARGV[i])
-  if value and string.sub(value, -9) == '|accepted' then
+# A lost answer's claim goes only while it is still the claim that was
+# read: one cleared and claimed again since is someone else's answer.
+_FORGET_SEEN = """
+local gone = {}
+for i = 1, #ARGV, 2 do
+  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[i + 1] then
     redis.call('HDEL', KEYS[1], ARGV[i])
+    table.insert(gone, ARGV[i])
   end
 end
-return 1
+return gone
 """
 # Only the attempt that claimed an id gives it back, and only while pending.
 _RELEASE = """
@@ -174,7 +181,9 @@ async def claim_answer(
     lost = await _lost_answers(user_id, session_id, claim.answered)
     if not lost:
         return claim
-    await _forget_lost_answers(user_id, session_id, lost)
+    await _forget_lost_answers(
+        user_id, session_id, {cid: claim.seen[cid] for cid in lost}
+    )
     return await _claim(session_id, confirmation_ids, owner, attempt)
 
 
@@ -193,18 +202,31 @@ async def _lost_answers(
 
 
 async def _forget_lost_answers(
-    user_id: str, session_id: str, confirmation_ids: set[str]
+    user_id: str, session_id: str, seen: dict[str, str]
 ) -> None:
-    logger.info(f"Forgot {len(confirmation_ids)} lost card answer(s) in {session_id}")
-    await withdraw_card_approvals(user_id, session_id, confirmation_ids)
+    """Clear the claims of lost answers, each only if it is still the claim
+    that was read, then their approvals, each only if that same send
+    recorded it. Another request may have found the same lost answer,
+    cleared it, and answered the card while this one was checking: its
+    claim and its approval are not this one's to take."""
     try:
         redis = await get_redis_async()
-        await redis.eval(_FORGET_ACCEPTED, 1, f"{_KEY}{session_id}", *confirmation_ids)
+        pairs = [part for cid, value in seen.items() for part in (cid, value)]
+        gone = await redis.eval(_FORGET_SEEN, 1, f"{_KEY}{session_id}", *pairs)
     except Exception:
         logger.warning(
             f"Could not forget lost card answers for session {session_id}",
             exc_info=True,
         )
+        return
+    if not gone:
+        return
+    logger.info(f"Forgot {len(gone)} lost card answer(s) in {session_id}")
+    await withdraw_card_approvals_recorded_by(
+        user_id,
+        session_id,
+        {str(cid): seen[str(cid)].removesuffix("|accepted") for cid in gone},
+    )
 
 
 async def accept_claim(
@@ -345,10 +367,10 @@ async def _claim(
         return CardClaim(result="held", claimed=frozenset(confirmation_ids))
     code, *ids = reply
     result = _CLAIM_RESULTS[int(code)]
-    named = frozenset(str(cid) for cid in ids)
     if result == "answered":
-        return CardClaim(result=result, answered=named)
-    return CardClaim(result=result, claimed=named)
+        seen = dict(zip(map(str, ids[::2]), map(str, ids[1::2])))
+        return CardClaim(result=result, answered=frozenset(seen), seen=seen)
+    return CardClaim(result=result, claimed=frozenset(str(cid) for cid in ids))
 
 
 _CLAIM_RESULTS: dict[int, ClaimResult] = {

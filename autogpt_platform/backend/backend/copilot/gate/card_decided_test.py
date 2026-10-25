@@ -144,7 +144,10 @@ async def test_answers_dropped_before_they_were_saved_are_forgotten(
     )
     for cid in ("c-1", "c-2"):
         await card_approval.record_card_decisions(
-            "u-1", session_id, f"Approved: hire Maya (confirmation_id: {cid})."
+            "u-1",
+            session_id,
+            f"Approved: hire Maya (confirmation_id: {cid}).",
+            by=f"queued-{cid}",
         )
         assert await _claim(session_id, [cid], f"queued-{cid}") == "claimed"
         await card_decided.accept_claim(
@@ -185,7 +188,7 @@ async def test_answers_dropped_from_a_chat_that_cannot_be_read_are_forgotten(
         side_effect=RuntimeError("db down"),
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
-    await card_approval.record_card_decisions("u-1", session_id, line)
+    await card_approval.record_card_decisions("u-1", session_id, line, by="queued")
     assert await _claim(session_id, ["c-1"], "queued") == "claimed"
     await card_decided.accept_claim(session_id, ["c-1"], "queued", "queued")
 
@@ -334,7 +337,7 @@ async def test_an_accepted_answer_that_was_lost_stops_holding_the_card(
         new_callable=AsyncMock,
         return_value=on_its_way == "turn",
     )
-    await card_approval.record_card_decisions("u-1", session_id, line)
+    await card_approval.record_card_decisions("u-1", session_id, line, by="tab-a")
     assert await _claim(session_id, ["c-1"], "tab-a") == "claimed"
     await card_decided.accept_claim(session_id, ["c-1"], "tab-a", "tab-a")
 

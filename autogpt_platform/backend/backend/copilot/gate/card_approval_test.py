@@ -27,6 +27,7 @@ async def test_an_approval_is_read_once_by_its_user_in_its_chat():
         "Approved: create Otto (confirmation_id: c-1).\n"
         "Not approved: do not create Ada, discard that proposal "
         "(confirmation_id: c-2).",
+        by="click-1",
     )
     ttl = await (await get_redis_async()).ttl(card_approval._key(chat))
 
@@ -43,13 +44,14 @@ async def test_an_approval_is_read_once_by_its_user_in_its_chat():
 async def test_a_later_decline_withdraws_an_approval():
     chat = f"s-{uuid.uuid4()}"
     await record_card_decisions(
-        "u-1", chat, "Approved: create Otto (confirmation_id: c-1)."
+        "u-1", chat, "Approved: create Otto (confirmation_id: c-1).", by="click-1"
     )
     await record_card_decisions(
         "u-1",
         chat,
         "Not approved: do not create Otto, discard that proposal "
         "(confirmation_id: c-1).",
+        by="click-2",
     )
 
     assert not await approved_on_card(_CONFIRM, {"confirmation_id": "c-1"}, "u-1", chat)
@@ -60,7 +62,7 @@ async def test_concurrent_confirms_of_one_approval_pass_exactly_once():
     for _ in range(5):
         chat = f"s-{uuid.uuid4()}"
         await record_card_decisions(
-            "u-1", chat, "Approved: create Otto (confirmation_id: c-1)."
+            "u-1", chat, "Approved: create Otto (confirmation_id: c-1).", by="click-1"
         )
 
         results = await asyncio.gather(

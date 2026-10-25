@@ -631,7 +631,7 @@ def test_stream_chat_records_card_decisions_only_from_the_users_message(
 
     assert response.status_code == 200
     if is_user_message:
-        record.assert_awaited_once_with(test_user_id, "sess-1", line)
+        record.assert_awaited_once_with(test_user_id, "sess-1", line, by=ANY)
     else:
         record.assert_not_awaited()
 
@@ -887,7 +887,7 @@ def test_stream_chat_sends_the_first_answer_to_a_card(
     response = client.post("/sessions/sess-1/stream", json={"message": line})
 
     assert response.status_code == 200
-    record.assert_awaited_once_with(test_user_id, "sess-1", line)
+    record.assert_awaited_once_with(test_user_id, "sess-1", line, by=ANY)
     mocks.enqueue.assert_awaited_once()
 
 
@@ -1252,6 +1252,71 @@ async def test_queue_pending_message_settles_a_landed_push_despite_a_cancellatio
     assert finished == ["client-key", "card-claim"]
     release.assert_not_awaited()
     withdraw.assert_not_awaited()
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+async def test_a_late_recovery_does_not_take_back_a_fresher_answer(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """Tab A's queued answer was lost. Tabs B and C both find its claim and
+    both check whether it is still on its way. C finishes first: it clears
+    A's claim, answers, and its answer is queued. B's check, which read the
+    queue before C's answer landed there, still says lost. B must clear
+    only what it saw, A's claim: C's claim and C's approval stand, and B is
+    refused like any second answer."""
+    session_id = f"s-{uuid4()}"
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    mocker.patch(
+        "backend.copilot.gate.card_decided.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=MagicMock(messages=[]),
+    )
+    lost = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, "tab-a", has_attachments=False
+    )
+    await chat_routes._accept_card_answer(session_id, lost)
+
+    b_checking = asyncio.Event()
+    b_may_go_on = asyncio.Event()
+    checks = 0
+
+    async def on_their_way(session: str, ids: object) -> set[str]:
+        nonlocal checks
+        checks += 1
+        if checks == 1:  # B's check, read before C's answer was queued
+            b_checking.set()
+            await b_may_go_on.wait()
+        return set()
+
+    mocker.patch(
+        "backend.copilot.gate.card_decided.answers_on_their_way",
+        side_effect=on_their_way,
+    )
+    tab_b = asyncio.create_task(
+        chat_routes._admit_card_answer(
+            test_user_id, session_id, line, "tab-b", has_attachments=False
+        )
+    )
+    await b_checking.wait()
+    tab_c = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, "tab-c", has_attachments=False
+    )
+    assert tab_c.admission == "claimed"
+    await chat_routes._accept_card_answer(session_id, tab_c)
+
+    b_may_go_on.set()
+    answer_b = await tab_b
+
+    assert answer_b.admission == "refused"
+    assert await approved_on_card(
+        "confirm_expert_change",
+        {"confirmation_id": "c-1"},
+        test_user_id,
+        session_id,
+    )
 
 
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
@@ -1893,7 +1958,7 @@ def test_stream_chat_sends_the_open_card_of_a_group_another_tab_half_answered(
 
     assert response.status_code == 200
     assert claim.await_args_list[1].args[2] == ["c-2"]
-    record.assert_awaited_once_with(test_user_id, "sess-1", _OPEN_CARD)
+    record.assert_awaited_once_with(test_user_id, "sess-1", _OPEN_CARD, by=ANY)
     saved = mocks.enqueue.await_args.kwargs
     assert saved["message"] == _OPEN_CARD
     assert saved["message_metadata"] == card_decision_metadata(_OPEN_CARD)
@@ -3894,7 +3959,7 @@ def test_queue_pending_message_answers_a_card_once(
         record.assert_not_awaited()
         push.assert_not_awaited()
     else:
-        record.assert_awaited_once_with(test_user_id, "sess-1", line)
+        record.assert_awaited_once_with(test_user_id, "sess-1", line, by=ANY)
         push.assert_awaited_once()
 
 

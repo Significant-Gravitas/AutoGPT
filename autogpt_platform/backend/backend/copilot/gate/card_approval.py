@@ -10,7 +10,7 @@ a note of what was decided instead of the line itself.
 
 import logging
 import re
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -44,8 +44,13 @@ class CardDecision(BaseModel):
     name: str | None = None
 
 
-async def record_card_decisions(user_id: str, session_id: str, message: str) -> None:
-    """Called by the chat route for a message the user sent, and by nothing else."""
+async def record_card_decisions(
+    user_id: str, session_id: str, message: str, *, by: str
+) -> None:
+    """Called by the chat route for a message the user sent, and by nothing else.
+
+    ``by`` is the send that recorded the approval (its claim owner), so an
+    approval can be withdrawn as that send's and no one else's."""
     decisions = parse_card_decisions(message)
     if not decisions:
         return
@@ -55,7 +60,7 @@ async def record_card_decisions(user_id: str, session_id: str, message: str) -> 
             for decision in decisions:
                 field = _field(user_id, decision.confirmation_id)
                 if decision.verdict == "approved":
-                    pipe.hset(_key(session_id), field, "1")
+                    pipe.hset(_key(session_id), field, by)
                 else:
                     pipe.hdel(_key(session_id), field)
             pipe.expire(_key(session_id), _TTL_SECONDS)
@@ -77,6 +82,40 @@ async def withdraw_card_approvals(
     try:
         redis = await get_redis_async()
         await redis.hdel(_key(session_id), *fields)
+    except Exception:
+        logger.warning(
+            f"Could not withdraw card approvals for session {session_id}",
+            exc_info=True,
+        )
+
+
+# Only an approval still recorded by that send goes.
+_WITHDRAW_RECORDED_BY = """
+for i = 1, #ARGV, 2 do
+  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[i + 1] then
+    redis.call('HDEL', KEYS[1], ARGV[i])
+  end
+end
+return 1
+"""
+
+
+async def withdraw_card_approvals_recorded_by(
+    user_id: str, session_id: str, senders: Mapping[str, str]
+) -> None:
+    """Withdraw approvals by confirmation id, each only while the send named
+    for it is the one that recorded it: a send that answered since keeps its
+    approval."""
+    pairs = [
+        part
+        for cid, sender in senders.items()
+        for part in (_field(user_id, cid), sender)
+    ]
+    if not pairs:
+        return
+    try:
+        redis = await get_redis_async()
+        await redis.eval(_WITHDRAW_RECORDED_BY, 1, _key(session_id), *pairs)
     except Exception:
         logger.warning(
             f"Could not withdraw card approvals for session {session_id}",
