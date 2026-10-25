@@ -311,6 +311,31 @@ describe("ChatInput composer row", () => {
     expect(document.activeElement).toBe(menuItem);
   });
 
+  it("takes focus from a dialog that is on its way out", () => {
+    // A sheet closing (picking a chat in the phone's sidebar) stays mounted
+    // through its exit animation, with focus still inside it.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    screen.getByRole("button", { name: "A chat", hidden: true }).focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
+  });
+
   it("still takes focus inside the dialog it lives in", () => {
     const { rerender } = render(
       <div role="dialog" aria-label="Expert chat">
