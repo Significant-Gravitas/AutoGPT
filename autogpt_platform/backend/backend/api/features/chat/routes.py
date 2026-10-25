@@ -127,6 +127,7 @@ from backend.copilot.response_model import (
     StreamFinishStep,
     StreamFollowUpQueued,
     StreamHeartbeat,
+    StreamSendAccepted,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -1843,6 +1844,20 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+async def _own_resend_row(
+    session_id: str, message_id: str | None
+) -> Literal["answered", "unanswered"] | None:
+    """Whether this resend's own row (stored under its id by an earlier
+    attempt) exists, and whether a reply follows it. None when there is no
+    such row: another turn read the follow-up from the queue."""
+    if message_id is None:
+        return None
+    has_reply = await chat_message_has_assistant_reply(message_id, session_id)
+    if has_reply is None:
+        return None
+    return "answered" if has_reply else "unanswered"
+
+
 async def _put_back_unless_stored(
     session_id: str, message_id: str | None, resent: PendingMessage | None
 ) -> None:
@@ -1900,35 +1915,47 @@ def _ui_message_stream_headers() -> dict[str, str]:
 def _empty_ui_message_stream_response(
     follow_up_queued: bool = False,
     turn_queued: StreamTurnQueued | None = None,
+    send_accepted: bool = False,
 ) -> StreamingResponse:
+    return StreamingResponse(
+        _empty_stream_frames(
+            follow_up_queued=follow_up_queued,
+            turn_queued=turn_queued,
+            send_accepted=send_accepted,
+        ),
+        media_type="text/event-stream",
+        headers=_ui_message_stream_headers(),
+    )
+
+
+async def _empty_stream_frames(
+    *,
+    follow_up_queued: bool = False,
+    turn_queued: StreamTurnQueued | None = None,
+    send_accepted: bool = False,
+) -> AsyncGenerator[str, None]:
     # Stable placeholder messageId for the empty queued-mid-turn stream.
     # Real turns generate per-message UUIDs via the executor; this stream
     # has no message to attach to, but the AI SDK parser still requires a
     # non-empty ``messageId`` field on ``StreamStart``.
-    message_id = uuid4().hex
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        # Vercel AI SDK's UI-message-stream parser expects symmetric
-        # start/finish framing at both stream and step level — every
-        # non-empty turn emits the pair.  Without an opener, today's parser
-        # tolerates the closer (no active parts to flush) but a future SDK
-        # tightening would silently break the queue-mid-turn UX.  Emit the
-        # full empty pair so the contract stays correct.
-        yield StreamStart(messageId=message_id).to_sse()
-        yield StreamStartStep().to_sse()
-        if follow_up_queued:
-            yield StreamFollowUpQueued().to_sse()
-        if turn_queued is not None:
-            yield turn_queued.to_sse()
-        yield StreamFinishStep().to_sse()
-        yield StreamFinish().to_sse()
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers=_ui_message_stream_headers(),
-    )
+    #
+    # Vercel AI SDK's UI-message-stream parser expects symmetric
+    # start/finish framing at both stream and step level — every
+    # non-empty turn emits the pair.  Without an opener, today's parser
+    # tolerates the closer (no active parts to flush) but a future SDK
+    # tightening would silently break the queue-mid-turn UX.  Emit the
+    # full empty pair so the contract stays correct.
+    yield StreamStart(messageId=uuid4().hex).to_sse()
+    yield StreamStartStep().to_sse()
+    if follow_up_queued:
+        yield StreamFollowUpQueued().to_sse()
+    if turn_queued is not None:
+        yield turn_queued.to_sse()
+    if send_accepted:
+        yield StreamSendAccepted().to_sse()
+    yield StreamFinishStep().to_sse()
+    yield StreamFinish().to_sse()
+    yield "data: [DONE]\n\n"
 
 
 @router.post(
@@ -2192,13 +2219,23 @@ async def stream_chat_post(
     # message off the queue so this turn runs it, and the next turn's start
     # does not read it again. One a turn read meanwhile is not sent twice.
     resent: PendingMessage | None = None
+    resume_stored_resend = False
     if request.resend_pending_id and claim != "accepted":
         resent = await take_follow_up(session_id, request.resend_pending_id)
         if resent is None and (
             await follow_up_state(session_id, request.resend_pending_id) == "read"
         ):
-            await release_client_message_claim()
-            return _empty_ui_message_stream_response(follow_up_queued=True)
+            own_row = await _own_resend_row(session_id, message_id)
+            if own_row != "unanswered":
+                await release_client_message_claim()
+                return _empty_ui_message_stream_response(
+                    follow_up_queued=own_row is None,
+                    send_accepted=own_row == "answered",
+                )
+            # An earlier resend stored this row and its turn never ran: run
+            # it now, as an orphaned kickoff row is, instead of leaving it
+            # unanswered behind a "queued".
+            resume_stored_resend = True
         if resent is not None:
             message = resent.content
 
@@ -2230,7 +2267,9 @@ async def stream_chat_post(
                 # drop a resend after a turn stopped before it wrote a reply.
                 dedupe_content=client_message_id is None,
                 message_metadata=message_metadata,
-                message_already_persisted=resume_persisted_kickoff,
+                message_already_persisted=(
+                    resume_persisted_kickoff or resume_stored_resend
+                ),
                 is_user_message=request.is_user_message,
                 expert_id=session.expert_id,
                 session_origin=session.metadata.origin,
@@ -2248,7 +2287,7 @@ async def stream_chat_post(
                 impersonated=is_impersonated_request(http_request),
             )
     except ConcurrentTurnLimitError as exc:
-        if resume_persisted_kickoff:
+        if resume_persisted_kickoff or resume_stored_resend:
             await _put_back_unless_stored(session_id, message_id, resent)
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
@@ -2371,6 +2410,13 @@ async def stream_chat_post(
             )
 
             if subscriber_queue is None:
+                if turn_id is None:
+                    # This send's row was stored before and no turn runs
+                    # now: say it landed, or the client takes the bare end
+                    # for a send that went nowhere.
+                    async for frame in _empty_stream_frames(send_accepted=True):
+                        yield frame
+                    return
                 yield StreamFinish().to_sse()
                 return
 

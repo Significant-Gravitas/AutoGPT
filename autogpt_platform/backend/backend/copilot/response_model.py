@@ -72,6 +72,9 @@ class ResponseType(str, Enum):
     # Written by the stream route when a send waits behind the user's
     # running-turn cap: its row is stored and the turn starts later.
     TURN_QUEUED = "data-turn-queued"
+    # Written by the stream route when a send's row was already stored (a
+    # retransmit of a send it took), so no new turn starts for it.
+    SEND_ACCEPTED = "data-send-accepted"
     MODE_CHANGED = "data-mode-changed"
     # Live context-compaction progress — phase transitions plus token/message
     # deltas.  Transient (never persisted); the durable record is the
@@ -590,6 +593,20 @@ class StreamFollowUpQueued(StreamBaseResponse):
     """
 
     type: ResponseType = ResponseType.FOLLOW_UP_QUEUED
+
+    def to_sse(self) -> str:
+        data = {"type": self.type.value, "data": {}, "transient": True}
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamSendAccepted(StreamBaseResponse):
+    """The send's row was already stored, so this request starts no turn:
+    a retransmit of a send the server took. Transient, like
+    :class:`StreamFollowUpQueued`; tells the client the send landed even
+    when no turn is left to stream.
+    """
+
+    type: ResponseType = ResponseType.SEND_ACCEPTED
 
     def to_sse(self) -> str:
         data = {"type": self.type.value, "data": {}, "transient": True}

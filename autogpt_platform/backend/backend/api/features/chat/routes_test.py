@@ -1026,6 +1026,60 @@ async def test_stream_chat_resend_after_another_turn_drained_it_runs_nothing(
     assert await pending_messages_module.peek_pending_messages("sess-1") == []
 
 
+def test_stream_chat_resend_whose_own_row_was_stored_unanswered_runs_it(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """An earlier resend stored its row, then its turn failed to dispatch.
+    The follow-up reads as read, but nothing answered it: a Retry must run
+    that stored row (as an orphaned kickoff row is), not answer "queued"."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.take_held.return_value = None
+    mocks.follow_up_state.return_value = "read"
+    mocks.stored.return_value = False
+
+    response = _resend(message_id="resend-pm-1")
+
+    assert response.status_code == 200
+    assert "data-follow-up-queued" not in response.text
+    mocks.enqueue.assert_awaited_once()
+    assert mocks.enqueue.await_args.kwargs["message_already_persisted"] is True
+
+
+def test_stream_chat_resend_whose_own_row_was_answered_says_it_was_accepted(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.take_held.return_value = None
+    mocks.follow_up_state.return_value = "read"
+    mocks.stored.return_value = True
+
+    response = _resend(message_id="resend-pm-1")
+
+    assert response.status_code == 200
+    assert '"type": "data-send-accepted"' in response.text
+    assert "data-follow-up-queued" not in response.text
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_a_send_already_stored_with_no_turn_left_says_it_landed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A retransmit of a send the server took: its row is stored, so no turn
+    starts, and none is running to stream. A bare end would read as a send
+    that went nowhere."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.return_value = None
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Status?", "message_id": "client-1"},
+    )
+
+    assert response.status_code == 200
+    assert '"type": "data-send-accepted"' in response.text
+    mocks.enqueue.assert_awaited_once()
+
+
 def test_stream_chat_resend_of_a_follow_up_that_expired_unread_is_sent(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
