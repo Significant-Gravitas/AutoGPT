@@ -452,11 +452,17 @@ export const MessageResponse = memo(function MessageResponse({
         // header, hairline row separators and tabular figures.
         "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-body-sm [&_table]:tabular-nums [&_table]:leading-inherit",
         "[&_tbody]:bg-transparent [&_thead]:bg-message-table-header",
-        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-caption-sm [&_th]:font-medium [&_th]:uppercase [&_th]:leading-inherit [&_th]:tracking-[0.06em] [&_th]:text-indigo-950/70",
+        // Streamdown merges className again with its own tailwind-merge
+        // (default config), which reads the size roles as colours and drops
+        // them beside a colour in the same scope; the sizes therefore sit in
+        // their own [&_table_*] scope. th and inline code keep the 20px
+        // line-height their own text-sm gives them.
+        "[&_table_td]:text-body-sm [&_table_td_code]:text-caption [&_table_td_code]:leading-5 [&_table_th]:text-caption-sm [&_table_th]:leading-5",
+        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-[0.06em] [&_th]:text-indigo-950/70",
         "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
-        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-body-sm [&_td]:leading-5 [&_td]:text-zinc-700 [&_td]:transition-colors",
+        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:leading-5 [&_td]:text-zinc-700 [&_td]:transition-colors",
         "[&_td_strong]:font-medium [&_td_strong]:text-zinc-950",
-        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-caption [&_td_code]:leading-inherit [&_td_code]:text-zinc-700",
+        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-zinc-700",
         "[&_tbody_tr:last-child_td]:border-b-0",
         "[&_tbody_tr:hover_td]:bg-zinc-50",
         className,
