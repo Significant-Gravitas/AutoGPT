@@ -79,9 +79,10 @@ export function ExpertChatGroup({
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
-          // font-medium reaches the avatar initial (ExpertAvatar sets its size and
-          // colour, not its weight); every other piece of copy is a Text.
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left font-medium max-md:py-2"
+          // The size and weight reach ManagedExpertImage's fallback initials (a
+          // span that sets its colour, not its size or weight), and the weight
+          // ExpertAvatar's initial; every other piece of copy is a toned Text.
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body font-medium leading-5 max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
           {isAutopilot ? (
             <AutopilotAvatar
