@@ -88,6 +88,8 @@ export const tones = {
   error: "text-error", // #EF4444
   warning: "text-warning-foreground", // #B45309
   success: "text-success", // #149443
+  // The parent's colour, for copy inside a control that changes it on hover.
+  inherit: "text-inherit",
 } as const;
 
 export type Tone = keyof typeof tones;
