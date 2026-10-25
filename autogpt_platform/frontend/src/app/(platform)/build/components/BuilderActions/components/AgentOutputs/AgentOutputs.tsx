@@ -1,4 +1,5 @@
 import { BlockUIType } from "@/app/(platform)/build/components/types";
+import { Label } from "@/components/__legacy__/ui/label";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
@@ -147,22 +148,28 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                 outputs.map((group) => (
                   <div key={group.nodeID} className="space-y-2">
                     <div>
-                      <Text
-                        variant="large-semibold-tight"
-                        as="label"
-                        tone="inherit"
-                      >
-                        {group.metadata.name || "Unnamed Output"}
-                      </Text>
-                      {group.metadata.description && (
+                      <Label>
                         <Text
-                          variant="body-medium-tight"
-                          as="label"
+                          variant="large-semibold-tight"
+                          as="span"
+                          tone="inherit"
+                        >
+                          {group.metadata.name || "Unnamed Output"}
+                        </Text>
+                      </Label>
+                      {group.metadata.description && (
+                        <Label
                           // TODO(tokens): no exact role: text-gray-600 #4B5563
                           className="mt-1 block text-gray-600"
                         >
-                          {group.metadata.description}
-                        </Text>
+                          <Text
+                            variant="body-medium-tight"
+                            as="span"
+                            tone="inherit"
+                          >
+                            {group.metadata.description}
+                          </Text>
+                        </Label>
                       )}
                     </div>
 

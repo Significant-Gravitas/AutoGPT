@@ -79,7 +79,9 @@ export function CronSchedulerDialog({
               >
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
-                  Set your timezone
+                  <Text variant="body" as="span" tone="inherit">
+                    Set your timezone
+                  </Text>
                 </a>
               </Text>
             </div>

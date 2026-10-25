@@ -28,9 +28,11 @@ export function NoModelNotice() {
             href={SELF_HOSTED_MODELS_DOCS_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium underline underline-offset-2"
+            className="underline underline-offset-2"
           >
-            (setup guide)
+            <Text variant="body-medium-tight" as="span" tone="inherit">
+              (setup guide)
+            </Text>
           </a>
           .
         </span>
