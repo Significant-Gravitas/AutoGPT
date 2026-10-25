@@ -3,7 +3,7 @@
 from io import BytesIO
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from backend.sdk import OAuth2Credentials, Requests
 from backend.util.request import HTTPClientError, HTTPServerError, Response
@@ -49,7 +49,20 @@ class EtsyProcessingProfile(BaseModel):
 
     readiness_state_id: int
     readiness_state: str = ""
+    min_processing_days: int | None = None
+    max_processing_days: int | None = None
     label: str = Field(default="", alias="processing_days_display_label")
+
+    @model_validator(mode="after")
+    def _label_from_days(self) -> "EtsyProcessingProfile":
+        """Etsy's schema marks no field required: without its translated
+        label, say the range in days the way Etsy writes it ("1-3 days")."""
+        if not self.label and self.min_processing_days is not None:
+            low = self.min_processing_days
+            high = self.max_processing_days or low
+            unit = "day" if high == 1 else "days"
+            self.label = f"{low} {unit}" if low == high else f"{low}-{high} {unit}"
+        return self
 
 
 class EtsyReturnPolicy(BaseModel):

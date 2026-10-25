@@ -499,3 +499,26 @@ async def test_a_refused_edit_that_is_not_a_publish_is_left_as_etsy_said():
                 credentials=TEST_CREDENTIALS,
             ):
                 pass
+
+
+@pytest.mark.parametrize(
+    "days, label",
+    [
+        ((1, 3), "1-3 days"),
+        ((2, 2), "2 days"),
+        ((1, 1), "1 day"),
+        ((5, None), "5 days"),
+    ],
+)
+async def test_a_processing_profile_without_etsys_label_says_its_days(days, label):
+    """getShopReadinessStateDefinitions marks no field required, so the
+    translated label can be missing; the days it documents still say it."""
+    low, high = days
+    profile = {"shop_id": 42, "readiness_state_id": 7002, "min_processing_days": low}
+    if high is not None:
+        profile["max_processing_days"] = high
+    client, _ = _client(_response(200, {"count": 1, "results": [profile]}))
+
+    [result] = await client.list_processing_profiles(42)
+
+    assert (result.min_processing_days, result.label) == (low, label)
