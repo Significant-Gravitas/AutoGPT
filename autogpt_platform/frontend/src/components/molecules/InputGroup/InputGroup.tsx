@@ -22,8 +22,8 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
         "has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col",
 
         // Focus state.
-        // TODO(tokens): zinc-400 #ADADB3 is `foreground-subtle`, a text role; no border or ring role holds it (SECRT-3154).
-        "has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-zinc-400",
+        // #ADADB3 is the `foreground-subtle` role.
+        "has-[[data-slot=input-group-control]:focus-visible]:border-foreground-subtle has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-foreground-subtle",
 
         className,
       )}
