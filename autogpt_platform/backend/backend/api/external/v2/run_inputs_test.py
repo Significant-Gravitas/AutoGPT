@@ -168,6 +168,11 @@ def client(mocker: pytest_mock.MockFixture) -> fastapi.testclient.TestClient:
         new_callable=mock.AsyncMock,
         return_value=mock.Mock(version=1, input_schema=INPUT_SCHEMA),
     )
+    mocker.patch(
+        "backend.data.graph.get_active_graph_version",
+        new_callable=mock.AsyncMock,
+        return_value=1,
+    )
 
     app = fastapi.FastAPI()
     app.include_router(library_router, prefix="/library")

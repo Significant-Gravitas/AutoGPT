@@ -1219,6 +1219,9 @@ class TestReadingASpilledGoogleOutput:
         )
         manager = AsyncMock()
         manager.read_file_by_id = AsyncMock(return_value=content)
+        manager.read_file_head_by_id = AsyncMock(
+            side_effect=lambda _file_id, max_bytes: content[:max_bytes]
+        )
         with (
             patch(
                 "backend.copilot.tools.workspace_files._resolve_file",
@@ -1231,7 +1234,7 @@ class TestReadingASpilledGoogleOutput:
         ):
             return await ReadWorkspaceFileTool()._execute(
                 user_id="user-1",
-                session=MagicMock(session_id="s1"),
+                session=MagicMock(session_id="s1", external_caller=False),
                 path="tool-outputs/call-1.json",
                 **kwargs,
             )
