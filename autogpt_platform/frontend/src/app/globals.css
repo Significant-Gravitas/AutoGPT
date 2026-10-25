@@ -200,11 +200,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   pointer-events: none !important;
 }
 
-/* Streamdown external link dialog: "Open link" button */
-[data-streamdown="link-safety-modal"] button:last-of-type {
-  color: white;
-}
-
 /* Markdown headings: rehype-autolink-headings wraps each heading's text in an
    <a>, which `prose` then underlines and recolors. Keep the anchor clickable
    but render it as plain heading text. */
