@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   CollapsibleRoot,
   CollapsibleContent,
@@ -37,10 +38,16 @@ export function CollapsibleNavGroup({
       <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
-          className="text-body-sm font-medium leading-inherit text-foreground-tertiary group-data-[collapsible=icon]:hidden max-md:h-11 max-md:text-body max-md:leading-5"
+          className="leading-inherit text-foreground-tertiary group-data-[collapsible=icon]:hidden max-md:h-11"
         >
           <CollapsibleTrigger>
-            {label}
+            <Text
+              as="span"
+              variant="body-sm-medium-inherit-touch"
+              className="text-inherit"
+            >
+              {label}
+            </Text>
             <Icon
               icon={ArrowDown01Icon}
               className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none max-md:size-5"
