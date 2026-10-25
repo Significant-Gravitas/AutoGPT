@@ -86,12 +86,14 @@ export function FilterSheet({
                       // TODO(tokens): no exact role: border-[#D4D4D4] #D4D4D4; no fitting role for data-[state=checked]:bg-violet-700 #6D28D9; #6D28D9 is accent-strong (a text colour)
                       className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-violet-700 data-[state=checked]:text-action-foreground"
                     />
-                    <label
+                    <Text
+                      variant="body"
+                      as="label"
+                      tone="secondary"
                       htmlFor={category.key}
-                      className="font-sans text-body text-foreground-secondary"
                     >
                       {category.name}
-                    </label>
+                    </Text>
                   </div>
                 ))}
               </div>
@@ -112,12 +114,14 @@ export function FilterSheet({
                       // TODO(tokens): no exact role: border-[#D4D4D4] #D4D4D4; no fitting role for data-[state=checked]:bg-violet-700 #6D28D9; #6D28D9 is accent-strong (a text colour)
                       className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-violet-700 data-[state=checked]:text-action-foreground"
                     />
-                    <label
+                    <Text
+                      variant="body"
+                      as="label"
+                      tone="secondary"
                       htmlFor={`creator-${creator}`}
-                      className="font-sans text-body text-foreground-secondary"
                     >
                       {creator}
-                    </label>
+                    </Text>
                   </div>
                 ))}
               </div>
