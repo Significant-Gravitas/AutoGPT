@@ -815,6 +815,51 @@ def test_public_outputs_use_yielded_output_over_input_value():
     assert outputs == {"report": ["raw!"]}
 
 
+_MODERATED = "Failed due to content moderation"
+
+
+def _public_outputs(node: SimpleNamespace) -> dict:
+    with patch(
+        "backend.copilot.sharing.db.get_block",
+        return_value=SimpleNamespace(block_type=BlockType.OUTPUT),
+    ):
+        return _collect_public_execution_outputs(SimpleNamespace(NodeExecutions=[node]))
+
+
+def test_public_outputs_mask_moderation_cleared_outputs():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "secret", "format": "{{ report }}!"},
+        Input=None,
+        Output=[SimpleNamespace(name="output", data="secret!")],
+        stats={
+            "error": _MODERATED,
+            "cleared_inputs": {
+                "name": ["report"],
+                "value": [_MODERATED],
+                "format": [_MODERATED],
+            },
+            "cleared_outputs": {"output": [_MODERATED]},
+        },
+    )
+    assert _public_outputs(node) == {"report": [_MODERATED]}
+
+
+def test_public_outputs_mask_moderation_cleared_inputs():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "secret"},
+        Input=None,
+        Output=[],
+        stats={
+            "error": _MODERATED,
+            "cleared_inputs": {"name": ["report"], "value": [_MODERATED]},
+            "cleared_outputs": {},
+        },
+    )
+    assert _public_outputs(node) == {"report": [_MODERATED]}
+
+
 class TestLinkNewExecutionToChatShare:
     """Runtime hook: new run_agent → auto-link if chat has autoShareExecutions=True."""
 

@@ -5291,6 +5291,29 @@ def test_outputs_from_node_execs_uses_yielded_output_over_input_value():
     assert outputs == {"report": ["2 rows"]}
 
 
+def test_outputs_from_node_execs_masks_moderation_cleared_outputs():
+    moderated = "Failed due to content moderation"
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "report",
+                "raw secret",
+                output=["formatted secret"],
+                stats={
+                    "error": moderated,
+                    "cleared_inputs": {
+                        "name": ["report"],
+                        "value": [moderated],
+                        "format": [moderated],
+                    },
+                    "cleared_outputs": {"output": [moderated]},
+                },
+            )
+        ]
+    )
+    assert outputs == {"report": [moderated]}
+
+
 def test_outputs_from_node_execs_falls_back_when_stats_are_corrupt():
     outputs = experts_db._outputs_from_node_execs(
         [_output_node_exec("status", "ok", stats={"cleared_inputs": "not-a-dict"})]

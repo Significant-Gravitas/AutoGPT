@@ -11,7 +11,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 from prisma.enums import ResourceVisibility
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel, JsonValue
 
 from backend.api.features.experts import raise_attachments, scheduling
 
@@ -114,10 +114,10 @@ from backend.data.expert_attribution import (
 from backend.data.expert_run_output import (
     OutputType,
     classify_run_output,
+    moderation_cleared_io,
     reconstruct_run_outputs,
 )
 from backend.data.expert_spend import get_weekly_spend
-from backend.data.model import NodeExecutionStats
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
 from backend.util.background import spawn_background_task
@@ -845,16 +845,9 @@ def _node_exec_inputs(
     Input rows. Skipping the cleared branch would drop the name/value pins of a
     moderated OUTPUT node and misclassify the run as ``unknown``.
     """
-    try:
-        stats = NodeExecutionStats.model_validate(node_exec.stats or {})
-    except (ValueError, ValidationError):
-        stats = NodeExecutionStats()
-
-    if stats.cleared_inputs:
-        return {
-            name: (messages[-1] if messages else "")
-            for name, messages in stats.cleared_inputs.items()
-        }
+    cleared_inputs, _ = moderation_cleared_io(node_exec.stats)
+    if cleared_inputs is not None:
+        return cleared_inputs
     if node_exec.executionData is not None:
         return cast(
             dict[str, JsonValue],
@@ -869,6 +862,9 @@ def _node_exec_inputs(
 def _node_exec_outputs(
     node_exec: prisma.models.AgentNodeExecution,
 ) -> dict[str, list[JsonValue]]:
+    _, cleared_outputs = moderation_cleared_io(node_exec.stats)
+    if cleared_outputs is not None:
+        return cleared_outputs
     outputs: dict[str, list[JsonValue]] = defaultdict(list)
     for row in node_exec.Output or []:
         outputs[row.name].append(type_utils.convert(row.data, JsonValue))

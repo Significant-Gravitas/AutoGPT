@@ -4,7 +4,9 @@ from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
+
+from backend.data.model import NodeExecutionStats
 
 OutputType = Literal["table", "doc", "image", "unknown"]
 RunOutputEntry = tuple[
@@ -40,6 +42,32 @@ def output_values(
     """Values an Agent Output node produced: its yielded ``output`` (formatted
     when ``format`` is set), or its input ``value`` if it yielded nothing."""
     return list(output_data.get("output") or [input_data.get("value")])
+
+
+def moderation_cleared_io(
+    raw_stats: object,
+) -> tuple[dict[str, Any] | None, dict[str, list[Any]] | None]:
+    """A node execution's moderation-cleared ``(inputs, outputs)``, ``None`` for
+    a side with nothing cleared. Same precedence as ``NodeExecutionResult.from_db``.
+    """
+    try:
+        stats = NodeExecutionStats.model_validate(raw_stats or {})
+    except (ValueError, ValidationError):
+        return None, None
+    inputs = (
+        {
+            name: (msgs[-1] if msgs else "")
+            for name, msgs in stats.cleared_inputs.items()
+        }
+        if stats.cleared_inputs
+        else None
+    )
+    outputs = (
+        {name: list(msgs) for name, msgs in stats.cleared_outputs.items()}
+        if stats.cleared_outputs
+        else None
+    )
+    return inputs, outputs
 
 
 def classify_output_type(value: object) -> OutputType:
