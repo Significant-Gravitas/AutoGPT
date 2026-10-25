@@ -210,12 +210,30 @@ describe("useOnboardingIntroCard — finishing the first run", () => {
     await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
-    act(() => result.current.finishFirstRun());
+    act(() => result.current.finishFirstRun({ wasShown: true }));
 
     expect(capture).toHaveBeenCalledWith("welcome_dialog_closed", {});
     expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
     expect(result.current.isFirstRunPending).toBe(false);
     expect(result.current.greeting).toBe(READY_INTRO.greeting);
+  });
+});
+
+describe("useOnboardingIntroCard — a first run that never showed", () => {
+  it("clears the pending flag without reporting a walkthrough that did not open", async () => {
+    setIntroPath("A");
+    countIntroRequests();
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
+
+    act(() => result.current.finishFirstRun({ wasShown: false }));
+
+    expect(capture).not.toHaveBeenCalledWith(
+      "welcome_dialog_closed",
+      expect.anything(),
+    );
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    expect(result.current.isFirstRunPending).toBe(false);
   });
 });
 

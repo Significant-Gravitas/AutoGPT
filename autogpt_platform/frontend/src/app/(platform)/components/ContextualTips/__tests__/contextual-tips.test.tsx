@@ -24,9 +24,13 @@ vi.mock("@/providers/onboarding/onboarding-provider", async (original) => ({
   useOnboarding: () => onboarding.current,
 }));
 
-const billing = vi.hoisted(() => ({ enabled: true }));
+const billing = vi.hoisted(() => ({ enabled: true, resolved: true }));
 vi.mock("@/hooks/useIsBillingEnabled", () => ({
   useIsBillingEnabled: () => billing.enabled,
+  useBillingStatus: () => ({
+    isBillingEnabled: billing.enabled,
+    isResolved: billing.resolved,
+  }),
 }));
 
 vi.mock("@/services/usageExperience/useUsageExperience", () => ({
@@ -96,6 +100,7 @@ beforeEach(() => {
   hidden.clear();
   placed.clear();
   billing.enabled = true;
+  billing.resolved = true;
   window.localStorage.clear();
   capture.mockReset();
   onboarding.current = { state: { completedSteps: [] }, completeStep: vi.fn() };
@@ -549,6 +554,24 @@ describe("contextual tips — showing one", () => {
         "first-expert",
       ]),
     );
+  });
+
+  it("keeps the cost tip waiting while the billing flag is still on its way", async () => {
+    // A self-hosted install reads its payments flag from a vendor: until it
+    // answers, billing reads as off, which is not the same as being off.
+    billing.enabled = false;
+    billing.resolved = false;
+    const { rerender } = render(<Page />);
+    act(() => requestTip("first-cost"));
+    await act(async () => {});
+
+    expect(useContextualTipStore.getState().requested).toEqual(["first-cost"]);
+    expect(screen.queryByTestId("contextual-tip")).toBeNull();
+
+    billing.enabled = true;
+    billing.resolved = true;
+    rerender(<Page />);
+    expect(await screen.findByText("Where costs come from")).toBeDefined();
   });
 
   it("steps aside when its target is not on screen, letting the next tip show", async () => {

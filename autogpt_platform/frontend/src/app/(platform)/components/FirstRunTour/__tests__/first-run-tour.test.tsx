@@ -707,7 +707,7 @@ function AutoStart({
   onFinished,
 }: {
   isPending: boolean;
-  onFinished: () => void;
+  onFinished: (outcome: { wasShown: boolean }) => void;
 }) {
   useFirstRunTourAutoStart({ isPending, onFinished });
   return null;
@@ -853,5 +853,16 @@ describe("first-run walkthrough — who gets it by itself", () => {
     act(() => useFirstRunTourStore.getState().close());
 
     await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
+    expect(onFinished).toHaveBeenCalledWith({ wasShown: true });
+  });
+
+  it("says the walkthrough was not shown when it never opens", async () => {
+    onboarding.current.state = { completedSteps: ["CAPABILITY_CARDS"] };
+    const onFinished = vi.fn();
+    render(<AutoStart isPending onFinished={onFinished} />);
+
+    await waitFor(() =>
+      expect(onFinished).toHaveBeenCalledWith({ wasShown: false }),
+    );
   });
 });

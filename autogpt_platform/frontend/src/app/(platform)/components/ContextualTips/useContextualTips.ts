@@ -1,7 +1,7 @@
 "use client";
 
 import { useSessionList } from "@/app/(platform)/copilot/useSessionList";
-import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
+import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { trackFirstRun } from "@/services/onboarding/first-run-analytics";
@@ -23,7 +23,10 @@ export function useContextualTips() {
   const shown = useContextualTipStore((store) => store.shown);
   const markShown = useContextualTipStore((store) => store.markShown);
   const putAway = useContextualTipStore((store) => store.putAway);
-  const isBillingEnabled = useIsBillingEnabled();
+  // Unresolved is not "off": a vendor-held payments flag reads off until it
+  // answers, and a billing tip waits for that answer rather than being dropped.
+  const { isBillingEnabled, isResolved: isBillingResolved } =
+    useBillingStatus();
   const isTourOpen = useFirstRunTourStore((store) => store.source !== null);
   const isConnectToolsOpen = useFirstRunTourStore(
     (store) => store.isConnectToolsOpen,
@@ -49,13 +52,23 @@ export function useContextualTips() {
     requested
       .filter(
         (id) =>
-          (TIPS[id].requiresBilling && !isBillingEnabled) ||
+          (TIPS[id].requiresBilling &&
+            isBillingResolved &&
+            !isBillingEnabled) ||
           (!shownNow.includes(id) &&
             (state.completedSteps.includes(TIPS[id].step) ||
               peekTipSeen(id, userID))),
       )
       .forEach(remove);
-  }, [requested, shown, state, userID, isBillingEnabled, remove]);
+  }, [
+    requested,
+    shown,
+    state,
+    userID,
+    isBillingEnabled,
+    isBillingResolved,
+    remove,
+  ]);
 
   const candidate =
     state && userID

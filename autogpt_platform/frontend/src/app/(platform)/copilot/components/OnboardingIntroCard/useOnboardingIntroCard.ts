@@ -133,9 +133,9 @@ export function useOnboardingIntroCard() {
     }
   }, [serverSaysDone, userId]);
 
-  // The walkthrough ended (finished or skipped); it records itself as seen.
-  function finishFirstRun() {
-    trackBrainDump("welcome_dialog_closed", {});
+  // The first run is over: the walkthrough ended, or never had to open.
+  function finishFirstRun({ wasShown }: { wasShown: boolean }) {
+    if (wasShown) trackBrainDump("welcome_dialog_closed", {});
     clearWelcomePending();
     setIsFirstRunPending(false);
   }

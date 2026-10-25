@@ -11,7 +11,7 @@ interface Args {
   /** Fresh out of onboarding, per the home page's handoff flags. */
   isPending: boolean;
   /** The walkthrough this started has ended, or will never start. */
-  onFinished: () => void;
+  onFinished: (outcome: { wasShown: boolean }) => void;
 }
 
 // Opens once on the first home visit after onboarding, without waiting for
@@ -39,7 +39,7 @@ export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
       return;
     }
     if (hasHadIntro || peekFirstRunTourSeen(userID)) {
-      finish();
+      finish({ wasShown: false });
       return;
     }
     startedFor.current = userID;
@@ -51,6 +51,7 @@ export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
   useEffect(() => {
     const isClosed = useFirstRunTourStore.getState().source === null;
     // A close while signed out, or for another account, is not this one's.
-    if (startedFor.current === userID && isPending && isClosed) finish();
+    if (startedFor.current === userID && isPending && isClosed)
+      finish({ wasShown: true });
   }, [isPending, source, userID, finish]);
 }
