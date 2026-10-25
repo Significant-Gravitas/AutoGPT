@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
-import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
+import { PromptInputSubmit } from "@/components/organisms/PromptInput/PromptInput";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import { CredentialMentionEditor } from "../../CredentialMention/CredentialMentionEditor";
 import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMentionMarkdown";
