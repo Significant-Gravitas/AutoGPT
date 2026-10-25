@@ -54,8 +54,9 @@ export function SubscriptionTierSection() {
   if (error) {
     return (
       <div className="space-y-4">
-        {/* TODO(tokens): SECRT-3152, no role holds 18px/28px (text-lg). */}
-        <h3 className="text-lg font-medium">Subscription Plan</h3>
+        <Text variant="lg-medium" as="h3" tone="inherit">
+          Subscription Plan
+        </Text>
         <Text
           variant="body-tight"
           as="p"
@@ -76,18 +77,21 @@ export function SubscriptionTierSection() {
   if (currentTier === "ENTERPRISE") {
     return (
       <div className="space-y-4">
-        {/* TODO(tokens): SECRT-3152, no role holds 18px/28px (text-lg). */}
-        <h3 className="text-lg font-medium">Subscription Plan</h3>
+        <Text variant="lg-medium" as="h3" tone="inherit">
+          Subscription Plan
+        </Text>
         <div
           // TODO(tokens): no exact role (border-violet-500 #8B5CF6, dark:bg-violet-900/20)
           className="rounded-lg border border-violet-500 bg-accent-surface p-4 dark:bg-violet-900/20"
         >
-          <p
+          <Text
+            variant="large-semibold-tight"
+            as="p"
             // TODO(tokens): no exact role (dark:text-violet-200)
-            className="font-semibold text-accent-strong dark:text-violet-200"
+            className="text-accent-strong dark:text-violet-200"
           >
             Enterprise Plan
-          </p>
+          </Text>
           <Text
             variant="body-tight"
             as="p"
@@ -144,20 +148,23 @@ export function SubscriptionTierSection() {
 
   return (
     <div className="space-y-4">
-      {/* TODO(tokens): SECRT-3152, no role holds 18px/28px (text-lg). */}
-      <h3 className="text-lg font-medium">Subscription Plan</h3>
+      <Text variant="lg-medium" as="h3" tone="inherit">
+        Subscription Plan
+      </Text>
 
       {needsSubscription && (
         <div
           role="status"
           // TODO(tokens): no exact role (border-violet-300 #C4B5FD, text-violet-900 #4C1D95, dark:bg-violet-900/20, dark:text-violet-200); no fitting role for dark:border-violet-700 #6D28D9; #6D28D9 is accent-strong, a text colour
-          className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-body leading-5 text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
+          className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
         >
-          <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
-          <p className="mt-1">
+          <Text variant="body-medium-tight" as="p" tone="inherit">
+            Pick a plan to continue using AutoGPT.
+          </Text>
+          <Text variant="body-tight" as="p" tone="inherit" className="mt-1">
             Your account doesn&apos;t have an active subscription. Choose a tier
             below to start working with experts and running workflows.
-          </p>
+          </Text>
         </div>
       )}
 
@@ -214,7 +221,9 @@ export function SubscriptionTierSection() {
               }`}
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className="font-semibold">{tier.label}</span>
+                <Text variant="large-semibold-tight" as="span" tone="inherit">
+                  {tier.label}
+                </Text>
                 {isCurrent && (
                   <Text
                     variant="small-medium-tight"
@@ -227,10 +236,9 @@ export function SubscriptionTierSection() {
                 )}
               </div>
 
-              {/* TODO(tokens): SECRT-3152, no role holds 24px/32px (text-2xl). */}
-              <p className="mb-1 text-2xl font-bold">
+              <Text variant="2xl-bold" as="p" tone="inherit" className="mb-1">
                 {formatCost(cost, tier.key)}
-              </p>
+              </Text>
               {rateLimitLabel && (
                 <Text
                   variant="body-medium-tight"
