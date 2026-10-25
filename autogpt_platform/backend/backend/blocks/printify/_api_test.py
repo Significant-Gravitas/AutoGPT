@@ -80,6 +80,34 @@ async def test_a_validation_error_keeps_printifys_reason():
         await client.create_product(1, {})
 
 
+def _product_input(price: float) -> PrintifyCreateProductBlock.Input:
+    return PrintifyCreateProductBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT,
+        shop_id=1,
+        title="Sleepy Cat",
+        description="A cat.",
+        tags=["cat"],
+        blueprint_id=400,
+        print_provider_id=99,
+        variant_ids=[11],
+        price=price,
+        image_id="img-1",
+    )
+
+
+@pytest.mark.parametrize("price", [0, 0.004, -1.0])
+def test_a_price_that_rounds_under_a_cent_is_refused(price: float):
+    """0.004 rounds to 0 cents: Printify would list the product for free."""
+    with pytest.raises(ValueError, match="at least 0.01"):
+        product_body(_product_input(price))
+
+
+@pytest.mark.parametrize("price, cents", [(0.005, 1), (1.005, 101), (3.99, 399)])
+def test_a_price_is_sent_in_whole_cents_rounded_half_up(price: float, cents: int):
+    [variant] = product_body(_product_input(price))["variants"]
+    assert variant["price"] == cents
+
+
 def test_product_body_prices_every_variant_in_cents_and_centres_the_design():
     data = PrintifyCreateProductBlock.Input(
         credentials=TEST_CREDENTIALS_INPUT,

@@ -3,7 +3,7 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from backend.api.features.integrations import support
+from backend.api.features.integrations import block_coverage, support
 from backend.api.features.integrations.models import get_supported_auth_types
 from backend.api.features.integrations.support import ConnectableService
 from backend.data.model import CredentialsFieldInfo
@@ -148,35 +148,37 @@ def test_a_credential_type_counts_only_from_a_block_that_can_run(
 
     def block(disabled: bool):
         instance = mocker.Mock(disabled=disabled)
+        instance.name = "AcmeSendBlock"
         instance.input_schema.get_credentials_fields_info.return_value = {
             "credentials": info
         }
         return lambda: instance
 
+    scan = block_coverage.blocks_by_provider
     try:
         mocker.patch.object(
-            support, "load_all_blocks", return_value={"on": block(False)}
+            block_coverage, "load_all_blocks", return_value={"on": block(False)}
         )
-        support.block_credential_types.cache_clear()
-        assert support.block_credential_types() == {
-            "acme_legacy": frozenset({"api_key"})
-        }
+        scan.cache_clear()
+        assert scan()["acme_legacy"].auth_types == frozenset({"api_key"})
         mocker.patch.object(
-            support, "load_all_blocks", return_value={"off": block(True)}
+            block_coverage, "load_all_blocks", return_value={"off": block(True)}
         )
-        support.block_credential_types.cache_clear()
-        assert support.block_credential_types() == {}
+        scan.cache_clear()
+        # The disabled block still says what Acme covers, not how to sign in.
+        assert scan()["acme_legacy"].auth_types == frozenset()
+        assert scan()["acme_legacy"].products == frozenset({"acme", "send"})
     finally:
-        support.block_credential_types.cache_clear()
+        scan.cache_clear()
 
 
 def test_a_provider_switching_field_credits_each_provider_its_own_types():
     """Codex's block takes an OpenAI key or a ChatGPT sign-in through one
     field: Codex gains the sign-in, not the key."""
-    types = support.block_credential_types()
+    blocks = block_coverage.blocks_by_provider()
 
-    assert types["codex"] == frozenset({"oauth2"})
-    assert "api_key" in types["openai"]
+    assert blocks["codex"].auth_types == frozenset({"oauth2"})
+    assert "api_key" in blocks["openai"].auth_types
 
 
 def test_a_device_code_sign_in_counts_without_an_oauth_app(mocker: MockerFixture):
@@ -187,3 +189,54 @@ def test_a_device_code_sign_in_counts_without_an_oauth_app(mocker: MockerFixture
     found = support.find_connectable("codex")
 
     assert found is not None and found.key == "codex"
+
+
+GOOGLE = ConnectableService(
+    key="google",
+    name="Google",
+    products=frozenset({"google", "sheet", "doc", "drive", "calendar", "gmail"}),
+    leads=frozenset({"gmail"}),
+)
+NOTION = ConnectableService(
+    key="notion", name="Notion", products=frozenset({"notion", "page", "database"})
+)
+CANVA_MCP = ConnectableService(key="canva", name="Canva")  # no blocks
+
+
+@pytest.mark.parametrize(
+    "name, key",
+    [
+        ("Google Sheets", "google"),
+        ("google_sheets", "google"),
+        ("Google Drive", "google"),
+        ("Google Sheets API", "google"),
+        ("Gmail", "google"),  # a product only Google's blocks lead with
+        ("Notion", "notion"),
+        ("Canva designs", "canva"),  # a server is the vendor's whole surface
+        ("Google Analytics", None),
+        ("Google Ads", None),
+        ("Notion Calendar", None),
+        ("Customer support", None),
+    ],
+)
+def test_a_vendors_name_counts_only_with_products_its_blocks_cover(
+    mocker: MockerFixture, name: str, key: str | None
+):
+    """ "Google Analytics" is not Google Sheets: the words after a vendor's
+    name must be products its blocks cover."""
+    mocker.patch.object(
+        support, "connectable_services", return_value=[GOOGLE, NOTION, CANVA_MCP]
+    )
+
+    found = support.find_connectable(name)
+
+    assert (found.key if found else None) == key
+
+
+def test_the_live_registry_knows_what_googles_blocks_cover(mocker: MockerFixture):
+    mocker.patch.object(support, "oauth_client_credentials", return_value=("i", "s"))
+
+    assert support.find_connectable("Google Sheets").key == "google"
+    assert support.find_connectable("Gmail").key == "google"
+    assert support.find_connectable("Google Analytics") is None
+    assert support.find_connectable("Slack Huddles") is None

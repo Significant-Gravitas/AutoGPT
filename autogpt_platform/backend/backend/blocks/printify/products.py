@@ -17,6 +17,7 @@ from backend.sdk import (
     BlockSchemaOutput,
     SchemaField,
 )
+from backend.util.money import price_in_cents
 
 MAX_PRODUCTS = 50
 
@@ -97,8 +98,6 @@ class PrintifyCreateProductBlock(Block):
     ) -> BlockOutput:
         if not input_data.variant_ids:
             raise ValueError("Pick at least one variant (size or colour) to sell.")
-        if input_data.price <= 0:
-            raise ValueError("The price must be more than zero.")
         product = await self.create(
             credentials, input_data.shop_id, product_body(input_data)
         )
@@ -108,7 +107,7 @@ class PrintifyCreateProductBlock(Block):
 
 def product_body(data: PrintifyCreateProductBlock.Input) -> dict[str, Any]:
     """The create-product request: every variant at one price, one design."""
-    cents = round(data.price * 100)
+    cents = price_in_cents(data.price)
     return {
         "title": data.title,
         "description": data.description,

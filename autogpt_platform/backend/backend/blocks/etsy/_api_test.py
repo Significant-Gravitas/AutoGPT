@@ -149,12 +149,20 @@ def test_draft_listing_form_matches_what_etsy_reads():
     "overrides, message",
     [
         ({"tags": [f"t{i}" for i in range(14)]}, "at most 13 tags"),
-        ({"price": 0}, "more than zero"),
+        ({"price": 0}, "at least 0.01"),
+        ({"price": 0.004}, "at least 0.01"),  # "0.00" on the form
     ],
 )
 def test_draft_listing_form_refuses_what_etsy_would(overrides, message):
     with pytest.raises(ValueError, match=message):
         draft_listing_form(_draft(**overrides))
+
+
+@pytest.mark.parametrize(
+    "price, sent", [(0.005, "0.01"), (1.005, "1.01"), (3.5, "3.50")]
+)
+def test_a_draft_price_is_sent_in_whole_cents(price: float, sent: str):
+    assert draft_listing_form(_draft(price=price))["price"] == sent
 
 
 @pytest.mark.parametrize("listing_type", ["physical", "download"])

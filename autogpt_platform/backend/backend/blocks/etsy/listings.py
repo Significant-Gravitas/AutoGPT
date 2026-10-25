@@ -18,6 +18,7 @@ from backend.sdk import (
     BlockSchemaOutput,
     SchemaField,
 )
+from backend.util.money import cents_text, price_in_cents
 
 MAX_TAGS = 13
 MAX_LISTINGS = 100
@@ -145,14 +146,13 @@ class EtsyCreateDraftListingBlock(Block):
 
 def draft_listing_form(data: EtsyCreateDraftListingBlock.Input) -> dict[str, str]:
     """The createDraftListing form, checked for what Etsy would refuse."""
-    if data.price <= 0:
-        raise ValueError("The price must be more than zero.")
+    cents = price_in_cents(data.price)
     if len(data.tags) > MAX_TAGS:
         raise ValueError(f"Etsy allows at most {MAX_TAGS} tags per listing.")
     form = {
         "title": data.title,
         "description": data.description,
-        "price": f"{data.price:.2f}",
+        "price": cents_text(cents),
         "quantity": str(data.quantity),
         "taxonomy_id": str(data.taxonomy_id),
         "who_made": data.who_made,

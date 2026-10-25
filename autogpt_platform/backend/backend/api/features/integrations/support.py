@@ -14,24 +14,22 @@ Older connectors (Slack's bot token) declare theirs only on their blocks.
 
 import logging
 import re
-from collections import defaultdict
 from collections.abc import Iterable
 
 from pydantic import BaseModel
 
+from backend.api.features.integrations import block_coverage
+from backend.api.features.integrations.block_coverage import ProviderBlocks, singular
 from backend.api.features.integrations.models import (
     get_all_provider_names,
     get_provider_description,
     get_supported_auth_types,
 )
-from backend.blocks import load_all_blocks
-from backend.data.model import CredentialsFieldInfo
 from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import DEVICE_HANDLERS_BY_NAME
 from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.providers import provider_key
 from backend.integrations.service_identity import catalog_slug
-from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +58,11 @@ KNOWN_GAPS = (
     "Etsy",
 )
 
+# Words for how a vendor is reached rather than what it does: "Printify API"
+# is Printify.
+_ACCESS_WORDS = frozenset(
+    {"api", "app", "account", "integration", "connector", "platform", "workspace"}
+)
 _DOMAIN_SUFFIX = re.compile(r"\.(com|io|ai|dev|app|so|co)\b")
 _PARENTHETICAL = re.compile(r"\([^)]*\)")
 
@@ -68,25 +71,34 @@ class ConnectableService(BaseModel):
     key: str
     name: str
     description: str | None = None
+    products: frozenset[str] = frozenset()
+    """What its blocks cover (``block_coverage``); empty for a service with
+    no blocks, such as an MCP catalog server, which is the vendor's whole
+    surface."""
+    leads: frozenset[str] = frozenset()
 
 
 def connectable_services() -> list[ConnectableService]:
     """Every service a user can connect in this deployment, providers first."""
     try:
-        from_blocks = block_credential_types()
+        from_blocks = block_coverage.blocks_by_provider()
     except Exception as e:  # static providers and the catalog still answer
         logger.warning(f"Service support: block load failed: {e}")
         from_blocks = {}
-    services = [
-        ConnectableService(
-            key=name,
-            name=name.replace("_", " ").title(),
-            description=get_provider_description(name),
+    services = []
+    for name in sorted({*get_all_provider_names(), *from_blocks}):
+        blocks = from_blocks.get(name, ProviderBlocks())
+        if name in _NOT_SERVICES or not _can_sign_in(name, blocks.auth_types):
+            continue
+        services.append(
+            ConnectableService(
+                key=name,
+                name=name.replace("_", " ").title(),
+                description=get_provider_description(name),
+                products=blocks.products,
+                leads=blocks.leads,
+            )
         )
-        for name in sorted({*get_all_provider_names(), *from_blocks})
-        if name not in _NOT_SERVICES
-        and _can_sign_in(name, from_blocks.get(name, frozenset()))
-    ]
     keys = {service.key for service in services}
     for entry in get_mcp_catalog():
         slug = catalog_slug(entry)
@@ -98,44 +110,6 @@ def connectable_services() -> list[ConnectableService]:
                 )
             )
     return services
-
-
-@cached(ttl_seconds=3600)
-def block_credential_types() -> dict[str, frozenset[str]]:
-    """Each provider a block that can run takes credentials for, with the
-    credential types its fields accept. Loads the blocks."""
-    types: dict[str, set[str]] = defaultdict(set)
-    for block_id, block_cls in load_all_blocks().items():
-        try:
-            block = block_cls()
-            if block.disabled:
-                continue
-            infos = block.input_schema.get_credentials_fields_info().values()
-        except Exception:  # one bad block costs its own providers only
-            logger.debug("Service support: skipping block %s", block_id)
-            continue
-        for info in infos:
-            for provider, accepted in _types_by_provider(info):
-                types[provider_key(provider)].update(accepted)
-    return {provider: frozenset(found) for provider, found in types.items()}
-
-
-def _types_by_provider(info: CredentialsFieldInfo) -> list[tuple[str, frozenset]]:
-    """What each provider of one credentials field accepts. A field that
-    switches provider by another input (OpenAI key or a ChatGPT sign-in)
-    gives each provider only its own types."""
-    if not (info.discriminator and info.discriminator_mapping):
-        return [(provider, info.supported_types) for provider in info.provider]
-    pairs = []
-    for value in info.discriminator_mapping:
-        try:
-            narrowed = info.discriminate(value)
-        except ValueError:  # a value with no types configured offers none
-            continue
-        pairs += [
-            (provider, narrowed.supported_types) for provider in narrowed.provider
-        ]
-    return pairs
 
 
 def _can_sign_in(provider: str, from_blocks: frozenset[str]) -> bool:
@@ -211,19 +185,33 @@ def _known_gaps_in(text: str) -> list[str]:
 
 
 def _match(name: str, services: list[ConnectableService]) -> ConnectableService | None:
-    """Match on any spelling, or on the first word naming the vendor itself:
-    "Google Sheets" is Google's. Only the vendor's own id or full name counts
-    there, so "Customer support" is not Customer.io."""
+    """Match on any spelling; on the vendor's own name followed by products
+    its blocks cover ("Google Sheets" is Google's, "Google Analytics" is
+    not); or on one word naming a product only one provider's blocks lead
+    with ("Gmail"). Only the vendor's own id or full name counts as the
+    vendor, so "Customer support" is not Customer.io."""
     wanted = _forms(name)
     if not wanted:
         return None
-    first_word = _first_word(name)
+    words = _words(name)
     for service in services:
         if wanted & (_forms(service.key) | _forms(service.name)):
             return service
-        if first_word in (_normalize(service.key), _normalize(service.name)):
+        vendor = (_normalize(service.key), _normalize(service.name))
+        if words[0] in vendor and _covers(service, words[1:]):
+            return service
+        if len(words) == 1 and singular(words[0]) in service.leads:
             return service
     return None
+
+
+def _covers(service: ConnectableService, words: list[str]) -> bool:
+    """Whether the words after a vendor's name are products it covers."""
+    if not service.products:
+        return True
+    return all(
+        word in _ACCESS_WORDS or singular(word) in service.products for word in words
+    )
 
 
 def _forms(name: str) -> set[str]:
@@ -233,9 +221,9 @@ def _forms(name: str) -> set[str]:
     return {form for form in forms if form}
 
 
-def _first_word(name: str) -> str:
+def _words(name: str) -> list[str]:
     words = re.split(r"[^a-z0-9]+", _PARENTHETICAL.sub("", name.lower()))
-    return next((word for word in words if word), "")
+    return [word for word in words if word] or [""]
 
 
 def _normalize(name: str) -> str:
