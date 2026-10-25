@@ -249,10 +249,11 @@ async def queue_pending_for_http(
     is still being pushed waits for its outcome, and gets a 503 if that
     outlasts the wait.
 
-    ``on_queued`` runs once the message is in the queue, judged by the push
-    itself: on success, before a 429 from the rate cap, for a retransmit of
-    a send already accepted, and after the caller is cancelled while a push
-    that then lands was still going, with or without a client id.
+    ``on_queued`` runs once this request's message is in the queue, judged by
+    the push itself: on success, before a 429 from the rate cap, and after
+    the caller is cancelled while a push that then lands was still going,
+    with or without a client id. A retransmit of a send already accepted
+    queues nothing of its own, so it does not run.
 
     Raises :class:`HTTPException` with status 429 if the rate cap is hit or
     400 if an expert session attaches a file outside its scope; otherwise
@@ -293,7 +294,7 @@ async def queue_pending_for_http(
                 "for session=%s",
                 session_id,
             )
-            await _finish_queued(session_id, None, claim_owner, on_queued)
+            # Nothing of this request is queued: ``on_queued`` does not run.
             return await already_accepted_response(session_id)
         if claim == "reserved":
             raise client_message_in_progress_error()

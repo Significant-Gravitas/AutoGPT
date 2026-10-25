@@ -1459,6 +1459,109 @@ async def test_stopping_a_session_keeps_the_answer_another_tab_gave_meanwhile(
     assert other.result == "answered"
 
 
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+async def test_a_send_resent_after_stop_answers_nothing_it_did_not_queue(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A decision is queued, then Stop drops it and takes its answer back.
+    The same send arriving again with its message id is a copy of one
+    already accepted, so it queues nothing; it must not leave a claim and
+    an approval behind for a message that is in no queue and no chat."""
+    session_id = f"s-{uuid4()}"
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    mocker.patch(
+        "backend.copilot.gate.card_decided._saved_rows",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    async def push_into_the_queue(session: str, message: PendingMessage, **_: object):
+        return await pending_messages_module.push_pending_message(session, message)
+
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        side_effect=push_into_the_queue,
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.check_pending_call_rate",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+    async def send() -> None:
+        answer = await chat_routes._admit_card_answer(
+            test_user_id, session_id, line, "click-1", has_attachments=False
+        )
+        await chat_routes._queue_card_answer(
+            test_user_id,
+            session_id,
+            answer,
+            context=None,
+            file_ids=None,
+            folder_ids=None,
+            expert_id=None,
+            client_message_id="click-1",
+        )
+
+    await send()
+    await chat_routes._clear_pending_best_effort(session_id, test_user_id)
+    await send()  # the same send again
+
+    assert not await approved_on_card(
+        "confirm_expert_change",
+        {"confirmation_id": "c-1"},
+        test_user_id,
+        session_id,
+    )
+    other_tab = await card_decided.claim_answer(
+        test_user_id, session_id, ["c-1"], owner="tab-b", attempt="b"
+    )
+    assert other_tab.result == "claimed"
+
+
+def test_stream_chat_answers_nothing_for_a_copy_of_an_accepted_send(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """On /stream, a copy whose client key is already accepted starts no turn
+    and saves nothing: its card claim is settled by what the chat holds,
+    never marked answered on the copy's word."""
+    _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_client_message",
+        new_callable=AsyncMock,
+        return_value="accepted",
+    )
+    accept = mocker.patch(
+        "backend.api.features.chat.routes.accept_claim", new_callable=AsyncMock
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.withdraw_card_approvals_recorded_by",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "message_id": "click-1",
+        },
+    )
+
+    assert response.status_code == 200
+    accept.assert_not_awaited()
+    release.assert_awaited_once()
+
+
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

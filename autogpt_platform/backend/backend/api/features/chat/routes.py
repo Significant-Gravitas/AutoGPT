@@ -473,7 +473,7 @@ async def _queue_card_answer(
         await _accept_card_answer(session_id, answer)
 
     try:
-        return await queue_pending_for_http(
+        response = await queue_pending_for_http(
             session_id=session_id,
             user_id=user_id,
             message=answer.message,
@@ -492,6 +492,12 @@ async def _queue_card_answer(
         if not queued:
             await _release_card_answer(user_id, session_id, answer)
         raise
+    if not queued:
+        # A copy of a send already accepted queued nothing of its own; the
+        # first copy may since be gone (Stop dropped it), so what the chat
+        # holds stays answered and the rest is given back.
+        await _release_card_answer(user_id, session_id, answer)
+    return response
 
 
 def _card_ids(message: str) -> list[str]:
@@ -2329,8 +2335,13 @@ async def stream_chat_post(
             await release_client_message(session_id, client_message_id, claim_owner)
 
     async def accept_client_message_claim() -> None:
-        # The row is saved or the turn queued: the card is answered.
-        await _accept_card_answer(session_id, card_answer)
+        if claim == "accepted":
+            # A copy of a send already accepted saved nothing of its own:
+            # what the chat holds stays answered, the rest is given back.
+            await _release_card_answer(user_id, session_id, card_answer)
+        else:
+            # The row is saved or the turn queued: the card is answered.
+            await _accept_card_answer(session_id, card_answer)
         if claim == "claimed" and client_message_id is not None:
             await accept_client_message(session_id, client_message_id, claim_owner)
 
