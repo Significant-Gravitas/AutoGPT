@@ -100,11 +100,12 @@ function Calendar({
         weekdays: "flex",
         // TODO(tokens): no exact role: text-neutral-500 #737373. SECRT-3152
         // rare size: text-[0.8rem].
-        weekday: "text-neutral-500 rounded-md w-8 font-normal text-[0.8rem]",
+        weekday:
+          "text-neutral-500 rounded-md w-8 font-normal text-[0.8rem] dark:text-neutral-400",
         week: "flex w-full mt-2",
         // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5.
         day: cn(
-          "relative p-0 text-center text-body leading-5 focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-neutral-100 [&:has([aria-selected].day-outside)]:bg-neutral-100/50 [&:has([aria-selected].day-range-end)]:rounded-r-md",
+          "relative p-0 text-center text-body leading-5 focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-neutral-100 [&:has([aria-selected].day-outside)]:bg-neutral-100/50 [&:has([aria-selected].day-range-end)]:rounded-r-md dark:[&:has([aria-selected])]:bg-neutral-800 dark:[&:has([aria-selected].day-outside)]:bg-neutral-800/50",
           props.mode === "range"
             ? "[&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
             : "[&:has([aria-selected])]:rounded-md",
@@ -113,26 +114,29 @@ function Calendar({
         // TODO(tokens): no exact role: hover:bg-neutral-100 #F5F5F5,
         // hover:text-neutral-900 #171717.
         day_button:
-          "inline-flex items-center justify-center whitespace-nowrap rounded-md text-body leading-5 transition-colors focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 hover:bg-neutral-100 hover:text-neutral-900 h-8 w-8 p-0 font-normal aria-selected:opacity-100",
+          "inline-flex items-center justify-center whitespace-nowrap rounded-md text-body leading-5 transition-colors focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50 h-8 w-8 p-0 font-normal aria-selected:opacity-100",
         range_start: "range-start",
         range_end: "range-end",
         // TODO(tokens): no exact role: bg-neutral-900 #171717,
-        // text-neutral-100 #F5F5F5, bg-neutral-700 #404040.
+        // text-neutral-100 #F5F5F5, bg-neutral-700 #404040. text-neutral-50
+        // #FAFAFA is `primary-foreground` in :root only (#18181B in .dark),
+        // so it stays raw. SECRT-3154
         selected:
-          "bg-neutral-900 text-neutral-100 hover:bg-neutral-900 hover:text-primary-foreground focus:bg-neutral-700 focus:text-primary-foreground",
+          "bg-neutral-900 text-neutral-100 hover:bg-neutral-900 hover:text-neutral-50 focus:bg-neutral-700 focus:text-neutral-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50 dark:hover:text-neutral-900 dark:focus:bg-neutral-50 dark:focus:text-neutral-900",
         // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5,
         // text-neutral-900 #171717.
-        today: "bg-neutral-100 text-neutral-900",
+        today:
+          "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50",
         // TODO(tokens): no exact role: text-neutral-500 #737373,
         // bg-neutral-100 #F5F5F5.
         outside:
-          "day-outside text-neutral-500 opacity-50  aria-selected:bg-neutral-100/50 aria-selected:text-neutral-500 aria-selected:opacity-30",
+          "day-outside text-neutral-500 opacity-50  aria-selected:bg-neutral-100/50 aria-selected:text-neutral-500 aria-selected:opacity-30 dark:text-neutral-400 dark:aria-selected:bg-neutral-800/50 dark:aria-selected:text-neutral-400",
         // TODO(tokens): no exact role: text-neutral-500 #737373.
-        disabled: "text-neutral-500 opacity-50",
+        disabled: "text-neutral-500 opacity-50 dark:text-neutral-400",
         // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5,
         // text-neutral-900 #171717.
         range_middle:
-          "aria-selected:bg-neutral-100 aria-selected:text-neutral-900",
+          "aria-selected:bg-neutral-100 aria-selected:text-neutral-900 dark:aria-selected:bg-neutral-800 dark:aria-selected:text-neutral-50",
         hidden: "invisible",
         ...classNames,
       }}
