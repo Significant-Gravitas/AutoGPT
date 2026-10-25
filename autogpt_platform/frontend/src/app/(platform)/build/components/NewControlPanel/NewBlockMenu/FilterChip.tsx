@@ -40,7 +40,7 @@ export const FilterChip: React.FC<Props> = ({
           as="span"
           tone="secondary"
           className={cn(
-            "group-hover:text-zinc-600 group-disabled:text-zinc-400",
+            "group-hover:text-foreground-secondary group-disabled:text-foreground-subtle",
             selected && "text-zinc-50",
           )}
         >

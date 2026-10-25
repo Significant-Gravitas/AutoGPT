@@ -120,7 +120,7 @@ const CustomDropdown = ({
       onValueChange={handleValueChange}
       disabled={disabled}
     >
-      <SelectTrigger className="w-[120px] space-x-2 bg-white text-body leading-5">
+      <SelectTrigger className="w-[120px] space-x-2 bg-surface text-body leading-5">
         <SelectValue placeholder="Select" />
       </SelectTrigger>
       <SelectContent className="bg-white">

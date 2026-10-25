@@ -52,7 +52,7 @@ export const Integration: IntegrationComponent = ({
             <Text
               variant="body-medium"
               tone="body"
-              className="line-clamp-1 flex-1 group-disabled:text-zinc-400"
+              className="line-clamp-1 flex-1 group-disabled:text-foreground-subtle"
             >
               {beautifyString(title)}
             </Text>
@@ -61,7 +61,7 @@ export const Integration: IntegrationComponent = ({
             variant="body-medium"
             as="span"
             tone="muted"
-            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-zinc-400"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-foreground-subtle"
           >
             {number_of_blocks}
           </Text>
@@ -70,7 +70,7 @@ export const Integration: IntegrationComponent = ({
           variant="small-loose"
           as="span"
           tone="muted"
-          className="line-clamp-1 group-disabled:text-zinc-400"
+          className="line-clamp-1 group-disabled:text-foreground-subtle"
         >
           {description}
         </Text>

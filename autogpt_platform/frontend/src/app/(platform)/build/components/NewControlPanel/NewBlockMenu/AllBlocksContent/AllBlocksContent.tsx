@@ -65,7 +65,7 @@ export const AllBlocksContent = () => {
                 variant="body"
                 as="span"
                 tone="secondary"
-                className="rounded-full bg-zinc-100 px-[0.375rem]"
+                className="rounded-full bg-surface-hover px-[0.375rem]"
               >
                 {category.total_blocks}
               </Text>
@@ -103,7 +103,7 @@ export const AllBlocksContent = () => {
               {category.total_blocks > category.blocks.length && (
                 <Button
                   variant={"legacy-link"}
-                  className="px-0 font-sans text-body text-zinc-600 underline hover:text-zinc-800"
+                  className="px-0 font-sans text-body text-foreground-secondary underline hover:text-foreground-emphasis"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >

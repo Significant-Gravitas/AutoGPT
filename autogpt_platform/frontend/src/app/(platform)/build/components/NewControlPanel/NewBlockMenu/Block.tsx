@@ -137,7 +137,7 @@ function BlockCard({
               variant="body-medium"
               as="span"
               tone="emphasis"
-              className="line-clamp-1 group-disabled:text-zinc-400"
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
@@ -150,7 +150,7 @@ function BlockCard({
               variant="small-loose"
               as="span"
               tone="muted"
-              className="line-clamp-1 group-disabled:text-zinc-400"
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(description, highlightedText)}
             </Text>

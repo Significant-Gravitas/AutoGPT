@@ -81,7 +81,7 @@ export const legacyButtonVariants = cva(
     variants: {
       variant: {
         "legacy-default":
-          "bg-neutral-900 text-neutral-50 shadow hover:bg-neutral-900/90 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50/90",
+          "bg-neutral-900 text-neutral-50 shadow hover:bg-neutral-900/90 dark:bg-background dark:text-neutral-900 dark:hover:bg-background/90",
         "legacy-destructive":
           "bg-error text-neutral-50 shadow-sm hover:bg-error/90 dark:bg-red-900 dark:text-neutral-50 dark:hover:bg-red-900/90",
         "legacy-outline":
