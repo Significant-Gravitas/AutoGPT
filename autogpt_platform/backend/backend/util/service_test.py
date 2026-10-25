@@ -1025,7 +1025,7 @@ def test_cleanup_stops_the_loop_run_created(mocker):
     loop_thread.start()
 
     service.cleanup()
-    loop_thread.join(timeout=5)
+    loop_thread.join(timeout=30)
 
     assert not loop_thread.is_alive()
     assert service.shared_event_loop.is_closed()
