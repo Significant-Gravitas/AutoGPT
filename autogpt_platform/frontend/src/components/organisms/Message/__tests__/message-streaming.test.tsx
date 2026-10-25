@@ -2,7 +2,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import type { StreamdownProps } from "streamdown";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageResponse } from "../message";
+import { MessageResponse } from "../Message";
 
 const streamdownProps = vi.hoisted(() => [] as StreamdownProps[]);
 
