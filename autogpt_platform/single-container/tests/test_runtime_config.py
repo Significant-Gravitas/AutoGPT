@@ -955,6 +955,36 @@ class FillEnvServicePasswordsTest(unittest.TestCase):
             (self.root / "backend/.env").read_text(encoding="utf-8"), backend
         )
 
+    def test_the_cluster_host_the_backend_reads_first_decides(self) -> None:
+        # The backend takes REDIS_CLUSTER_HOST over REDIS_HOST, and
+        # RABBITMQ_CLUSTER_HOST over RABBITMQ_HOST, unless it is blank.
+        for name, cluster_setting, host_setting, compose_name in (
+            ("REDIS_PASSWORD", "REDIS_CLUSTER_HOST", "REDIS_HOST", "redis-0"),
+            (
+                "RABBITMQ_DEFAULT_PASS",
+                "RABBITMQ_CLUSTER_HOST",
+                "RABBITMQ_HOST",
+                "rabbitmq",
+            ),
+        ):
+            for cluster, host, generated in (
+                ("managed.example.com", "localhost", False),
+                (compose_name, "managed.example.com", True),
+                ("", "managed.example.com", False),
+                ("", "localhost", True),
+            ):
+                with self.subTest(name=name, cluster=cluster, host=host):
+                    self._write(
+                        backend=(
+                            f"{cluster_setting}={cluster}\n"
+                            f"{host_setting}={host}\n{name}=\n"
+                        )
+                    )
+
+                    filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+                    self.assertEqual(filled, [name] if generated else [])
+
     def test_bundled_services_get_passwords_under_any_name_they_go_by(self) -> None:
         for name, host_setting, compose_name in (
             ("DB_PASS", "DB_HOST", "db"),

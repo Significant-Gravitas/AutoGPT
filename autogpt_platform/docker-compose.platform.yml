@@ -223,7 +223,7 @@ services:
       - /bin/sh
       - -c
       - >-
-        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:?GRAPHITI_FALKORDB_PASSWORD must be set}"
+        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:?GRAPHITI_FALKORDB_PASSWORD must be set: run make init-env in autogpt_platform/ to generate it}"
         && exec /var/lib/falkordb/bin/run.sh "$$@"
       - --
     volumes:

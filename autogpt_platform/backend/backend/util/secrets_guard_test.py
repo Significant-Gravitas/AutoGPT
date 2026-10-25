@@ -147,12 +147,58 @@ def test_a_connection_string_urllib_cannot_split_does_not_stop_startup(
 def test_generated_service_passwords_do_not_warn(monkeypatch, caplog):
     settings = _settings(_fresh_key())
     settings.config.redis_host = "redis-0"
+    settings.config.rabbitmq_host = "rabbitmq"
+    monkeypatch.setenv("GRAPHITI_FALKORDB_HOST", "falkordb")
     for configure in (_database_url, _direct_url, _rabbitmq, _redis, _falkordb):
         configure(monkeypatch, settings, _fresh_key().rstrip("="))
 
     check_secrets(settings)
 
     assert "[SECURITY]" not in caplog.text
+    assert "is not set" not in caplog.text
+
+
+def _blank_falkordb(monkeypatch, settings, host):
+    monkeypatch.setenv("GRAPHITI_FALKORDB_HOST", host)
+    monkeypatch.setenv("GRAPHITI_FALKORDB_PASSWORD", "")
+
+
+def _blank_rabbitmq(monkeypatch, settings, host):
+    settings.config.rabbitmq_host = host
+    settings.secrets.rabbitmq_default_pass = ""
+
+
+@pytest.mark.parametrize(
+    "name, configure, compose_host",
+    [
+        ("GRAPHITI_FALKORDB_PASSWORD", _blank_falkordb, "falkordb"),
+        ("RABBITMQ_DEFAULT_PASS", _blank_rabbitmq, "rabbitmq"),
+    ],
+)
+@pytest.mark.parametrize(
+    "host, warns",
+    [
+        (None, True),  # the Compose service, named as Compose names it
+        ("localhost", False),  # CI, or one of one's own
+        ("broker.internal", False),
+    ],
+)
+def test_a_compose_service_left_without_a_password_is_pointed_out(
+    monkeypatch, caplog, name, configure, compose_host, host, warns
+):
+    """A backend/.env from before it had a line for the password took it from
+    .env.default, which no longer ships one."""
+    settings = _settings(_fresh_key())
+    configure(monkeypatch, settings, host or compose_host)
+
+    check_secrets(settings)
+
+    warnings = [
+        r.getMessage() for r in caplog.records if "is not set" in r.getMessage()
+    ]
+    assert len(warnings) == int(warns)
+    if warns:
+        assert name in warnings[0] and "make init-env" in warnings[0]
 
 
 @pytest.mark.parametrize(

@@ -493,18 +493,29 @@ stops with an error on one that Compose would take from the environment when
 the stack starts (`$NAME`, `${NAME}`, or the name alone on a line): write the
 password itself. The database applies `POSTGRES_PASSWORD` every time it
 starts, so its data stays where it is. A database, Redis, RabbitMQ or
-FalkorDB that `backend/.env` points at another host (`DB_HOST`, `REDIS_HOST`,
-`RABBITMQ_HOST`, `GRAPHITI_FALKORDB_HOST`) is a service of your own, and
-`make init-env` leaves its password as it is.
+FalkorDB that `backend/.env` points at another host is a service of your own,
+and `make init-env` leaves its password as it is. The host that counts is the
+one the backend reads: `DB_HOST`; `REDIS_CLUSTER_HOST`, or else `REDIS_HOST`;
+`RABBITMQ_CLUSTER_HOST`, or else `RABBITMQ_HOST`; and `GRAPHITI_FALKORDB_HOST`.
 
 If you upgraded without emptying the queues, workflow runs that were waiting
 to start stay **Queued**. An hour later an admin can start them again from
-**Admin › Diagnostics**, tab **Stuck Queued**, with **Requeue All**. Without
-`make init-env`, the stack goes on using the passwords already in its `.env`
-files, and the backend logs a warning at startup while one of them is a value
-this repository published. If `autogpt_platform/.env` has no
-`POSTGRES_PASSWORD` at all, Compose refuses to start and asks you to run
-`make init-env`.
+**Admin › Diagnostics**, tab **Stuck Queued**, with **Requeue All**.
+
+Don't skip `make init-env`. Without it, the stack goes on using only the
+passwords its `.env` files hold, and the backend logs a warning at startup
+while one of them is a value this repository published. A password an older
+file has no line for came from `.env.default`, which now leaves it blank:
+
+- Compose refuses to start without `POSTGRES_PASSWORD` in
+  `autogpt_platform/.env`.
+- FalkorDB doesn't start without `GRAPHITI_FALKORDB_PASSWORD`, which a
+  `backend/.env` created before v0.6.55 lacks.
+- The backend can't log in to RabbitMQ without `RABBITMQ_DEFAULT_PASS`, which
+  a `backend/.env` created before v0.4.10 lacks.
+
+`make init-env` adds each of them, and the backend's startup log names the
+last two while they are missing.
 
 If something outside the stack logs in to one of these services, such as a
 backup job or a database tool, give it the new password from those files.

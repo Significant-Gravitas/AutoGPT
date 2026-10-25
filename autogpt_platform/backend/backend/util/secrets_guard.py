@@ -110,7 +110,8 @@ def check_secrets(settings: Settings | None = None) -> None:
 
 def _warn_on_published_credentials(settings: Settings) -> None:
     """Warn about each service password that is a published value. The service
-    keeps working on it; anyone who can reach that service can log in too."""
+    keeps working on it; anyone who can reach that service can log in too. Warn
+    as well about a Compose service left with no password, which doesn't work."""
     credentials = {
         f"The database password in {name}": _url_password(os.environ.get(name, ""))
         for name in ("DATABASE_URL", "DIRECT_URL")
@@ -133,6 +134,24 @@ def _warn_on_published_credentials(settings: Settings) -> None:
         logger.warning(
             "[SECURITY] The Docker Compose Redis cluster has no password, so any "
             f"container on its networks can read and change it. {CREDENTIAL_HINT}"
+        )
+    # A backend/.env from before these two had lines took them from
+    # .env.default, which now leaves them blank for `make init-env` to fill.
+    # Compose's FalkorDB stops without one, and RabbitMQ refuses a blank one.
+    if os.environ.get("GRAPHITI_FALKORDB_HOST") == "falkordb" and not os.environ.get(
+        "GRAPHITI_FALKORDB_PASSWORD"
+    ):
+        logger.warning(
+            "GRAPHITI_FALKORDB_PASSWORD is not set, so the Docker Compose FalkorDB "
+            f"doesn't start and memory is unavailable. {CREDENTIAL_HINT}"
+        )
+    if (
+        settings.config.rabbitmq_host == "rabbitmq"
+        and not settings.secrets.rabbitmq_default_pass
+    ):
+        logger.warning(
+            "RABBITMQ_DEFAULT_PASS is not set, so the backend can't log in to the "
+            f"Docker Compose RabbitMQ. {CREDENTIAL_HINT}"
         )
 
 

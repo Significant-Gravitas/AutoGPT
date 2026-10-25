@@ -170,7 +170,15 @@ class DatabaseEntrypointTest(unittest.TestCase):
         (self.root / "bin").mkdir()
         for command, body in (
             ("docker-entrypoint.sh", 'echo "stock $*" >> "$STUB_LOG"'),
-            ("id", "echo 999"),  # as the postgres user, whoever runs the test
+            # As the postgres user, whoever runs the test, unless STUB_UID says.
+            ("id", 'echo "${STUB_UID:-999}"'),
+            # Takes root's place as gosu does, after making the script
+            # unreadable, as a checkout's file can be to the postgres user.
+            (
+                "gosu",
+                'echo "gosu $1" >> "$STUB_LOG"; shift; chmod 000 "$STUB_SCRIPT"; '
+                'export STUB_UID=999; exec "$@"',
+            ),
         ):
             path = self.root / "bin" / command
             path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
@@ -203,6 +211,28 @@ class DatabaseEntrypointTest(unittest.TestCase):
 
     def test_a_new_data_directory_is_left_to_the_image(self) -> None:
         self.assertEqual(self._run("postgres", STUB_EXISTS=""), (0, ["stock postgres"]))
+
+    @unittest.skipIf(
+        os.name == "posix" and os.geteuid() == 0, "root reads an unreadable file"
+    )
+    def test_started_as_root_it_runs_as_postgres_without_rereading_its_file(
+        self,
+    ) -> None:
+        self.assertEqual(
+            self._run(
+                "postgres", STUB_EXISTS="1", STUB_UID="0", STUB_SCRIPT=str(self.script)
+            ),
+            (
+                0,
+                [
+                    "gosu postgres",
+                    "temp-start",
+                    "password-set",
+                    "temp-stop",
+                    "stock postgres",
+                ],
+            ),
+        )
 
     def test_printing_help_or_a_setting_starts_no_server(self) -> None:
         for arguments in (

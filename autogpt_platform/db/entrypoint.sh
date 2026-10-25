@@ -86,7 +86,9 @@ if [ "${1:-}" = postgres ] && ! prints_and_exits "$@"; then
     docker_setup_env
     if [ "$(id -u)" = 0 ]; then
       docker_create_db_directories
-      exec gosu postgres bash "${BASH_SOURCE[0]}" "$@"
+      # This script as root read it, not the file again: the postgres user
+      # may not be able to read a checkout's files (a umask of 077).
+      exec gosu postgres bash -c "$(<"${BASH_SOURCE[0]}")" "${BASH_SOURCE[0]}" "$@"
     fi
     if [ -n "$DATABASE_ALREADY_EXISTS" ] && [ -n "$POSTGRES_PASSWORD" ] &&
       ! apply_password "$@"; then

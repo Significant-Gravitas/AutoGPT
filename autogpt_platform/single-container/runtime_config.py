@@ -71,16 +71,23 @@ TEMPLATE = re.compile(
 UNSAFE_IN_URL = re.compile(r"[@/?#%$\[\]\s\"'\\`\x00-\x1f\x7f]")
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 LOCAL_DATABASE_HOSTS = LOCAL_HOSTS | {"db"}
-# Each service password's host setting in backend/.env, and the host names
-# that mean the service the stack bundles: this machine, or its Compose name.
-# The password of a service that runs anywhere else is that service's, so
-# setup neither generates nor replaces it.
+# Each service password's host settings in backend/.env, in the order the
+# backend reads them (it takes REDIS_CLUSTER_HOST over REDIS_HOST), and the
+# host names that mean the service the stack bundles: this machine, or its
+# Compose name. The password of a service that runs anywhere else is that
+# service's, so setup neither generates nor replaces it.
 BUNDLED_SERVICE_HOSTS = {
-    "DB_PASS": ("DB_HOST", LOCAL_DATABASE_HOSTS),
-    "REDIS_PASSWORD": ("REDIS_HOST", LOCAL_HOSTS | {"redis-0", "redis-1", "redis-2"}),
-    "RABBITMQ_DEFAULT_PASS": ("RABBITMQ_HOST", LOCAL_HOSTS | {"rabbitmq"}),
+    "DB_PASS": (("DB_HOST",), LOCAL_DATABASE_HOSTS),
+    "REDIS_PASSWORD": (
+        ("REDIS_CLUSTER_HOST", "REDIS_HOST"),
+        LOCAL_HOSTS | {"redis-0", "redis-1", "redis-2"},
+    ),
+    "RABBITMQ_DEFAULT_PASS": (
+        ("RABBITMQ_CLUSTER_HOST", "RABBITMQ_HOST"),
+        LOCAL_HOSTS | {"rabbitmq"},
+    ),
     "GRAPHITI_FALKORDB_PASSWORD": (
-        "GRAPHITI_FALKORDB_HOST",
+        ("GRAPHITI_FALKORDB_HOST",),
         LOCAL_HOSTS | {"falkordb"},
     ),
 }
@@ -365,14 +372,17 @@ def _check_database_password(password: str) -> None:
 
 def _uses_bundled_service(name: str, settings: Mapping[str, Setting]) -> bool:
     """Whether backend/.env, as Compose reads it, points the service that
-    password `name` logs in to at the one the stack bundles. A host Compose
-    works out only when the stack starts does not count as that."""
-    host_setting, bundled_hosts = BUNDLED_SERVICE_HOSTS[name]
-    host = settings.get(host_setting)
-    return host is None or (
-        host.literal
-        and (not host.value or host.value.lower().rstrip(".") in bundled_hosts)
-    )
+    password `name` logs in to at the one the stack bundles. The first of its
+    host settings with a value decides, as in the backend; with none, it is
+    the bundled one, the backend's default. A host Compose works out only when
+    the stack starts does not count as that."""
+    host_settings, bundled_hosts = BUNDLED_SERVICE_HOSTS[name]
+    for host_setting in host_settings:
+        host = settings.get(host_setting)
+        if host is None or (host.literal and not host.value):
+            continue
+        return host.literal and host.value.lower().rstrip(".") in bundled_hosts
+    return True
 
 
 def _password_and_host(url: str) -> tuple[str | None, str | None]:
