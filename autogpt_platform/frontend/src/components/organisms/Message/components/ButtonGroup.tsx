@@ -3,6 +3,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
+// Inlined from the former shadcn button-group primitive (SECRT-3113 How 3):
+// MessageBranch* were its only consumer, so it lives here, private to Message.
 const buttonGroupVariants = cva(
   "flex w-fit items-stretch has-[>[data-slot=button-group]]:gap-2 [&>*]:focus-visible:relative [&>*]:focus-visible:z-10 has-[select[aria-hidden=true]:last-child]:[&>[data-slot=select-trigger]:last-of-type]:rounded-r-md [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1",
   {
@@ -20,7 +22,7 @@ const buttonGroupVariants = cva(
   },
 );
 
-function ButtonGroup({
+export function ButtonGroup({
   className,
   orientation,
   ...props
@@ -36,7 +38,10 @@ function ButtonGroup({
   );
 }
 
-function ButtonGroupText({ className, ...props }: React.ComponentProps<"div">) {
+export function ButtonGroupText({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <Text
       variant="body-medium-tight"
@@ -52,5 +57,3 @@ function ButtonGroupText({ className, ...props }: React.ComponentProps<"div">) {
     />
   );
 }
-
-export { ButtonGroup, ButtonGroupText, buttonGroupVariants };
