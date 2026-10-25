@@ -2,6 +2,7 @@ from backend.blocks.etsy._api import (
     EtsyCategory,
     EtsyClient,
     EtsyProcessingProfile,
+    EtsyReturnPolicy,
     EtsyShippingProfile,
     EtsyShop,
 )
@@ -39,6 +40,14 @@ _TEST_PROCESSING = [
         processing_days_display_label="1-3 days",
     )
 ]
+_TEST_RETURN_POLICIES = [
+    EtsyReturnPolicy(
+        return_policy_id=9001,
+        accepts_returns=True,
+        accepts_exchanges=True,
+        return_deadline=30,
+    )
+]
 _TEST_CATEGORIES = [
     EtsyCategory(id=1, name="Paper & Party Supplies", path="Paper & Party Supplies"),
     EtsyCategory(
@@ -68,13 +77,21 @@ class EtsyGetMyShopBlock(Block):
             description="Processing times a physical listing can use",
             default_factory=list,
         )
+        return_policies: list[EtsyReturnPolicy] = SchemaField(
+            description=(
+                "Return policies; outside the EU a physical listing needs one "
+                "to be published"
+            ),
+            default_factory=list,
+        )
 
     def __init__(self):
         super().__init__(
             id="11fe7225-3d92-46e7-9ba5-a9bbc5546db3",
             description=(
-                "Get your connected Etsy shop, its shop id and its shipping "
-                "and processing profiles, which the listing blocks need."
+                "Get your connected Etsy shop, its shop id, and its shipping "
+                "profiles, processing profiles and return policies, which the "
+                "listing blocks need."
             ),
             categories={BlockCategory.MARKETING, BlockCategory.DATA},
             input_schema=EtsyGetMyShopBlock.Input,
@@ -86,12 +103,16 @@ class EtsyGetMyShopBlock(Block):
                 ("shop_id", _TEST_SHOP.shop_id),
                 ("shipping_profiles", _TEST_PROFILES),
                 ("processing_profiles", _TEST_PROCESSING),
+                ("return_policies", _TEST_RETURN_POLICIES),
             ],
             test_mock={
                 "get_shop": lambda credentials: _TEST_SHOP,
                 "list_shipping_profiles": lambda credentials, shop_id: _TEST_PROFILES,
                 "list_processing_profiles": lambda credentials, shop_id: (
                     _TEST_PROCESSING
+                ),
+                "list_return_policies": lambda credentials, shop_id: (
+                    _TEST_RETURN_POLICIES
                 ),
             },
             effect=BlockEffect.READ,
@@ -114,6 +135,12 @@ class EtsyGetMyShopBlock(Block):
     ) -> list[EtsyProcessingProfile]:
         return await EtsyClient(credentials).list_processing_profiles(shop_id)
 
+    @staticmethod
+    async def list_return_policies(
+        credentials: EtsyCredentials, shop_id: int
+    ) -> list[EtsyReturnPolicy]:
+        return await EtsyClient(credentials).list_return_policies(shop_id)
+
     async def run(
         self, input_data: Input, *, credentials: EtsyCredentials, **kwargs
     ) -> BlockOutput:
@@ -124,6 +151,9 @@ class EtsyGetMyShopBlock(Block):
             credentials, shop.shop_id
         )
         yield "processing_profiles", await self.list_processing_profiles(
+            credentials, shop.shop_id
+        )
+        yield "return_policies", await self.list_return_policies(
             credentials, shop.shop_id
         )
 

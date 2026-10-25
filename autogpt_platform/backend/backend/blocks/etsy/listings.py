@@ -1,6 +1,13 @@
 from typing import Literal
 
-from backend.blocks.etsy._api import EtsyClient, EtsyListing, EtsyMoney, csv, flag
+from backend.blocks.etsy._api import (
+    EtsyClient,
+    EtsyError,
+    EtsyListing,
+    EtsyMoney,
+    csv,
+    flag,
+)
 from backend.blocks.etsy._config import (
     ETSY_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS,
@@ -22,6 +29,14 @@ from backend.util.money import cents_text, price_in_cents
 
 MAX_TAGS = 13
 MAX_LISTINGS = 100
+# Etsy answers a publish it will not make with a 400 naming what is missing.
+PUBLISH_REFUSED = 400
+PUBLISH_NEEDS = (
+    "To go live, a physical listing needs a photo, a shipping profile and, "
+    "unless the shop is in the EU, a return policy. Get My Etsy Shop lists the "
+    "shop's shipping profiles and return policies; pass them here as "
+    "shipping_profile_id and return_policy_id."
+)
 
 ListingState = Literal["active", "inactive", "draft", "sold_out", "expired"]
 
@@ -63,6 +78,13 @@ class EtsyCreateDraftListingBlock(Block):
             description=(
                 "Shipping profile from Get My Etsy Shop; a physical listing "
                 "needs one before it can be published, not to be drafted"
+            ),
+            default=0,
+        )
+        return_policy_id: int = SchemaField(
+            description=(
+                "Return policy from Get My Etsy Shop; outside the EU a physical "
+                "listing needs one to be published"
             ),
             default=0,
         )
@@ -164,6 +186,8 @@ def draft_listing_form(data: EtsyCreateDraftListingBlock.Input) -> dict[str, str
         form["tags"] = csv(data.tags)
     if data.shipping_profile_id:
         form["shipping_profile_id"] = str(data.shipping_profile_id)
+    if data.return_policy_id:
+        form["return_policy_id"] = str(data.return_policy_id)
     if data.readiness_state_id:
         form["readiness_state_id"] = str(data.readiness_state_id)
     return form
@@ -248,6 +272,20 @@ class EtsyUpdateListingBlock(Block):
             description="'active' publishes the listing, 'inactive' hides it; empty keeps it",
             default="",
         )
+        shipping_profile_id: int = SchemaField(
+            description=(
+                "Shipping profile from Get My Etsy Shop; a physical listing "
+                "needs one to be published. 0 keeps it"
+            ),
+            default=0,
+        )
+        return_policy_id: int = SchemaField(
+            description=(
+                "Return policy from Get My Etsy Shop; outside the EU a physical "
+                "listing needs one to be published. 0 keeps it"
+            ),
+            default=0,
+        )
 
     class Output(BlockSchemaOutput):
         listing: EtsyListing = SchemaField(description="The listing after the change")
@@ -290,12 +328,15 @@ class EtsyUpdateListingBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: EtsyCredentials, **kwargs
     ) -> BlockOutput:
-        listing = await self.update(
-            credentials,
-            input_data.shop_id,
-            input_data.listing_id,
-            update_listing_form(input_data),
-        )
+        form = update_listing_form(input_data)
+        try:
+            listing = await self.update(
+                credentials, input_data.shop_id, input_data.listing_id, form
+            )
+        except EtsyError as e:
+            if form.get("state") != "active" or e.status_code != PUBLISH_REFUSED:
+                raise
+            raise EtsyError(f"{e} {PUBLISH_NEEDS}", e.status_code) from e
         yield "listing", listing
         yield "url", listing.url
 
@@ -308,8 +349,17 @@ def update_listing_form(data: EtsyUpdateListingBlock.Input) -> dict[str, str]:
         "description": data.description,
         "tags": csv(data.tags),
         "state": data.state,
+        "shipping_profile_id": _id(data.shipping_profile_id),
+        "return_policy_id": _id(data.return_policy_id),
     }
     changes = {key: value for key, value in form.items() if value}
     if not changes:
-        raise ValueError("Nothing to change: give a title, description, tags or state.")
+        raise ValueError(
+            "Nothing to change: give a title, description, tags, state, "
+            "shipping profile or return policy."
+        )
     return changes
+
+
+def _id(value: int) -> str:
+    return str(value) if value else ""

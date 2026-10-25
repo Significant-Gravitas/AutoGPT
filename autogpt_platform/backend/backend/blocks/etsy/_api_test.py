@@ -329,8 +329,9 @@ async def test_only_reads_and_edits_are_retried():
         lambda c: c.list_listings(42, "active", 25),
         lambda c: c.list_shipping_profiles(42),
         lambda c: c.list_categories(),
+        lambda c: c.list_return_policies(42),
     ],
-    ids=["listings", "shipping_profiles", "categories"],
+    ids=["listings", "shipping_profiles", "categories", "return_policies"],
 )
 async def test_a_malformed_success_body_is_a_validation_error(call):
     """A block reports a ValidationError as an execution error; a KeyError
@@ -389,3 +390,112 @@ async def test_a_shop_name_that_cannot_be_read_never_fails_the_sign_in():
 
     assert credentials.access_token.get_secret_value() == "7.access"
     assert credentials.username is None
+
+
+# getShopReturnPolicies, as Etsy's Open API v3 documents its 200 body
+# (ShopReturnPolicies: count and results of ShopReturnPolicy).
+RETURN_POLICIES = {
+    "count": 2,
+    "results": [
+        {
+            "return_policy_id": 9001,
+            "shop_id": 42,
+            "accepts_returns": True,
+            "accepts_exchanges": True,
+            "return_deadline": 30,
+        },
+        {
+            "return_policy_id": 9002,
+            "shop_id": 42,
+            "accepts_returns": False,
+            "accepts_exchanges": False,
+            "return_deadline": None,
+        },
+    ],
+}
+
+
+async def test_a_shops_return_policies_are_listed():
+    client, http = _client(_response(200, RETURN_POLICIES))
+
+    policies = await client.list_return_policies(42)
+
+    assert http.request.await_args.args == (
+        "GET",
+        "https://api.etsy.com/v3/application/shops/42/policies/return",
+    )
+    assert [
+        (p.return_policy_id, p.accepts_returns, p.return_deadline) for p in policies
+    ] == [
+        (9001, True, 30),
+        (9002, False, None),
+    ]
+
+
+def test_a_return_policy_goes_on_the_draft_when_given():
+    assert draft_listing_form(_draft(return_policy_id=9001))["return_policy_id"] == (
+        "9001"
+    )
+    assert "return_policy_id" not in draft_listing_form(_draft())
+
+
+def test_publishing_can_set_the_shipping_profile_and_return_policy():
+    """Etsy requires both on an active physical listing (a return policy
+    outside the EU); a draft made without them is completed on publish."""
+    data = EtsyUpdateListingBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT,
+        shop_id=42,
+        listing_id=5,
+        state="active",
+        shipping_profile_id=2001,
+        return_policy_id=9001,
+    )
+
+    assert update_listing_form(data) == {
+        "state": "active",
+        "shipping_profile_id": "2001",
+        "return_policy_id": "9001",
+    }
+
+
+async def test_a_refused_publish_says_what_etsy_needs():
+    """Etsy answers with a 400 and its own reason; the block keeps it and
+    adds what a physical listing needs to go live, and where to get it."""
+    refused = _response(
+        400, {"error": "A return policy is required for active physical listings."}
+    )
+    block = EtsyUpdateListingBlock()
+    with patch.object(EtsyClient, "raw_requests", return_value=_http(refused)):
+        with pytest.raises(EtsyError) as raised:
+            async for _ in block.run(
+                EtsyUpdateListingBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT,
+                    shop_id=42,
+                    listing_id=5,
+                    state="active",
+                ),
+                credentials=TEST_CREDENTIALS,
+            ):
+                pass
+
+    message = str(raised.value)
+    assert "A return policy is required for active physical listings." in message
+    assert "return policy" in message and "Get My Etsy Shop" in message
+    assert raised.value.status_code == 400
+
+
+async def test_a_refused_edit_that_is_not_a_publish_is_left_as_etsy_said():
+    refused = _response(400, {"error": "Title is too long."})
+    block = EtsyUpdateListingBlock()
+    with patch.object(EtsyClient, "raw_requests", return_value=_http(refused)):
+        with pytest.raises(EtsyError, match="Title is too long.$"):
+            async for _ in block.run(
+                EtsyUpdateListingBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT,
+                    shop_id=42,
+                    listing_id=5,
+                    title="x",
+                ),
+                credentials=TEST_CREDENTIALS,
+            ):
+                pass

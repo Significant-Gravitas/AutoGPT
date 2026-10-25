@@ -52,6 +52,17 @@ class EtsyProcessingProfile(BaseModel):
     label: str = Field(default="", alias="processing_days_display_label")
 
 
+class EtsyReturnPolicy(BaseModel):
+    """A shop's return policy. Outside the EU, a physical listing needs one
+    before it can be published."""
+
+    return_policy_id: int
+    accepts_returns: bool = False
+    accepts_exchanges: bool = False
+    return_deadline: int | None = None
+    """Days the buyer has to return or exchange, when the shop takes them."""
+
+
 class EtsyCategory(BaseModel):
     id: int
     name: str
@@ -129,6 +140,10 @@ class EtsyClient:
     ) -> list[EtsyProcessingProfile]:
         data = await self._call("GET", f"/shops/{shop_id}/readiness-state-definitions")
         return _ProcessingProfilePage.model_validate(data).results
+
+    async def list_return_policies(self, shop_id: int) -> list[EtsyReturnPolicy]:
+        data = await self._call("GET", f"/shops/{shop_id}/policies/return")
+        return _ReturnPolicyPage.model_validate(data).results
 
     async def list_categories(self) -> list[EtsyCategory]:
         """Every seller category, flattened, each with its full path."""
@@ -263,6 +278,10 @@ class _ShippingProfilePage(BaseModel):
 
 class _ProcessingProfilePage(BaseModel):
     results: list[EtsyProcessingProfile]
+
+
+class _ReturnPolicyPage(BaseModel):
+    results: list[EtsyReturnPolicy]
 
 
 class _TaxonomyPage(BaseModel):
