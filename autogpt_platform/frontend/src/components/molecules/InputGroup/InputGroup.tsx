@@ -13,7 +13,8 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="input-group"
       role="group"
       className={cn(
-        "group/input-group relative flex w-full items-center rounded-xlarge border border-neutral-200 bg-white shadow-sm outline-none transition-[color,box-shadow]",
+        // TODO(tokens): no role holds neutral-200 #E5E5E5 (`border` is #E4E4E7).
+        "group/input-group relative flex w-full items-center rounded-xlarge border border-neutral-200 bg-surface shadow-sm outline-none transition-[color,box-shadow]",
         "min-w-0 has-[>textarea]:h-auto",
 
         // Variants based on alignment.
@@ -21,6 +22,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
         "has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col",
 
         // Focus state.
+        // TODO(tokens): zinc-400 #ADADB3 is `foreground-subtle`, a text role; no border or ring role holds it (SECRT-3154).
         "has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-zinc-400",
 
         className,
@@ -31,7 +33,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 const inputGroupAddonVariants = cva(
-  "text-muted-foreground flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-sm font-medium select-none group-data-[disabled=true]/input-group:opacity-50",
+  "text-muted-foreground flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-body font-medium leading-5 select-none group-data-[disabled=true]/input-group:opacity-50",
   {
     variants: {
       align: {
@@ -73,7 +75,7 @@ function InputGroupAddon({
 }
 
 const inputGroupButtonVariants = cva(
-  "text-sm shadow-none flex min-w-0 gap-2 items-center",
+  "text-body leading-5 shadow-none flex min-w-0 gap-2 items-center",
   {
     variants: {
       size: {

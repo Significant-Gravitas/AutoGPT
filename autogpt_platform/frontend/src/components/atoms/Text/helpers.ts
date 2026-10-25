@@ -48,6 +48,9 @@ export const variants = {
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-semibold-tight":
     "font-sans text-body-lg font-semibold leading-6 text-foreground-base",
+  // TODO(tokens): no role is 1rem/2rem; body-lg plus leading-8.
+  "large-loose":
+    "font-sans text-body-lg font-normal leading-8 text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
@@ -65,6 +68,10 @@ export const variants = {
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-tight-italic":
     "font-sans text-body font-normal italic leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5,
+  // stepping up to body-lg (16px/24px) below md like the raw sizes it replaced.
+  "body-tight-touch":
+    "font-sans text-body font-normal leading-5 text-foreground-base max-md:text-body-lg max-md:leading-6",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-semibold-tight":
     "font-sans text-body font-semibold leading-5 text-foreground-base",
@@ -200,6 +207,7 @@ export const variantElementMap: Record<Variant, As> = {
   "large-semibold": "p",
   "large-medium-tight": "p",
   "large-semibold-tight": "p",
+  "large-loose": "p",
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
@@ -208,6 +216,7 @@ export const variantElementMap: Record<Variant, As> = {
   "body-line-through": "p",
   "body-tight-italic": "p",
   "body-medium-tight": "p",
+  "body-tight-touch": "p",
   "body-semibold-tight": "p",
   "body-sm-medium-inherit": "p",
   "body-sm-medium-inherit-touch": "p",
