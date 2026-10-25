@@ -975,9 +975,9 @@ async def test_a_card_approval_stands_only_once_its_answer_is_saved(
     takes it back, so a later confirm cannot pass on it."""
     session_id = f"s-{uuid4()}"
     mocker.patch(
-        "backend.copilot.gate.card_decided.get_chat_session",
+        "backend.copilot.gate.card_decided._saved_rows",
         new_callable=AsyncMock,
-        return_value=None,
+        return_value=[],
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
     answer = await chat_routes._admit_card_answer(
@@ -1014,24 +1014,22 @@ async def test_a_turn_that_fails_after_saving_its_answer_keeps_the_approval(
     session_id = f"s-{uuid4()}"
     line = "Approved: hire Maya (confirmation_id: c-1)."
     get_session = mocker.patch(
-        "backend.copilot.gate.card_decided.get_chat_session",
+        "backend.copilot.gate.card_decided._saved_rows",
         new_callable=AsyncMock,
-        return_value=None,
+        return_value=[],
     )
     answer = await chat_routes._admit_card_answer(
         test_user_id, session_id, line, "click-1", has_attachments=False
     )
     # The row was saved before the turn failed to dispatch.
-    get_session.return_value = MagicMock(
-        messages=[
-            ChatMessage(
-                id="row-1",
-                role="user",
-                content=line,
-                metadata=card_decision_metadata(line),
-            )
-        ]
-    )
+    get_session.return_value = [
+        ChatMessage(
+            id="row-1",
+            role="user",
+            content=line,
+            metadata=card_decision_metadata(line),
+        )
+    ]
 
     await chat_routes._release_card_answer(test_user_id, session_id, answer)
 
@@ -1041,7 +1039,7 @@ async def test_a_turn_that_fails_after_saving_its_answer_keeps_the_approval(
         test_user_id,
         session_id,
     )
-    get_session.return_value = None
+    # The saved row is still in the chat, so another tab's answer is a second.
     other_tab = await card_decided.claim_answer(
         test_user_id, session_id, ["c-1"], owner="tab-b", attempt="b"
     )
@@ -1060,9 +1058,9 @@ async def test_a_failed_send_does_not_take_back_its_retransmits_approval(
     id, must not have ridden on them, so whichever copy saves has one."""
     session_id = f"s-{uuid4()}"
     mocker.patch(
-        "backend.copilot.gate.card_decided.get_chat_session",
+        "backend.copilot.gate.card_decided._saved_rows",
         new_callable=AsyncMock,
-        return_value=None,
+        return_value=[],
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
     metadata = card_decision_metadata(line)
@@ -1101,9 +1099,9 @@ async def test_a_replayed_send_does_not_restore_a_used_approval(
     send afterwards must not record it again, or a second confirm passes."""
     session_id = f"s-{uuid4()}"
     mocker.patch(
-        "backend.copilot.gate.card_decided.get_chat_session",
+        "backend.copilot.gate.card_decided._saved_rows",
         new_callable=AsyncMock,
-        return_value=None,
+        return_value=[],
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
     sent = await chat_routes._admit_card_answer(
@@ -1270,9 +1268,9 @@ async def test_a_late_recovery_does_not_take_back_a_fresher_answer(
     session_id = f"s-{uuid4()}"
     line = "Approved: hire Maya (confirmation_id: c-1)."
     mocker.patch(
-        "backend.copilot.gate.card_decided.get_chat_session",
+        "backend.copilot.gate.card_decided._saved_rows",
         new_callable=AsyncMock,
-        return_value=MagicMock(messages=[]),
+        return_value=[],
     )
     lost = await chat_routes._admit_card_answer(
         test_user_id, session_id, line, "tab-a", has_attachments=False

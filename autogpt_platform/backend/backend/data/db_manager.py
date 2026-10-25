@@ -803,6 +803,7 @@ class DatabaseManager(AppService):
     admit_chat_session_turn = _(chat_db.admit_chat_session_turn)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
+    get_user_messages_mentioning = _(chat_db.get_user_messages_mentioning)
 
     # ============ Dream Passes ============ #
     # The scheduler (sync passes, the reaper, retention) and the batch
@@ -1334,6 +1335,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     admit_chat_session_turn = d.admit_chat_session_turn
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
+    get_user_messages_mentioning = d.get_user_messages_mentioning
     add_chat_message = d.add_chat_message
 
     # ============ Dream Passes ============ #

@@ -140,7 +140,10 @@ async def test_answers_dropped_before_they_were_saved_are_forgotten(
     # c-2 was answered by a row the chat holds; a dropped copy must not undo it.
     session = mocker.MagicMock(messages=[_tagged("row-1", "c-2")])
     mocker.patch.object(
-        card_decided, "get_chat_session", new_callable=AsyncMock, return_value=session
+        card_decided,
+        "_saved_rows",
+        new_callable=AsyncMock,
+        return_value=session.messages,
     )
     for cid in ("c-1", "c-2"):
         await card_approval.record_card_decisions(
@@ -183,9 +186,9 @@ async def test_answers_dropped_from_a_chat_that_cannot_be_read_are_forgotten(
     session_id = f"s-{uuid.uuid4()}"
     mocker.patch.object(
         card_decided,
-        "get_chat_session",
+        "_saved_rows",
         new_callable=AsyncMock,
-        side_effect=RuntimeError("db down"),
+        return_value=None,  # the chat cannot be read
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
     await card_approval.record_card_decisions("u-1", session_id, line, by="queued")
@@ -290,7 +293,10 @@ async def test_a_replay_of_a_saved_send_is_not_a_new_answer(
     request is a replay, to be deduplicated, and records nothing."""
     session = mocker.MagicMock(messages=[_tagged("row-9", "c-1")])
     mocker.patch.object(
-        card_decided, "get_chat_session", new_callable=AsyncMock, return_value=session
+        card_decided,
+        "_saved_rows",
+        new_callable=AsyncMock,
+        return_value=session.messages,
     )
     claim = mocker.patch.object(card_decided, "_claim", new_callable=AsyncMock)
 
@@ -314,9 +320,9 @@ async def test_an_accepted_answer_that_was_lost_stops_holding_the_card(
     line = "Approved: hire Maya (confirmation_id: c-1)."
     mocker.patch.object(
         card_decided,
-        "get_chat_session",
+        "_saved_rows",
         new_callable=AsyncMock,
-        return_value=mocker.MagicMock(messages=[]),
+        return_value=[],
     )
     holding = [PendingMessage(content=line)]
     mocker.patch.object(
@@ -357,7 +363,10 @@ async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
 ) -> None:
     session = mocker.MagicMock(messages=[_tagged("row-1", "c-1")])
     mocker.patch.object(
-        card_decided, "get_chat_session", new_callable=AsyncMock, return_value=session
+        card_decided,
+        "_saved_rows",
+        new_callable=AsyncMock,
+        return_value=session.messages,
     )
     claim = mocker.patch.object(card_decided, "_claim", new_callable=AsyncMock)
 
@@ -372,7 +381,10 @@ async def test_an_unanswered_card_is_answered_by_whoever_claims_it(
 ) -> None:
     session = mocker.MagicMock(messages=[_tagged("row-1", "c-1")])
     mocker.patch.object(
-        card_decided, "get_chat_session", new_callable=AsyncMock, return_value=session
+        card_decided,
+        "_saved_rows",
+        new_callable=AsyncMock,
+        return_value=session.messages,
     )
     taken = card_decided.CardClaim(result="claimed")
     claim = mocker.patch.object(
@@ -390,9 +402,9 @@ async def test_a_store_outage_never_blocks_an_answer(
 ) -> None:
     mocker.patch.object(
         card_decided,
-        "get_chat_session",
+        "_saved_rows",
         new_callable=AsyncMock,
-        side_effect=RuntimeError("db down"),
+        return_value=None,  # the chat cannot be read
     )
     mocker.patch.object(
         card_decided, "get_redis_async", new_callable=AsyncMock, side_effect=OSError

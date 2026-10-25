@@ -19,7 +19,8 @@ from backend.copilot.gate.card_approval import (
     withdraw_card_approvals,
     withdraw_card_approvals_recorded_by,
 )
-from backend.copilot.model import ChatMessage, get_chat_session
+from backend.copilot.model import ChatMessage
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
@@ -160,23 +161,17 @@ async def claim_answer(
     an accepted answer that never reached the chat stops holding the card
     once it is no longer on its way there either.
     """
-    try:
-        session = await get_chat_session(session_id, user_id)
-    except Exception:
-        logger.warning(
-            f"Could not read session {session_id} for card answers", exc_info=True
-        )
-        session = None
-    if session:
-        answered = decided_ids(session.messages, owner) & set(confirmation_ids)
+    rows = await _saved_rows(user_id, session_id, confirmation_ids)
+    if rows is not None:
+        answered = decided_ids(rows, owner) & set(confirmation_ids)
         if answered:
             return CardClaim(result="answered", answered=frozenset(answered))
         # Answered by no row but this send's own: it was saved already.
-        if decided_ids(session.messages, None) & set(confirmation_ids):
+        if decided_ids(rows, None) & set(confirmation_ids):
             return CardClaim(result="replayed")
     claim = await _claim(session_id, confirmation_ids, owner, attempt)
     # With the chat unread, an accepted answer cannot be told lost.
-    if session is None or claim.result != "answered":
+    if rows is None or claim.result != "answered":
         return claim
     lost = await _lost_answers(user_id, session_id, claim.answered)
     if not lost:
@@ -279,15 +274,26 @@ async def unsaved_ids(
     """The ids among these the chat holds no answer for, or None when the
     chat could not be read. A request that failed may have saved its row
     first (a turn that failed to dispatch), and then it answered the card."""
+    ids = set(confirmation_ids)
+    rows = await _saved_rows(user_id, session_id, ids)
+    return None if rows is None else ids - decided_ids(rows, None)
+
+
+async def _saved_rows(
+    user_id: str, session_id: str, confirmation_ids: Iterable[str]
+) -> list[ChatMessage] | None:
+    """The user's saved rows in this chat that name these cards, every one of
+    them: a loaded session holds only its newest rows, and in a long chat an
+    answer is older than that. None when the chat cannot be read."""
     try:
-        session = await get_chat_session(session_id, user_id)
+        return await chat_db().get_user_messages_mentioning(
+            session_id, user_id, sorted(set(confirmation_ids))
+        )
     except Exception:
         logger.warning(
             f"Could not read session {session_id} for card answers", exc_info=True
         )
         return None
-    ids = set(confirmation_ids)
-    return ids - decided_ids(session.messages, None) if session else ids
 
 
 def decided_ids(

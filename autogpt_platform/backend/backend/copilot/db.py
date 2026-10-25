@@ -1595,6 +1595,26 @@ async def get_latest_user_message_in_session(
     return ChatMessage.from_db(row) if row else None
 
 
+async def get_user_messages_mentioning(
+    session_id: str, user_id: str, needles: list[str]
+) -> list[ChatMessage]:
+    """The user-role rows of this user's session whose text holds any of
+    ``needles``, in order, however old. A loaded session holds only its
+    newest ``MAX_LOADED_CHAT_MESSAGES`` rows; this reads all of them."""
+    if not needles:
+        return []
+    rows = await PrismaChatMessage.prisma().find_many(
+        where={
+            "sessionId": session_id,
+            "role": "user",
+            "Session": {"is": {"userId": user_id}},
+            "OR": [{"content": {"contains": needle}} for needle in needles],
+        },
+        order={"sequence": "asc"},
+    )
+    return [ChatMessage.from_db(row) for row in rows]
+
+
 async def get_chat_session_status(session_id: str) -> str | None:
     """Return ``ChatSession.chatStatus`` for ``session_id``, or ``None``
     if the row doesn't exist.  Used by in-flight gates that need to
