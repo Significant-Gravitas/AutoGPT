@@ -1357,6 +1357,108 @@ async def test_a_stalled_send_that_fails_late_keeps_its_successors_approval(
     )
 
 
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize(
+    "tab_b_answers", ["while_the_cleanup_checks", "right_after_the_drain"]
+)
+async def test_stopping_a_session_keeps_the_answer_another_tab_gave_meanwhile(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, tab_b_answers: str
+) -> None:
+    """Tab A's decision waits in the queue. Stop drains it, and while its
+    cleanup runs tab B answers the card: A's answer is gone from the queue
+    and from any turn, so B rightly takes it for lost, answers and saves.
+    The cleanup must take back only A's claim and approval: B's answer is
+    saved and shown, and its confirm must pass. B answering between a
+    cleanup's check of the chat and its delete is the narrow case."""
+    session_id = f"s-{uuid4()}"
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    saved_rows: list[ChatMessage] = []
+    cleanup_reads = asyncio.Event()
+    tab_b_saved = asyncio.Event()
+    cleanup: dict[str, asyncio.Task[None]] = {}
+    tab_b_running = False
+
+    async def read_chat(*args: object) -> list[ChatMessage]:
+        seen = list(saved_rows)
+        own_read = asyncio.current_task() is cleanup.get("task") and not tab_b_running
+        if own_read and tab_b_answers == "while_the_cleanup_checks":
+            cleanup_reads.set()  # checked; B answers before it deletes
+            await tab_b_saved.wait()
+        return seen
+
+    mocker.patch("backend.copilot.gate.card_decided._saved_rows", side_effect=read_chat)
+    mocker.patch(
+        "backend.copilot.gate.card_decided.answers_on_their_way",
+        new_callable=AsyncMock,
+        return_value=set(),
+    )
+
+    async def tab_b_answers_and_saves() -> None:
+        nonlocal tab_b_running
+        tab_b_running = True
+        tab_b = await chat_routes._admit_card_answer(
+            test_user_id, session_id, line, "tab-b", has_attachments=False
+        )
+        assert tab_b.admission == "claimed"
+        await chat_routes._accept_card_answer(session_id, tab_b)
+        saved_rows.append(
+            ChatMessage(
+                id="row-b",
+                role="user",
+                content=line,
+                metadata=card_decision_metadata(line),
+            )
+        )
+        tab_b_running = False
+        tab_b_saved.set()
+
+    queued = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, "click-a", has_attachments=False
+    )
+    await pending_messages_module.push_pending_message(
+        session_id, PendingMessage(content=line, card_owner="click-a")
+    )
+    await chat_routes._accept_card_answer(session_id, queued)
+    assert queued.admission == "claimed"
+    drain = pending_messages_module.drain_pending_messages
+
+    async def drain_and_go_on(session: str, **kwargs: object):
+        dropped = await drain(session, **kwargs)
+        if tab_b_answers == "right_after_the_drain":
+            await tab_b_answers_and_saves()
+        return dropped
+
+    mocker.patch(
+        "backend.api.features.chat.routes.drain_pending_messages",
+        side_effect=drain_and_go_on,
+    )
+
+    task = asyncio.create_task(
+        chat_routes._clear_pending_best_effort(session_id, test_user_id)
+    )
+    cleanup["task"] = task
+    if tab_b_answers == "while_the_cleanup_checks":
+        reading = asyncio.create_task(cleanup_reads.wait())
+        await asyncio.wait({task, reading}, return_when=asyncio.FIRST_COMPLETED)
+        reading.cancel()
+        await tab_b_answers_and_saves()
+    await task
+
+    assert await approved_on_card(
+        "confirm_expert_change",
+        {"confirmation_id": "c-1"},
+        test_user_id,
+        session_id,
+    )
+    other = await card_decided.claim_answer(
+        test_user_id, session_id, ["c-1"], owner="tab-c", attempt="c"
+    )
+    assert other.result == "answered"
+
+
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -5192,8 +5294,9 @@ def test_cancel_session_forgets_every_card_answer_it_drops(
     response = client.post("/sessions/sess-1/cancel")
 
     assert response.status_code == 200
-    forgotten = {line for call in forget.await_args_list for line in call.args[2]}
-    assert {m.content for m in removed} <= forgotten
+    # The messages themselves, so the cleanup knows whose answers they carry.
+    forgotten = [m for call in forget.await_args_list for m in call.args[2]]
+    assert all(m in forgotten for m in removed)
     assert all(
         call.args[:2] == (test_user_id, "sess-1") for call in forget.await_args_list
     )

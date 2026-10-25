@@ -16,10 +16,10 @@ from backend.copilot.gate.answers_in_flight import answers_on_their_way
 from backend.copilot.gate.card_approval import (
     CARD_DECISION_KIND,
     parse_card_decisions,
-    withdraw_card_approvals,
     withdraw_card_approvals_recorded_by,
 )
 from backend.copilot.model import ChatMessage
+from backend.copilot.pending_messages import PendingMessage
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 
@@ -121,6 +121,19 @@ for i = 1, #ARGV, 2 do
   end
 end
 return gone
+"""
+# A dropped message's sender takes back its own claim only: accepted, or
+# still pending under any of its attempts.
+_FORGET_OWNED = """
+for i = 1, #ARGV, 2 do
+  local value = redis.call('HGET', KEYS[1], ARGV[i])
+  local sent = ARGV[i + 1] .. '|pending|'
+  if value == ARGV[i + 1] .. '|accepted'
+    or (value and string.sub(value, 1, #sent) == sent) then
+    redis.call('HDEL', KEYS[1], ARGV[i])
+  end
+end
+return 1
 """
 # Only the attempt that claimed an id gives it back, and only while pending.
 _RELEASE = """
@@ -240,32 +253,35 @@ async def accept_claim(
 
 
 async def forget_unsaved_answers(
-    user_id: str, session_id: str, messages: Iterable[str]
+    user_id: str, session_id: str, messages: Iterable[PendingMessage]
 ) -> None:
     """Forget the answers in queued messages dropped before they were saved.
 
     A stopped session drops its queued follow-ups; a card decision among them
-    never reaches the chat, so the card is the user's to answer again. An id
-    the chat already holds an answer for is left alone; if the chat cannot be
-    read, every id goes, failing closed as a failed send does.
+    never reaches the chat, so the card is the user's to answer again. Only
+    what each message's sender still holds goes: its claim, accepted or still
+    being queued, and the approval it recorded. Once the message left the
+    queue another tab may have found its answer lost and answered the card,
+    and that answer is not this Stop's to take. A message queued without its
+    sender is left to that recovery.
     """
-    ids = {d.confirmation_id for m in messages for d in parse_card_decisions(m)}
-    if not ids:
+    owned = [
+        (d.confirmation_id, m.card_owner)
+        for m in messages
+        if m.card_owner
+        for d in parse_card_decisions(m.content)
+    ]
+    if not owned:
         return
-    unsaved = await unsaved_ids(user_id, session_id, ids)
-    # Unread, these were still never saved: drained from the queue, not
-    # written. No confirm may pass on them.
-    ids = ids if unsaved is None else unsaved
-    if not ids:
-        return
-    await withdraw_card_approvals(user_id, session_id, ids)
     try:
         redis = await get_redis_async()
-        await redis.hdel(f"{_KEY}{session_id}", *ids)
+        pairs = [part for cid, owner in owned for part in (cid, owner)]
+        await redis.eval(_FORGET_OWNED, 1, f"{_KEY}{session_id}", *pairs)
     except Exception:
         logger.warning(
             f"Could not forget card answers for session {session_id}", exc_info=True
         )
+    await withdraw_card_approvals_recorded_by(user_id, session_id, dict(owned))
 
 
 async def unsaved_ids(

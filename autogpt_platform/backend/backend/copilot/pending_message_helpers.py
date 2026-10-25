@@ -155,6 +155,7 @@ async def queue_user_message(
     file_ids: list[str] | None = None,
     require_turn_in_flight: bool = False,
     metadata: dict[str, Any] | None = None,
+    card_owner: str | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -166,12 +167,15 @@ async def queue_user_message(
     ``metadata`` lands on the user row the message is persisted as. Only the
     server sets it: a session messaging another session, or the chat route
     tagging a proposal card's decision. No request field is ever copied in.
+    ``card_owner`` is the claim owner of the card decisions the message
+    carries; it stays in the queue, for a Stop that drops the message.
     """
     pending = PendingMessage(
         content=message,
         file_ids=file_ids or [],
         context=context,
         metadata=metadata or None,
+        card_owner=card_owner,
     )
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
@@ -222,6 +226,7 @@ async def queue_pending_for_http(
     client_message_id: str | None = None,
     metadata: dict[str, Any] | None = None,
     on_queued: Callable[[], Awaitable[None]] | None = None,
+    card_owner: str | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -301,6 +306,7 @@ async def queue_pending_for_http(
             file_ids=sanitized_file_ids,
             require_turn_in_flight=True,
             metadata=metadata,
+            card_owner=card_owner,
         )
     )
     try:

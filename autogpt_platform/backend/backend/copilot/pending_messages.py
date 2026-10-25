@@ -109,6 +109,10 @@ class PendingMessage(BaseModel):
     # never forwards it, so a human message stays metadata-free.
     metadata: dict[str, Any] | None = None
     model_image: ToolImage | None = None
+    # The claim owner of the card decisions this message carries, so a Stop
+    # that drops it unsaved takes back that sender's claims and approvals
+    # and no one else's. Kept in the queue only, never on the saved row.
+    card_owner: str | None = None
 
 
 def _buffer_key(session_id: str) -> str:

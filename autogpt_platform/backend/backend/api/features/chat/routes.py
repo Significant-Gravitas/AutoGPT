@@ -485,6 +485,8 @@ async def _queue_card_answer(
             # The row the queue saves later is tagged like one saved now.
             metadata=answer.metadata,
             on_queued=accept,
+            # A Stop that drops it takes back this sender's answers only.
+            card_owner=answer.owner,
         )
     except BaseException:
         if not queued:
@@ -1885,7 +1887,7 @@ async def _clear_pending_best_effort(session_id: str, user_id: str) -> None:
     try:
         # One atomic pop returns exactly what it removed: a decision pushed
         # mid-cancel is either taken (and forgotten here) or left queued.
-        dropped = [m.content for m in await drain_pending_messages(session_id)]
+        dropped = await drain_pending_messages(session_id)
         await forget_unsaved_answers(user_id, session_id, dropped)
     except Exception:
         logger.warning(

@@ -133,74 +133,67 @@ async def test_a_failed_request_gives_back_only_its_own_claim() -> None:
 
 
 @needs_redis
-async def test_answers_dropped_before_they_were_saved_are_forgotten(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
+async def test_a_dropped_message_takes_back_only_what_its_sender_holds() -> None:
+    """Stop drops three queued decisions. c-1's sender holds its accepted
+    claim, c-3's is still queueing it: both go, approvals and all. c-2 was
+    answered meanwhile by another tab, which holds it now: that stays."""
     session_id = f"s-{uuid.uuid4()}"
-    # c-2 was answered by a row the chat holds; a dropped copy must not undo it.
-    session = mocker.MagicMock(messages=[_tagged("row-1", "c-2")])
-    mocker.patch.object(
-        card_decided,
-        "_saved_rows",
-        new_callable=AsyncMock,
-        return_value=session.messages,
-    )
-    for cid in ("c-1", "c-2"):
+    for cid in ("c-1", "c-3"):
         await card_approval.record_card_decisions(
-            "u-1",
-            session_id,
-            f"Approved: hire Maya (confirmation_id: {cid}).",
-            by=f"queued-{cid}",
+            "u-1", session_id, _line(cid), by=f"queued-{cid}|a"
         )
-        assert await _claim(session_id, [cid], f"queued-{cid}") == "claimed"
-        await card_decided.accept_claim(
-            session_id, [cid], f"queued-{cid}", f"queued-{cid}"
-        )
+        assert await _claim(session_id, [cid], f"queued-{cid}", "a") == "claimed"
+    await card_decided.accept_claim(session_id, ["c-1"], "queued-c-1", "a")
+    await card_approval.record_card_decisions(
+        "u-1", session_id, _line("c-2"), by="tab-x|x"
+    )
+    assert await _claim(session_id, ["c-2"], "tab-x", "x") == "claimed"
+    await card_decided.accept_claim(session_id, ["c-2"], "tab-x", "x")
 
     await forget_unsaved_answers(
         "u-1",
         session_id,
         [
-            "Approved: hire Maya (confirmation_id: c-1).",
-            "Approved: hire Maya (confirmation_id: c-2).",
+            PendingMessage(content=_line(cid), card_owner=f"queued-{cid}")
+            for cid in ("c-1", "c-2", "c-3")
         ],
     )
 
-    assert await _claim(session_id, ["c-1"], "tab-b") == "claimed"
-    assert not await card_approval.approved_on_card(
-        "confirm_expert_change", {"confirmation_id": "c-1"}, "u-1", session_id
-    )
+    for cid in ("c-1", "c-3"):
+        assert await _claim(session_id, [cid], "tab-b") == "claimed"
+        assert not await _approved(session_id, cid)
     assert await _claim(session_id, ["c-2"], "tab-b") == "answered"
-    assert await card_approval.approved_on_card(
-        "confirm_expert_change", {"confirmation_id": "c-2"}, "u-1", session_id
-    )
+    assert await _approved(session_id, "c-2")
 
 
 @needs_redis
-async def test_answers_dropped_from_a_chat_that_cannot_be_read_are_forgotten(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """Stop drained a queued answer that was never saved. If the chat cannot
-    be read to check, its approval and claim go anyway: a confirm must not
-    pass on an answer the chat may not hold."""
+async def test_a_message_queued_without_its_sender_is_left_to_the_recovery() -> None:
+    """An entry queued before messages named their sender: Stop cannot tell
+    whose claim the card holds, so it takes nothing. A lost answer there is
+    found and cleared by the next tab's claim instead."""
     session_id = f"s-{uuid.uuid4()}"
-    mocker.patch.object(
-        card_decided,
-        "_saved_rows",
-        new_callable=AsyncMock,
-        return_value=None,  # the chat cannot be read
+    await card_approval.record_card_decisions(
+        "u-1", session_id, _line("c-1"), by="queued|a"
     )
-    line = "Approved: hire Maya (confirmation_id: c-1)."
-    await card_approval.record_card_decisions("u-1", session_id, line, by="queued")
-    assert await _claim(session_id, ["c-1"], "queued") == "claimed"
-    await card_decided.accept_claim(session_id, ["c-1"], "queued", "queued")
+    assert await _claim(session_id, ["c-1"], "queued", "a") == "claimed"
+    await card_decided.accept_claim(session_id, ["c-1"], "queued", "a")
 
-    await forget_unsaved_answers("u-1", session_id, [line])
-
-    assert not await card_approval.approved_on_card(
-        "confirm_expert_change", {"confirmation_id": "c-1"}, "u-1", session_id
+    await forget_unsaved_answers(
+        "u-1", session_id, [PendingMessage(content=_line("c-1"))]
     )
-    assert await _claim(session_id, ["c-1"], "tab-b") == "claimed"
+
+    assert await _claim(session_id, ["c-1"], "tab-b") == "answered"
+    assert await _approved(session_id, "c-1")
+
+
+def _line(cid: str) -> str:
+    return f"Approved: hire Maya (confirmation_id: {cid})."
+
+
+async def _approved(session_id: str, cid: str) -> bool:
+    return await card_approval.approved_on_card(
+        "confirm_expert_change", {"confirmation_id": cid}, "u-1", session_id
+    )
 
 
 @needs_redis
