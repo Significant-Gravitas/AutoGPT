@@ -212,7 +212,10 @@ class WebFetchTool(BaseTool):
 
         try:
             client = Requests(raise_for_status=False, retry_max_attempts=1)
-            response = await client.get(url, timeout=_REQUEST_TIMEOUT)
+            # Read no more than the cap: the whole body was buffered first.
+            response = await client.get(
+                url, timeout=_REQUEST_TIMEOUT, max_body_bytes=_MAX_DOWNLOAD_BYTES
+            )
         except ValueError as e:
             # validate_url raises ValueError for SSRF / blocked IPs
             return ErrorResponse(

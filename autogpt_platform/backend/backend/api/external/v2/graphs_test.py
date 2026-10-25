@@ -7,6 +7,10 @@ import pytest_mock
 from prisma.enums import APIKeyPermission, SubmissionStatus
 
 from backend.api.features.library import db as library_db
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
+from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks import _base
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
@@ -14,6 +18,7 @@ from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.data import graph as graph_db
 from backend.data.user import get_or_create_user
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+from backend.util.exceptions import NotAuthorizedError
 from backend.util.test import SpinTestServer
 
 from .graphs import (
@@ -25,7 +30,13 @@ from .graphs import (
     set_active_version,
     update_graph,
 )
-from .models import GraphCreateRequest, GraphNode, GraphSetActiveVersionRequest
+from .library.agents import update_library_agent as patch_library_agent
+from .models import (
+    GraphCreateRequest,
+    GraphNode,
+    GraphSetActiveVersionRequest,
+    LibraryAgentUpdateRequest,
+)
 from .pagination import PageRequest
 from .tenancy import TenantContext
 
@@ -35,11 +46,29 @@ _AUTH = TenantContext(
     type="api_key",
     organization_id="org-1",
 )
+_ALL_BUT_RUN_AGENT = [p for p in APIKeyPermission if p != APIKeyPermission.RUN_AGENT]
 _REQUEST = GraphCreateRequest(name="Agent", nodes=[], links=[])
 
 
 @pytest.fixture
-def writes(mocker: pytest_mock.MockFixture) -> dict[str, AsyncMock]:
+def graph_in_org_1(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The credential acts in org-1, where every version of the graph is."""
+    mocker.patch(
+        "backend.api.external.v2.graphs.writable_organization_ids",
+        new_callable=AsyncMock,
+        return_value=frozenset({"org-1"}),
+    )
+    return mocker.patch(
+        "backend.data.graph.get_graph_version_owners",
+        new_callable=AsyncMock,
+        return_value={(_AUTH.user_id, "org-1")},
+    )
+
+
+@pytest.fixture
+def writes(
+    mocker: pytest_mock.MockFixture, graph_in_org_1: AsyncMock
+) -> dict[str, AsyncMock]:
     mocker.patch(
         "backend.data.graph.get_graph_all_versions",
         new_callable=AsyncMock,
@@ -53,6 +82,146 @@ def writes(mocker: pytest_mock.MockFixture) -> dict[str, AsyncMock]:
             "update_agent_version_in_library": "backend.api.features.library.db.update_agent_version_in_library",
         }.items()
     }
+
+
+@pytest.mark.parametrize(
+    "scopes, moves", [(list(APIKeyPermission), True), (_ALL_BUT_RUN_AGENT, False)]
+)
+async def test_activating_moves_webhook_presets_only_for_a_credential_that_may_run(
+    mocker: pytest_mock.MockFixture,
+    graph_in_org_1: AsyncMock,
+    scopes: list[APIKeyPermission],
+    moves: bool,
+) -> None:
+    graph = Mock(
+        user_id=_AUTH.user_id, organization_id="org-1", id="graph-1", version=2
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=graph
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph_all_versions",
+        new_callable=AsyncMock,
+        return_value=[graph],
+    )
+    mocker.patch(
+        "backend.api.external.v2.graphs.before_graph_activate",
+        new_callable=AsyncMock,
+        return_value=graph,
+    )
+    mocker.patch("backend.data.graph.set_graph_active_version", new_callable=AsyncMock)
+    move_entry = mocker.patch(
+        "backend.api.features.library.db.update_agent_version_in_library",
+        new_callable=AsyncMock,
+    )
+    migrate = mocker.patch(
+        "backend.api.features.library.db.migrate_webhook_presets_to_new_version",
+        new_callable=AsyncMock,
+    )
+
+    await set_active_version(
+        "graph-1",
+        GraphSetActiveVersionRequest(active_graph_version=2),
+        auth=_AUTH.model_copy(update={"scopes": scopes}),
+    )
+
+    # Only the credential's organization's entry and presets follow it.
+    assert move_entry.await_args.kwargs["organization_ids"] == {"org-1"}
+    assert migrate.await_count == (1 if moves else 0)
+    if moves:
+        assert migrate.await_args.kwargs["organization_ids"] == {"org-1"}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda: update_graph("graph-1", _REQUEST, auth=_AUTH),
+        lambda: set_active_version(
+            "graph-1", GraphSetActiveVersionRequest(active_graph_version=1), auth=_AUTH
+        ),
+    ],
+    ids=["update", "set-active-version"],
+)
+@pytest.mark.parametrize(
+    "other_version",
+    [
+        # An untagged version is the personal org's, and org-1 isn't that.
+        (_AUTH.user_id, None),
+        # A colleague's version would be deactivated with the caller's
+        # credentials, and stay active beside the new one.
+        ("user-2", "org-1"),
+    ],
+    ids=["another-organization", "a-colleagues-version"],
+)
+async def test_a_graph_with_a_version_beyond_the_caller_is_not_changed(
+    mocker: pytest_mock.MockFixture,
+    writes: dict[str, AsyncMock],
+    graph_in_org_1: AsyncMock,
+    change,
+    other_version: tuple[str, str | None],
+) -> None:
+    """Its new active version would move another organization's library entry
+    and presets, and be the active version there too."""
+    graph_in_org_1.return_value = {(_AUTH.user_id, "org-1"), other_version}
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(user_id=_AUTH.user_id, organization_id=None, version=1),
+    )
+    activate = mocker.patch(
+        "backend.api.external.v2.graphs.before_graph_activate", new_callable=AsyncMock
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await change()
+
+    activate.assert_not_awaited()
+    writes["create_graph"].assert_not_awaited()
+    writes["update_agent_version_in_library"].assert_not_awaited()
+
+
+async def test_a_refused_library_move_leaves_the_active_version_alone(
+    mocker: pytest_mock.MockFixture, graph_in_org_1: AsyncMock
+) -> None:
+    """The move can answer 409; after it, the graph would be active on a
+    version its library entry isn't on."""
+    graph = Mock(
+        user_id=_AUTH.user_id, organization_id="org-1", id="graph-1", version=2
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=graph
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph_all_versions",
+        new_callable=AsyncMock,
+        return_value=[graph],
+    )
+    mocker.patch(
+        "backend.api.external.v2.graphs.before_graph_activate",
+        new_callable=AsyncMock,
+        return_value=graph,
+    )
+    mocker.patch(
+        "backend.api.features.library.db.update_agent_version_in_library",
+        new_callable=AsyncMock,
+        side_effect=LibraryAgentInAnotherOrganizationError("elsewhere"),
+    )
+    flip = mocker.patch(
+        "backend.data.graph.set_graph_active_version", new_callable=AsyncMock
+    )
+    deactivate = mocker.patch(
+        "backend.api.external.v2.graphs.on_graph_deactivate", new_callable=AsyncMock
+    )
+
+    with pytest.raises(LibraryAgentInAnotherOrganizationError):
+        await set_active_version(
+            "graph-1", GraphSetActiveVersionRequest(active_graph_version=2), auth=_AUTH
+        )
+
+    flip.assert_not_awaited()
+    # The activation hooks wrote nothing to undo, and the version may be the
+    # one already active: deactivating it would detach its live webhooks.
+    deactivate.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -200,8 +369,7 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
     ]
 
 
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize(
+_ACTIVATING_V2 = pytest.mark.parametrize(
     "activate_v2",
     [
         lambda graph_id, request, auth: update_graph(graph_id, request, auth=auth),
@@ -211,15 +379,39 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
     ],
     ids=["update", "set-active-version"],
 )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_ACTIVATING_V2
 async def test_activating_a_version_moves_its_webhook_presets_onto_it(
     server: SpinTestServer, monkeypatch: pytest.MonkeyPatch, activate_v2
 ) -> None:
     """Left on v1, a preset's webhook URL keeps running the deactivated version."""
+    assert await _preset_version_once_v2_is_active(monkeypatch, activate_v2, _AUTH) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_ACTIVATING_V2
+async def test_a_credential_that_cannot_start_runs_leaves_webhook_presets_in_place(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch, activate_v2
+) -> None:
+    """Moving a preset decides what its next delivery runs, with the
+    credentials stored on it: a start, which WRITE_GRAPH alone doesn't grant."""
+    auth = _AUTH.model_copy(update={"scopes": _ALL_BUT_RUN_AGENT})
+
+    assert await _preset_version_once_v2_is_active(monkeypatch, activate_v2, auth) == 1
+
+
+async def _preset_version_once_v2_is_active(
+    monkeypatch: pytest.MonkeyPatch, activate_v2, auth: TenantContext
+) -> int:
+    """Pin a webhook preset to a triggered graph's v1, activate v2 with `auth`,
+    and read which version the preset runs."""
     # Trigger blocks are disabled without a platform URL, and CI sets none.
     monkeypatch.setattr(_base.app_config, "platform_base_url", "https://example.com")
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
-    auth = _AUTH.model_copy(update={"user_id": user_id})
+    auth = auth.model_copy(update={"user_id": user_id})
     triggered = GraphCreateRequest(
         name="Triggered",
         nodes=[GraphNode(id="trigger", block_id=GenericWebhookTriggerBlock().id)],
@@ -247,15 +439,17 @@ async def test_activating_a_version_moves_its_webhook_presets_onto_it(
             "agentGraphId": v1.id,
             "agentGraphVersion": v1.version,
             "webhookId": webhook.id,
+            # Presets take their graph's organization.
+            "organizationId": auth.organization_id,
         }
     )
 
     await activate_v2(v1.id, triggered, auth)
 
-    moved = await prisma.models.AgentPreset.prisma().find_unique_or_raise(
+    preset = await prisma.models.AgentPreset.prisma().find_unique_or_raise(
         where={"id": preset.id}
     )
-    assert moved.agentGraphVersion == 2
+    return preset.agentGraphVersion
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -400,3 +594,98 @@ async def _save_inactive_then_activate(
     await set_active_version(
         graph_id, GraphSetActiveVersionRequest(active_graph_version=2), auth=auth
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_another_organizations_key_cannot_version_a_personal_graph(
+    server: SpinTestServer,
+) -> None:
+    """A graph saved without an organization is the personal org's. A key in
+    another organization can read it, but a version it saved or activated would
+    move the personal org's library entry and the graph's active version."""
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    personal_org, _ = await get_user_default_team(user_id)
+    assert personal_org
+    v1 = await _untagged_version(user_id, str(uuid4()), version=1)
+    await library_db.create_library_agent(v1, user_id=user_id)
+    await _untagged_version(user_id, v1.id, version=2, is_active=False)
+    activate_v2 = GraphSetActiveVersionRequest(active_graph_version=2)
+    elsewhere = _AUTH.model_copy(
+        update={"user_id": user_id, "organization_id": str(uuid4())}
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await update_graph(v1.id, _REQUEST, auth=elsewhere)
+    with pytest.raises(NotAuthorizedError):
+        await set_active_version(v1.id, activate_v2, auth=elsewhere)
+
+    versions = await graph_db.get_graph_all_versions(v1.id, user_id=user_id)
+    assert sorted(v.version for v in versions) == [1, 2]
+    assert await _library_version(user_id, v1.id) == 1
+
+    personal = _AUTH.model_copy(
+        update={"user_id": user_id, "organization_id": personal_org}
+    )
+    await set_active_version(v1.id, activate_v2, auth=personal)
+
+    assert await _library_version(user_id, v1.id) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_library_agent_is_not_pointed_at_another_organizations_version(
+    server: SpinTestServer,
+) -> None:
+    """The web app saves a version in whichever organization is selected, so a
+    graph can span two. A library agent pointed at the other one's version
+    would run it, billed to the first."""
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    personal_org, _ = await get_user_default_team(user_id)
+    assert personal_org
+    v1 = await _untagged_version(user_id, str(uuid4()), version=1)
+    [entry] = await library_db.create_library_agent(v1, user_id=user_id)
+    await _untagged_version(
+        user_id, v1.id, version=2, is_active=False, organization_id=str(uuid4())
+    )
+    await _untagged_version(user_id, v1.id, version=3, is_active=False)
+    personal = _AUTH.model_copy(
+        update={"user_id": user_id, "organization_id": personal_org}
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await patch_library_agent(
+            LibraryAgentUpdateRequest(graph_version=2), entry.id, auth=personal
+        )
+    assert await _library_version(user_id, v1.id) == 1
+
+    await patch_library_agent(
+        LibraryAgentUpdateRequest(graph_version=3), entry.id, auth=personal
+    )
+    assert await _library_version(user_id, v1.id) == 3
+
+
+async def _untagged_version(
+    user_id: str,
+    graph_id: str,
+    *,
+    version: int,
+    is_active: bool = True,
+    organization_id: str | None = None,
+) -> graph_db.GraphModel:
+    """A version saved with no organization, as the app's chat saves them, or
+    in *organization_id*."""
+    internal = _REQUEST.model_copy(update={"is_active": is_active}).to_internal(
+        id=graph_id, version=version
+    )
+    graph = graph_db.make_graph_model(internal, user_id)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    return await graph_db.create_graph(
+        graph, user_id=user_id, organization_id=organization_id
+    )
+
+
+async def _library_version(user_id: str, graph_id: str) -> int:
+    entry = await library_db.get_library_agent_by_graph_id(user_id, graph_id)
+    assert entry
+    return entry.graph_version

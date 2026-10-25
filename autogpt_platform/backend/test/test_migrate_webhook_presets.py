@@ -366,6 +366,7 @@ async def test_update_graph_in_library_migrates_when_webhook_node_present(
     migrate_mock.assert_awaited_once_with(
         user_id="user-1",
         new_graph=new_graph,
+        organization_ids=None,
     )
 
 

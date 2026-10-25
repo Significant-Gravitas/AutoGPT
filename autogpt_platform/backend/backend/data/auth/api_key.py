@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -131,10 +132,13 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
         potential_matches = await get_active_api_keys_by_head(head)
 
-        matched_api_key = next(
-            (pm for pm in potential_matches if pm.match(plaintext_key)),
-            None,
-        )
+        # Scrypt costs tens of milliseconds of CPU, which on the event loop
+        # stalls every other request the worker is serving.
+        matched_api_key = None
+        for potential_match in potential_matches:
+            if await asyncio.to_thread(potential_match.match, plaintext_key):
+                matched_api_key = potential_match
+                break
         if not matched_api_key:
             # API key not found or invalid
             return None

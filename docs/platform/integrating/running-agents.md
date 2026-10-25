@@ -413,7 +413,7 @@ Pass `file_uri` as the value of the file input:
 { "inputs": { "document": "workspace://1d458946-1b77-4e62-b13f-67fd5b1ce100#application/pdf" } }
 ```
 
-* Uploads are virus-scanned and count toward your storage quota.
+* Uploads are virus-scanned and count toward your storage quota. A file can be up to 100 MB on AutoGPT Cloud; a larger one gets `413 payload_too_large`.
 * Uploading a file whose name is already in the workspace fails with `409 conflict`. Add `?overwrite=true` to replace it. The replacement gets a **new** `id` and `file_uri`.
 * `GET /files` lists the workspace and `DELETE /files/{file_id}` removes a file (needs **Read Files** and **Write Files**).
 
@@ -467,7 +467,7 @@ curl -s -X POST "$AUTOGPT_API_URL/schedules" \
 | --- | --- | --- |
 | List runs, newest first | `GET /runs?graph_id=...&statuses=FAILED&started_after=2026-10-01T00:00:00Z` | Read Run |
 | Get one run with outputs | `GET /runs/{run_id}` | Read Run |
-| Stop a run | `POST /runs/{run_id}/stop` waits up to about 15 seconds for the run to stop, then returns it. If it still isn't `TERMINATED`, keep polling. Stopping a finished run changes nothing. | Write Run |
+| Stop a run | `POST /runs/{run_id}/stop` waits up to about 15 seconds for the run to stop, then returns it. If it still isn't `TERMINATED`, keep polling. A run that already finished (`COMPLETED`, `FAILED` or `TERMINATED`) answers `409 conflict`. | Write Run |
 | Delete a run | `DELETE /runs/{run_id}` | Write Run |
 | Share a run publicly | `POST /runs/{run_id}/share` returns a `share_url` anyone with the link can open | Read Run + Share Run |
 | Stop sharing | `DELETE /runs/{run_id}/share` | Read Run + Share Run |
