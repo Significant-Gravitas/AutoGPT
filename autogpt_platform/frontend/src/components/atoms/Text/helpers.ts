@@ -100,6 +100,9 @@ export const variants = {
   "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
   "body-semibold": "font-sans text-body font-semibold text-foreground-base",
+  // h3 at semibold; the tracking is h3's (TODO(tokens): SECRT-3152 above).
+  "h3-semibold":
+    "font-poppins text-heading font-semibold text-foreground-base tracking-[-0.01313rem]",
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-medium-tight":
     "font-sans text-body-lg font-medium leading-6 text-foreground-base",
@@ -179,6 +182,7 @@ export const variantElementMap: Record<Variant, As> = {
   "small-loose": "p",
   "small-medium-loose": "p",
   "body-semibold": "p",
+  "h3-semibold": "h3",
   "large-medium-tight": "p",
   "lg-semibold": "h3",
   "2xl-bold": "div",
