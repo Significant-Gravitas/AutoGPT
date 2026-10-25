@@ -48,6 +48,26 @@ def test_unsupported_keeps_the_names_we_cannot_connect_in_order(registry):
     ) == ["Shopify", "Etsy"]
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Photograph each gelato flavour for the menu", []),
+        ("Send the xero-gravity sticker sale to everyone", []),
+        ("Print the menu on Gelato and sell it", ["Gelato"]),
+        ("Sync invoices to Xero", ["Xero"]),
+    ],
+)
+def test_a_known_gap_counts_in_free_text_only_when_capitalised(
+    registry, text: str, expected: list[str]
+):
+    """ "A gelato flavour" is a dessert, not Gelato the print provider."""
+    assert support.unsupported_in_task([], text) == expected
+
+
+def test_a_known_gap_given_as_a_service_counts_in_any_case():
+    assert support.canonical_name("shopify store") == "Shopify"
+
+
 def test_a_task_text_naming_known_unsupported_tools_is_read(registry):
     text = "List each sticker on Shopify and Printful, then post it to Canva."
     assert support.unsupported_in_task(None, text) == ["Shopify", "Printful"]

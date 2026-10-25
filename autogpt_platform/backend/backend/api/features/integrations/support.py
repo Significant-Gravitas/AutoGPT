@@ -172,7 +172,7 @@ def unsupported_in_task(
     whatever the declaration says, since the model that wrote it can leave
     a tool out (``[]`` on a Shopify task)."""
     declared = [canonical_name(name) for name in integrations or []]
-    named = [*_known_gaps_in(text), *_vendors_named_in(text)]
+    named = [*_known_gaps_in(text, capitalised=True), *_vendors_named_in(text)]
     return unsupported_services([*declared, *named], services)
 
 
@@ -226,11 +226,15 @@ def canonical_name(name: str) -> str:
     return known[0] if known else " ".join(name.split())
 
 
-def _known_gaps_in(text: str) -> list[str]:
+def _known_gaps_in(text: str, capitalised: bool = False) -> list[str]:
+    """The known gaps ``text`` names as whole words. In free text only a
+    capitalised mention counts, as for vendors: "a gelato flavour" is not
+    Gelato. A name given as a service ("shopify store") counts in any case."""
+    head = "(?=[A-Z])" if capitalised else ""
     return [
         name
         for name in KNOWN_GAPS
-        if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)
+        if re.search(rf"\b{head}(?i:{re.escape(name)})\b", text)
     ]
 
 
