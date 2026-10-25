@@ -26,6 +26,7 @@ export const variants = {
   h4: "font-poppins text-heading-sm font-medium text-foreground-base",
   h5: "font-poppins text-body-lg font-medium leading-6 text-foreground-base",
   // The h5 size and line-height at semibold (the wallet panel title).
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "h5-semibold":
     "font-poppins text-body-lg font-semibold leading-6 text-foreground-base",
 

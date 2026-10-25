@@ -40,11 +40,7 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
             className="rounded-lg bg-violet-100 px-3 py-2 text-accent-strong"
           >
             Earn credits{" "}
-            <Text
-              as="span"
-              variant="body-semibold-tight"
-              className="text-inherit"
-            >
+            <Text as="span" variant="body-semibold-tight" tone="inherit">
               {formattedCredits}
             </Text>
           </Text>
