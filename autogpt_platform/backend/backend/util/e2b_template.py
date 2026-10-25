@@ -74,7 +74,7 @@ class TemplateSpec(BaseModel):
 
 
 DESKTOP_IMAGE = TemplateSpec(
-    alias="agpt-desktop-1x2-004d6e73", source="desktop", cpu_count=1, memory_mb=2048
+    alias="agpt-desktop-1x2-cfc276e0", source="desktop", cpu_count=1, memory_mb=2048
 )
 MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE}
 # Images whose boxes are replaced on their next reconnect because they lack
@@ -260,7 +260,7 @@ _NODE_KEYRING = "/etc/apt/keyrings/nodesource.gpg"
 _NODE_REPO = f"deb [signed-by={_NODE_KEYRING}] https://deb.nodesource.com/node_24.x nodistro main"
 _VERIFY_IMAGE = [
     "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' gh)\" ge 2.100",
-    "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' nodejs)\" ge 24",
+    "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' nodejs)\" ge 24.22.1",
     "gh --version",
     "node --version",
     "npm --version",
