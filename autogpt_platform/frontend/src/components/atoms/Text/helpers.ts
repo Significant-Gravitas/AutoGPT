@@ -25,6 +25,9 @@ export const variants = {
   h3: "font-poppins text-heading font-medium text-foreground-base tracking-[-0.01313rem]",
   h4: "font-poppins text-heading-sm font-medium text-foreground-base",
   h5: "font-poppins text-body-lg font-medium leading-6 text-foreground-base",
+  // The h5 size and line-height at semibold (the wallet panel title).
+  "h5-semibold":
+    "font-poppins text-body-lg font-semibold leading-6 text-foreground-base",
 
   // Body Text
   lead: "font-sans text-lead font-normal text-foreground-base",
@@ -40,6 +43,12 @@ export const variants = {
     "font-sans text-body font-normal leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-tight":
+    "font-sans text-caption font-normal leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-loose":
+    "font-sans text-caption font-normal leading-5 text-foreground-base",
 
   // Label Text
   label:
@@ -75,6 +84,7 @@ export const variantElementMap: Record<Variant, As> = {
   h3: "h3",
   h4: "h4",
   h5: "h5",
+  "h5-semibold": "h5",
   lead: "p",
   "lead-medium": "p",
   "lead-semibold": "p",
@@ -86,6 +96,8 @@ export const variantElementMap: Record<Variant, As> = {
   "body-tight": "p",
   small: "p",
   "small-medium": "p",
+  "small-tight": "p",
+  "small-loose": "p",
   label: "span",
   eyebrow: "span",
 };
