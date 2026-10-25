@@ -289,6 +289,30 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       at(".focus-visible\\:-outline-offset-2:focus-visible"),
     );
     expect(declarations(root, ".text-lg")["line-height"]).toBe("1.75rem");
+    // Media blocks are split to sort each rule and merged back; `outline-none`
+    // still moves in front of the outline offset inside the merged block.
+    const media = await postcss([
+      require(join(frontend, "postcss.tailwind3-compat.cjs"))(),
+    ]).process(
+      [
+        "/*! tailwindcss v4 */",
+        "/*! tailwind-utilities:start */",
+        "@media (width >= 48rem) {",
+        "  .md\\:-outline-offset-2 { outline-offset: calc(2px * -1); }",
+        "  .md\\:outline-none { outline: 2px solid transparent; outline-offset: 2px; }",
+        "}",
+        "/*! tailwind-utilities:end */",
+      ].join("\n"),
+      { from: undefined },
+    );
+    const mediaOrder: string[] = [];
+    media.root.walkRules((rule) => {
+      mediaOrder.push(rule.selector);
+    });
+    expect(mediaOrder).toEqual([
+      ".md\\:outline-none",
+      ".md\\:-outline-offset-2",
+    ]);
     // Tailwind 3 sorted by all of a class's variants together, so a
     // breakpoint on top of an arbitrary variant comes after the bare one.
     expect(at(".max-md\\:\\[\\&\\>svg\\]\\:size-5 > svg")).toBeGreaterThan(

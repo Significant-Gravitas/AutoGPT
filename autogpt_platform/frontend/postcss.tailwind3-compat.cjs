@@ -469,7 +469,11 @@ function splitAtRules(nodes) {
     ) {
       return [node];
     }
-    return node.nodes.map((child) => node.clone({ nodes: [child.clone()] }));
+    return node.nodes.map((child) => {
+      const wrapper = node.clone({ nodes: [] });
+      wrapper.append(child.clone());
+      return wrapper;
+    });
   });
 }
 
