@@ -29,6 +29,3 @@ export const SMALL_ORB_PARAMS: GlassParams = {
   ringDepth: 2,
   ringDark: 0.25,
 };
-
-// The purple the orb's blobs blend into — the name mirrors it.
-export const ORB_PURPLE = "#8a4dff";

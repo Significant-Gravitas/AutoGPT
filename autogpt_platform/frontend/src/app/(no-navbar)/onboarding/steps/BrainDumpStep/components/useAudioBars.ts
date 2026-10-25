@@ -7,8 +7,6 @@ import {
   useReducedMotion,
 } from "framer-motion";
 
-export type AudioBarLevels = MotionValue<number>[];
-
 const VOICE_BANDS = [
   [80, 250],
   [250, 500],

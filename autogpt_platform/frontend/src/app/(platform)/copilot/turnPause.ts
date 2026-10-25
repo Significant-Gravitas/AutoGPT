@@ -49,14 +49,6 @@ export function parseTurnPause(value: unknown): TurnPause | null {
   };
 }
 
-export function parseTurnPausePart(part: {
-  type: string;
-  data?: unknown;
-}): TurnPause | null {
-  if (part.type !== TURN_PAUSED_PART_TYPE) return null;
-  return parseTurnPause(part.data);
-}
-
 /** The pause a stored row records, if the row is a pause marker. */
 export function turnPauseOfMetadata(metadata: unknown): TurnPause | null {
   if (!metadata || typeof metadata !== "object") return null;

@@ -260,11 +260,6 @@ export function draftWithPrefilledRole(
   };
 }
 
-export function previousStep(step: RaiseStep): RaiseStep {
-  const index = STEP_ORDER.indexOf(step);
-  return STEP_ORDER[Math.max(index - 1, 0)];
-}
-
 export function voiceSummaryLabel(
   result: VoicePickResult,
   samples: VoiceSample[],
