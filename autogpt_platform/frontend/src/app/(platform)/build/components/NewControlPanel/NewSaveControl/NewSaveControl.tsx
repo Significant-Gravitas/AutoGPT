@@ -1,10 +1,10 @@
-import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/atoms/Card/Card";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import {
@@ -47,14 +47,18 @@ export const NewSaveControl = () => {
         </TooltipTrigger>
         <TooltipContent side="right">Save</TooltipContent>
       </Tooltip>
+      {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
+          #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
+          not a text colour (SECRT-3154). */}
       <PopoverContent
         side="right"
         sideOffset={15}
         align="start"
         data-id="save-control-popover-content"
-        className="w-96 max-w-[400px] rounded-xlarge"
+        className="w-96 max-w-[400px] rounded-xlarge border-neutral-200 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
       >
         <Card
+          variant="outlined"
           // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-900 #2A313A
           className="border-none dark:bg-slate-900"
         >
