@@ -190,16 +190,14 @@ input[type="number"] {
   pointer-events: auto !important;
 }
 
-/* When Google picker is open, lower dialog z-index so picker renders on top */
-body[data-google-picker-open="true"] [data-dialog-overlay],
-body[data-google-picker-open="true"] [data-dialog-content] {
+/* When Google picker is open, lower dialog z-index so picker renders on top.
+   !important: Radix writes pointer-events inline on the overlay and popup,
+   and Dialog's `styling` prop is written inline on the popup and may set a
+   z-index. */
+body[data-google-picker-open="true"] [data-slot="dialog-overlay"],
+body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   z-index: 1 !important;
   pointer-events: none !important;
-}
-
-/* Streamdown external link dialog: "Open link" button */
-[data-streamdown="link-safety-modal"] button:last-of-type {
-  color: white;
 }
 
 /* Markdown headings: rehype-autolink-headings wraps each heading's text in an
