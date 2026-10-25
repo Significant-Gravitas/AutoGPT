@@ -193,12 +193,11 @@ input[type="number"] {
 }
 
 /* When Google picker is open, lower dialog z-index so picker renders on top.
-   Stays on data-dialog-* (set by molecules/Dialog's DialogWrap and
-   DialogPrimitives, and read by code and Playwright) with its !important:
-   pointer-events must beat the value Radix writes inline, and changing
-   this rule needs the real picker opened over each dialog to prove. */
-body[data-google-picker-open="true"] [data-dialog-overlay],
-body[data-google-picker-open="true"] [data-dialog-content] {
+   !important: Radix writes pointer-events inline on the overlay and popup,
+   and Dialog's `styling` prop is written inline on the popup and may set a
+   z-index. */
+body[data-google-picker-open="true"] [data-slot="dialog-overlay"],
+body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   z-index: 1 !important;
   pointer-events: none !important;
 }
