@@ -68,6 +68,7 @@ export const variants = {
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm) in the mono family.
   "body-mono-tight":
     "font-mono text-body font-normal leading-5 text-foreground-base",
+  "small-mono": "font-mono text-caption font-normal text-foreground-base",
 
   // Label Text
   label:
@@ -126,6 +127,7 @@ export const variantElementMap: Record<Variant, As> = {
   "2xl-bold": "div",
   "caption-sm": "kbd",
   "body-mono-tight": "code",
+  "small-mono": "p",
   label: "span",
   eyebrow: "span",
 };
