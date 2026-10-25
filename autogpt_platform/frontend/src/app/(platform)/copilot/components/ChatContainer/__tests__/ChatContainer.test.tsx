@@ -5,6 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import { getUsageExperience } from "@/services/usageExperience/helpers";
 import {
   act,
@@ -526,6 +527,47 @@ describe("ChatContainer", () => {
       expect(onSend.mock.calls[0][0]).toBe(expected);
     },
   );
+
+  it("sends nothing when it cannot tell whether a decision was saved", async () => {
+    // Sent again, a saved decision is refused; continued, an unsaved one is
+    // skipped. With the chat unread, retry says so instead of guessing.
+    server.use(
+      http.get("*/api/chat/sessions/:sessionId", () =>
+        HttpResponse.json({ detail: "unavailable" }, { status: 500 }),
+      ),
+    );
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "optimistic-1",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "Approved: hire Maya (confirmation_id: c-1).",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't retry message",
+        description:
+          "We couldn't check whether your decision was saved — your previous message is still in the chat.",
+        variant: "destructive",
+      }),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+  });
 
   it.each([false, true])(
     "shows an error when retrying fails (held call: %s)",

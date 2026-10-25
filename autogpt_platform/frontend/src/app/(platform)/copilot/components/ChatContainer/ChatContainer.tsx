@@ -437,6 +437,16 @@ export const ChatContainer = ({
   const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
+    // Neither guess is safe when the chat cannot say: sending the decision
+    // again is refused if it was saved, and continuing without it skips it.
+    async function decisionWasSaved(
+      row: UIMessage<unknown, UIDataTypes, UITools>,
+    ) {
+      const saved = await isDecisionSavedInChat(row, sessionId);
+      if (saved === null)
+        throw new Error("We couldn't check whether your decision was saved");
+      return saved;
+    }
     async function resend() {
       const lastRow = [...messages].reverse().find((m) => m.role === "user");
       // A turn an answered card started failed after the call ran: resuming it
@@ -448,7 +458,7 @@ export const ChatContainer = ({
         (isHeldCallRow(lastRow) ||
           (getCardDecisions(lastRow) &&
             (extractDbSequence(lastRow) !== null ||
-              (await isDecisionSavedInChat(lastRow, sessionId)))))
+              (await decisionWasSaved(lastRow)))))
       ) {
         await guardedOnSend(CONTINUE_AFTER_HELD_CALL);
         return;
