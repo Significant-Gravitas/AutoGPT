@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetOauthGetOauthAppInfoMockHandler200,
@@ -25,11 +25,12 @@ vi.mock("next/navigation", () => ({
 
 const PAGE = "http://localhost/auth/authorize";
 const REGISTERED = "https://app.example.com/callback";
+const realLocation = Object.getOwnPropertyDescriptor(window, "location")!;
 
-function openWith(redirectURI: string) {
+function openWith(redirectURI: string, clientID = "client-1") {
   mockUseSearchParams.mockReturnValue(
     new URLSearchParams({
-      client_id: "client-1",
+      client_id: clientID,
       redirect_uri: redirectURI,
       scope: "IDENTITY",
       state: "state-1",
@@ -44,6 +45,10 @@ beforeEach(() => {
     configurable: true,
     value: { href: PAGE },
   });
+});
+
+afterEach(() => {
+  Object.defineProperty(window, "location", realLocation);
 });
 
 describe("AuthorizePage", () => {
@@ -78,5 +83,22 @@ describe("AuthorizePage", () => {
     expect(`${sentTo.origin}${sentTo.pathname}`).toBe(REGISTERED);
     expect(sentTo.searchParams.get("error")).toBe("access_denied");
     expect(sentTo.searchParams.get("state")).toBe("state-1");
+  });
+
+  test("encodes the client id in the app-info request", async () => {
+    let requested: URL | undefined;
+    openWith(REGISTERED, "client#1");
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
+        requested = new URL(request.url);
+        return { name: "Example App", scopes: ["IDENTITY"] };
+      }),
+    );
+
+    render(<AuthorizePage />);
+    await screen.findByRole("button", { name: "Deny" });
+
+    expect(requested?.pathname).toBe("/api/proxy/api/oauth/app/client%231");
+    expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
   });
 });
