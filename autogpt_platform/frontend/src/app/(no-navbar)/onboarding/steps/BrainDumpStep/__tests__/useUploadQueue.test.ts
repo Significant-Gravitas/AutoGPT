@@ -82,6 +82,23 @@ describe("useUploadQueue", () => {
     expect(uploadBrainDumpPart).toHaveBeenCalledTimes(1);
   });
 
+  // The server refuses a part of a discarded take unless it is sent again on
+  // purpose, so a late part from the original upload cannot reopen it.
+  it("tells the server which parts are sent again from the browser's copy", async () => {
+    uploadBrainDumpPart.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useUploadQueue());
+
+    await act(async () => {
+      result.current.enqueue(part(0));
+      result.current.enqueue({ ...part(1), resent: true });
+      await result.current.flush();
+    });
+
+    expect(uploadBrainDumpPart.mock.calls.map(([body]) => body.resent)).toEqual(
+      [undefined, true],
+    );
+  });
+
   it("uploads every queued part in order", async () => {
     const seen: number[] = [];
     uploadBrainDumpPart.mockImplementation(
