@@ -85,6 +85,14 @@ LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 # nothing, and paging on those during an outage would bury the ones that cost.
 _SPEND_BURNED_ELAPSED_FRACTION = 0.9
 
+# A retry gets only what is left of the shared deadline. Below this it would
+# almost surely be cut off mid-inference, billed and wasted, so stop instead.
+# Matches the lowest llm_request_timeout_seconds the settings allow.
+LLM_MIN_ATTEMPT_SECONDS = 30
+
+# One clock for the retry deadline and timeout classification; tests patch it.
+_now = time.monotonic
+
 # Stable, greppable Sentry title — never interpolate into it (see #14292).
 SPEND_BURNED_ALERT = "LLM call cut off mid-inference — provider billed, user refunded"
 _spend_alert_logger = logging.getLogger(__name__)
@@ -290,7 +298,7 @@ async def llm_call(
     timeout = (
         LLM_REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
     )
-    started = time.monotonic()
+    started = _now()
     with track_llm_call(
         graph_exec_id=execution_context.graph_exec_id if execution_context else None,
         provider=llm_model.metadata.provider,
@@ -323,7 +331,8 @@ async def llm_call(
             anthropic.APITimeoutError,
         ) as e:
             _log_timeout_outcome(
-                elapsed=time.monotonic() - started,
+                elapsed=_now() - started,
+                timeout_seconds=timeout,
                 llm_model=llm_model,
                 execution_context=execution_context,
                 error=e,
@@ -690,16 +699,21 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         refusal: PromptRefusedError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
-        loop = asyncio.get_running_loop()
         per_attempt_timeout = LLM_REQUEST_TIMEOUT_SECONDS
-        deadline = loop.time() + per_attempt_timeout
+        deadline = _now() + per_attempt_timeout
 
+        attempt_timeout = per_attempt_timeout
         for retry_count in range(input_data.retry):
-            attempt_timeout = remaining_attempt_timeout(
-                deadline, per_attempt_timeout, loop.time()
-            )
-            if attempt_timeout <= 0:
-                break
+            if retry_count:
+                attempt_timeout = remaining_attempt_timeout(
+                    deadline, per_attempt_timeout, _now()
+                )
+                if attempt_timeout < LLM_MIN_ATTEMPT_SECONDS:
+                    error_feedback_message = (
+                        f"LLM retry budget of {per_attempt_timeout}s ran out after "
+                        f"{retry_count} attempt(s) without a valid response."
+                    )
+                    break
             logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
@@ -1019,6 +1033,7 @@ def trim_prompt(s: str) -> str:
 def _log_timeout_outcome(
     *,
     elapsed: float,
+    timeout_seconds: float,
     llm_model: LLMModel,
     execution_context: "ExecutionContext | None",
     error: BaseException,
@@ -1030,7 +1045,7 @@ def _log_timeout_outcome(
     a provider incident aggregates into one issue instead of thousands. Sentry
     is the only surface — see #14292 for the paging decision.
     """
-    budget = LLM_REQUEST_TIMEOUT_SECONDS
+    budget = timeout_seconds
     if elapsed < budget * _SPEND_BURNED_ELAPSED_FRACTION:
         logger.warning(
             f"LLM call timed out after {elapsed:.1f}s, below the "

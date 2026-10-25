@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import re
+import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1692,10 +1693,10 @@ class TestLLMRequestTimeout:
     ):
         """The 0.9 threshold is the new business logic, so pin it either side.
         Both degenerate budgets (0 / 3600) leave it free to be any value."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", budget)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=elapsed,
+                timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=TimeoutError("x"),
@@ -1705,10 +1706,10 @@ class TestLLMRequestTimeout:
     def test_a_bare_timeout_still_names_its_cause(self, monkeypatch):
         """``str(asyncio.TimeoutError())`` is "", and ``error`` is the only field
         in the alert that says what went wrong."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 100)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=99.0,
+                timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=asyncio.TimeoutError(),
@@ -1909,6 +1910,7 @@ class TestLLMRequestTimeout:
         per_attempt = 0.5
         first_delay = 0.12
         monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", per_attempt)
+        monkeypatch.setattr(llm, "LLM_MIN_ATTEMPT_SECONDS", 0.05)
 
         captured_timeouts: list[float] = []
         real_wait_for = asyncio.wait_for
@@ -1964,6 +1966,125 @@ class TestLLMRequestTimeout:
         assert captured_timeouts[1] < captured_timeouts[0]
         assert captured_timeouts[1] <= captured_timeouts[0] - first_delay + 0.05
         assert captured_timeouts[1] > 0
+
+    # Shared-deadline tests below run on a fake clock: each fake provider call
+    # advances it instead of sleeping, and the real wait_for never fires.
+    _BUDGET = 600
+
+    def _deadline_block(self, monkeypatch, steps):
+        """Block whose provider calls run ``steps`` in order on a fake clock.
+
+        A step is ``(seconds, outcome)``: the call takes ``seconds``, then
+        returns ``outcome`` text or raises it. A step longer than the slice the
+        loop handed out times out at the slice, as the real wait_for would.
+        Returns the block, the clock, and the slice each attempt got.
+        """
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", self._BUDGET)
+        clock = {"t": float(int(time.monotonic()))}  # real base: sane saturation ages
+        monkeypatch.setattr(llm, "_now", lambda: clock["t"])
+        slices: list[float] = []
+        pending = list(steps)
+
+        async def fake_provider_call(**kwargs):
+            seconds, outcome = pending.pop(0)
+            if seconds >= slices[-1]:
+                clock["t"] += slices[-1]
+                raise TimeoutError()
+            clock["t"] += seconds
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return llm.LLMResponse(
+                raw_response="",
+                prompt=[],
+                response=outcome,
+                tool_calls=None,
+                prompt_tokens=1,
+                completion_tokens=1,
+                provider_cost=0.25,
+            )
+
+        monkeypatch.setattr(llm, "_llm_call", fake_provider_call)
+        block = llm.AIStructuredResponseGeneratorBlock()
+        real_llm_call = block.llm_call
+
+        async def recording_llm_call(**kwargs):
+            slices.append(kwargs.get("timeout_seconds") or self._BUDGET)
+            return await real_llm_call(**kwargs)
+
+        block.llm_call = recording_llm_call  # type: ignore[method-assign]
+        return block, clock, slices
+
+    async def _run_deadline_block(self, block, retry=3):
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Hello",
+            expected_format={"key": "value"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=retry,
+        )
+        with pytest.raises(RuntimeError) as err:
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+        return err.value
+
+    _MISSING_KEY = '<json_output id="test123456">{"wrong": "key"}</json_output>'
+
+    @pytest.mark.asyncio
+    async def test_slow_failures_stay_within_the_budget(self, monkeypatch):
+        """Slow non-timeout failures used to get a fresh full timeout each, so
+        three of them ran past the budget (#14293)."""
+        slow_500 = RuntimeError("upstream 500")
+        block, clock, slices = self._deadline_block(
+            monkeypatch, [(250, slow_500), (250, slow_500), (250, slow_500)]
+        )
+        started = clock["t"]
+
+        with patch("secrets.token_hex", return_value="test123456"):
+            await self._run_deadline_block(block)
+
+        assert clock["t"] - started <= self._BUDGET + 1
+        assert slices[0] == self._BUDGET
+        assert slices == sorted(slices, reverse=True) and len(set(slices)) == 3
+
+    @pytest.mark.asyncio
+    async def test_timeout_on_a_shortened_retry_still_alerts(self, monkeypatch):
+        """The spend alert compares elapsed time with the slice the attempt got,
+        not the whole budget, or a cut-off final retry reads as a fast fail."""
+        block, _, slices = self._deadline_block(
+            monkeypatch, [(500, self._MISSING_KEY), (1000, "never returned")]
+        )
+
+        with (
+            self._captured_logs() as records,
+            patch("secrets.token_hex", return_value="test123456"),
+        ):
+            err = await self._run_deadline_block(block)
+
+        assert slices == [self._BUDGET, 100]
+        assert "exceeded 100.0s" in str(err)
+        alerts = self._alerts(records)
+        assert len(alerts) == 1
+        assert alerts[0].levelno == logging.ERROR
+        assert alerts[0].json_fields["configured_timeout_seconds"] == 100
+
+    @pytest.mark.asyncio
+    async def test_floor_stops_retrying_and_says_the_budget_ran_out(self, monkeypatch):
+        """A retry left with less than the floor would only be cut off, so the
+        loop stops, names the budget, and still records what was spent."""
+        block, _, slices = self._deadline_block(
+            monkeypatch,
+            [(self._BUDGET - llm.LLM_MIN_ATTEMPT_SECONDS + 1, self._MISSING_KEY)],
+        )
+
+        with patch("secrets.token_hex", return_value="test123456"):
+            err = await self._run_deadline_block(block)
+
+        assert slices == [self._BUDGET]
+        assert str(err) == (
+            f"LLM retry budget of {self._BUDGET}s ran out after 1 attempt(s) "
+            "without a valid response."
+        )
+        assert block.execution_stats.provider_cost == 0.25
 
 
 class TestLLMModelMissingHandler:
