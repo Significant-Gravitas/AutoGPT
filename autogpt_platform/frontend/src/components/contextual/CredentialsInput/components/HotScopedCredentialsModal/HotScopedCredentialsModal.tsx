@@ -235,7 +235,8 @@ export function HostScopedCredentialsModal({
               </FormLabel>
               <FormDescription
                 // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
-                className="max-w-md text-[0.8rem] leading-inherit"
+                // dark:text-neutral-400: the legacy FormDescription's, moved verbatim (DS6, SECRT-3116)
+                className="max-w-md text-[0.8rem] leading-inherit dark:text-neutral-400"
               >
                 Add sensitive headers (like Authorization, X-API-Key) that
                 should be automatically included in requests to the specified

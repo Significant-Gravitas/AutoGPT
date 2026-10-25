@@ -233,7 +233,8 @@ function APIKeyTabContent({
                   schema.credentials_scopes ? (
                     <FormDescription
                       // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
-                      className="text-[0.8rem] leading-inherit"
+                      // dark:text-neutral-400: the legacy FormDescription's, moved verbatim (DS6, SECRT-3116)
+                      className="text-[0.8rem] leading-inherit dark:text-neutral-400"
                     >
                       Required scope(s) for this block:{" "}
                       {schema.credentials_scopes?.map((s, i, a) => (
