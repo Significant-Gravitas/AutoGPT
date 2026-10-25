@@ -1,3 +1,5 @@
+import type { User } from "@/lib/auth/types";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -24,6 +26,7 @@ beforeEach(() => {
 afterEach(() => {
   server.resetHandlers();
   vi.useRealTimers();
+  useAuthStore.setState({ user: null });
 });
 
 describe("useChangelog", () => {
@@ -89,4 +92,33 @@ describe("useChangelog", () => {
     expect(result.current.isVisible).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(LATEST);
   });
+
+  it.each([
+    ["after", "2026-10-15T08:00:00Z", false],
+    ["before", "2026-10-01T08:00:00Z", true],
+  ])(
+    "for an account created %s the release, shows it: %s",
+    async (_when, createdAt, shown) => {
+      server.use(
+        http.get(CHANGELOG_INDEX_MD_URL, () =>
+          HttpResponse.text(
+            "| [October 8 – October 14](/docs/platform/changelog/changelog/october-8-october-14-2026.md) | Redesigned wallet |",
+          ),
+        ),
+      );
+      useAuthStore.setState({
+        user: { id: "u1", created_at: createdAt } as User,
+      });
+      vi.useFakeTimers();
+      const { result } = renderHook(() => useChangelog());
+
+      await vi.waitFor(() =>
+        expect(result.current.latestEntry?.slug).toBe(
+          "october-8-october-14-2026",
+        ),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(2000));
+      expect(result.current.isVisible).toBe(shown);
+    },
+  );
 });

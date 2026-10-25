@@ -26,3 +26,39 @@ export function parseChangelogIndex(md: string): ChangelogEntry[] {
 
   return entries;
 }
+
+// A release the account is newer than holds nothing new for that user.
+export function isReleaseBeforeAccount(
+  entry: ChangelogEntry,
+  accountCreatedAt: string | undefined,
+): boolean {
+  const lastDay = getReleaseLastDay(entry.slug);
+  const createdAt = accountCreatedAt ? Date.parse(accountCreatedAt) : NaN;
+  if (lastDay === null || Number.isNaN(createdAt)) return false;
+  return createdAt >= lastDay.getTime() + DAY_MS;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MONTHS = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
+
+// Slugs end with the release's last day: "october-8-october-14-2026".
+function getReleaseLastDay(slug: string): Date | null {
+  const match = /([a-z]+)-(\d{1,2})-(\d{4})$/.exec(slug);
+  if (!match) return null;
+  const month = MONTHS.indexOf(match[1]);
+  if (month === -1) return null;
+  return new Date(Date.UTC(Number(match[3]), month, Number(match[2])));
+}

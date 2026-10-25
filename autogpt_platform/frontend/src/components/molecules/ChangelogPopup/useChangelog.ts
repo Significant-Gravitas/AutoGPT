@@ -1,14 +1,20 @@
 "use client";
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useEffect, useRef, useState } from "react";
 import {
   AUTO_DISMISS_MS,
   CHANGELOG_INDEX_MD_URL,
   STORAGE_KEY,
 } from "./changelog-constants";
-import { ChangelogEntry, parseChangelogIndex } from "./helpers";
+import {
+  ChangelogEntry,
+  isReleaseBeforeAccount,
+  parseChangelogIndex,
+} from "./helpers";
 
 export function useChangelog() {
+  const accountCreatedAt = useAuthStore((state) => state.user?.created_at);
   const [isVisible, setIsVisible] = useState(false);
   const [isFading, setIsFading] = useState(false);
   const [latestEntry, setLatestEntry] = useState<ChangelogEntry | null>(null);
@@ -96,6 +102,7 @@ export function useChangelog() {
         } catch {
           /* show anyway */
         }
+        if (isReleaseBeforeAccount(entries[0], accountCreatedAt)) return;
 
         revealTimer.current = setTimeout(() => {
           if (!cancelled) setIsVisible(true);
@@ -110,7 +117,7 @@ export function useChangelog() {
       clearTimers();
       if (revealTimer.current) clearTimeout(revealTimer.current);
     };
-  }, []);
+  }, [accountCreatedAt]);
 
   useEffect(() => {
     if (!isVisible || isFading || !latestEntry) return;
