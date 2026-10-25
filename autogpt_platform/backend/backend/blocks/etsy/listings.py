@@ -59,7 +59,10 @@ class EtsyCreateDraftListingBlock(Block):
             description="Category id from Search Etsy Categories"
         )
         shipping_profile_id: int = SchemaField(
-            description="Shipping profile from Get My Etsy Shop; needed for physical items",
+            description=(
+                "Shipping profile from Get My Etsy Shop; a physical listing "
+                "needs one before it can be published, not to be drafted"
+            ),
             default=0,
         )
         readiness_state_id: int = SchemaField(
@@ -146,10 +149,6 @@ def draft_listing_form(data: EtsyCreateDraftListingBlock.Input) -> dict[str, str
         raise ValueError("The price must be more than zero.")
     if len(data.tags) > MAX_TAGS:
         raise ValueError(f"Etsy allows at most {MAX_TAGS} tags per listing.")
-    if data.listing_type == "physical" and not data.shipping_profile_id:
-        raise ValueError(
-            "A physical listing needs a shipping profile. Get one from Get My Etsy Shop."
-        )
     form = {
         "title": data.title,
         "description": data.description,

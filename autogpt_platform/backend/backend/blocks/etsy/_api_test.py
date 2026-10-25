@@ -148,7 +148,6 @@ def test_draft_listing_form_matches_what_etsy_reads():
 @pytest.mark.parametrize(
     "overrides, message",
     [
-        ({"shipping_profile_id": 0}, "shipping profile"),
         ({"tags": [f"t{i}" for i in range(14)]}, "at most 13 tags"),
         ({"price": 0}, "more than zero"),
     ],
@@ -158,8 +157,12 @@ def test_draft_listing_form_refuses_what_etsy_would(overrides, message):
         draft_listing_form(_draft(**overrides))
 
 
-def test_a_download_needs_no_shipping_profile():
-    form = draft_listing_form(_draft(shipping_profile_id=0, listing_type="download"))
+@pytest.mark.parametrize("listing_type", ["physical", "download"])
+def test_a_draft_needs_no_shipping_profile(listing_type):
+    """Etsy dropped the shipping-profile requirement for every draft
+    (etsy/open-api discussion 1524, Jan 2026): a physical draft without
+    one is sent, with the field left out."""
+    form = draft_listing_form(_draft(shipping_profile_id=0, listing_type=listing_type))
     assert "shipping_profile_id" not in form
 
 
