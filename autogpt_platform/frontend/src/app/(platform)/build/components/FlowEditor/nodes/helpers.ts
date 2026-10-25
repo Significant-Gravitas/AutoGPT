@@ -117,19 +117,22 @@ export const getTypeDisplayInfo = (schema: any) => {
       },
       date: {
         displayType: "date",
-        colorClass: "!text-info",
+        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
+        colorClass: "!text-blue-500",
         // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       time: {
         displayType: "time",
-        colorClass: "!text-info",
+        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
+        colorClass: "!text-blue-500",
         // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       "date-time": {
         displayType: "datetime",
-        colorClass: "!text-info",
+        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
+        colorClass: "!text-blue-500",
         // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
@@ -170,11 +173,14 @@ export const getTypeDisplayInfo = (schema: any) => {
   const colorMap: Record<string, string> = {
     // TODO(tokens): no exact role: !text-green-500 #16A34A
     string: "!text-green-500",
-    number: "!text-info",
-    integer: "!text-info",
+    // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
+    number: "!text-blue-500",
+    // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
+    integer: "!text-blue-500",
     // TODO(tokens): no exact role: !text-yellow-500 #F5C000
     boolean: "!text-yellow-500",
-    object: "!text-brand",
+    // TODO(tokens): no fitting role for !text-purple-500 #7733F5; #7733F5 is brand (a button fill), and this colours a type label (QUALITY 41, SECRT-3154)
+    object: "!text-purple-500",
     // TODO(tokens): no exact role: !text-indigo-500 #6366F1
     array: "!text-indigo-500",
     // TODO(tokens): no exact role: !text-gray-500 #6B7280

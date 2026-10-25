@@ -39,6 +39,9 @@ export const variants = {
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-medium-tight":
     "font-sans text-body-lg font-medium leading-6 text-foreground-base",
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
+  "large-semibold-tight":
+    "font-sans text-body-lg font-semibold leading-6 text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
@@ -60,12 +63,25 @@ export const variants = {
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
   "small-semibold": "font-sans text-caption font-semibold text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-semibold-tight":
+    "font-sans text-caption font-semibold leading-4 text-foreground-base",
+  // A tooltip title, at the tooltip's line height. TODO(tokens): no role is
+  // 0.75rem with leading-normal.
+  "small-medium-lh-normal":
+    "font-sans text-caption font-medium leading-normal text-foreground-base",
+  // TODO(tokens): no role is 0.75rem with leading-normal.
+  "small-semibold-lh-normal":
+    "font-sans text-caption font-semibold leading-normal text-foreground-base",
   // Struck through, e.g. a field whose connection is broken.
   "small-line-through":
     "font-sans text-caption font-normal line-through text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-tight":
     "font-sans text-caption font-normal leading-4 text-foreground-base",
+  // A text link. TODO(tokens): no role is 0.75rem/1rem (text-xs).
+  "small-tight-underline":
+    "font-sans text-caption font-normal leading-4 underline text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-medium-tight":
     "font-sans text-caption font-medium leading-4 text-foreground-base",
@@ -87,6 +103,12 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  "tiny-inherit":
+    "font-sans text-tiny font-normal leading-inherit text-foreground-base",
+  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
+  "caption-sm-mono":
+    "font-mono text-caption-sm font-normal text-foreground-base",
 
   // Label Text
   label:
@@ -132,6 +154,7 @@ export const variantElementMap: Record<Variant, As> = {
   "large-medium": "p",
   "large-semibold": "p",
   "large-medium-tight": "p",
+  "large-semibold-tight": "p",
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
@@ -143,7 +166,11 @@ export const variantElementMap: Record<Variant, As> = {
   small: "p",
   "small-medium": "p",
   "small-tight": "p",
+  "small-tight-underline": "p",
   "small-semibold": "p",
+  "small-semibold-tight": "p",
+  "small-medium-lh-normal": "p",
+  "small-semibold-lh-normal": "p",
   "small-line-through": "p",
   "small-medium-loose-underline": "p",
   "small-medium-tight": "p",
@@ -152,6 +179,8 @@ export const variantElementMap: Record<Variant, As> = {
   "small-loose": "p",
   "small-medium-loose": "p",
   "small-relaxed": "p",
+  "tiny-inherit": "span",
+  "caption-sm-mono": "span",
   label: "span",
   eyebrow: "span",
 };

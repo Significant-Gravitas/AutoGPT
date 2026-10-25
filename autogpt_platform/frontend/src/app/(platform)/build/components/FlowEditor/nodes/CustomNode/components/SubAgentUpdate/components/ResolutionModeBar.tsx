@@ -24,10 +24,14 @@ export function ResolutionModeBar({
     if (incompatibilities.missingInputs.length > 0) {
       sections.push(
         <div key="missing-inputs" className="mb-1">
-          <span className="font-semibold">Missing inputs: </span>
+          <Text variant="small-semibold-tight" as="span" tone="inherit">
+            Missing inputs:{" "}
+          </Text>
           {incompatibilities.missingInputs.map((name, i) => (
             <React.Fragment key={name}>
-              <code className="font-mono">{name}</code>
+              <Text variant="small-mono-tight" as="code" tone="inherit">
+                {name}
+              </Text>
               {i < incompatibilities.missingInputs.length - 1 && ", "}
             </React.Fragment>
           ))}
@@ -37,10 +41,14 @@ export function ResolutionModeBar({
     if (incompatibilities.missingOutputs.length > 0) {
       sections.push(
         <div key="missing-outputs" className="mb-1">
-          <span className="font-semibold">Missing outputs: </span>
+          <Text variant="small-semibold-tight" as="span" tone="inherit">
+            Missing outputs:{" "}
+          </Text>
           {incompatibilities.missingOutputs.map((name, i) => (
             <React.Fragment key={name}>
-              <code className="font-mono">{name}</code>
+              <Text variant="small-mono-tight" as="code" tone="inherit">
+                {name}
+              </Text>
               {i < incompatibilities.missingOutputs.length - 1 && ", "}
             </React.Fragment>
           ))}
@@ -50,10 +58,14 @@ export function ResolutionModeBar({
     if (incompatibilities.newRequiredInputs.length > 0) {
       sections.push(
         <div key="new-required" className="mb-1">
-          <span className="font-semibold">New required inputs: </span>
+          <Text variant="small-semibold-tight" as="span" tone="inherit">
+            New required inputs:{" "}
+          </Text>
           {incompatibilities.newRequiredInputs.map((name, i) => (
             <React.Fragment key={name}>
-              <code className="font-mono">{name}</code>
+              <Text variant="small-mono-tight" as="code" tone="inherit">
+                {name}
+              </Text>
               {i < incompatibilities.newRequiredInputs.length - 1 && ", "}
             </React.Fragment>
           ))}
@@ -63,10 +75,14 @@ export function ResolutionModeBar({
     if (incompatibilities.inputTypeMismatches.length > 0) {
       sections.push(
         <div key="type-mismatches" className="mb-1">
-          <span className="font-semibold">Type changed: </span>
+          <Text variant="small-semibold-tight" as="span" tone="inherit">
+            Type changed:{" "}
+          </Text>
           {incompatibilities.inputTypeMismatches.map((m, i) => (
             <React.Fragment key={m.name}>
-              <code className="font-mono">{m.name}</code>
+              <Text variant="small-mono-tight" as="code" tone="inherit">
+                {m.name}
+              </Text>
               <span
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
                 className="text-gray-400"
@@ -112,7 +128,13 @@ export function ResolutionModeBar({
             />
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
-            <p className="mb-2 font-semibold">Incompatible changes:</p>
+            <Text
+              variant="small-semibold-lh-normal"
+              tone="inherit"
+              className="mb-2"
+            >
+              Incompatible changes:
+            </Text>
             <Text variant="small-tight" tone="inherit" as="div">
               {renderIncompatibilities()}
             </Text>

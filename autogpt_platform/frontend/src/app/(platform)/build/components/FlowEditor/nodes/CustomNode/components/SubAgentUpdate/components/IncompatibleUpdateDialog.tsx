@@ -189,7 +189,9 @@ function TwoColumnSection({
       // TODO(tokens): no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154); dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-gray-700 #374151
       className="rounded-md border border-gray-200 p-3 dark:border-gray-700"
     >
-      <span className="font-medium">{title}</span>
+      <Text variant="large-medium-tight" as="span" tone="inherit">
+        {title}
+      </Text>
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
@@ -303,7 +305,9 @@ function SingleColumnSection({
     >
       <div className="flex items-center gap-2">
         {icon}
-        <span className="font-medium">{title}</span>
+        <Text variant="large-medium-tight" as="span" tone="inherit">
+          {title}
+        </Text>
       </div>
       <Text
         variant="body-tight"

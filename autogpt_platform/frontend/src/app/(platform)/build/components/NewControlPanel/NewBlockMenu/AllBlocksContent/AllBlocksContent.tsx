@@ -67,7 +67,8 @@ export const AllBlocksContent = () => {
                 variant="body"
                 as="span"
                 tone="secondary"
-                className="rounded-full bg-surface-hover px-[0.375rem]"
+                // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+                className="rounded-full bg-zinc-100 px-[0.375rem]"
               >
                 {category.total_blocks}
               </Text>
@@ -105,11 +106,13 @@ export const AllBlocksContent = () => {
               {category.total_blocks > category.blocks.length && (
                 <Button
                   variant={"link"}
-                  className="px-0 font-sans text-body text-foreground-secondary underline hover:text-foreground-emphasis"
+                  className="px-0 text-foreground-secondary hover:text-foreground-emphasis"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
-                  see all
+                  <Text variant="body-medium" as="span" tone="inherit">
+                    see all
+                  </Text>
                 </Button>
               )}
             </div>

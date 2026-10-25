@@ -71,9 +71,9 @@ function SafeModeButton({
       </TooltipTrigger>
       <TooltipContent>
         <div className="text-center">
-          <div className="font-medium">
+          <Text variant="small-medium-lh-normal" as="div" tone="inherit">
             {label}: {isEnabled ? "ON" : "OFF"}
-          </div>
+          </Text>
           <Text
             variant="small-tight"
             as="div"

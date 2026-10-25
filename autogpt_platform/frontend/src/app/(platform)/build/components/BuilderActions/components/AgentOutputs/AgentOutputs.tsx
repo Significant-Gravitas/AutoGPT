@@ -1,7 +1,6 @@
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { Label } from "@/components/__legacy__/ui/label";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import {
   Sheet,
@@ -112,8 +111,17 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         <SheetHeader className="px-2 py-2">
           <div className="flex items-center justify-between">
             <div>
-              <SheetTitle className="text-lead">Run Outputs</SheetTitle>
-              <SheetDescription className="mt-1 text-body leading-5 text-muted-foreground">
+              <SheetTitle>
+                <Text
+                  variant="lead-semibold"
+                  as="span"
+                  tone="inherit"
+                  className="block"
+                >
+                  Run Outputs
+                </Text>
+              </SheetTitle>
+              <SheetDescription className="mt-1 text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <Text
                     variant="small-medium-tight"
@@ -123,7 +131,9 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   >
                     Beta
                   </Text>
-                  <span>This feature is in beta and may contain bugs</span>
+                  <Text variant="body-tight" as="span" tone="inherit">
+                    This feature is in beta and may contain bugs
+                  </Text>
                 </span>
               </SheetDescription>
             </div>
@@ -137,16 +147,22 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                 outputs.map((group) => (
                   <div key={group.nodeID} className="space-y-2">
                     <div>
-                      <Label className="text-body-lg font-semibold leading-6">
+                      <Text
+                        variant="large-semibold-tight"
+                        as="label"
+                        tone="inherit"
+                      >
                         {group.metadata.name || "Unnamed Output"}
-                      </Label>
+                      </Text>
                       {group.metadata.description && (
-                        <Label
+                        <Text
+                          variant="body-medium-tight"
+                          as="label"
                           // TODO(tokens): no exact role: text-gray-600 #4B5563
-                          className="mt-1 block text-body leading-5 text-gray-600"
+                          className="mt-1 block text-gray-600"
                         >
                           {group.metadata.description}
-                        </Label>
+                        </Text>
                       )}
                     </div>
 

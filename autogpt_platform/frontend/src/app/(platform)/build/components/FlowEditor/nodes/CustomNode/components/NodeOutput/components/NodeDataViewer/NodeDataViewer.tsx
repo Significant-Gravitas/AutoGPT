@@ -148,7 +148,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
             {shouldGroupExecutions ? (
               <div>
                 Pin:{" "}
-                <span className="font-semibold">{beautifyString(pinName)}</span>
+                <Text variant="body-semibold-tight" as="span" tone="inherit">
+                  {beautifyString(pinName)}
+                </Text>
               </div>
             ) : (
               <>
@@ -179,9 +181,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 </div>
                 <div className="mt-2">
                   Pin:{" "}
-                  <span className="font-semibold">
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
                     {beautifyString(pinName)}
-                  </span>
+                  </Text>
                 </div>
               </>
             )}

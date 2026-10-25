@@ -22,7 +22,8 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
     <Button
       className={cn(
         "my-[1px] h-[2.25rem] space-x-1 rounded-[1.5rem] bg-surface-muted p-[0.375rem] pr-[0.625rem] shadow-none",
-        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong",
+        // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41, SECRT-3154)
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-border-strong",
         className,
       )}
       {...rest}
@@ -44,7 +45,8 @@ const SearchHistoryChipSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "h-[2.25rem] w-32 rounded-[1.5rem] bg-surface-hover",
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+        "h-[2.25rem] w-32 rounded-[1.5rem] bg-zinc-100",
         className,
       )}
     />
