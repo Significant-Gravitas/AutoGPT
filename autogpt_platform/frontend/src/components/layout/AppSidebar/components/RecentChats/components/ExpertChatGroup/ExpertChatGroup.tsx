@@ -79,9 +79,9 @@ export function ExpertChatGroup({
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
-          // font-medium and the colour reach the avatar initial (ExpertAvatar sets
-          // its size, not its weight); every other piece of copy is a Text.
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left font-medium text-foreground-strong max-md:py-2"
+          // font-medium reaches the avatar initial (ExpertAvatar sets its size and
+          // colour, not its weight); every other piece of copy is a Text.
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left font-medium max-md:py-2"
         >
           {isAutopilot ? (
             <AutopilotAvatar
@@ -153,7 +153,8 @@ export function ExpertChatGroup({
               <Text
                 as="span"
                 variant="small-medium-tight-touch"
-                className="block text-inherit"
+                tone="inherit"
+                className="block"
               >
                 {isAutopilot ? "Load all" : "Load more"}
               </Text>
