@@ -1,7 +1,15 @@
 // Shell commands, matched by the forms they take rather than as bare words,
 // so "the cat food listings" or "the head office rota" stay plain text.
-const SHELL =
-  "cat|head|tail|less|wc|sort|uniq|cut|tr|find|xargs|touch|rm|cp|mv|ln|tar|zip|unzip|gzip|wget|curl|ssh|scp|rsync|python3?|node|pip3?|npm|pnpm|yarn|git|docker|make|chmod|chown|mkdir|sudo|sed|awk|grep|bash|sh|ls|cd|echo|printf|export|jq";
+// Commands that are also everyday words ("sort", "export", "find") count as a
+// command only before an argument, never before a function word: "Running
+// sort on items" is prose, "Running sort orders" is a command.
+const WORDLIKE =
+  "cat|head|tail|less|sort|cut|tr|find|touch|ln|zip|node|make|echo|export";
+const CODE_ONLY =
+  "wc|uniq|xargs|rm|cp|mv|tar|unzip|gzip|wget|curl|ssh|scp|rsync|python3?|pip3?|npm|pnpm|yarn|git|docker|chmod|chown|mkdir|sudo|sed|awk|grep|bash|sh|ls|cd|printf|jq";
+const SHELL = `${WORDLIKE}|${CODE_ONLY}`;
+const FUNCTION_WORDS =
+  "on|of|for|to|the|a|an|and|or|in|at|by|from|with|into|about|over|through|this|that|these|those|my|your|our|their|its|all|any|some";
 
 // Verbs that put the next word in command position. Prepositions such as
 // "with" are left out: "listings with cat food photos" is prose.
@@ -26,7 +34,9 @@ const TECHNICAL_PATTERNS = [
   /\b(?:npm|pnpm|yarn|pip3?)\s+(?:install|run|ci|add)\b/,
   // A command and its argument in command position: opening the text ("cat
   // brief") or right after a run verb ("Running cat brief", "ran head …").
-  new RegExp(`(?:^|\\b${RUN_VERB}\\s+)(?:${SHELL})\\s+\\S`),
+  new RegExp(
+    `(?:^|\\b${RUN_VERB}\\s+)(?:(?:${CODE_ONLY})\\s+\\S|(?:${WORDLIKE})\\s+(?!(?:${FUNCTION_WORDS})\\b)\\S)`,
+  ),
   // Tool and argument names: snake_case identifiers.
   /\b[a-z]+_[a-z_]+\b/,
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,

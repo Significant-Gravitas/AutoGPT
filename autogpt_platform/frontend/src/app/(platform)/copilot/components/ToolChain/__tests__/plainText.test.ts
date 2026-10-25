@@ -24,6 +24,8 @@ describe("looksTechnical", () => {
     "Now running python3 report",
     "Executing jq on the export",
     "Calling node build",
+    "Running make build",
+    "Running sort orders",
     "npm install",
   ])("flags %j", (text) => {
     expect(looksTechnical(text)).toBe(true);
@@ -42,6 +44,10 @@ describe("looksTechnical", () => {
     "Running the cat food promo",
     "Ran the head office rota",
     "Running a check on the cat food stock",
+    "Running sort on items",
+    "Running export of orders",
+    "Running find for duplicates",
+    "Calling make for the launch",
   ])("passes %j", (text) => {
     expect(looksTechnical(text)).toBe(false);
   });

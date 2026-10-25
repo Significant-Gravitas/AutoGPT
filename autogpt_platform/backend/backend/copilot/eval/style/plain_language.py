@@ -29,12 +29,20 @@ _COMMAND = re.compile(
     r"|git\s+(?:status|add|commit|push|pull|clone|checkout|diff|log|init)\b"
     r"|(?:pip3?|npm|pnpm|yarn)\s+(?:install|run)\b)"
 )
-_SHELL = (
-    "cat|head|tail|less|wc|sort|uniq|cut|tr|find|xargs|touch|rm|cp|mv|ln|tar|"
-    "zip|unzip|gzip|wget|curl|ssh|scp|rsync|python3?|node|pip3?|npm|pnpm|yarn|"
-    "git|docker|make|chmod|chown|mkdir|sudo|sed|awk|grep|bash|sh|ls|cd|echo|"
-    "printf|export|jq"
+# Commands that are also everyday words ("sort", "export", "find") count only
+# before an argument, never before a function word: "Running sort on items" is
+# prose, "Running sort orders" is a command.
+_WORDLIKE = "cat|head|tail|less|sort|cut|tr|find|touch|ln|zip|node|make|echo|export"
+_CODE_ONLY = (
+    "wc|uniq|xargs|rm|cp|mv|tar|unzip|gzip|wget|curl|ssh|scp|rsync|python3?|"
+    "pip3?|npm|pnpm|yarn|git|docker|chmod|chown|mkdir|sudo|sed|awk|grep|bash|sh|"
+    "ls|cd|printf|jq"
 )
+_FUNCTION_WORDS = (
+    "on|of|for|to|the|a|an|and|or|in|at|by|from|with|into|about|over|through|"
+    "this|that|these|those|my|your|our|their|its|all|any|some"
+)
+_ARG = r"[\w~/-]+(?:\.[\w~/-]+)*"
 # A command and its argument in command position: opening a line or sentence
 # ("cat brief shows…") or right after a run verb ("I'm running cat brief"),
 # bare or quoted as inline code ("I ran `cat brief`"). Prepositions such as
@@ -42,7 +50,7 @@ _SHELL = (
 _COMMAND_POSITION = re.compile(
     r"(?:^|(?<=[.!?]\s)|\b(?:[Rr]un(?:s|ning)?|[Rr]an|[Ee]xecut(?:e|es|ed|ing)"
     r"|[Cc]all(?:s|ed|ing)?)\s+)[`'\"]?"
-    rf"((?:{_SHELL})\s+[\w~/-]+(?:\.[\w~/-]+)*)",
+    rf"((?:{_CODE_ONLY})\s+{_ARG}|(?:{_WORDLIKE})\s+(?!(?:{_FUNCTION_WORDS})\b){_ARG})",
     re.MULTILINE,
 )
 _UUID = re.compile(

@@ -79,6 +79,13 @@ def test_a_command_in_inline_code_after_a_run_verb_is_caught():
 def test_ordinary_words_after_a_run_verb_stay_plain():
     reply = "Running the cat food promo this week. Ran the head office rota."
     assert technical_terms(reply, _TOOLS) == []
+    reply = "Running sort on items now. Running export of orders. Ran find for dupes."
+    assert technical_terms(reply, _TOOLS) == []
+
+
+def test_a_command_that_is_also_a_word_still_counts_with_an_argument():
+    reply = "Running sort orders now. Running make build next."
+    assert technical_terms(reply, _TOOLS) == ["sort orders", "make build"]
 
 
 def test_the_registry_names_are_the_ones_checked():
