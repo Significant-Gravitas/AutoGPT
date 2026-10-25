@@ -72,6 +72,12 @@ export const variants = {
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
 
   // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl": "font-sans text-2xl font-normal text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
   "lg-medium": "font-sans text-lg font-medium text-foreground-base",
   // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
   "2xl-bold-tracking-tight":
@@ -136,6 +142,9 @@ export const variantElementMap: Record<Variant, As> = {
   "small-loose": "p",
   "small-medium-loose": "p",
   "tiny-inherit": "span",
+  "lg-semibold": "h3",
+  "2xl-bold": "div",
+  "2xl": "span",
   "lg-medium": "h3",
   "2xl-bold-tracking-tight": "h1",
   label: "span",
