@@ -390,20 +390,20 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
   card(
     "read_workspace_file",
     { size_bytes: 2048, mime_type: "text/plain", preview: "hello world" },
-    "notes.txt",
+    "Notes",
     { path: "notes.txt" },
   ),
   card(
     "write_workspace_file",
     { size_bytes: 7, mime_type: "text/plain" },
-    "out.txt",
+    "Out",
     { path: "out.txt", content: "written" },
   ),
-  card("delete_workspace_file", { success: true }, "old.txt", {
+  card("delete_workspace_file", { success: true }, "Old", {
     path: "old.txt",
   }),
-  card("Read", "print(1)", "reader.py", { file_path: "/tmp/reader.py" }),
-  card("Write", "ok", "writer.py", {
+  card("Read", "print(1)", "Reader", { file_path: "/tmp/reader.py" }),
+  card("Write", "ok", "Writer", {
     file_path: "/tmp/writer.py",
     content: "x = 1",
   }),

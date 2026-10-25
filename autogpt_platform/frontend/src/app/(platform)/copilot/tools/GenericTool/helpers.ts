@@ -195,20 +195,25 @@ export function truncate(text: string, maxLen: number): string {
 }
 
 const STRIPPABLE_EXTENSIONS =
-  /\.(md|csv|json|txt|yaml|yml|xml|html|js|ts|py|sh|toml|cfg|ini|log|pdf|png|jpg|jpeg|gif|svg|mp4|mp3|wav|zip|tar|gz)$/i;
+  /\.(md|csv|tsv|jsonl?|txt|yaml|yml|xml|html|jsx?|tsx?|py|sh|sql|ipynb|toml|cfg|ini|log|pdf|docx?|xlsx?|pptx?|png|jpg|jpeg|gif|svg|webp|mp4|mp3|wav|zip|tar|gz)$/i;
 
 export function humanizeFileName(filePath: string): string {
+  return `"${fileNameWords(filePath)}"`;
+}
+
+/** A file's name as words: "launch_brief.md" reads "Launch Brief". */
+export function fileNameWords(filePath: string): string {
   const fileName = filePath.split("/").pop() ?? filePath;
   const stem = fileName.replace(STRIPPABLE_EXTENSIONS, "");
-  const words = stem
+  return stem
     .replace(/[_-]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => {
       if (w === w.toUpperCase()) return w;
       return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-    });
-  return `"${words.join(" ")}"`;
+    })
+    .join(" ");
 }
 
 /* ------------------------------------------------------------------ */

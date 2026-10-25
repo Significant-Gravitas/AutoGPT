@@ -1,4 +1,8 @@
-import { type ToolCategory, truncate } from "../../tools/GenericTool/helpers";
+import {
+  fileNameWords,
+  type ToolCategory,
+  truncate,
+} from "../../tools/GenericTool/helpers";
 import { looksTechnical } from "./plainText";
 
 export type ChainCategory =
@@ -74,4 +78,18 @@ export function phraseField(input: ToolInput, key: string): string | null {
 
 export function quotedName(value: string | null, maxLen = 50): string | null {
   return value ? `"${truncate(value, maxLen)}"` : null;
+}
+
+/** A workspace file as its owner knows it, by name ("Launch Brief" for
+ *  `~/workspace/launch_brief.md`), never by path. Null when the name left
+ *  after the folders and extension still reads as code. */
+export function fileLabel(path: string | null): string | null {
+  const name = path ? fileNameWords(path) : "";
+  if (!name || /\.[A-Za-z]\w*$/.test(name) || looksTechnical(name)) return null;
+  return name;
+}
+
+export function fileSubject(input: ToolInput): string {
+  const path = strField(input, "path") ?? strField(input, "filename");
+  return quotedName(fileLabel(path), 60) ?? "a file";
 }

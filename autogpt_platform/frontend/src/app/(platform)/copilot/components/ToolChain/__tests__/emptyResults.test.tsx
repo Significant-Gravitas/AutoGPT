@@ -76,7 +76,7 @@ describe("empty lookups", () => {
       { id: "tool:list_routines", input: { connect: true } },
       NO_ROUTINES,
     );
-    expect(toChainRow(connect, 0)?.text).toBe('Ran "tool:list_routines"');
+    expect(toChainRow(connect, 0)?.text).toBe("Ran a capability");
   });
 
   it("keep the plain label when something came back", () => {

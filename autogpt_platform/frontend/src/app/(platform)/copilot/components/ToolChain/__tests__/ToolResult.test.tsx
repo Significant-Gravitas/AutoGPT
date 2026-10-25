@@ -1210,9 +1210,26 @@ describe("ToolResult", () => {
         />,
       );
 
-      expect(screen.getByText("notes.txt")).toBeDefined();
+      expect(screen.getByText("Notes")).toBeDefined();
       expect(screen.getByText("2.0 KB")).toBeDefined();
       expect(screen.getByText("hello world")).toBeDefined();
+    });
+
+    it("keeps a file's path behind technical details", async () => {
+      const user = userEvent.setup();
+      const path = "~/workspace/dewleaf/launch_brief.md";
+      render(
+        <ToolResult
+          row={row({ size_bytes: 512 }, "write_workspace_file", { path })}
+        />,
+      );
+
+      expect(screen.getByText("Launch Brief")).toBeDefined();
+      expect(screen.queryByText(path)).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText(path)).toBeDefined();
     });
   });
 
@@ -1498,6 +1515,28 @@ describe("ToolResult run_capability", () => {
 
     expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
     expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+  });
+
+  it("keeps the capability id behind technical details", async () => {
+    const user = userEvent.setup();
+    render(
+      <ToolResult
+        row={row(
+          {
+            type: "capability_details",
+            block: { name: "SendWebRequestBlock", description: "Calls a URL" },
+          },
+          "describe_capability",
+          { id: "block:6f1c2d3e" },
+        )}
+      />,
+    );
+
+    expect(screen.queryByText(/block:6f1c2d3e/)).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Show technical details" }),
+    );
+    expect(screen.getByText("block:6f1c2d3e")).toBeDefined();
   });
 
   it("still renders a plain capability result as before", () => {

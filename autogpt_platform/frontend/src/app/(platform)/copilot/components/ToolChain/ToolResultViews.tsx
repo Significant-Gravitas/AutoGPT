@@ -3,9 +3,7 @@
 import {
   CheckmarkCircle02Icon,
   CircleIcon,
-  FileIcon,
   GlobeIcon,
-  ImageIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -15,7 +13,6 @@ import {
   asItems,
   asObject,
   displayValue,
-  formatBytes,
   isBlankOutput,
   NOTHING_FOUND,
   humanizeKey,
@@ -224,45 +221,6 @@ export function TodoList({ row }: RowProps) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-export function FileCard({ row }: RowProps) {
-  const input = asObject(row.input);
-  const output = asObject(row.output);
-  const path =
-    (input ? str(input, "file_path", "path", "filename") : null) ??
-    (output ? str(output, "path", "name") : null);
-  if (!path) return <KeyValueList value={row.output} />;
-  const size = output?.size ?? output?.size_bytes;
-  const mime = output ? (str(output, "mime_type") ?? "") : "";
-  const preview = output ? str(output, "preview", "content_preview") : null;
-  const fileIcon = mime.startsWith("image/") ? ImageIcon : FileIcon;
-  return (
-    <div className={`${CARD} ${HALF} p-2.5`}>
-      <div className="flex items-center gap-2.5">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-          <Icon
-            icon={fileIcon}
-            size={15}
-            className="text-foreground-secondary"
-          />
-        </div>
-        <p className="min-w-0 flex-1 truncate font-mono text-xs text-foreground-body">
-          {path}
-        </p>
-        {typeof size === "number" && (
-          <span className="shrink-0 text-xs text-foreground-subtle">
-            {formatBytes(size)}
-          </span>
-        )}
-      </div>
-      {preview && (
-        <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9 text-xs text-foreground-subtle">
-          {preview}
-        </p>
-      )}
     </div>
   );
 }
