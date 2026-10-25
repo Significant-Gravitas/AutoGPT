@@ -36,6 +36,8 @@ const CLASSES = [
   "scale-95",
   "transform",
   "bg-gradient-to-r",
+  "to-transparent",
+  "from-rose-100",
   "shadow-sm",
   "shadow",
   "rounded",
@@ -163,11 +165,17 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
     expect(declarations(root, ".transform")).toEqual({ transform: TRANSFORM });
   });
 
-  it("blends `bg-gradient-to-*` in sRGB", async () => {
+  it("draws gradients in sRGB, with stops only from `from-*` and `via-*`", async () => {
     const root = await compile();
     expect(declarations(root, ".bg-gradient-to-r")).toMatchObject({
       "--tw-gradient-position": "to right",
     });
+    expect(declarations(root, ".to-transparent")).toEqual({
+      "--tw-gradient-to": "transparent",
+    });
+    expect(declarations(root, ".from-rose-100")).toHaveProperty(
+      "--tw-gradient-stops",
+    );
   });
 
   it("keeps Tailwind 3's theme values and breakpoints", async () => {

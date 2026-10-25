@@ -25,7 +25,10 @@
     with an alpha, `rgb(131 131 140 / 0.5)`, which this puts back so every
     pixel blends exactly as before.
   - `bg-gradient-to-*`: Tailwind 4 blends the colours in oklab. Tailwind 3
-    left the gradient in the browser's default sRGB.
+    left the gradient in the browser's default sRGB. And Tailwind 4's `to-*`
+    also writes the gradient stops, so `to-*` without a `from-*` draws a
+    transparent gradient; in Tailwind 3 only `from-*` and `via-*` wrote them,
+    and the element had no background image.
   - Bare `transition`: Tailwind 4 hard-codes a longer property list (outline
     colour, gradient stops, `display`, `overlay` and more), so an outline or
     gradient change that used to snap would now animate.
@@ -246,6 +249,11 @@ function restoreDeclarations(rule) {
   const noTransition = decls.some(
     (d) => d.prop === "transition-property" && d.value === "none",
   );
+  const gradientEndOnly =
+    decls.some((d) => d.prop === "--tw-gradient-to") &&
+    !decls.some(
+      (d) => d.prop === "--tw-gradient-from" || d.prop === "--tw-gradient-via",
+    );
   for (const decl of decls) {
     if (
       /^border(-[a-z]+)*-style$/.test(decl.prop) &&
@@ -260,6 +268,8 @@ function restoreDeclarations(rule) {
       decl.remove();
     } else if (decl.prop === "line-height" && TEXT_LEADING.test(decl.value)) {
       decl.value = decl.value.replace(TEXT_LEADING, "$1");
+    } else if (gradientEndOnly && decl.prop === "--tw-gradient-stops") {
+      decl.remove();
     } else if (decl.prop === "justify-self" && JUSTIFY_SELF[decl.value]) {
       decl.value = JUSTIFY_SELF[decl.value];
     }
