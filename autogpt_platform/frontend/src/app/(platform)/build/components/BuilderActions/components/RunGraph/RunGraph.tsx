@@ -66,8 +66,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
               disabled={!flowID || isLoading}
-              // TODO(tokens): no exact role: text-amber-600 #D97706
-              className="group text-amber-600 hover:bg-warning-surface hover:text-warning-foreground"
+              // TODO(tokens): no exact role: text-amber-600 #D97706; no fitting role for hover:bg-amber-50 #FFFBEB and hover:text-amber-700 #B45309: they are warning-surface and warning-foreground (status colours), and amber is this dry-run button's own colour, not a warning (QUALITY 41(c))
+              className="group text-amber-600 hover:bg-amber-50 hover:text-amber-700"
             >
               <Icon
                 icon={FlaskConicalIcon}

@@ -15,8 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
-import { Button } from "@/components/__legacy__/ui/button";
-import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/atoms/Button/Button";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
 import { Label } from "@/components/__legacy__/ui/label";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { Badge } from "@/components/__legacy__/ui/badge";
@@ -50,7 +51,6 @@ import { isKey } from "@/lib/keyboard";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
 
 export type MCPToolDialogResult = {
   serverUrl: string;
@@ -398,7 +398,7 @@ export function MCPToolDialog({
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="mcp-server-url">Server URL</Label>
-              <Input
+              <BaseInput
                 id="mcp-server-url"
                 type="url"
                 placeholder="https://mcp.example.com/mcp"
@@ -463,7 +463,7 @@ export function MCPToolDialog({
                     {mcpAuthTokenLabel(manualAuthScheme)}
                   </Text>
                 </Label>
-                <Input
+                <BaseInput
                   id="mcp-auth-token"
                   aria-describedby="mcp-auth-token-hint"
                   type="password"
@@ -521,7 +521,7 @@ export function MCPToolDialog({
         <DialogFooter>
           {step === "tool" && (
             <Button
-              variant="outline"
+              variant="legacy-outline"
               onClick={() => {
                 setStep("url");
                 setSelectedTool(null);
@@ -530,11 +530,12 @@ export function MCPToolDialog({
               Back
             </Button>
           )}
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="legacy-outline" onClick={handleClose}>
             Cancel
           </Button>
           {step === "url" && (
             <Button
+              variant="legacy-default"
               onClick={
                 authRequired && !showManualToken
                   ? handleOAuthSignIn
@@ -562,7 +563,11 @@ export function MCPToolDialog({
             </Button>
           )}
           {step === "tool" && (
-            <Button onClick={handleConfirm} disabled={!selectedTool}>
+            <Button
+              variant="legacy-default"
+              onClick={handleConfirm}
+              disabled={!selectedTool}
+            >
               Add Block
             </Button>
           )}
@@ -690,10 +695,7 @@ function MCPToolCard({
 
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
-        <Text
-          variant="small-tight"
-          as="div"
-          tone="inherit"
+        <div
           // TODO(tokens): no exact role: border-gray-100 #F3F4F6, bg-gray-50/50 #F9FAFB; dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700 #475263, dark:bg-slate-800/50 #475263
           className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-800/50"
         >
@@ -703,30 +705,30 @@ function MCPToolCard({
                 // TODO(tokens): no exact role: border-gray-100 #F3F4F6; dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700 #475263
                 className="border-b border-gray-100 dark:border-slate-700"
               >
-                <th
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
                   // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
                   className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
                 >
-                  <Text variant="small-medium-tight" as="span" tone="inherit">
-                    Parameter
-                  </Text>
-                </th>
-                <th
+                  Parameter
+                </Text>
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
                   // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
                   className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
                 >
-                  <Text variant="small-medium-tight" as="span" tone="inherit">
-                    Type
-                  </Text>
-                </th>
-                <th
+                  Type
+                </Text>
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
                   // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
                   className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
                 >
-                  <Text variant="small-medium-tight" as="span" tone="inherit">
-                    Description
-                  </Text>
-                </th>
+                  Description
+                </Text>
               </tr>
             </thead>
             <tbody>
@@ -738,45 +740,44 @@ function MCPToolCard({
                     // TODO(tokens): no exact role: border-gray-50 #F9FAFB; dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-slate-700/50 #475263
                     className="border-b border-gray-50 last:border-0 dark:border-slate-700/50"
                   >
-                    <td
+                    <Text
+                      variant="caption-sm-mono"
+                      as="td"
                       // TODO(tokens): no exact role: text-gray-700 #374151; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-300 #D1D5DB
                       className="px-2 py-1 text-gray-700 dark:text-gray-300"
                     >
-                      <Text
-                        variant="caption-sm-mono-inherit"
-                        as="span"
-                        tone="inherit"
-                        className="block"
-                      >
-                        {name}
-                        {required.has(name) && (
-                          <span
-                            // TODO(tokens): no exact role: text-red-400 #F26969
-                            className="ml-0.5 text-red-400"
-                          >
-                            *
-                          </span>
-                        )}
-                      </Text>
-                    </td>
-                    <td
+                      {name}
+                      {required.has(name) && (
+                        <span
+                          // TODO(tokens): no exact role: text-red-400 #F26969
+                          className="ml-0.5 text-red-400"
+                        >
+                          *
+                        </span>
+                      )}
+                    </Text>
+                    <Text
+                      variant="small-tight"
+                      as="td"
                       // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
                       className="px-2 py-1 text-gray-500 dark:text-gray-400"
                     >
                       {schemaTypeLabel(prop)}
-                    </td>
-                    <td
+                    </Text>
+                    <Text
+                      variant="small-tight"
+                      as="td"
                       // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
                       className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400"
                     >
                       {prop.description ?? "—"}
-                    </td>
+                    </Text>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </Text>
+        </div>
       )}
 
       {/* Toggle details */}

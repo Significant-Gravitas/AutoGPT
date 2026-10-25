@@ -57,7 +57,7 @@ export const ContentRenderer: React.FC<{
   }
 
   return (
-    <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-caption [&>*]:!leading-4">
+    <div className="overflow-x-auto [&>*]:rounded-xlarge">
       <TextRenderer value={value} truncateLengthLimit={200} />
     </div>
   );

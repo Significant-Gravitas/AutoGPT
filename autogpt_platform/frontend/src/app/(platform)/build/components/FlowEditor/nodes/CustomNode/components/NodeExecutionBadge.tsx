@@ -10,8 +10,8 @@ const statusStyles: Record<AgentExecutionStatus, string> = {
   INCOMPLETE: "text-slate-700 border-slate-400",
   // TODO(tokens): no exact role: text-blue-700 #1D4ED8, border-blue-400 #60A5FA
   QUEUED: "text-blue-700 border-blue-400",
-  // TODO(tokens): no exact role: border-amber-400 #FBBF24
-  RUNNING: "text-warning-foreground border-amber-400",
+  // TODO(tokens): no fitting role for text-amber-700 #B45309; #B45309 is warning-foreground (a status colour), and a running node is in progress, not a caution; no role marks in progress (QUALITY 41(c)); no exact role: border-amber-400 #FBBF24
+  RUNNING: "text-amber-700 border-amber-400",
   // TODO(tokens): no exact role: text-yellow-700 #AE8800, border-yellow-400 #F7CD33, bg-yellow-50 #FEF9E6
   REVIEW: "text-yellow-700 border-yellow-400 bg-yellow-50",
   // TODO(tokens): no exact role: border-green-400 #45B56E

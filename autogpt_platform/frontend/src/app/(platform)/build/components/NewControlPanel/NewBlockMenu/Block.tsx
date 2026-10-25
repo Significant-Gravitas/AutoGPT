@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes, memo, useState } from "react";
@@ -15,7 +16,6 @@ import {
 } from "@/app/(platform)/build/components/MCPToolDialog";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -119,6 +119,7 @@ function BlockCard({
   return (
     <>
       <Button
+        variant="legacy-default"
         draggable={!isMCPBlock}
         data-id={blockDataId}
         className={cn(
