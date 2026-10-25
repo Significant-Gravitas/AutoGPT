@@ -20,13 +20,12 @@ type Story = StoryObj<typeof MultiSelector>;
 
 const FRUIT = ["Apples", "Bananas", "Cherries", "Dates", "Elderberries"];
 
-function Picker({
-  initial,
-  disabled,
-}: {
+interface Props {
   initial: string[];
   disabled?: string;
-}) {
+}
+
+function Picker({ initial, disabled }: Props) {
   const [values, setValues] = useState(initial);
   return (
     <div className="w-[360px]">
