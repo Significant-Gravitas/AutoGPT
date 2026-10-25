@@ -1,9 +1,9 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   name?: string;
@@ -22,6 +22,7 @@ export const IntegrationChip: IntegrationChipComponent = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       className={cn(
         "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-[0.5rem] bg-surface-muted p-2 pr-3 shadow-none",
         // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))

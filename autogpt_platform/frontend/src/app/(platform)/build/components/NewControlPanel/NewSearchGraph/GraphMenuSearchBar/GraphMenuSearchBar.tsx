@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Button } from "@/components/atoms/Button/Button";
 import { useGraphMenuSearchBarComponent } from "./useGraphMenuSearchBarComponent";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -37,7 +37,7 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
           strokeWidth={2}
         />
       </div>
-      <Input
+      <BaseInput
         ref={inputRef}
         type="text"
         value={searchQuery}
@@ -52,8 +52,8 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
       />
       {searchQuery.length > 0 && (
         <Button
-          variant="ghost"
-          size={"sm"}
+          variant="legacy-ghost"
+          size={"legacy-sm"}
           onClick={handleClear}
           className="p-0 hover:bg-transparent"
         >

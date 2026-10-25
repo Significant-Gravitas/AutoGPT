@@ -13,7 +13,9 @@ export type As =
   | "kbd"
   | "li"
   | "dt"
-  | "dd";
+  | "dd"
+  | "th"
+  | "td";
 
 // Typography comes from the size roles in tailwind.config.ts; each bundles
 // its line-height. TODO(tokens): SECRT-3152, the rem-based heading tracking
@@ -116,16 +118,30 @@ export const variants = {
   // Keeps the parent's line height, like the raw size it replaced.
   "tiny-inherit":
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
-  // Keeps the parent's line height, like the raw size it replaced.
-  // TODO(tokens): no mono role at caption-sm (0.6875rem, text-[11px]).
-  "caption-sm-mono-inherit":
-    "font-mono text-caption-sm font-normal leading-inherit text-foreground-base",
 
   // Label Text
   label:
     "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
   eyebrow:
     "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-foreground-tertiary",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-mono-tight":
+    "font-mono text-body font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
+  "caption-sm-mono":
+    "font-mono text-caption-sm font-normal text-foreground-base",
+
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl": "font-sans text-2xl font-normal text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-medium": "font-sans text-lg font-medium text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
+  "2xl-bold-tracking-tight":
+    "font-sans text-2xl font-bold tracking-tight text-foreground-base",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -147,6 +163,8 @@ export const tones = {
   success: "text-success", // #149443
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
+  // TODO(tokens): no role for text-amber-800 #92400E.
+  "warning-strong": "text-amber-800",
 } as const;
 
 export type Tone = keyof typeof tones;
@@ -195,7 +213,13 @@ export const variantElementMap: Record<Variant, As> = {
   "small-relaxed": "p",
   "small-medium-inherit": "span",
   "tiny-inherit": "span",
-  "caption-sm-mono-inherit": "span",
   label: "span",
   eyebrow: "span",
+  "body-mono-tight": "code",
+  "caption-sm-mono": "span",
+  "lg-semibold": "h3",
+  "2xl-bold": "div",
+  "2xl": "span",
+  "lg-medium": "h3",
+  "2xl-bold-tracking-tight": "h1",
 };

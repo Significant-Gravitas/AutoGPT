@@ -1,9 +1,9 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ArrowUpRight } from "lucide-react";
 import React, { ButtonHTMLAttributes } from "react";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   content?: string;
@@ -20,6 +20,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       className={cn(
         "my-[1px] h-[2.25rem] space-x-1 rounded-[1.5rem] bg-surface-muted p-[0.375rem] pr-[0.625rem] shadow-none",
         // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))

@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import React, { Fragment } from "react";
 import { IntegrationBlock } from "../IntergrationBlock";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
@@ -7,7 +8,6 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { useShallow } from "zustand/react/shallow";
-import { Text } from "@/components/atoms/Text/Text";
 
 export const IntegrationBlocks = () => {
   const { integration, setIntegration } = useBlockMenuStore(
@@ -76,7 +76,7 @@ export const IntegrationBlocks = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <Button
-              variant={"link"}
+              variant={"legacy-link"}
               className="p-0 text-foreground-emphasis"
               onClick={() => {
                 setIntegration(undefined);

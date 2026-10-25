@@ -1,9 +1,9 @@
 // BLOCK MENU TODO: We need to add a better hover state to it; currently it's not in the design either.
 
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes } from "react";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   selected?: boolean;
@@ -22,6 +22,7 @@ export const MenuItem: React.FC<Props> = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       data-id={menuItemType ? `menu-item-${menuItemType}` : undefined}
       className={cn(
         "flex h-[2.375rem] w-[12.875rem] justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none",
