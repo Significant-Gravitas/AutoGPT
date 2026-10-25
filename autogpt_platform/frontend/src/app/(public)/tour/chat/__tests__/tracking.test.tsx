@@ -18,7 +18,7 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 
 const { posthog } = vi.hoisted(() => ({
   posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
