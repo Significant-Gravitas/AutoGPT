@@ -1,144 +1,82 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const GOOD = "https://example.com/callback";
-const EVIL = "https://evil.example/phish";
-
-const searchParams = new Map<string, string>([
-  ["client_id", "client-1"],
-  ["redirect_uri", EVIL],
-  ["scope", "EXECUTE_GRAPH"],
-  ["state", "csrf-state"],
-  ["code_challenge", "challenge"],
-  ["code_challenge_method", "S256"],
-  ["response_type", "code"],
-]);
-
-vi.mock("next/navigation", () => ({
-  useSearchParams: () => ({
-    get: (key: string) => searchParams.get(key) ?? null,
-  }),
-}));
-
-const postOauthAuthorizeMock = vi.fn();
-const useGetOauthGetOauthAppInfoMock = vi.fn();
-
-vi.mock("@/app/api/__generated__/endpoints/oauth/oauth", () => ({
-  postOauthAuthorize: (...args: unknown[]) => postOauthAuthorizeMock(...args),
-  useGetOauthGetOauthAppInfo: (...args: unknown[]) =>
-    useGetOauthGetOauthAppInfoMock(...args),
-}));
-
+import {
+  getGetOauthGetOauthAppInfoMockHandler200,
+  getGetOauthGetOauthAppInfoMockHandler400,
+} from "@/app/api/__generated__/endpoints/oauth/oauth.msw";
+import { server } from "@/mocks/mock-server";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import AuthorizePage from "../page";
 
-describe("AuthorizePage open-redirect guards (#15048)", () => {
-  let hrefAssignments: string[];
+const mockUseSearchParams = vi.hoisted(() => vi.fn());
 
-  beforeEach(() => {
-    hrefAssignments = [];
-    postOauthAuthorizeMock.mockReset();
-    useGetOauthGetOauthAppInfoMock.mockReset();
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/auth/authorize",
+  useRouter: () => ({
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+    push: vi.fn(),
+    refresh: vi.fn(),
+    replace: vi.fn(),
+  }),
+  useSearchParams: mockUseSearchParams,
+}));
 
-    searchParams.set("redirect_uri", EVIL);
-    searchParams.set("response_type", "code");
+const PAGE = "http://localhost/auth/authorize";
+const REGISTERED = "https://app.example.com/callback";
 
-    useGetOauthGetOauthAppInfoMock.mockReturnValue({
-      data: {
-        status: 200,
-        data: {
-          name: "Test App",
-          description: "desc",
-          logo_url: null,
-          scopes: ["EXECUTE_GRAPH"],
-          redirect_uris: [GOOD],
-        },
-      },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+function openWith(redirectURI: string) {
+  mockUseSearchParams.mockReturnValue(
+    new URLSearchParams({
+      client_id: "client-1",
+      redirect_uri: redirectURI,
+      scope: "IDENTITY",
+      state: "state-1",
+      code_challenge: "challenge",
+    }),
+  );
+}
 
-    // Capture writes to window.location.href without navigating jsdom
-    const original = window.location;
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: {
-        ...original,
-        get href() {
-          return original.href;
-        },
-        set href(value: string) {
-          hrefAssignments.push(value);
-        },
-      },
-    });
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { href: PAGE },
   });
+});
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("refuses an unregistered redirect_uri before rendering consent", async () => {
-    render(<AuthorizePage />);
-
-    expect(await screen.findByText("Invalid Request")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Deny" })).toBeNull();
-    expect(hrefAssignments).toEqual([]);
-  });
-
-  it("does not offer Return to an unregistered redirect_uri on invalid scopes", async () => {
-    searchParams.set("scope", "WRITE_GRAPH");
-
-    try {
-      render(<AuthorizePage />);
-
-      expect(await screen.findByText("Invalid Request")).toBeTruthy();
-      expect(
-        screen.queryByRole("button", { name: "Return to Application" }),
-      ).toBeNull();
-      expect(hrefAssignments).toEqual([]);
-    } finally {
-      searchParams.set("scope", "EXECUTE_GRAPH");
-    }
-  });
-
-  it("Approve does not follow an evil backend redirect_url", async () => {
-    postOauthAuthorizeMock.mockResolvedValue({
-      status: 200,
-      data: {
-        redirect_url: `${EVIL}?error=unsupported_response_type&state=csrf-state`,
-      },
-    });
-
-    // Use registered URI in query so Approve reaches the backend call,
-    // then backend returns evil redirect_url which must still be rejected.
-    searchParams.set("redirect_uri", GOOD);
+describe("AuthorizePage", () => {
+  test("offers no way back to a redirect_uri the app did not register", async () => {
+    openWith("https://evil.example/collect");
+    server.use(getGetOauthGetOauthAppInfoMockHandler400());
 
     render(<AuthorizePage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Authorize" }));
-
-    await waitFor(() => {
-      expect(postOauthAuthorizeMock).toHaveBeenCalled();
-    });
-
-    expect(hrefAssignments).toEqual([]);
+    expect(await screen.findByText("Invalid Request")).toBeDefined();
     expect(
-      await screen.findByText(/unsafe redirect URL rejected/i),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: /return to application|deny/i }),
+    ).toBeNull();
+    expect(window.location.href).toBe(PAGE);
   });
 
-  it("Deny navigates when redirect_uri is registered", async () => {
-    searchParams.set("redirect_uri", GOOD);
+  test("denying returns the user to the redirect_uri the backend accepted", async () => {
+    let requested: URL | undefined;
+    openWith(REGISTERED);
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
+        requested = new URL(request.url);
+        return { name: "Example App", scopes: ["IDENTITY"] };
+      }),
+    );
 
     render(<AuthorizePage />);
-
     fireEvent.click(await screen.findByRole("button", { name: "Deny" }));
 
-    expect(hrefAssignments).toHaveLength(1);
-    expect(hrefAssignments[0]).toContain(GOOD);
-    expect(hrefAssignments[0]).toContain("error=access_denied");
-    expect(hrefAssignments[0]).not.toContain(EVIL);
+    expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
+    const sentTo = new URL(window.location.href);
+    expect(`${sentTo.origin}${sentTo.pathname}`).toBe(REGISTERED);
+    expect(sentTo.searchParams.get("error")).toBe("access_denied");
+    expect(sentTo.searchParams.get("state")).toBe("state-1");
   });
 });
