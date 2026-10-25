@@ -36,6 +36,8 @@ class PublicErrorCode(Enum):
     RELEASE_TARGET = "Invalid release write target"
     RELEASE_UPDATE = "Release update failed; rerun after checking public notes"
     RELEASE_CHANGED = "Release changed; rerun the workflow"
+    LATEST_RELEASE = "Could not identify the latest release; no notes were updated"
+    LATEST_CHANGED = "The latest release changed during the update; check it"
     WRITE_CONTEXT = "Writes require the trusted master workflow"
     FILE_SYMLINK = "Managed files must not be symlinks"
     UNKNOWN = "Unexpected public-data failure; no raw response or report was logged"

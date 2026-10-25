@@ -478,6 +478,15 @@ class ReleaseWriterTests(unittest.TestCase):
         sleep = patch.object(publish.time, "sleep")
         sleep.start()
         self.addCleanup(sleep.stop)
+        self.latest = dict(
+            self.release, id=999, tag_name="autogpt-platform-beta-v1.0.0"
+        )
+
+    def reads(self, *releases, latest=None):
+        """Answer public_json by path: each release by id, and the latest release."""
+        by_path = {f"releases/{release['id']}": release for release in releases}
+        by_path["releases/latest"] = latest or self.latest
+        return lambda path: (copy.deepcopy(by_path[path]), {})
 
     def test_only_managed_section_changes_and_second_run_is_noop(self):
         newer = dict(self.release, body="# Features\nMaintainer's recent edit\n")
@@ -548,7 +557,7 @@ class ReleaseWriterTests(unittest.TestCase):
                     "public_pages",
                     return_value=[dict(self.release, immutable=was_immutable)],
                 ), patch.object(
-                    publish, "public_json", return_value=(latest, {})
+                    publish, "public_json", side_effect=self.reads(latest)
                 ), patch.object(
                     publish.subprocess,
                     "run",
@@ -560,7 +569,8 @@ class ReleaseWriterTests(unittest.TestCase):
                     )
                 run.assert_called_once()
                 payload = json.loads(run.call_args.kwargs["input"])
-                self.assertEqual(set(payload), {"body"})
+                self.assertEqual(payload["make_latest"], "false")
+                self.assertEqual(set(payload), {"body", "make_latest"})
                 self.assertTrue(payload["body"].startswith(latest["body"]))
                 self.assertIn("GHSA-aaaa-bbbb-cccc", payload["body"])
                 self.assertNotIn(CANARY, run.call_args.kwargs["input"])
@@ -710,22 +720,105 @@ class ReleaseWriterTests(unittest.TestCase):
         ), patch.object(
             publish,
             "public_json",
-            return_value=(dict(self.release, draft=True, body=CANARY), {}),
+            side_effect=self.reads(dict(self.release, draft=True, body=CANARY)),
         ), patch.object(
             publish, "patch_release"
         ) as write, self.assertRaises(
             api.PublicDataError
-        ):
+        ) as raised:
             publish.update_releases(self.digest, apply=True)
+        self.assertIs(raised.exception.code, api.PublicErrorCode.RELEASE_CHANGED)
         write.assert_not_called()
+
+    def test_writes_keep_the_current_latest_release(self):
+        newer_tag = "autogpt-platform-beta-v1.0.0"
+        current = dict(
+            self.latest, tag_name=newer_tag, body=f"Notes\n{START}\nstale\n{END}\n"
+        )
+        releases = [current, self.release]
+        with patch.object(
+            publish, "current_snapshot", return_value=self.snapshot
+        ), patch.object(publish, "public_pages", return_value=releases), patch.object(
+            publish, "public_json", side_effect=self.reads(*releases, latest=current)
+        ), patch.object(
+            publish, "patch_release"
+        ) as write:
+            self.assertEqual(
+                publish.update_releases(self.digest, apply=True),
+                {"changed_releases": 2},
+            )
+        self.assertEqual(
+            [(c.args[0], c.kwargs["latest"]) for c in write.call_args_list],
+            [(current["id"], True), (self.release["id"], False)],
+        )
+
+    def test_latest_release_must_be_known_and_unchanged(self):
+        unreadable = dict(self.latest, draft=True)
+        with patch.object(
+            publish, "current_snapshot", return_value=self.snapshot
+        ), patch.object(
+            publish, "public_pages", return_value=[self.release]
+        ), patch.object(
+            publish,
+            "public_json",
+            side_effect=self.reads(self.release, latest=unreadable),
+        ), patch.object(
+            publish, "patch_release"
+        ) as write, self.assertRaises(
+            api.PublicDataError
+        ) as raised:
+            publish.update_releases(self.digest, apply=True)
+        self.assertIs(raised.exception.code, api.PublicErrorCode.LATEST_RELEASE)
+        write.assert_not_called()
+
+        moved = iter([self.latest, self.release])
+        before_and_after = self.reads(self.release)
+
+        def read(path):
+            if path == "releases/latest":
+                return copy.deepcopy(next(moved)), {}
+            return before_and_after(path)
+
+        with patch.object(
+            publish, "current_snapshot", return_value=self.snapshot
+        ), patch.object(
+            publish, "public_pages", return_value=[self.release]
+        ), patch.object(
+            publish, "public_json", side_effect=read
+        ), patch.object(
+            publish, "patch_release"
+        ) as write, self.assertRaises(
+            api.PublicDataError
+        ) as raised:
+            publish.update_releases(self.digest, apply=True)
+        self.assertIs(raised.exception.code, api.PublicErrorCode.LATEST_CHANGED)
+        write.assert_called_once()
+
+        with patch.object(
+            publish, "current_snapshot", return_value=self.snapshot
+        ), patch.object(
+            publish, "public_pages", return_value=[self.release]
+        ), patch.object(
+            publish, "public_json", side_effect=self.reads(self.release)
+        ) as reader:
+            publish.update_releases(self.digest, preview=True)
+        self.assertNotIn("releases/latest", [c.args[0] for c in reader.call_args_list])
 
     def test_authenticated_transport_only_patches_body_and_suppresses_responses(self):
         response = subprocess.CompletedProcess([], 0, CANARY, CANARY)
-        with patch.object(publish.subprocess, "run", return_value=response) as run:
-            publish.patch_release(123, "Safe public notes")
-        self.assertEqual(
-            json.loads(run.call_args.kwargs["input"]), {"body": "Safe public notes"}
-        )
+        for latest, flag in ((False, "false"), (True, "true")):
+            with patch.object(publish.subprocess, "run", return_value=response) as run:
+                publish.patch_release(123, "Safe public notes", latest=latest)
+            self.assertEqual(
+                json.loads(run.call_args.kwargs["input"]),
+                {"body": "Safe public notes", "make_latest": flag},
+            )
+        for invalid in ("false", None, 1):
+            with self.subTest(latest=invalid), patch.object(
+                publish.subprocess, "run"
+            ) as never, self.assertRaises(api.PublicDataError):
+                publish.patch_release(123, "Safe public notes", latest=invalid)
+            never.assert_not_called()
         self.assertIn(
             "repos/Significant-Gravitas/AutoGPT/releases/123", run.call_args.args[0]
         )
@@ -737,7 +830,7 @@ class ReleaseWriterTests(unittest.TestCase):
             "run",
             return_value=subprocess.CompletedProcess([], 1, CANARY, CANARY),
         ), self.assertRaises(api.PublicDataError) as raised:
-            publish.patch_release(123, "Safe public notes")
+            publish.patch_release(123, "Safe public notes", latest=False)
         self.assertNotIn(CANARY, str(raised.exception))
 
     def test_cli_refuses_writes_outside_trusted_workflow(self):

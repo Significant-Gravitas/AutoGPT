@@ -66,8 +66,11 @@ The jobs have separate permissions and no shared report artifacts:
    release anonymously immediately before updating its managed section. Drafts
    are not edited. Published immutable releases are eligible because GitHub
    permits updating their notes while protecting their tags and assets.
-   The writer sends only the release body. It preserves all other notes from that
-   fresh read. GitHub does not document conditional PATCH support for releases:
+   The writer sends only the release body and `make_latest`, which is `true` for
+   the current Latest release and `false` for every other release, because GitHub
+   documents `make_latest` as defaulting to `true`. It reads `releases/latest`
+   before the first edit and again after the last, and fails if the Latest
+   release changed. It preserves all other notes from that fresh read. GitHub does not document conditional PATCH support for releases:
    an edit racing the final read and write can still be overwritten. Avoid manual
    release-note edits during this short job, and inspect concurrent changes before
    rerunning. Updates are serialized but are not a cross-release transaction.
@@ -82,7 +85,7 @@ not block an independently enabled release writer.
 The release writer uses only the repository's short-lived `GITHUB_TOKEN` with
 `contents: write`. The credits writer additionally needs `pull-requests: write`.
 No personal access token or advisory-write credential is used. The authenticated
-transport can only PATCH the body of an existing release; there is no operation
+transport can only PATCH the body and Latest flag of an existing release; there is no operation
 that creates or publishes an advisory or release. GitHub does not start release
 workflows for release edits made with this token. Do not replace it with a PAT:
 older release tags may retain workflows that build images on `release.edited`.
@@ -110,7 +113,8 @@ history remain public history; withdrawal cannot erase previously published data
    approve or merge its own PRs. The repository must allow Actions to create PRs.
 5. After reviewing the public release preview, set
    `PUBLIC_SECURITY_RELEASE_NOTES_ENABLED=true` and dispatch with `dry_run: false`.
-   Verify the first applied release sections and preservation of unrelated notes.
+   Verify the first applied release sections, preservation of unrelated notes,
+   and that the Latest release is still the newest release (the job checks it too).
    Subsequent scheduled runs reconcile releases automatically.
 
 Both switches default to disabled. `dry_run: true` disables both writers regardless

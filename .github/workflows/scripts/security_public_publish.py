@@ -35,9 +35,19 @@ def published_release(release):
     )
 
 
-def patch_release(release_id, body):
-    if type(release_id) is not int or release_id <= 0:
+def latest_release_id():
+    release, _ = public_json("releases/latest")
+    if not published_release(release):
+        raise PublicDataError(PublicErrorCode.LATEST_RELEASE)
+    return release["id"]
+
+
+def patch_release(release_id, body, *, latest):
+    if type(release_id) is not int or release_id <= 0 or type(latest) is not bool:
         raise PublicDataError(PublicErrorCode.RELEASE_TARGET)
+    # GitHub documents make_latest as defaulting to true, so editing an older release
+    # without it could take the Latest badge from the current release.
+    payload = {"body": body, "make_latest": "true" if latest else "false"}
     result = subprocess.run(
         [
             "gh",
@@ -51,7 +61,7 @@ def patch_release(release_id, body):
             "--input",
             "-",
         ],
-        input=json.dumps({"body": body}),
+        input=json.dumps(payload),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -75,6 +85,7 @@ def update_releases(expected_digest, *, apply=False, preview=False):
         candidates.append(release)
     # Recheck the public projection after reading release metadata, before any write.
     current_snapshot(expected_digest)
+    latest = latest_release_id() if apply and candidates else None
     updated = 0
     sections = []
     for candidate in candidates:
@@ -90,7 +101,7 @@ def update_releases(expected_digest, *, apply=False, preview=False):
         )
         if body != (release.get("body") or ""):
             if apply:
-                patch_release(release["id"], body)
+                patch_release(release["id"], body, latest=release["id"] == latest)
                 time.sleep(1)
             updated += 1
             if preview:
@@ -100,6 +111,8 @@ def update_releases(expected_digest, *, apply=False, preview=False):
                     f"### [{tag}](https://github.com/{REPOSITORY}/releases/tag/{tag})"
                     f"\n\n```markdown\n{section}```\n"
                 )
+    if latest is not None and updated and latest_release_id() != latest:
+        raise PublicDataError(PublicErrorCode.LATEST_CHANGED)
     result = {"changed_releases": updated}
     if preview:
         result["preview"] = (
