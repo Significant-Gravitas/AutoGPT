@@ -23,7 +23,7 @@ import {
 } from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
-import { isDecisionOnlyText } from "./cardDecisions";
+import { isDecisionOnlyText, isUnsentDecisionRow } from "./cardDecisions";
 import {
   clearKickoffPending,
   getKickoffAttemptTokenFromMetadata,
@@ -320,12 +320,7 @@ export function useCopilotStream({
       };
       const failureForThisTurn = providerFailureRef.current;
       providerFailureRef.current = null;
-      // A card decision the server refused is the card's protocol: left on
-      // screen, the unsaved row reads as the card's answer, so it goes and
-      // the card asks again. If the row did save, the refetch brings it back.
-      const unsentDecision = isDecisionOnlyText(
-        coord.lastSubmittedMessageText ?? "",
-      );
+      const sentText = coord.lastSubmittedMessageText ?? "";
       // Resuming keeps the send in flight, and a refused send's text is kept
       // by `restoreUnsentSend` when the composer is busy.
       let keepSendMemory = false;
@@ -379,8 +374,20 @@ export function useCopilotStream({
           lastSubmittedMessageText: null,
         });
       }
-      if (kickoffExpertId || (unsentDecision && !keepSendMemory)) {
-        if (kickoffExpertId) releaseKickoffPending();
+      // A card decision the server refused is the card's protocol: left on
+      // screen, its unsaved row reads as the card's answer, so it goes and
+      // the card asks again. Only that row: the send memory outlives the
+      // send, and a later error must not take a saved row with it.
+      if (!keepSendMemory && isDecisionOnlyText(sentText)) {
+        setMessages((prev) => {
+          if (!isUnsentDecisionRow(prev.at(-1), sentText)) return prev;
+          const next = prev.slice(0, -1);
+          useCopilotStreamStore.getState().setMessageSnapshot(sessionId, next);
+          return next;
+        });
+      }
+      if (kickoffExpertId) {
+        releaseKickoffPending();
         useCopilotStreamStore.getState().updateCoord(sessionId, {
           lastSubmittedMessageText: null,
           lastSubmittedKickoffExpertId: null,

@@ -88,6 +88,21 @@ export function isDecisionOnlyText(text: string): boolean {
   return decisionsFromText(text) !== null;
 }
 
+/** The row a card decision send just added, which the server never saved:
+ *  a user row, unsaved, holding exactly that decision text. Any other row,
+ *  saved or someone else's, is not the send's to take back. */
+export function isUnsentDecisionRow(
+  message: UIMessage<unknown, UIDataTypes, UITools> | undefined,
+  sentText: string,
+): boolean {
+  return (
+    message?.role === "user" &&
+    extractDbSequence(message) === null &&
+    isDecisionOnlyText(sentText) &&
+    messageText(message) === sentText.trim()
+  );
+}
+
 function decisionsFromMetadata(metadata: unknown): CardDecision[] | null {
   if (!metadata || typeof metadata !== "object") return null;
   const { kind, decisions } = metadata as Record<string, unknown>;

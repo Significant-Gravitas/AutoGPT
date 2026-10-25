@@ -327,6 +327,56 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       expect(document.body.textContent).not.toContain("confirmation_id");
     });
 
+    it("keeps a saved row when a later error finds an old decision in the send memory", async () => {
+      // A decision sent earlier stays in the send memory, as any send does.
+      const line = "Approved: hire Maya (confirmation_id: c-1).";
+      useCopilotStreamStore
+        .getState()
+        .updateCoord(TEST_SESSION_ID, { lastSubmittedMessageText: line });
+      let resumes = 0;
+      server.use(
+        http.get(
+          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+          () => {
+            resumes += 1;
+            return HttpResponse.json({ detail: "boom" }, { status: 500 });
+          },
+        ),
+      );
+
+      renderHost({
+        sessionOverride: {
+          chat_status: "running",
+          active_stream: {
+            turn_id: "turn-1",
+            last_message_id: "db-1",
+            started_at: "2026-05-13T00:00:00Z",
+          },
+          messages: [
+            {
+              id: "db-1",
+              role: "user",
+              content: line,
+              tool_call_id: null,
+              tool_calls: null,
+              sequence: 1,
+              duration_ms: null,
+              created_at: "2026-05-13T00:01:00Z",
+              metadata: null,
+            },
+          ],
+        },
+      });
+
+      // The saved answer is on screen, the resume fails, and it stays.
+      expect(await screen.findByText("You approved hiring Maya")).toBeDefined();
+      await waitFor(() => expect(resumes).toBeGreaterThan(0), {
+        timeout: 5000,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(screen.getByText("You approved hiring Maya")).toBeDefined();
+    });
+
     it("surfaces an HTTP 500 response as a visible error", async () => {
       server.use(
         copilotStreamErrorHandler({

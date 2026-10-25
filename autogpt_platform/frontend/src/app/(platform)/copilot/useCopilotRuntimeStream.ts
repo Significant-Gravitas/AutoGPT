@@ -14,7 +14,7 @@ import {
 
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
-import { isDecisionOnlyText } from "./cardDecisions";
+import { isDecisionOnlyText, isUnsentDecisionRow } from "./cardDecisions";
 import {
   clearKickoffPending,
   getKickoffAttemptTokenFromMetadata,
@@ -132,16 +132,11 @@ export function useCopilotRuntimeStream({
         lastSubmittedKickoffExpertId: null,
         lastSubmittedKickoffAttemptToken: null,
       });
+    const sentText = coord.lastSubmittedMessageText ?? "";
+    let keepsUnsentRow = false;
     // The backend refuses a turn over our cap (429) or without a plan (402)
     // before persisting its prompt: put the text back in an empty composer
     // and drop the bubble.
-    // A card decision the server refused is the card's protocol: left on
-    // screen, the unsaved row reads as the card's answer, so it goes and the
-    // card asks again. If the row did save, the refetch brings it back.
-    const unsentDecision = isDecisionOnlyText(
-      coord.lastSubmittedMessageText ?? "",
-    );
-    let keepsUnsentRow = false;
     function restoreUnsentSend() {
       keepsUnsentRow = true;
       if (!coord.lastSubmittedMessageText) return;
@@ -175,7 +170,17 @@ export function useCopilotRuntimeStream({
       onPaywall: restoreUnsentSend,
       isUserStoppingRef,
     });
-    if (unsentDecision && !keepsUnsentRow) {
+    // A card decision the server refused is the card's protocol: left on
+    // screen, its unsaved row reads as the card's answer, so it goes and the
+    // card asks again. Only that row: the send memory outlives the send.
+    const newest = runtime?.getSnapshot().segments.at(-1);
+    if (
+      !keepsUnsentRow &&
+      newest?.kind === "user" &&
+      newest.origin === "sent" &&
+      newest.sequence === null &&
+      isUnsentDecisionRow(newest.message, sentText)
+    ) {
       clearRecovery();
       runtime?.dropUnsentUserRow();
     }
