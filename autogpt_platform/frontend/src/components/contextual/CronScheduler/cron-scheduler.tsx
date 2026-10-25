@@ -226,7 +226,11 @@ export function CronScheduler({
   return (
     <div className="max-w-md space-y-6">
       <div className="space-y-4">
-        <Label className="text-body-lg font-medium leading-6">Repeat</Label>
+        <Label>
+          <Text variant="large-medium-tight" as="span" tone="inherit">
+            Repeat
+          </Text>
+        </Label>
 
         <Select
           value={frequency}
@@ -303,7 +307,7 @@ export function CronScheduler({
             <Label>On</Label>
             <Button
               variant="outline"
-              className="h-8 px-2 py-1 text-caption leading-4"
+              className="h-8 px-2 py-1"
               onClick={() => {
                 if (selectedWeekDays.length === weekDays.length) {
                   setSelectedWeekDays([]);
@@ -312,23 +316,29 @@ export function CronScheduler({
                 }
               }}
             >
-              {selectedWeekDays.length === weekDays.length
-                ? "Deselect All"
-                : "Select All"}
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                {selectedWeekDays.length === weekDays.length
+                  ? "Deselect All"
+                  : "Select All"}
+              </Text>
             </Button>
             <Button
               variant="outline"
-              className="h-8 px-2 py-1 text-caption leading-4"
+              className="h-8 px-2 py-1"
               onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
-              Weekdays
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                Weekdays
+              </Text>
             </Button>
             <Button
               variant="outline"
-              className="h-8 px-2 py-1 text-caption leading-4"
+              className="h-8 px-2 py-1"
               onClick={() => setSelectedWeekDays([0, 6])}
             >
-              Weekends
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                Weekends
+              </Text>
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -432,7 +442,7 @@ export function CronScheduler({
           <div className="flex gap-2">
             <Button
               variant="outline"
-              className="h-8 px-2 py-1 text-caption leading-4"
+              className="h-8 px-2 py-1"
               onClick={() => {
                 if (selectedMonths.length === months.length) {
                   setSelectedMonths([]);
@@ -443,9 +453,11 @@ export function CronScheduler({
                 }
               }}
             >
-              {selectedMonths.length === months.length
-                ? "Deselect All"
-                : "Select All"}
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                {selectedMonths.length === months.length
+                  ? "Deselect All"
+                  : "Select All"}
+              </Text>
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">

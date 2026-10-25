@@ -450,8 +450,10 @@ export function MCPToolDialog({
                   selectClassName="h-10 rounded-md border border-input bg-background px-3 text-body leading-5"
                 />
 
-                <Label htmlFor="mcp-auth-token" className="text-body leading-5">
-                  {mcpAuthTokenLabel(manualAuthScheme)}
+                <Label htmlFor="mcp-auth-token">
+                  <Text variant="body-medium-tight" as="span" tone="inherit">
+                    {mcpAuthTokenLabel(manualAuthScheme)}
+                  </Text>
                 </Label>
                 <BaseInput
                   id="mcp-auth-token"
@@ -718,9 +720,11 @@ function MCPToolCard({
             e.stopPropagation();
             setExpanded((prev) => !prev);
           }}
-          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-tiny leading-inherit text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
+          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
         >
-          {expanded ? "Hide details" : "Show details"}
+          <Text variant="tiny-inherit" as="span" tone="inherit">
+            {expanded ? "Hide details" : "Show details"}
+          </Text>
           <Icon
             icon={ArrowDown01Icon}
             className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}

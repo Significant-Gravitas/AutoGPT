@@ -33,6 +33,9 @@ export const variants = {
   large: "font-sans text-body-lg font-normal text-foreground-base",
   "large-medium": "font-sans text-body-lg font-medium text-foreground-base",
   "large-semibold": "font-sans text-body-lg font-semibold text-foreground-base",
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
+  "large-medium-tight":
+    "font-sans text-body-lg font-medium leading-6 text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
@@ -52,9 +55,15 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-tight":
     "font-sans text-caption font-normal leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-medium-tight":
+    "font-sans text-caption font-medium leading-4 text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  "tiny-inherit":
+    "font-sans text-tiny font-normal leading-inherit text-foreground-base",
 
   // Label Text
   label:
@@ -100,6 +109,7 @@ export const variantElementMap: Record<Variant, As> = {
   large: "p",
   "large-medium": "p",
   "large-semibold": "p",
+  "large-medium-tight": "p",
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
@@ -109,7 +119,9 @@ export const variantElementMap: Record<Variant, As> = {
   small: "p",
   "small-medium": "p",
   "small-tight": "p",
+  "small-medium-tight": "p",
   "small-relaxed": "p",
+  "tiny-inherit": "span",
   label: "span",
   eyebrow: "span",
 };
