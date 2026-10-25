@@ -146,7 +146,6 @@ describe("stepFailed", () => {
     expect(stepFailed("test -f a || grep -q x b", exit(1))).toBe(false);
     expect(stepFailed("grep -q x a && wc -l a", exit(1))).toBe(false);
     expect(stepFailed("grep -q x f && echo ok", exit(1))).toBe(false);
-    expect(stepFailed("./build.sh || grep -q x f", exit(1))).toBe(false);
     expect(stepFailed("cat log | grep -q x && echo ok", exit(1))).toBe(false);
   });
 
@@ -155,7 +154,7 @@ describe("stepFailed", () => {
     expect(stepFailed("grep -q x f || ./fallback.sh", exit(1))).toBe(true);
     expect(
       stepFailed("test -f a && ./publish.sh || grep -q x b", exit(1)),
-    ).toBe(false);
+    ).toBe(true);
     expect(stepFailed("grep -q x f && ./publish.sh && echo ok", exit(1))).toBe(
       true,
     );
@@ -204,6 +203,45 @@ describe("stepFailed", () => {
   });
 });
 
+describe("stepFailed, from what ran", () => {
+  const exit = (code: number) => ({ stdout: "", stderr: "", exit_code: code });
+
+  it("calls exit 1 a failure when a command must have failed on the way to it", () => {
+    // `||` only runs grep after build.sh failed: both failed, quietly.
+    expect(stepFailed("./build.sh || grep -q x f", exit(1))).toBe(true);
+    expect(stepFailed("./a.sh || ./b.sh || grep -q x f", exit(1))).toBe(true);
+    expect(
+      stepFailed("grep -q x f && ./publish.sh || test -f a", exit(1)),
+    ).toBe(true);
+  });
+
+  it("calls exit 1 a failure when a silenced command could have set it", () => {
+    expect(
+      stepFailed("cd drafts 2>/dev/null && test -f brief.md", exit(1)),
+    ).toBe(true);
+    expect(stepFailed("cd drafts &>/dev/null && grep -q x f", exit(1))).toBe(
+      true,
+    );
+    expect(stepFailed("mkdir out 2>&1 && test -d out/a", exit(1))).toBe(true);
+  });
+
+  it("still reads a chain of tests, or a loud command then a test, as a 'no'", () => {
+    expect(stepFailed("test -f a || grep -q x b", exit(1))).toBe(false);
+    expect(stepFailed("[ -d d ] || test -f a || grep -q x b", exit(1))).toBe(
+      false,
+    );
+    expect(stepFailed("cd drafts && test -f brief.md", exit(1))).toBe(false);
+    expect(stepFailed("grep -q x f 2>/dev/null", exit(1))).toBe(false);
+    expect(stepFailed("grep -q x f 2>/dev/null || grep -q y f", exit(1))).toBe(
+      false,
+    );
+    expect(stepFailed("! test -f a || grep -q x f", exit(1))).toBe(false);
+    expect(stepFailed("cd drafts >&2 && test -f brief.md", exit(1))).toBe(
+      false,
+    );
+  });
+});
+
 describe("stepOutput", () => {
   it("reads the outcome of a result too large for the chat from its kept tail", () => {
     const failed = truncatedEnvelope({
@@ -248,6 +286,13 @@ describe("stepOutput", () => {
       exit_code: 2,
     });
     expect(stepOutput(printed)).toMatchObject({ exit_code: 2 });
+  });
+
+  it("skips a field it cannot read rather than throwing", () => {
+    const envelope =
+      '<tool-output-truncated total_chars=9>\n{"stdout": "x… (omitted 9 chars)…y", "stderr": "bad \\q", "exit_code": 4}\n</tool-output-truncated>';
+    expect(() => stepOutput(envelope)).not.toThrow();
+    expect(stepOutput(envelope)).toEqual({ exit_code: 4 });
   });
 
   it("passes an object through and reads nothing from other text", () => {
