@@ -52,9 +52,11 @@ function ArtifactContentLoader({
           type="button"
           onClick={retry}
           // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-caption font-medium leading-4 text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="inline-flex items-center rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
-          Try again
+          <Text variant="small-medium-tight" as="span" tone="body">
+            Try again
+          </Text>
         </button>
       </div>
     );
@@ -109,9 +111,11 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
             setRetryNonce((n) => n + 1);
           }}
           // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-caption font-medium leading-4 text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="inline-flex items-center rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
-          Try again
+          <Text variant="small-medium-tight" as="span" tone="body">
+            Try again
+          </Text>
         </button>
       </div>
     );
@@ -159,9 +163,11 @@ function ArtifactVideo({ src }: { src: string }) {
             setRetryNonce((n) => n + 1);
           }}
           // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-caption font-medium leading-4 text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="inline-flex items-center rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
-          Try again
+          <Text variant="small-medium-tight" as="span" tone="body">
+            Try again
+          </Text>
         </button>
       </div>
     );
@@ -230,9 +236,14 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-body leading-5 text-foreground-emphasis">
+      <Text
+        variant="body-mono-tight"
+        as="pre"
+        tone="emphasis"
+        className="whitespace-pre-wrap break-words p-4"
+      >
         {content}
-      </pre>
+      </Text>
     );
   }
 
@@ -321,9 +332,14 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-body leading-5 text-foreground-emphasis">
+    <Text
+      variant="body-mono-tight"
+      as="pre"
+      tone="emphasis"
+      className="whitespace-pre-wrap break-words p-4"
+    >
       {content}
-    </pre>
+    </Text>
   );
 }
 
