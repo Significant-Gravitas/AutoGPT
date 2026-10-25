@@ -30,6 +30,7 @@ def settings_db(monkeypatch):
     db.get_expert_hired_at = AsyncMock(
         return_value=datetime.now(UTC) - timedelta(days=30)
     )
+    db.stop_delegation_at_cap = AsyncMock()
     for module in (
         "backend.copilot.tools.delegation_policy",
         "backend.copilot.tools.sub_session_facts",
@@ -195,6 +196,7 @@ async def test_a_working_delegation_past_its_cap_is_stopped(
     assert (r.status, r.error) == ("error", "cap reached")
     assert "$2.00" in r.message
     cancel.assert_awaited_once_with("inner-1")
+    settings_db.stop_delegation_at_cap.assert_awaited_once_with("inner-1", "alice")
     parked.assert_not_awaited()
 
 
@@ -487,3 +489,21 @@ async def test_a_question_parked_after_a_stop_is_what_the_thread_waits_on(
     r = await _poll(monkeypatch, thread, running=False)
 
     assert (r.status, r.question) == ("needs_input", _CAP_QUESTION.text)
+
+
+@pytest.mark.asyncio
+async def test_a_poll_that_stops_a_thread_at_its_cap_records_the_stop(
+    monkeypatch, settings_db, cancel, parked
+):
+    """With "Ask before going over the cap" off, the backstop's stop is
+    durable like the executor's: a later poll, the lists and the live card
+    read "cap reached", not an ordinary cancellation."""
+    settings_db.get_session_costs.return_value = {"inner-1": 1_000_000}
+    settings_db.get_delegation_settings.return_value = _no_over_cap_question()
+
+    r = await _poll(monkeypatch, _thread(), running=True)
+
+    assert (r.status, r.error) == ("error", "cap reached")
+    cancel.assert_awaited_once_with("inner-1")
+    settings_db.stop_delegation_at_cap.assert_awaited_once_with("inner-1", "alice")
+    parked.assert_not_awaited()

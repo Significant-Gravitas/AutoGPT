@@ -18,10 +18,9 @@ from pydantic import BaseModel
 from backend.api.features.experts.models import Expert
 from backend.copilot.delegation_cap import (
     CAP_OPTIONS,
-    asks_over_cap,
     cap_question,
+    hold_at_cap,
     is_cap_question,
-    park_at_cap,
 )
 from backend.copilot.delegation_settings import DelegationSettings, start_of_utc_day
 from backend.copilot.executor.utils import enqueue_cancel_task
@@ -157,9 +156,10 @@ async def enforce_cap(
         return response
     if response.status not in ("running", "queued"):
         return response
+    # The same durable hold a turn that lands on its cap gets, so later reads
+    # see the cap, not an ordinary cancellation.
     await enqueue_cancel_task(response.sub_session_id)
-    if await asks_over_cap(user_id):
-        await park_at_cap(response.sub_session_id, user_id, cap)
+    if await hold_at_cap(response.sub_session_id, user_id, cap):
         return _awaiting_raise(response, cap, actor)
     return _cap_reached(response, cap, actor)
 

@@ -68,16 +68,18 @@ async def park_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
     await invalidate_session_cache(session_id)
 
 
-async def hold_at_cap(session_id: str, user_id: str, cap_usd: float) -> None:
-    """Hold a thread whose turn landed on its cap for the user's word: parked
-    on the raise-or-stop question while ``ask_before_over_cap`` is on, else
-    stopped there. The turn has already ended, so nothing is left to cancel.
+async def hold_at_cap(session_id: str, user_id: str, cap_usd: float) -> bool:
+    """Hold a thread that reached its cap for the user's word: parked on the
+    raise-or-stop question while ``ask_before_over_cap`` is on, else stopped
+    there. True when it parked. Cancelling a turn still running is the
+    caller's: a turn that landed on the cap has already ended.
     """
     if await asks_over_cap(user_id):
         await park_at_cap(session_id, user_id, cap_usd)
-    else:
-        await delegation_db().stop_delegation_at_cap(session_id, user_id)
-        await invalidate_session_cache(session_id)
+        return True
+    await delegation_db().stop_delegation_at_cap(session_id, user_id)
+    await invalidate_session_cache(session_id)
+    return False
 
 
 async def asks_over_cap(user_id: str) -> bool:
