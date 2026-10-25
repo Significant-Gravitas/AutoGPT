@@ -114,8 +114,6 @@ export default function AuthorizePage() {
   }
 
   function handleDeny() {
-    // appInfo loads only once the backend accepts redirectURI for this client
-    if (!appInfo) return;
     const params = new URLSearchParams({
       error: "access_denied",
       error_description: "User denied access",

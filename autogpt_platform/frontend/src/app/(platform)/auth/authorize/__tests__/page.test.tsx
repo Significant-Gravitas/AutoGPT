@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetOauthGetOauthAppInfoMockHandler200,
@@ -25,6 +25,7 @@ vi.mock("next/navigation", () => ({
 
 const PAGE = "http://localhost/auth/authorize";
 const REGISTERED = "https://app.example.com/callback";
+const realLocation = Object.getOwnPropertyDescriptor(window, "location")!;
 
 function openWith(redirectURI: string) {
   mockUseSearchParams.mockReturnValue(
@@ -44,6 +45,10 @@ beforeEach(() => {
     configurable: true,
     value: { href: PAGE },
   });
+});
+
+afterEach(() => {
+  Object.defineProperty(window, "location", realLocation);
 });
 
 describe("AuthorizePage", () => {
