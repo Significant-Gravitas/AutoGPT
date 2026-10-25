@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Search } from "lucide-react";
 import {
   Select,
@@ -67,7 +67,7 @@ export function SearchAndFilterAdminMarketplace({
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         />
-        <Button variant="outline" onClick={handleSearch}>
+        <Button variant="legacy-outline" onClick={handleSearch}>
           <Search className="h-4 w-4" />
         </Button>
       </div>

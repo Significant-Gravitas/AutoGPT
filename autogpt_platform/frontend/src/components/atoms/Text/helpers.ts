@@ -64,6 +64,12 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-loose":
+    "font-sans text-caption font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-medium-loose":
+    "font-sans text-caption font-medium leading-5 text-foreground-base",
   // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
   "caption-sm-mono":
     "font-mono text-caption-sm font-normal text-foreground-base",
@@ -77,6 +83,11 @@ export const variants = {
   "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
   // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
   "2xl": "font-sans text-2xl font-normal text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-medium": "font-sans text-lg font-medium text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
+  "2xl-bold-tracking-tight":
+    "font-sans text-2xl font-bold tracking-tight text-foreground-base",
 
   // Label Text
   label:
@@ -135,11 +146,15 @@ export const variantElementMap: Record<Variant, As> = {
   "small-tight": "p",
   "small-medium-tight": "p",
   "small-relaxed": "p",
+  "small-loose": "p",
+  "small-medium-loose": "p",
   "caption-sm-mono": "span",
   "tiny-inherit": "span",
   "lg-semibold": "h3",
   "2xl-bold": "div",
   "2xl": "span",
+  "lg-medium": "h3",
+  "2xl-bold-tracking-tight": "h1",
   label: "span",
   eyebrow: "span",
 };
