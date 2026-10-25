@@ -90,9 +90,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
-  // Keeps the parent's line height, like the raw size it replaced.
-  "caption-sm-mono-inherit":
-    "font-mono text-caption-sm font-normal leading-inherit text-foreground-base",
+  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
+  "caption-sm-mono":
+    "font-mono text-caption-sm font-normal text-foreground-base",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -159,5 +159,5 @@ export const variantElementMap: Record<Variant, As> = {
   "small-mono-bold-tight": "code",
   "tiny-inherit": "span",
   "small-relaxed": "p",
-  "caption-sm-mono-inherit": "span",
+  "caption-sm-mono": "span",
 };
