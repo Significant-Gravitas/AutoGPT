@@ -59,7 +59,11 @@ from backend.util.llm.provider_billing import (
     is_provider_out_of_credits,
     report_provider_out_of_credits,
 )
-from backend.util.llm.providers import timeout_error
+from backend.util.llm.providers import (
+    HttpAttemptLog,
+    current_http_attempts,
+    timeout_error,
+)
 from backend.util.llm.saturation import track_llm_call
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
@@ -84,6 +88,10 @@ LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 # Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
 # nothing, and paging on those during an outage would bury the ones that cost.
 _SPEND_BURNED_ELAPSED_FRACTION = 0.9
+
+# A request still open after this long was generating, whatever the slice was.
+# Matches the lowest llm_request_timeout_seconds the settings allow.
+_SPEND_BURNED_MIN_IN_FLIGHT_SECONDS = 30
 
 # A retry gets only what is left of the shared deadline. Below this it would
 # almost surely be cut off mid-inference, billed and wasted, so stop instead.
@@ -299,6 +307,8 @@ async def llm_call(
         LLM_REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
     )
     started = _now()
+    attempts = HttpAttemptLog(clock=_now)
+    attempts_token = current_http_attempts.set(attempts)
     with track_llm_call(
         graph_exec_id=execution_context.graph_exec_id if execution_context else None,
         provider=llm_model.metadata.provider,
@@ -332,6 +342,7 @@ async def llm_call(
         ) as e:
             _log_timeout_outcome(
                 elapsed=_now() - started,
+                attempts=attempts,
                 timeout_seconds=timeout,
                 llm_model=llm_model,
                 execution_context=execution_context,
@@ -356,6 +367,8 @@ async def llm_call(
             if is_prompt_refused(e):
                 raise PromptRefusedError() from e
             raise
+        finally:
+            current_http_attempts.reset(attempts_token)
 
 
 def _is_platform_credential(credentials: APIKeyCredentials | None) -> bool:
@@ -1033,6 +1046,7 @@ def trim_prompt(s: str) -> str:
 def _log_timeout_outcome(
     *,
     elapsed: float,
+    attempts: HttpAttemptLog,
     timeout_seconds: float,
     llm_model: LLMModel,
     execution_context: "ExecutionContext | None",
@@ -1046,10 +1060,26 @@ def _log_timeout_outcome(
     is the only surface — see #14292 for the paging decision.
     """
     budget = timeout_seconds
-    if elapsed < budget * _SPEND_BURNED_ELAPSED_FRACTION:
+    # Every earlier request got a response, and SDKs retry only on errors
+    # that bill nothing, so only the last request can have been generating.
+    if attempts.starts:
+        in_flight = attempts.clock() - attempts.starts[-1]
+        in_flight_source = "last_request"
+        threshold = min(
+            budget * _SPEND_BURNED_ELAPSED_FRACTION,
+            _SPEND_BURNED_MIN_IN_FLIGHT_SECONDS,
+        )
+    else:
+        in_flight = elapsed
+        in_flight_source = "elapsed_fallback"
+        threshold = budget * _SPEND_BURNED_ELAPSED_FRACTION
+    if in_flight < threshold:
         logger.warning(
-            f"LLM call timed out after {elapsed:.1f}s, below the "
-            f"mid-inference alert threshold, not retrying: {error}"
+            f"LLM call timed out after {elapsed:.1f}s and "
+            f"{len(attempts.starts)} HTTP attempt(s) (statuses "
+            f"{attempts.statuses}); final request open {in_flight:.1f}s "
+            f"({in_flight_source}), below the mid-inference alert threshold, "
+            f"not retrying: {error}"
         )
         return
 
@@ -1062,6 +1092,10 @@ def _log_timeout_outcome(
             "json_fields": {
                 "elapsed_seconds": round(elapsed, 1),
                 "configured_timeout_seconds": budget,
+                "last_request_in_flight_seconds": round(in_flight, 1),
+                "http_attempts": len(attempts.starts),
+                "prior_response_statuses": attempts.statuses,
+                "in_flight_source": in_flight_source,
                 "provider": llm_model.metadata.provider,
                 "model": llm_model.value,
                 # A bare asyncio.TimeoutError stringifies to "", which would

@@ -31,9 +31,12 @@ What this module is NOT responsible for (caller wraps):
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import functools
 import json as json_module
 import logging
+from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
@@ -98,6 +101,50 @@ def request_timeout(timeout_seconds: float) -> httpx.Timeout:
         timeout_seconds,
         connect=FAST_FAIL_TIMEOUT_SECONDS,
         pool=FAST_FAIL_TIMEOUT_SECONDS,
+    )
+
+
+@dataclasses.dataclass
+class HttpAttemptLog:
+    """Each HTTP request an SDK sent for one block LLM call, retries included.
+
+    One timeout covers every SDK retry and its backoff, so only the start of
+    the last request tells how long the request that was cut off ran (#16173).
+    """
+
+    clock: Callable[[], float]
+    starts: list[float] = dataclasses.field(default_factory=list)
+    statuses: list[int] = dataclasses.field(default_factory=list)
+
+
+# Set by the block-side llm_call; other callers leave it None and record nothing.
+current_http_attempts: ContextVar[HttpAttemptLog | None] = ContextVar(
+    "current_http_attempts", default=None
+)
+
+
+async def _record_http_request(request: httpx.Request) -> None:
+    log = current_http_attempts.get()
+    if log is not None:
+        log.starts.append(log.clock())
+
+
+async def _record_http_response(response: httpx.Response) -> None:
+    log = current_http_attempts.get()
+    if log is not None:
+        log.statuses.append(response.status_code)
+
+
+def _attempt_logging_http_client(sdk: Any) -> httpx.AsyncClient:
+    """The SDK's default httpx client, with hooks that see every SDK retry.
+
+    An SDK never closes a client it was handed, so the caller must.
+    """
+    return sdk.DefaultAsyncHttpxClient(
+        event_hooks={
+            "request": [_record_http_request],
+            "response": [_record_http_response],
+        }
     )
 
 
@@ -511,7 +558,8 @@ async def _call_openai_responses(
     timeout_seconds: float,
     service_tier: str | None = None,
 ) -> ProviderResponse:
-    client = openai.AsyncOpenAI(api_key=api_key)
+    http_client = _attempt_logging_http_client(openai)
+    client = openai.AsyncOpenAI(api_key=api_key, http_client=http_client)
     tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
     text_config: Any = openai.omit
     if force_json_output:
@@ -525,38 +573,41 @@ async def _call_openai_responses(
     if service_tier:
         extra_body["service_tier"] = service_tier
 
-    response = await client.responses.create(
-        model=model,
-        input=messages,  # type: ignore[arg-type]
-        tools=tools_param,  # type: ignore[arg-type]
-        max_output_tokens=max_tokens,
-        # Reasoning models (o-series) reject ``temperature`` — same guard
-        # as the Anthropic path: only send the field when the caller set
-        # one, never a default.
-        temperature=temperature if temperature is not None else openai.omit,
-        parallel_tool_calls=parallel_tool_calls,
-        text=text_config,  # type: ignore[arg-type]
-        # ``store=False`` keeps conversation state out of OpenAI's servers —
-        # we replay the full input on every turn instead. The cost is that a
-        # reasoning item (gpt-5*, o3*) emitted on turn N can't be referenced
-        # by its ``rs_...`` id on turn N+1 (nothing was persisted to look up;
-        # OpenAI 404s with "Item with id 'rs_...' not found"). Asking for
-        # ``reasoning.encrypted_content`` makes OpenAI return the reasoning
-        # item with an opaque encrypted blob the orchestrator re-inlines
-        # verbatim next turn, so the model gets its prior reasoning back
-        # without server-side state. Harmless for non-reasoning models
-        # (gpt-4.1/4o) — they emit no reasoning items, so nothing comes back.
-        # See OPEN-3187.
-        store=False,
-        include=["reasoning.encrypted_content"],
-        timeout=request_timeout(timeout_seconds),
-        # ``omit`` is only valid for TYPED params — the SDK strips it
-        # there. ``extra_body`` flows raw into ``options.extra_json``
-        # (``make_request_options`` checks ``is not None``), and
-        # ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
-        # mapping`` on the sentinel. Absent extra_body must be ``None``.
-        extra_body=extra_body or None,
-    )
+    try:
+        response = await client.responses.create(
+            model=model,
+            input=messages,  # type: ignore[arg-type]
+            tools=tools_param,  # type: ignore[arg-type]
+            max_output_tokens=max_tokens,
+            # Reasoning models (o-series) reject ``temperature`` — same guard
+            # as the Anthropic path: only send the field when the caller set
+            # one, never a default.
+            temperature=temperature if temperature is not None else openai.omit,
+            parallel_tool_calls=parallel_tool_calls,
+            text=text_config,  # type: ignore[arg-type]
+            # ``store=False`` keeps conversation state out of OpenAI's servers —
+            # we replay the full input on every turn instead. The cost is that a
+            # reasoning item (gpt-5*, o3*) emitted on turn N can't be referenced
+            # by its ``rs_...`` id on turn N+1 (nothing was persisted to look up;
+            # OpenAI 404s with "Item with id 'rs_...' not found"). Asking for
+            # ``reasoning.encrypted_content`` makes OpenAI return the reasoning
+            # item with an opaque encrypted blob the orchestrator re-inlines
+            # verbatim next turn, so the model gets its prior reasoning back
+            # without server-side state. Harmless for non-reasoning models
+            # (gpt-4.1/4o) — they emit no reasoning items, so nothing comes back.
+            # See OPEN-3187.
+            store=False,
+            include=["reasoning.encrypted_content"],
+            timeout=request_timeout(timeout_seconds),
+            # ``omit`` is only valid for TYPED params — the SDK strips it
+            # there. ``extra_body`` flows raw into ``options.extra_json``
+            # (``make_request_options`` checks ``is not None``), and
+            # ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
+            # mapping`` on the sentinel. Absent extra_body must be ``None``.
+            extra_body=extra_body or None,
+        )
+    finally:
+        await http_client.aclose()
 
     raw_tool_calls = extract_responses_tool_calls(response)
     tool_calls = None
@@ -627,7 +678,8 @@ async def _call_anthropic_messages(
                 anth_messages.append({"role": p["role"], "content": p["content"]})
                 last_role = p["role"]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    http_client = _attempt_logging_http_client(anthropic)
+    client = anthropic.AsyncAnthropic(api_key=api_key, http_client=http_client)
     create_kwargs: dict[str, Any] = dict(
         model=model,
         messages=anth_messages,
@@ -665,6 +717,8 @@ async def _call_anthropic_messages(
         )
         create_kwargs.pop("temperature")
         resp = await client.messages.create(**create_kwargs)
+    finally:
+        await http_client.aclose()
     if not resp.content:
         raise ValueError("No content returned from Anthropic.")
 
@@ -736,9 +790,10 @@ async def _call_groq(
     if tools:
         raise ValueError("Groq does not support tools.")
 
-    from groq import AsyncGroq  # local import — heavy SDK
+    import groq  # local import — heavy SDK
 
-    client = AsyncGroq(api_key=api_key)
+    http_client = _attempt_logging_http_client(groq)
+    client = groq.AsyncGroq(api_key=api_key, http_client=http_client)
     response_format = {"type": "json_object"} if force_json_output else None
     create_kwargs: dict[str, Any] = dict(
         model=model,
@@ -751,7 +806,10 @@ async def _call_groq(
     # the caller set one, so models that reject it never see the field.
     if temperature is not None:
         create_kwargs["temperature"] = temperature
-    response = await client.chat.completions.create(**create_kwargs)
+    try:
+        response = await client.chat.completions.create(**create_kwargs)
+    finally:
+        await http_client.aclose()
     if not response.choices:
         raise ValueError("Groq returned empty choices in response")
     return ProviderResponse(
@@ -874,7 +932,10 @@ async def _send_ollama_chat(
     client_kwargs: dict[str, Any] = {
         "host": host,
         "timeout": request_timeout(timeout_seconds),
-        "event_hooks": {"request": [_scope_ollama_key]},
+        "event_hooks": {
+            "request": [_scope_ollama_key, _record_http_request],
+            "response": [_record_http_response],
+        },
     }
     if not is_trusted:
         # The host passed the address check, but ollama.AsyncClient hands the
@@ -987,7 +1048,12 @@ async def _call_openai_compat(
     default_headers: dict[str, str] | None = None,
     service_tier: str | None = None,
 ) -> ProviderResponse:
-    client_kwargs: dict[str, Any] = {"base_url": base_url, "api_key": api_key}
+    http_client = _attempt_logging_http_client(openai)
+    client_kwargs: dict[str, Any] = {
+        "base_url": base_url,
+        "api_key": api_key,
+        "http_client": http_client,
+    }
     if default_headers:
         client_kwargs["default_headers"] = default_headers
     client = openai.AsyncOpenAI(**client_kwargs)
@@ -1030,7 +1096,10 @@ async def _call_openai_compat(
     if extra_body:
         call_kwargs["extra_body"] = extra_body
 
-    response = await client.chat.completions.create(**call_kwargs)
+    try:
+        response = await client.chat.completions.create(**call_kwargs)
+    finally:
+        await http_client.aclose()
     if not response.choices:
         raise ValueError(f"{base_url} returned empty choices in response")
 

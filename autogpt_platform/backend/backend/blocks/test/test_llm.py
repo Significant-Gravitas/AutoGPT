@@ -22,7 +22,12 @@ from backend.util.llm.prompt_refusal_test import (
     OPENAI_INVALID_PROMPT_BODY,
     openai_sdk_error,
 )
-from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS, ProviderResponse
+from backend.util.llm.providers import (
+    FAST_FAIL_TIMEOUT_SECONDS,
+    HttpAttemptLog,
+    ProviderResponse,
+    current_http_attempts,
+)
 from backend.util.settings import Config
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
@@ -1696,6 +1701,7 @@ class TestLLMRequestTimeout:
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=elapsed,
+                attempts=HttpAttemptLog(clock=time.monotonic),
                 timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
@@ -1709,6 +1715,7 @@ class TestLLMRequestTimeout:
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=99.0,
+                attempts=HttpAttemptLog(clock=time.monotonic),
                 timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
@@ -2085,6 +2092,128 @@ class TestLLMRequestTimeout:
             "without a valid response."
         )
         assert block.execution_stats.provider_cost == 0.25
+
+    # #16173: one timeout covers every SDK retry, so the alert reads how long
+    # the last HTTP request was open. A step is (start, status or None): the
+    # SDK sent a request at ``start`` seconds and got ``status`` back.
+    async def _cut_off_llm_call(self, monkeypatch, slice_, steps, cut_at=None):
+        clock = {"t": 1000.0}
+        monkeypatch.setattr(llm, "_now", lambda: clock["t"])
+
+        async def sdk_with_retries(**kwargs):
+            log = current_http_attempts.get()
+            assert log is not None, "llm_call must set the attempt log"
+            for start, status in steps:
+                clock["t"] = 1000.0 + start
+                log.starts.append(log.clock())
+                if status is not None:
+                    log.statuses.append(status)
+            clock["t"] = 1000.0 + (slice_ if cut_at is None else cut_at)
+            raise TimeoutError()
+
+        monkeypatch.setattr(llm, "_llm_call", sdk_with_retries)
+        with self._captured_logs() as records, pytest.raises(TimeoutError):
+            await llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+                timeout_seconds=slice_,
+            )
+        return records
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "slice_, steps, in_flight, statuses",
+        [
+            pytest.param(30, [(0, None)], 30.0, [], id="hang"),
+            pytest.param(
+                100, [(0, 200)], 100.0, [200], id="slow-200-cut-near-deadline"
+            ),
+            pytest.param(
+                600, [(0, 500), (1.5, None)], 598.5, [500], id="fast-500-long-retry"
+            ),
+            pytest.param(
+                600, [(0, 500), (560, None)], 40.0, [500], id="retry-open-over-30s"
+            ),
+        ],
+    )
+    async def test_a_long_open_last_request_alerts(
+        self, monkeypatch, slice_, steps, in_flight, statuses
+    ):
+        records = await self._cut_off_llm_call(monkeypatch, slice_, steps)
+
+        alerts = self._alerts(records)
+        assert len(alerts) == 1
+        assert alerts[0].levelno == logging.ERROR
+        fields = alerts[0].json_fields
+        assert fields["configured_timeout_seconds"] == slice_
+        assert fields["last_request_in_flight_seconds"] == in_flight
+        assert fields["http_attempts"] == len(steps)
+        assert fields["prior_response_statuses"] == statuses
+        assert fields["in_flight_source"] == "last_request"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "slice_, steps",
+        [
+            pytest.param(30, [(0, 500), (24.5, None)], id="slow-500-cancelled-retry"),
+            pytest.param(600, [(0, 500), (580, None)], id="retry-open-under-30s"),
+        ],
+    )
+    async def test_a_slow_error_then_a_cut_off_retry_does_not_alert(
+        self, monkeypatch, slice_, steps
+    ):
+        records = await self._cut_off_llm_call(monkeypatch, slice_, steps)
+
+        assert self._alerts(records) == []
+        warning = next(r for r in records if r.levelno == logging.WARNING)
+        assert "2 HTTP attempt(s) (statuses [500])" in warning.getMessage()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "cut_at, alerts", [pytest.param(95, True), pytest.param(50, False)]
+    )
+    async def test_without_recorded_requests_total_elapsed_decides(
+        self, monkeypatch, cut_at, alerts
+    ):
+        """A provider path without the hooks keeps the whole-call rule."""
+        records = await self._cut_off_llm_call(monkeypatch, 100, [], cut_at=cut_at)
+
+        found = self._alerts(records)
+        assert bool(found) is alerts
+        if alerts:
+            assert found[0].json_fields["in_flight_source"] == "elapsed_fallback"
+            assert found[0].json_fields["last_request_in_flight_seconds"] == 95.0
+
+    @pytest.mark.asyncio
+    async def test_a_fast_answer_logs_no_timeout(self, monkeypatch):
+        async def answers(**kwargs):
+            log = current_http_attempts.get()
+            assert log is not None
+            log.starts.append(log.clock())
+            log.statuses.append(200)
+            return llm.LLMResponse(
+                raw_response="",
+                prompt=[],
+                response="ok",
+                tool_calls=None,
+                prompt_tokens=1,
+                completion_tokens=1,
+            )
+
+        monkeypatch.setattr(llm, "_llm_call", answers)
+        with self._captured_logs() as records:
+            result = await llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+            )
+
+        assert result.response == "ok"
+        assert [r for r in records if r.levelno >= logging.WARNING] == []
+        assert current_http_attempts.get() is None
 
 
 class TestLLMModelMissingHandler:
