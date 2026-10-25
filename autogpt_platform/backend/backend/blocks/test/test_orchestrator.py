@@ -1,6 +1,7 @@
 import logging
 import threading
 from collections import defaultdict
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -564,6 +565,50 @@ async def test_orchestrator_parameter_validation():
         assert outputs["tools_^_test-sink-node-id_~_query"] == "test"
         assert outputs["tools_^_test-sink-node-id_~_max_keyword_difficulty"] == 50
         assert outputs["tools_^_test-sink-node-id_~_optional_param"] == "custom_value"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_retry_a_refused_prompt():
+    """A refusal is not a tool-call mistake to send back to the model."""
+    import backend.blocks.llm as llm_module
+    from backend.blocks.orchestrator import OrchestratorBlock
+    from backend.util.llm.prompt_refusal import PromptRefusedError
+
+    with patch(
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        side_effect=PromptRefusedError(),
+    ) as mock_llm_call, patch.object(
+        OrchestratorBlock,
+        "_create_tool_node_signatures",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        input_data = OrchestratorBlock.Input(
+            prompt="Search for keywords",
+            model=llm_module.DEFAULT_LLM_MODEL,
+            credentials=cast(
+                llm_module.AICredentials, llm_module.TEST_CREDENTIALS_INPUT
+            ),
+            retry=3,
+            agent_mode_max_iterations=0,
+        )
+        with pytest.raises(PromptRefusedError):
+            async for _ in OrchestratorBlock().run(
+                input_data,
+                credentials=llm_module.TEST_CREDENTIALS,
+                graph_id="test-graph-id",
+                node_id="test-node-id",
+                graph_exec_id="test-exec-id",
+                node_exec_id="test-node-exec-id",
+                user_id="test-user-id",
+                graph_version=1,
+                execution_context=ExecutionContext(human_in_the_loop_safe_mode=False),
+                execution_processor=MagicMock(),
+            ):
+                pass
+
+    assert mock_llm_call.call_count == 1
 
 
 @pytest.mark.asyncio

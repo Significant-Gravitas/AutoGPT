@@ -22,7 +22,9 @@
     {
       "files": [
         "src/app/(platform)/copilot/**",
-        "src/components/ai-elements/**"
+        "src/components/organisms/Conversation/**",
+        "src/components/organisms/Message/**",
+        "src/components/organisms/PromptInput/**"
       ],
       "excludeFiles": [
         "**/__tests__/**",
