@@ -1,4 +1,7 @@
-import type { ComponentProps } from "react";
+import { useContext, type ComponentProps } from "react";
+import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
+import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { act } from "@testing-library/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
@@ -34,7 +37,7 @@ vi.mock("use-stick-to-bottom", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="conversation">{children}</div>
   ),
@@ -44,7 +47,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   Message: ({
     children,
     from,
@@ -78,19 +81,29 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: ({
+  ChainMessageParts: function ChainMessageParts({
     parts,
     isCurrentlyStreaming,
   }: {
     parts: unknown[];
     isCurrentlyStreaming?: boolean;
-  }) => (
-    <div
-      data-testid="chain-message-parts"
-      data-parts={JSON.stringify(parts)}
-      data-streaming={String(!!isCurrentlyStreaming)}
-    />
-  ),
+  }) {
+    const answered = useContext(AnsweredQuestionsContext);
+    const pending = useContext(PendingQuestionsContext);
+    const onboarding = useContext(PendingOnboardingContext);
+    return (
+      <div
+        data-testid="chain-message-parts"
+        data-parts={JSON.stringify(parts)}
+        data-streaming={String(!!isCurrentlyStreaming)}
+        data-answered={JSON.stringify(
+          [...answered].map(([id, answers]) => [id, [...answers]]),
+        )}
+        data-pending={String(pending !== null)}
+        data-onboarding={onboarding ?? ""}
+      />
+    );
+  },
 }));
 
 vi.mock("../components/QueueBadge", () => ({
@@ -209,6 +222,68 @@ describe("ChatMessagesContainer — assistant rendering", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("shares saved answers with read-only viewers without activating question forms", () => {
+    const question = {
+      type: "tool-ask_question",
+      toolCallId: "ask-1",
+      state: "output-available",
+      input: {},
+      output: {
+        type: "agent_builder_clarification_needed",
+        questions: [{ question: "Which region?", keyword: "region" }],
+      },
+    } as Message["parts"][number];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={[
+          { id: "asked", role: "assistant", parts: [question] },
+          {
+            id: "answered",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "**Here are my answers:**\n\n> Which region?\n\nEurope\n\nPlease proceed.",
+              },
+            ],
+          },
+          {
+            id: "pending",
+            role: "assistant",
+            parts: [
+              { ...question, toolCallId: "ask-2" } as Message["parts"][number],
+              {
+                type: "tool-expert_onboarding",
+                toolCallId: "hire",
+                state: "output-available",
+                input: {},
+                output: {
+                  type: "expert_onboarding",
+                  steps: [
+                    {
+                      question: "Which outcome?",
+                      keyword: "outcome",
+                      options: [],
+                    },
+                  ],
+                },
+              } as Message["parts"][number],
+            ],
+          },
+        ]}
+      />,
+    );
+    for (const row of screen.getAllByTestId("chain-message-parts")) {
+      expect(JSON.parse(row.getAttribute("data-answered") ?? "[]")).toEqual([
+        ["ask-1", [["region", "Europe"]]],
+      ]);
+      expect(row.getAttribute("data-pending")).toBe("false");
+      expect(row.getAttribute("data-onboarding")).toBe("");
+    }
   });
 
   it("renders assistant messages through the chain renderer", () => {
@@ -1782,6 +1857,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
     pollWhileEmpty,
     refetchKey,
     expertName: null,
+    expert: null,
   });
 
   afterEach(() => {

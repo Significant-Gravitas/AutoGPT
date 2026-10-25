@@ -8,6 +8,10 @@ import { useCopilotUIStore } from "../store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotPage } from "../CopilotPage";
 
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 // Mock child components that are complex and not under test here
 vi.mock("../components/ChatContainer/ChatContainer", () => ({
   ChatContainer: () => <div data-testid="chat-container" />,
@@ -17,9 +21,6 @@ vi.mock("../components/DeleteChatDialog/DeleteChatDialog", () => ({
 }));
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
-}));
-vi.mock("../components/NotificationDialog/NotificationDialog", () => ({
-  NotificationDialog: () => null,
 }));
 vi.mock("../components/RateLimitResetDialog/RateLimitResetDialog", () => ({
   RateLimitResetDialog: () => null,
@@ -42,7 +43,7 @@ vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
 vi.mock("../components/ArtifactPanel/ArtifactPanel", () => ({
   ArtifactPanel: () => null,
 }));
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),

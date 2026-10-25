@@ -5,9 +5,10 @@ import {
   Sheet,
   SheetContent,
   SheetTrigger,
-} from "@/components/__legacy__/ui/sheet";
+} from "@/components/molecules/Dialog/components/SheetPrimitives";
 import { Menu } from "lucide-react";
-import { IconDashboardLayout } from "./ui/icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { DashboardLayoutGlyph } from "@/components/atoms/Icon/drawnIcons";
 
 export interface SidebarLink {
   text: string;
@@ -26,7 +27,14 @@ export interface SidebarProps {
 // Helper function to get the default icon component based on link text
 const getDefaultIconForLink = () => {
   // Default icon
-  return <IconDashboardLayout className="h-6 w-6" />;
+  return (
+    <Icon
+      icon={DashboardLayoutGlyph}
+      aria-label="Icon"
+      strokeWidth={1.25}
+      className="h-6 w-6"
+    />
+  );
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {

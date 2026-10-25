@@ -459,6 +459,22 @@ async def test_schedule_chat_turn_passes_content_dedupe_off_to_the_save():
     assert append.await_args.kwargs["dedupe_content"] is False
 
 
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_dedupes_content_on_a_refreshed_slot_whatever_it_was_told():
+    # Two sends of one text racing past the in-flight check: the second only
+    # refreshes the first's slot, and must not start a second turn.
+    with _scheduling(admitted=False) as (append, _dispatch):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="yes",
+            message_id="client-send-2",
+            dedupe_content=False,
+        )
+
+    assert append.await_args.kwargs["dedupe_content"] is True
+
+
 class TestNarrowPermissions:
     """The envelope's tool set becomes the turn's whitelist. The encoding of
     "no tools at all" is the trap: it is a blacklist of every tool, and a

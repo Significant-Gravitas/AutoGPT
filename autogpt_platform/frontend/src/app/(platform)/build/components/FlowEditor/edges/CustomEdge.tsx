@@ -67,6 +67,7 @@ const CustomEdge = ({
       <path
         d={edgePath}
         fill="none"
+        // TODO(tokens): no exact role: "black" #000000, an invisible hit area (strokeOpacity 0)
         stroke="black"
         strokeOpacity={0}
         strokeWidth={20}
@@ -81,12 +82,13 @@ const CustomEdge = ({
         className={cn(
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
           isBroken
-            ? "!stroke-red-500 !stroke-[2px] [stroke-dasharray:4]"
+            ? "!stroke-error !stroke-[2px] [stroke-dasharray:4]"
             : selected
-              ? "stroke-zinc-800"
+              ? // TODO(tokens): no fitting role for stroke-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
+                "stroke-zinc-800"
               : edgeColorClass
                 ? cn(edgeColorClass, "opacity-70 hover:opacity-100")
-                : "stroke-zinc-500/50 hover:stroke-zinc-500",
+                : "stroke-edge/50 hover:stroke-edge",
         )}
       />
       <JSBeads
@@ -101,7 +103,7 @@ const CustomEdge = ({
           className={cn(
             "absolute h-fit min-w-0 p-1 transition-opacity",
             isBroken
-              ? "bg-red-500 opacity-100 hover:bg-red-600"
+              ? "bg-error opacity-100 hover:bg-error-hover"
               : isHovered
                 ? "opacity-100"
                 : "opacity-0",

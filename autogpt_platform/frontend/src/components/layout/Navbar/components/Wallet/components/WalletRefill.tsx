@@ -1,12 +1,12 @@
 import { Form, FormField } from "@/components/__legacy__/ui/form";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/__legacy__/ui/tabs";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import {
+  TabsLine,
+  TabsLineContent,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
 import {
   useToast,
   useToastOnFail,
@@ -82,36 +82,37 @@ export function WalletRefill() {
   );
 
   return (
-    <div className="mx-1 border-b border-zinc-300">
-      <p className="mx-0 mt-4 font-sans text-xs font-medium text-violet-700">
+    <div className="mx-1 border-b border-border-strong">
+      <p className="mx-0 mt-4 font-sans text-xs font-medium text-accent-strong">
         Add credits to your balance
       </p>
-      <p className="mx-0 my-1 font-sans text-xs font-normal text-zinc-500">
+      <p className="mx-0 my-1 font-sans text-xs font-normal text-foreground-tertiary">
         Choose a one-time top-up or set up automatic refills
       </p>
-      <Tabs
+      <TabsLine
+        variant="pill"
         defaultValue="top-up"
         className="mb-6 mt-4 flex w-full flex-col items-center"
       >
-        <TabsList className="mx-auto">
-          <TabsTrigger value="top-up">One-time top up</TabsTrigger>
-          <TabsTrigger value="auto-refill">Auto-refill</TabsTrigger>
-        </TabsList>
-        <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-zinc-200">
-          <TabsContent value="top-up" className="flex flex-col">
-            <div className="mt-2 justify-start font-sans text-sm font-medium leading-snug text-zinc-900">
+        <TabsLineList className="mx-auto">
+          <TabsLineTrigger value="top-up">One-time top up</TabsLineTrigger>
+          <TabsLineTrigger value="auto-refill">Auto-refill</TabsLineTrigger>
+        </TabsLineList>
+        <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-border-base">
+          <TabsLineContent value="top-up" className="flex flex-col">
+            <div className="mt-2 justify-start font-sans text-sm font-medium leading-snug text-foreground-strong">
               One-time top-up
             </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-zinc-500">
+            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-foreground-tertiary">
               Enter an amount (min. $5) and add credits instantly.
             </div>
             <TopUpForm submitLabel="Top up" size="small" />
-          </TabsContent>
-          <TabsContent value="auto-refill" className="flex flex-col">
-            <div className="justify-start font-sans text-sm font-medium leading-snug text-zinc-900">
+          </TabsLineContent>
+          <TabsLineContent value="auto-refill" className="flex flex-col">
+            <div className="justify-start font-sans text-sm font-medium leading-snug text-foreground-strong">
               Auto-refill
             </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-zinc-500">
+            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-foreground-tertiary">
               Choose a one-time top-up or set up automatic refills.
             </div>
 
@@ -164,20 +165,20 @@ export function WalletRefill() {
                 </Button>
               </form>
             </Form>
-          </TabsContent>
+          </TabsLineContent>
           <div className="mb-3 justify-start font-sans text-xs font-normal leading-tight">
-            <span className="text-zinc-500">
+            <span className="text-foreground-tertiary">
               To update your billing details, head to{" "}
             </span>
             <Link
               href="/settings/billing"
-              className="cursor-pointer text-zinc-800 underline"
+              className="cursor-pointer text-foreground-emphasis underline"
             >
               Billing settings
             </Link>
           </div>
         </div>
-      </Tabs>
+      </TabsLine>
     </div>
   );
 }

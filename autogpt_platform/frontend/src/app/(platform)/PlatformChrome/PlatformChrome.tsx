@@ -5,16 +5,16 @@ import { CSSProperties, ReactNode } from "react";
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
-import { cn } from "@/lib/utils";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import {
   getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
+import { cn } from "@/lib/utils";
 
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
@@ -34,13 +34,12 @@ interface Props {
 export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
     showAppSidebar,
+    showChangelog,
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
     isBuilderRoute,
   } = usePlatformChrome();
-  // The collapsed-by-default sidebar ships with the brain-dump experience.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
 
   const content = (
     <TopUpPromptProvider>
@@ -66,7 +65,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   if (showAppSidebar) {
     // The browser's cookie stays current across client navigation; the layout's does not.
     const openOutsideBuilder =
-      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? !isBrainDumpEnabled;
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? false;
     return (
       <SidebarProvider
         persistState
@@ -76,6 +75,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
+        {showChangelog ? <ChangelogPopup /> : null}
         <SidebarInset className="bg-[#f9f9f9]">
           <header
             className={cn(

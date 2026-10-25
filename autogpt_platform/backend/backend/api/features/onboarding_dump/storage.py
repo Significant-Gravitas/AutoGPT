@@ -89,6 +89,10 @@ def _sizes_key(user_id: str, recording_id: str) -> str:
     return _buffer_key(user_id, recording_id, "sizes")
 
 
+def _discarded_key(user_id: str, recording_id: str) -> str:
+    return _buffer_key(user_id, recording_id, "discarded")
+
+
 async def _read_parts(user_id: str, recording_id: str) -> dict[str, str]:
     redis = await redis_client.get_redis_async()
     # The shared client runs with ``decode_responses=True``, so values come
@@ -164,6 +168,19 @@ async def discard_parts(user_id: str, recording_id: str) -> None:
     )
 
 
+async def mark_discarded(user_id: str, recording_id: str) -> None:
+    """Remember a take the client threw away, while its parts could still arrive."""
+    redis = await redis_client.get_redis_async()
+    await redis.set(
+        _discarded_key(user_id, recording_id), "1", ex=PART_BUFFER_TTL_SECONDS
+    )
+
+
+async def was_discarded(user_id: str, recording_id: str) -> bool:
+    redis = await redis_client.get_redis_async()
+    return bool(await redis.exists(_discarded_key(user_id, recording_id)))
+
+
 async def store_audio(user_id: str, content: bytes, filename: str) -> str:
     handler = await get_cloud_storage_handler()
     return await handler.store_file(
@@ -218,8 +235,3 @@ async def audio_download_url(user_id: str, audio_path: str) -> str:
     return await handler.generate_signed_url(
         audio_path, expiration_hours=1, user_id=user_id
     )
-
-
-async def retrieve_audio(user_id: str, audio_path: str) -> bytes:
-    handler = await get_cloud_storage_handler()
-    return await handler.retrieve_file(audio_path, user_id=user_id)

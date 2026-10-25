@@ -19,7 +19,6 @@ from graphiti_core.llm_client.client import LLMClient
 from graphiti_core.nodes import EpisodeType
 from pytest_mock import MockerFixture
 
-from backend.api.features.memory import routes as memory_routes
 from backend.copilot.tools import graphiti_search
 
 from . import ingest, recall
@@ -44,7 +43,7 @@ def patch_recall_boundaries(
     mocker: MockerFixture, driver: AutoGPTFalkorDriver, build_client: BuildClient
 ) -> None:
     """Search through a stubbed-LLM Graphiti on the test graph, count hits in
-    memory, and report memory as enabled for the settings routes and tools."""
+    memory for the settings routes and tools."""
     client = build_client(driver, {})
     mocker.patch.object(
         recall, "get_graphiti_client", mocker.AsyncMock(return_value=client)
@@ -53,9 +52,6 @@ def patch_recall_boundaries(
         "backend.data.redis_client.get_redis_async",
         mocker.AsyncMock(return_value=FakeRedis()),
     )
-    enabled = mocker.AsyncMock(return_value=True)
-    mocker.patch.object(memory_routes, "is_enabled_for_user", enabled)
-    mocker.patch.object(graphiti_search, "is_enabled_for_user", enabled)
 
 
 def model_of(client: Graphiti) -> LLMClient:
@@ -226,6 +222,19 @@ async def edge_row(driver: AutoGPTFalkorDriver, edge_uuid: str) -> dict[str, Any
         uuid=edge_uuid,
     )
     return found[0] if found else {}
+
+
+async def edge_properties(driver: AutoGPTFalkorDriver, uuid: str) -> dict[str, Any]:
+    """Every property of the fact ``uuid`` but its embedding, or ``{}`` once
+    it is gone."""
+    found = await rows(
+        driver,
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() RETURN properties(e) AS p",
+        uuid=uuid,
+    )
+    props = dict(found[0]["p"]) if found else {}
+    props.pop("fact_embedding", None)
+    return props
 
 
 async def episode_row(driver: AutoGPTFalkorDriver, episode_uuid: str) -> dict[str, Any]:

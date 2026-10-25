@@ -161,10 +161,6 @@ class OAuthAuthorizationCodeInfo(BaseModel):
     code_challenge_method: Optional[str] = None
     used_at: Optional[datetime] = None
 
-    @property
-    def is_used(self) -> bool:
-        return self.used_at is not None
-
     @staticmethod
     def from_db(code: PrismaOAuthAuthorizationCode):
         return OAuthAuthorizationCodeInfo(
@@ -228,10 +224,6 @@ class OAuthRefreshTokenInfo(BaseModel):
     expires_at: datetime
     application_id: str
     revoked_at: Optional[datetime] = None
-
-    @property
-    def is_revoked(self) -> bool:
-        return self.revoked_at is not None
 
     @staticmethod
     def from_db(token: PrismaOAuthRefreshToken):
@@ -658,11 +650,15 @@ async def refresh_tokens(
     if await is_user_banned(rt.userId):
         raise InvalidGrantError("the account this token belongs to is banned")
 
-    # Revoke old refresh token
-    await PrismaOAuthRefreshToken.prisma().update(
-        where={"token": token_hash},
+    # Revoke the old token atomically: the checks above read a snapshot, so two
+    # concurrent refreshes can both pass them. Only the request whose
+    # conditional write flips revokedAt from NULL may mint new tokens.
+    revoked = await PrismaOAuthRefreshToken.prisma().update_many(
+        where={"token": token_hash, "revokedAt": None},
         data={"revokedAt": now},
     )
+    if revoked != 1:
+        raise InvalidGrantError("refresh token has been revoked")
 
     # Create new access and refresh tokens with same scopes
     scopes = [APIPermission(s) for s in rt.scopes]

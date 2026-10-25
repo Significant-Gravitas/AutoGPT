@@ -9,10 +9,14 @@ so these routes can never read or delete another user's memory by construction.
 Facts are listed and counted with the recall policy's live-fact test
 (``graphiti/recall.py``), and a single-fact forget is the chat forget tool's
 soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
-``retracted`` and stops being served but stays for audit, and every episode
-it came from stops being recalled. A forget whose clean-up failed answers 500,
-not success, and one that found memory busy answers 409; both retry. The
-scope erase hard-deletes every node and edge in the scope's graph.
+``retracted`` and stops being served but stays for audit, every episode it
+came from stops being recalled, and so does every fact the dream derived
+from it (counted in the response's ``derived_forgotten``). A forget whose
+clean-up failed, or that left derived facts for a second forget, answers
+500, not success, and one that found memory busy answers 409; both retry.
+The scope erase hard-deletes every node and edge in the scope's graph; the
+account erase also deletes the business understanding, which the
+``/understanding`` routes show and forget on their own.
 """
 
 import logging
@@ -26,16 +30,21 @@ from backend.api.features.experts import experts_db
 from backend.api.features.memory.models import (
     EraseMemoryResponse,
     ForgetFactResponse,
+    ForgetUnderstandingResponse,
     MemoryFact,
     MemoryFactListResponse,
     MemoryScopeOverview,
+    MemoryUnderstanding,
 )
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
 from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.data.understanding import (
+    clear_business_understanding,
+    get_business_understanding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,15 +73,10 @@ def _is_missing_graph_error(exc: BaseException) -> bool:
 async def _resolve_scope(user_id: str, expert_id: str | None) -> MemoryScope:
     """Resolve the caller-owned memory scope for the request.
 
-    Memory must be enabled for the caller, and an expert scope must name an
-    active expert the caller owns — archived experts 404 here, matching the
+    An expert scope must name an active expert the caller owns — archived
+    experts 404 here, matching the
     settings page's active-experts-only dropdown.
     """
-    if not await is_enabled_for_user(user_id):
-        raise HTTPException(
-            status_code=403, detail="Memory is not enabled for your account"
-        )
-
     if expert_id is None:
         try:
             return MemoryScope.for_user(user_id)
@@ -228,8 +232,13 @@ async def _forget_fact_impl(
             status_code=500,
             detail="Forgot this memory but could not finish cleaning up; try again",
         )
-    if result.deleted:
-        return ForgetFactResponse(uuid=fact_uuid, forgotten=True)
+    if result.deleted or result.resumed:
+        return ForgetFactResponse(
+            uuid=fact_uuid,
+            forgotten=True,
+            derived_forgotten=len(result.derived),
+            resumed=bool(result.resumed),
+        )
     if MemoryForgetFailureCode.QUERY_ERROR in codes:
         raise HTTPException(status_code=500, detail="Could not forget this memory")
     raise HTTPException(status_code=404, detail="Memory not found")
@@ -287,8 +296,11 @@ async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryR
 async def erase_my_memory(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> EraseMemoryResponse:
-    """Permanently erase the caller's entire account memory."""
-    return await _erase_scope_impl(user_id, None)
+    """Permanently erase the caller's entire account memory, the business
+    understanding included."""
+    response = await _erase_scope_impl(user_id, None)
+    await clear_business_understanding(user_id)
+    return response
 
 
 @router.delete("/experts/{expert_id}", operation_id="erase_my_expert_memory")
@@ -298,3 +310,23 @@ async def erase_my_expert_memory(
 ) -> EraseMemoryResponse:
     """Permanently erase one expert's entire isolated memory."""
     return await _erase_scope_impl(user_id, expert_id)
+
+
+@router.get("/understanding", operation_id="get_my_business_understanding")
+async def get_my_business_understanding(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> MemoryUnderstanding:
+    """What Otto keeps about the caller's work; every new chat starts with it."""
+    understanding = await get_business_understanding(user_id)
+    if understanding is None:
+        return MemoryUnderstanding()
+    return MemoryUnderstanding.model_validate(understanding.model_dump())
+
+
+@router.delete("/understanding", operation_id="forget_my_business_understanding")
+async def forget_my_business_understanding(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ForgetUnderstandingResponse:
+    """Delete what Otto keeps about the caller's work."""
+    forgotten = await clear_business_understanding(user_id)
+    return ForgetUnderstandingResponse(forgotten=forgotten)

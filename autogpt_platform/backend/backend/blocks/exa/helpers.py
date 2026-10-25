@@ -160,86 +160,6 @@ class ContentSettings(BaseModel):
     )
 
 
-# Websets Models
-class WebsetEntitySettings(BaseModel):
-    type: Optional[str] = SchemaField(
-        default=None,
-        description="Entity type (e.g., 'company', 'person')",
-        placeholder="company",
-    )
-
-
-class WebsetCriterion(BaseModel):
-    description: str = SchemaField(
-        description="Description of the criterion",
-        placeholder="Must be based in the US",
-    )
-    success_rate: Optional[int] = SchemaField(
-        default=None,
-        description="Success rate percentage",
-        ge=0,
-        le=100,
-    )
-
-
-class WebsetSearchConfig(BaseModel):
-    query: str = SchemaField(
-        description="Search query",
-        placeholder="Marketing agencies based in the US",
-    )
-    count: int = SchemaField(
-        default=10,
-        description="Number of results to return",
-        ge=1,
-        le=100,
-    )
-    entity: Optional[WebsetEntitySettings] = SchemaField(
-        default=None,
-        description="Entity settings for the search",
-    )
-    criteria: Optional[list[WebsetCriterion]] = SchemaField(
-        default=None,
-        description="Search criteria",
-    )
-    behavior: Optional[str] = SchemaField(
-        default="override",
-        description="Behavior when updating results ('override' or 'append')",
-        placeholder="override",
-    )
-
-
-class EnrichmentOption(BaseModel):
-    label: str = SchemaField(
-        description="Label for the enrichment option",
-        placeholder="Option 1",
-    )
-
-
-class WebsetEnrichmentConfig(BaseModel):
-    title: str = SchemaField(
-        description="Title of the enrichment",
-        placeholder="Company Details",
-    )
-    description: str = SchemaField(
-        description="Description of what this enrichment does",
-        placeholder="Extract company information",
-    )
-    format: str = SchemaField(
-        default="text",
-        description="Format of the enrichment result",
-        placeholder="text",
-    )
-    instructions: Optional[str] = SchemaField(
-        default=None,
-        description="Instructions for the enrichment",
-        placeholder="Extract key company metrics",
-    )
-    options: Optional[list[EnrichmentOption]] = SchemaField(
-        default=None,
-        description="Options for the enrichment",
-    )
-
-
 # Shared result models
 class ExaSearchExtras(BaseModel):
     links: list[str] = SchemaField(
@@ -435,34 +355,6 @@ def process_context_field(
             return {"maxCharacters": context.max_characters}
         return True
     return None
-
-
-def format_date_fields(
-    input_data: Any, date_field_mapping: Dict[str, str]
-) -> Dict[str, str]:
-    """Format datetime fields for API payload."""
-    formatted_dates = {}
-    for input_field, api_field in date_field_mapping.items():
-        value = getattr(input_data, input_field, None)
-        if value:
-            formatted_dates[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    return formatted_dates
-
-
-def add_optional_fields(
-    input_data: Any,
-    field_mapping: Dict[str, str],
-    payload: Dict[str, Any],
-    process_enums: bool = False,
-) -> None:
-    """Add optional fields to payload if they have values."""
-    for input_field, api_field in field_mapping.items():
-        value = getattr(input_data, input_field, None)
-        if value:  # Only add non-empty values
-            if process_enums and hasattr(value, "value"):
-                payload[api_field] = value.value
-            else:
-                payload[api_field] = value
 
 
 def extract_exa_cost_usd(response: Any) -> Optional[float]:

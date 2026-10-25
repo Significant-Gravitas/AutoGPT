@@ -14,27 +14,27 @@ export function TokenDevtoolPanel({ turns, breakdown, context }: Props) {
   return (
     <>
       <div className="flex items-baseline justify-between pb-2">
-        <span className="text-sm font-medium text-zinc-800">
+        <span className="text-sm font-medium text-foreground-emphasis">
           Context window
         </span>
-        <span className="font-mono text-xs text-zinc-500">
+        <span className="font-mono text-xs text-foreground-tertiary">
           {context === null ? "—" : `~${formatTokenCount(context)}`} /{" "}
           {formatTokenCount(MODEL_CONTEXT_WINDOW)}
         </span>
       </div>
       <ContextBar context={context ?? 0} />
-      <p className="pt-1 font-mono text-[10px] text-zinc-400">
+      <p className="pt-1 font-mono text-tiny leading-inherit text-foreground-subtle">
         assumes a {formatTokenCount(MODEL_CONTEXT_WINDOW)} window; the backend
         threshold is configurable
       </p>
-      <p className="pb-2.5 pt-0.5 text-right font-mono text-xs text-amber-500">
+      <p className="pb-2.5 pt-0.5 text-right font-mono text-xs text-warning">
         summarizes ~{formatTokenCount(AUTOCOMPACT_TOKENS)}
       </p>
 
       {breakdown && <BreakdownSection breakdown={breakdown} />}
 
       {!turns?.length ? (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-foreground-tertiary">
           Live per-turn data starts with your next message.
         </p>
       ) : (
