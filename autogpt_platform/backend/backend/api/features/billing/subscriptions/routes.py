@@ -85,6 +85,7 @@ from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
+from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
@@ -155,6 +156,13 @@ class SubscriptionStatusResponse(BaseModel):
             "Unix timestamp of the active subscription's current_period_end. Used"
             " to show the date Stripe will issue the next invoice (with prorated"
             " upgrade charges, if any). None when no active sub."
+        ),
+    )
+    paused_workflow_schedules: int = Field(
+        default=0,
+        description=(
+            "Active workflow schedules that won't run until the user has a plan."
+            " Counted only for NO_TIER; 0 for every other tier."
         ),
     )
     pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
@@ -327,9 +335,14 @@ async def get_subscription_status(
         current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
     else:
         current_monthly_cost = tier_costs.get(tier.value, 0)
-    proration_credit, current_period_end = await asyncio.gather(
+    (
+        proration_credit,
+        current_period_end,
+        paused_workflow_schedules,
+    ) = await asyncio.gather(
         get_proration_credit_cents(user_id, current_monthly_cost),
         get_active_subscription_period_end(user_id),
+        _count_paused_workflow_schedules(user_id, tier),
     )
 
     try:
@@ -356,6 +369,7 @@ async def get_subscription_status(
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
+        paused_workflow_schedules=paused_workflow_schedules,
     )
     if pending is not None:
         pending_tier_enum, pending_effective_at, pending_cycle = pending
@@ -370,6 +384,22 @@ async def get_subscription_status(
             response.pending_tier_effective_at = pending_effective_at
             response.pending_billing_cycle = pending_cycle
     return response
+
+
+async def _count_paused_workflow_schedules(user_id: str, tier: SubscriptionTier) -> int:
+    # Only workflow schedules wait for a plan: add_graph_execution skips them with
+    # UserPaywalledError, while a scheduled chat explains itself in its own chat.
+    if tier != SubscriptionTier.NO_TIER:
+        return 0
+    try:
+        schedules = await asyncio.wait_for(
+            get_scheduler_client().get_execution_schedules(user_id=user_id),
+            timeout=settings.config.schedule_read_timeout_seconds,
+        )
+    except Exception:
+        logger.warning(f"Could not count paused workflow schedules for user {user_id}")
+        return 0
+    return sum(schedule.kind == "graph" for schedule in schedules)
 
 
 @router.post(
