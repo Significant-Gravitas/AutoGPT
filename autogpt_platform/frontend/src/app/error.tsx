@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 
 export default function Error({
@@ -22,10 +23,13 @@ export default function Error({
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
           <IconCircleAlert className="size-10" />
         </div>
-        {/* TODO(tokens): no role or Text variant is 24px/32px (text-2xl). */}
-        <h1 className="mt-8 text-2xl font-bold tracking-tight text-foreground">
+        <Text
+          variant="2xl-bold-tracking-tight"
+          as="h1"
+          className="mt-8 text-foreground"
+        >
           Oops, something went wrong!
-        </h1>
+        </Text>
         <p className="mt-4 text-muted-foreground">
           We&apos;re sorry, but an unexpected error has occurred. Please try
           again later or contact support if the issue persists.

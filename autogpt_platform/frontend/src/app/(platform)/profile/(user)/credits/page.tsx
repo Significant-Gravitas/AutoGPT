@@ -43,9 +43,9 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
-
-      <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
+      <Text variant="lg-medium" as="h3" tone="inherit">
+        Expert Usage & Storage
+      </Text>
       <div
         // TODO(tokens): no exact role (border-neutral-200 #E5E5E5)
         className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4"
@@ -186,9 +186,9 @@ export default function CreditsPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}
         <div className="space-y-4">
-          {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
-
-          <h3 className="text-lg font-medium">Top-up Credits</h3>
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Top-up Credits
+          </Text>
 
           <p
             // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
@@ -245,9 +245,9 @@ export default function CreditsPage() {
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="my-6 space-y-4">
-            {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
-
-            <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
+            <Text variant="lg-medium" as="h3" tone="inherit">
+              Automatic Refill Settings
+            </Text>
 
             <div>
               <label
@@ -340,9 +340,10 @@ export default function CreditsPage() {
 
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
-          {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
 
-          <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Manage Your Payment Methods
+          </Text>
           <p
             // TODO(tokens): no exact role (text-neutral-600 #525252)
             className="text-neutral-600"
@@ -360,9 +361,10 @@ export default function CreditsPage() {
           </Button>
 
           {/* Transaction History */}
-          {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
 
-          <h3 className="text-lg font-medium">Transaction History</h3>
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Transaction History
+          </Text>
           {transactionHistory.transactions.length === 0 && (
             <p
               // TODO(tokens): no exact role (text-neutral-600 #525252)
@@ -425,9 +427,9 @@ export default function CreditsPage() {
 
           {refundRequests.length > 0 && (
             <>
-              {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
-
-              <h3 className="text-lg font-medium">Your Refund Requests</h3>
+              <Text variant="lg-medium" as="h3" tone="inherit">
+                Your Refund Requests
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>
