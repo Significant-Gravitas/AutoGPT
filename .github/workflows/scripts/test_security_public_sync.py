@@ -13,7 +13,6 @@ from urllib.error import HTTPError
 import security_public_api as api
 import security_public_publish as publish
 import security_public_sync as sync
-import security_release_notes as manual
 from security_release_notes import BASE_URL, END, START, fetch_advisories
 from test_security_release_notes import TAG, advisory
 
@@ -88,28 +87,21 @@ class AnonymousApiTests(unittest.TestCase):
                     )
                     self.assertNotIn(CANARY, str(raised.exception))
 
-    def test_manual_cli_rejects_invalid_collection_without_overwriting_output(self):
-        with TemporaryDirectory() as directory:
-            output = Path(directory) / "release-notes.md"
-            output.write_text("Existing notes\n", encoding="utf-8")
-            captured = io.StringIO()
-            with patch(
-                "sys.argv", ["notes", "--tag", TAG, "--output", str(output)]
-            ), patch.object(
-                api, "public_json", return_value=([advisory(), CANARY], {})
-            ), contextlib.redirect_stdout(
-                captured
-            ), contextlib.redirect_stderr(
-                captured
-            ), self.assertRaises(
-                SystemExit
-            ) as raised:
-                manual.main()
-            self.assertEqual(raised.exception.code, 2)
-            self.assertEqual(output.read_text(encoding="utf-8"), "Existing notes\n")
-            self.assertIn(api.PublicErrorCode.API_COLLECTION.value, captured.getvalue())
-            self.assertNotIn(CANARY, captured.getvalue())
-            self.assertNotIn("Traceback", captured.getvalue())
+    def test_digest_cli_rejects_invalid_collection_without_printing_a_digest(self):
+        captured = io.StringIO()
+        with patch("sys.argv", ["sync", "digest"]), patch.object(
+            api, "public_json", return_value=([advisory(), CANARY], {})
+        ), contextlib.redirect_stdout(captured), contextlib.redirect_stderr(
+            captured
+        ), self.assertRaises(
+            SystemExit
+        ) as raised:
+            sync.main()
+        self.assertEqual(raised.exception.code, 1)
+        self.assertIn(api.PublicErrorCode.API_COLLECTION.value, captured.getvalue())
+        self.assertNotRegex(captured.getvalue(), r"[0-9a-f]{64}")
+        self.assertNotIn(CANARY, captured.getvalue())
+        self.assertNotIn("Traceback", captured.getvalue())
 
     def test_ambient_tokens_proxies_and_credentials_are_not_used(self):
         response = MagicMock()

@@ -1,9 +1,7 @@
-"""Generate release-note links from published repository security advisories."""
+"""Match published security advisories to the releases that fixed them."""
 
-import argparse
 import json
 import re
-from pathlib import Path
 
 from security_public_api import public_pages
 
@@ -12,19 +10,6 @@ BASE_URL = f"https://github.com/{REPOSITORY}"
 START = "<!-- security-advisories:start -->"
 END = "<!-- security-advisories:end -->"
 RESEARCH_ROLES = {"reporter", "finder", "analyst"}
-
-
-def published_advisories(advisories):
-    return [
-        advisory
-        for advisory in advisories
-        if advisory.get("state") == "published"
-        and advisory.get("published_at")
-        and not advisory.get("withdrawn_at")
-        and re.fullmatch(
-            r"GHSA-[a-z0-9]{4}(?:-[a-z0-9]{4}){2}", advisory.get("ghsa_id") or ""
-        )
-    ]
 
 
 def accepted_researchers(advisory):
@@ -118,65 +103,5 @@ def fixed_in(advisory, tag):
     return bool(matching)
 
 
-def inline_text(value):
-    value = " ".join(value.split())
-    return re.sub(r"([\\`*_{}\[\]()<>#!|])", r"\\\1", value)
-
-
-def release_notes(advisories, tag, existing=""):
-    selected = sorted(
-        (a for a in published_advisories(advisories) if fixed_in(a, tag)),
-        key=lambda a: a["ghsa_id"],
-    )
-    if not selected:
-        raise ValueError(
-            "No published advisories match this fixed release; notes unchanged"
-        )
-    lines = [START, "## Security fixes", ""]
-    for advisory in selected:
-        ghsa = advisory["ghsa_id"]
-        line = f"- [{ghsa}]({BASE_URL}/security/advisories/{ghsa}): "
-        line += inline_text(advisory["summary"])
-        cve = advisory.get("cve_id")
-        if cve and re.fullmatch(r"CVE-\d{4}-\d{4,}", cve):
-            line += f" ({cve})"
-        researchers = accepted_researchers(advisory)
-        if researchers:
-            line += ". Thanks to " + ", ".join(
-                f"[@{login}](https://github.com/{login})" for login in researchers
-            )
-        lines.append(line + ".")
-    lines += ["", END]
-    section = "\n".join(lines)
-    if START in existing or END in existing:
-        if existing.count(START) != 1 or existing.count(END) != 1:
-            raise ValueError(
-                "Expected exactly one complete security-advisories marker pair"
-            )
-        start, end = existing.index(START), existing.index(END)
-        if end < start:
-            raise ValueError("Security-advisories markers are reversed")
-        return existing[:start] + section + existing[end + len(END) :]
-    return existing.rstrip() + ("\n\n" if existing.strip() else "") + section + "\n"
-
-
 def fetch_advisories():
     return public_pages("security-advisories", "state=published")
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tag", required=True)
-    parser.add_argument("--notes", type=Path, help="Existing release notes to preserve")
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    existing = args.notes.read_text(encoding="utf-8") if args.notes else ""
-    try:
-        result = release_notes(fetch_advisories(), args.tag, existing)
-    except ValueError as error:
-        parser.error(str(error))
-    args.output.write_text(result, encoding="utf-8")
-
-
-if __name__ == "__main__":
-    main()
