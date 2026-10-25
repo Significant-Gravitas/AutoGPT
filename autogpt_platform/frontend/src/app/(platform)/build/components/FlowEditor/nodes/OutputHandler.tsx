@@ -105,6 +105,7 @@ export const OutputHandler = ({
               {hasNestedProperties && (
                 <button
                   onClick={() => toggleObjectExpanded(fullKey)}
+                  // TODO(tokens): no exact role: text-slate-500 #64748B, hover:text-slate-700 #475263
                   className="flex items-center text-slate-500 hover:text-slate-700"
                   aria-label={isExpanded ? "Collapse" : "Expand"}
                 >
@@ -132,21 +133,19 @@ export const OutputHandler = ({
                 </TooltipProvider>
               )}
               <Text
-                variant="body"
+                variant={isBroken ? "body-line-through" : "body"}
                 className={cn(
+                  // TODO(tokens): no exact role: text-slate-700 #475263
                   "text-slate-700",
-                  isBroken && "text-red-500 line-through",
+                  isBroken && "text-error",
                 )}
               >
                 {fieldTitle}
               </Text>
               <Text
-                variant="small"
+                variant={isBroken ? "small-line-through" : "small"}
                 as="span"
-                className={cn(
-                  colorClass,
-                  isBroken && "!text-red-500 line-through",
-                )}
+                className={cn(colorClass, isBroken && "!text-error")}
               >
                 ({displayType})
               </Text>
@@ -177,15 +176,16 @@ export const OutputHandler = ({
   };
 
   return (
-    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white py-3.5">
+    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-border-base bg-surface py-3.5">
       <Button
         variant="ghost"
         className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
-          variant="body"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          variant="body-semibold"
+          // TODO(tokens): no exact role: text-slate-700 #475263
+          className="flex items-center gap-2 text-slate-700"
         >
           Output{" "}
           <Icon

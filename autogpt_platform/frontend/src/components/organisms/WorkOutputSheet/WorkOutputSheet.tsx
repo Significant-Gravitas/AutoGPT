@@ -2,7 +2,7 @@
 
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
-import { MessageResponse } from "@/components/ai-elements/message";
+import { MessageResponse } from "@/components/organisms/Message/Message";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
