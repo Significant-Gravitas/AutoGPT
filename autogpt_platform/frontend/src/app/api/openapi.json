@@ -21625,6 +21625,10 @@
           "webhook_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Webhook Id"
+          },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
           }
         },
         "type": "object",
