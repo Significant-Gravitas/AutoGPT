@@ -20,11 +20,10 @@ const TECHNICAL_PATTERNS = [
   // Paths: "~/x", "./x", "/x", or any token with two slashes in it.
   /(?:^|\s)[~.]?\/\w/,
   /\S+\/\S*\//,
-  // "reports/brief": two lowercase words joined by a slash, unless the pair
-  // is ordinary writing ("and/or", "his/her"). "24/7" and "Instagram/Shopify"
-  // never match.
-  /\b(?!(?:and|or|he|she|his|her|him|them)\/)[a-z][\w-]+\/(?!(?:and|or|he|she|his|her|him|them)\b)[a-z][\w-]+/,
-  /\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|js|ts|log|xlsx)\b/i,
+  /\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|log|xlsx)\b/i,
+  // A script by its file name ("index.js"); "Next.js" or "Node.js" is a
+  // product name, not a file.
+  /\b[a-z0-9_][\w-]*\.(?:js|ts)\b/,
   /`/,
   /&&|\|\||\s\|\s|\$\(/,
   /\b(?:sed|awk|grep|mkdir|chmod|sudo|curl|npm|pip3?|bash)\b|\bcd\s|\bls\b/,
@@ -42,9 +41,46 @@ const TECHNICAL_PATTERNS = [
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
 ];
 
+// Two words joined by a slash that are ordinary writing, not a folder and a
+// file ("reports/brief"). "24/7" and "Instagram/Shopify" never look like a
+// path in the first place: a path pair is two lowercase words.
+const PROSE_PAIRS = new Set([
+  "and/or",
+  "he/she",
+  "his/her",
+  "him/her",
+  "she/he",
+  "they/them",
+  "yes/no",
+  "pros/cons",
+  "input/output",
+  "inputs/outputs",
+  "read/write",
+  "on/off",
+  "true/false",
+  "before/after",
+  "either/or",
+  "in/out",
+  "up/down",
+  "start/end",
+  "open/close",
+  "buy/sell",
+  "online/offline",
+]);
+const SLASH_PAIR = /\b([a-z][\w-]*)\/([a-z][\w-]*)\b/g;
+
 /** Whether text a business owner would see names a path, file, shell
  *  command, tool name or internal id: detail that belongs behind "Show
  *  technical details", never in a label or a summary. */
 export function looksTechnical(text: string): boolean {
-  return TECHNICAL_PATTERNS.some((pattern) => pattern.test(text));
+  return (
+    TECHNICAL_PATTERNS.some((pattern) => pattern.test(text)) ||
+    hasPathPair(text)
+  );
+}
+
+function hasPathPair(text: string): boolean {
+  return [...text.matchAll(SLASH_PAIR)].some(
+    ([pair]) => !PROSE_PAIRS.has(pair.toLowerCase()),
+  );
 }

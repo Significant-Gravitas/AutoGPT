@@ -26,6 +26,8 @@ describe("looksTechnical", () => {
     "Calling node build",
     "Running make build",
     "Running sort orders",
+    "Reading index.js",
+    "Updating app.ts",
     "npm install",
   ])("flags %j", (text) => {
     expect(looksTechnical(text)).toBe(true);
@@ -48,6 +50,11 @@ describe("looksTechnical", () => {
     "Running export of orders",
     "Running find for duplicates",
     "Calling make for the launch",
+    "Asking for a yes/no on the budget",
+    "Weighing the pros/cons of each channel",
+    "Mapping the input/output of the funnel",
+    "Checking the Next.js storefront",
+    "Updating the Node.js and Vue.js notes",
   ])("passes %j", (text) => {
     expect(looksTechnical(text)).toBe(false);
   });

@@ -88,6 +88,11 @@ def test_a_command_that_is_also_a_word_still_counts_with_an_argument():
     assert technical_terms(reply, _TOOLS) == ["sort orders", "make build"]
 
 
+def test_a_product_name_ending_in_js_is_not_a_file():
+    assert technical_terms("Your store runs on Next.js and Node.js.", _TOOLS) == []
+    assert technical_terms("I updated index.js for you.", _TOOLS) == ["index.js"]
+
+
 def test_the_registry_names_are_the_ones_checked():
     assert "bash_exec" in TOOL_NAMES and "run_capability" in TOOL_NAMES
 

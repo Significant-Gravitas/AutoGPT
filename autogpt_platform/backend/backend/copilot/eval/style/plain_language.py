@@ -20,8 +20,11 @@ _CAPABILITY_ID = re.compile(r"\btool:[a-z_]+")
 _PATH = re.compile(
     r"(?:(?<=[\s`'\"(])|^)(?:~|\.{1,2})?/[\w.-]+(?:/[\w.-]+)+", re.MULTILINE
 )
+# A script counts by its file name ("index.js"); "Next.js" or "Node.js" is a
+# product name, not a file.
 _FILE_NAME = re.compile(
-    r"\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|js|ts|log|xlsx)\b"
+    r"\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|log|xlsx)\b"
+    r"|\b[a-z0-9_][\w-]*\.(?:js|ts)\b"
 )
 _COMMAND = re.compile(
     r"\b(?:(?:sed|awk|grep|cat|cd|ls|mkdir|rm|cp|mv|curl|chmod|pip3?|npm|python3?|git)"
