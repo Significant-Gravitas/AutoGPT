@@ -16,8 +16,6 @@ interface ContextualTipState {
   putAway: (id: TipID) => void;
 }
 
-// Surfaces report their moment here (a second chat, a cost, an expert
-// proposal); the host decides when, and whether, the tip shows.
 export const useContextualTipStore = create<ContextualTipState>((set) => ({
   requested: [],
   shown: [],
@@ -62,8 +60,7 @@ export function requestTip(id: TipID) {
   useContextualTipStore.getState().request(id);
 }
 
-// Queued and shown tips belong to the account they came up for: another
-// account signing in on this tab starts with neither.
+// Another account signing in on this tab starts with neither list.
 onAccountChange(() =>
   useContextualTipStore.setState({ requested: [], shown: [] }),
 );

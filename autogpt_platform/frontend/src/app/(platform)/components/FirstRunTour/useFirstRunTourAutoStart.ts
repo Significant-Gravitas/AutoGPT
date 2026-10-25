@@ -14,13 +14,9 @@ interface Args {
   onFinished: () => void;
 }
 
-// Opens the walkthrough by itself once, on the first home visit after
-// onboarding. It does not wait for the onboarding record, which can take a
-// while to arrive after a sign-up. The first-run flag is this tab's, so it
-// can still outlive its account (signing out and in as someone else): when
-// the record shows the walkthrough (FIRST_RUN_TOUR, or the old
-// CAPABILITY_CARDS deck), it stays shut, or shuts again if it was opened
-// before the record arrived.
+// Opens once on the first home visit after onboarding, without waiting for
+// the onboarding record (slow after a sign-up); shuts again if it then shows
+// an intro.
 export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
   const { user } = useAuth();
   const userID = user?.id ?? null;
@@ -50,13 +46,11 @@ export function useFirstRunTourAutoStart({ isPending, onFinished }: Args) {
     open("auto");
   }, [isPending, hasHadIntro, userID, open, close, finish]);
 
-  // Runs on every change of `source` but reads the store itself: a render's
-  // `source` is the value from before its own effects ran, so it still reads
-  // null in the render whose effect above opens the walkthrough.
+  // Reads the store, not `source`: in the render whose effect above opens the
+  // walkthrough, `source` is still null.
   useEffect(() => {
     const isClosed = useFirstRunTourStore.getState().source === null;
-    // Only for the account it opened it for: one closed because another
-    // account signed in is not that account's first run being over.
+    // A close while signed out, or for another account, is not this one's.
     if (startedFor.current === userID && isPending && isClosed) finish();
   }, [isPending, source, userID, finish]);
 }

@@ -34,9 +34,8 @@ export interface TourStep {
   requiresBilling?: boolean;
 }
 
-// The four things a new user has to learn, then where to begin. One entry per
-// step and one line each: adding or rewording a step (the allowance copy is
-// shared with the wallet work in SECRT-3133) is an edit here, nowhere else.
+// One entry per step: rewording one (the allowance copy is shared with
+// SECRT-3133) is an edit here, nowhere else.
 export const TOUR_STEPS: TourStep[] = [
   {
     id: "chats",
@@ -70,8 +69,7 @@ export const TOUR_STEPS: TourStep[] = [
       isTrial
         ? "Your trial includes an allowance for chats and experts. See what's left here, and earn extra credits."
         : "See how much of your plan's allowance is left here, plus your credits.",
-    // The wallet draws nothing until credits load (or at all, if they fail),
-    // so the sidebar footer it sits in stands in for it meanwhile.
+    // The wallet draws nothing until credits load; its footer stands in.
     targets: ["wallet", "account"],
     bodyFor: {
       account: "Your allowance and credits live here, next to your profile.",
@@ -93,8 +91,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
 ];
 
-// Built once: the step list is an effect dependency downstream, so it must
-// keep its identity from render to render.
+// Built once: downstream effects depend on the list's identity.
 const STEPS_WITHOUT_BILLING = TOUR_STEPS.filter(
   (step) => !step.requiresBilling,
 );
@@ -103,10 +100,8 @@ export function getAvailableSteps({ isBillingEnabled }: TourAvailability) {
   return isBillingEnabled ? TOUR_STEPS : STEPS_WITHOUT_BILLING;
 }
 
-// Where a step sits in this list. The list can change under an open
-// walkthrough (the billing flag answering late), so the walkthrough holds
-// on to a step, not a position. A step that dropped out hands over to the
-// next one still in the list.
+// The list can change under an open walkthrough (billing answering late), so
+// it holds a step, not a position; a dropped step hands over to the next one.
 export function findStepIndex(steps: TourStep[], stepID: string | null) {
   const index = steps.findIndex((step) => step.id === stepID);
   if (stepID === null || index !== -1) return Math.max(index, 0);
@@ -117,8 +112,7 @@ export function findStepIndex(steps: TourStep[], stepID: string | null) {
   return next === -1 ? steps.length - 1 : next;
 }
 
-// One step as a list, for the hook that measures lists of targets. Cached so
-// the same step always hands over the same array.
+// Cached so the same step always hands the measuring hook the same array.
 const stepLists = new WeakMap<TourStep, TourStep[]>();
 
 export function stepListOf(step: TourStep) {

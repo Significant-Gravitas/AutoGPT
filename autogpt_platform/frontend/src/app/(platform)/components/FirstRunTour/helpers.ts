@@ -1,16 +1,12 @@
 import { TOUR_TARGET_ATTRIBUTE, type TourTarget } from "@/lib/tour-targets";
 import type { TourStep } from "./steps";
 
-// The onboarding steps that mean "this person has had the first-run intro".
-// CAPABILITY_CARDS is the old four-card deck: someone who already sat through
-// it is an existing user, and the walkthrough does not open on them by itself
-// (they can still replay it from the profile menu).
+// Steps that mean "already had the first-run intro"; CAPABILITY_CARDS is the
+// old deck, so existing users are not walked through by themselves.
 export const TOUR_DONE_STEPS = ["FIRST_RUN_TOUR", "CAPABILITY_CARDS"];
 
-// Local cache of FIRST_RUN_TOUR, so the walkthrough stays closed the instant
-// it ends rather than after the round trip, and stays closed if that request
-// failed. The value is the user id: another account on the same browser
-// still gets its own first run.
+// Local cache of FIRST_RUN_TOUR (keyed by user id), so it stays closed even
+// before, or without, the server write.
 const SEEN_KEY = "autogpt:first-run-tour-seen";
 
 export function peekFirstRunTourSeen(userID: string | null | undefined) {
@@ -38,11 +34,8 @@ export interface Box {
   height: number;
 }
 
-// A target only counts when it is laid out and not off to the side: the
-// collapsed sidebar keeps the full nav in the DOM with `display: none`, and
-// the phone keeps it in a sheet slid off the edge. Above or below the fold
-// is only scrolled away: the walkthrough scrolls it in, and a tip waits
-// until it is on screen (see `isOnScreen`).
+// Missing when not laid out (`display: none`) or off to the side (a closed
+// sheet). Above or below the fold is only scrolled away.
 export function findTourTarget(target: TourTarget) {
   const nodes = document.querySelectorAll<HTMLElement>(
     `[${TOUR_TARGET_ATTRIBUTE}="${target}"]`,
@@ -56,8 +49,6 @@ export function findTourTarget(target: TourTarget) {
   return null;
 }
 
-// A spotlight box with something in it: one clamped to the screen comes
-// out empty when its target is scrolled away.
 export function isOnScreen(box: Box | null): box is Box {
   return box !== null && box.width >= 1 && box.height >= 1;
 }
@@ -81,20 +72,17 @@ export function resolveStop(step: TourStep): ResolvedStop {
   return { target: null, element: null, viaMenu: false };
 }
 
-// On a phone the menu button stands in for a sidebar item, so the line says
-// where to look. One string for the card and for what a screen reader hears.
+// One string for the card and for what a screen reader hears.
 export function withMenuHint(body: string, viaMenu: boolean) {
   return viaMenu ? `${body} Open the menu to find it.` : body;
 }
 
 const SPOTLIGHT_PADDING = 6;
-// A long chat list would light up the whole sidebar; the header and the first
-// rows are enough to say "here". Everything else is shown whole.
+// A long chat list would light up the whole sidebar.
 const CAPPED_TARGETS: Partial<Record<TourTarget, number>> = { chats: 220 };
 
-// Whether the part of a target the spotlight lights up runs past the edge
-// of the screen. The walkthrough locks page scrolling, so it scrolls such a
-// target in itself rather than leave a sliver of it lit.
+// The walkthrough locks page scrolling, so it scrolls a target that runs past
+// the edge in itself.
 export function isPartlyOffScreen(
   element: HTMLElement,
   target: TourTarget | null,

@@ -12,8 +12,7 @@ import { isFirstSecondChat, peekTipSeen, setTipSeen } from "./helpers";
 import { requestTip, useContextualTipStore } from "./store";
 import { TIPS, type TipID } from "./tips";
 
-// Decides which one-time tip, if any, is on screen. One at a time, never
-// over the walkthrough or another dialog, and never twice for a user.
+// Which one-time tip, if any, is on screen.
 export function useContextualTips() {
   const { user, isLoggedIn } = useAuth();
   const userID = user?.id ?? null;
@@ -32,9 +31,8 @@ export function useContextualTips() {
 
   useSecondChatMoment(isLoggedIn, userID);
 
-  // Recorded the first time a tip is on screen, so it never comes up on
-  // another visit; within this visit it may still come back (after a dialog
-  // that opened over it closes) until it is put away.
+  // A tip shown this visit may come back (after a dialog over it closes)
+  // until it is put away.
   function isSeen(id: TipID) {
     if (shown.includes(id)) return false;
     return (
@@ -43,13 +41,10 @@ export function useContextualTips() {
     );
   }
 
-  // A moment for a tip this user already has, or one this install cannot
-  // show (the cost tip points at a wallet that only exists with billing on),
-  // is simply dropped rather than left at the head of the queue.
   useEffect(() => {
     if (!state || !userID) return;
-    // Read from the store, not this render: the tip on screen records itself
-    // in the same commit, and must not be dropped as one the user already had.
+    // From the store, not this render: the tip on screen records itself in
+    // the same commit and must not be dropped as already had.
     const shownNow = useContextualTipStore.getState().shown;
     requested
       .filter(
@@ -69,17 +64,12 @@ export function useContextualTips() {
             !isSeen(id) && (!TIPS[id].requiresBilling || isBillingEnabled),
         ) ?? null)
       : null;
-  // Never over the walkthrough, its connect dialog or any other open
-  // dialog (the wallet, the profile menu): the tip steps aside while one is
-  // open and comes back once it closes, followed live rather than per page.
   const isBlocked = isTourOpen || isConnectToolsOpen;
   const isDialogOpen = useCompetingDialogOpen(candidate !== null && !isBlocked);
   const active = !isBlocked && !isDialogOpen ? candidate : null;
 
-  // The first time a tip is on screen it is recorded for good, so leaving
-  // or reloading the page without "Got it" does not bring it back. The host
-  // outlives the tip card, which comes down and back up whenever something
-  // opens over it, so it counts the showing once.
+  // Recorded on first showing, so a reload without "Got it" does not bring it
+  // back. The card remounts whenever something opens over it; this counts once.
   function reportShown(id: TipID) {
     if (shown.includes(id)) return;
     markShown(id);
@@ -99,19 +89,14 @@ export function useContextualTips() {
     dismiss,
     reportShown,
     othersWaiting: requested.length > 1,
-    // Nothing on screen to point at yet: let the next tip have its turn.
     postponeActive: () => active && postpone(active),
   };
 }
 
-// The chat list growing to two for the first time is the first second
-// thread. It is watched here rather than where chats are created, so every
-// way of starting one counts: the composer, a suggested task, an expert's
-// own chat. It goes by the most chats seen, not the last count, so a list
-// that dips back to one (a failed delete, deleting down) does not count.
+// Watched on the chat list, so every way of starting a chat counts. Goes by
+// the most chats seen per account, so a dip back to one does not count.
 function useSecondChatMoment(isLoggedIn: boolean, userID: string | null) {
   const { sessions, isLoading } = useSessionList({ enabled: isLoggedIn });
-  // Per account: someone else signing in here starts from their own list.
   const mostSeen = useRef<{ userID: string | null; count: number } | null>(
     null,
   );

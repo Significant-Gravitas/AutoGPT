@@ -13,11 +13,8 @@ interface Props {
 
 const HOLE_RADIUS = 12;
 
-// Dims the app and cuts a window around the real UI being pointed at. The
-// page stays visible on purpose: the whole point is to see where things are.
-// It also takes the clicks, so a stray one cannot navigate away mid-tour.
-// Portalled to the body so no stacking context in the app shell can lift a
-// popup (the changelog, a banner) above it.
+// Takes the clicks so a stray one cannot navigate away mid-tour. Portalled so
+// no stacking context in the app shell can lift a popup above it.
 export function TourScrim({ boxes, dim = true }: Props) {
   const maskID = `tour-mask-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 

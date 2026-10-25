@@ -14,8 +14,6 @@ import { findStepIndex, getAvailableSteps, getStepBody } from "./steps";
 import { useFirstRunTourStore } from "./store";
 import type { MeasuredStop } from "./useTourStops";
 
-// The walkthrough's lifecycle, shared by every way of presenting it: which
-// step is up, how it ends, and what ending it records.
 export function useFirstRunTour() {
   const { user } = useAuth();
   const userID = user?.id ?? null;
@@ -43,26 +41,22 @@ export function useFirstRunTour() {
   const isLastStep = safeIndex === steps.length - 1;
   const context = { isTrial: experience.isActiveTrial };
 
-  // Every step but the last points at the sidebar, so a collapsed one is
-  // opened for the walkthrough. It is only borrowed: not saved as the
-  // person's preference, and collapsed again once the walkthrough ends.
+  // A collapsed sidebar is borrowed: opened without saving the preference,
+  // and collapsed again when the walkthrough ends.
   const openedSidebar = useRef(false);
   useEffect(() => {
     if (!isOpen || isMobile || isSidebarOpen) return;
     openedSidebar.current = true;
     setSidebarOpen(true, { persist: false });
   }, [isOpen, isMobile, isSidebarOpen, setSidebarOpen]);
-  // The setter changes with the sidebar's state, so the hand-back reads the
-  // latest one and runs only when the walkthrough goes.
+  // The setter changes identity as the sidebar opens; hand back on unmount.
   const giveSidebarBack = useStableCallback(() => {
     if (openedSidebar.current) setSidebarOpen(false, { persist: false });
   });
   useEffect(() => giveSidebarBack, [giveSidebarBack]);
 
-  // On a phone the sidebar is a sheet over the page. Pointing at its menu
-  // button would ask for a tap the scrim and focus trap do not allow, so the
-  // walkthrough opens the sheet itself for the steps that live there, and
-  // puts it away for the rest and once it ends.
+  // On a phone the scrim and focus trap block a tap on the menu, so the
+  // walkthrough opens the sidebar sheet itself for the steps that live there.
   const wantsSheet = isOpen && isMobile && step?.inSidebar === true;
   useEffect(() => {
     if (isMobile && isOpen) setOpenMobile(wantsSheet);
@@ -106,8 +100,6 @@ export function useFirstRunTour() {
     focusStartingPoint();
   }
 
-  // The old first-run deck carried a "Connect your tools" picker, seeded
-  // from the brain dump; the walkthrough keeps it one click from the end.
   function connectToolsFirst() {
     finish("completed", "connect_tools");
     setConnectToolsOpen(true);

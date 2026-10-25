@@ -26,11 +26,8 @@ function isSameStop(a: MeasuredStop, b: MeasuredStop) {
   );
 }
 
-// Where each step points right now, and the box to light up around it.
-// Follows the targets as the layout moves under them: the sidebar sliding
-// open, a scroll, a resize, the greeting landing and pushing the first tasks
-// down, or a target mounting late (the first tasks arrive after the
-// walkthrough has started).
+// Follows targets as the layout moves: the sidebar sliding, scroll, resize,
+// and targets that mount late.
 export function useTourStops(steps: TourStep[]) {
   const [stops, setStops] = useState<MeasuredStop[]>([]);
 
@@ -77,8 +74,7 @@ export function useTourStops(steps: TourStep[]) {
     }
 
     measure();
-    // The sidebar's open/close is a width transition; keep measuring through
-    // it rather than leaving the spotlight where the item was mid-slide.
+    // Keep measuring through the sidebar's width transition.
     const settle = window.setInterval(schedule, 50);
     const stopSettling = window.setTimeout(
       () => window.clearInterval(settle),

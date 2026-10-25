@@ -17,8 +17,6 @@ interface FirstRunTourState {
   setConnectToolsOpen: (isOpen: boolean) => void;
 }
 
-// Shared by the profile menu (replay), the home page (first visit) and the
-// host that renders the walkthrough over the whole app.
 export const useFirstRunTourStore = create<FirstRunTourState>((set) => ({
   source: null,
   stepID: null,
@@ -37,8 +35,7 @@ export const useFirstRunTourStore = create<FirstRunTourState>((set) => ({
   },
 }));
 
-// An open walkthrough belongs to the account that opened it: another account
-// signing in on this tab starts with it closed.
+// Another account signing in on this tab starts with it closed.
 onAccountChange(() =>
   useFirstRunTourStore.setState({
     source: null,

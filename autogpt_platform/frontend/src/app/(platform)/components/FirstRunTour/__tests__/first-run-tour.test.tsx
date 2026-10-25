@@ -582,6 +582,75 @@ describe("first-run walkthrough", () => {
     );
     act(() => useFirstRunTourStore.getState().setConnectToolsOpen(false));
   });
+
+  it("hands focus to the composer when Connect your tools closes", async () => {
+    // The button that opened it went with the walkthrough, so there is
+    // nothing to hand focus back to; keyboard users would land on <body>.
+    renderTour();
+    const composer = screen.getByRole("textbox", { name: "Message Otto" });
+    openTour();
+    act(() => useFirstRunTourStore.getState().goTo("start"));
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Or connect your tools first",
+      }),
+    );
+    await waitFor(() =>
+      expect(useFirstRunTourStore.getState().isConnectToolsOpen).toBe(true),
+    );
+
+    act(() => useFirstRunTourStore.getState().setConnectToolsOpen(false));
+
+    await waitFor(() => expect(document.activeElement).toBe(composer));
+  });
+
+  it("keeps the way out and the step counter readable (4.5:1 on the card)", async () => {
+    renderTour();
+    openTour();
+
+    const skip = await screen.findByRole("button", { name: "Skip tour" });
+    expect(skip.className).toContain("text-foreground-secondary");
+    expect(screen.getByText("1 of 5").className).toContain(
+      "text-foreground-secondary",
+    );
+  });
+
+  it("jumps to the first task without smooth scrolling when motion is reduced", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({
+          matches: query.includes("prefers-reduced-motion: reduce"),
+          media: query,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderTour();
+      openTour();
+      act(() => useFirstRunTourStore.getState().goTo("start"));
+      await userEvent.click(
+        await screen.findByRole("button", { name: /Start here/ }),
+      );
+
+      await waitFor(() =>
+        expect(scrollIntoView).toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: "auto" }),
+        ),
+      );
+      expect(scrollIntoView).not.toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: "smooth" }),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+      matchMedia.mockRestore();
+    }
+  });
 });
 
 function AutoStart({

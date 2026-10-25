@@ -20,9 +20,6 @@ interface Props {
   tour: ReturnType<typeof useFirstRunTour>;
 }
 
-// Sidebar targets sit on the left edge, so the card opens to their right; the
-// phone's menu button sits top-left, so the card drops below it; the first
-// tasks sit mid-page, so the card sits above them and flips if it must.
 function sideFor(target: TourTarget | null) {
   if (target === "menu") return "bottom";
   if (target === "first-tasks" || target === "composer") return "top";
@@ -32,8 +29,7 @@ function sideFor(target: TourTarget | null) {
 
 function anchorRect(box: Box | null) {
   if (box) return DOMRect.fromRect({ ...box, x: box.left, y: box.top });
-  // Nothing to point at (the first tasks are still on their way): hold the
-  // card in the middle of the screen until the target arrives.
+  // Nothing to point at yet: hold the card mid-screen.
   return DOMRect.fromRect({
     x: window.innerWidth / 2,
     y: window.innerHeight / 3,
@@ -42,15 +38,12 @@ function anchorRect(box: Box | null) {
   });
 }
 
-// One surface at a time: the app dims, a window opens over the real control,
-// and a card beside it says what it is in one line.
 export function TourSpotlight({ tour }: Props) {
   const step = tour.steps[tour.stepIndex];
   const [measured] = useTourStops(stepListOf(step));
   const stop = measured?.stepID === step.id ? measured : undefined;
   const box = stop?.box ?? null;
-  // Read on every frame by the card's positioning, so it always sees the
-  // latest box without the anchor object changing identity.
+  // Read on every frame without the anchor changing identity.
   const boxRef = useRef(box);
   useEffect(() => {
     boxRef.current = box;
@@ -77,7 +70,6 @@ export function TourSpotlight({ tour }: Props) {
     element.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [element, target]);
 
-  // Once per step, as soon as it knows what it points at.
   const trackedStepRef = useRef<string | null>(null);
   const trackStep = useStableCallback(tour.trackStep);
   useEffect(() => {
@@ -100,8 +92,7 @@ export function TourSpotlight({ tour }: Props) {
       <Popover open modal key={layer}>
         <PopoverAnchor virtualRef={virtualRef} />
         <PopoverContent
-          // Over the phone's sheet there is no room beside it: below the
-          // item (above it, near the bottom) keeps the card on screen.
+          // No room beside the phone's sheet.
           side={isOverSheet ? "bottom" : sideFor(target)}
           align={target === null ? "center" : "start"}
           sideOffset={14}
@@ -156,10 +147,10 @@ export function TourSpotlight({ tour }: Props) {
   );
 }
 
-// The phone's sidebar sheet is a modal dialog too: one opened after the card
-// takes its focus and taps and hides it from assistive tech. So the card
-// mounts again once the sheet has opened (or closed), a couple of frames on,
-// after the sheet's own effects have run in the same commit as its content.
+// The phone's sheet is a modal dialog too; mounted after the card, it takes
+// the card's focus and taps and hides it from assistive tech. So the card
+// remounts a couple of frames after the sheet opens or closes, once the
+// sheet's own effects have run.
 function useLayerAboveSheet(isOverSheet: boolean) {
   const [layer, setLayer] = useState(isOverSheet ? "over-sheet" : "over-page");
   useEffect(() => {

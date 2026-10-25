@@ -18,8 +18,6 @@ interface Tip {
   requiresBilling?: boolean;
 }
 
-// One-line tips for the first time each surface matters, instead of
-// front-loading them into the walkthrough.
 export const TIPS: Record<TipID, Tip> = {
   "second-chat": {
     step: "CHATS_TIP",
@@ -50,11 +48,8 @@ export function getTipBody(id: TipID, context: TipContext) {
   return typeof body === "function" ? body(context) : body;
 }
 
-// Otto's own billing words, not money in general: a small-business owner
-// talks about prices and costs all day, and none of that is about the trial.
-// "credit card" is the card on file, not the credit balance.
-// "credit" alone is too common ("give credit to"), so it needs a number or
-// the plural: "2 credits", "1 credit", "your credits".
+// Otto's billing words, not money in general (users talk prices all day).
+// Not "credit card"; a bare "credit" needs a number or the plural.
 const COST_WORDS =
   /\b(?:allowance|cents?|automation credits?|\d[\d.,]*\s*credits?|credits)\b(?!\s+cards?\b)/i;
 

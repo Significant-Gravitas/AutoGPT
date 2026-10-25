@@ -5,9 +5,6 @@ import { TourSpotlight } from "./components/TourSpotlight";
 import { useFirstRunTourStore } from "./store";
 import { useFirstRunTour } from "./useFirstRunTour";
 
-// The guided first run over the real sidebar. Rendered once, inside the app
-// chrome, and idle until something opens it: the first home visit after
-// onboarding, or "Show me around" in the profile menu.
 export function FirstRunTour() {
   const source = useFirstRunTourStore((state) => state.source);
   const isConnectToolsOpen = useFirstRunTourStore(

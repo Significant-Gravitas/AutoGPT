@@ -17,7 +17,6 @@ import { tipStepOf } from "./helpers";
 import { getTipBody, TIPS, type TipID } from "./tips";
 import { useContextualTips } from "./useContextualTips";
 
-// Rendered once in the app chrome; shows at most one tip at a time.
 export function ContextualTips() {
   const { active, dismiss, reportShown, postponeActive, othersWaiting } =
     useContextualTips();
@@ -34,8 +33,7 @@ export function ContextualTips() {
   );
 }
 
-// How long a tip waits for its target (a sidebar sliding in, a page still
-// loading) before stepping aside for the next one in the queue.
+// How long a tip waits for its target before letting the next one go first.
 export const TIP_TARGET_GRACE_MS = 1500;
 
 interface Props {
@@ -47,9 +45,7 @@ interface Props {
   othersWaiting: boolean;
 }
 
-// A small card beside the real control, with a ring around it and no dim:
-// the user is in the middle of something, so it never takes focus and never
-// blocks the page. "Got it" or Escape puts it away for good.
+// No dim and no focus: the user is in the middle of something.
 function ContextualTip({
   id,
   onDismiss,
@@ -87,14 +83,11 @@ function ContextualTip({
 
   const reportOnScreen = useStableCallback(onShown);
 
-  // Counted when the card is on screen beside its target, not when it
-  // takes its turn: a tip still waiting for its target was not seen.
   useEffect(() => {
     if (hasBox) reportOnScreen(id);
   }, [hasBox, id, reportOnScreen]);
 
-  // Armed only while another tip waits behind it, so one queued later
-  // still gets its turn once this one has waited out its grace period.
+  // Re-armed whenever another tip queues up behind this one.
   useEffect(() => {
     if (hasBox || !othersWaiting) return;
     const timer = window.setTimeout(giveWay, TIP_TARGET_GRACE_MS);
@@ -102,7 +95,6 @@ function ContextualTip({
   }, [hasBox, othersWaiting, giveWay]);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Nothing on screen to point at yet: wait rather than float in a corner.
   if (!isOnScreen(box)) return null;
 
   return (
@@ -119,9 +111,7 @@ function ContextualTip({
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
-          // The tip never takes focus, so an Escape elsewhere belongs to
-          // something else (the composer's mention list). Only one from
-          // inside the tip puts it away.
+          // Radix hears Escape page-wide; only one from inside is for us.
           onEscapeKeyDown={(event) => {
             if (contentRef.current?.contains(event.target as Node)) onDismiss();
           }}

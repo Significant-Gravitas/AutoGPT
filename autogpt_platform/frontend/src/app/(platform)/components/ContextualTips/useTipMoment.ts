@@ -4,8 +4,6 @@ import { useEffect, useRef } from "react";
 import { requestTip } from "./store";
 import { mentionsCost, type TipID } from "./tips";
 
-// Reports a tip's moment once `happened` turns true. The host decides when
-// (and whether) to show it.
 export function useTipMoment(id: TipID, happened: boolean) {
   useEffect(() => {
     if (happened) requestTip(id);
@@ -18,8 +16,7 @@ interface LiveMomentArgs {
   isLive: boolean;
 }
 
-// For a moment that also sits in chat history: it counts only once it has
-// arrived live in this view, never when an old chat is read back.
+// For moments that also sit in chat history: only a live one counts.
 export function useLiveTipMoment(
   id: TipID,
   { happened, isLive }: LiveMomentArgs,
@@ -44,8 +41,6 @@ function isTextPart(part: { type: string }): part is {
   return part.type === "text" && "text" in part;
 }
 
-// Otto's latest finished reply talks about what something costs. Only the
-// newest reply counts: scrolling back through an old chat is not a moment.
 export function latestReplyMentionsCost(
   messages: ReadonlyArray<MessageLike>,
   isStreaming: boolean,
@@ -62,9 +57,8 @@ interface CostReplyArgs {
   enabled: boolean;
 }
 
-// The moment is Otto saying it, so only a reply that finishes streaming in
-// front of the user counts. Opening a chat whose history already mentions a
-// cost is reading back, not the first time it came up.
+// Only a reply that finishes streaming in front of the user counts, not one
+// read back from history.
 export function useCostReplyMoment({
   messages,
   isStreaming,

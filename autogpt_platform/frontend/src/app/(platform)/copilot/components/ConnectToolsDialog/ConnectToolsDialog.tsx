@@ -1,5 +1,6 @@
 "use client";
 
+import { focusComposer } from "@/app/(platform)/components/FirstRunTour/focusStartingPoint";
 import { getFocusableElements } from "@/app/(platform)/components/TabIntroCard/helpers";
 import { isKeyIgnoringComposition } from "@/lib/keyboard";
 import { useEffect, useRef } from "react";
@@ -45,8 +46,15 @@ export function ConnectToolsDialog({ isOpen, onClose }: Props) {
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      if (previouslyFocused && document.contains(previouslyFocused))
+      // Opened from the walkthrough's last step, whose button is gone by
+      // now: the composer is where a keyboard user carries on.
+      if (
+        previouslyFocused &&
+        previouslyFocused !== document.body &&
+        document.contains(previouslyFocused)
+      )
         previouslyFocused.focus();
+      else focusComposer();
     };
   }, [isOpen]);
 

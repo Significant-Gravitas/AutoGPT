@@ -14,7 +14,6 @@ interface Props {
   bodyID: string;
   stepNumber: number;
   stepCount: number;
-  /** A phone's menu button is standing in for the sidebar target. */
   isFirstStep: boolean;
   isLastStep: boolean;
   onBack: () => void;
@@ -45,7 +44,12 @@ export function TourStepCard({
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
           <Icon icon={icon} size={16} aria-hidden />
         </span>
-        <Text variant="small" tone="muted" className="tabular-nums" dir="auto">
+        <Text
+          variant="small"
+          tone="secondary"
+          className="tabular-nums"
+          dir="auto"
+        >
           {stepNumber} of {stepCount}
         </Text>
       </div>
@@ -85,7 +89,7 @@ export function TourStepCard({
           variant="ghost"
           size="xs"
           onClick={onSkip}
-          className="-ml-2.5 text-foreground-tertiary"
+          className="-ml-2.5 text-foreground-secondary"
         >
           {isLastStep ? "Close" : "Skip tour"}
         </Button>

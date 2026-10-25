@@ -2,9 +2,8 @@ import { Idea01Icon } from "@hugeicons/core-free-icons";
 import type { TourStep } from "../FirstRunTour/steps";
 import { TIPS, type TipID } from "./tips";
 
-// Local cache of each tip's onboarding step, so a dismissed tip stays gone
-// before the write lands and if it fails. The value is the user id: another
-// account on the same browser still gets its own tips.
+// Local cache of each tip's step (keyed by user id), in case the write is
+// slow or fails.
 const SEEN_KEY_PREFIX = "autogpt:contextual-tip-seen:";
 
 export function peekTipSeen(id: TipID, userID: string | null | undefined) {
@@ -25,13 +24,11 @@ export function setTipSeen(id: TipID, userID: string | null | undefined) {
   }
 }
 
-// The chat list just went from one chat to two: the first second thread.
 export function isFirstSecondChat(mostSeen: number | null, count: number) {
   return mostSeen === 1 && count >= 2;
 }
 
-// A tip measured like a walkthrough step, so it follows its target the same
-// way. Built once per tip: the measuring hook keys on the list's identity.
+// Built once per tip: the measuring hook keys on the list's identity.
 const tipSteps = new Map<TipID, TourStep[]>();
 
 export function tipStepOf(id: TipID) {
