@@ -26,10 +26,15 @@ _KEY = "copilot:gate:card_approval:"
 # A proposal lives 15 minutes, so an approval of it never needs longer.
 _TTL_SECONDS = 15 * 60
 # Pinned with decisionLine by the shared cardDecisionLines.json fixture.
+# Inside a line, neither the chat nor the gate reads past a \r, \u2028 or
+# \u2029 (JavaScript's "." stops at them; Python's would not).
 _DECISION = re.compile(
-    r"^(?P<verdict>Approved|Not approved): (?P<subject>.+) "
+    r"^(?P<verdict>Approved|Not approved): (?P<subject>[^\r\u2028\u2029]+) "
     r"\(confirmation_id: (?P<id>[^\s()]+)\)\.$"
 )
+# Trimmed from both ends of a line, by the chat's trimLine too: whitespace,
+# control characters and a BOM. str.strip() and String.trim() each miss some.
+_EDGES = re.compile(r"^[\s\x00-\x1f\x7f-\x9f\ufeff]+|[\s\x00-\x1f\x7f-\x9f\ufeff]+$")
 _APPROVED_SUBJECT = re.compile(r"^(?P<verb>hire|create|update) (?P<name>.+)$")
 _DECLINED_SUBJECT = re.compile(
     r"^do not (?P<verb>hire|create|update) (?P<name>.+), discard that proposal$"
@@ -137,7 +142,7 @@ def card_decision_metadata(message: str) -> dict[str, Any] | None:
     with anything else in it, or a line that names no hire, create or update,
     is the user's own words and keeps no metadata.
     """
-    lines = [line for line in _lines(message) if line.strip()]
+    lines = [line for line in _lines(message) if _trim(line)]
     decisions = [decision for line in lines if (decision := _parse_line(line))]
     if not decisions or len(decisions) != len(lines):
         return None
@@ -184,8 +189,12 @@ def _lines(message: str) -> list[str]:
     return message.split("\n")
 
 
+def _trim(line: str) -> str:
+    return _EDGES.sub("", line)
+
+
 def _parse_line(line: str) -> CardDecision | None:
-    match = _DECISION.match(line.strip())
+    match = _DECISION.match(_trim(line))
     if not match:
         return None
     approved = match["verdict"] == "Approved"

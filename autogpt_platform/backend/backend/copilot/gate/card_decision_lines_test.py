@@ -23,6 +23,9 @@ FIXTURE = (
     / "frontend/src/app/(platform)/copilot/__tests__/cardDecisionLines.json"
 )
 CASES = json.loads(FIXTURE.read_text())
+# Typed or pasted lines with odd characters at their ends or inside: the
+# chat's cardDecisions.test.ts reads the same file, so both sides agree.
+EDGE_LINES = json.loads(FIXTURE.with_name("cardDecisionEdgeLines.json").read_text())
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["line"] for case in CASES])
@@ -70,6 +73,13 @@ def test_a_line_ends_only_at_a_newline_as_the_chat_reads_it() -> None:
     assert [(d.confirmation_id, d.name) for d in decisions] == [
         ("c-1", "Ma\x0bya\x85 Lin")
     ]
+
+
+@pytest.mark.parametrize("case", EDGE_LINES, ids=[c["why"] for c in EDGE_LINES])
+def test_an_odd_line_is_a_decision_exactly_when_the_chat_reads_one(
+    case: dict,
+) -> None:
+    assert bool(parse_card_decisions(case["text"])) is case["decides"]
 
 
 def test_a_decision_in_other_words_stays_the_users_message() -> None:

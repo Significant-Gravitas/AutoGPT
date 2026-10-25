@@ -1,0 +1,32 @@
+[
+  {
+    "why": "a BOM before the line",
+    "text": "\ufeffApproved: hire Maya (confirmation_id: c-1).",
+    "decides": true
+  },
+  {
+    "why": "a NEL after the line",
+    "text": "Approved: hire Maya (confirmation_id: c-1).\u0085",
+    "decides": true
+  },
+  {
+    "why": "a control character after the line",
+    "text": "Approved: hire Maya (confirmation_id: c-1).\u001e",
+    "decides": true
+  },
+  {
+    "why": "a no-break space before the line",
+    "text": "\u00a0Approved: hire Maya (confirmation_id: c-1).",
+    "decides": true
+  },
+  {
+    "why": "a line separator inside the name",
+    "text": "Approved: hire Ma\u2028ya (confirmation_id: c-1).",
+    "decides": false
+  },
+  {
+    "why": "a carriage return inside the name",
+    "text": "Approved: hire Ma\rya (confirmation_id: c-1).",
+    "decides": false
+  }
+]

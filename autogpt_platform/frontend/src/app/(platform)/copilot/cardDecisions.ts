@@ -140,13 +140,19 @@ function toCardDecision(item: unknown): CardDecision[] {
 }
 
 function decisionsFromText(text: string): CardDecision[] | null {
-  const lines = text.split("\n").filter((line) => line.trim());
+  const lines = text.split("\n").filter((line) => trimLine(line));
   const parsed = lines.flatMap(parseLine);
   return parsed.length && parsed.length === lines.length ? parsed : null;
 }
 
+// Trimmed from both ends of a line, by the gate's _trim too: whitespace,
+// control characters and a BOM. trim() and Python's strip() each miss some.
+function trimLine(line: string): string {
+  return line.replace(/^[\s\p{Cc}\ufeff]+|[\s\p{Cc}\ufeff]+$/gu, "");
+}
+
 function parseLine(line: string): CardDecision[] {
-  const match = DECISION_RE.exec(line.trim());
+  const match = DECISION_RE.exec(trimLine(line));
   if (!match) return [];
   const verdict: Decision = match[1] === "Approved" ? "approved" : "declined";
   const subject = (

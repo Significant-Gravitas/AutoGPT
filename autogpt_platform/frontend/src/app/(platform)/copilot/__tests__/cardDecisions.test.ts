@@ -7,6 +7,7 @@ import {
   getAnsweredCards,
   getCardDecisions,
 } from "../cardDecisions";
+import edgeLines from "./cardDecisionEdgeLines.json";
 import cases from "./cardDecisionLines.json";
 
 type Message = UIMessage<unknown, UIDataTypes, UITools>;
@@ -58,6 +59,12 @@ describe("card decision lines", () => {
       },
     ]);
     expect(decisionNotes(decisions ?? []).map((n) => n.text)).toEqual([c.note]);
+  });
+
+  // The gate reads the same file (card_decision_lines_test.py): a typed or
+  // pasted line with odd characters is a decision on both sides or neither.
+  it.each(edgeLines)("reads a line with $why as the gate does", (c) => {
+    expect(getCardDecisions(userRow(c.text)) !== null).toBe(c.decides);
   });
 
   it("prefers what the server recorded over the row's text", () => {
