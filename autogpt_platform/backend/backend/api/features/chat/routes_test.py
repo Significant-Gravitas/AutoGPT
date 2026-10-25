@@ -1063,6 +1063,30 @@ def test_stream_chat_stored_resend_refused_at_the_cap_frees_its_key(
     assert mocks.claims.keys == set()
 
 
+@pytest.mark.parametrize("failing", ["take", "state", "own_row"])
+def test_stream_chat_resend_lookup_that_fails_frees_its_key(
+    mocker: pytest_mock.MockerFixture, failing: str
+) -> None:
+    """A Redis or database error while a resend looks up its follow-up must
+    free the client key it claimed, or a quick Retry under the same key
+    waits on it and fails."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.take_held.return_value = None
+    mocks.follow_up_state.return_value = "read"
+    mocks.stored.return_value = False
+    broken = {
+        "take": mocks.take_held,
+        "state": mocks.follow_up_state,
+        "own_row": mocks.stored,
+    }[failing]
+    broken.side_effect = ConnectionError("redis went away")
+
+    with pytest.raises(ConnectionError):
+        _resend(message_id="resend-pm-1")
+
+    assert mocks.claims.keys == set()
+
+
 def test_stream_chat_resend_whose_own_row_was_answered_says_it_was_accepted(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

@@ -2221,11 +2221,22 @@ async def stream_chat_post(
     resent: PendingMessage | None = None
     resume_stored_resend = False
     if request.resend_pending_id and claim != "accepted":
-        resent = await take_follow_up(session_id, request.resend_pending_id)
-        if resent is None and (
-            await follow_up_state(session_id, request.resend_pending_id) == "read"
-        ):
-            own_row = await _own_resend_row(session_id, message_id)
+        read = False
+        own_row: Literal["answered", "unanswered"] | None = None
+        try:
+            resent = await take_follow_up(session_id, request.resend_pending_id)
+            if resent is None:
+                state = await follow_up_state(session_id, request.resend_pending_id)
+                read = state == "read"
+                if read:
+                    own_row = await _own_resend_row(session_id, message_id)
+        except BaseException:
+            # These lookups run before the guard below that frees the key;
+            # a Redis or database error here must free it too, or a quick
+            # Retry under the same key waits on it and fails.
+            await release_client_message_claim()
+            raise
+        if resent is None and read:
             if own_row != "unanswered":
                 await release_client_message_claim()
                 return _empty_ui_message_stream_response(
