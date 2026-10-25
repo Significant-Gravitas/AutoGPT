@@ -10,7 +10,8 @@ import {
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { Button } from "@/components/__legacy__/ui/button";
 
@@ -46,7 +47,7 @@ export const APIKeysModals = () => {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Name</Label>
-              <Input
+              <BaseInput
                 id="name"
                 value={keyState.newKeyName}
                 onChange={(e) =>
@@ -60,7 +61,7 @@ export const APIKeysModals = () => {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">Description (Optional)</Label>
-              <Input
+              <BaseInput
                 id="description"
                 value={keyState.newKeyDescription}
                 onChange={(e) =>
@@ -116,9 +117,14 @@ export const APIKeysModals = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center space-x-2">
-            <code className="ph-no-capture flex-1 rounded-md bg-secondary p-2 text-sm">
+            <Text
+              variant="body-mono-tight"
+              as="code"
+              tone="inherit"
+              className="ph-no-capture flex-1 rounded-md bg-secondary p-2"
+            >
               {keyState.newApiKey}
-            </code>
+            </Text>
             <Button size="icon" variant="outline" onClick={handleCopyKey}>
               <LuCopy className="h-4 w-4" />
             </Button>

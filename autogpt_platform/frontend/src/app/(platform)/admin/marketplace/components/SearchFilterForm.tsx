@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Search } from "lucide-react";
 import {
@@ -61,7 +61,7 @@ export function SearchAndFilterAdminMarketplace({
   return (
     <div className="flex items-center justify-between">
       <div className="flex w-full items-center gap-2">
-        <Input
+        <BaseInput
           placeholder="Search agents by Name, Creator, or Description..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
