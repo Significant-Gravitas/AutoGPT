@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
@@ -35,7 +35,7 @@ export function PaginationControls({
       className="mt-4 flex items-center justify-center space-x-2"
     >
       <Button
-        variant="outline"
+        variant="legacy-outline"
         data-slot="pagination-controls-previous"
         onClick={() => handlePageChange(currentPage - 1)}
         disabled={currentPage <= 1}
@@ -51,7 +51,7 @@ export function PaginationControls({
         Page {currentPage} of {totalPages}
       </Text>
       <Button
-        variant="outline"
+        variant="legacy-outline"
         data-slot="pagination-controls-next"
         onClick={() => handlePageChange(currentPage + 1)}
         disabled={currentPage >= totalPages}
