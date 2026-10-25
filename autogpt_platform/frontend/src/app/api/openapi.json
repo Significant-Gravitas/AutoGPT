@@ -13665,49 +13665,6 @@
             }
           }
         }
-      },
-      "post": {
-        "tags": ["v2", "orgs", "orgs"],
-        "summary": "Add member to organization",
-        "operationId": "postV2Add member to organization",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "org_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Org Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/AddMemberRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/OrgMemberResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
       }
     },
     "/api/internal/orgs/{org_id}/members/{uid}": {
@@ -19945,24 +19902,6 @@
         "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
-      },
-      "AddMemberRequest": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "is_admin": {
-            "type": "boolean",
-            "title": "Is Admin",
-            "default": false
-          },
-          "is_billing_manager": {
-            "type": "boolean",
-            "title": "Is Billing Manager",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "AddMemberRequest"
       },
       "AddTeamMemberRequest": {
         "properties": {
