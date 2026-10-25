@@ -2525,8 +2525,8 @@ async def update_preset(
             update_data["description"] = description
         if is_active is not None:
             update_data["isActive"] = is_active
-        if inputs or credentials:
-            # One side may be empty, e.g. a preset that needs no credentials.
+        if inputs is not None or credentials is not None:
+            # Either may be empty: no credentials needed, or every input cleared.
             if inputs is None or credentials is None:
                 raise ValueError(
                     "Preset inputs and credentials must be provided together"

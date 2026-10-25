@@ -1733,12 +1733,15 @@ async def test_create_expert_preset_rejects_shared_webhook(mocker):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("credentials, saved", [({}, True), (None, False)])
+@pytest.mark.parametrize(
+    "inputs, credentials, saved",
+    [({"topic": "x"}, {}, ["topic"]), ({}, {}, []), ({"topic": "x"}, None, None)],
+)
 async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
-    mocker, credentials, saved
+    mocker, inputs, credentials, saved
 ):
     """Inputs and credentials share their rows, so one is never replaced alone;
-    a preset that needs no credentials sends `{}`."""
+    either may be `{}`, as for a preset that needs no credentials."""
     mocker.patch.object(
         db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
     )
@@ -1760,18 +1763,18 @@ async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
     update = db.update_preset(
         user_id="owner",
         preset_id="preset-1",
-        inputs={"topic": "x"},
+        inputs=inputs,
         credentials=credentials,
     )
 
-    if not saved:
+    if saved is None:
         with pytest.raises(ValueError):
             await update
         preset_client.update.assert_not_awaited()
         return
     await update
     rows = preset_client.update.await_args.kwargs["data"]["InputPresets"]["create"]
-    assert [row["name"] for row in rows] == ["topic"]
+    assert [row["name"] for row in rows] == saved
 
 
 @pytest.mark.asyncio
