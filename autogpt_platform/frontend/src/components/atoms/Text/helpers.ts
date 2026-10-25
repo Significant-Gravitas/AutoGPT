@@ -102,6 +102,12 @@ export const variants = {
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-medium-tight":
     "font-sans text-body-lg font-medium leading-6 text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl": "font-sans text-2xl font-normal text-foreground-base",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -172,4 +178,7 @@ export const variantElementMap: Record<Variant, As> = {
   "small-loose": "p",
   "small-medium-loose": "p",
   "large-medium-tight": "p",
+  "lg-semibold": "h3",
+  "2xl-bold": "div",
+  "2xl": "span",
 };
