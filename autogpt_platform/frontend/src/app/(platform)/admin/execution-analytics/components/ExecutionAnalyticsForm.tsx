@@ -402,10 +402,9 @@ export function ExecutionAnalyticsForm() {
         <div className="border-t pt-6">
           <Collapsible
             trigger={
-              // TODO(tokens): no role or Text variant is 18px/28px (text-lg).
-              <h3 className="text-lg font-semibold text-gray-700">
+              <Text variant="lg-semibold" as="h3" className="text-gray-700">
                 Advanced Options
-              </h3>
+              </Text>
             }
             defaultOpen={false}
             className="space-y-4"
@@ -554,8 +553,9 @@ export function ExecutionAnalyticsForm() {
       {trendsData && (
         <div className="space-y-4">
           <div className="flex items-start justify-between">
-            {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
-            <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
+            <Text variant="lg-semibold" as="h3" tone="inherit">
+              Execution Accuracy Trends
+            </Text>
             <Text
               variant="small-tight"
               as="div"
@@ -576,12 +576,13 @@ export function ExecutionAnalyticsForm() {
           {trendsData.alert && (
             <div className="rounded-lg border-l-4 border-error bg-error-surface p-4">
               <div className="flex items-start">
-                {/* TODO(tokens): no role or Text variant is 24px/32px (text-2xl) or 18px/28px (text-lg). */}
-                <span className="text-2xl">🚨</span>
+                <Text variant="2xl" as="span" tone="inherit">
+                  🚨
+                </Text>
                 <div className="ml-3 space-y-2">
-                  <h4 className="text-lg font-semibold text-red-800">
+                  <Text variant="lg-semibold" as="h4" className="text-red-800">
                     Accuracy Alert Detected
-                  </h4>
+                  </Text>
                   <p className="text-error-foreground">
                     <strong>
                       {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
@@ -628,36 +629,39 @@ export function ExecutionAnalyticsForm() {
           )}
 
           {/* Latest Data Summary */}
-          {/* TODO(tokens): no role or Text variant is 24px/32px (text-2xl). */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <div className="rounded-lg border bg-surface p-4 text-center">
-              <div className="text-2xl font-bold text-info-foreground">
+              <Text
+                variant="2xl-bold"
+                as="div"
+                className="text-info-foreground"
+              >
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
-              </div>
+              </Text>
               <Text variant="body-tight" as="div" className="text-gray-600">
                 Daily Score
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center">
-              <div className="text-2xl font-bold text-success">
+              <Text variant="2xl-bold" as="div" tone="success">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
-              </div>
+              </Text>
               <Text variant="body-tight" as="div" className="text-gray-600">
                 3-Day Avg
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">
+              <Text variant="2xl-bold" as="div" className="text-orange-600">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
-              </div>
+              </Text>
               <Text variant="body-tight" as="div" className="text-gray-600">
                 7-Day Avg
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">
+              <Text variant="2xl-bold" as="div" className="text-purple-600">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
-              </div>
+              </Text>
               <Text variant="body-tight" as="div" className="text-gray-600">
                 14-Day Avg
               </Text>
@@ -667,10 +671,14 @@ export function ExecutionAnalyticsForm() {
           {/* Chart Section - only show when toggle is enabled and historical data exists */}
           {showAccuracyChart && trendsData?.historical_data && (
             <div className="mt-6">
-              {/* TODO(tokens): no role or Text variant is 18px/28px (text-lg). */}
-              <h4 className="mb-4 text-lg font-semibold">
+              <Text
+                variant="lg-semibold"
+                as="h4"
+                tone="inherit"
+                className="mb-4"
+              >
                 Execution Accuracy Trends Chart
-              </h4>
+              </Text>
               <div className="rounded-lg border bg-surface p-6">
                 <AccuracyChart data={trendsData.historical_data} />
               </div>

@@ -65,6 +65,13 @@ export const variants = {
   "tiny-inherit":
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
 
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
+  "2xl": "font-sans text-2xl font-normal text-foreground-base",
+
   // Label Text
   label:
     "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
@@ -122,6 +129,9 @@ export const variantElementMap: Record<Variant, As> = {
   "small-medium-tight": "p",
   "small-relaxed": "p",
   "tiny-inherit": "span",
+  "lg-semibold": "h3",
+  "2xl-bold": "div",
+  "2xl": "span",
   label: "span",
   eyebrow: "span",
 };
