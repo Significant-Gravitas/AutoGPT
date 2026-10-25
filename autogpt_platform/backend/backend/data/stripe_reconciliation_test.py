@@ -737,3 +737,24 @@ async def test_alert_caps_listed_trial_subscription_ids(
     assert "25 trial subscription(s)" in message
     assert "`sub_cus_19`" in message and "`sub_cus_20`" not in message
     assert "and 5 more" in message
+
+
+@pytest.mark.asyncio
+async def test_failed_trial_without_customer_is_alerted_but_skips_nobody(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    orphan = _trial_sub("cus_x")
+    orphan["customer"] = None
+    set_tier = _patch_sweep(
+        mocker,
+        candidates=[_candidate("u_gone", "cus_gone", SubscriptionTier.PRO)],
+        by_status={"trialing": [orphan]},
+        trial_sync_error=ValueError("Missing enrollment"),
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    set_tier.assert_awaited_once_with("u_gone", SubscriptionTier.NO_TIER)
+    assert summary.errors == 0
+    assert summary.failed_trial_subscriptions == ["sub_cus_x"]

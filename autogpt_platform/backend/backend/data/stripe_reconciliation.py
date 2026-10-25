@@ -85,7 +85,7 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
     )
     summary.candidate_users = len(candidates)
     map_complete = not customer_to_tier.capped
-    unknown_tier_customers = set(customer_to_tier.failed_trials.values())
+    unknown_tier_customers = {c for c in customer_to_tier.failed_trials.values() if c}
     for user in candidates:
         await _reconcile_one(
             user,
@@ -364,7 +364,7 @@ async def _collect_status_page(
                         sub.id,
                     )
                     if failed_trials is not None:
-                        failed_trials[sub.id] = str(sub.get("customer"))
+                        failed_trials[sub.id] = str(sub.get("customer") or "")
                     continue
                 user = await User.prisma().find_first(
                     where={"stripeCustomerId": str(sub.customer)}
