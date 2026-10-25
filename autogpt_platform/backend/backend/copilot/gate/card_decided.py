@@ -167,12 +167,16 @@ async def forget_unsaved_answers(
 
     A stopped session drops its queued follow-ups; a card decision among them
     never reaches the chat, so the card is the user's to answer again. An id
-    the chat already holds an answer for is left alone.
+    the chat already holds an answer for is left alone; if the chat cannot be
+    read, every id goes, failing closed as a failed send does.
     """
     ids = {d.confirmation_id for m in messages for d in parse_card_decisions(m)}
     if not ids:
         return
-    ids = await unsaved_ids(user_id, session_id, ids)
+    unsaved = await unsaved_ids(user_id, session_id, ids)
+    # Unread, these were still never saved: drained from the queue, not
+    # written. No confirm may pass on them.
+    ids = ids if unsaved is None else unsaved
     if not ids:
         return
     await withdraw_card_approvals(user_id, session_id, ids)

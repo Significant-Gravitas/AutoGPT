@@ -337,8 +337,9 @@ async def _admit_card_answer(
     user_id: str,
     session_id: str,
     message: str,
-    metadata: dict[str, Any] | None,
     owner: str,
+    *,
+    has_attachments: bool,
 ) -> CardAnswer:
     """Record the card decisions in a user's own request, once per card, and
     return what to save or queue.
@@ -350,12 +351,13 @@ async def _admit_card_answer(
     answer. A message left with nothing is "refused". "claimed" means this
     request took the claim: accept it once the answer is saved or queued, or
     give it back (approvals and all) if it is not. Called just before the row
-    is saved or queued.
+    is saved or queued. The row's tag is read from what is left to save, so
+    it never names a card whose line was dropped.
     """
     answer = CardAnswer(
         admission="unclaimed",
         message=message,
-        metadata=metadata,
+        metadata=None,
         owner=owner,
         attempt=uuid4().hex,
     )
@@ -381,27 +383,22 @@ async def _admit_card_answer(
             await record_card_decisions(user_id, session_id, answer.message)
             if claim.result == "claimed":
                 answer.admission = "claimed"
-            return answer
+            break
         logger.info(f"Refused a second answer to a card in session {session_id}")
         answer.message = strip_card_decisions(answer.message, claim.answered or ids)
-        if answer.metadata is not None:
-            answer.metadata = card_decision_metadata(answer.message)
         ids = _card_ids(answer.message)
-    if not answer.message:
-        answer.admission = "refused"
+        if not answer.message:
+            answer.admission = "refused"
+    answer.metadata = _card_answer_metadata(
+        answer.message, has_attachments=has_attachments
+    )
     return answer
 
 
-def _no_card_answer(
-    message: str, metadata: dict[str, Any] | None, owner: str
-) -> CardAnswer:
+def _no_card_answer(message: str, owner: str) -> CardAnswer:
     """A send that is not the user's own (a control turn) answers no card."""
     return CardAnswer(
-        admission="unclaimed",
-        message=message,
-        metadata=metadata,
-        owner=owner,
-        attempt="",
+        admission="unclaimed", message=message, metadata=None, owner=owner, attempt=""
     )
 
 
@@ -2095,14 +2092,8 @@ async def stream_chat_post(
     )
     # A retransmit carries the same id, so it is not a second answer.
     card_owner = message_id or uuid4().hex
-    card_metadata = (
-        _card_answer_metadata(
-            message, has_attachments=bool(request.file_ids or request.folder_ids)
-        )
-        if request.is_user_message
-        else None
-    )
-    message_metadata: dict[str, Any] | None = card_metadata
+    has_attachments = bool(request.file_ids or request.folder_ids)
+    message_metadata: dict[str, Any] | None = None
     persisted_kickoff_has_reply: bool | None = None
     resume_persisted_kickoff = False
     if request.expert_kickoff:
@@ -2160,10 +2151,14 @@ async def stream_chat_post(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
             )
-        card_answer = _no_card_answer(message, card_metadata, card_owner)
+        card_answer = _no_card_answer(message, card_owner)
         if request.is_user_message:
             card_answer = await _admit_card_answer(
-                user_id, session_id, message, card_metadata, card_owner
+                user_id,
+                session_id,
+                message,
+                card_owner,
+                has_attachments=has_attachments,
             )
         if card_answer.admission == "refused":
             # Answered already: the client's refetch shows the answer.
@@ -2266,10 +2261,10 @@ async def stream_chat_post(
     # the row may not be written yet, and a queued copy never gets this id.
     # A copy that finds the key reserved waits for this request's outcome, so
     # it is never told a send was taken that is then refused.
-    card_answer = _no_card_answer(message, card_metadata, card_owner)
+    card_answer = _no_card_answer(message, card_owner)
     if request.is_user_message:
         card_answer = await _admit_card_answer(
-            user_id, session_id, message, card_metadata, card_owner
+            user_id, session_id, message, card_owner, has_attachments=has_attachments
         )
     if card_answer.admission == "refused":
         # Answered already: the client's refetch shows the answer.
@@ -2618,12 +2613,12 @@ async def queue_pending_message(
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
     card_owner = client_message_id or uuid4().hex
-    card_metadata = _card_answer_metadata(
-        request.message,
-        has_attachments=bool(request.file_ids or request.folder_ids),
-    )
     card_answer = await _admit_card_answer(
-        user_id, session_id, request.message, card_metadata, card_owner
+        user_id,
+        session_id,
+        request.message,
+        card_owner,
+        has_attachments=bool(request.file_ids or request.folder_ids),
     )
     if card_answer.admission == "refused":
         # True "turn in flight" keeps the client from resending via /stream.

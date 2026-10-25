@@ -985,7 +985,7 @@ async def test_a_card_approval_stands_only_once_its_answer_is_saved(
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
     answer = await chat_routes._admit_card_answer(
-        test_user_id, session_id, line, card_decision_metadata(line), "click-1"
+        test_user_id, session_id, line, "click-1", has_attachments=False
     )
     assert answer.admission == "claimed"
 
@@ -1023,7 +1023,7 @@ async def test_a_turn_that_fails_after_saving_its_answer_keeps_the_approval(
         return_value=None,
     )
     answer = await chat_routes._admit_card_answer(
-        test_user_id, session_id, line, card_decision_metadata(line), "click-1"
+        test_user_id, session_id, line, "click-1", has_attachments=False
     )
     # The row was saved before the turn failed to dispatch.
     get_session.return_value = MagicMock(
@@ -1071,18 +1071,18 @@ async def test_a_failed_send_does_not_take_back_its_retransmits_approval(
     line = "Approved: hire Maya (confirmation_id: c-1)."
     metadata = card_decision_metadata(line)
     first = await chat_routes._admit_card_answer(
-        test_user_id, session_id, line, metadata, "click-1"
+        test_user_id, session_id, line, "click-1", has_attachments=False
     )
 
     with pytest.raises(HTTPException) as copy:
         await chat_routes._admit_card_answer(
-            test_user_id, session_id, line, metadata, "click-1"
+            test_user_id, session_id, line, "click-1", has_attachments=False
         )
     assert copy.value.status_code == 503
     await chat_routes._release_card_answer(test_user_id, session_id, first)
 
     retry = await chat_routes._admit_card_answer(
-        test_user_id, session_id, line, metadata, "click-1"
+        test_user_id, session_id, line, "click-1", has_attachments=False
     )
     assert retry.admission == "claimed"
     await chat_routes._accept_card_answer(session_id, retry)
@@ -1763,6 +1763,41 @@ def test_queue_pending_message_queues_the_open_card_of_a_half_answered_group(
     queued = push.await_args.args[1]
     assert queued.content == _OPEN_CARD
     assert queued.metadata == card_decision_metadata(_OPEN_CARD)
+
+
+def test_stream_chat_tags_a_half_answered_group_by_what_it_saves_after_a_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The queue finds the turn over (409) and the send starts a fresh turn
+    instead. The row it saves holds only the open card, so its tag must name
+    only that card, not the one dropped as answered."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+        side_effect=HTTPException(status_code=409, detail="no turn"),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        side_effect=[*_HALF_ANSWERED, CardClaim(result="claimed")],
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": _BOTH_CARDS})
+
+    assert response.status_code == 200
+    saved = mocks.enqueue.await_args.kwargs
+    assert saved["message"] == _OPEN_CARD
+    assert saved["message_metadata"] == card_decision_metadata(_OPEN_CARD)
 
 
 def test_stream_chat_tells_a_retransmit_its_send_is_still_in_progress(

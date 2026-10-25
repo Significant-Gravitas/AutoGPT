@@ -170,6 +170,33 @@ async def test_answers_dropped_before_they_were_saved_are_forgotten(
 
 
 @needs_redis
+async def test_answers_dropped_from_a_chat_that_cannot_be_read_are_forgotten(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Stop drained a queued answer that was never saved. If the chat cannot
+    be read to check, its approval and claim go anyway: a confirm must not
+    pass on an answer the chat may not hold."""
+    session_id = f"s-{uuid.uuid4()}"
+    mocker.patch.object(
+        card_decided,
+        "get_chat_session",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("db down"),
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    await card_approval.record_card_decisions("u-1", session_id, line)
+    assert await _claim(session_id, ["c-1"], "queued") == "claimed"
+    await card_decided.accept_claim(session_id, ["c-1"], "queued", "queued")
+
+    await forget_unsaved_answers("u-1", session_id, [line])
+
+    assert not await card_approval.approved_on_card(
+        "confirm_expert_change", {"confirmation_id": "c-1"}, "u-1", session_id
+    )
+    assert await _claim(session_id, ["c-1"], "tab-b") == "claimed"
+
+
+@needs_redis
 async def test_an_answer_still_being_sent_is_waited_on_not_taken_as_given() -> None:
     """Tab A claims, tab B asks while A is still sending. If A then fails,
     B's retry must land; if A saves, B's must be refused."""
