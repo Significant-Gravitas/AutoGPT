@@ -5,10 +5,10 @@ import {
   sidebarContainerVariants,
 } from "@/components/layout/AppSidebar/animations";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -38,6 +38,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 
 function DisabledMenuItem({
@@ -143,11 +144,22 @@ export function TourSidebar({ variant = "tour" }: Props) {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <Collapsible defaultOpen className="group/collapsible">
+            <CollapsibleRoot defaultOpen className="group/collapsible">
               <SidebarGroup className="py-1">
-                <SidebarGroupLabel asChild className="text-[13px] font-medium">
+                <SidebarGroupLabel
+                  asChild
+                  // The copy's line box follows the parent's line height, as
+                  // before; the primitive's own size would make it 16px.
+                  className="leading-inherit"
+                >
                   <CollapsibleTrigger>
-                    Workspace
+                    <Text
+                      as="span"
+                      variant="body-sm-medium-inherit"
+                      tone="inherit"
+                    >
+                      Workspace
+                    </Text>
                     <Icon
                       icon={ArrowDown01Icon}
                       className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
@@ -162,7 +174,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                   </SidebarGroupContent>
                 </CollapsibleContent>
               </SidebarGroup>
-            </Collapsible>
+            </CollapsibleRoot>
           </motion.div>
         </motion.div>
       </SidebarContent>
