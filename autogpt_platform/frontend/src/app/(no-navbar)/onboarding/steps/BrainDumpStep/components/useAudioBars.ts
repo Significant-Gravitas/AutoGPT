@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import {
-  type MotionValue,
-  useMotionValue,
-  useReducedMotion,
-} from "framer-motion";
+import { useMotionValue, useReducedMotion } from "framer-motion";
 
 const VOICE_BANDS = [
   [80, 250],
