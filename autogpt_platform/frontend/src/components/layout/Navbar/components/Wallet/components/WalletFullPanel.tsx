@@ -24,20 +24,20 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
       {/* Header */}
       <div className="mx-1 flex items-start justify-between gap-3 border-b border-border-base pb-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <Text variant="h5" as="span" tone="primary" className="font-semibold">
+          <Text variant="h5-semibold" as="span" tone="primary">
             Automation Credits
           </Text>
-          <Text variant="small" as="span" tone="muted" className="leading-4">
+          <Text variant="small-tight" as="span" tone="muted">
             Platform-only credits for automations. This is separate from your
             subscription and is not usable for plan fees.
           </Text>
         </div>
         <div className="flex shrink-0 items-center text-body leading-5 text-accent-strong">
           <Text
-            variant="body"
+            variant="body-tight"
             as="div"
             // TODO(tokens): no exact role for bg-violet-100 (#EDE9FE)
-            className="rounded-lg bg-violet-100 px-3 py-2 leading-5 text-accent-strong"
+            className="rounded-lg bg-violet-100 px-3 py-2 text-accent-strong"
           >
             Earn credits{" "}
             <span className="font-semibold">{formattedCredits}</span>
@@ -54,12 +54,7 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
         {/* Top ups */}
         {isPaymentEnabled && <WalletRefill />}
         {/* Tasks */}
-        <Text
-          variant="small"
-          as="p"
-          tone="subtle"
-          className="mx-1 my-3 leading-4"
-        >
+        <Text variant="small-tight" as="p" tone="subtle" className="mx-1 my-3">
           Complete the following tasks to earn more credits!
         </Text>
         <TaskGroups groups={groups} />
