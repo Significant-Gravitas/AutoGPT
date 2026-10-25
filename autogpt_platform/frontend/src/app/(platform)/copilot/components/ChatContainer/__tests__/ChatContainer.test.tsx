@@ -1,5 +1,8 @@
 import React from "react";
-import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getGetV2GetChatShareStateMockHandler200,
+  getGetV2GetSessionMockHandler200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
 import { getUsageExperience } from "@/services/usageExperience/helpers";
@@ -458,15 +461,40 @@ describe("ChatContainer", () => {
   });
 
   it.each([
-    ["saved", "s1-seq-3", "Continue from where you left off."],
+    ["saved", "s1-seq-3", [], "Continue from where you left off."],
+    // Shown under its local id (a failed turn's row, or the stream runtime's),
+    // the decision is still saved: the stored chat says so.
+    [
+      "saved under a local id",
+      "optimistic-1",
+      [
+        {
+          role: "user",
+          content: "Approved: hire Maya (confirmation_id: c-1).",
+        },
+      ],
+      "Continue from where you left off.",
+    ],
     [
       "never saved",
       "optimistic-1",
+      [],
       "Approved: hire Maya (confirmation_id: c-1).",
     ],
   ])(
     "retries a turn a card decision started: %s decision",
-    (_, decisionID, expected) => {
+    async (_, decisionID, storedRows, expected) => {
+      server.use(
+        getGetV2GetSessionMockHandler200({
+          id: "session-123",
+          created_at: "2026-10-25T00:00:00Z",
+          updated_at: "2026-10-25T00:00:00Z",
+          user_id: "user-1",
+          messages: storedRows,
+          has_more_messages: false,
+          oldest_sequence: null,
+        }),
+      );
       const onSend = vi.fn();
       render(
         <ChatContainer
@@ -494,7 +522,7 @@ describe("ChatContainer", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
 
-      expect(onSend).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
       expect(onSend.mock.calls[0][0]).toBe(expected);
     },
   );

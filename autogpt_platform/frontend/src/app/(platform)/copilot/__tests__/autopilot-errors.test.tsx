@@ -124,6 +124,20 @@ const HIRE_CARD_ROWS = [
   },
 ];
 
+function cardDecisionTag() {
+  return {
+    kind: "card_decision",
+    decisions: [
+      {
+        verdict: "approved",
+        confirmation_id: "c-1",
+        verb: "hire",
+        name: "Maya",
+      },
+    ],
+  };
+}
+
 async function approveAndSend() {
   const user = userEvent.setup();
   await user.click(await findCardButton("Approve"));
@@ -518,6 +532,78 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       await waitFor(() => expect(saved).toBe(true));
 
       await waitFor(() => expectCardAnswered(), { timeout: 8000 });
+    }, 20000);
+
+    it("continues a failed turn its saved decision started, without answering again", async () => {
+      // The decision was saved, then its turn failed with a retryable error.
+      const posts: { message?: string }[] = [];
+      renderHost({ sessionOverride: { messages: HIRE_CARD_ROWS } });
+      server.use(
+        http.post(STREAM_URL, async ({ request }) => {
+          posts.push((await request.json()) as { message?: string });
+          return streamSseResponse(
+            posts.length === 1
+              ? assistantTextChunks(
+                  "[__COPILOT_RETRYABLE_ERROR_a9c2__] The model returned an empty response.",
+                  { messageId: "failed-response" },
+                )
+              : assistantTextChunks("Picked up again.", {
+                  messageId: "continued",
+                }),
+            { abortSignal: request.signal },
+          );
+        }),
+        http.post(
+          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
+          () =>
+            HttpResponse.json(
+              {
+                detail:
+                  "Session has no active turn. Start a new turn with POST /stream.",
+              },
+              { status: 409 },
+            ),
+        ),
+        getGetV2GetSessionMockHandler200(() => ({
+          id: TEST_SESSION_ID,
+          created_at: "2026-05-13T00:00:00Z",
+          updated_at: "2026-05-13T00:00:00Z",
+          user_id: "test-user",
+          chat_status: "idle",
+          messages:
+            posts.length > 0
+              ? [
+                  ...HIRE_CARD_ROWS,
+                  {
+                    ...cardRow(4, "user", CARD_LINE),
+                    metadata: cardDecisionTag(),
+                  },
+                ]
+              : HIRE_CARD_ROWS,
+          has_more_messages: false,
+          oldest_sequence: null,
+          active_stream: null,
+          metadata: { dry_run: false, builder_graph_id: null },
+        })),
+      );
+
+      await approveAndSend();
+      const [tryAgain] = await screen.findAllByRole(
+        "button",
+        { name: /try again/i },
+        { timeout: 8000 },
+      );
+      await waitFor(() =>
+        expect(settledStatus(path)).toBe(
+          path === "stream runtime" ? RUNTIME_PHASE.ready : "ready",
+        ),
+      );
+      await userEvent.setup().click(tryAgain);
+
+      await waitFor(() => expect(posts).toHaveLength(2), { timeout: 8000 });
+      expect(posts[1]).toMatchObject({
+        message: "Continue from where you left off.",
+      });
     }, 20000);
 
     it("surfaces an HTTP 500 response as a visible error", async () => {

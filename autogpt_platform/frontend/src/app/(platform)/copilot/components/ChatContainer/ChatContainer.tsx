@@ -59,6 +59,7 @@ import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import { getCardDecisions } from "../../cardDecisions";
 import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
+import { isDecisionSavedInChat } from "./helpers";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -445,7 +446,9 @@ export const ChatContainer = ({
       if (
         lastRow &&
         (isHeldCallRow(lastRow) ||
-          (getCardDecisions(lastRow) && extractDbSequence(lastRow) !== null))
+          (getCardDecisions(lastRow) &&
+            (extractDbSequence(lastRow) !== null ||
+              (await isDecisionSavedInChat(lastRow, sessionId)))))
       ) {
         await guardedOnSend(CONTINUE_AFTER_HELD_CALL);
         return;
