@@ -127,12 +127,8 @@ async def test_an_over_long_greeting_keeps_most_of_itself(
 def test_both_copies_of_the_instructions_ask_for_the_same_length():
     """The fallback instructions must not cap the greeting below what the
     system message allows, and the clip must sit above both."""
-    asked = {
-        int(n)
-        for text in (intro._LOCAL_PROMPT, intro.COVERAGE_CONTRACT)
-        for n in re.findall(r"(\d+) characters", text)
-    }
-    assert asked == {intro.GREETING_CHAR_LIMIT}
+    for text in (intro._LOCAL_PROMPT, intro.COVERAGE_CONTRACT):
+        assert re.findall(r"(\d+) characters", text) == [str(intro.GREETING_CHAR_LIMIT)]
     assert intro.GREETING_CHAR_LIMIT < intro.MAX_GREETING_CHARS
 
 
