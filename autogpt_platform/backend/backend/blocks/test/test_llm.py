@@ -2188,6 +2188,128 @@ class TestLLMRequestTimeout:
         warning = next(r for r in records if r.levelno == logging.WARNING)
         assert "2 HTTP attempt(s) (statuses [500])" in warning.getMessage()
 
+    # The same rule end to end through each real SDK: its own retry loop sends
+    # the requests, the hooked httpx client records them, and the outer
+    # deadline cancels the hung retry. Diag reproduced the false alert on
+    # v0.9.0 for every SDK with a slow 500/504, and on Anthropic's 529.
+    _SDK_MODELS = {
+        "openai": llm.DEFAULT_LLM_MODEL,
+        "anthropic": llm.LLMModel.CLAUDE_4_6_SONNET,
+        "groq": llm.LLMModel.LLAMA3_3_70B,
+    }
+
+    async def _cut_off_through_sdk(self, monkeypatch, sdk_name, slice_, replies):
+        """``replies`` are (seconds, status) per answered request; the request
+        after them hangs until the ``slice_`` deadline cancels it."""
+        sdk = {"openai": openai, "anthropic": anthropic, "groq": groq}[sdk_name]
+        clock = {"t": 1000.0}
+        monkeypatch.setattr(llm, "_now", lambda: clock["t"])
+        hung = asyncio.Event()
+        pending = list(replies)
+
+        async def provider(request: httpx.Request) -> httpx.Response:
+            if pending:
+                seconds, status = pending.pop(0)
+                clock["t"] += seconds
+                # A 1 ms retry-after keeps the SDK's backoff out of the test.
+                return httpx.Response(
+                    status,
+                    json={"error": {"type": "api_error", "message": "upstream"}},
+                    headers={"retry-after-ms": "1"},
+                )
+            clock["t"] = 1000.0 + slice_
+            hung.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        clients: list[httpx.AsyncClient] = []
+        real_factory = sdk.DefaultAsyncHttpxClient
+
+        def hooked_factory(**kwargs):
+            clients.append(
+                real_factory(**kwargs, transport=httpx.MockTransport(provider))
+            )
+            return clients[-1]
+
+        monkeypatch.setattr(sdk, "DefaultAsyncHttpxClient", hooked_factory)
+
+        class _DeadlineOnHang:
+            """llm's asyncio, with wait_for firing once the provider hangs, so
+            the cut-off lands on the hung request without real waiting."""
+
+            def __getattr__(self, name):
+                return getattr(asyncio, name)
+
+            async def wait_for(self, aw, timeout):
+                assert timeout == slice_
+                call = asyncio.ensure_future(aw)
+                hang = asyncio.ensure_future(hung.wait())
+                await asyncio.wait({call, hang}, return_when=asyncio.FIRST_COMPLETED)
+                hang.cancel()
+                if call.done():
+                    return call.result()
+                call.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await call
+                raise asyncio.TimeoutError()
+
+        monkeypatch.setattr(llm, "asyncio", _DeadlineOnHang())
+        with self._captured_logs() as records, pytest.raises(TimeoutError):
+            await llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=self._SDK_MODELS[sdk_name],
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+                timeout_seconds=slice_,
+            )
+        assert hung.is_set() and not pending, "the SDK never sent its retry"
+        assert len(clients) == 1 and clients[0].is_closed
+        return records
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "sdk_name, status",
+        [
+            (sdk_name, status)
+            for sdk_name in ("openai", "anthropic", "groq")
+            for status in (500, 504)
+        ]
+        + [("anthropic", 529)],
+    )
+    async def test_each_sdk_slow_error_then_cut_off_retry_does_not_alert(
+        self, monkeypatch, sdk_name, status
+    ):
+        records = await self._cut_off_through_sdk(
+            monkeypatch, sdk_name, 30, [(24.5, status)]
+        )
+
+        assert self._alerts(records) == []
+        warning = next(r for r in records if r.levelno == logging.WARNING)
+        assert f"2 HTTP attempt(s) (statuses [{status}])" in warning.getMessage()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("sdk_name", ["openai", "anthropic", "groq"])
+    @pytest.mark.parametrize(
+        "replies, in_flight, statuses",
+        [
+            pytest.param([], 30.0, [], id="hang"),
+            pytest.param([(0.5, 500)], 29.5, [500], id="fast-500-long-retry"),
+        ],
+    )
+    async def test_each_sdk_long_open_request_still_alerts(
+        self, monkeypatch, sdk_name, replies, in_flight, statuses
+    ):
+        records = await self._cut_off_through_sdk(monkeypatch, sdk_name, 30, replies)
+
+        alerts = self._alerts(records)
+        assert len(alerts) == 1
+        fields = alerts[0].json_fields
+        assert fields["provider"] == sdk_name
+        assert fields["last_request_in_flight_seconds"] == in_flight
+        assert fields["http_attempts"] == len(replies) + 1
+        assert fields["prior_response_statuses"] == statuses
+        assert fields["in_flight_source"] == "last_request"
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "cut_at, alerts", [pytest.param(95, True), pytest.param(50, False)]

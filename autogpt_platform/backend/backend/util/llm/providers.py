@@ -556,8 +556,6 @@ async def _call_openai_responses(
     timeout_seconds: float,
     service_tier: str | None = None,
 ) -> ProviderResponse:
-    http_client = _attempt_logging_http_client(openai)
-    client = openai.AsyncOpenAI(api_key=api_key, http_client=http_client)
     tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
     text_config: Any = openai.omit
     if force_json_output:
@@ -571,7 +569,9 @@ async def _call_openai_responses(
     if service_tier:
         extra_body["service_tier"] = service_tier
 
+    http_client = _attempt_logging_http_client(openai)
     try:
+        client = openai.AsyncOpenAI(api_key=api_key, http_client=http_client)
         response = await client.responses.create(
             model=model,
             input=messages,  # type: ignore[arg-type]
@@ -676,8 +676,6 @@ async def _call_anthropic_messages(
                 anth_messages.append({"role": p["role"], "content": p["content"]})
                 last_role = p["role"]
 
-    http_client = _attempt_logging_http_client(anthropic)
-    client = anthropic.AsyncAnthropic(api_key=api_key, http_client=http_client)
     create_kwargs: dict[str, Any] = dict(
         model=model,
         messages=anth_messages,
@@ -700,7 +698,9 @@ async def _call_anthropic_messages(
             }
         ]
 
+    http_client = _attempt_logging_http_client(anthropic)
     try:
+        client = anthropic.AsyncAnthropic(api_key=api_key, http_client=http_client)
         resp = await client.messages.create(**create_kwargs)
     except anthropic.BadRequestError as exc:
         # Self-heal for models the deny-list doesn't know yet.
@@ -790,8 +790,6 @@ async def _call_groq(
 
     import groq  # local import — heavy SDK
 
-    http_client = _attempt_logging_http_client(groq)
-    client = groq.AsyncGroq(api_key=api_key, http_client=http_client)
     response_format = {"type": "json_object"} if force_json_output else None
     create_kwargs: dict[str, Any] = dict(
         model=model,
@@ -804,7 +802,9 @@ async def _call_groq(
     # the caller set one, so models that reject it never see the field.
     if temperature is not None:
         create_kwargs["temperature"] = temperature
+    http_client = _attempt_logging_http_client(groq)
     try:
+        client = groq.AsyncGroq(api_key=api_key, http_client=http_client)
         response = await client.chat.completions.create(**create_kwargs)
     finally:
         await http_client.aclose()
@@ -1046,15 +1046,9 @@ async def _call_openai_compat(
     default_headers: dict[str, str] | None = None,
     service_tier: str | None = None,
 ) -> ProviderResponse:
-    http_client = _attempt_logging_http_client(openai)
-    client_kwargs: dict[str, Any] = {
-        "base_url": base_url,
-        "api_key": api_key,
-        "http_client": http_client,
-    }
+    client_kwargs: dict[str, Any] = {"base_url": base_url, "api_key": api_key}
     if default_headers:
         client_kwargs["default_headers"] = default_headers
-    client = openai.AsyncOpenAI(**client_kwargs)
 
     call_kwargs: dict[str, Any] = dict(
         model=model,
@@ -1094,7 +1088,9 @@ async def _call_openai_compat(
     if extra_body:
         call_kwargs["extra_body"] = extra_body
 
+    http_client = _attempt_logging_http_client(openai)
     try:
+        client = openai.AsyncOpenAI(**client_kwargs, http_client=http_client)
         response = await client.chat.completions.create(**call_kwargs)
     finally:
         await http_client.aclose()
