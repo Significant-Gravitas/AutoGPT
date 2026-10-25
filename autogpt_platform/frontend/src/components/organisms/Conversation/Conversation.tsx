@@ -34,7 +34,9 @@ export const ConversationContent = ({
     scrollClassName={cn(
       // Contain the overscroll so a fling past either end bounces the thread
       // instead of dragging the page, composer and all, with it.
-      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong",
+      // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9:
+      // border-strong is a border and foreground-disabled a text colour
+      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
       scrollClassName,
     )}
     {...props}
