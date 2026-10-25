@@ -19,6 +19,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     peek_pending_messages,
     push_pending_message,
+    was_pending_message_read,
 )
 from backend.copilot.pending_messages_test import _FakeRedis
 
@@ -189,6 +190,8 @@ async def test_a_refused_resend_puts_the_follow_up_back(
 
     assert [m.id for m in await peek_pending_messages("sess-1")] == [status]
     assert await follow_up_state("sess-1", status) == "waiting"
+    # Unread again, not both waiting and read.
+    assert not await was_pending_message_read("sess-1", status)
 
 
 @pytest.mark.parametrize(

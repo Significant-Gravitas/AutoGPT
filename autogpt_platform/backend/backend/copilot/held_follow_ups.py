@@ -22,7 +22,7 @@ from backend.copilot.pending_messages import (
     held_marker_key,
     peek_pending_count,
     peek_pending_messages,
-    push_pending_message,
+    put_back_pending_message,
     take_pending_message_by_id,
     was_pending_message_read,
 )
@@ -165,9 +165,16 @@ async def restore_held_follow_up(session_id: str, taken: PendingMessage | None) 
     if taken is None:
         return
     try:
-        await push_pending_message(session_id, taken)
+        await put_back_pending_message(session_id, taken)
     except Exception:
         logger.error(
             f"Could not put a refused resend back in session {session_id}",
             exc_info=True,
+            extra={
+                "json_fields": {
+                    "session_id": session_id,
+                    "pending_id": taken.id,
+                    "path": "resend_put_back_failed",
+                }
+            },
         )

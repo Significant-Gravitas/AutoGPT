@@ -30,7 +30,11 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.copilot.pending_reads import pop_recording_reads, take_recording_read
+from backend.copilot.pending_reads import (
+    pop_recording_reads,
+    put_back_unread,
+    take_recording_read,
+)
 from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
@@ -520,6 +524,21 @@ async def take_pending_message_by_id(
         )
         return message if taken else None
     return None
+
+
+async def put_back_pending_message(session_id: str, message: PendingMessage) -> None:
+    """Return a message taken by id to the queue, unread again in the same
+    step: a refused resend leaves it waiting, never read and gone."""
+    redis = await get_redis_async()
+    await put_back_unread(
+        redis,
+        queue_key=_buffer_key(session_id),
+        read_key=_read_key(session_id),
+        payload=message.model_dump_json(),
+        pending_id=message.id,
+        max_len=MAX_PENDING_MESSAGES,
+        ttl_seconds=PENDING_TTL_SECONDS,
+    )
 
 
 async def was_pending_message_read(session_id: str, pending_id: str) -> bool:

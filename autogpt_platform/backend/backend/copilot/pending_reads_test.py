@@ -11,6 +11,7 @@ from redis.backoff import NoBackoff
 from backend.copilot.pending_reads import (
     READ_TTL_SECONDS,
     pop_recording_reads,
+    put_back_unread,
     take_recording_read,
 )
 from backend.data import redis_client
@@ -108,3 +109,18 @@ async def test_a_take_removes_that_entry_once_and_records_it(queue):
     assert not await take_recording_read(client, **take, payload=IMAGE, pending_id="b")
     assert await client.lrange(keys["queue_key"], 0, -1) == [BEFORE, AFTER]
     assert await _read(client, keys) == {"b"}
+
+
+async def test_a_put_back_queues_it_again_unread(queue):
+    client, keys = queue
+    take = {"queue_key": keys["queue_key"], "read_key": keys["read_key"]}
+    assert await take_recording_read(client, **take, payload=IMAGE, pending_id="b")
+
+    length = await put_back_unread(
+        client, **take, payload=IMAGE, pending_id="b", max_len=10, ttl_seconds=60
+    )
+
+    assert length == 3
+    assert await client.lrange(keys["queue_key"], 0, -1) == [BEFORE, AFTER, IMAGE]
+    assert await _read(client, keys) == set()
+    assert 0 < await client.ttl(keys["queue_key"]) <= 60

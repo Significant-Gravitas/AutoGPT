@@ -144,6 +144,8 @@ class _FakeRedis:
         keys, args = keys_and_args[:numkeys], keys_and_args[numkeys:]
         if "cjson.decode" in script:
             return self._pop_recording_reads(*keys, *args)
+        if "SREM" in script:
+            return self._put_back_unread(*keys, *args)
         if "LREM" in script:
             return self._take_recording_read(*keys, *args)
         [key] = keys
@@ -180,6 +182,23 @@ class _FakeRedis:
                 self.ttls[read_key] = int(ttl)
         self.strings.pop(held_key, None)
         return popped
+
+    def _put_back_unread(
+        self,
+        key: str,
+        read_key: str,
+        payload: str,
+        pending_id: str,
+        max_len: int,
+        ttl: int,
+    ) -> int:
+        """``pending_reads.put_back_unread``, in one step like the Lua."""
+        lst = self.lists.setdefault(key, [])
+        lst.append(payload)
+        self.lists[key] = lst[-int(max_len) :]
+        self.ttls[key] = int(ttl)
+        self.sets.get(read_key, set()).discard(pending_id)
+        return len(self.lists[key])
 
     def _take_recording_read(
         self, key: str, read_key: str, payload: str, pending_id: str, ttl: int

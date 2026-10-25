@@ -4,7 +4,8 @@ Every way a message leaves the queue (a turn's drain, or a resend taking
 one by id) records its id in the session's read set in the same Lua script,
 so a message is never gone from the queue without being marked read: a
 resend of it then answers "already read" rather than running it again. If
-the script fails, nothing was popped.
+the script fails, nothing was popped. A resend that is refused puts its
+message back the same way, unread again in the same step.
 """
 
 from typing import Any, cast
@@ -54,6 +55,17 @@ if redis.call('LREM', KEYS[1], 1, ARGV[1]) == 0 then return 0 end
 redis.call('SADD', KEYS[2], ARGV[2])
 redis.call('EXPIRE', KEYS[2], tonumber(ARGV[3]))
 return 1
+"""
+
+
+# KEYS: queue, read set. ARGV: the stored payload, its id, the queue's cap,
+# the queue's TTL.
+_PUT_BACK_UNREAD_LUA = """
+redis.call('RPUSH', KEYS[1], ARGV[1])
+redis.call('LTRIM', KEYS[1], -tonumber(ARGV[3]), -1)
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
+redis.call('SREM', KEYS[2], ARGV[2])
+return redis.call('LLEN', KEYS[1])
 """
 
 
@@ -110,3 +122,32 @@ async def take_recording_read(
         ),
     )
     return int(result) == 1
+
+
+async def put_back_unread(
+    redis: AsyncRedisClient,
+    *,
+    queue_key: str,
+    read_key: str,
+    payload: str,
+    pending_id: str,
+    max_len: int,
+    ttl_seconds: int,
+) -> int:
+    """Append *payload* to the queue again and forget that *pending_id* was
+    read, at once, so it reads as waiting and never as read and gone.
+    Returns the queue's length."""
+    result = await cast(
+        "Any",
+        redis.eval(
+            _PUT_BACK_UNREAD_LUA,
+            2,
+            queue_key,
+            read_key,
+            payload,
+            pending_id,
+            max_len,
+            ttl_seconds,
+        ),
+    )
+    return int(result)
