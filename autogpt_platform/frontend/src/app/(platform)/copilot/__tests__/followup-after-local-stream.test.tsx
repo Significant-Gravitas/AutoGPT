@@ -131,7 +131,10 @@ vi.mock("../useLoadMoreMessages", () => ({
 }));
 
 vi.mock("../useCopilotPendingChips", () => ({
-  useCopilotPendingChips: () => ({ queuedMessages: [], queueMessage }),
+  useCopilotPendingChips: () => ({
+    queuedChips: { messages: [], heldReason: null, onRetry: vi.fn() },
+    queueMessage,
+  }),
 }));
 
 vi.mock("../useCopilotNotifications", () => ({
@@ -338,7 +341,9 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     expect(queueMessage).toHaveBeenCalledWith("second", "pm-second");
     // Both held copies are released: one went out, one is now the
     // backend's chip.
-    await waitFor(() => expect(result.current.queuedMessages).toEqual([]));
+    await waitFor(() =>
+      expect(result.current.queuedChips.messages).toEqual([]),
+    );
     expect(window.sessionStorage.length).toBe(0);
   });
 
@@ -360,7 +365,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     const { result, rerender } = renderHook(() => useCopilotPage());
     const send = result.current.onSend("and then?");
     await flush();
-    expect(result.current.queuedMessages).toEqual(["and then?"]);
+    expect(result.current.queuedChips.messages).toEqual(["and then?"]);
     expect(
       window.sessionStorage.getItem("copilot-held-follow-ups:session-1"),
     ).toBe(JSON.stringify(["and then?"]));
@@ -368,7 +373,9 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     streamState.status = "ready";
     rerender();
     await send;
-    await waitFor(() => expect(result.current.queuedMessages).toEqual([]));
+    await waitFor(() =>
+      expect(result.current.queuedChips.messages).toEqual([]),
+    );
     expect(window.sessionStorage.length).toBe(0);
   });
 
@@ -394,7 +401,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     );
     expect(toast).not.toHaveBeenCalled();
     expect(sendNewMessage).not.toHaveBeenCalled();
-    expect(result.current.queuedMessages).toEqual([]);
+    expect(result.current.queuedChips.messages).toEqual([]);
   });
 
   it("puts a follow-up left behind by a reload back in the composer", async () => {

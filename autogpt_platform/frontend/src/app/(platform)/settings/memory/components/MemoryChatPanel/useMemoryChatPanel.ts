@@ -66,11 +66,12 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       copilotModel: undefined,
     });
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
     setMessages,
+    resend: (text, metadata) => sendMessage({ text, metadata }),
   });
 
   // The seed fires from an effect so it runs only after the stream hook has
@@ -175,6 +176,6 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     error,
     stop,
     onSend,
-    queuedMessages,
+    queuedChips,
   };
 }

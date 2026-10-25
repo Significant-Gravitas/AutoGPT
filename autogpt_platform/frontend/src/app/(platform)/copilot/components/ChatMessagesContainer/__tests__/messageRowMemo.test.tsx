@@ -152,7 +152,7 @@ const baseProps = {
   isLoading: false,
   sessionID: "sess-1",
   sessionChatStatus: "running",
-  queuedMessages: [] as string[],
+  queuedChips: { messages: [] as string[], heldReason: null, onRetry: vi.fn() },
   hasMoreMessages: false,
   isLoadingMore: false,
   onLoadMore: vi.fn(),

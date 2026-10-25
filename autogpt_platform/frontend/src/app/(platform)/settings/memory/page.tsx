@@ -134,7 +134,7 @@ export default function SettingsMemoryPage() {
         messages={chatPanel.messages}
         status={chatPanel.status}
         error={chatPanel.error}
-        queuedMessages={chatPanel.queuedMessages}
+        queuedChips={chatPanel.queuedChips}
         onSend={chatPanel.onSend}
         onStop={chatPanel.stop}
         onRetry={chatPanel.retryStart}

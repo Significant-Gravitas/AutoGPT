@@ -15,6 +15,10 @@ import {
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
 import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
+import {
+  type ResendFollowUp,
+  usePendingChipRetry,
+} from "./usePendingChipRetry";
 
 // Backstop only. Promotion is normally driven instantly by the backend's
 // ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
@@ -24,6 +28,15 @@ const MID_TURN_BACKSTOP_POLL_MS = 10_000;
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
 export type HeldReason = NonNullable<PeekPendingMessagesResponseHeldReason>;
+
+/** The follow-ups waiting on the server, as every chat draws them. */
+export interface QueuedChips {
+  messages: string[];
+  /** Set when nothing will answer them unless they are resent. */
+  heldReason: HeldReason | null;
+  /** Resends the chip at this index of `messages`. */
+  onRetry: (index: number) => void;
+}
 
 type QueueUpdater = (prev: QueuedMessage[]) => QueuedMessage[];
 
@@ -38,6 +51,10 @@ interface Args {
   appendLocalUserRows?: (entries: readonly QueuedMessage[]) => void;
   /** Drained follow-ups the runtime has rendered; replaces counting drain hints. */
   drainedCount?: number;
+  /** How this chat sends a held follow-up again when its Retry is pressed. */
+  resend: ResendFollowUp;
+  /** False leaves a held chip as it is (the chat can't send right now). */
+  canRetry?: () => boolean;
 }
 
 type Promote = (drained: QueuedMessage[], flavour?: PromotionFlavour) => void;
@@ -46,7 +63,8 @@ type Promote = (drained: QueuedMessage[], flavour?: PromotionFlavour) => void;
  * Owns the chip lifecycle: keep the local chip list in sync with Redis,
  * promote chips to user-bubbles when the backend drains (auto-continue or
  * mid-turn via the MCP wrapper), and surface the list + queue op to the
- * chat input.
+ * chat input. A follow-up the last turn ended without reading is shown as
+ * held, with a Retry that resends it through *resend*.
  *
  * Each chip carries a frontend-only ``id`` so concurrent draining and
  * appending stays race-safe — the poll captures a stale snapshot of the
@@ -73,6 +91,8 @@ export function useCopilotPendingChips({
   setMessages,
   appendLocalUserRows,
   drainedCount,
+  resend,
+  canRetry,
 }: Args) {
   const promote: Promote = (drained, flavour) => {
     if (appendLocalUserRows) appendLocalUserRows(drained);
@@ -149,12 +169,25 @@ export function useCopilotPendingChips({
     setQueue((prev) => prev.filter((entry) => entry.id !== id));
   }
 
+  const retry = usePendingChipRetry({
+    sessionId,
+    queue,
+    takeQueuedMessage,
+    resend,
+    canRetry,
+  });
+
+  const queuedChips: QueuedChips = {
+    messages: queuedMessages,
+    heldReason: isActive || queue.length === 0 ? null : heldReason,
+    onRetry: (index) => void retry(index),
+  };
+
   return {
-    queuedMessages,
+    queuedChips,
     queuedEntries: queue,
     queueMessage,
     takeQueuedMessage,
-    heldReason: isActive || queue.length === 0 ? null : heldReason,
   };
 }
 

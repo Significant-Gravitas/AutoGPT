@@ -8,25 +8,20 @@ import {
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
 
-import type { HeldReason } from "../../../../useCopilotPendingChips";
+import type {
+  HeldReason,
+  QueuedChips,
+} from "../../../../useCopilotPendingChips";
 import { CredentialMentionText } from "../../../CredentialMention/CredentialMentionText";
 
 interface Props {
-  messages: string[];
-  /** Set when nothing will answer these messages unless they are resent. */
-  heldReason: HeldReason | null;
-  /** Resends the chip at this index of `messages`. */
-  onRetry?: (index: number) => void;
+  chips: QueuedChips;
   isCompact: boolean;
 }
 
-export function QueuedMessages({
-  messages,
-  heldReason,
-  onRetry,
-  isCompact,
-}: Props) {
-  const isHeld = heldReason !== null && onRetry !== undefined;
+export function QueuedMessages({ chips, isCompact }: Props) {
+  const { messages, heldReason, onRetry } = chips;
+  const isHeld = heldReason !== null;
   return messages.map((msg, idx) => (
     <Message key={idx} from="user">
       <MessageContent

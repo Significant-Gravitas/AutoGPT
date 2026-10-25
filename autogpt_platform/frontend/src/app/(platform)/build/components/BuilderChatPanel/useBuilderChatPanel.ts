@@ -170,11 +170,12 @@ export function useBuilderChatPanel({
       copilotModel: undefined,
     });
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
     setMessages,
+    resend: (text, metadata) => sendMessage({ text, metadata }),
   });
 
   // Track the currently-selected graph so the async bind effect can
@@ -530,12 +531,14 @@ export function useBuilderChatPanel({
     if (!sessionId) return;
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
-      queueMessage(trimmed);
       try {
         const { queueFollowUpMessage } = await import(
           "@/app/(platform)/copilot/helpers/queueFollowUpMessage"
         );
-        await queueFollowUpMessage(sessionId, trimmed);
+        // The chip keeps the server's id, so its Retry and the strip's
+        // reconciliation name that very message.
+        const queued = await queueFollowUpMessage(sessionId, trimmed);
+        queueMessage(trimmed, queued.pending_id);
       } catch (err) {
         Sentry.captureException(err);
         // The composer restores the draft and shows the one toast for it.
@@ -586,7 +589,7 @@ export function useBuilderChatPanel({
     error,
     stop,
     onSend,
-    queuedMessages,
+    queuedChips,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,

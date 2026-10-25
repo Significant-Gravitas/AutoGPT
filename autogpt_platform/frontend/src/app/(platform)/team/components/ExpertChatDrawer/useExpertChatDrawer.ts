@@ -281,11 +281,20 @@ export function useExpertChatDrawer({
     setSessionId(pending);
   }, [pendingOnboarding.sessionId, sessionId]);
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
     setMessages,
+    resend: (text, metadata) => {
+      if (!sessionId) return Promise.resolve();
+      const message: OutgoingMessage = { text, files: [], parts: [], metadata };
+      return send(sessionId, message).catch((err: unknown) =>
+        recoverUnsentMessage(message, err),
+      );
+    },
+    // While the kickoff is still being decided, a held chip stays as it is.
+    canRetry: () => !needsKickoff(),
   });
 
   const threadKeyRef = useRef(threadKey);
@@ -562,7 +571,7 @@ export function useExpertChatDrawer({
     stop,
     onSend,
     onActionSend,
-    queuedMessages,
+    queuedChips,
     isResolvingSession,
     isCreating,
     pendingSend,

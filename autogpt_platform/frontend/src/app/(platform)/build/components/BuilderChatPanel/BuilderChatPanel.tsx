@@ -26,7 +26,7 @@ export function BuilderChatPanel({ className }: Props) {
     error,
     stop,
     onSend,
-    queuedMessages,
+    queuedChips,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,
@@ -108,7 +108,7 @@ export function BuilderChatPanel({ className }: Props) {
                       error={error}
                       isLoading={false}
                       sessionID={sessionId}
-                      queuedMessages={queuedMessages}
+                      queuedChips={queuedChips}
                     />
                   </div>
                   <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-2 pt-2">

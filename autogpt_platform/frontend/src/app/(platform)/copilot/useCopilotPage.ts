@@ -34,7 +34,7 @@ import {
   rememberHeldFollowUp,
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
-import { resendMetadata, type SendMetadata } from "./helpers/resendMetadata";
+import type { SendMetadata } from "./helpers/resendMetadata";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
@@ -418,13 +418,7 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const {
-    queuedMessages,
-    queuedEntries,
-    queueMessage,
-    takeQueuedMessage,
-    heldReason,
-  } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -434,6 +428,13 @@ function useCopilotPageChat(
           appendLocalUserRows: stream.appendLocalUserRows,
           drainedCount: stream.drainedCount,
         }),
+    resend: (text, metadata) =>
+      sendOrQueue(text, undefined, undefined, metadata).catch((err: unknown) =>
+        recoverFailedDeferredSend(text, [], err),
+      ),
+    // Locked (an expert being resolved or let go), or a send just went out:
+    // the chip stays as it is.
+    canRetry: () => !isExpertSendLocked && !isInflightRef.current,
   });
 
   useCopilotNotifications(sessionId);
@@ -542,27 +543,6 @@ function useCopilotPageChat(
     }
     return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
-  // A follow-up the last turn ended without reading is resent by its id: the
-  // server takes that very message off the queue and runs it as a turn, or
-  // runs nothing if a turn read it meanwhile, so Otto never reads it twice.
-  // One at a time: the turn a retry starts reads every other held follow-up.
-  const isRetryingRef = useRef(false);
-  async function retryQueuedMessage(index: number) {
-    const entry = queuedEntries[index];
-    // Locked (an expert being resolved or let go): the chip stays as it is.
-    if (!entry || !sessionId || isExpertSendLocked) return;
-    if (isRetryingRef.current || isInflightRef.current) return;
-    isRetryingRef.current = true;
-    takeQueuedMessage(entry.id);
-    const metadata = entry.serverId
-      ? resendMetadata(entry.serverId)
-      : undefined;
-    await sendOrQueue(entry.text, undefined, undefined, metadata).catch(
-      (err: unknown) => recoverFailedDeferredSend(entry.text, [], err),
-    );
-    isRetryingRef.current = false;
-  }
-
   // One function for the host's lifetime that runs the latest `sendOrQueue`,
   // so the chat actions and the composer keep their props across flushes.
   const onSend = useStableCallback(
@@ -636,13 +616,15 @@ function useCopilotPageChat(
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,
-    queuedMessages:
-      heldFollowUps.length > 0
-        ? [...queuedMessages, ...heldFollowUps]
-        : queuedMessages,
     // Locally held follow-ups are still on their way, never held by the server.
-    queuedHeldReason: heldFollowUps.length > 0 ? null : heldReason,
-    retryQueuedMessage,
+    queuedChips:
+      heldFollowUps.length > 0
+        ? {
+            ...queuedChips,
+            messages: [...queuedChips.messages, ...heldFollowUps],
+            heldReason: null,
+          }
+        : queuedChips,
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,

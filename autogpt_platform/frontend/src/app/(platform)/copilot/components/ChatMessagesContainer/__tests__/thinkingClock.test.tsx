@@ -131,7 +131,7 @@ const baseProps = {
   error: undefined,
   isLoading: false,
   sessionID: "sess-1",
-  queuedMessages: [] as string[],
+  queuedChips: { messages: [] as string[], heldReason: null, onRetry: vi.fn() },
   hasMoreMessages: false,
   isLoadingMore: false,
   onLoadMore: vi.fn(),

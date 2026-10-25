@@ -94,7 +94,7 @@ const OTHER_SURFACES: Surface[] = [
           messages={messages}
           status="ready"
           error={undefined}
-          queuedMessages={[]}
+          queuedChips={{ messages: [], heldReason: null, onRetry: vi.fn() }}
           onSend={async () => {}}
           onStop={vi.fn()}
           onRetry={vi.fn()}
@@ -115,7 +115,7 @@ const OTHER_SURFACES: Surface[] = [
         error: undefined,
         stop: vi.fn(),
         onSend: vi.fn(),
-        queuedMessages: [],
+        queuedChips: { messages: [], heldReason: null, onRetry: vi.fn() },
         isBootstrapping: false,
         revertTargetVersion: null,
         handleRevert: vi.fn(),
@@ -140,7 +140,7 @@ const OTHER_SURFACES: Surface[] = [
         stop: vi.fn(),
         onSend: vi.fn(),
         onActionSend: vi.fn(),
-        queuedMessages: [],
+        queuedChips: { messages: [], heldReason: null, onRetry: vi.fn() },
         isResolvingSession: false,
         isLoadingSession: false,
         isCreating: false,
