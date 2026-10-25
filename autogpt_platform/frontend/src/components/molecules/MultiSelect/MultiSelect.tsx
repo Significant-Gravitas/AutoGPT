@@ -187,7 +187,9 @@ const MultiSelectorTrigger = forwardRef<
         <Badge
           key={item}
           className={cn(
-            "flex items-center gap-1 rounded-xl px-1 pl-2",
+            // The legacy secondary badge's dark: classes, which the atom's
+            // chip does not carry.
+            "flex items-center gap-1 rounded-xl px-1 pl-2 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-50 dark:focus:ring-neutral-300",
             activeIndex === index && "ring-2 ring-muted-foreground",
           )}
           variant="secondary"
@@ -279,7 +281,7 @@ const MultiSelectorList = forwardRef<
       ref={ref}
       data-slot="multi-select-list"
       className={cn(
-        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg",
+        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg dark:scrollbar-thumb-muted",
         className,
       )}
     >
