@@ -532,6 +532,23 @@ async def stash_pending_for_persist(
         )
 
 
+async def peek_pending_for_persist(session_id: str) -> list[PendingMessage]:
+    """The drained messages still waiting to be saved as rows, unconsumed."""
+    redis = await get_redis_async()
+    items = await cast("Any", redis.lrange(_persist_queue_key(session_id), 0, -1))
+    messages: list[PendingMessage] = []
+    for item in items or []:
+        try:
+            messages.append(_from_buffer(json.loads(_decode_redis_item(item))))
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
+            logger.warning(
+                "pending_messages: skipping malformed persist-queue entry for %s: %s",
+                session_id,
+                e,
+            )
+    return messages
+
+
 async def drain_pending_for_persist(session_id: str) -> list[PendingMessage]:
     """Atomically drain the persist queue for *session_id*.
 

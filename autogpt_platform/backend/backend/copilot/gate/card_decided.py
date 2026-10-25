@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from backend.copilot.gate.answers_in_flight import answers_on_their_way
 from backend.copilot.gate.card_approval import (
     CARD_DECISION_KIND,
     parse_card_decisions,
@@ -102,6 +103,17 @@ for i = 3, #ARGV do
 end
 return 1
 """
+# An accepted answer that was lost goes; one accepted since, or still
+# pending, is someone's and stays.
+_FORGET_ACCEPTED = """
+for i = 1, #ARGV do
+  local value = redis.call('HGET', KEYS[1], ARGV[i])
+  if value and string.sub(value, -9) == '|accepted' then
+    redis.call('HDEL', KEYS[1], ARGV[i])
+  end
+end
+return 1
+"""
 # Only the attempt that claimed an id gives it back, and only while pending.
 _RELEASE = """
 local mine = ARGV[1] .. '|pending|' .. ARGV[2] .. '|'
@@ -137,7 +149,9 @@ async def claim_answer(
     "pending": another send holds a card but has not saved yet; it may still
     fail, so this one is neither answered nor taken, and should retry.
     "in_progress": the same, for an earlier attempt of this very send. A
-    pending claim whose request died lapses after ``_PENDING_LEASE_MS``.
+    pending claim whose request died lapses after ``_PENDING_LEASE_MS``, and
+    an accepted answer that never reached the chat stops holding the card
+    once it is no longer on its way there either.
     """
     try:
         session = await get_chat_session(session_id, user_id)
@@ -153,7 +167,44 @@ async def claim_answer(
         # Answered by no row but this send's own: it was saved already.
         if decided_ids(session.messages, None) & set(confirmation_ids):
             return CardClaim(result="replayed")
+    claim = await _claim(session_id, confirmation_ids, owner, attempt)
+    # With the chat unread, an accepted answer cannot be told lost.
+    if session is None or claim.result != "answered":
+        return claim
+    lost = await _lost_answers(user_id, session_id, claim.answered)
+    if not lost:
+        return claim
+    await _forget_lost_answers(user_id, session_id, lost)
     return await _claim(session_id, confirmation_ids, owner, attempt)
+
+
+async def _lost_answers(
+    user_id: str, session_id: str, confirmation_ids: frozenset[str]
+) -> set[str]:
+    """The accepted answers among these that are neither in the chat nor on
+    their way to it. The chat is read last: a turn may have saved one since
+    the claim was read, and then it is not lost."""
+    gone = set(confirmation_ids) - await answers_on_their_way(
+        session_id, confirmation_ids
+    )
+    if not gone:
+        return set()
+    return await unsaved_ids(user_id, session_id, gone) or set()
+
+
+async def _forget_lost_answers(
+    user_id: str, session_id: str, confirmation_ids: set[str]
+) -> None:
+    logger.info(f"Forgot {len(confirmation_ids)} lost card answer(s) in {session_id}")
+    await withdraw_card_approvals(user_id, session_id, confirmation_ids)
+    try:
+        redis = await get_redis_async()
+        await redis.eval(_FORGET_ACCEPTED, 1, f"{_KEY}{session_id}", *confirmation_ids)
+    except Exception:
+        logger.warning(
+            f"Could not forget lost card answers for session {session_id}",
+            exc_info=True,
+        )
 
 
 async def accept_claim(

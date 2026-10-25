@@ -8,13 +8,14 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_mock
 
-from backend.copilot.gate import card_approval, card_decided
+from backend.copilot.gate import answers_in_flight, card_approval, card_decided
 from backend.copilot.gate.card_decided import (
     claim_answer,
     decided_ids,
     forget_unsaved_answers,
 )
 from backend.copilot.model import ChatMessage
+from backend.copilot.pending_messages import PendingMessage
 from backend.data import redis_client
 from backend.util.testing import is_tcp_port_reachable
 
@@ -294,6 +295,58 @@ async def test_a_replay_of_a_saved_send_is_not_a_new_answer(
 
     assert replay.result == "replayed"
     claim.assert_not_awaited()
+
+
+@needs_redis
+@pytest.mark.parametrize("on_its_way", [None, "queued", "drained", "turn"])
+async def test_an_accepted_answer_that_was_lost_stops_holding_the_card(
+    mocker: pytest_mock.MockerFixture, on_its_way: str | None
+) -> None:
+    """Tab A's decision was queued, so its claim was accepted, then lost
+    before it was saved (its buffer expired, or a turn dropped it). The card
+    must be answerable again, and the lost answer's approval gone. While the
+    answer is still queued, drained for saving, or inside a running turn, it
+    stands."""
+    session_id = f"s-{uuid.uuid4()}"
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    mocker.patch.object(
+        card_decided,
+        "get_chat_session",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(messages=[]),
+    )
+    holding = [PendingMessage(content=line)]
+    mocker.patch.object(
+        answers_in_flight,
+        "peek_pending_messages",
+        new_callable=AsyncMock,
+        return_value=holding if on_its_way == "queued" else [],
+    )
+    mocker.patch.object(
+        answers_in_flight,
+        "peek_pending_for_persist",
+        new_callable=AsyncMock,
+        return_value=holding if on_its_way == "drained" else [],
+    )
+    mocker.patch.object(
+        answers_in_flight,
+        "is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=on_its_way == "turn",
+    )
+    await card_approval.record_card_decisions("u-1", session_id, line)
+    assert await _claim(session_id, ["c-1"], "tab-a") == "claimed"
+    await card_decided.accept_claim(session_id, ["c-1"], "tab-a", "tab-a")
+
+    other_tab = await claim_answer(
+        "u-1", session_id, ["c-1"], owner="tab-b", attempt="b"
+    )
+
+    lost = on_its_way is None
+    assert other_tab.result == ("claimed" if lost else "answered")
+    assert await card_approval.approved_on_card(
+        "confirm_expert_change", {"confirmation_id": "c-1"}, "u-1", session_id
+    ) is (not lost)
 
 
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
