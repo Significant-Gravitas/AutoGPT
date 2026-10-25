@@ -1206,7 +1206,14 @@ class OrchestratorBlock(Block):
             # Skipped for dry runs.
             if not execution_params.execution_context.dry_run:
                 try:
-                    await execution_processor.charge_node_usage(node_exec_entry)
+                    cost, _ = await execution_processor.charge_node_usage(
+                        node_exec_entry
+                    )
+                    # Count it in the run's cost, as the main queue does for
+                    # every node it charges: the tool node's own stats only
+                    # carry its reconciliation delta.
+                    with execution_processor.execution_stats_lock:
+                        execution_processor.execution_stats.cost += cost
                 except InsufficientBalanceError:
                     # IBE must propagate — see OrchestratorBlock class docstring.
                     logger.warning(

@@ -1,6 +1,7 @@
 "use client";
 
-import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { StarFilledGlyph, StarGlyph } from "@/components/atoms/Icon/drawnIcons";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
@@ -131,7 +132,14 @@ export function StoreCard({
               <span className="font-medium text-foreground-body">
                 {rating.toFixed(1)}
               </span>
-              {StarRatingIcons(rating)}
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Icon
+                  key={star}
+                  icon={star <= rating ? StarFilledGlyph : StarGlyph}
+                  aria-label="Icon"
+                  className="size-4 text-foreground-base dark:text-yellow-500"
+                />
+              ))}
             </span>
           )}
         </span>

@@ -11,7 +11,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/molecules/Sheet/Sheet";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -234,7 +234,7 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
     >
       <table
         data-slot="work-output-sheet-table-grid"
-        className="w-full border-collapse text-sm"
+        className="w-full border-collapse"
       >
         <thead data-slot="work-output-sheet-table-head">
           <tr
@@ -245,9 +245,11 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
               <th
                 key={column}
                 data-slot="work-output-sheet-table-header-cell"
-                className="px-3 py-2 font-medium text-foreground-secondary"
+                className="px-3 py-2 text-foreground-secondary"
               >
-                {column}
+                <Text as="div" variant="body-medium-tight" tone="secondary">
+                  {column}
+                </Text>
               </th>
             ))}
           </tr>
@@ -263,9 +265,11 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
                 <td
                   key={column}
                   data-slot="work-output-sheet-table-cell"
-                  className="px-3 py-2 text-foreground-body"
+                  className="px-3 py-2"
                 >
-                  {cellText(row[column])}
+                  <Text as="div" variant="body-tight" tone="body">
+                    {cellText(row[column])}
+                  </Text>
                 </td>
               ))}
             </tr>
