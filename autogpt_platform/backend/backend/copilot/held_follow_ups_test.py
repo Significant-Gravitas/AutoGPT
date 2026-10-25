@@ -15,6 +15,7 @@ from backend.copilot.held_follow_ups import (
     take_follow_up,
 )
 from backend.copilot.pending_messages import (
+    MAX_PENDING_MESSAGES,
     PendingMessage,
     drain_pending_messages,
     peek_pending_messages,
@@ -210,6 +211,21 @@ async def test_a_refused_resend_goes_back_where_it_was_in_the_queue(
         second,
         third,
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_resend_put_back_into_a_full_queue_evicts_nothing(
+    fake_redis: _FakeRedis,
+) -> None:
+    ids = await _queued(*(f"message {n}" for n in range(MAX_PENDING_MESSAGES)))
+    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+    taken = await take_follow_up("sess-1", ids[0])
+    # Another follow-up fills the queue while the resend is refused.
+    [late] = await _queued("one more")
+
+    await restore_held_follow_up("sess-1", taken)
+
+    assert [m.id for m in await peek_pending_messages("sess-1")] == [*ids, late]
 
 
 @pytest.mark.parametrize(

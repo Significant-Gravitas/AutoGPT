@@ -538,7 +538,6 @@ async def put_back_pending_message(session_id: str, message: PendingMessage) -> 
         payload=message.model_dump_json(),
         pending_id=message.id,
         enqueued_at=message.enqueued_at,
-        max_len=MAX_PENDING_MESSAGES,
         ttl_seconds=PENDING_TTL_SECONDS,
     )
 

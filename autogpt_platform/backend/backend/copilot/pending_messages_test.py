@@ -189,7 +189,6 @@ class _FakeRedis:
         read_key: str,
         payload: str,
         pending_id: str,
-        max_len: int,
         ttl: int,
         enqueued_at: float,
     ) -> int:
@@ -201,7 +200,6 @@ class _FakeRedis:
             if json.loads(item).get("enqueued_at", 0) > float(enqueued_at)
         ]
         lst.insert(later[0] if later else len(lst), payload)
-        self.lists[key] = lst[-int(max_len) :]
         self.ttls[key] = int(ttl)
         self.sets.get(read_key, set()).discard(pending_id)
         return len(self.lists[key])

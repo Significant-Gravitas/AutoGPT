@@ -122,7 +122,6 @@ async def test_a_put_back_queues_it_again_unread(queue):
         payload=IMAGE,
         pending_id="b",
         enqueued_at=0.0,
-        max_len=10,
         ttl_seconds=60,
     )
 
@@ -149,8 +148,30 @@ async def test_a_put_back_returns_it_to_its_place_by_enqueue_time(queue):
         payload=timed[1],
         pending_id="y",
         enqueued_at=2.0,
-        max_len=10,
         ttl_seconds=60,
     )
 
     assert await client.lrange(keys["queue_key"], 0, -1) == timed
+
+
+async def test_a_put_back_into_a_full_queue_evicts_nothing(queue):
+    client, keys = queue
+    take = {"queue_key": keys["queue_key"], "read_key": keys["read_key"]}
+    full = [json.dumps({"id": f"m{n}", "enqueued_at": float(n)}) for n in range(10)]
+    await client.delete(keys["queue_key"])
+    await client.rpush(keys["queue_key"], *full)
+    assert await take_recording_read(client, **take, payload=full[0], pending_id="m0")
+    late = json.dumps({"id": "late", "enqueued_at": 99.0})
+    await client.rpush(keys["queue_key"], late)
+
+    length = await put_back_unread(
+        client,
+        **take,
+        payload=full[0],
+        pending_id="m0",
+        enqueued_at=0.0,
+        ttl_seconds=60,
+    )
+
+    assert length == 11
+    assert await client.lrange(keys["queue_key"], 0, -1) == [*full, late]

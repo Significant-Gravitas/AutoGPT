@@ -58,23 +58,24 @@ return 1
 """
 
 
-# KEYS: queue, read set. ARGV: the stored payload, its id, the queue's cap,
-# the queue's TTL, its enqueue time. It goes back before the first message
-# queued after it, so turns still read the queue in the order it was typed.
+# KEYS: queue, read set. ARGV: the stored payload, its id, the queue's TTL,
+# its enqueue time. It goes back before the first message queued after it,
+# so turns still read the queue in the order it was typed. No trim to the
+# cap: it was in the queue moments ago, and a push made meanwhile into a
+# full queue must not cost it, or any other message, its place.
 _PUT_BACK_UNREAD_LUA = """
 local placed = false
 for _, item in ipairs(redis.call('LRANGE', KEYS[1], 0, -1)) do
     local ok, entry = pcall(cjson.decode, item)
     local at = ok and type(entry) == 'table' and tonumber(entry['enqueued_at'])
-    if at and at > tonumber(ARGV[5]) then
+    if at and at > tonumber(ARGV[4]) then
         redis.call('LINSERT', KEYS[1], 'BEFORE', item, ARGV[1])
         placed = true
         break
     end
 end
 if not placed then redis.call('RPUSH', KEYS[1], ARGV[1]) end
-redis.call('LTRIM', KEYS[1], -tonumber(ARGV[3]), -1)
-redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
 redis.call('SREM', KEYS[2], ARGV[2])
 return redis.call('LLEN', KEYS[1])
 """
@@ -143,7 +144,6 @@ async def put_back_unread(
     payload: str,
     pending_id: str,
     enqueued_at: float,
-    max_len: int,
     ttl_seconds: int,
 ) -> int:
     """Return *payload* to its place in the queue (by *enqueued_at*) and
@@ -158,7 +158,6 @@ async def put_back_unread(
             read_key,
             payload,
             pending_id,
-            max_len,
             ttl_seconds,
             enqueued_at,
         ),
