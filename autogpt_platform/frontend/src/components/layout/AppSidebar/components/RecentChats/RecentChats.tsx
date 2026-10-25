@@ -162,7 +162,7 @@ export function RecentChats() {
               className="size-4 text-foreground-tertiary"
             />
           )}
-          <Text as="span" variant="body-tight-touch" className="text-inherit">
+          <Text as="span" variant="body-tight-touch" tone="inherit">
             {isLoadingMore ? "Loading…" : "Load more"}
           </Text>
         </button>

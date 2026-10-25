@@ -91,7 +91,13 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         >
           <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
             <SheetTitle>
-              <Text as="span" variant="lg-semibold" tone="primary">
+              <Text
+                as="span"
+                variant="lg-semibold"
+                tone="primary"
+                // TODO(tokens): no exact role for dark:text-neutral-50 (#FAFAFA); SheetTitle's dark colour, kept on the copy that renders it
+                className="dark:text-neutral-50"
+              >
                 {TAB_TITLES[activeTab]}
               </Text>
             </SheetTitle>
