@@ -23,7 +23,9 @@ describe("fetchVapidPublicKey", () => {
     const key = await fetchVapidPublicKey();
 
     expect(key).toBe("BFakeKey123");
-    expect(fetch).toHaveBeenCalledWith("/api/proxy/api/push/vapid-key");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/proxy/api/internal/push/vapid-key",
+    );
   });
 
   it("returns null when response is not ok", async () => {
@@ -78,15 +80,18 @@ describe("sendSubscriptionToServer", () => {
 
     await sendSubscriptionToServer(mockSubscription);
 
-    expect(fetch).toHaveBeenCalledWith("/api/proxy/api/push/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        endpoint: "https://push.example.com/sub/123",
-        keys: { p256dh: "key-p256dh", auth: "key-auth" },
-        user_agent: navigator.userAgent,
-      }),
-    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/proxy/api/internal/push/subscribe",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: "https://push.example.com/sub/123",
+          keys: { p256dh: "key-p256dh", auth: "key-auth" },
+          user_agent: navigator.userAgent,
+        }),
+      },
+    );
   });
 
   it("returns true on 200 response", async () => {
@@ -161,13 +166,16 @@ describe("removeSubscriptionFromServer", () => {
 
     await removeSubscriptionFromServer("https://push.example.com/sub/123");
 
-    expect(fetch).toHaveBeenCalledWith("/api/proxy/api/push/unsubscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        endpoint: "https://push.example.com/sub/123",
-      }),
-    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/proxy/api/internal/push/unsubscribe",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: "https://push.example.com/sub/123",
+        }),
+      },
+    );
   });
 
   it("returns true on success", async () => {

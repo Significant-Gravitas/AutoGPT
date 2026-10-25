@@ -56,6 +56,10 @@ from backend.util.url_redaction import REDACTED, redact_url, redact_urls_in_text
             f"/api/integrations/github/webhooks/{REDACTED}/ingress",
         ),
         (
+            "/api/internal/integrations/github/webhooks/w-1/ingress",
+            f"/api/internal/integrations/github/webhooks/{REDACTED}/ingress",
+        ),
+        (
             "/api/integrations/webhooks/w-1/ping",
             f"/api/integrations/webhooks/{REDACTED}/ping",
         ),

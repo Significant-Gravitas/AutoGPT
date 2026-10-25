@@ -11,10 +11,10 @@ import { heldRead, CHAT_SESSION } from "./fixtures";
 function serve(reviews: PendingHumanReviewModel[]) {
   const answered: unknown[] = [];
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json(reviews),
     ),
-    http.post("*/api/review/action", async ({ request }) => {
+    http.post("*/api/internal/review/action", async ({ request }) => {
       answered.push(await request.json());
       return HttpResponse.json({
         approved_count: 1,

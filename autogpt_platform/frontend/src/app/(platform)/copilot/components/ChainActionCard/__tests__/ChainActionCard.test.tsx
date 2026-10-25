@@ -38,7 +38,7 @@ vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
     isPending: false,
   }),
   getListExpertCredentialsQueryKey: (expertId?: string) => [
-    `/api/experts/${expertId}/credentials`,
+    `/api/internal/experts/${expertId}/credentials`,
   ],
 }));
 

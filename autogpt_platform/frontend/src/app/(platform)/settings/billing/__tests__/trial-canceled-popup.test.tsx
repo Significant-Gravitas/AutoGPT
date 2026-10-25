@@ -141,7 +141,7 @@ describe("post-cancel popup", () => {
     mockCancelFlow();
     const planStatus = deferredTrialResponse<void>();
     server.use(
-      http.get("*/api/credits/subscription", async () => {
+      http.get("*/api/internal/credits/subscription", async () => {
         await planStatus.promise;
         return HttpResponse.json({ tier: "TRIAL", monthly_cost: 0 });
       }),

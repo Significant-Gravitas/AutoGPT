@@ -61,7 +61,7 @@ export function createCopilotTransport({
   sessionId,
   copilotModelRef,
 }: CreateTransportArgs) {
-  const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
+  const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/internal/chat/sessions/${sessionId}/stream`;
 
   return new SmoothedCopilotChatTransport({
     api: baseUrl,
@@ -129,7 +129,7 @@ export function streamRequestBody(
   const fileIds = last.parts
     ?.filter((p): p is FileUIPart => p.type === "file")
     .map((p) => {
-      // URL is like /api/proxy/api/workspace/files/{id}/download
+      // URL is like /api/proxy/api/internal/workspace/files/{id}/download
       const match = p.url.match(/\/workspace\/files\/([^/]+)\//);
       return match?.[1];
     })

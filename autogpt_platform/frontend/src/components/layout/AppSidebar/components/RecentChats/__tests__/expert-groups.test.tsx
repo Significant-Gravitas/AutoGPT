@@ -259,7 +259,7 @@ describe("RecentChats — expert groups", () => {
     const sessions = [...makeSessions(12), ...makeSessions(2, mariaExpert.id)];
     let listCalls = 0;
     server.use(
-      http.get("*/api/chat/sessions", () => {
+      http.get("*/api/internal/chat/sessions", () => {
         listCalls++;
         return HttpResponse.json({ sessions, total: sessions.length });
       }),

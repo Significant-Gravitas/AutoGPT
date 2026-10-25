@@ -462,7 +462,7 @@ function isAgentListResponseFor(
 ): boolean {
   const url = new URL(response.url());
   return (
-    url.pathname.endsWith("/api/library/agents") &&
+    url.pathname.endsWith("/api/internal/library/agents") &&
     url.searchParams.get("search_term") === searchTerm
   );
 }

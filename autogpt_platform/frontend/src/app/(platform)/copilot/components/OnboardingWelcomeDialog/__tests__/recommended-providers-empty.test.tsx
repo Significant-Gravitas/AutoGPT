@@ -6,11 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 import { ConnectToolsPanel } from "../ConnectToolsPanel";
 
 const PROVIDERS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/providers";
+  "http://localhost:3000/api/proxy/api/internal/integrations/providers";
 const CREDENTIALS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/credentials";
+  "http://localhost:3000/api/proxy/api/internal/integrations/credentials";
 const RECOMMENDED_URL =
-  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-providers";
+  "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/recommended-providers";
 
 describe("ConnectToolsPanel — empty recommendations", () => {
   it("shows popular providers after recommendations return empty", async () => {

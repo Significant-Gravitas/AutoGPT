@@ -119,7 +119,7 @@ function newRecorder(): Recorder {
 
 function uploadHandler(recorder: Recorder) {
   return http.post(
-    `${TEST_BACKEND_BASE_URL}/api/workspace/files/upload`,
+    `${TEST_BACKEND_BASE_URL}/api/internal/workspace/files/upload`,
     ({ request }) => {
       recorder.uploadSessionIds.push(
         new URL(request.url).searchParams.get("session_id"),
@@ -137,7 +137,7 @@ function uploadHandler(recorder: Recorder) {
 
 function pendingHandler(recorder: Recorder, sessionId: string) {
   return http.post(
-    `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${sessionId}/messages/pending`,
+    `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${sessionId}/messages/pending`,
     () => {
       recorder.pendingPosts += 1;
       return HttpResponse.json({ buffer_length: 1 });
@@ -151,7 +151,7 @@ function streamHandler(
   holds: Array<ReturnType<typeof createStreamHold>["hold"] | undefined> = [],
 ) {
   return http.post(
-    `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${sessionId}/stream`,
+    `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${sessionId}/stream`,
     async ({ request }) => {
       const turn = recorder.streamBodies.length;
       recorder.streamBodies.push(
@@ -322,7 +322,7 @@ describe("ExpertChatDrawer attachments", () => {
     const createRequest = deferred();
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
-      http.post("/api/proxy/api/chat/sessions", async () => {
+      http.post("/api/proxy/api/internal/chat/sessions", async () => {
         await createRequest.promise;
         return HttpResponse.json(
           getPostV2CreateSessionResponseMock200({ id: FRESH_SESSION_ID }),
@@ -557,7 +557,7 @@ describe("ExpertChatDrawer attachments", () => {
     let createAttempts = 0;
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
-      http.post("/api/proxy/api/chat/sessions", () => {
+      http.post("/api/proxy/api/internal/chat/sessions", () => {
         createAttempts += 1;
         if (createAttempts === 1) {
           return HttpResponse.json(
@@ -651,13 +651,13 @@ describe("ExpertChatDrawer attachments", () => {
       existingThreadList(OLD_TASK_SESSION_ID),
       sessionHandler(OLD_TASK_SESSION_ID),
       sessionHandler(NEW_TASK_SESSION_ID),
-      http.post("/api/proxy/api/chat/sessions", () =>
+      http.post("/api/proxy/api/internal/chat/sessions", () =>
         HttpResponse.json(
           getPostV2CreateSessionResponseMock200({ id: NEW_TASK_SESSION_ID }),
         ),
       ),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/workspace/files/upload`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/workspace/files/upload`,
         async () => {
           await upload.promise;
           return HttpResponse.json({
@@ -668,7 +668,7 @@ describe("ExpertChatDrawer attachments", () => {
         },
       ),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/:sessionId/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/:sessionId/stream`,
         async ({ params, request }) => {
           sentTo.push(String(params.sessionId));
           recorder.streamBodies.push(
@@ -723,7 +723,7 @@ describe("ExpertChatDrawer attachments", () => {
       uploadHandler(recorder),
       pendingHandler(recorder, DISCONNECT_SESSION_ID),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${DISCONNECT_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${DISCONNECT_SESSION_ID}/stream`,
         async ({ request }) => {
           const turn = recorder.streamBodies.length;
           recorder.streamBodies.push(
@@ -759,7 +759,7 @@ describe("ExpertChatDrawer attachments", () => {
         },
       ),
       http.get(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${DISCONNECT_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${DISCONNECT_SESSION_ID}/stream`,
         ({ request }) =>
           streamSseResponse(assistantTextChunks("Resumed reply"), {
             hold: resumed.hold,
@@ -815,7 +815,7 @@ describe("ExpertChatDrawer attachments", () => {
       uploadHandler(recorder),
       pendingHandler(recorder, RECONNECT_SEND_SESSION_ID),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${RECONNECT_SEND_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${RECONNECT_SEND_SESSION_ID}/stream`,
         async ({ request }) => {
           const turn = recorder.streamBodies.length;
           recorder.streamBodies.push(
@@ -851,7 +851,7 @@ describe("ExpertChatDrawer attachments", () => {
         },
       ),
       http.get(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${RECONNECT_SEND_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${RECONNECT_SEND_SESSION_ID}/stream`,
         ({ request }) =>
           streamSseResponse(assistantTextChunks("Resumed reply"), {
             hold: resumed.hold,
@@ -923,7 +923,7 @@ describe("ExpertChatDrawer attachments", () => {
         sessionHandler(CLOSED_SESSION_ID),
         streamHandler(recorder, CLOSED_SESSION_ID, [reply.hold]),
         http.post(
-          `${TEST_BACKEND_BASE_URL}/api/workspace/files/upload`,
+          `${TEST_BACKEND_BASE_URL}/api/internal/workspace/files/upload`,
           async () => {
             recorder.uploadSessionIds.push(CLOSED_SESSION_ID);
             await upload.promise;

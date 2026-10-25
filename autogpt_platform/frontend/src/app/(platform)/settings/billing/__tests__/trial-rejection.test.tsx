@@ -34,8 +34,10 @@ it.each([true, false])(
       rejection_reason: "intro_offer_already_used",
     };
     server.use(
-      http.get("*/api/credits/trial", () => HttpResponse.json(response)),
-      http.post("*/api/credits/trial/confirm", () =>
+      http.get("*/api/internal/credits/trial", () =>
+        HttpResponse.json(response),
+      ),
+      http.post("*/api/internal/credits/trial/confirm", () =>
         HttpResponse.json(response),
       ),
     );
@@ -71,8 +73,10 @@ it("does not accuse a card of reuse when fingerprint verification fails", async 
     rejection_reason: "card_verification_failed",
   };
   server.use(
-    http.get("*/api/credits/trial", () => HttpResponse.json(response)),
-    http.post("*/api/credits/trial/confirm", () => HttpResponse.json(response)),
+    http.get("*/api/internal/credits/trial", () => HttpResponse.json(response)),
+    http.post("*/api/internal/credits/trial/confirm", () =>
+      HttpResponse.json(response),
+    ),
   );
   render(
     <>
@@ -98,16 +102,18 @@ it("keeps a paid-plan action and support available after rejection", async () =>
     rejection_reason: "intro_offer_already_used",
   });
   server.use(
-    http.get("*/api/credits/trial", () => HttpResponse.json(response)),
-    http.post("*/api/credits/trial/confirm", () => HttpResponse.json(response)),
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/trial", () => HttpResponse.json(response)),
+    http.post("*/api/internal/credits/trial/confirm", () =>
+      HttpResponse.json(response),
+    ),
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({
         tier: "NO_TIER",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
       }),
     ),
-    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+    http.get("*/api/internal/credits/invoices", () => HttpResponse.json([])),
   );
   render(<SettingsBillingPage />);
   await screen.findByText("This introductory offer has already been used");

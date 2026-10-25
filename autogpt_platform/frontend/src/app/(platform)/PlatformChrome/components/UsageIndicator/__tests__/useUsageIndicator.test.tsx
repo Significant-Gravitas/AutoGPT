@@ -21,7 +21,7 @@ function makeWrapper() {
 }
 
 function usageHandler(body: { daily: { percent_used: number } | null }) {
-  return http.get("*/api/chat/usage", () => HttpResponse.json(body));
+  return http.get("*/api/internal/chat/usage", () => HttpResponse.json(body));
 }
 
 afterEach(() => {

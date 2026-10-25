@@ -144,7 +144,7 @@ describe("filePartToArtifactRef", () => {
   it("extracts id from the workspace proxy URL", () => {
     const ref = filePartToArtifactRef({
       type: "file",
-      url: "/api/proxy/api/workspace/files/550e8400-e29b-41d4-a716-446655440000/download",
+      url: "/api/proxy/api/internal/workspace/files/550e8400-e29b-41d4-a716-446655440000/download",
       filename: "report.pdf",
       mediaType: "application/pdf",
     } as any);
@@ -155,7 +155,7 @@ describe("filePartToArtifactRef", () => {
 
   it("defaults origin to user-upload but accepts an override", () => {
     const url =
-      "/api/proxy/api/workspace/files/550e8400-e29b-41d4-a716-446655440000/download";
+      "/api/proxy/api/internal/workspace/files/550e8400-e29b-41d4-a716-446655440000/download";
     const defaulted = filePartToArtifactRef({
       type: "file",
       url,
@@ -214,7 +214,7 @@ describe("resolveWorkspaceUrls with custom fileUrlBuilder", () => {
   it("default builder rewrites workspace:// to the workspace endpoint", () => {
     const text = `![pic](workspace://${FILE_ID})`;
     const out = resolveWorkspaceUrls(text);
-    expect(out).toMatch(/api\/workspace\/files\/.*\/download/);
+    expect(out).toMatch(/api\/internal\/workspace\/files\/.*\/download/);
   });
 
   it("video MIME hint produces video: alt prefix", () => {
@@ -231,7 +231,7 @@ describe("filePartToArtifactRef with custom pattern", () => {
     type: "file",
     filename: "report.png",
     mediaType: "image/png",
-    url: `/api/proxy/api/public/shared/chats/some-token/files/${FILE_ID}/download`,
+    url: `/api/proxy/api/internal/public/shared/chats/some-token/files/${FILE_ID}/download`,
   };
 
   it("default pattern (workspace-file) rejects public-share URL", () => {
@@ -240,7 +240,7 @@ describe("filePartToArtifactRef with custom pattern", () => {
 
   it("custom pattern matching the public-share URL extracts the file ID", () => {
     const pattern =
-      /\/api\/proxy\/api\/public\/shared\/chats\/[^/]+\/files\/([a-f0-9-]+)\/download/;
+      /\/api\/proxy\/api\/internal\/public\/shared\/chats\/[^/]+\/files\/([a-f0-9-]+)\/download/;
     const ref = filePartToArtifactRef(file, "agent", pattern);
     expect(ref?.id).toBe(FILE_ID);
     expect(ref?.title).toBe("report.png");
@@ -254,7 +254,7 @@ describe("filePartToArtifactRef with custom pattern", () => {
   });
 
   it("WORKSPACE_FILE_PATTERN matches a workspace-file URL", () => {
-    const url = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
+    const url = `/api/proxy/api/internal/workspace/files/${FILE_ID}/download`;
     expect(url.match(WORKSPACE_FILE_PATTERN)?.[1]).toBe(FILE_ID);
   });
 });
@@ -273,7 +273,7 @@ function filePart(fileId: string, filename: string): MessagePart {
     type: "file",
     filename,
     mediaType: "image/png",
-    url: `/api/proxy/api/workspace/files/${fileId}/download`,
+    url: `/api/proxy/api/internal/workspace/files/${fileId}/download`,
   } as unknown as MessagePart;
 }
 

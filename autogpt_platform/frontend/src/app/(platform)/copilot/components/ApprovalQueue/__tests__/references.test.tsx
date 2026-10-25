@@ -10,7 +10,7 @@ import { CHAT_SESSION, referenceCard } from "./fixtures";
 
 function renderCard(review: PendingHumanReviewModel) {
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([review]),
     ),
   );

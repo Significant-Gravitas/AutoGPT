@@ -20,7 +20,7 @@ const USER_B = "22222222-2222-4222-8222-222222222222";
 describe("useAutoPilotUsage after switching users mid-request", () => {
   it("stores a usage reset under the user it was made for", async () => {
     const release = holdResponses(
-      "*/api/copilot/admin/rate_limit/reset",
+      "*/api/internal/copilot/admin/rate_limit/reset",
       (userID) => usage(userID, 0),
     );
     const { result, rerender, queryClient } = renderUsageFor(USER_B);
@@ -43,7 +43,7 @@ describe("useAutoPilotUsage after switching users mid-request", () => {
 
   it("refreshes the plan of the user it was changed for", async () => {
     const release = holdResponses(
-      "*/api/copilot/admin/rate_limit/tier",
+      "*/api/internal/copilot/admin/rate_limit/tier",
       (userID) => ({
         user_id: userID,
         tier: "MAX",
@@ -68,7 +68,7 @@ describe("useAutoPilotUsage after switching users mid-request", () => {
 
 function renderUsageFor(userId: string) {
   server.use(
-    http.get("*/api/copilot/admin/rate_limit", ({ request }) =>
+    http.get("*/api/internal/copilot/admin/rate_limit", ({ request }) =>
       HttpResponse.json(
         usage(
           new URL(request.url).searchParams.get("user_id") ?? "",

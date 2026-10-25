@@ -65,7 +65,7 @@ describe("admin skill submissions", () => {
     server.use(
       getGetV2AdminListPendingSkillSubmissionsMockHandler200([pending]),
       http.post(
-        "*/api/store/admin/skills/submissions/:id/review",
+        "*/api/internal/store/admin/skills/submissions/:id/review",
         async ({ request, params }) => {
           reviewed = { url: String(params.id), body: await request.json() };
           return HttpResponse.json({ ...pending, status: "APPROVED" });
@@ -86,7 +86,7 @@ describe("admin skill submissions", () => {
     server.use(
       getGetV2AdminListPendingSkillSubmissionsMockHandler200([pending]),
       http.post(
-        "*/api/store/admin/skills/submissions/:id/review",
+        "*/api/internal/store/admin/skills/submissions/:id/review",
         async ({ request }) => {
           const body = (await request.json()) as { is_approved: boolean };
           approved = body.is_approved;
@@ -103,7 +103,7 @@ describe("admin skill submissions", () => {
 
   test("a 404 reads as unavailable, not as an empty queue", async () => {
     server.use(
-      http.get("*/api/store/admin/skills/submissions", () =>
+      http.get("*/api/internal/store/admin/skills/submissions", () =>
         HttpResponse.json({ detail: "Feature not available" }, { status: 404 }),
       ),
     );
@@ -121,8 +121,9 @@ describe("admin skill submissions", () => {
       getGetV2AdminListPendingSkillSubmissionsMockHandler200([
         { ...pending, files: PACKAGE },
       ]),
-      http.get("*/api/store/admin/skills/submissions/:id/files/*", () =>
-        HttpResponse.text("#!/bin/sh\necho checking\n"),
+      http.get(
+        "*/api/internal/store/admin/skills/submissions/:id/files/*",
+        () => HttpResponse.text("#!/bin/sh\necho checking\n"),
       ),
     );
 

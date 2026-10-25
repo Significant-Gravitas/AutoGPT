@@ -126,7 +126,7 @@ export function getLastCompactionCallId(parts: MessagePart[]): string | null {
   return null;
 }
 
-// Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
+// Default workspace-file URL shape: ``/api/proxy/api/internal/workspace/files/<uuid>/download``.
 // Other surfaces (e.g. public share viewer) pass their own pattern into
 // ``filePartToArtifactRef`` rather than loosen this one — keeping the
 // match anchored to a known prefix per surface prevents an unrelated
@@ -136,7 +136,7 @@ export function getLastCompactionCallId(parts: MessagePart[]): string | null {
 // file URL prefixed with the proxy path) and surfaces the embedded UUID
 // as a renderable artifact id.
 export const WORKSPACE_FILE_PATTERN =
-  /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
+  /^\/api\/proxy\/api\/internal\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 // An image token the renderer draws as the file's own link (`WorkspaceLink`).
 const WORKSPACE_LINK_IMAGE_PREFIX = CHAT_IMAGE_TOKEN_PREFIXES.workspaceLink;

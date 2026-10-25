@@ -41,7 +41,7 @@ export async function dismissTabIntrosViaAPI(page: Page) {
 
 async function completeOnboardingStep(page: Page, step: string) {
   const response = await page.request.post(
-    resolveAppUrl(page, "/api/proxy/api/onboarding/step"),
+    resolveAppUrl(page, "/api/proxy/api/internal/onboarding/step"),
     {
       headers: { "Content-Type": "application/json" },
       params: { step },

@@ -52,7 +52,7 @@ function makeArtifact(overrides?: Partial<ArtifactRef>): ArtifactRef {
     id: "file-001",
     title: "test.txt",
     mimeType: "text/plain",
-    sourceUrl: "/api/proxy/api/workspace/files/file-001/download",
+    sourceUrl: "/api/proxy/api/internal/workspace/files/file-001/download",
     origin: "agent",
     ...overrides,
   };
@@ -96,7 +96,7 @@ describe("ArtifactContent", () => {
       id: "img-001",
       title: "photo.png",
       mimeType: "image/png",
-      sourceUrl: "/api/proxy/api/workspace/files/img-001/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/img-001/download",
     });
     const classification = makeClassification({ type: "image" });
 
@@ -111,7 +111,7 @@ describe("ArtifactContent", () => {
     const img = container.querySelector("img");
     expect(img).toBeTruthy();
     expect(img?.getAttribute("src")).toBe(
-      "/api/proxy/api/workspace/files/img-001/download",
+      "/api/proxy/api/internal/workspace/files/img-001/download",
     );
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -121,7 +121,8 @@ describe("ArtifactContent", () => {
       id: "img-skeleton",
       title: "photo.png",
       mimeType: "image/png",
-      sourceUrl: "/api/proxy/api/workspace/files/img-skeleton/download",
+      sourceUrl:
+        "/api/proxy/api/internal/workspace/files/img-skeleton/download",
     });
     const classification = makeClassification({ type: "image" });
 
@@ -143,7 +144,7 @@ describe("ArtifactContent", () => {
       id: "img-error",
       title: "broken.png",
       mimeType: "image/png",
-      sourceUrl: "/api/proxy/api/workspace/files/img-error/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/img-error/download",
     });
     const classification = makeClassification({ type: "image" });
 
@@ -169,7 +170,7 @@ describe("ArtifactContent", () => {
       id: "img-retry",
       title: "retry.png",
       mimeType: "image/png",
-      sourceUrl: "/api/proxy/api/workspace/files/img-retry/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/img-retry/download",
     });
     const classification = makeClassification({ type: "image" });
 
@@ -209,7 +210,8 @@ describe("ArtifactContent", () => {
       id: "hires-png-001",
       title: "poster.png",
       mimeType: "image/png",
-      sourceUrl: "/api/proxy/api/workspace/files/hires-png-001/download",
+      sourceUrl:
+        "/api/proxy/api/internal/workspace/files/hires-png-001/download",
       sizeBytes: 25 * 1024 * 1024,
     });
     const classification = classifyArtifact(
@@ -242,7 +244,8 @@ describe("ArtifactContent", () => {
       id: "img-cachebust",
       title: "hires.png",
       mimeType: "image/png",
-      sourceUrl: "/api/proxy/api/workspace/files/img-cachebust/download",
+      sourceUrl:
+        "/api/proxy/api/internal/workspace/files/img-cachebust/download",
     });
     const classification = makeClassification({ type: "image" });
 
@@ -282,7 +285,7 @@ describe("ArtifactContent", () => {
       id: "vid-001",
       title: "clip.mp4",
       mimeType: "video/mp4",
-      sourceUrl: "/api/proxy/api/workspace/files/vid-001/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/vid-001/download",
     });
     const classification = makeClassification({ type: "video" });
 
@@ -298,7 +301,7 @@ describe("ArtifactContent", () => {
     expect(video).toBeTruthy();
     expect(video?.hasAttribute("controls")).toBe(true);
     expect(video?.getAttribute("src")).toBe(
-      "/api/proxy/api/workspace/files/vid-001/download",
+      "/api/proxy/api/internal/workspace/files/vid-001/download",
     );
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -308,7 +311,7 @@ describe("ArtifactContent", () => {
       id: "vid-skel",
       title: "clip.mp4",
       mimeType: "video/mp4",
-      sourceUrl: "/api/proxy/api/workspace/files/vid-skel/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/vid-skel/download",
     });
     const classification = makeClassification({ type: "video" });
 
@@ -335,7 +338,7 @@ describe("ArtifactContent", () => {
       id: "vid-error",
       title: "broken.mp4",
       mimeType: "video/mp4",
-      sourceUrl: "/api/proxy/api/workspace/files/vid-error/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/vid-error/download",
     });
     const classification = makeClassification({ type: "video" });
 
@@ -361,7 +364,7 @@ describe("ArtifactContent", () => {
       id: "vid-retry",
       title: "retry.mp4",
       mimeType: "video/mp4",
-      sourceUrl: "/api/proxy/api/workspace/files/vid-retry/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/vid-retry/download",
     });
     const classification = makeClassification({ type: "video" });
 
@@ -404,7 +407,7 @@ describe("ArtifactContent", () => {
       id: "pdf-render",
       title: "report.pdf",
       mimeType: "application/pdf",
-      sourceUrl: "/api/proxy/api/workspace/files/pdf-render/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/pdf-render/download",
     });
     const classification = makeClassification({ type: "pdf" });
 

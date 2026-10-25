@@ -1,4 +1,4 @@
-const PROXY_BASE = "/api/proxy/api/push";
+const PROXY_BASE = "/api/proxy/api/internal/push";
 
 export async function fetchVapidPublicKey(): Promise<string | null> {
   try {

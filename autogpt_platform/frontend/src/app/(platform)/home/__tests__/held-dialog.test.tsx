@@ -20,7 +20,7 @@ import { ada, homeHeldItem, leo, makeDashboard } from "./heldItems";
 function serveAnswers() {
   const requests: string[][] = [];
   server.use(
-    http.post("*/api/review/action", async ({ request }) => {
+    http.post("*/api/internal/review/action", async ({ request }) => {
       const body = (await request.json()) as {
         reviews: { node_exec_id: string }[];
       };

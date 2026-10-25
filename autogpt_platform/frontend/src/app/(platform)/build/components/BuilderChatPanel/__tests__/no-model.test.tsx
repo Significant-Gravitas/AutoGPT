@@ -136,10 +136,10 @@ describe("Builder chat with no AI model connected", () => {
 
   it("falls back to the server's answer when the model check itself fails", async () => {
     server.use(
-      http.get("/api/proxy/api/chat/transports", () =>
+      http.get("/api/proxy/api/internal/chat/transports", () =>
         HttpResponse.json({ detail: "unavailable" }, { status: 500 }),
       ),
-      http.post("/api/proxy/api/chat/sessions", () => {
+      http.post("/api/proxy/api/internal/chat/sessions", () => {
         createdSessions += 1;
         return HttpResponse.json(
           { detail: "chat_transport_not_configured" },
@@ -160,7 +160,7 @@ describe("Builder chat with no AI model connected", () => {
   it("with no agent open, a failed model check creates nothing and offers a retry", async () => {
     let transportsUp = false;
     server.use(
-      http.get("/api/proxy/api/chat/transports", () =>
+      http.get("/api/proxy/api/internal/chat/transports", () =>
         transportsUp
           ? HttpResponse.json({
               transports: [
@@ -203,7 +203,7 @@ describe("Builder chat with no AI model connected", () => {
       headers: new Headers(),
     });
     server.use(
-      http.get("/api/proxy/api/chat/transports", async () => {
+      http.get("/api/proxy/api/internal/chat/transports", async () => {
         await delay(50);
         return HttpResponse.json({ transports: [SELF_HOSTED_CHAT] });
       }),
@@ -223,13 +223,13 @@ describe("Builder chat with no AI model connected", () => {
     });
     let attempts = 0;
     server.use(
-      http.get("/api/proxy/api/chat/transports", async () => {
+      http.get("/api/proxy/api/internal/chat/transports", async () => {
         await delay(20);
         return HttpResponse.json({
           transports: [{ ...SELF_HOSTED_CHAT, available: true, default: true }],
         });
       }),
-      http.post("/api/proxy/api/graphs", () => {
+      http.post("/api/proxy/api/internal/graphs", () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json({ detail: "boom" }, { status: 500 })
@@ -268,16 +268,19 @@ describe("Builder chat with no AI model connected", () => {
       getGetV2ListChatTransportsMockHandler({
         transports: [{ ...SELF_HOSTED_CHAT, available: true, default: true }],
       }),
-      http.post("/api/proxy/api/chat/sessions", async ({ request }) => {
-        const body = (await request.json()) as { builder_graph_id?: string };
-        return body.builder_graph_id === "graph-a"
-          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
-          : HttpResponse.json({
-              id: "session-b",
-              created_at: "2026-10-12T00:00:00Z",
-              user_id: "user-1",
-            });
-      }),
+      http.post(
+        "/api/proxy/api/internal/chat/sessions",
+        async ({ request }) => {
+          const body = (await request.json()) as { builder_graph_id?: string };
+          return body.builder_graph_id === "graph-a"
+            ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+            : HttpResponse.json({
+                id: "session-b",
+                created_at: "2026-10-12T00:00:00Z",
+                user_id: "user-1",
+              });
+        },
+      ),
     );
 
     renderPanel({

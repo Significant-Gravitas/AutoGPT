@@ -57,12 +57,12 @@ def setup_app_auth(mock_jwt_user, monkeypatch):
 
 
 EXPECTED_OPERATIONS = {
-    ("get", "/api/skills"): "listCopilotSkills",
-    ("post", "/api/skills"): "uploadCopilotSkill",
-    ("post", "/api/skills/package"): "uploadCopilotSkillPackage",
-    ("delete", "/api/skills/{name}"): "deleteCopilotSkill",
-    ("get", "/api/skills/{name}"): "readCopilotSkill",
-    ("get", "/api/skills/{name}/package"): "downloadCopilotSkillPackage",
+    ("get", "/api/internal/skills"): "listCopilotSkills",
+    ("post", "/api/internal/skills"): "uploadCopilotSkill",
+    ("post", "/api/internal/skills/package"): "uploadCopilotSkillPackage",
+    ("delete", "/api/internal/skills/{name}"): "deleteCopilotSkill",
+    ("get", "/api/internal/skills/{name}"): "readCopilotSkill",
+    ("get", "/api/internal/skills/{name}/package"): "downloadCopilotSkillPackage",
 }
 
 
@@ -81,7 +81,7 @@ def test_skill_surface_has_no_other_operations():
     published = {
         (method, path)
         for path, operations in real_app.openapi()["paths"].items()
-        if path.startswith("/api/skills")
+        if path.startswith("/api/internal/skills")
         for method in operations
     }
     assert published == set(EXPECTED_OPERATIONS)

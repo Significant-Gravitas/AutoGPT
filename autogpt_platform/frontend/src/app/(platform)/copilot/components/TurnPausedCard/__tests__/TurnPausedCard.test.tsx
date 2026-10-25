@@ -115,14 +115,14 @@ function backend({
   };
   let pending = jobs;
   server.use(
-    http.get("*/api/chat/usage", () =>
+    http.get("*/api/internal/chat/usage", () =>
       HttpResponse.json({
         tier,
         daily: { percent_used: 100, resets_at: TONIGHT_1AM.toISOString() },
         weekly: { percent_used: 40, resets_at: WEDNESDAY_1AM.toISOString() },
       }),
     ),
-    http.get("*/api/credits/subscription", () => {
+    http.get("*/api/internal/credits/subscription", () => {
       calls.plan += 1;
       return HttpResponse.json({
         tier,
@@ -132,29 +132,35 @@ function backend({
       });
     }),
     getGetV2ListChatConnectionsMockHandler200({ offers }),
-    http.get("*/api/chat/sessions/:id/at-reset", () => {
+    http.get("*/api/internal/chat/sessions/:id/at-reset", () => {
       calls.listed += 1;
       return HttpResponse.json({ jobs: pending });
     }),
-    http.post("*/api/chat/sessions/:id/at-reset", async ({ request }) => {
-      calls.scheduled.push(await request.json());
-      const job = {
-        kind: "resume",
-        run_at: RESUMES_AT.toISOString(),
-        message: null,
-      };
-      pending = [job];
-      return HttpResponse.json(job);
-    }),
-    http.delete("*/api/chat/sessions/:id/at-reset/:kind", () => {
+    http.post(
+      "*/api/internal/chat/sessions/:id/at-reset",
+      async ({ request }) => {
+        calls.scheduled.push(await request.json());
+        const job = {
+          kind: "resume",
+          run_at: RESUMES_AT.toISOString(),
+          message: null,
+        };
+        pending = [job];
+        return HttpResponse.json(job);
+      },
+    ),
+    http.delete("*/api/internal/chat/sessions/:id/at-reset/:kind", () => {
       calls.cancelled += 1;
       pending = [];
       return new HttpResponse(null, { status: 204 });
     }),
-    http.post("*/api/chat/sessions/:id/continue", async ({ request }) => {
-      calls.continued.push(await request.json());
-      return HttpResponse.json({ turn_id: "turn-2" }, { status: 202 });
-    }),
+    http.post(
+      "*/api/internal/chat/sessions/:id/continue",
+      async ({ request }) => {
+        calls.continued.push(await request.json());
+        return HttpResponse.json({ turn_id: "turn-2" }, { status: 202 });
+      },
+    ),
     getPutV2ChangeTheConnectionAnExistingChatRunsOnMockHandler200(
       async ({ request }) => {
         calls.switched.push(await request.json());
@@ -396,7 +402,7 @@ describe("TurnPausedCard — Keep going", () => {
   it("follows the turn that is already running instead of failing", async () => {
     backend();
     server.use(
-      http.post("*/api/chat/sessions/:id/continue", () =>
+      http.post("*/api/internal/chat/sessions/:id/continue", () =>
         HttpResponse.json({ detail: "turn_in_progress" }, { status: 409 }),
       ),
     );
@@ -413,7 +419,7 @@ describe("TurnPausedCard — Keep going", () => {
   it("says why when the chat now runs on Microsoft 365 Copilot", async () => {
     backend();
     server.use(
-      http.post("*/api/chat/sessions/:id/continue", () =>
+      http.post("*/api/internal/chat/sessions/:id/continue", () =>
         HttpResponse.json(
           { detail: "unsupported_connection" },
           { status: 409 },
@@ -443,7 +449,7 @@ describe("TurnPausedCard — Keep going", () => {
     const tooMany =
       "You have 3 tasks already running. Please wait for one of them to finish before starting a new one.";
     server.use(
-      http.post("*/api/chat/sessions/:id/continue", () =>
+      http.post("*/api/internal/chat/sessions/:id/continue", () =>
         HttpResponse.json({ detail: tooMany }, { status: 429 }),
       ),
     );
@@ -466,7 +472,7 @@ describe("TurnPausedCard — Keep going", () => {
   it("points to the plans when picking up needs one", async () => {
     backend();
     server.use(
-      http.post("*/api/chat/sessions/:id/continue", () =>
+      http.post("*/api/internal/chat/sessions/:id/continue", () =>
         HttpResponse.json(
           { detail: "Choose a plan to keep using AutoPilot" },
           { status: 402 },
@@ -489,7 +495,7 @@ describe("TurnPausedCard — Keep going", () => {
   it("turns into the budget pause when the account ran out meanwhile", async () => {
     backend();
     server.use(
-      http.post("*/api/chat/sessions/:id/continue", () =>
+      http.post("*/api/internal/chat/sessions/:id/continue", () =>
         HttpResponse.json(
           {
             detail: {
@@ -620,7 +626,7 @@ describe("TurnPausedCard — Resume at the reset", () => {
   it("offers Keep going instead when the budget turns out to be back", async () => {
     backend();
     server.use(
-      http.post("*/api/chat/sessions/:id/at-reset", () =>
+      http.post("*/api/internal/chat/sessions/:id/at-reset", () =>
         HttpResponse.json({ detail: "not_out_of_budget" }, { status: 409 }),
       ),
     );
@@ -656,7 +662,7 @@ describe("TurnPausedCard — Resume at the reset", () => {
     async ({ status, detail, title, description }) => {
       backend();
       server.use(
-        http.post("*/api/chat/sessions/:id/at-reset", () =>
+        http.post("*/api/internal/chat/sessions/:id/at-reset", () =>
           HttpResponse.json({ detail }, { status }),
         ),
       );
@@ -702,7 +708,7 @@ describe("TurnPausedCard — Continue on ChatGPT", () => {
     backend({ offers: [PLATFORM, CHATGPT] });
     let pickUps = 0;
     server.use(
-      http.post("*/api/chat/sessions/:id/continue", async () => {
+      http.post("*/api/internal/chat/sessions/:id/continue", async () => {
         pickUps += 1;
         await delay("infinite");
         return HttpResponse.json({});

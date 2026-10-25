@@ -224,7 +224,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       await flush();
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining(
-          "/api/chat/sessions/session-1/messages/pending",
+          "/api/internal/chat/sessions/session-1/messages/pending",
         ),
         expect.objectContaining({ method: "POST" }),
       );

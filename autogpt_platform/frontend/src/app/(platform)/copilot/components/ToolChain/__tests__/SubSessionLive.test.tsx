@@ -11,8 +11,8 @@ import { ToolResult } from "../ToolResult";
  *  Kept local so the test states the contract rather than importing it. */
 const POLL_CAP_MS = 5 * 60_000;
 
-const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
-const SESSION_LIST_ROUTE = "/api/proxy/api/chat/sessions";
+const SESSION_ROUTE = "/api/proxy/api/internal/chat/sessions/:sessionId";
+const SESSION_LIST_ROUTE = "/api/proxy/api/internal/chat/sessions";
 
 function failingSubSession() {
   return http.get(SESSION_ROUTE, () => new HttpResponse(null, { status: 500 }));

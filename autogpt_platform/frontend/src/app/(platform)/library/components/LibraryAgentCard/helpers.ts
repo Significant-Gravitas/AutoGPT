@@ -20,7 +20,7 @@ export function updateFavoriteInQueries({
   newIsFavorite,
 }: UpdateFavoriteInQueriesParams) {
   queryClient.setQueriesData(
-    { queryKey: ["/api/library/agents"] },
+    { queryKey: ["/api/internal/library/agents"] },
     (
       oldData:
         | InfiniteData<getV2ListLibraryAgentsResponse, number | undefined>
@@ -50,7 +50,7 @@ export function updateFavoriteInQueries({
   );
 
   queryClient.setQueriesData(
-    { queryKey: ["/api/library/agents/favorites"] },
+    { queryKey: ["/api/internal/library/agents/favorites"] },
     (
       oldData:
         | InfiniteData<

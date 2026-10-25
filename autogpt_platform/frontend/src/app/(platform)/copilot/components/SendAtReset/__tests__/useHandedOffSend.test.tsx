@@ -59,7 +59,7 @@ function useNewChat(
 function serverHolding(waiting: unknown[] | "unavailable") {
   const calls = { posted: [] as unknown[] };
   server.use(
-    http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+    http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
       waiting === "unavailable"
         ? HttpResponse.json(
             { detail: "Scheduler unavailable" },
@@ -68,7 +68,7 @@ function serverHolding(waiting: unknown[] | "unavailable") {
         : HttpResponse.json({ jobs: waiting }),
     ),
     http.post(
-      "*/api/chat/sessions/:sessionId/at-reset",
+      "*/api/internal/chat/sessions/:sessionId/at-reset",
       async ({ request }) => {
         const body = (await request.json()) as { message: string };
         calls.posted.push(body);
@@ -115,18 +115,21 @@ describe("useHandedOffSend", () => {
     });
     let posted = 0;
     server.use(
-      http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+      http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
         HttpResponse.json({ jobs: [] }),
       ),
-      http.post("*/api/chat/sessions/:sessionId/at-reset", async () => {
-        posted += 1;
-        await held;
-        return HttpResponse.json({
-          kind: "send",
-          run_at: RUN_AT,
-          message: MESSAGE,
-        });
-      }),
+      http.post(
+        "*/api/internal/chat/sessions/:sessionId/at-reset",
+        async () => {
+          posted += 1;
+          await held;
+          return HttpResponse.json({
+            kind: "send",
+            run_at: RUN_AT,
+            message: MESSAGE,
+          });
+        },
+      ),
     );
     useScheduledSendHandoff.getState().hold("chat-in-flight", MESSAGE);
 
@@ -149,10 +152,10 @@ describe("useHandedOffSend", () => {
   // find the message and put it back in the composer.
   it("lets it go once the server says to send it now", async () => {
     server.use(
-      http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+      http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
         HttpResponse.json({ jobs: [] }),
       ),
-      http.post("*/api/chat/sessions/:sessionId/at-reset", () =>
+      http.post("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
         HttpResponse.json({ detail: "not_out_of_budget" }, { status: 409 }),
       ),
     );
@@ -236,7 +239,7 @@ describe("useHandedOffSend", () => {
         const client = listedEmpty("chat-landing");
         let reads = 0;
         server.use(
-          http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+          http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () => {
             reads += 1;
             return HttpResponse.json({
               jobs:
@@ -281,7 +284,7 @@ describe("useHandedOffSend", () => {
         const calls = { reads: 0, cancelled: 0 };
         let waiting: string | null = null;
         server.use(
-          http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+          http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () => {
             calls.reads += 1;
             const jobs = waiting
               ? [{ kind: "send", run_at: RUN_AT, message: waiting }]
@@ -290,7 +293,7 @@ describe("useHandedOffSend", () => {
             return HttpResponse.json({ jobs });
           }),
           http.post(
-            "*/api/chat/sessions/:sessionId/at-reset",
+            "*/api/internal/chat/sessions/:sessionId/at-reset",
             async ({ request }) => {
               const body = (await request.json()) as { message: string };
               waiting = waiting
@@ -303,11 +306,14 @@ describe("useHandedOffSend", () => {
               });
             },
           ),
-          http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
-            calls.cancelled += 1;
-            waiting = null;
-            return new HttpResponse(null, { status: 204 });
-          }),
+          http.delete(
+            "*/api/internal/chat/sessions/:sessionId/at-reset/:kind",
+            () => {
+              calls.cancelled += 1;
+              waiting = null;
+              return new HttpResponse(null, { status: 204 });
+            },
+          ),
         );
         sentBeforeTheReload(sessionId, SEND_SETTLE_MS - 1000);
         const client = listedEmpty(sessionId);

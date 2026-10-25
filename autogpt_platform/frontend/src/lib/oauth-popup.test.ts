@@ -231,7 +231,7 @@ describe("openOAuthPopup popup-close handling", () => {
 
     const { promise } = openOAuthPopup("https://example.com/oauth", {
       stateToken: "tok-server-timeout",
-      cancelUrl: "/api/oauth/pending/cancel",
+      cancelUrl: "/api/internal/oauth/pending/cancel",
       timeout: 1000,
     });
     promise.catch(() => {});
@@ -240,7 +240,7 @@ describe("openOAuthPopup popup-close handling", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/oauth/pending/cancel"),
+      expect.stringContaining("/api/internal/oauth/pending/cancel"),
       expect.objectContaining({ method: "POST", keepalive: true }),
     );
   });
@@ -255,7 +255,7 @@ describe("openOAuthPopup popup-close handling", () => {
 
     const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
       stateToken: "tok-server-abort",
-      cancelUrl: "/api/oauth/pending/cancel",
+      cancelUrl: "/api/internal/oauth/pending/cancel",
     });
     promise.catch(() => {});
 
@@ -277,7 +277,7 @@ describe("openOAuthPopup popup-close handling", () => {
 
     const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
       stateToken: "tok-server-close",
-      cancelUrl: "/api/oauth/pending/cancel",
+      cancelUrl: "/api/internal/oauth/pending/cancel",
     });
     promise.catch(() => {});
 
@@ -296,7 +296,7 @@ describe("openOAuthPopup popup-close handling", () => {
 
     const { promise } = openOAuthPopup("https://example.com/oauth", {
       stateToken: "tok-success",
-      cancelUrl: "/api/oauth/pending/cancel",
+      cancelUrl: "/api/internal/oauth/pending/cancel",
     });
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -475,7 +475,7 @@ describe("preOpenedWindow option", () => {
     const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
       stateToken: "tok-server-blocked",
       preOpenedWindow: null,
-      cancelUrl: "/api/oauth/pending/cancel",
+      cancelUrl: "/api/internal/oauth/pending/cancel",
     });
     promise.catch(() => {});
 

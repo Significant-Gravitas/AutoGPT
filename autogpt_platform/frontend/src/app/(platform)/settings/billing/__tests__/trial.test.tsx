@@ -31,7 +31,7 @@ afterEach(() => {
 describe("trial billing", () => {
   it("does not describe a disabled pending checkout as an ended trial", async () => {
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json({
           eligible: false,
           offer,
@@ -49,7 +49,7 @@ describe("trial billing", () => {
 
   it("does not advertise a zero-credit onboarding grant", async () => {
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json({
           eligible: true,
           offer: { ...offer, onboarding_credit_amount: 0 },
@@ -63,7 +63,7 @@ describe("trial billing", () => {
 
   it("shows accepted terms without onboarding-credit messaging", async () => {
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json({ eligible: true, offer }),
       ),
     );
@@ -80,7 +80,7 @@ describe("trial billing", () => {
 
   it("omits credit messaging for an existing onboarding recipient", async () => {
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json({
           eligible: true,
           offer,

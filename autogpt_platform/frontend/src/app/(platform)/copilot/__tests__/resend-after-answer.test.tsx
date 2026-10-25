@@ -78,7 +78,7 @@ function sessionMessage(
 }
 
 function storedSessionHandler() {
-  return http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () =>
+  return http.get(`*/api/internal/chat/sessions/${TEST_SESSION_ID}`, () =>
     HttpResponse.json({
       id: TEST_SESSION_ID,
       created_at: "2026-05-13T00:00:00Z",
@@ -96,7 +96,7 @@ function storedSessionHandler() {
 
 function answeringStreamHandler(posts: string[]) {
   return http.post(
-    `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+    `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
     async ({ request }) => {
       const body = (await request.json()) as { message?: string };
       posts.push(body.message ?? "");
@@ -161,7 +161,7 @@ describe("sending the same text twice in a row", () => {
     const { hold } = createStreamHold(1);
     server.use(
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         ({ request }) =>
           streamSseResponse(assistantTextChunks(ANSWERS[0]), {
             hold,
@@ -185,7 +185,7 @@ describe("sending the same text twice in a row", () => {
   it("forgets a send whose turn failed, so a reload cannot drop a resend", async () => {
     server.use(
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         async () => {
           // Long enough to see the send remembered before the failure lands.
           await new Promise((resolve) => setTimeout(resolve, 300));

@@ -2,13 +2,17 @@ import type { Page } from "@playwright/test";
 import { CopilotPage } from "../pages/copilot.page";
 import { expect, test } from "./fixtures";
 
-const SUBSCRIPTION_PATH = "/api/proxy/api/credits/subscription";
+const SUBSCRIPTION_PATH = "/api/proxy/api/internal/credits/subscription";
 
 test.use({
   // The backend's own paywall answers this send: a NO_TIER account with
   // `enable-platform-payment` on gets a 402 from session creation.
   expectedResponses: [
-    { status: 402, url: "/api/proxy/api/chat/sessions", method: "POST" },
+    {
+      status: 402,
+      url: "/api/proxy/api/internal/chat/sessions",
+      method: "POST",
+    },
   ],
 });
 
@@ -30,7 +34,7 @@ test("a send after the plan lapses offers one way to upgrade and keeps the messa
   // connections are still loading"), which is not what this journey is about.
   const connectionsLoaded = page.waitForResponse(
     (response) =>
-      response.url().includes("/api/chat/transports") && response.ok(),
+      response.url().includes("/api/internal/chat/transports") && response.ok(),
   );
   await copilot.open();
   await connectionsLoaded;

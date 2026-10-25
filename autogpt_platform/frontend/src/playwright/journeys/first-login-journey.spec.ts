@@ -49,7 +49,7 @@ async function answerTheProfileReadFirst(page: Page) {
 }
 
 function isProfileRead(url: URL) {
-  return url.pathname === "/api/proxy/api/store/profile";
+  return url.pathname === "/api/proxy/api/internal/store/profile";
 }
 
 // Until the profile loads, the menu shows placeholders instead of who you are.

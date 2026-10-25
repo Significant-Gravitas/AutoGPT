@@ -127,7 +127,7 @@ async function isMissingActivation(response: Response) {
     response.status() !== 404 ||
     response.request().method() !== "GET" ||
     new URL(response.url()).pathname !==
-      "/api/proxy/api/credits/pro-activation/current"
+      "/api/proxy/api/internal/credits/pro-activation/current"
   )
     return false;
   const body: unknown = await response.json().catch(() => null);

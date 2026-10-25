@@ -7,7 +7,7 @@
     "version": "0.1"
   },
   "paths": {
-    "/api/admin/access-blocks": {
+    "/api/internal/admin/access-blocks": {
       "get": {
         "tags": ["admin"],
         "summary": "List access blocks",
@@ -100,7 +100,7 @@
         }
       }
     },
-    "/api/admin/access-blocks/{block_id}": {
+    "/api/internal/admin/access-blocks/{block_id}": {
       "delete": {
         "tags": ["admin"],
         "summary": "Delete access block",
@@ -131,7 +131,7 @@
         }
       }
     },
-    "/api/admin/blocks/cost-estimates": {
+    "/api/internal/admin/blocks/cost-estimates": {
       "get": {
         "tags": ["v2", "admin", "admin", "blocks"],
         "summary": "Export Block Cost Estimates",
@@ -206,7 +206,7 @@
         }
       }
     },
-    "/api/admin/bot-analytics/command-usage": {
+    "/api/internal/admin/bot-analytics/command-usage": {
       "get": {
         "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Command Usage Breakdown",
@@ -265,7 +265,7 @@
         }
       }
     },
-    "/api/admin/bot-analytics/guilds": {
+    "/api/internal/admin/bot-analytics/guilds": {
       "get": {
         "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Server Roster",
@@ -334,7 +334,7 @@
         }
       }
     },
-    "/api/admin/bot-analytics/server-timeseries": {
+    "/api/internal/admin/bot-analytics/server-timeseries": {
       "get": {
         "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Server-Count Timeseries (sharding curve)",
@@ -395,7 +395,7 @@
         }
       }
     },
-    "/api/admin/bot-analytics/summary": {
+    "/api/internal/admin/bot-analytics/summary": {
       "get": {
         "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Usage Summary",
@@ -450,7 +450,7 @@
         }
       }
     },
-    "/api/admin/bot-analytics/timeseries": {
+    "/api/internal/admin/bot-analytics/timeseries": {
       "get": {
         "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Message Timeseries",
@@ -511,7 +511,7 @@
         }
       }
     },
-    "/api/admin/bot-analytics/top-servers": {
+    "/api/internal/admin/bot-analytics/top-servers": {
       "get": {
         "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Top Servers by Activity",
@@ -582,7 +582,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/agents": {
+    "/api/internal/admin/diagnostics/agents": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Get Agent Diagnostics",
@@ -606,7 +606,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions": {
+    "/api/internal/admin/diagnostics/executions": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Get Execution Diagnostics",
@@ -630,7 +630,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/cleanup-all-orphaned": {
+    "/api/internal/admin/diagnostics/executions/cleanup-all-orphaned": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Cleanup ALL Orphaned Executions",
@@ -654,7 +654,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/cleanup-all-stuck-queued": {
+    "/api/internal/admin/diagnostics/executions/cleanup-all-stuck-queued": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Cleanup ALL Stuck Queued Executions",
@@ -678,7 +678,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/cleanup-orphaned": {
+    "/api/internal/admin/diagnostics/executions/cleanup-orphaned": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Cleanup Orphaned Executions",
@@ -718,7 +718,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/failed": {
+    "/api/internal/admin/diagnostics/executions/failed": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Failed Executions",
@@ -770,7 +770,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/executions/invalid": {
+    "/api/internal/admin/diagnostics/executions/invalid": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Invalid Executions",
@@ -816,7 +816,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/executions/long-running": {
+    "/api/internal/admin/diagnostics/executions/long-running": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Long-Running Executions",
@@ -862,7 +862,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/executions/orphaned": {
+    "/api/internal/admin/diagnostics/executions/orphaned": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Orphaned Executions",
@@ -908,7 +908,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/executions/requeue": {
+    "/api/internal/admin/diagnostics/executions/requeue": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Stuck Execution",
@@ -948,7 +948,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/requeue-all-stuck": {
+    "/api/internal/admin/diagnostics/executions/requeue-all-stuck": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue ALL Stuck Queued Executions",
@@ -972,7 +972,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/requeue-bulk": {
+    "/api/internal/admin/diagnostics/executions/requeue-bulk": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Multiple Stuck Executions",
@@ -1012,7 +1012,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/running": {
+    "/api/internal/admin/diagnostics/executions/running": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Running Executions",
@@ -1058,7 +1058,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/executions/stop": {
+    "/api/internal/admin/diagnostics/executions/stop": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Stop Single Execution",
@@ -1098,7 +1098,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/stop-all-long-running": {
+    "/api/internal/admin/diagnostics/executions/stop-all-long-running": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Stop ALL Long-Running Executions",
@@ -1122,7 +1122,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/stop-bulk": {
+    "/api/internal/admin/diagnostics/executions/stop-bulk": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Stop Multiple Executions",
@@ -1162,7 +1162,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/executions/stuck-queued": {
+    "/api/internal/admin/diagnostics/executions/stuck-queued": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Stuck Queued Executions",
@@ -1208,7 +1208,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/schedules": {
+    "/api/internal/admin/diagnostics/schedules": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Get Schedule Diagnostics",
@@ -1232,7 +1232,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/schedules/all": {
+    "/api/internal/admin/diagnostics/schedules/all": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List All User Schedules",
@@ -1278,7 +1278,7 @@
         }
       }
     },
-    "/api/admin/diagnostics/schedules/cleanup-orphaned": {
+    "/api/internal/admin/diagnostics/schedules/cleanup-orphaned": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Cleanup Orphaned Schedules",
@@ -1320,7 +1320,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/diagnostics/schedules/orphaned": {
+    "/api/internal/admin/diagnostics/schedules/orphaned": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Orphaned Schedules",
@@ -1344,7 +1344,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/generate-test-data": {
+    "/api/internal/admin/generate-test-data": {
       "post": {
         "tags": ["v2", "admin", "test-data"],
         "summary": "Generate Test Data",
@@ -1386,7 +1386,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/impersonation/notify": {
+    "/api/internal/admin/impersonation/notify": {
       "post": {
         "tags": ["v2", "admin", "admin", "impersonation"],
         "summary": "Notify Impersonation Start",
@@ -1428,7 +1428,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/admin/memory/{user_id}/communities": {
+    "/api/internal/admin/memory/{user_id}/communities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Communities",
@@ -1485,7 +1485,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/communities/rebuild": {
+    "/api/internal/admin/memory/{user_id}/communities/rebuild": {
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Rebuild Communities",
@@ -1540,7 +1540,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/communities/rebuild/{job_id}": {
+    "/api/internal/admin/memory/{user_id}/communities/rebuild/{job_id}": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Community Rebuild Status",
@@ -1596,7 +1596,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/dream": {
+    "/api/internal/admin/memory/{user_id}/dream": {
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Dream Pass",
@@ -1651,7 +1651,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/dream/passes": {
+    "/api/internal/admin/memory/{user_id}/dream/passes": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Dream Pass Records",
@@ -1723,7 +1723,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/dream/{job_id}": {
+    "/api/internal/admin/memory/{user_id}/dream/{job_id}": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Dream Pass Status",
@@ -1777,7 +1777,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/dream/{pass_id}/cancel": {
+    "/api/internal/admin/memory/{user_id}/dream/{pass_id}/cancel": {
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Cancel Dream Pass Run",
@@ -1846,7 +1846,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/dream/{pass_id}/record": {
+    "/api/internal/admin/memory/{user_id}/dream/{pass_id}/record": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Dream Pass Record",
@@ -1902,7 +1902,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/entities": {
+    "/api/internal/admin/memory/{user_id}/entities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Entities",
@@ -1957,7 +1957,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/experts/{expert_id}/communities": {
+    "/api/internal/admin/memory/{user_id}/experts/{expert_id}/communities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Expert Communities",
@@ -2027,7 +2027,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/experts/{expert_id}/entities": {
+    "/api/internal/admin/memory/{user_id}/experts/{expert_id}/entities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Expert Entities",
@@ -2095,7 +2095,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/experts/{expert_id}/facts": {
+    "/api/internal/admin/memory/{user_id}/experts/{expert_id}/facts": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Expert Facts",
@@ -2183,7 +2183,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/experts/{expert_id}/graph": {
+    "/api/internal/admin/memory/{user_id}/experts/{expert_id}/graph": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Expert Graph",
@@ -2283,7 +2283,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/experts/{expert_id}/overview": {
+    "/api/internal/admin/memory/{user_id}/experts/{expert_id}/overview": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Expert Memory Overview",
@@ -2339,7 +2339,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/facts": {
+    "/api/internal/admin/memory/{user_id}/facts": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Facts",
@@ -2414,7 +2414,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/graph": {
+    "/api/internal/admin/memory/{user_id}/graph": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Graph",
@@ -2501,7 +2501,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/nightly": {
+    "/api/internal/admin/memory/{user_id}/nightly": {
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Nightly Batch",
@@ -2544,7 +2544,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/nightly/{job_id}": {
+    "/api/internal/admin/memory/{user_id}/nightly/{job_id}": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Nightly Batch Status",
@@ -2598,7 +2598,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/overview": {
+    "/api/internal/admin/memory/{user_id}/overview": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Memory Overview",
@@ -2641,7 +2641,7 @@
         }
       }
     },
-    "/api/admin/memory/{user_id}/ratification": {
+    "/api/internal/admin/memory/{user_id}/ratification": {
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Ratification Pass",
@@ -2684,7 +2684,7 @@
         }
       }
     },
-    "/api/admin/platform-costs/dashboard": {
+    "/api/internal/admin/platform-costs/dashboard": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
         "summary": "Get Platform Cost Dashboard",
@@ -2795,7 +2795,7 @@
         }
       }
     },
-    "/api/admin/platform-costs/logs": {
+    "/api/internal/admin/platform-costs/logs": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
         "summary": "Get Platform Cost Logs",
@@ -2951,7 +2951,7 @@
         }
       }
     },
-    "/api/admin/platform-costs/logs/export": {
+    "/api/internal/admin/platform-costs/logs/export": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
         "summary": "Export Platform Cost Logs",
@@ -3080,7 +3080,7 @@
         }
       }
     },
-    "/api/admin/users/{user_id}/ip-report": {
+    "/api/internal/admin/users/{user_id}/ip-report": {
       "get": {
         "tags": ["admin"],
         "summary": "Get user IP report",
@@ -3118,7 +3118,7 @@
         }
       }
     },
-    "/api/admin/users/{user_id}/organizations": {
+    "/api/internal/admin/users/{user_id}/organizations": {
       "get": {
         "tags": ["admin"],
         "summary": "Get user organizations",
@@ -3160,7 +3160,7 @@
         }
       }
     },
-    "/api/analytics/attribution": {
+    "/api/internal/analytics/attribution": {
       "post": {
         "tags": ["analytics"],
         "summary": "Report user attribution",
@@ -3198,7 +3198,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/api-keys": {
+    "/api/internal/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
         "summary": "List user API keys",
@@ -3262,7 +3262,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/api-keys/{key_id}": {
+    "/api/internal/api-keys/{key_id}": {
       "delete": {
         "tags": ["v1", "api-keys"],
         "summary": "Revoke API key",
@@ -3336,7 +3336,7 @@
         }
       }
     },
-    "/api/api-keys/{key_id}/permissions": {
+    "/api/internal/api-keys/{key_id}/permissions": {
       "put": {
         "tags": ["v1", "api-keys"],
         "summary": "Update key permissions",
@@ -3384,7 +3384,7 @@
         }
       }
     },
-    "/api/api-keys/{key_id}/suspend": {
+    "/api/internal/api-keys/{key_id}/suspend": {
       "post": {
         "tags": ["v1", "api-keys"],
         "summary": "Suspend API key",
@@ -3422,7 +3422,7 @@
         }
       }
     },
-    "/api/auth/email/send": {
+    "/api/internal/auth/email/send": {
       "post": {
         "tags": ["auth-email"],
         "summary": "Send a Better Auth transactional email via the backend mailer",
@@ -3456,7 +3456,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/auth/email/suppression": {
+    "/api/internal/auth/email/suppression": {
       "post": {
         "tags": ["auth-email"],
         "summary": "Check whether the mailer has suppressed an address",
@@ -3504,7 +3504,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/auth/user": {
+    "/api/internal/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
         "summary": "Get or create user",
@@ -3527,7 +3527,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/auth/user/consent": {
+    "/api/internal/auth/user/consent": {
       "post": {
         "tags": ["v1", "auth"],
         "summary": "Record user consent",
@@ -3567,7 +3567,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/auth/user/preferences": {
+    "/api/internal/auth/user/preferences": {
       "get": {
         "tags": ["v1", "auth"],
         "summary": "Get notification preferences",
@@ -3629,7 +3629,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/auth/user/preferences/from-email": {
+    "/api/internal/auth/user/preferences/from-email": {
       "post": {
         "tags": ["v1", "auth"],
         "summary": "Apply a volume-knob choice from a Briefing footer link",
@@ -3671,7 +3671,7 @@
         }
       }
     },
-    "/api/auth/user/timezone": {
+    "/api/internal/auth/user/timezone": {
       "get": {
         "tags": ["v1", "auth"],
         "summary": "Get user timezone",
@@ -3729,7 +3729,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/blocks": {
+    "/api/internal/blocks": {
       "get": {
         "tags": ["v1", "blocks"],
         "summary": "List available blocks",
@@ -3754,7 +3754,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/blocks/{block_id}/execute": {
+    "/api/internal/blocks/{block_id}/execute": {
       "post": {
         "tags": ["v1", "blocks"],
         "summary": "Execute graph block",
@@ -3810,7 +3810,7 @@
         }
       }
     },
-    "/api/briefings/latest": {
+    "/api/internal/briefings/latest": {
       "get": {
         "tags": ["briefings"],
         "summary": "Get Latest Briefing",
@@ -3838,7 +3838,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/builder/blocks": {
+    "/api/internal/builder/blocks": {
       "get": {
         "tags": ["v2"],
         "summary": "Get Builder blocks",
@@ -3921,7 +3921,7 @@
         }
       }
     },
-    "/api/builder/blocks/batch": {
+    "/api/internal/builder/blocks/batch": {
       "get": {
         "tags": ["v2"],
         "summary": "Get specific blocks",
@@ -3967,7 +3967,7 @@
         }
       }
     },
-    "/api/builder/categories": {
+    "/api/internal/builder/categories": {
       "get": {
         "tags": ["v2"],
         "summary": "Get Builder block categories",
@@ -4015,7 +4015,7 @@
         }
       }
     },
-    "/api/builder/counts": {
+    "/api/internal/builder/counts": {
       "get": {
         "tags": ["v2"],
         "summary": "Get Builder item counts",
@@ -4037,7 +4037,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/builder/providers": {
+    "/api/internal/builder/providers": {
       "get": {
         "tags": ["v2"],
         "summary": "Get Builder integration providers",
@@ -4081,7 +4081,7 @@
         }
       }
     },
-    "/api/builder/search": {
+    "/api/internal/builder/search": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Builder search",
@@ -4164,7 +4164,7 @@
         }
       }
     },
-    "/api/builder/suggestions": {
+    "/api/internal/builder/suggestions": {
       "get": {
         "tags": ["v2"],
         "summary": "Get Builder suggestions",
@@ -4186,7 +4186,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/config/ttl": {
+    "/api/internal/chat/config/ttl": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Ttl Config",
@@ -4208,7 +4208,7 @@
         }
       }
     },
-    "/api/chat/connections": {
+    "/api/internal/chat/connections": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Chat Connections",
@@ -4232,7 +4232,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/model-tiers": {
+    "/api/internal/chat/model-tiers": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Provider Model Tiers",
@@ -4256,7 +4256,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/schema/tool-responses": {
+    "/api/internal/chat/schema/tool-responses": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "[Dummy] Tool response type export for codegen",
@@ -4331,7 +4331,7 @@
         }
       }
     },
-    "/api/chat/sessions": {
+    "/api/internal/chat/sessions": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
@@ -4455,7 +4455,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}": {
+    "/api/internal/chat/sessions/{session_id}": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Delete Session",
@@ -4549,7 +4549,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/assign-user": {
+    "/api/internal/chat/sessions/{session_id}/assign-user": {
       "patch": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Session Assign User",
@@ -4591,7 +4591,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/at-reset": {
+    "/api/internal/chat/sessions/{session_id}/at-reset": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List turns at budget reset",
@@ -4684,7 +4684,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/at-reset/{kind}": {
+    "/api/internal/chat/sessions/{session_id}/at-reset/{kind}": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Cancel turn at budget reset",
@@ -4726,7 +4726,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/cancel": {
+    "/api/internal/chat/sessions/{session_id}/cancel": {
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Cancel Session Task",
@@ -4766,7 +4766,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/computer": {
+    "/api/internal/chat/sessions/{session_id}/computer": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session Computer",
@@ -4805,7 +4805,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/connection": {
+    "/api/internal/chat/sessions/{session_id}/connection": {
       "put": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Change the connection an existing chat runs on",
@@ -4858,7 +4858,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/continue": {
+    "/api/internal/chat/sessions/{session_id}/continue": {
       "post": {
         "tags": ["v2", "chat"],
         "summary": "Continue Session",
@@ -4924,7 +4924,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/credential-selection": {
+    "/api/internal/chat/sessions/{session_id}/credential-selection": {
       "put": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Record credential picks for this chat",
@@ -4977,7 +4977,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/desktop": {
+    "/api/internal/chat/sessions/{session_id}/desktop": {
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Start Session Desktop",
@@ -5018,7 +5018,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/feedback": {
+    "/api/internal/chat/sessions/{session_id}/feedback": {
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Submit message feedback",
@@ -5071,7 +5071,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/messages/pending": {
+    "/api/internal/chat/sessions/{session_id}/messages/pending": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Pending Messages",
@@ -5168,7 +5168,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/pinned": {
+    "/api/internal/chat/sessions/{session_id}/pinned": {
       "patch": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Update session pinned",
@@ -5221,7 +5221,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/share": {
+    "/api/internal/chat/sessions/{session_id}/share": {
       "delete": {
         "tags": ["v2", "chat", "share", "chat", "share"],
         "summary": "Disable Chat Sharing",
@@ -5296,7 +5296,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/share/state": {
+    "/api/internal/chat/sessions/{session_id}/share/state": {
       "get": {
         "tags": ["v2", "chat", "share", "chat", "share"],
         "summary": "Get Chat Share State",
@@ -5336,7 +5336,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/stream": {
+    "/api/internal/chat/sessions/{session_id}/stream": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Disconnect Session Stream",
@@ -5489,7 +5489,7 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/title": {
+    "/api/internal/chat/sessions/{session_id}/title": {
       "patch": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Update session title",
@@ -5542,7 +5542,7 @@
         }
       }
     },
-    "/api/chat/speech": {
+    "/api/internal/chat/speech": {
       "post": {
         "tags": ["chat", "speech"],
         "summary": "Synthesize",
@@ -5585,7 +5585,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/suggested-prompts": {
+    "/api/internal/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Suggested Prompts",
@@ -5609,7 +5609,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/transports": {
+    "/api/internal/chat/transports": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Chat Transports",
@@ -5633,7 +5633,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/transports/default": {
+    "/api/internal/chat/transports/default": {
       "put": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Set Default Chat Transport",
@@ -5678,7 +5678,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/usage": {
+    "/api/internal/chat/usage": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
@@ -5700,7 +5700,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/usage/reset": {
+    "/api/internal/chat/usage/reset": {
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Reset Copilot Usage",
@@ -5734,7 +5734,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/copilot/admin/rate_limit": {
+    "/api/internal/copilot/admin/rate_limit": {
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Get User Rate Limit",
@@ -5786,7 +5786,7 @@
         }
       }
     },
-    "/api/copilot/admin/rate_limit/reset": {
+    "/api/internal/copilot/admin/rate_limit/reset": {
       "post": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Reset User Rate Limit Usage",
@@ -5828,7 +5828,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/copilot/admin/rate_limit/search_users": {
+    "/api/internal/copilot/admin/rate_limit/search_users": {
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Search Users by Name or Email",
@@ -5876,7 +5876,7 @@
         }
       }
     },
-    "/api/copilot/admin/rate_limit/tier": {
+    "/api/internal/copilot/admin/rate_limit/tier": {
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Get User Rate Limit Tier",
@@ -5950,7 +5950,7 @@
         }
       }
     },
-    "/api/credits": {
+    "/api/internal/credits": {
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Get user credits",
@@ -6021,7 +6021,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/admin/add_credits": {
+    "/api/internal/credits/admin/add_credits": {
       "post": {
         "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Add Credits to User",
@@ -6062,7 +6062,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/admin/copilot-usage/export": {
+    "/api/internal/credits/admin/copilot-usage/export": {
       "get": {
         "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Export Copilot Weekly Usage vs Rate Limit",
@@ -6124,7 +6124,7 @@
         }
       }
     },
-    "/api/credits/admin/transactions/export": {
+    "/api/internal/credits/admin/transactions/export": {
       "get": {
         "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Export Credit Transactions",
@@ -6219,7 +6219,7 @@
         }
       }
     },
-    "/api/credits/admin/users_history": {
+    "/api/internal/credits/admin/users_history": {
       "get": {
         "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Get All Users History",
@@ -6293,7 +6293,7 @@
         }
       }
     },
-    "/api/credits/auto-top-up": {
+    "/api/internal/credits/auto-top-up": {
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Get auto top up",
@@ -6353,7 +6353,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/invoices": {
+    "/api/internal/credits/invoices": {
       "get": {
         "tags": ["v1", "credits"],
         "summary": "List Stripe invoices",
@@ -6401,7 +6401,7 @@
         }
       }
     },
-    "/api/credits/manage": {
+    "/api/internal/credits/manage": {
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Manage payment methods",
@@ -6429,7 +6429,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/pro-activation/current": {
+    "/api/internal/credits/pro-activation/current": {
       "get": {
         "tags": ["subscriptions"],
         "summary": "Get Current Pro Activation",
@@ -6457,7 +6457,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/pro-activation/preview": {
+    "/api/internal/credits/pro-activation/preview": {
       "post": {
         "tags": ["subscriptions"],
         "summary": "Preview Pro Activation",
@@ -6503,7 +6503,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/pro-activation/{attempt_id}": {
+    "/api/internal/credits/pro-activation/{attempt_id}": {
       "get": {
         "tags": ["subscriptions"],
         "summary": "Get Pro Activation",
@@ -6547,7 +6547,7 @@
         }
       }
     },
-    "/api/credits/pro-activation/{attempt_id}/confirm": {
+    "/api/internal/credits/pro-activation/{attempt_id}/confirm": {
       "post": {
         "tags": ["subscriptions"],
         "summary": "Confirm Pro Activation",
@@ -6601,7 +6601,7 @@
         }
       }
     },
-    "/api/credits/refunds": {
+    "/api/internal/credits/refunds": {
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Get refund requests",
@@ -6626,7 +6626,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/stripe_webhook": {
+    "/api/internal/credits/stripe_webhook": {
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Handle Stripe webhooks",
@@ -6639,7 +6639,7 @@
         }
       }
     },
-    "/api/credits/subscription": {
+    "/api/internal/credits/subscription": {
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Get subscription tier, current cost, and all tier costs",
@@ -6702,7 +6702,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/subscription/preview": {
+    "/api/internal/credits/subscription/preview": {
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Review the prorated charge for a paid Pro-to-Max upgrade",
@@ -6743,7 +6743,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/transactions": {
+    "/api/internal/credits/transactions": {
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Get credit history",
@@ -6814,7 +6814,7 @@
         }
       }
     },
-    "/api/credits/trial": {
+    "/api/internal/credits/trial": {
       "get": {
         "tags": ["trials"],
         "summary": "Get Trial Status",
@@ -6903,7 +6903,7 @@
         }
       }
     },
-    "/api/credits/trial/cancel": {
+    "/api/internal/credits/trial/cancel": {
       "post": {
         "tags": ["trials"],
         "summary": "Cancel Trial",
@@ -6928,7 +6928,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/trial/confirm": {
+    "/api/internal/credits/trial/confirm": {
       "post": {
         "tags": ["trials"],
         "summary": "Confirm Trial",
@@ -6955,7 +6955,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/trial/resume": {
+    "/api/internal/credits/trial/resume": {
       "post": {
         "tags": ["trials"],
         "summary": "Resume Trial",
@@ -6980,7 +6980,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/credits/{transaction_key}/refund": {
+    "/api/internal/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Refund credit transaction",
@@ -7032,7 +7032,7 @@
         }
       }
     },
-    "/api/desktop-preview": {
+    "/api/internal/desktop-preview": {
       "get": {
         "tags": ["v1"],
         "summary": "Open Desktop Preview",
@@ -7064,7 +7064,7 @@
         }
       }
     },
-    "/api/email/": {
+    "/api/internal/email/": {
       "post": {
         "tags": ["v1", "email"],
         "summary": "Handle Postmark Email Webhooks",
@@ -7119,7 +7119,7 @@
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
       }
     },
-    "/api/email/mailerlite/webhook": {
+    "/api/internal/email/mailerlite/webhook": {
       "post": {
         "tags": ["v1", "email"],
         "summary": "Handle MailerLite webhooks",
@@ -7132,7 +7132,7 @@
         }
       }
     },
-    "/api/email/unsubscribe": {
+    "/api/internal/email/unsubscribe": {
       "post": {
         "tags": ["v1", "email"],
         "summary": "One Click Email Unsubscribe",
@@ -7161,7 +7161,7 @@
         }
       }
     },
-    "/api/executions": {
+    "/api/internal/executions": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "List all executions",
@@ -7188,7 +7188,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/executions/admin/execution_accuracy_trends": {
+    "/api/internal/executions/admin/execution_accuracy_trends": {
       "get": {
         "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Get Execution Accuracy Trends and Alerts",
@@ -7271,7 +7271,7 @@
         }
       }
     },
-    "/api/executions/admin/execution_analytics": {
+    "/api/internal/executions/admin/execution_analytics": {
       "post": {
         "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Generate Execution Analytics",
@@ -7313,7 +7313,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/executions/admin/execution_analytics/config": {
+    "/api/internal/executions/admin/execution_analytics/config": {
       "get": {
         "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Get Execution Analytics Configuration",
@@ -7337,7 +7337,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/executions/cost-summary": {
+    "/api/internal/executions/cost-summary": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "User cost summary",
@@ -7413,7 +7413,7 @@
         }
       }
     },
-    "/api/executions/{graph_exec_id}": {
+    "/api/internal/executions/{graph_exec_id}": {
       "delete": {
         "tags": ["v1", "graphs"],
         "summary": "Delete graph execution",
@@ -7443,7 +7443,7 @@
         }
       }
     },
-    "/api/experiments/assignments": {
+    "/api/internal/experiments/assignments": {
       "get": {
         "tags": ["experiments"],
         "summary": "List experiment assignments",
@@ -7470,7 +7470,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experiments/assignments/{experiment}": {
+    "/api/internal/experiments/assignments/{experiment}": {
       "get": {
         "tags": ["experiments"],
         "summary": "Get experiment assignment",
@@ -7514,7 +7514,7 @@
         }
       }
     },
-    "/api/experts": {
+    "/api/internal/experts": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Experts",
@@ -7578,7 +7578,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/avatars/generations": {
+    "/api/internal/experts/avatars/generations": {
       "post": {
         "tags": ["v2", "experts", "experts", "private", "experts"],
         "summary": "Generate Expert Avatar",
@@ -7615,7 +7615,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/avatars/generations/{job_id}": {
+    "/api/internal/experts/avatars/generations/{job_id}": {
       "get": {
         "tags": ["v2", "experts", "experts", "private", "experts"],
         "summary": "Get Expert Avatar Generation",
@@ -7652,7 +7652,7 @@
         }
       }
     },
-    "/api/experts/identities": {
+    "/api/internal/experts/identities": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Expert Identities",
@@ -7678,7 +7678,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/pods": {
+    "/api/internal/experts/pods": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Expert Pods",
@@ -7741,7 +7741,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/raise": {
+    "/api/internal/experts/raise": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Create Raised Expert",
@@ -7782,7 +7782,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/setup": {
+    "/api/internal/experts/setup": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Expert Setup Items",
@@ -7808,7 +7808,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/templates": {
+    "/api/internal/experts/templates": {
       "get": {
         "tags": ["v2", "experts", "experts"],
         "summary": "List Expert Templates",
@@ -7859,7 +7859,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}": {
+    "/api/internal/experts/{expert_id}": {
       "delete": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Archive Expert",
@@ -7926,7 +7926,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/activity": {
+    "/api/internal/experts/{expert_id}/activity": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Activity",
@@ -7965,7 +7965,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/avatar": {
+    "/api/internal/experts/{expert_id}/avatar": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Update Expert Avatar",
@@ -8011,7 +8011,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/budget": {
+    "/api/internal/experts/{expert_id}/budget": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Update Expert Budget",
@@ -8057,7 +8057,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/computer": {
+    "/api/internal/experts/{expert_id}/computer": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Computer",
@@ -8096,7 +8096,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/computer/desktop": {
+    "/api/internal/experts/{expert_id}/computer/desktop": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Start Expert Desktop",
@@ -8137,7 +8137,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/credentials": {
+    "/api/internal/experts/{expert_id}/credentials": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Expert Credentials",
@@ -8235,7 +8235,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/credentials/{credential_id}": {
+    "/api/internal/experts/{expert_id}/credentials/{credential_id}": {
       "delete": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Revoke Expert Credential",
@@ -8285,7 +8285,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/detach-preview": {
+    "/api/internal/experts/{expert_id}/detach-preview": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Detach Preview",
@@ -8324,7 +8324,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/mode": {
+    "/api/internal/experts/{expert_id}/mode": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Update Expert Mode",
@@ -8374,7 +8374,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/onboarding": {
+    "/api/internal/experts/{expert_id}/onboarding": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Onboarding",
@@ -8417,7 +8417,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/pod": {
+    "/api/internal/experts/{expert_id}/pod": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Assign Expert Pod",
@@ -8463,7 +8463,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/runs": {
+    "/api/internal/experts/{expert_id}/runs": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Expert Runs",
@@ -8506,7 +8506,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/schedules/resume": {
+    "/api/internal/experts/{expert_id}/schedules/resume": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Resume Expert Schedules",
@@ -8545,7 +8545,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/skills": {
+    "/api/internal/experts/{expert_id}/skills": {
       "put": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Update Expert Skills",
@@ -8594,7 +8594,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/soul": {
+    "/api/internal/experts/{expert_id}/soul": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Update Expert Soul",
@@ -8640,7 +8640,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/workflows": {
+    "/api/internal/experts/{expert_id}/workflows": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Install Expert Workflow",
@@ -8688,7 +8688,7 @@
         }
       }
     },
-    "/api/experts/{expert_id}/workflows/{workflow_id}": {
+    "/api/internal/experts/{expert_id}/workflows/{workflow_id}": {
       "delete": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Remove Expert Workflow",
@@ -8728,7 +8728,7 @@
         }
       }
     },
-    "/api/feature-flags": {
+    "/api/internal/feature-flags": {
       "get": {
         "tags": ["feature-flags"],
         "summary": "Get Feature Flags",
@@ -8768,7 +8768,7 @@
         }
       }
     },
-    "/api/files/upload": {
+    "/api/internal/files/upload": {
       "post": {
         "tags": ["v1", "files"],
         "summary": "Upload file to cloud storage",
@@ -8822,7 +8822,7 @@
         }
       }
     },
-    "/api/graphs": {
+    "/api/internal/graphs": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "List user graphs",
@@ -8882,7 +8882,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/graphs/{graph_id}": {
+    "/api/internal/graphs/{graph_id}": {
       "delete": {
         "tags": ["v1", "graphs"],
         "summary": "Delete graph permanently",
@@ -9016,7 +9016,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/execute/{graph_version}": {
+    "/api/internal/graphs/{graph_id}/execute/{graph_version}": {
       "post": {
         "tags": ["v1", "graphs"],
         "summary": "Execute graph agent",
@@ -9084,7 +9084,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/executions": {
+    "/api/internal/graphs/{graph_id}/executions": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "List graph executions",
@@ -9150,7 +9150,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/executions/{graph_exec_id}": {
+    "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Get execution details",
@@ -9199,7 +9199,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/executions/{graph_exec_id}/share": {
+    "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/share": {
       "delete": {
         "tags": ["v1"],
         "summary": "Disable Execution Sharing",
@@ -9290,7 +9290,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop": {
+    "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/stop": {
       "post": {
         "tags": ["v1", "graphs"],
         "summary": "Stop graph execution",
@@ -9339,7 +9339,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/schedules": {
+    "/api/internal/graphs/{graph_id}/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
         "summary": "List execution schedules for a graph",
@@ -9434,7 +9434,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/settings": {
+    "/api/internal/graphs/{graph_id}/settings": {
       "patch": {
         "tags": ["v1", "graphs"],
         "summary": "Update graph settings",
@@ -9480,7 +9480,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/versions": {
+    "/api/internal/graphs/{graph_id}/versions": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Get all graph versions",
@@ -9521,7 +9521,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/versions/active": {
+    "/api/internal/graphs/{graph_id}/versions/active": {
       "put": {
         "tags": ["v1", "graphs"],
         "summary": "Set active graph version",
@@ -9568,7 +9568,7 @@
         }
       }
     },
-    "/api/graphs/{graph_id}/versions/{version}": {
+    "/api/internal/graphs/{graph_id}/versions/{version}": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Get graph version",
@@ -9624,7 +9624,7 @@
         }
       }
     },
-    "/api/home": {
+    "/api/internal/home": {
       "get": {
         "tags": ["home", "private"],
         "summary": "Get Home Dashboard",
@@ -9647,7 +9647,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/integrations/ayrshare/sso_url": {
+    "/api/internal/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Ayrshare Sso Url",
@@ -9669,7 +9669,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/integrations/codex/credentials/{credential_id}/account": {
+    "/api/internal/integrations/codex/credentials/{credential_id}/account": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Codex Account",
@@ -9712,7 +9712,7 @@
         }
       }
     },
-    "/api/integrations/codex/credentials/{credential_id}/rate-limits": {
+    "/api/internal/integrations/codex/credentials/{credential_id}/rate-limits": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Codex Rate Limits",
@@ -9755,7 +9755,7 @@
         }
       }
     },
-    "/api/integrations/credentials": {
+    "/api/internal/integrations/credentials": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Credentials",
@@ -9782,7 +9782,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/integrations/providers": {
+    "/api/internal/integrations/providers": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Providers",
@@ -9805,7 +9805,7 @@
         "security": [{ "HTTPBearer": [] }]
       }
     },
-    "/api/integrations/providers/constants": {
+    "/api/internal/integrations/providers/constants": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Provider Constants",
@@ -9823,7 +9823,7 @@
         }
       }
     },
-    "/api/integrations/providers/enum-example": {
+    "/api/internal/integrations/providers/enum-example": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Provider Enum Example",
@@ -9843,7 +9843,7 @@
         }
       }
     },
-    "/api/integrations/providers/names": {
+    "/api/internal/integrations/providers/names": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Provider Names",
@@ -9863,7 +9863,7 @@
         }
       }
     },
-    "/api/integrations/providers/system": {
+    "/api/internal/integrations/providers/system": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List System Providers",
@@ -9885,7 +9885,7 @@
         }
       }
     },
-    "/api/integrations/webhooks/{webhook_id}/ping": {
+    "/api/internal/integrations/webhooks/{webhook_id}/ping": {
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Webhook Ping",
@@ -9918,7 +9918,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/callback": {
+    "/api/internal/integrations/{provider}/callback": {
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Exchange OAuth code for tokens",
@@ -9971,7 +9971,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/credentials": {
+    "/api/internal/integrations/{provider}/credentials": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Credentials By Provider",
@@ -10084,7 +10084,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/credentials/{cred_id}": {
+    "/api/internal/integrations/{provider}/credentials/{cred_id}": {
       "delete": {
         "tags": ["v1", "integrations"],
         "summary": "Delete Credentials",
@@ -10204,7 +10204,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/credentials/{cred_id}/picker-token": {
+    "/api/internal/integrations/{provider}/credentials/{cred_id}/picker-token": {
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Issue a short-lived access token for a provider-hosted picker",
@@ -10255,7 +10255,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/device-auth/initiate": {
+    "/api/internal/integrations/{provider}/device-auth/initiate": {
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Initiate device code OAuth flow",
@@ -10308,7 +10308,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/device-auth/poll": {
+    "/api/internal/integrations/{provider}/device-auth/poll": {
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Poll device code OAuth flow for completion",
@@ -10359,7 +10359,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/login": {
+    "/api/internal/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Initiate OAuth flow",
@@ -10419,7 +10419,7 @@
         }
       }
     },
-    "/api/integrations/{provider}/webhooks/{webhook_id}/ingress": {
+    "/api/internal/integrations/{provider}/webhooks/{webhook_id}/ingress": {
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Webhook Ingress Generic",
@@ -10458,7 +10458,7 @@
         }
       }
     },
-    "/api/invitations/pending": {
+    "/api/internal/invitations/pending": {
       "get": {
         "tags": ["v2", "invitations", "invitations"],
         "summary": "List pending invitations for current user",
@@ -10485,7 +10485,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/invitations/{token}/accept": {
+    "/api/internal/invitations/{token}/accept": {
       "post": {
         "tags": ["v2", "invitations", "invitations"],
         "summary": "Accept invitation",
@@ -10526,7 +10526,7 @@
         }
       }
     },
-    "/api/invitations/{token}/decline": {
+    "/api/internal/invitations/{token}/decline": {
       "post": {
         "tags": ["v2", "invitations", "invitations"],
         "summary": "Decline invitation",
@@ -10556,7 +10556,7 @@
         }
       }
     },
-    "/api/library/agents": {
+    "/api/internal/library/agents": {
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "List Library Agents",
@@ -10710,7 +10710,7 @@
         }
       }
     },
-    "/api/library/agents/batch": {
+    "/api/internal/library/agents/batch": {
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "Get Library Agents By Ids",
@@ -10760,7 +10760,7 @@
         }
       }
     },
-    "/api/library/agents/by-graph/{graph_id}": {
+    "/api/internal/library/agents/by-graph/{graph_id}": {
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent By Graph Id",
@@ -10806,7 +10806,7 @@
         }
       }
     },
-    "/api/library/agents/favorites": {
+    "/api/internal/library/agents/favorites": {
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "List Favorite Library Agents",
@@ -10866,7 +10866,7 @@
         }
       }
     },
-    "/api/library/agents/marketplace/{store_listing_version_id}": {
+    "/api/internal/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "library", "private", "store", "library"],
         "summary": "Get Agent By Store ID",
@@ -10910,7 +10910,7 @@
         }
       }
     },
-    "/api/library/agents/{library_agent_id}": {
+    "/api/internal/library/agents/{library_agent_id}": {
       "delete": {
         "tags": ["v2", "library", "private"],
         "summary": "Delete Library Agent",
@@ -11025,7 +11025,7 @@
         }
       }
     },
-    "/api/library/agents/{library_agent_id}/fork": {
+    "/api/internal/library/agents/{library_agent_id}/fork": {
       "post": {
         "tags": ["v2", "library", "private"],
         "summary": "Fork Library Agent",
@@ -11062,7 +11062,7 @@
         }
       }
     },
-    "/api/library/agents/{library_agent_id}/triggers": {
+    "/api/internal/library/agents/{library_agent_id}/triggers": {
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "List Trigger Agents",
@@ -11104,7 +11104,7 @@
         }
       }
     },
-    "/api/library/folders": {
+    "/api/internal/library/folders": {
       "get": {
         "tags": ["v2", "library", "folders", "private"],
         "summary": "List Library Folders",
@@ -11200,7 +11200,7 @@
         }
       }
     },
-    "/api/library/folders/agents/bulk-move": {
+    "/api/internal/library/folders/agents/bulk-move": {
       "post": {
         "tags": ["v2", "library", "folders", "private"],
         "summary": "Bulk Move Agents",
@@ -11244,7 +11244,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/library/folders/tree": {
+    "/api/internal/library/folders/tree": {
       "get": {
         "tags": ["v2", "library", "folders", "private"],
         "summary": "Get Folder Tree",
@@ -11267,7 +11267,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/library/folders/{folder_id}": {
+    "/api/internal/library/folders/{folder_id}": {
       "delete": {
         "tags": ["v2", "library", "folders", "private"],
         "summary": "Delete Folder",
@@ -11386,7 +11386,7 @@
         }
       }
     },
-    "/api/library/folders/{folder_id}/move": {
+    "/api/internal/library/folders/{folder_id}/move": {
       "post": {
         "tags": ["v2", "library", "folders", "private"],
         "summary": "Move Folder",
@@ -11436,7 +11436,7 @@
         }
       }
     },
-    "/api/library/presets": {
+    "/api/internal/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
         "summary": "List presets",
@@ -11549,7 +11549,7 @@
         }
       }
     },
-    "/api/library/presets/setup-trigger": {
+    "/api/internal/library/presets/setup-trigger": {
       "post": {
         "tags": ["v2", "presets"],
         "summary": "Setup Trigger",
@@ -11589,7 +11589,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/library/presets/{preset_id}": {
+    "/api/internal/library/presets/{preset_id}": {
       "delete": {
         "tags": ["v2", "presets"],
         "summary": "Delete a preset",
@@ -11702,7 +11702,7 @@
         }
       }
     },
-    "/api/library/presets/{preset_id}/execute": {
+    "/api/internal/library/presets/{preset_id}/execute": {
       "post": {
         "tags": ["v2", "presets", "presets"],
         "summary": "Execute a preset",
@@ -11753,7 +11753,7 @@
         }
       }
     },
-    "/api/mcp/discover-tools": {
+    "/api/internal/mcp/discover-tools": {
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
@@ -11793,7 +11793,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/mcp/oauth/callback": {
+    "/api/internal/mcp/oauth/callback": {
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Exchange OAuth code for MCP tokens",
@@ -11835,7 +11835,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/mcp/oauth/login": {
+    "/api/internal/mcp/oauth/login": {
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Initiate OAuth login for an MCP server",
@@ -11875,7 +11875,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/mcp/token": {
+    "/api/internal/mcp/token": {
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Store a bearer token for an MCP server",
@@ -11915,7 +11915,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/memory": {
+    "/api/internal/memory": {
       "delete": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Erase My Memory",
@@ -11937,7 +11937,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/memory/experts/{expert_id}": {
+    "/api/internal/memory/experts/{expert_id}": {
       "delete": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Erase My Expert Memory",
@@ -11982,7 +11982,7 @@
         }
       }
     },
-    "/api/memory/experts/{expert_id}/facts": {
+    "/api/internal/memory/experts/{expert_id}/facts": {
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "List My Expert Memory Facts",
@@ -12041,7 +12041,7 @@
         }
       }
     },
-    "/api/memory/experts/{expert_id}/facts/{fact_uuid}": {
+    "/api/internal/memory/experts/{expert_id}/facts/{fact_uuid}": {
       "delete": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Forget My Expert Memory Fact",
@@ -12099,7 +12099,7 @@
         }
       }
     },
-    "/api/memory/experts/{expert_id}/overview": {
+    "/api/internal/memory/experts/{expert_id}/overview": {
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Get My Expert Memory Overview",
@@ -12144,7 +12144,7 @@
         }
       }
     },
-    "/api/memory/facts": {
+    "/api/internal/memory/facts": {
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "List My Memory Facts",
@@ -12190,7 +12190,7 @@
         }
       }
     },
-    "/api/memory/facts/{fact_uuid}": {
+    "/api/internal/memory/facts/{fact_uuid}": {
       "delete": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Forget My Memory Fact",
@@ -12235,7 +12235,7 @@
         }
       }
     },
-    "/api/memory/overview": {
+    "/api/internal/memory/overview": {
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Get My Memory Overview",
@@ -12257,7 +12257,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/memory/understanding": {
+    "/api/internal/memory/understanding": {
       "delete": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Forget My Business Understanding",
@@ -12301,7 +12301,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/oauth/app/{client_id}": {
+    "/api/internal/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
         "summary": "Get Oauth App Info",
@@ -12356,7 +12356,7 @@
         }
       }
     },
-    "/api/oauth/apps/mine": {
+    "/api/internal/oauth/apps/mine": {
       "get": {
         "tags": ["oauth"],
         "summary": "List My Oauth Apps",
@@ -12384,7 +12384,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/oauth/apps/{app_id}/logo": {
+    "/api/internal/oauth/apps/{app_id}/logo": {
       "patch": {
         "tags": ["oauth"],
         "summary": "Update App Logo",
@@ -12432,7 +12432,7 @@
         }
       }
     },
-    "/api/oauth/apps/{app_id}/logo/upload": {
+    "/api/internal/oauth/apps/{app_id}/logo/upload": {
       "post": {
         "tags": ["oauth"],
         "summary": "Upload App Logo",
@@ -12482,7 +12482,7 @@
         }
       }
     },
-    "/api/oauth/apps/{app_id}/status": {
+    "/api/internal/oauth/apps/{app_id}/status": {
       "patch": {
         "tags": ["oauth"],
         "summary": "Update App Status",
@@ -12532,7 +12532,7 @@
         }
       }
     },
-    "/api/oauth/authorize": {
+    "/api/internal/oauth/authorize": {
       "post": {
         "tags": ["oauth"],
         "summary": "Authorize",
@@ -12570,7 +12570,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/oauth/introspect": {
+    "/api/internal/oauth/introspect": {
       "post": {
         "tags": ["oauth"],
         "summary": "Introspect",
@@ -12608,7 +12608,7 @@
         }
       }
     },
-    "/api/oauth/revoke": {
+    "/api/internal/oauth/revoke": {
       "post": {
         "tags": ["oauth"],
         "summary": "Revoke",
@@ -12638,7 +12638,7 @@
         }
       }
     },
-    "/api/oauth/token": {
+    "/api/internal/oauth/token": {
       "post": {
         "tags": ["oauth"],
         "summary": "Token",
@@ -12678,7 +12678,7 @@
         }
       }
     },
-    "/api/onboarding": {
+    "/api/internal/onboarding": {
       "get": {
         "tags": ["v1", "onboarding"],
         "summary": "Onboarding state",
@@ -12737,7 +12737,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/agents": {
+    "/api/internal/onboarding/agents": {
       "get": {
         "tags": ["v1", "onboarding"],
         "summary": "Recommended onboarding agents",
@@ -12762,7 +12762,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump": {
+    "/api/internal/onboarding/brain-dump": {
       "delete": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Discard Brain Dump",
@@ -12806,7 +12806,7 @@
         }
       }
     },
-    "/api/onboarding/brain-dump/finalize": {
+    "/api/internal/onboarding/brain-dump/finalize": {
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Finalize Brain Dump",
@@ -12844,7 +12844,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/intro": {
+    "/api/internal/onboarding/brain-dump/intro": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Intro",
@@ -12866,7 +12866,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/intro/complete": {
+    "/api/internal/onboarding/brain-dump/intro/complete": {
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Complete Brain Dump Greeting",
@@ -12890,7 +12890,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/parts": {
+    "/api/internal/onboarding/brain-dump/parts": {
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Upload Brain Dump Part",
@@ -12930,7 +12930,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/recommended-experts": {
+    "/api/internal/onboarding/brain-dump/recommended-experts": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Recommended Experts",
@@ -12954,7 +12954,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/recommended-providers": {
+    "/api/internal/onboarding/brain-dump/recommended-providers": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Recommended Providers",
@@ -12978,7 +12978,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/recording": {
+    "/api/internal/onboarding/brain-dump/recording": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Download Brain Dump Recording",
@@ -12996,7 +12996,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/status": {
+    "/api/internal/onboarding/brain-dump/status": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Status",
@@ -13018,7 +13018,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/brain-dump/suggested-tasks": {
+    "/api/internal/onboarding/brain-dump/suggested-tasks": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Suggested Tasks",
@@ -13080,7 +13080,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/completed": {
+    "/api/internal/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
         "summary": "Check if onboarding is completed",
@@ -13103,7 +13103,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/profile": {
+    "/api/internal/onboarding/profile": {
       "post": {
         "tags": ["v1", "onboarding"],
         "summary": "Submit onboarding profile",
@@ -13138,7 +13138,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/reset": {
+    "/api/internal/onboarding/reset": {
       "post": {
         "tags": ["v1", "onboarding"],
         "summary": "Reset onboarding progress",
@@ -13159,7 +13159,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/step": {
+    "/api/internal/onboarding/step": {
       "post": {
         "tags": ["v1", "onboarding"],
         "summary": "Complete onboarding step",
@@ -13211,7 +13211,7 @@
         }
       }
     },
-    "/api/orgs": {
+    "/api/internal/orgs": {
       "get": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "List user organizations",
@@ -13271,7 +13271,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/orgs/{org_id}": {
+    "/api/internal/orgs/{org_id}": {
       "delete": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "Delete organization",
@@ -13379,7 +13379,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/aliases": {
+    "/api/internal/orgs/{org_id}/aliases": {
       "get": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "List organization aliases",
@@ -13463,7 +13463,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/convert": {
+    "/api/internal/orgs/{org_id}/convert": {
       "post": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "Convert personal org to team org",
@@ -13500,7 +13500,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/invitations": {
+    "/api/internal/orgs/{org_id}/invitations": {
       "get": {
         "tags": ["v2", "orgs", "invitations", "orgs", "invitations"],
         "summary": "List pending invitations",
@@ -13590,7 +13590,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/invitations/{invitation_id}": {
+    "/api/internal/orgs/{org_id}/invitations/{invitation_id}": {
       "delete": {
         "tags": ["v2", "orgs", "invitations", "orgs", "invitations"],
         "summary": "Revoke invitation",
@@ -13626,7 +13626,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/members": {
+    "/api/internal/orgs/{org_id}/members": {
       "get": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "List organization members",
@@ -13710,7 +13710,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/members/{uid}": {
+    "/api/internal/orgs/{org_id}/members/{uid}": {
       "delete": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "Remove member from organization",
@@ -13795,7 +13795,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/transfer-ownership": {
+    "/api/internal/orgs/{org_id}/transfer-ownership": {
       "post": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "Transfer organization ownership",
@@ -13838,7 +13838,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/workspaces": {
+    "/api/internal/orgs/{org_id}/workspaces": {
       "get": {
         "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
         "summary": "List workspaces",
@@ -13922,7 +13922,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/workspaces/{ws_id}": {
+    "/api/internal/orgs/{org_id}/workspaces/{ws_id}": {
       "delete": {
         "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
         "summary": "Delete workspace",
@@ -14048,7 +14048,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/workspaces/{ws_id}/join": {
+    "/api/internal/orgs/{org_id}/workspaces/{ws_id}/join": {
       "post": {
         "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
         "summary": "Self-join open workspace",
@@ -14091,7 +14091,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/workspaces/{ws_id}/leave": {
+    "/api/internal/orgs/{org_id}/workspaces/{ws_id}/leave": {
       "post": {
         "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
         "summary": "Leave workspace",
@@ -14127,7 +14127,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/workspaces/{ws_id}/members": {
+    "/api/internal/orgs/{org_id}/workspaces/{ws_id}/members": {
       "get": {
         "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
         "summary": "List workspace members",
@@ -14225,7 +14225,7 @@
         }
       }
     },
-    "/api/orgs/{org_id}/workspaces/{ws_id}/members/{uid}": {
+    "/api/internal/orgs/{org_id}/workspaces/{ws_id}/members/{uid}": {
       "delete": {
         "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
         "summary": "Remove member from workspace",
@@ -14324,7 +14324,7 @@
         }
       }
     },
-    "/api/otto/ask": {
+    "/api/internal/otto/ask": {
       "post": {
         "tags": ["v2", "otto"],
         "summary": "Proxy Otto Chat Request",
@@ -14362,7 +14362,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/platform-linking/links": {
+    "/api/internal/platform-linking/links": {
       "get": {
         "tags": ["platform-linking"],
         "summary": "List all platform servers linked to the authenticated user",
@@ -14387,7 +14387,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/platform-linking/links/{link_id}": {
+    "/api/internal/platform-linking/links/{link_id}": {
       "delete": {
         "tags": ["platform-linking"],
         "summary": "Unlink a platform server",
@@ -14424,7 +14424,7 @@
         }
       }
     },
-    "/api/platform-linking/platforms": {
+    "/api/internal/platform-linking/platforms": {
       "get": {
         "tags": ["platform-linking"],
         "summary": "List bot platforms enabled on this deployment plus the caller's links",
@@ -14449,7 +14449,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/platform-linking/tokens/{token}/confirm": {
+    "/api/internal/platform-linking/tokens/{token}/confirm": {
       "post": {
         "tags": ["platform-linking"],
         "summary": "Confirm a SERVER link token (user must be authenticated)",
@@ -14504,7 +14504,7 @@
         }
       }
     },
-    "/api/platform-linking/tokens/{token}/info": {
+    "/api/internal/platform-linking/tokens/{token}/info": {
       "get": {
         "tags": ["platform-linking"],
         "summary": "Get display info for a link token",
@@ -14548,7 +14548,7 @@
         }
       }
     },
-    "/api/platform-linking/user-links": {
+    "/api/internal/platform-linking/user-links": {
       "get": {
         "tags": ["platform-linking"],
         "summary": "List all DM links for the authenticated user",
@@ -14575,7 +14575,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/platform-linking/user-links/{link_id}": {
+    "/api/internal/platform-linking/user-links/{link_id}": {
       "delete": {
         "tags": ["platform-linking"],
         "summary": "Unlink a DM / user link",
@@ -14612,7 +14612,7 @@
         }
       }
     },
-    "/api/platform-linking/user-tokens/{token}/confirm": {
+    "/api/internal/platform-linking/user-tokens/{token}/confirm": {
       "post": {
         "tags": ["platform-linking"],
         "summary": "Confirm a USER link token (user must be authenticated)",
@@ -14669,7 +14669,7 @@
         }
       }
     },
-    "/api/public/shared/chats/{share_token}": {
+    "/api/internal/public/shared/chats/{share_token}": {
       "get": {
         "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
         "summary": "Get Shared Chat",
@@ -14707,7 +14707,7 @@
         }
       }
     },
-    "/api/public/shared/chats/{share_token}/files/{file_id}/download": {
+    "/api/internal/public/shared/chats/{share_token}/files/{file_id}/download": {
       "get": {
         "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
         "summary": "Download a file from a shared chat",
@@ -14754,7 +14754,7 @@
         }
       }
     },
-    "/api/public/shared/chats/{share_token}/messages": {
+    "/api/internal/public/shared/chats/{share_token}/messages": {
       "get": {
         "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
         "summary": "Get Shared Chat Messages",
@@ -14810,7 +14810,7 @@
         }
       }
     },
-    "/api/public/shared/{share_token}": {
+    "/api/internal/public/shared/{share_token}": {
       "get": {
         "tags": ["v1"],
         "summary": "Get Shared Execution",
@@ -14850,7 +14850,7 @@
         }
       }
     },
-    "/api/public/shared/{share_token}/files/{file_id}/download": {
+    "/api/internal/public/shared/{share_token}/files/{file_id}/download": {
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Download a file from a shared execution",
@@ -14894,7 +14894,7 @@
         }
       }
     },
-    "/api/push/subscribe": {
+    "/api/internal/push/subscribe": {
       "post": {
         "tags": ["push"],
         "summary": "Register a push subscription for the current user",
@@ -14924,7 +14924,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/push/unsubscribe": {
+    "/api/internal/push/unsubscribe": {
       "post": {
         "tags": ["push"],
         "summary": "Remove a push subscription",
@@ -14956,7 +14956,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/push/vapid-key": {
+    "/api/internal/push/vapid-key": {
       "get": {
         "tags": ["push"],
         "summary": "Get VAPID public key for push subscription",
@@ -14975,7 +14975,7 @@
         }
       }
     },
-    "/api/review/action": {
+    "/api/internal/review/action": {
       "post": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Process Review Action",
@@ -15013,7 +15013,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/review/execution/{graph_exec_id}": {
+    "/api/internal/review/execution/{graph_exec_id}": {
       "get": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews for Execution",
@@ -15062,7 +15062,7 @@
         }
       }
     },
-    "/api/review/pending": {
+    "/api/internal/review/pending": {
       "get": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews",
@@ -15131,7 +15131,7 @@
         }
       }
     },
-    "/api/review/session/{chat_session_id}": {
+    "/api/internal/review/session/{chat_session_id}": {
       "get": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews for Chat Session",
@@ -15179,7 +15179,7 @@
         }
       }
     },
-    "/api/review/session/{chat_session_id}/answered": {
+    "/api/internal/review/session/{chat_session_id}/answered": {
       "get": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Answered Reviews Waiting to Run for Chat Session",
@@ -15223,7 +15223,7 @@
         }
       }
     },
-    "/api/review/session/{chat_session_id}/continue": {
+    "/api/internal/review/session/{chat_session_id}/continue": {
       "post": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Continue Chat With Answered Reviews",
@@ -15254,7 +15254,7 @@
         }
       }
     },
-    "/api/schedules": {
+    "/api/internal/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
         "summary": "List execution schedules for a user",
@@ -15281,7 +15281,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/schedules/followups": {
+    "/api/internal/schedules/followups": {
       "get": {
         "tags": ["v1", "schedules"],
         "summary": "List copilot follow-up schedules for a user",
@@ -15309,7 +15309,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/schedules/followups/paused": {
+    "/api/internal/schedules/followups/paused": {
       "get": {
         "tags": ["v1", "schedules"],
         "summary": "List scheduled chats paused after failing the same way",
@@ -15337,7 +15337,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/schedules/followups/{schedule_key}/cadence": {
+    "/api/internal/schedules/followups/{schedule_key}/cadence": {
       "get": {
         "tags": ["v1", "schedules"],
         "summary": "How often a scheduled chat runs, and how it could run less often",
@@ -15433,7 +15433,7 @@
         }
       }
     },
-    "/api/schedules/followups/{schedule_key}/resume": {
+    "/api/internal/schedules/followups/{schedule_key}/resume": {
       "post": {
         "tags": ["v1", "schedules"],
         "summary": "Resume a scheduled chat paused after failing the same way",
@@ -15477,7 +15477,7 @@
         }
       }
     },
-    "/api/schedules/{schedule_id}": {
+    "/api/internal/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
         "summary": "Delete execution schedule",
@@ -15574,7 +15574,7 @@
         }
       }
     },
-    "/api/search/global": {
+    "/api/internal/search/global": {
       "get": {
         "tags": ["search", "search"],
         "summary": "Global search",
@@ -15634,7 +15634,7 @@
         }
       }
     },
-    "/api/skill-learning/decisions": {
+    "/api/internal/skill-learning/decisions": {
       "get": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "List Decisions",
@@ -15658,7 +15658,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/skill-learning/experts/{expert_id}/policy": {
+    "/api/internal/skill-learning/experts/{expert_id}/policy": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Update Expert Policy",
@@ -15715,7 +15715,7 @@
         }
       }
     },
-    "/api/skill-learning/history": {
+    "/api/internal/skill-learning/history": {
       "get": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "List History",
@@ -15796,7 +15796,7 @@
         }
       }
     },
-    "/api/skill-learning/run": {
+    "/api/internal/skill-learning/run": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Run Now",
@@ -15818,7 +15818,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/skill-learning/skills/{name}": {
+    "/api/internal/skill-learning/skills/{name}": {
       "get": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Get Skill Detail",
@@ -15886,7 +15886,7 @@
         }
       }
     },
-    "/api/skill-learning/skills/{name}/decisions/{version_id}": {
+    "/api/internal/skill-learning/skills/{name}/decisions/{version_id}": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Decide",
@@ -15965,7 +15965,7 @@
         }
       }
     },
-    "/api/skill-learning/skills/{name}/edit": {
+    "/api/internal/skill-learning/skills/{name}/edit": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Edit Skill",
@@ -16031,7 +16031,7 @@
         }
       }
     },
-    "/api/skill-learning/skills/{name}/outcome": {
+    "/api/internal/skill-learning/skills/{name}/outcome": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Report Outcome",
@@ -16097,7 +16097,7 @@
         }
       }
     },
-    "/api/skill-learning/skills/{name}/policy": {
+    "/api/internal/skill-learning/skills/{name}/policy": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Update Policy",
@@ -16161,7 +16161,7 @@
         }
       }
     },
-    "/api/skill-learning/skills/{name}/restore": {
+    "/api/internal/skill-learning/skills/{name}/restore": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Restore",
@@ -16227,7 +16227,7 @@
         }
       }
     },
-    "/api/skill-learning/sources/{source_kind}/{source_ref}/exclude": {
+    "/api/internal/skill-learning/sources/{source_kind}/{source_ref}/exclude": {
       "post": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Exclude Source",
@@ -16283,7 +16283,7 @@
         }
       }
     },
-    "/api/skill-learning/status": {
+    "/api/internal/skill-learning/status": {
       "get": {
         "tags": ["v2", "skill-learning", "skill-learning", "private"],
         "summary": "Get Status",
@@ -16326,7 +16326,7 @@
         }
       }
     },
-    "/api/skills": {
+    "/api/internal/skills": {
       "get": {
         "tags": ["v1", "skills"],
         "summary": "List user-distilled copilot skills",
@@ -16426,7 +16426,7 @@
         }
       }
     },
-    "/api/skills/package": {
+    "/api/internal/skills/package": {
       "post": {
         "tags": ["v1", "skills"],
         "summary": "Upload a copilot skill as a zipped package",
@@ -16486,7 +16486,7 @@
         }
       }
     },
-    "/api/skills/{name}": {
+    "/api/internal/skills/{name}": {
       "delete": {
         "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
@@ -16597,7 +16597,7 @@
         }
       }
     },
-    "/api/skills/{name}/package": {
+    "/api/internal/skills/{name}/package": {
       "get": {
         "tags": ["v1", "skills"],
         "summary": "Download a copilot skill as a zipped package",
@@ -16652,7 +16652,7 @@
         }
       }
     },
-    "/api/store/admin/listings": {
+    "/api/internal/store/admin/listings": {
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Get Admin Listings History",
@@ -16719,7 +16719,7 @@
         }
       }
     },
-    "/api/store/admin/skills/submissions": {
+    "/api/internal/store/admin/skills/submissions": {
       "get": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
         "summary": "Admin List Pending Skill Submissions",
@@ -16745,7 +16745,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
+    "/api/internal/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
       "get": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
         "summary": "Admin Read Skill Submission File",
@@ -16788,7 +16788,7 @@
         }
       }
     },
-    "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
+    "/api/internal/store/admin/skills/submissions/{skill_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
         "summary": "Review Skill Submission",
@@ -16835,7 +16835,7 @@
         }
       }
     },
-    "/api/store/admin/submissions/download/{store_listing_version_id}": {
+    "/api/internal/store/admin/submissions/download/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
         "summary": "Admin Download Agent File",
@@ -16874,7 +16874,7 @@
         }
       }
     },
-    "/api/store/admin/submissions/{store_listing_version_id}/add-to-library": {
+    "/api/internal/store/admin/submissions/{store_listing_version_id}/add-to-library": {
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Admin Add Pending Agent to Library",
@@ -16912,7 +16912,7 @@
         }
       }
     },
-    "/api/store/admin/submissions/{store_listing_version_id}/preview": {
+    "/api/internal/store/admin/submissions/{store_listing_version_id}/preview": {
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Admin Preview Submission Listing",
@@ -16950,7 +16950,7 @@
         }
       }
     },
-    "/api/store/admin/submissions/{store_listing_version_id}/review": {
+    "/api/internal/store/admin/submissions/{store_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
@@ -17000,7 +17000,7 @@
         }
       }
     },
-    "/api/store/agents": {
+    "/api/internal/store/agents": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
@@ -17113,7 +17113,7 @@
         }
       }
     },
-    "/api/store/agents/{username}/{agent_name}": {
+    "/api/internal/store/agents/{username}/{agent_name}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
@@ -17163,7 +17163,7 @@
         }
       }
     },
-    "/api/store/agents/{username}/{agent_name}/review": {
+    "/api/internal/store/agents/{username}/{agent_name}/review": {
       "post": {
         "tags": ["v2", "store"],
         "summary": "Create agent review",
@@ -17215,7 +17215,7 @@
         }
       }
     },
-    "/api/store/categories": {
+    "/api/internal/store/categories": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store categories",
@@ -17237,7 +17237,7 @@
         }
       }
     },
-    "/api/store/creators": {
+    "/api/internal/store/creators": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store creators",
@@ -17323,7 +17323,7 @@
         }
       }
     },
-    "/api/store/creators/{username}": {
+    "/api/internal/store/creators/{username}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
@@ -17357,7 +17357,7 @@
         }
       }
     },
-    "/api/store/listings/versions/{store_listing_version_id}": {
+    "/api/internal/store/listings/versions/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent by version",
@@ -17390,7 +17390,7 @@
         }
       }
     },
-    "/api/store/listings/versions/{store_listing_version_id}/graph": {
+    "/api/internal/store/listings/versions/{store_listing_version_id}/graph": {
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
@@ -17430,7 +17430,7 @@
         }
       }
     },
-    "/api/store/listings/versions/{store_listing_version_id}/graph/download": {
+    "/api/internal/store/listings/versions/{store_listing_version_id}/graph/download": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Download agent file",
@@ -17461,7 +17461,7 @@
         }
       }
     },
-    "/api/store/media/{user_id}/{media_type}/{filename}": {
+    "/api/internal/store/media/{user_id}/{media_type}/{filename}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get stored marketplace media",
@@ -17521,7 +17521,7 @@
         }
       }
     },
-    "/api/store/metrics/cache": {
+    "/api/internal/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
         "summary": "Get cache metrics in Prometheus format",
@@ -17535,7 +17535,7 @@
         }
       }
     },
-    "/api/store/my-unpublished-agents": {
+    "/api/internal/store/my-unpublished-agents": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
@@ -17612,7 +17612,7 @@
         }
       }
     },
-    "/api/store/profile": {
+    "/api/internal/store/profile": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
@@ -17670,7 +17670,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/store/search": {
+    "/api/internal/store/search": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Unified search across all content types",
@@ -17746,7 +17746,7 @@
         }
       }
     },
-    "/api/store/skills": {
+    "/api/internal/store/skills": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List marketplace skills",
@@ -17817,7 +17817,7 @@
         }
       }
     },
-    "/api/store/skills/submissions": {
+    "/api/internal/store/skills/submissions": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my skill submissions",
@@ -17885,7 +17885,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/store/skills/submissions/{skill_listing_version_id}": {
+    "/api/internal/store/skills/submissions/{skill_listing_version_id}": {
       "put": {
         "tags": ["v2", "store", "private"],
         "summary": "Edit skill submission",
@@ -17935,7 +17935,7 @@
         }
       }
     },
-    "/api/store/skills/{slug}": {
+    "/api/internal/store/skills/{slug}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get marketplace skill",
@@ -17977,7 +17977,7 @@
         }
       }
     },
-    "/api/store/skills/{slug}/files/{path}": {
+    "/api/internal/store/skills/{slug}/files/{path}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Read marketplace skill file",
@@ -18038,7 +18038,7 @@
         }
       }
     },
-    "/api/store/skills/{slug}/install": {
+    "/api/internal/store/skills/{slug}/install": {
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Install marketplace skill",
@@ -18096,7 +18096,7 @@
         }
       }
     },
-    "/api/store/submissions": {
+    "/api/internal/store/submissions": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
@@ -18234,7 +18234,7 @@
         }
       }
     },
-    "/api/store/submissions/generate_image": {
+    "/api/internal/store/submissions/generate_image": {
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Generate submission image",
@@ -18272,7 +18272,7 @@
         }
       }
     },
-    "/api/store/submissions/media": {
+    "/api/internal/store/submissions/media": {
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
@@ -18328,7 +18328,7 @@
         }
       }
     },
-    "/api/store/submissions/media/{owner_user_id}/{media_type}/{filename}": {
+    "/api/internal/store/submissions/media/{owner_user_id}/{media_type}/{filename}": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Read private submission media",
@@ -18420,7 +18420,7 @@
         }
       }
     },
-    "/api/store/submissions/{store_listing_version_id}": {
+    "/api/internal/store/submissions/{store_listing_version_id}": {
       "put": {
         "tags": ["v2", "store", "private"],
         "summary": "Edit store submission",
@@ -18468,7 +18468,7 @@
         }
       }
     },
-    "/api/store/submissions/{submission_id}": {
+    "/api/internal/store/submissions/{submission_id}": {
       "delete": {
         "tags": ["v2", "store", "private"],
         "summary": "Delete store submission",
@@ -18509,7 +18509,7 @@
         }
       }
     },
-    "/api/transfers": {
+    "/api/internal/transfers": {
       "get": {
         "tags": ["v2", "transfers", "transfers"],
         "summary": "List transfers for active organization",
@@ -18569,7 +18569,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/transfers/{transfer_id}/approve": {
+    "/api/internal/transfers/{transfer_id}/approve": {
       "post": {
         "tags": ["v2", "transfers", "transfers"],
         "summary": "Approve transfer request",
@@ -18606,7 +18606,7 @@
         }
       }
     },
-    "/api/transfers/{transfer_id}/execute": {
+    "/api/internal/transfers/{transfer_id}/execute": {
       "post": {
         "tags": ["v2", "transfers", "transfers"],
         "summary": "Execute approved transfer",
@@ -18643,7 +18643,7 @@
         }
       }
     },
-    "/api/transfers/{transfer_id}/reject": {
+    "/api/internal/transfers/{transfer_id}/reject": {
       "post": {
         "tags": ["v2", "transfers", "transfers"],
         "summary": "Reject transfer request",
@@ -18680,7 +18680,7 @@
         }
       }
     },
-    "/api/workspace/files": {
+    "/api/internal/workspace/files": {
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
@@ -18834,7 +18834,7 @@
         }
       }
     },
-    "/api/workspace/files/upload": {
+    "/api/internal/workspace/files/upload": {
       "post": {
         "tags": ["workspace"],
         "summary": "Upload file to workspace",
@@ -18897,7 +18897,7 @@
         }
       }
     },
-    "/api/workspace/files/{file_id}": {
+    "/api/internal/workspace/files/{file_id}": {
       "delete": {
         "tags": ["workspace"],
         "summary": "Delete a workspace file",
@@ -18983,7 +18983,7 @@
         }
       }
     },
-    "/api/workspace/files/{file_id}/download": {
+    "/api/internal/workspace/files/{file_id}/download": {
       "get": {
         "tags": ["workspace"],
         "summary": "Download file by ID",
@@ -19017,7 +19017,7 @@
         }
       }
     },
-    "/api/workspace/files/{file_id}/preview": {
+    "/api/internal/workspace/files/{file_id}/preview": {
       "get": {
         "tags": ["workspace"],
         "summary": "Preview file by ID",
@@ -19075,7 +19075,7 @@
         }
       }
     },
-    "/api/workspace/folders": {
+    "/api/internal/workspace/folders": {
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace folders",
@@ -19138,7 +19138,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/workspace/folders/files/bulk-move": {
+    "/api/internal/workspace/folders/files/bulk-move": {
       "post": {
         "tags": ["workspace"],
         "summary": "Move workspace files to a folder",
@@ -19179,7 +19179,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/workspace/folders/{folder_id}": {
+    "/api/internal/workspace/folders/{folder_id}": {
       "delete": {
         "tags": ["workspace"],
         "summary": "Delete workspace folder",
@@ -19262,7 +19262,7 @@
         }
       }
     },
-    "/api/workspace/storage/usage": {
+    "/api/internal/workspace/storage/usage": {
       "get": {
         "tags": ["workspace"],
         "summary": "Get workspace storage usage",

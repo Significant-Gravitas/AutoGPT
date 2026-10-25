@@ -18,7 +18,7 @@ beforeEach(() => {
   setTrialUser("billing-user");
   sessionStorage.clear();
   server.use(
-    http.get("*/api/credits/manage", () =>
+    http.get("*/api/internal/credits/manage", () =>
       HttpResponse.json({ url: "https://billing.stripe.com/test" }),
     ),
   );
@@ -27,7 +27,7 @@ afterEach(() => setTrialUser(null));
 
 it("keeps every reviewed Max amount out of replay, including the consent button and renewal copy", async () => {
   server.use(
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({
         tier: "PRO",
         monthly_cost: 5000,
@@ -37,7 +37,7 @@ it("keeps every reviewed Max amount out of replay, including the consent button 
         has_active_stripe_subscription: true,
       }),
     ),
-    http.post("*/api/credits/subscription/preview", () =>
+    http.post("*/api/internal/credits/subscription/preview", () =>
       HttpResponse.json(
         maxUpgradePreview({ adjustment_amount: 100, amount_due: 27378 }),
       ),
@@ -66,10 +66,10 @@ function StartPro() {
 it("keeps Pro's reviewed charge, discount, tax and full renewal terms masked in the real dialog", async () => {
   server.use(
     http.get(
-      "*/api/credits/pro-activation/current",
+      "*/api/internal/credits/pro-activation/current",
       () => new HttpResponse(null, { status: 404 }),
     ),
-    http.post("*/api/credits/pro-activation/preview", () =>
+    http.post("*/api/internal/credits/pro-activation/preview", () =>
       HttpResponse.json({
         ...quote,
         terms: {
@@ -98,10 +98,10 @@ it("keeps Pro's reviewed charge, discount, tax and full renewal terms masked in 
 
 it("masks the accepted trial offer in billing", async () => {
   server.use(
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({ tier: "TRIAL", monthly_cost: 0 }),
     ),
-    http.get("*/api/credits/trial", () =>
+    http.get("*/api/internal/credits/trial", () =>
       HttpResponse.json(
         trialResponse({
           usage_policy: "lifetime",
@@ -110,7 +110,7 @@ it("masks the accepted trial offer in billing", async () => {
         }),
       ),
     ),
-    http.get("*/api/chat/usage", () =>
+    http.get("*/api/internal/chat/usage", () =>
       HttpResponse.json({ tier: "TRIAL", daily: null, weekly: null }),
     ),
   );

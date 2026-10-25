@@ -125,7 +125,7 @@ function makeDashboard(attention: HomeAttentionItem[]): HomeDashboardResponse {
 
 function mockDashboard(attention: HomeAttentionItem[]) {
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json(makeDashboard(attention)),
     ),
   );
@@ -160,7 +160,7 @@ test("requires a second press to confirm a decline", async () => {
   const reviewRequests: unknown[] = [];
   mockDashboard([makeApproval(1)]);
   server.use(
-    http.post("/api/proxy/api/review/action", async ({ request }) => {
+    http.post("/api/proxy/api/internal/review/action", async ({ request }) => {
       reviewRequests.push(await request.json());
       return HttpResponse.json({ failed_count: 0, processed_count: 1 });
     }),
@@ -193,7 +193,7 @@ test("keeps a rejected review actionable instead of dropping the row", async () 
   const user = userEvent.setup();
   mockDashboard([makeApproval(1)]);
   server.use(
-    http.post("/api/proxy/api/review/action", () =>
+    http.post("/api/proxy/api/internal/review/action", () =>
       HttpResponse.json({
         failed_count: 1,
         processed_count: 0,

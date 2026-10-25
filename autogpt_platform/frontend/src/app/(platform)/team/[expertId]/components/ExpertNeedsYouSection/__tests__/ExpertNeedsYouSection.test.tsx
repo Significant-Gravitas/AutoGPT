@@ -22,7 +22,7 @@ test("an Expert's page reviews its held calls with Home's row and dialog", async
   const bare = homeHeldItem(folder("f1", "Q3 reports"), { expert: ada });
   const elsewhere = homeHeldItem(folder("f2", "Invoices"), { expert: leo });
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json(makeDashboard([email, bare, elsewhere])),
     ),
   );

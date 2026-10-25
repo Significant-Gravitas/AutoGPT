@@ -52,20 +52,23 @@ function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
 
 function useBillingHandlers(tier = "PRO") {
   server.use(
-    jsonHandler("get", "/api/credits/subscription", {
+    jsonHandler("get", "/api/internal/credits/subscription", {
       tier,
       monthly_cost: tier === "MAX" ? 32000 : 5000,
       has_active_stripe_subscription: true,
       status: "active",
     }),
-    jsonHandler("get", "/api/credits/manage", { url: PORTAL_URL }),
-    jsonHandler("get", "/api/credits", { credits: 1234 }),
-    jsonHandler("get", "/api/credits/transactions", {
+    jsonHandler("get", "/api/internal/credits/manage", { url: PORTAL_URL }),
+    jsonHandler("get", "/api/internal/credits", { credits: 1234 }),
+    jsonHandler("get", "/api/internal/credits/transactions", {
       transactions: [],
       next_transaction_time: null,
     }),
-    jsonHandler("get", "/api/credits/auto-top-up", { amount: 0, threshold: 0 }),
-    jsonHandler("get", "/api/credits/invoices", []),
+    jsonHandler("get", "/api/internal/credits/auto-top-up", {
+      amount: 0,
+      threshold: 0,
+    }),
+    jsonHandler("get", "/api/internal/credits/invoices", []),
     jsonHandler("get", "/api/v2/chat/copilot-usage", {
       daily: { percent_used: 0, resets_at: null },
       weekly: { percent_used: 0, resets_at: null },

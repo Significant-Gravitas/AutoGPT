@@ -76,8 +76,9 @@ describe("EditAgentModal", () => {
 
   it("disables the category field when the category list cannot be loaded", async () => {
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/store/categories", () =>
-        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/store/categories",
+        () => HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
     render(

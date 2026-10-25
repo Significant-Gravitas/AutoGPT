@@ -308,7 +308,7 @@ describe("Settings memory page", () => {
       mockHappyPath();
       server.use(
         http.get(
-          /\/api\/proxy\/api\/memory\/experts\/expert-gone\/(?:facts|overview)/,
+          /\/api\/proxy\/api\/internal\/memory\/experts\/expert-gone\/(?:facts|overview)/,
           () =>
             HttpResponse.json({ detail: "Expert not found" }, { status: 404 }),
         ),
@@ -347,7 +347,7 @@ describe("Settings memory page", () => {
         }),
       ),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${SESSION_ID}/stream`,
         async ({ request }) => {
           streamBodies.push(await request.clone().text());
           return streamSseResponse(

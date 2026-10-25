@@ -473,7 +473,7 @@ describe("FollowupsPage", () => {
       getListCopilotFollowupSchedulesMockHandler([
         makeFollowup({ id: "f1", message: "Still visible followup" }),
       ]),
-      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () =>
         HttpResponse.error(),
       ),
     );
@@ -487,10 +487,11 @@ describe("FollowupsPage", () => {
 
   test("shows the full error state only when both sources fail", async () => {
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
-        HttpResponse.error(),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups",
+        () => HttpResponse.error(),
       ),
-      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () =>
         HttpResponse.error(),
       ),
     );
@@ -507,7 +508,7 @@ describe("FollowupsPage", () => {
       getListCopilotFollowupSchedulesMockHandler([]),
       defaultGraphSchedulesHandler(),
       http.get(
-        "http://localhost:3000/api/proxy/api/schedules/followups/paused",
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups/paused",
         () => HttpResponse.error(),
       ),
     );
@@ -520,10 +521,11 @@ describe("FollowupsPage", () => {
 
   test("a paused chat stays listed when the schedules fail to load", async () => {
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
-        HttpResponse.error(),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups",
+        () => HttpResponse.error(),
       ),
-      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () =>
         HttpResponse.error(),
       ),
       getListPausedScheduledChatsMockHandler([
@@ -641,7 +643,7 @@ describe("FollowupsPage", () => {
           routine: false,
         },
       ]),
-      http.delete("*/api/schedules/:scheduleId", () =>
+      http.delete("*/api/internal/schedules/:scheduleId", () =>
         HttpResponse.json(
           { detail: "Schedule #sched-1 not found" },
           { status: 404 },

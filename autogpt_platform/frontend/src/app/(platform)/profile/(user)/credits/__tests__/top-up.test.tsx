@@ -34,7 +34,7 @@ describe("legacy credits page top-up", () => {
     const checkoutURL = "https://checkout.stripe.com/pay/cs_top_up";
     let topUps = 0;
     server.use(
-      http.get("*/api/credits/subscription", () =>
+      http.get("*/api/internal/credits/subscription", () =>
         HttpResponse.json({
           tier: "BASIC",
           monthly_cost: 0,
@@ -45,7 +45,7 @@ describe("legacy credits page top-up", () => {
           pending_tier_effective_at: null,
         }),
       ),
-      http.post("*/api/credits", () => {
+      http.post("*/api/internal/credits", () => {
         topUps += 1;
         return HttpResponse.json({ checkout_url: checkoutURL });
       }),
@@ -83,7 +83,7 @@ describe("legacy credits page top-up", () => {
         finishTopUp = resolve;
       });
       server.use(
-        http.post("*/api/credits", async () => {
+        http.post("*/api/internal/credits", async () => {
           topUps += 1;
           await pending;
           return outcome === "fails"

@@ -128,7 +128,7 @@ interface CreateBody {
 function loseCreateResponses(lost: number) {
   const bodies: CreateBody[] = [];
   server.use(
-    http.post("*/api/chat/sessions", async ({ request }) => {
+    http.post("*/api/internal/chat/sessions", async ({ request }) => {
       const body = ((await request.json()) ?? {}) as CreateBody;
       bodies.push(body);
       if (bodies.length <= lost) return HttpResponse.error();
@@ -145,7 +145,7 @@ function loseCreateResponses(lost: number) {
 function refuseFirstCreate() {
   const bodies: Array<{ session_id?: string }> = [];
   server.use(
-    http.post("*/api/chat/sessions", async ({ request }) => {
+    http.post("*/api/internal/chat/sessions", async ({ request }) => {
       const body = ((await request.json()) ?? {}) as { session_id?: string };
       bodies.push(body);
       if (bodies.length === 1) {

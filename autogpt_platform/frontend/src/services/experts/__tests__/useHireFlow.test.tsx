@@ -129,7 +129,7 @@ describe("useHireFlow", () => {
   test("tells the backend where the hire came from and sends no hire event itself", async () => {
     let body: unknown;
     server.use(
-      http.post("/api/proxy/api/experts", async ({ request }) => {
+      http.post("/api/proxy/api/internal/experts", async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({ expert: hiredMaria, failed_preloads: [] });
       }),
@@ -201,7 +201,7 @@ describe("useHireFlow", () => {
 
   test("keeps the picker open when saving the voice fails", async () => {
     server.use(
-      http.patch("/api/proxy/api/experts/:expertId/soul", () =>
+      http.patch("/api/proxy/api/internal/experts/:expertId/soul", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -221,7 +221,7 @@ describe("useHireFlow", () => {
 
   test("says so and stays put when the hire itself fails", async () => {
     server.use(
-      http.post("/api/proxy/api/experts", () =>
+      http.post("/api/proxy/api/internal/experts", () =>
         HttpResponse.json({ detail: "boom" }, { status: 503 }),
       ),
     );

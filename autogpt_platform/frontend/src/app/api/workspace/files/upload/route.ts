@@ -10,7 +10,10 @@ export async function POST(request: NextRequest) {
     const token = await getServerAuthToken();
     const backendUrl = environment.getAGPTServerBaseUrl();
 
-    const uploadUrl = new URL("/api/workspace/files/upload", backendUrl);
+    const uploadUrl = new URL(
+      "/api/internal/workspace/files/upload",
+      backendUrl,
+    );
     if (sessionId) {
       uploadUrl.searchParams.set("session_id", sessionId);
     }

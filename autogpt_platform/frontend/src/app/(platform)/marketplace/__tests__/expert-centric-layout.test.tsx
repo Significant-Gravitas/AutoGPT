@@ -156,7 +156,7 @@ describe("Marketplace", () => {
       }),
     );
     server.use(
-      http.get("/api/proxy/api/store/skills", ({ request }) => {
+      http.get("/api/proxy/api/internal/store/skills", ({ request }) => {
         const pageSize = Number(
           new URL(request.url).searchParams.get("page_size") ?? 8,
         );
@@ -197,7 +197,7 @@ describe("Marketplace", () => {
         { value: "sales", label: "Sales", description: "Deals and outreach" },
         { value: "content", label: "Content", description: "Writing" },
       ]),
-      http.get("/api/proxy/api/store/skills", ({ request }) => {
+      http.get("/api/proxy/api/internal/store/skills", ({ request }) => {
         const category = new URL(request.url).searchParams.get("category");
         const skills = category === "sales" ? [pipeline] : [outreach];
         return HttpResponse.json({

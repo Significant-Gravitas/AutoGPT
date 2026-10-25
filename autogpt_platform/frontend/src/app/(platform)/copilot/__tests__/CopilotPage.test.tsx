@@ -170,7 +170,8 @@ describe("CopilotPage context panel reset", () => {
           id: "session-a-file",
           title: "from-chat-a.md",
           mimeType: "text/markdown",
-          sourceUrl: "/api/proxy/api/workspace/files/session-a-file/download",
+          sourceUrl:
+            "/api/proxy/api/internal/workspace/files/session-a-file/download",
           origin: "agent",
         },
       },

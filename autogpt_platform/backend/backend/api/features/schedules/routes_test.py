@@ -50,27 +50,36 @@ def setup_app_auth(mock_jwt_user, test_user_id):
 
 
 EXPECTED_OPERATIONS = {
-    ("post", "/api/graphs/{graph_id}/schedules"): "postV1Create execution schedule",
-    ("get", "/api/graphs/{graph_id}/schedules"): (
-        "getV1List execution schedules for a graph"
-    ),
-    ("get", "/api/schedules"): "getV1List execution schedules for a user",
-    ("get", "/api/schedules/followups"): "listCopilotFollowupSchedules",
-    ("get", "/api/schedules/followups/paused"): "listPausedScheduledChats",
     (
         "post",
-        "/api/schedules/followups/{schedule_key}/resume",
+        "/api/internal/graphs/{graph_id}/schedules",
+    ): "postV1Create execution schedule",
+    ("get", "/api/internal/graphs/{graph_id}/schedules"): (
+        "getV1List execution schedules for a graph"
+    ),
+    ("get", "/api/internal/schedules"): "getV1List execution schedules for a user",
+    ("get", "/api/internal/schedules/followups"): "listCopilotFollowupSchedules",
+    ("get", "/api/internal/schedules/followups/paused"): "listPausedScheduledChats",
+    (
+        "post",
+        "/api/internal/schedules/followups/{schedule_key}/resume",
     ): "resumeScheduledChat",
     (
         "get",
-        "/api/schedules/followups/{schedule_key}/cadence",
+        "/api/internal/schedules/followups/{schedule_key}/cadence",
     ): "getScheduledChatCadence",
     (
         "post",
-        "/api/schedules/followups/{schedule_key}/cadence",
+        "/api/internal/schedules/followups/{schedule_key}/cadence",
     ): "setScheduledChatCadence",
-    ("delete", "/api/schedules/{schedule_id}"): "deleteV1Delete execution schedule",
-    ("patch", "/api/schedules/{schedule_id}"): "patchV1Update execution schedule",
+    (
+        "delete",
+        "/api/internal/schedules/{schedule_id}",
+    ): "deleteV1Delete execution schedule",
+    (
+        "patch",
+        "/api/internal/schedules/{schedule_id}",
+    ): "patchV1Update execution schedule",
 }
 
 
@@ -110,10 +119,11 @@ def test_followups_is_not_shadowed_by_the_schedule_id_route():
     paths = [
         route.path
         for route in real_app.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/api/schedules/")
+        if isinstance(route, APIRoute)
+        and route.path.startswith("/api/internal/schedules/")
     ]
-    assert paths.index("/api/schedules/followups") < paths.index(
-        "/api/schedules/{schedule_id}"
+    assert paths.index("/api/internal/schedules/followups") < paths.index(
+        "/api/internal/schedules/{schedule_id}"
     )
 
 

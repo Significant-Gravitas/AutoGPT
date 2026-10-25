@@ -96,7 +96,7 @@ describe("WalletCopilotUsage", () => {
   it("lets the user recover from a usage request failure", async () => {
     server.use(
       http.get(
-        "*/api/chat/usage",
+        "*/api/internal/chat/usage",
         () => new HttpResponse(null, { status: 503 }),
       ),
     );
@@ -178,7 +178,7 @@ describe("WalletCopilotUsage", () => {
     mockUsage(0, 0, "TRIAL");
     server.use(
       http.get(
-        "*/api/credits/trial",
+        "*/api/internal/credits/trial",
         () => new HttpResponse(null, { status: 503 }),
       ),
     );

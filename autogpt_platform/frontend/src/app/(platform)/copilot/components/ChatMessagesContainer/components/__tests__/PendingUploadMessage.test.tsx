@@ -93,7 +93,7 @@ describe("PendingUploadMessage", () => {
               name: "shot.png",
               mediaType: "image/png",
               isUploading: false,
-              url: "/api/proxy/api/workspace/files/file-2/download",
+              url: "/api/proxy/api/internal/workspace/files/file-2/download",
             },
           ],
         }}

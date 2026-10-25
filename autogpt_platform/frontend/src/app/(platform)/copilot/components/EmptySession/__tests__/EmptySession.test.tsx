@@ -128,7 +128,7 @@ describe("EmptySession — recipient-aware intro", () => {
 
 beforeEach(() => {
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json(makeDashboard([])),
     ),
   );
@@ -148,7 +148,7 @@ it("shows the task prompt above the home recap", async () => {
 
 it("keeps the prompt usable when the recap fails to load", async () => {
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json({ detail: "failed" }, { status: 500 }),
     ),
   );
@@ -176,7 +176,7 @@ it("keeps new tasks and the recap available without a rollout flag", async () =>
       await screen.findByPlaceholderText(/What's your role/),
     ).toBeDefined();
     await waitFor(() =>
-      expect(requestedPaths).toContain("/api/proxy/api/home"),
+      expect(requestedPaths).toContain("/api/proxy/api/internal/home"),
     );
   } finally {
     server.events.removeListener("request:start", record);
@@ -230,7 +230,7 @@ const teamPlaceholder =
 
 function mockDashboard(dashboard: HomeDashboardResponse) {
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json(dashboard),
     ),
   );
@@ -238,7 +238,9 @@ function mockDashboard(dashboard: HomeDashboardResponse) {
 
 it("keeps the discovery prompt without starter pills or suggestion requests for an empty account", async () => {
   const fetchSuggestions = vi.fn(() => HttpResponse.json({ themes: [] }));
-  server.use(http.get("*/api/chat/suggested-prompts", fetchSuggestions));
+  server.use(
+    http.get("*/api/internal/chat/suggested-prompts", fetchSuggestions),
+  );
   renderEmptySession("");
   await screen.findByRole("heading", { name: "Your recap" });
   expect(screen.getByPlaceholderText(/What's your role/)).toBeDefined();

@@ -5,7 +5,7 @@ import { ArtifactPanel } from "./ArtifactPanel";
 import { DEFAULT_ARTIFACT_PANEL_WIDTH, useCopilotUIStore } from "../../store";
 import type { ArtifactRef } from "../../store";
 
-const PROXY_BASE = "/api/proxy/api/workspace/files";
+const PROXY_BASE = "/api/proxy/api/internal/workspace/files";
 
 function makeArtifact(overrides?: Partial<ArtifactRef>): ArtifactRef {
   return {

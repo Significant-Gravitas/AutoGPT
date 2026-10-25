@@ -79,7 +79,7 @@ describe("SharePage (execution share viewer)", () => {
   test("renders the 'Share Link Not Found' card on a 404 from the backend", async () => {
     server.use(
       http.get(
-        "*/api/public/shared/:token",
+        "*/api/internal/public/shared/:token",
         () => new HttpResponse(null, { status: 404 }),
       ),
     );
@@ -105,7 +105,7 @@ describe("SharePage (execution share viewer)", () => {
       const { renew } = installCookiebot();
       server.use(
         http.get(
-          "*/api/public/shared/:token",
+          "*/api/internal/public/shared/:token",
           () => new HttpResponse(null, { status: 404 }),
         ),
       );
@@ -123,7 +123,7 @@ describe("SharePage (execution share viewer)", () => {
       vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
       server.use(
         http.get(
-          "*/api/public/shared/:token",
+          "*/api/internal/public/shared/:token",
           () => new HttpResponse(null, { status: 404 }),
         ),
       );

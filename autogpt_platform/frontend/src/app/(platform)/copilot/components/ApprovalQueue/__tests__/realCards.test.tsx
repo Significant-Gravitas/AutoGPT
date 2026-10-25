@@ -13,7 +13,7 @@ test.each(cards.map((card) => [card.story, card] as const))(
   "the real %s card names its subject and labels every input in plain words",
   async (_, card) => {
     server.use(
-      http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+      http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
         HttpResponse.json([card.review]),
       ),
       realCardSchemaHandler(cards),
@@ -56,7 +56,7 @@ test.each(cards.map((card) => [card.story, card] as const))(
 test("a code block's step renders as code", async () => {
   const card = cards.find((c) => c.story === "Execute Code Step")!;
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([card.review]),
     ),
     realCardSchemaHandler(cards),
@@ -73,7 +73,7 @@ test("a code block's step renders as code", async () => {
 test("a held command reads as its text, not as a JSON string", async () => {
   const card = cards.find((c) => c.story === "Sandbox Command")!;
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([card.review]),
     ),
   );
@@ -99,7 +99,7 @@ test("a held command reads as its text, not as a JSON string", async () => {
 test("a long body opens whole, in a box that scrolls", async () => {
   const card = cards.find((c) => c.story === "Gmail Newsletter")!;
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([card.review]),
     ),
     realCardSchemaHandler(cards),

@@ -122,7 +122,7 @@ describe("workspaceFileRenderer.getDownloadContent", () => {
     );
     expect(result).not.toBeNull();
     expect(result!.data).toBe(
-      "/api/proxy/api/workspace/files/file-123/download",
+      "/api/proxy/api/internal/workspace/files/file-123/download",
     );
   });
 
@@ -133,7 +133,7 @@ describe("workspaceFileRenderer.getDownloadContent", () => {
     );
     expect(result).not.toBeNull();
     expect(result!.data).toBe(
-      "/api/proxy/api/public/shared/abc-token-123/files/file-123/download",
+      "/api/proxy/api/internal/public/shared/abc-token-123/files/file-123/download",
     );
   });
 });

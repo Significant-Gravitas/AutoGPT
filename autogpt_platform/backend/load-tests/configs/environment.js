@@ -2,7 +2,7 @@
 // (default DEV). PREVIEW also needs PR_NUMBER.
 //
 // - BACKEND_URL: the backend's origin; /health lives here.
-// - API_BASE_URL: the backend's REST root (BACKEND_URL + /api).
+// - API_BASE_URL: the backend's REST root (BACKEND_URL + /api/internal).
 // - FRONTEND_URL: the Next.js app. Better Auth runs under /api/auth there,
 //   and the backend verifies tokens against its /api/auth/jwks.
 // - SIGNUP_ALLOWED: whether the authenticated tests may sign up throwaway
@@ -11,7 +11,7 @@ function target(name, backendUrl, frontendUrl, signupAllowed) {
   return {
     NAME: name,
     BACKEND_URL: backendUrl,
-    API_BASE_URL: `${backendUrl}/api`,
+    API_BASE_URL: `${backendUrl}/api/internal`,
     FRONTEND_URL: frontendUrl,
     SIGNUP_ALLOWED: signupAllowed,
   };

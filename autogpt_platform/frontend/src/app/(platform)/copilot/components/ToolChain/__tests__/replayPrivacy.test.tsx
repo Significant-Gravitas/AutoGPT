@@ -36,7 +36,7 @@ function savedOutput() {
     path: "tool-outputs/call-1.json",
     mime_type: "application/json",
     size_bytes: 90000,
-    download_url: "/api/workspace/files/file-1/download",
+    download_url: "/api/internal/workspace/files/file-1/download",
     preview: EMAIL,
   };
 }

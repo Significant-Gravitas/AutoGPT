@@ -65,7 +65,7 @@ test.describe("schedules journey", () => {
     await page.reload();
     await expect(page.getByText("Evening report")).toHaveCount(0);
     const runs = await page.request.get(
-      `/api/proxy/api/graphs/${graphId}/executions`,
+      `/api/proxy/api/internal/graphs/${graphId}/executions`,
     );
     expect(await runs.json()).toMatchObject({ executions: [] });
   });
@@ -92,7 +92,7 @@ async function selectOption(
 
 async function listSchedules(page: Page, graphId: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}/schedules`,
+    `/api/proxy/api/internal/graphs/${graphId}/schedules`,
   );
   expect(response.ok(), `listing schedules: ${response.status()}`).toBe(true);
   return (await response.json()) as Schedule[];
@@ -124,14 +124,14 @@ function expectWeekdayAt(schedule: Schedule, hour: number, minute: number) {
 
 async function setTimezone(page: Page) {
   const response = await page.request.post(
-    "/api/proxy/api/auth/user/timezone",
+    "/api/proxy/api/internal/auth/user/timezone",
     { data: { timezone: TIMEZONE } },
   );
   expect(response.ok(), "setting the user's timezone failed").toBe(true);
 }
 
 async function createAgent(page: Page, name: string): Promise<string> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       source: "upload",
       graph: {

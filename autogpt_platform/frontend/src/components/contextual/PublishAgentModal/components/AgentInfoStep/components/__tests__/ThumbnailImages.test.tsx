@@ -180,7 +180,7 @@ describe("ThumbnailImages", () => {
   it("points an account without a plan to the plans when generating is refused", async () => {
     toastSpy.mockClear();
     server.use(
-      http.post("*/api/store/submissions/generate_image", () =>
+      http.post("*/api/internal/store/submissions/generate_image", () =>
         HttpResponse.json(
           { detail: "A subscription is required." },
           { status: 402 },

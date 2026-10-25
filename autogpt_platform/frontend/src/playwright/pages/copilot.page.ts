@@ -33,7 +33,7 @@ export class CopilotPage extends BasePage {
 
   async createSessionViaApi(): Promise<string> {
     const response = await this.page.request.post(
-      "/api/proxy/api/chat/sessions",
+      "/api/proxy/api/internal/chat/sessions",
       { data: null },
     );
     expect(response.ok()).toBeTruthy();

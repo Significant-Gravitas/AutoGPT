@@ -22,7 +22,7 @@ describe("synthesizeSpeech", () => {
     await synthesizeSpeech("A first phrase.", "session-1");
 
     const [url, init] = vi.mocked(fetch).mock.calls[0];
-    expect(url).toBe("http://backend/api/chat/speech");
+    expect(url).toBe("http://backend/api/internal/chat/speech");
     expect(JSON.parse(init!.body as string)).toEqual({
       text: "A first phrase.",
       session_id: "session-1",

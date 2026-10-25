@@ -213,7 +213,7 @@ const dashboard: HomeDashboardResponse = {
 
 function mockDashboard(response: HomeDashboardResponse) {
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json(response),
     ),
   );
@@ -337,7 +337,7 @@ test("approving an item one-tap sends the review decision", async () => {
   const reviewRequests: unknown[] = [];
   mockDashboard({ ...dashboard, attention: [approvalItem] });
   server.use(
-    http.post("/api/proxy/api/review/action", async ({ request }) => {
+    http.post("/api/proxy/api/internal/review/action", async ({ request }) => {
       reviewRequests.push(await request.json());
       return HttpResponse.json({ failed_count: 0, processed_count: 1 });
     }),
@@ -374,7 +374,7 @@ test("declining an item records the confirmed decline", async () => {
   const reviewRequests: unknown[] = [];
   mockDashboard({ ...dashboard, attention: [approvalItem] });
   server.use(
-    http.post("/api/proxy/api/review/action", async ({ request }) => {
+    http.post("/api/proxy/api/internal/review/action", async ({ request }) => {
       reviewRequests.push(await request.json());
       return HttpResponse.json({ failed_count: 0, processed_count: 1 });
     }),
@@ -416,7 +416,7 @@ test("does not count a failed attention decision as actioned", async () => {
   let reviewAttempts = 0;
   mockDashboard({ ...dashboard, attention: [approvalItem] });
   server.use(
-    http.post("/api/proxy/api/review/action", () => {
+    http.post("/api/proxy/api/internal/review/action", () => {
       reviewAttempts += 1;
       return HttpResponse.json({
         failed_count: 1,
@@ -507,7 +507,7 @@ test("tracks briefing outcomes and team members with useful dimensions", async (
 test("shows a retryable page error when the aggregate cannot load", async () => {
   let attempts = 0;
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () => {
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () => {
       attempts += 1;
       return attempts === 1
         ? HttpResponse.json({ detail: "boom" }, { status: 500 })
@@ -537,7 +537,7 @@ test("does not track home_viewed until the dashboard responds", async () => {
     releaseDashboard = resolve;
   });
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, async () => {
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, async () => {
       await responseReady;
       return HttpResponse.json(dashboard);
     }),

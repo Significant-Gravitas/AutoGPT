@@ -207,7 +207,8 @@ def test_the_webhook_is_mounted_without_user_auth() -> None:
     route = next(
         r
         for r in real_app.routes
-        if isinstance(r, APIRoute) and r.path == "/api/email/mailerlite/webhook"
+        if isinstance(r, APIRoute)
+        and r.path == "/api/internal/email/mailerlite/webhook"
     )
     assert route.methods == {"POST"}
     assert route.dependant.dependencies == []

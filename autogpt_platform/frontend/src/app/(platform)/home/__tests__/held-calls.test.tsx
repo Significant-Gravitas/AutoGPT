@@ -19,7 +19,7 @@ import { homeHeldItem, makeDashboard } from "./heldItems";
 function serveAnswers(status = 200, failedCount = 0) {
   const requests: { reviews: Record<string, unknown>[] }[] = [];
   server.use(
-    http.post("*/api/review/action", async ({ request }) => {
+    http.post("*/api/internal/review/action", async ({ request }) => {
       requests.push((await request.json()) as (typeof requests)[number]);
       return HttpResponse.json(
         { approved_count: 1, rejected_count: 0, failed_count: failedCount },

@@ -63,7 +63,7 @@ describe("trial billing actions", () => {
   it("keeps cancellation retryable when the request fails", async () => {
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
-      http.post("*/api/credits/trial/cancel", () =>
+      http.post("*/api/internal/credits/trial/cancel", () =>
         HttpResponse.json({ detail: "Stripe is unavailable" }, { status: 502 }),
       ),
     );
@@ -270,7 +270,7 @@ describe("trial billing actions", () => {
       getGetTrialsGetTrialStatusMockHandler200(
         trialResponse({ eligible: true, active: false, status: null }),
       ),
-      http.post("*/api/credits/trial", () =>
+      http.post("*/api/internal/credits/trial", () =>
         HttpResponse.json({ detail: "Stripe is unavailable" }, { status: 502 }),
       ),
     );
@@ -301,7 +301,7 @@ describe("trial billing actions", () => {
             : trialOffer,
         }),
       ),
-      http.post("*/api/credits/trial", () => {
+      http.post("*/api/internal/credits/trial", () => {
         rejected = true;
         return HttpResponse.json(
           { detail: "Refresh the offer" },
@@ -338,7 +338,7 @@ describe("trial billing actions", () => {
 
   it("recovers a failed status request through the visible retry action", async () => {
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
       ),
     );

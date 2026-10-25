@@ -21,10 +21,10 @@ it.each([
   "reports the featured trial allowance at %s%% as %s",
   async (percent, status) => {
     server.use(
-      http.get("*/api/credits/subscription", () =>
+      http.get("*/api/internal/credits/subscription", () =>
         HttpResponse.json({ tier: "TRIAL", monthly_cost: 0 }),
       ),
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json(
           trialResponse({
             usage_policy: "lifetime",
@@ -32,7 +32,7 @@ it.each([
           }),
         ),
       ),
-      http.get("*/api/chat/usage", () =>
+      http.get("*/api/internal/chat/usage", () =>
         HttpResponse.json({
           tier: "TRIAL",
           daily: { percent_used: 5, resets_at: null },

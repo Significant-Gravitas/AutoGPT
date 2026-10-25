@@ -14,7 +14,7 @@ describe("Transaction history snapshot", () => {
   it("labels the credit cutoff even when a later page reports a currently completed run", async () => {
     const snapshot = "2026-09-05T08:14:10Z";
     server.use(
-      http.get("*/api/credits/transactions", ({ request }) => {
+      http.get("*/api/internal/credits/transactions", ({ request }) => {
         const laterPage = new URL(request.url).searchParams.has("cursor");
         return HttpResponse.json({
           transactions: laterPage

@@ -349,7 +349,7 @@ export function convertChatSessionMessagesToUiMessages(
     /** Override the URL emitted for attached-file ``FileUIPart``s.
      *  The default routes through the authed workspace download
      *  endpoint; public-share viewers pass a token-aware builder that
-     *  hits ``/api/public/shared/chats/<token>/files/<id>/download``
+     *  hits ``/api/internal/public/shared/chats/<token>/files/<id>/download``
      *  so anonymous readers can render attachments. */
     fileUrlBuilder?: (fileId: string) => string;
     /** ``active_stream.started_at`` of the turn the backend is still

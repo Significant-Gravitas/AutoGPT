@@ -38,17 +38,17 @@ vi.mock("@/lib/oauth-popup", () => ({
 import { ConnectToolsPanel } from "../ConnectToolsPanel";
 
 const PROVIDERS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/providers";
+  "http://localhost:3000/api/proxy/api/internal/integrations/providers";
 const CREDENTIALS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/credentials";
+  "http://localhost:3000/api/proxy/api/internal/integrations/credentials";
 const RECOMMENDED_URL =
-  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-providers";
+  "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/recommended-providers";
 const CREATE_CREDENTIALS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/:provider/credentials";
+  "http://localhost:3000/api/proxy/api/internal/integrations/:provider/credentials";
 const OAUTH_LOGIN_URL =
-  "http://localhost:3000/api/proxy/api/integrations/:provider/login";
+  "http://localhost:3000/api/proxy/api/internal/integrations/:provider/login";
 const OAUTH_CALLBACK_URL =
-  "http://localhost:3000/api/proxy/api/integrations/:provider/callback";
+  "http://localhost:3000/api/proxy/api/internal/integrations/:provider/callback";
 
 const REGISTRY = [
   {

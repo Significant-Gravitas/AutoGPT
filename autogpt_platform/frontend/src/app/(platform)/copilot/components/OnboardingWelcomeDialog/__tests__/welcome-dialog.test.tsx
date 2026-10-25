@@ -18,13 +18,13 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 
 import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog";
 
-const STEP_URL = "http://localhost:3000/api/proxy/api/onboarding/step";
+const STEP_URL = "http://localhost:3000/api/proxy/api/internal/onboarding/step";
 const PROVIDERS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/providers";
+  "http://localhost:3000/api/proxy/api/internal/integrations/providers";
 const CREDENTIALS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/credentials";
+  "http://localhost:3000/api/proxy/api/internal/integrations/credentials";
 const RECOMMENDED_URL =
-  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-providers";
+  "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/recommended-providers";
 
 // Every step completion the dialog posts, with the step name it claimed.
 function recordCompletedSteps(status = 200) {

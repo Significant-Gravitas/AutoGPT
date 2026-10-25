@@ -185,11 +185,11 @@ describe("ArtifactsPage - basic rendering", () => {
       releaseFolders = resolve;
     });
     server.use(
-      http.get("/api/proxy/api/workspace/files", () => {
+      http.get("/api/proxy/api/internal/workspace/files", () => {
         filesServed = true;
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
-      http.get("/api/proxy/api/workspace/folders", async () => {
+      http.get("/api/proxy/api/internal/workspace/folders", async () => {
         await foldersReady;
         return HttpResponse.json({
           folders: [
@@ -295,7 +295,7 @@ describe("ArtifactsPage - search filter", () => {
     useStorageHandler();
     const rootOnlyParams: (string | null)[] = [];
     server.use(
-      http.get("/api/proxy/api/workspace/files", ({ request }) => {
+      http.get("/api/proxy/api/internal/workspace/files", ({ request }) => {
         rootOnlyParams.push(new URL(request.url).searchParams.get("root_only"));
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
@@ -356,7 +356,7 @@ describe("ArtifactsPage - new menu", () => {
     });
     let listCalls = 0;
     server.use(
-      http.get("/api/proxy/api/workspace/files", () => {
+      http.get("/api/proxy/api/internal/workspace/files", () => {
         listCalls += 1;
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
@@ -387,7 +387,7 @@ describe("ArtifactsPage - new menu", () => {
     });
     let movedTo: string | null | undefined;
     server.use(
-      http.get("/api/proxy/api/workspace/folders", () =>
+      http.get("/api/proxy/api/internal/workspace/folders", () =>
         HttpResponse.json({
           folders: [
             {
@@ -401,11 +401,11 @@ describe("ArtifactsPage - new menu", () => {
           ],
         }),
       ),
-      http.get("/api/proxy/api/workspace/files", () =>
+      http.get("/api/proxy/api/internal/workspace/files", () =>
         HttpResponse.json({ files: [], offset: 0, has_more: false }),
       ),
       http.post(
-        "/api/proxy/api/workspace/folders/files/bulk-move",
+        "/api/proxy/api/internal/workspace/folders/files/bulk-move",
         async ({ request }) => {
           const body = (await request.json()) as {
             file_ids: string[];
@@ -451,7 +451,7 @@ describe("ArtifactsPage - row menu", () => {
     useStorageHandler();
     useFilesHandler([makeFile({ id: "open-me", name: "open-me.txt" })]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/open-me/download", () =>
+      http.get("/api/proxy/api/internal/workspace/files/open-me/download", () =>
         HttpResponse.text("hello world"),
       ),
     );
@@ -479,7 +479,7 @@ describe("ArtifactsPage - previews", () => {
       .getByTestId("artifacts-thumbnail")
       .querySelector("img");
     expect(thumbnail?.getAttribute("src")).toContain(
-      "/api/proxy/api/workspace/files/img1/preview?w=96",
+      "/api/proxy/api/internal/workspace/files/img1/preview?w=96",
     );
 
     await openHoverPreview();
@@ -525,7 +525,7 @@ describe("ArtifactsPage - previews", () => {
       makeFile({ id: "csv1", name: "data.csv", mime_type: "text/csv" }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/csv1/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/csv1/preview", () =>
         HttpResponse.text("name,age\nAda,36\nBob,40\n"),
       ),
     );
@@ -549,7 +549,7 @@ describe("ArtifactsPage - previews", () => {
       }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/ics1/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/ics1/preview", () =>
         HttpResponse.text(
           "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Launch sync\nDTSTART:20260615T130000Z\nLOCATION:Room 4\nEND:VEVENT\nEND:VCALENDAR",
         ),
@@ -574,7 +574,7 @@ describe("ArtifactsPage - previews", () => {
       }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/vcf1/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/vcf1/preview", () =>
         HttpResponse.text(
           "BEGIN:VCARD\nFN:Ada Lovelace\nORG:Analytical Engine\nEND:VCARD",
         ),
@@ -594,7 +594,7 @@ describe("ArtifactsPage - previews", () => {
       makeFile({ id: "md1", name: "notes.md", mime_type: "text/markdown" }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/md1/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/md1/preview", () =>
         HttpResponse.text("# Heading One\n\nbody paragraph"),
       ),
     );
@@ -613,7 +613,7 @@ describe("ArtifactsPage - previews", () => {
       makeFile({ id: "md3", name: "guide.md", mime_type: "text/markdown" }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/md3/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/md3/preview", () =>
         HttpResponse.text(
           [
             "## Section two",
@@ -657,7 +657,7 @@ describe("ArtifactsPage - previews", () => {
 
     const img = (await screen.findByAltText("pic.png")) as HTMLImageElement;
     expect(img.getAttribute("src")).toContain(
-      "/api/proxy/api/workspace/files/img1/preview?w=400",
+      "/api/proxy/api/internal/workspace/files/img1/preview?w=400",
     );
   });
 });
@@ -669,10 +669,10 @@ describe("ArtifactsPage - file viewer modal", () => {
       makeFile({ id: "md2", name: "doc.md", mime_type: "text/markdown" }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/md2/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/md2/preview", () =>
         HttpResponse.text("# Title"),
       ),
-      http.get("/api/proxy/api/workspace/files/md2/download", () =>
+      http.get("/api/proxy/api/internal/workspace/files/md2/download", () =>
         HttpResponse.text("# Title"),
       ),
     );
@@ -720,10 +720,10 @@ describe("ArtifactsPage - file viewer modal", () => {
       }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/up1/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/up1/preview", () =>
         HttpResponse.text("# uploaded"),
       ),
-      http.get("/api/proxy/api/workspace/files/up1/download", () =>
+      http.get("/api/proxy/api/internal/workspace/files/up1/download", () =>
         HttpResponse.text("# uploaded"),
       ),
     );
@@ -740,11 +740,11 @@ describe("ArtifactsPage - file viewer modal", () => {
       makeFile({ id: "dl1", name: "doc.md", mime_type: "text/markdown" }),
     ]);
     server.use(
-      http.get("/api/proxy/api/workspace/files/dl1/preview", () =>
+      http.get("/api/proxy/api/internal/workspace/files/dl1/preview", () =>
         HttpResponse.text("# doc"),
       ),
       http.get(
-        "/api/proxy/api/workspace/files/dl1/download",
+        "/api/proxy/api/internal/workspace/files/dl1/download",
         () => new HttpResponse("nope", { status: 500 }),
       ),
     );
@@ -767,7 +767,7 @@ describe("ArtifactsPage - expert filter", () => {
     useExpertsHandler();
     const requests: { expertId: string | null; rootOnly: string | null }[] = [];
     server.use(
-      http.get("/api/proxy/api/workspace/files", ({ request }) => {
+      http.get("/api/proxy/api/internal/workspace/files", ({ request }) => {
         const params = new URL(request.url).searchParams;
         requests.push({
           expertId: params.get("expert_id"),
@@ -866,13 +866,16 @@ describe("ArtifactsPage - rename", () => {
     server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
     let patchedName: string | null = null;
     server.use(
-      http.patch("/api/proxy/api/workspace/files/f1", async ({ request }) => {
-        const body = (await request.json()) as { name?: string };
-        patchedName = body.name ?? null;
-        return HttpResponse.json(
-          makeFile({ id: "f1", name: body.name ?? "old.txt" }),
-        );
-      }),
+      http.patch(
+        "/api/proxy/api/internal/workspace/files/f1",
+        async ({ request }) => {
+          const body = (await request.json()) as { name?: string };
+          patchedName = body.name ?? null;
+          return HttpResponse.json(
+            makeFile({ id: "f1", name: body.name ?? "old.txt" }),
+          );
+        },
+      ),
     );
 
     render(<ArtifactsPage />);

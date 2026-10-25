@@ -78,7 +78,7 @@ describe("cancel confirmation", () => {
           ? trialResponse({ active: false, status: "canceled" })
           : trialResponse(),
       ),
-      http.post("*/api/credits/trial/cancel", () => {
+      http.post("*/api/internal/credits/trial/cancel", () => {
         ended = true;
         return HttpResponse.json(
           { detail: "This trial has ended. Manage the plan in billing." },

@@ -5,7 +5,7 @@ import { expect, test } from "./fixtures";
 test.describe("builder save journey", () => {
   test.use({
     expectedResponses: [
-      { status: 400, url: "/api/proxy/api/graphs", method: "POST" },
+      { status: 400, url: "/api/proxy/api/internal/graphs", method: "POST" },
     ],
   });
 
@@ -47,9 +47,12 @@ test.describe("builder save journey", () => {
 });
 
 async function libraryAgentNames(page: Page, name: string) {
-  const response = await page.request.get("/api/proxy/api/library/agents", {
-    params: { search_term: name },
-  });
+  const response = await page.request.get(
+    "/api/proxy/api/internal/library/agents",
+    {
+      params: { search_term: name },
+    },
+  );
   expect(response.ok(), `GET library agents: ${response.status()}`).toBe(true);
   const body = (await response.json()) as { agents: { name: string }[] };
   return body.agents.map((agent) => agent.name);

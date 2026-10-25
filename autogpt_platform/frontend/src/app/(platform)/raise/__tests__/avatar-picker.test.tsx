@@ -57,14 +57,17 @@ function mockReducedMotion() {
 
 function generationHandlers(requests: unknown[] = []) {
   return [
-    http.post("*/api/experts/avatars/generations", async ({ request }) => {
-      requests.push(await request.json());
-      return HttpResponse.json(
-        { id: "job-1", status: "pending" },
-        { status: 202 },
-      );
-    }),
-    http.get("*/api/experts/avatars/generations/job-1", () =>
+    http.post(
+      "*/api/internal/experts/avatars/generations",
+      async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json(
+          { id: "job-1", status: "pending" },
+          { status: 202 },
+        );
+      },
+    ),
+    http.get("*/api/internal/experts/avatars/generations/job-1", () =>
       HttpResponse.json({
         id: "job-1",
         status: "complete",
