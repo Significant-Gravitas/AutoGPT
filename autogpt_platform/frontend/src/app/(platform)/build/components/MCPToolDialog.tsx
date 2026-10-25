@@ -15,12 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
-import { Button } from "@/components/__legacy__/ui/button";
-import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/atoms/Button/Button";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
 import { Label } from "@/components/__legacy__/ui/label";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { Text } from "@/components/atoms/Text/Text";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
@@ -398,7 +398,7 @@ export function MCPToolDialog({
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="mcp-server-url">Server URL</Label>
-              <Input
+              <BaseInput
                 id="mcp-server-url"
                 type="url"
                 placeholder="https://mcp.example.com/mcp"
@@ -432,13 +432,13 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="flex justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 <Text
                   variant="small-tight"
                   as="span"
                   tone="inherit"
-                  className="block underline"
+                  className="underline"
                 >
                   or enter an API credential manually
                 </Text>
@@ -458,16 +458,11 @@ export function MCPToolDialog({
                 />
 
                 <Label htmlFor="mcp-auth-token">
-                  <Text
-                    variant="body-medium-tight"
-                    as="span"
-                    tone="inherit"
-                    className="block"
-                  >
+                  <Text variant="body-medium-tight" as="span" tone="inherit">
                     {mcpAuthTokenLabel(manualAuthScheme)}
                   </Text>
                 </Label>
-                <Input
+                <BaseInput
                   id="mcp-auth-token"
                   aria-describedby="mcp-auth-token-hint"
                   type="password"
@@ -484,7 +479,6 @@ export function MCPToolDialog({
                 />
                 <Text
                   variant="small-tight"
-                  as="p"
                   id="mcp-auth-token-hint"
                   className="text-gray-500"
                 >
@@ -496,10 +490,9 @@ export function MCPToolDialog({
             {error && (
               <Text
                 variant="body-tight"
-                as="p"
                 role="alert"
                 aria-live="polite"
-                className="text-red-700 dark:text-red-400"
+                className="text-error-foreground dark:text-red-400"
               >
                 {error}
               </Text>
@@ -525,7 +518,7 @@ export function MCPToolDialog({
         <DialogFooter>
           {step === "tool" && (
             <Button
-              variant="outline"
+              variant="legacy-outline"
               onClick={() => {
                 setStep("url");
                 setSelectedTool(null);
@@ -534,11 +527,12 @@ export function MCPToolDialog({
               Back
             </Button>
           )}
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="legacy-outline" onClick={handleClose}>
             Cancel
           </Button>
           {step === "url" && (
             <Button
+              variant="legacy-default"
               onClick={
                 authRequired && !showManualToken
                   ? handleOAuthSignIn
@@ -566,7 +560,11 @@ export function MCPToolDialog({
             </Button>
           )}
           {step === "tool" && (
-            <Button onClick={handleConfirm} disabled={!selectedTool}>
+            <Button
+              variant="legacy-default"
+              onClick={handleConfirm}
+              disabled={!selectedTool}
+            >
               Add Block
             </Button>
           )}
@@ -649,7 +647,6 @@ function MCPToolCard({
       {cleanDescription && (
         <Text
           variant="small-relaxed"
-          as="p"
           className="px-3 pb-1 text-gray-500 dark:text-gray-400"
         >
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
@@ -681,36 +678,27 @@ function MCPToolCard({
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 dark:border-slate-700">
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
-                  <Text
-                    variant="small-medium-tight"
-                    as="span"
-                    tone="inherit"
-                    className="block"
-                  >
-                    Parameter
-                  </Text>
-                </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
-                  <Text
-                    variant="small-medium-tight"
-                    as="span"
-                    tone="inherit"
-                    className="block"
-                  >
-                    Type
-                  </Text>
-                </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
-                  <Text
-                    variant="small-medium-tight"
-                    as="span"
-                    tone="inherit"
-                    className="block"
-                  >
-                    Description
-                  </Text>
-                </th>
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
+                >
+                  Parameter
+                </Text>
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
+                >
+                  Type
+                </Text>
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
+                >
+                  Description
+                </Text>
               </tr>
             </thead>
             <tbody>
@@ -721,39 +709,30 @@ function MCPToolCard({
                     key={name}
                     className="border-b border-gray-50 last:border-0 dark:border-slate-700/50"
                   >
-                    <td className="px-2 py-1 text-gray-700 dark:text-gray-300">
-                      <Text
-                        variant="caption-sm-mono"
-                        as="span"
-                        tone="inherit"
-                        className="block"
-                      >
-                        {name}
-                        {required.has(name) && (
-                          <span className="ml-0.5 text-red-400">*</span>
-                        )}
-                      </Text>
-                    </td>
-                    <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
-                      <Text
-                        variant="small-tight"
-                        as="span"
-                        tone="inherit"
-                        className="block"
-                      >
-                        {schemaTypeLabel(prop)}
-                      </Text>
-                    </td>
-                    <td className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400">
-                      <Text
-                        variant="small-tight"
-                        as="span"
-                        tone="inherit"
-                        className="block truncate"
-                      >
-                        {prop.description ?? "—"}
-                      </Text>
-                    </td>
+                    <Text
+                      variant="caption-sm-mono"
+                      as="td"
+                      className="px-2 py-1 text-gray-700 dark:text-gray-300"
+                    >
+                      {name}
+                      {required.has(name) && (
+                        <span className="ml-0.5 text-red-400">*</span>
+                      )}
+                    </Text>
+                    <Text
+                      variant="small-tight"
+                      as="td"
+                      className="px-2 py-1 text-gray-500 dark:text-gray-400"
+                    >
+                      {schemaTypeLabel(prop)}
+                    </Text>
+                    <Text
+                      variant="small-tight"
+                      as="td"
+                      className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400"
+                    >
+                      {prop.description ?? "—"}
+                    </Text>
                   </tr>
                 );
               })}
