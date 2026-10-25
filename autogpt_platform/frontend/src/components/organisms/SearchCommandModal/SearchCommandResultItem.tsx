@@ -101,7 +101,7 @@ export function SearchCommandResultItem({
           </Text>
           {item.subtitle ? (
             <Text
-              variant="small-tight"
+              variant="small-medium-tight"
               as="div"
               tone="muted"
               data-slot="search-command-result-item-subtitle"
