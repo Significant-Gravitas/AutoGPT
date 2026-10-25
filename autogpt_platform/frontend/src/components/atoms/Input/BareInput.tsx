@@ -12,7 +12,9 @@ export interface BareInputProps
 // as that element did; a consumer's onKeyDown must use isKey itself.
 // TODO(tokens): no role holds neutral-200 #E5E5E5 (border is #E4E4E7) or
 // neutral-500 #737373. neutral-950 #0A0A0A is the focus role, a ring colour,
-// not a text colour (SECRT-3154).
+// not a text colour; the ring stays raw too, because focus has no .dark value
+// and this ring is neutral-300 in dark mode (SECRT-3154). The deleted file's
+// dark: classes are carried verbatim.
 export const BareInput = forwardRef<HTMLInputElement, BareInputProps>(
   function BareInput({ bare: _bare, className, type, ...props }, ref) {
     return (
@@ -20,7 +22,7 @@ export const BareInput = forwardRef<HTMLInputElement, BareInputProps>(
         data-slot="input-control"
         type={type}
         className={cn(
-          "flex h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 py-1 text-body-lg leading-6 shadow-sm transition-colors file:border-0 file:bg-transparent file:text-body file:font-medium file:leading-5 file:text-neutral-950 placeholder:text-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 md:text-body md:leading-5",
+          "flex h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 py-1 text-body-lg leading-6 shadow-sm transition-colors file:border-0 file:bg-transparent file:text-body file:font-medium file:leading-5 file:text-neutral-950 placeholder:text-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-800 dark:file:text-neutral-50 dark:placeholder:text-neutral-400 dark:focus-visible:ring-neutral-300 md:text-body md:leading-5",
           className,
         )}
         ref={ref}
