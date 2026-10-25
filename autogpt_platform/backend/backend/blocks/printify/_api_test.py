@@ -137,6 +137,36 @@ async def test_search_catalog_matches_singular_and_plural_names():
         assert [b.id for b in outputs[0][1]] == [400], query
 
 
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("glass", [7]),  # not "gla": a double s is not a plural
+        ("boss", []),  # not "bo", which is in "Bottle"
+        ("stickers", [400]),
+    ],
+)
+async def test_search_catalog_takes_off_one_plural_s_at_most(
+    query: str, expected: list[int]
+):
+    block = PrintifySearchCatalogBlock()
+    blueprints = [
+        {"id": 400, "title": "Kiss-Cut Stickers"},
+        {"id": 7, "title": "Glass Mug"},
+        {"id": 9, "title": "Water Bottle"},
+    ]
+    client, _ = _client(_response(200, blueprints))
+    with patch("backend.blocks.printify.catalog.PrintifyClient", return_value=client):
+        outputs = [
+            output
+            async for output in block.run(
+                block.Input(credentials=TEST_CREDENTIALS_INPUT, query=query),
+                credentials=TEST_CREDENTIALS,
+            )
+        ]
+
+    assert [b.id for b in outputs[0][1]] == expected
+
+
 async def test_upload_block_sends_a_file_as_base64_and_a_url_as_is():
     block = PrintifyUploadImageBlock()
     upload = AsyncMock(return_value=Mock(id="img", preview_url="", width=1, height=1))

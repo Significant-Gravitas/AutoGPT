@@ -220,3 +220,18 @@ async def test_the_integrations_ask_does_not_depend_on_the_langfuse_copy(
     assert '"integrations"' in system["content"]
     assert "not on the list" in system["content"]
     assert user["content"].endswith(TRANSCRIPT)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("icon", [["bell"], {"name": "bell"}])
+async def test_a_malformed_icon_costs_only_the_icon(client: MagicMock, icon: object):
+    """generate_intro never raises: an unhashable icon from the model falls
+    back to the default instead of escaping the set lookup."""
+    named = {"title": "List each sticker", "prompt": "Do it.", "integrations": []}
+    client.chat.completions.create.return_value = _generation_with(
+        [{**named, "icon": icon}] * 5
+    )
+
+    _, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert [p.icon for p in prompts] == [intro.DEFAULT_PROMPT_ICON] * 5

@@ -310,11 +310,18 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
             SuggestedPrompt(
                 title=title.strip()[:MAX_TITLE_CHARS],
                 prompt=prompt.strip()[:MAX_PROMPT_CHARS],
-                icon=icon if icon in PROMPT_ICONS else DEFAULT_PROMPT_ICON,
+                icon=prompt_icon(icon),
                 integrations=integrations,
             )
         )
     return prompts
+
+
+def prompt_icon(raw: object) -> str:
+    """``raw`` if it is one of our icon slugs, else the default. Checks the
+    type first: a list or dict is unhashable, and the set lookup would raise
+    where a bad icon should only cost its icon."""
+    return raw if isinstance(raw, str) and raw in PROMPT_ICONS else DEFAULT_PROMPT_ICON
 
 
 def _parse_integrations(raw: object) -> list[str] | None:

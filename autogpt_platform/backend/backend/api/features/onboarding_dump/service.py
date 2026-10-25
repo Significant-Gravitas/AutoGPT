@@ -845,11 +845,7 @@ def _stored_prompts(raw: object) -> list[SuggestedPrompt]:
         SuggestedPrompt(
             title=item["title"],
             prompt=item["prompt"],
-            icon=(
-                item["icon"]
-                if item.get("icon") in intro.PROMPT_ICONS
-                else intro.DEFAULT_PROMPT_ICON
-            ),
+            icon=intro.prompt_icon(item.get("icon")),
             integrations=_stored_integrations(item.get("integrations")),
         )
         for item in raw

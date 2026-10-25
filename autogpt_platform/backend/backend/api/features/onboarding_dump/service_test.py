@@ -963,6 +963,35 @@ async def test_intro_card_labels_prompts_that_need_a_tool_we_cannot_connect(
 
 
 @pytest.mark.asyncio
+async def test_a_stored_prompt_with_a_malformed_icon_costs_only_its_icon(
+    dumps: DumpStore,
+):
+    """A hand-edited or older row must not 500 the copilot home: an icon
+    that is a list or object falls back to the default."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You sell stickers.",
+        suggestedPrompts=[
+            {"title": "List stickers", "prompt": "Do it.", "icon": ["bell"]},
+            {"title": "Ship orders", "prompt": "Do it.", "icon": {"name": "bell"}},
+            {"title": "Watch prices", "prompt": "Do it.", "icon": "bell"},
+        ],
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert [p.icon for p in card.prompts] == [
+        intro.DEFAULT_PROMPT_ICON,
+        intro.DEFAULT_PROMPT_ICON,
+        "bell",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_intro_card_is_withheld_from_a_user_who_already_has_a_session(
     dumps: DumpStore, has_session: AsyncMock
 ):
