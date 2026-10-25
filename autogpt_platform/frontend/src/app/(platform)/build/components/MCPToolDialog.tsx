@@ -639,7 +639,7 @@ function MCPToolCard({
           {tool.name}
         </Text>
         {paramNames.length > 0 && (
-          <Badge variant="secondary" className="text-tiny leading-inherit">
+          <Badge variant="secondary" size="tiny">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
           </Badge>
         )}
@@ -660,11 +660,7 @@ function MCPToolCard({
       {!expanded && paramNames.length > 0 && (
         <div className="flex flex-wrap gap-1 px-3 pb-2">
           {paramNames.slice(0, 6).map((name) => (
-            <Badge
-              key={name}
-              variant="outline"
-              className="text-tiny font-normal leading-inherit"
-            >
+            <Badge key={name} variant="outline" size="tiny-normal">
               {name}
               {required.has(name) && (
                 <span className="ml-0.5 text-red-400">*</span>
@@ -672,10 +668,7 @@ function MCPToolCard({
             </Badge>
           ))}
           {paramNames.length > 6 && (
-            <Badge
-              variant="outline"
-              className="text-tiny font-normal leading-inherit"
-            >
+            <Badge variant="outline" size="tiny-normal">
               +{paramNames.length - 6} more
             </Badge>
           )}
@@ -685,17 +678,38 @@ function MCPToolCard({
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
         <div className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-800/50">
-          <table className="w-full text-caption leading-4">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 dark:border-slate-700">
                 <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
-                  Parameter
+                  <Text
+                    variant="small-medium-tight"
+                    as="span"
+                    tone="inherit"
+                    className="block"
+                  >
+                    Parameter
+                  </Text>
                 </th>
                 <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
-                  Type
+                  <Text
+                    variant="small-medium-tight"
+                    as="span"
+                    tone="inherit"
+                    className="block"
+                  >
+                    Type
+                  </Text>
                 </th>
                 <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
-                  Description
+                  <Text
+                    variant="small-medium-tight"
+                    as="span"
+                    tone="inherit"
+                    className="block"
+                  >
+                    Description
+                  </Text>
                 </th>
               </tr>
             </thead>
@@ -709,7 +723,7 @@ function MCPToolCard({
                   >
                     <td className="px-2 py-1 text-gray-700 dark:text-gray-300">
                       <Text
-                        variant="caption-sm-mono-inherit"
+                        variant="caption-sm-mono"
                         as="span"
                         tone="inherit"
                         className="block"
@@ -721,10 +735,24 @@ function MCPToolCard({
                       </Text>
                     </td>
                     <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
-                      {schemaTypeLabel(prop)}
+                      <Text
+                        variant="small-tight"
+                        as="span"
+                        tone="inherit"
+                        className="block"
+                      >
+                        {schemaTypeLabel(prop)}
+                      </Text>
                     </td>
                     <td className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400">
-                      {prop.description ?? "—"}
+                      <Text
+                        variant="small-tight"
+                        as="span"
+                        tone="inherit"
+                        className="block truncate"
+                      >
+                        {prop.description ?? "—"}
+                      </Text>
                     </td>
                   </tr>
                 );
