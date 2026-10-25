@@ -623,7 +623,7 @@ function MCPToolCard({
           variant="body-semibold-tight"
           as="span"
           tone="inherit"
-          className="flex-1 dark:text-action-foreground"
+          className="flex-1 dark:text-white"
         >
           {tool.name}
         </Text>
