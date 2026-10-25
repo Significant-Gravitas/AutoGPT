@@ -55,7 +55,6 @@ def test_importing_backend_turns_mem0_telemetry_off(tmp_path: Path):
         "assert os.environ['GRAPHITI_TELEMETRY_ENABLED'] == 'false'\n"
         "assert os.environ['MEM0_TELEMETRY'] == 'false'\n"
         "assert telemetry.MEM0_TELEMETRY is False\n"
-        # mem0ai 1.x creates no PostHog client at all when telemetry is off.
         "assert telemetry.client_telemetry.posthog is None\n",
         tmp_path,
     )

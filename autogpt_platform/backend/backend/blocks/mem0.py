@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Literal, Optional, Union
+import asyncio
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, SecretStr
 
@@ -46,13 +47,6 @@ class Mem0Base:
 
         return MemoryClient(api_key=credentials.api_key.get_secret_value())
 
-    @staticmethod
-    def _results(response: Any) -> list[dict[str, Any]]:
-        """mem0ai 1.x returns search and list results as ``{"results": [...]}``."""
-        if isinstance(response, dict):
-            return response.get("results", [])
-        return response
-
 
 Filter = dict[str, list[dict[str, str | dict[str, list[str]]]]]
 
@@ -76,7 +70,7 @@ class AddMemoryBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        content: Union[Content, Conversation] = SchemaField(
+        content: Content | Conversation = SchemaField(
             discriminator="discriminator",
             description="Content to add - either a string or list of message objects as output from an AI block",
             default=Content(discriminator="content", content="I'm a vegetarian"),
@@ -145,8 +139,9 @@ class AddMemoryBlock(Block, Mem0Base):
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
+        cancellation: asyncio.CancelledError | None = None
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             if isinstance(input_data.content, Conversation):
                 messages = input_data.content.messages
@@ -158,6 +153,7 @@ class AddMemoryBlock(Block, Mem0Base):
             params = {
                 "user_id": user_id,
                 "output_format": "v1.1",
+                "async_mode": False,
                 "metadata": input_data.metadata,
             }
 
@@ -166,15 +162,8 @@ class AddMemoryBlock(Block, Mem0Base):
             if input_data.limit_memory_to_agent:
                 params["agent_id"] = graph_id
 
-            # Use the client to add memory
-            # mem0ai 1.x queues an add by default and answers before the memory
-            # exists; wait for it so the block can output what was stored.
-            result = client.add(
-                messages,
-                async_mode=False,
-                **params,
-            )
-
+            pending_add, cancellation = await self._settle_add(client, messages, params)
+            result = pending_add.result()
             results = result.get("results", [])
             yield "results", results
 
@@ -187,6 +176,31 @@ class AddMemoryBlock(Block, Mem0Base):
 
         except Exception as e:
             yield "error", str(e)
+
+        if cancellation is not None:
+            raise cancellation
+
+    @staticmethod
+    async def _settle_add(
+        client: "MemoryClient", messages: list[dict[str, str]], params: dict[str, Any]
+    ) -> tuple[asyncio.Task[dict[str, Any]], asyncio.CancelledError | None]:
+        pending_add = asyncio.create_task(
+            asyncio.to_thread(client.add, messages, **params)
+        )
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                await asyncio.shield(pending_add)
+                break
+            except asyncio.CancelledError as exc:
+                # Event-loop shutdown can cancel the worker task directly.
+                if pending_add.cancelled():
+                    raise
+                cancellation = exc
+            except Exception:
+                # Let run retrieve the error after recording any cancellation.
+                break
+        return pending_add, cancellation
 
 
 class SearchMemoryBlock(Block, Mem0Base):
@@ -210,7 +224,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             default_factory=list,
             advanced=True,
         )
-        metadata_filter: Optional[dict[str, Any]] = SchemaField(
+        metadata_filter: dict[str, Any] | None = SchemaField(
             description="Optional metadata filters to apply",
             default=None,
         )
@@ -255,7 +269,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         **kwargs,
     ) -> BlockOutput:
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             filters: Filter = {
                 # This works with only one filter, so we can allow others to add on later
@@ -274,8 +288,10 @@ class SearchMemoryBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            result = self._results(client.search(input_data.query, filters=filters))
-            yield "memories", result
+            result = await asyncio.to_thread(
+                client.search, input_data.query, filters=filters
+            )
+            yield "memories", result["results"]
 
         except Exception as e:
             yield "error", str(e)
@@ -293,10 +309,10 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             default=False,
             advanced=False,
         )
-        categories: Optional[list[str]] = SchemaField(
+        categories: list[str] | None = SchemaField(
             description="Filter by categories", default=None
         )
-        metadata_filter: Optional[dict[str, Any]] = SchemaField(
+        metadata_filter: dict[str, Any] | None = SchemaField(
             description="Optional metadata filters to apply",
             default=None,
         )
@@ -339,7 +355,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         **kwargs,
     ) -> BlockOutput:
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             filters: Filter = {
                 "AND": [
@@ -357,7 +373,8 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            memories = self._results(client.get_all(filters=filters))
+            result = await asyncio.to_thread(client.get_all, filters=filters)
+            memories = result["results"]
 
             yield "memories", memories
 
@@ -377,14 +394,14 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             default=False,
             advanced=False,
         )
-        categories: Optional[list[str]] = SchemaField(
+        categories: list[str] | None = SchemaField(
             description="Filter by categories", default=None
         )
-        conversation_id: Optional[str] = SchemaField(
+        conversation_id: str | None = SchemaField(
             description="Optional conversation ID to retrieve the latest memory from (uses run_id)",
             default=None,
         )
-        metadata_filter: Optional[dict[str, Any]] = SchemaField(
+        metadata_filter: dict[str, Any] | None = SchemaField(
             description="Optional metadata filters to apply",
             default=None,
         )
@@ -396,7 +413,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
         )
 
     class Output(BlockSchemaOutput):
-        memory: Optional[dict[str, Any]] = SchemaField(
+        memory: dict[str, Any] | None = SchemaField(
             description="Latest memory if found"
         )
         found: bool = SchemaField(description="Whether a memory was found")
@@ -431,7 +448,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
         **kwargs,
     ) -> BlockOutput:
         try:
-            client = self._get_client(credentials)
+            client = await asyncio.to_thread(self._get_client, credentials)
 
             filters: Filter = {
                 "AND": [
@@ -449,7 +466,8 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             if input_data.metadata_filter:
                 filters["AND"].append({"metadata": input_data.metadata_filter})
 
-            memories = self._results(client.get_all(filters=filters))
+            result = await asyncio.to_thread(client.get_all, filters=filters)
+            memories = result["results"]
 
             if memories:
                 # Return the latest memory (first in the list as they're sorted by recency)
@@ -471,8 +489,8 @@ class MockMemoryClient:
     def add(self, *args, **kwargs):
         return {"results": [{"event": "CREATED", "memory": "test memory"}]}
 
-    def search(self, *args, **kwargs) -> dict[str, Any]:
+    def search(self, *args, **kwargs) -> dict[str, list[dict[str, str]]]:
         return {"results": [{"id": "test-memory", "content": "test content"}]}
 
-    def get_all(self, *args, **kwargs) -> dict[str, Any]:
+    def get_all(self, *args, **kwargs) -> dict[str, list[dict[str, str]]]:
         return {"results": [{"id": "test-memory", "content": "test content"}]}

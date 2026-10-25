@@ -12,19 +12,27 @@ export function SearchCommandSkeleton({ rows = 4 }: Props) {
       role="presentation"
       aria-hidden="true"
       data-testid="search-command-skeleton"
+      data-slot="search-command-skeleton"
       className="flex flex-col gap-1 px-2"
     >
-      <div className="px-3 pb-1 pt-2">
+      <div
+        data-slot="search-command-skeleton-header"
+        className="px-3 pb-1 pt-2"
+      >
         <Skeleton className="h-3 w-16" />
       </div>
-      <div className="flex flex-col">
+      <div data-slot="search-command-skeleton-list" className="flex flex-col">
         {Array.from({ length: rows }, (_, idx) => (
           <div
             key={idx}
+            data-slot="search-command-skeleton-row"
             className="flex items-center gap-2.5 rounded-md px-3 py-2"
           >
             <Skeleton className="h-4 w-4 rounded" />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div
+              data-slot="search-command-skeleton-row-text"
+              className="flex min-w-0 flex-1 flex-col gap-1"
+            >
               <Skeleton className="h-3.5 w-[55%]" />
               <Skeleton className="h-3 w-[35%]" />
             </div>

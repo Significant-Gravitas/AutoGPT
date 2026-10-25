@@ -23,6 +23,16 @@ describe("credential badges in messages", () => {
     expect(container.querySelectorAll("a")).toHaveLength(0);
   });
 
+  it("ends a message with one mention where its text ends", async () => {
+    const { container } = render(
+      <CredentialMentionMarkdown>
+        {"Check today's mail in [Work Gmail](credential://google/work-id)."}
+      </CredentialMentionMarkdown>,
+    );
+    expect(await screen.findByText("Work Gmail")).toBeTruthy();
+    expect(container.textContent).toBe("Check today's mail in Work Gmail.");
+  });
+
   it("keeps the scrollable table wrapper from the message renderer", async () => {
     const { container } = render(
       <CredentialMentionMarkdown>
