@@ -285,12 +285,15 @@ const MultiSelectorList = forwardRef<
     >
       {children}
       <CommandEmpty data-slot="multi-select-empty">
-        <span
+        <Text
+          variant="body-tight"
+          as="span"
+          tone="inherit"
           data-slot="multi-select-empty-text"
           className="text-muted-foreground"
         >
           No results found
-        </span>
+        </Text>
       </CommandEmpty>
     </CommandList>
   );

@@ -51,7 +51,7 @@ const CommandEmpty = React.forwardRef<
     <CommandPrimitive.Empty
       ref={ref}
       data-slot="command-empty"
-      className="py-6 text-center text-body leading-5"
+      className="py-6 text-center"
       {...props}
     />
   );
