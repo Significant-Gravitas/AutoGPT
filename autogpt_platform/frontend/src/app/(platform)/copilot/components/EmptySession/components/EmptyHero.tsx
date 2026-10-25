@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { TextGenerateEffect } from "@/components/molecules/TextGenerateEffect/TextGenerateEffect";
+import { TextGenerateEffect } from "./TextGenerateEffect/TextGenerateEffect";
 import { getExpertIntroSuffix } from "../helpers";
 import { EditNameDialog } from "./EditNameDialog/EditNameDialog";
 

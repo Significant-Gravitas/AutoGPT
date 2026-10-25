@@ -53,4 +53,21 @@ describe("TextGenerateEffect", () => {
       expect.objectContaining({ duration: 0.6 }),
     );
   });
+
+  it("uses the props of the render it runs after, and ignores later prop changes", () => {
+    const { rerender } = render(
+      <TextGenerateEffect words="First words" duration={0.5} />,
+    );
+    rerender(<TextGenerateEffect words="First words" duration={0.7} />);
+    expect(animate).toHaveBeenCalledTimes(2);
+    expect(animate).toHaveBeenLastCalledWith(
+      "span",
+      { opacity: 1, filter: "blur(0px)" },
+      expect.objectContaining({ duration: 0.7 }),
+    );
+
+    rerender(<TextGenerateEffect words="Other words" duration={0.9} />);
+    rerender(<TextGenerateEffect words="Other words" duration={0.9} />);
+    expect(animate).toHaveBeenCalledTimes(2);
+  });
 });
