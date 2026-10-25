@@ -161,10 +161,6 @@ class OAuthAuthorizationCodeInfo(BaseModel):
     code_challenge_method: Optional[str] = None
     used_at: Optional[datetime] = None
 
-    @property
-    def is_used(self) -> bool:
-        return self.used_at is not None
-
     @staticmethod
     def from_db(code: PrismaOAuthAuthorizationCode):
         return OAuthAuthorizationCodeInfo(
@@ -228,10 +224,6 @@ class OAuthRefreshTokenInfo(BaseModel):
     expires_at: datetime
     application_id: str
     revoked_at: Optional[datetime] = None
-
-    @property
-    def is_revoked(self) -> bool:
-        return self.revoked_at is not None
 
     @staticmethod
     def from_db(token: PrismaOAuthRefreshToken):
