@@ -55,6 +55,9 @@ _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 # the tool wrapper (which injects them into tool output) to sdk/service.py
 # (which persists a user row after the tool_result row).
 _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
+# The ids a drain took from a session's queue, kept as long as the queue
+# itself would have kept them.
+_TAKEN_KEY_PREFIX = "copilot:pending-taken:"
 
 # Payload sent on the pub/sub notify channel.  Subscribers treat any
 # message as a wake-up hint; the value itself is not meaningful.
@@ -428,7 +431,30 @@ async def drain_pending_messages(
             len(messages),
             session_id,
         )
+        await _mark_taken(redis, session_id, messages)
     return messages
+
+
+def _taken_key(session_id: str) -> str:
+    return f"{_TAKEN_KEY_PREFIX}{{{session_id}}}"
+
+
+async def _mark_taken(
+    redis: Any, session_id: str, messages: list[PendingMessage]
+) -> None:
+    """Remember which messages a drain took. A sender whose push raised after
+    its write landed asks whether its message was queued; once a turn has
+    drained (and perhaps saved) it, the queue alone no longer says so."""
+    try:
+        key = _taken_key(session_id)
+        await cast("Any", redis.sadd(key, *[message.id for message in messages]))
+        await cast("Any", redis.expire(key, _PENDING_TTL_SECONDS))
+    except Exception:
+        logger.warning(
+            "pending_messages: could not record drained messages for session=%s",
+            session_id,
+            exc_info=True,
+        )
 
 
 def _from_buffer(data: Any) -> PendingMessage:
@@ -537,9 +563,13 @@ async def stash_pending_for_persist(
 
 
 async def pending_message_waiting(session_id: str, message_id: str) -> bool | None:
-    """Whether the message with this id waits in the session's queue, or in
-    the persist queue a drain moves it to. None when Redis cannot say."""
+    """Whether the message with this id waits in the session's queue, waits
+    in the persist queue a drain moves it to, or was taken by a drain. None
+    when Redis cannot say."""
     try:
+        redis = await get_redis_async()
+        if await cast("Any", redis.sismember(_taken_key(session_id), message_id)):
+            return True
         waiting = [
             *await peek_pending_messages(session_id),
             *await peek_pending_for_persist(session_id),

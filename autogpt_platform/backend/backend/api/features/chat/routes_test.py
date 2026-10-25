@@ -1566,9 +1566,11 @@ def test_stream_chat_answers_nothing_for_a_copy_of_an_accepted_send(
     not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
     reason="needs Redis",
 )
-@pytest.mark.parametrize("landed", [True, False], ids=["landed", "never-landed"])
+@pytest.mark.parametrize(
+    "landed", ["queued", "drained", "never"], ids=["landed", "drained", "never-landed"]
+)
 async def test_a_push_that_errors_is_settled_by_whether_it_landed(
-    mocker: pytest_mock.MockerFixture, test_user_id: str, landed: bool
+    mocker: pytest_mock.MockerFixture, test_user_id: str, landed: str
 ) -> None:
     """The queue's write commits, then its reply is lost (a timeout, a
     reset): the push raises though the decision is queued. Its approval and
@@ -1585,8 +1587,10 @@ async def test_a_push_that_errors_is_settled_by_whether_it_landed(
     async def push_then_lose_the_reply(
         session: str, message: PendingMessage, **_: object
     ) -> int:
-        if landed:
+        if landed != "never":
             await pending_messages_module.push_pending_message(session, message)
+        if landed == "drained":  # a running turn takes it before the check
+            await pending_messages_module.drain_pending_messages(session)
         raise ConnectionError("reply lost")
 
     mocker.patch(
@@ -1615,11 +1619,11 @@ async def test_a_push_that_errors_is_settled_by_whether_it_landed(
         test_user_id,
         session_id,
     )
-    assert approved is landed
+    assert approved is (landed != "never")
     retry = await pending_messages_module.claim_client_message(
         session_id, "click-1", "retry"
     )
-    assert (retry == "accepted") is landed
+    assert (retry == "accepted") is (landed != "never")
 
 
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
