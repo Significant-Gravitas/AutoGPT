@@ -414,26 +414,6 @@ def http_status_error(status: int, reason: str | None, body: bytes) -> Exception
     return Exception(message)
 
 
-_READ_CHUNK_BYTES = 64 * 1024
-
-
-async def _read_body(response: ClientResponse, limit: int | None) -> bytes:
-    """The response body, or its first ``limit + 1`` bytes when capped.
-
-    Read in chunks of the decompressed stream and stopped at the cap, so
-    neither a long body nor a short compressed one that expands is held
-    whole. Leaving the response context unread closes its connection.
-    """
-    if limit is None:
-        return await response.read()
-    body = bytearray()
-    async for chunk in response.content.iter_chunked(_READ_CHUNK_BYTES):
-        body.extend(chunk[: limit + 1 - len(body)])
-        if len(body) > limit:
-            break
-    return bytes(body)
-
-
 def _return_last_result(retry_state: RetryCallState) -> "Response":
     """
     Ensure the final attempt's response is returned when retrying stops.
@@ -726,3 +706,23 @@ class Requests:
 
     async def patch(self, url: str, *args, **kwargs) -> Response:
         return await self.request("PATCH", url, *args, **kwargs)
+
+
+_READ_CHUNK_BYTES = 64 * 1024
+
+
+async def _read_body(response: ClientResponse, limit: int | None) -> bytes:
+    """The response body, or its first ``limit + 1`` bytes when capped.
+
+    Read in chunks of the decompressed stream and stopped at the cap, so
+    neither a long body nor a short compressed one that expands is held
+    whole. Leaving the response context unread closes its connection.
+    """
+    if limit is None:
+        return await response.read()
+    body = bytearray()
+    async for chunk in response.content.iter_chunked(_READ_CHUNK_BYTES):
+        body.extend(chunk[: limit + 1 - len(body)])
+        if len(body) > limit:
+            break
+    return bytes(body)
