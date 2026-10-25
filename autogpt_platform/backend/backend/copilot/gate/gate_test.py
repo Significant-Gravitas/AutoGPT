@@ -379,6 +379,35 @@ async def test_ask_first_delegation_holds_otto_s_hand_off_whatever_the_chat_s_mo
     assert "Ask first" in decision.reason
 
 
+async def test_a_hand_off_held_by_the_settings_is_not_labelled_the_chats_mode(
+    gate_on, clean_session_state
+):
+    """Home and the card label a mode hold with the chat's mode ("Auto"). A
+    hand-off the user's delegation settings held is the user's own rule, so
+    its card carries the settings' reason instead of the chat's mode."""
+    settings, db, resolve = _hand_off_settings(DelegationSettings(mode="ask_first"))
+    with settings, db, resolve:
+        await check_action("delegate_to_expert", _HAND_OFF, "u", _session("auto"))
+
+    opened = review_store.open_review
+    assert isinstance(opened, AsyncMock)
+    kwargs = opened.await_args.kwargs
+    assert kwargs["reason_kind"] == "rule"
+    assert "Ask first" in opened.await_args.args[5]
+
+
+async def test_a_hand_off_in_an_ask_first_chat_stays_a_mode_hold(
+    gate_on, clean_session_state
+):
+    settings, db, resolve = _hand_off_settings(DelegationSettings(mode="ask_first"))
+    with settings, db, resolve:
+        await check_action("delegate_to_expert", _HAND_OFF, "u", _session("ask_first"))
+
+    opened = review_store.open_review
+    assert isinstance(opened, AsyncMock)
+    assert opened.await_args.kwargs["reason_kind"] == "mode"
+
+
 @pytest.mark.parametrize("tool", ["delegate_to_expert", "handoff_to_expert"])
 async def test_auto_delegation_lets_otto_s_hand_off_run_in_an_auto_chat(
     gate_on, clean_session_state, tool

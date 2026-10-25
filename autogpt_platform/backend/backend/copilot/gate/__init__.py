@@ -336,7 +336,8 @@ async def rule_on(
     call the chat itself makes, which the user's delegation settings also
     cover (ask before anything external); a workflow's step is not one.
     ``asks_because`` is a floor with its own reason: the user's delegation
-    settings holding a hand-off."""
+    settings holding a hand-off. Its card is the user's rule, not the chat's
+    mode, so Home and the card don't label it with the chat's mode."""
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
@@ -362,11 +363,11 @@ async def rule_on(
         verdict = await verdict_for(mode, effect, user_id, session)
     else:
         verdict = verdict_for_effect(mode, effect)
-    if (
-        rule is None
-        and verdict is Verdict.RUN
-        and (asks_because or _mode_asks(mode, subject, floor))
-    ):
+    if rule is None and verdict is Verdict.RUN and asks_because:
+        # The user's own delegation setting holds it, not the chat's mode: the
+        # card says the setting's reason rather than labelling the chat's mode.
+        return Ruling(run=False, reason=asks_because, reason_kind="rule", by="rule")
+    if rule is None and verdict is Verdict.RUN and _mode_asks(mode, subject, floor):
         verdict = Verdict.ASK
     by = "rule" if rule else "mode"
     if verdict is Verdict.RUN:
@@ -374,7 +375,7 @@ async def rule_on(
     if verdict is Verdict.ASK and subject is not None and subject.reason:
         return Ruling(run=False, reason=subject.reason, reason_kind="subject", by=by)
     if verdict is Verdict.ASK:
-        reason = _ASK_FIRST if mode == "ask_first" else asks_because or _OUTWARD
+        reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
         return Ruling(run=False, reason=reason, by=by)
     judgement = await judge()
     # Only an ask carries the supervisor's words onto a card.
