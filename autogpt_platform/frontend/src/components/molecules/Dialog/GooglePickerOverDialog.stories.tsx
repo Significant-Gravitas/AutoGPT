@@ -5,7 +5,6 @@ import {
   getPostV1GetPickerTokenMockHandler,
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import type { CredentialsMetaResponse as SavedCredential } from "@/lib/autogpt-server-api/types";
 import {
   CredentialsProvidersContext,
   type CredentialsProviderData,
@@ -38,7 +37,7 @@ const credential: CredentialsMetaResponse = {
   username: "story@example.com",
 };
 
-const savedCredential: SavedCredential = {
+const savedCredential: CredentialsProviderData["savedCredentials"][number] = {
   id: credential.id,
   provider: "google",
   type: "oauth2",
