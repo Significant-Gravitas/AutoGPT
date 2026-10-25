@@ -5025,6 +5025,30 @@ def _maybe_prepend_seen_capabilities(
     return notice + query_message if notice else query_message
 
 
+async def _persist_stranded_followups(
+    session: ChatSession, state: "_RetryState | None", log_prefix: str
+) -> None:
+    """Save the follow-ups a tool result carried to the model that no later
+    tool output saved, because the turn stopped, failed or ended first.
+    Unsaved they would wait in the persist queue though the model read them,
+    and a card decision among them would hold its card until it expired."""
+    try:
+        stranded = await drain_pending_for_persist(session.session_id)
+        if stranded:
+            await persist_pending_as_user_rows(
+                session,
+                state.transcript_builder if state is not None else None,
+                stranded,
+                log_prefix=log_prefix,
+            )
+    except Exception:
+        logger.warning(
+            "%s Could not save follow-ups left waiting to be saved",
+            log_prefix,
+            exc_info=True,
+        )
+
+
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
     session_id: str,
     message: str | None = None,
@@ -6743,6 +6767,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         turn_error = sys.exception()
         tool_display_bridge.reset()
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
+        await _persist_stranded_followups(session, state, log_prefix)
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
         # nothing to clean up here — any message pushed after that
