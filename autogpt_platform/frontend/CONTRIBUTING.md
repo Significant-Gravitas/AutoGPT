@@ -505,8 +505,8 @@ Check a flag in a client component:
 ```tsx
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
-export function SkillsPanel() {
-  const enabled = useGetFlag(Flag.SKILLS_HUB);
+export function VoiceControls() {
+  const enabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   if (!enabled) return null;
   return <div>Feature is enabled!</div>;
 }

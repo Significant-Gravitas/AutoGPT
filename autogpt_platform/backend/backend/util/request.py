@@ -71,7 +71,11 @@ BLOCKED_IP_NETWORKS = [
     ipaddress.ip_network("224.0.0.0/4"),  # Multicast
     ipaddress.ip_network("240.0.0.0/4"),  # Reserved for Future Use
     # IPv6 Ranges
+    ipaddress.ip_network("::/128"),  # Unspecified; Linux connects it to ::1
     ipaddress.ip_network("::1/128"),  # Loopback
+    # Local-use NAT64 (RFC 8215): it translates to addresses inside some network,
+    # and not always with the IPv4 address in the last 32 bits.
+    ipaddress.ip_network("64:ff9b:1::/48"),
     ipaddress.ip_network("fc00::/7"),  # Unique local addresses (ULA)
     ipaddress.ip_network("fe80::/10"),  # Link-local
     ipaddress.ip_network("ff00::/8"),  # Multicast
@@ -81,22 +85,50 @@ BLOCKED_IP_NETWORKS = [
 ALLOWED_SCHEMES = ["http", "https"]
 HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname pattern
 
+# IPv6 prefixes whose last 32 bits are an IPv4 address the network may route
+# the connection to: the well-known NAT64 prefix (RFC 6052), SIIT (RFC 2765)
+# and the deprecated IPv4-compatible form (RFC 4291).
+_IPV4_IN_LOW_BITS_NETWORKS = [
+    ipaddress.ip_network("64:ff9b::/96"),
+    ipaddress.ip_network("::ffff:0:0:0/96"),
+    ipaddress.ip_network("::/96"),
+]
+
+
+def _embedded_ipv4(ip_addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 address encodes, if it is a form that embeds one."""
+    if ip_addr.ipv4_mapped:
+        return ip_addr.ipv4_mapped
+    if ip_addr.sixtofour:
+        return ip_addr.sixtofour
+    if ip_addr.teredo:
+        # (server, client): the client is the host the packets are delivered to
+        return ip_addr.teredo[1]
+    if any(ip_addr in network for network in _IPV4_IN_LOW_BITS_NETWORKS):
+        return ipaddress.IPv4Address(int(ip_addr) & 0xFFFFFFFF)
+    return None
+
 
 def _is_ip_blocked(ip: str) -> bool:
     """
     Checks if the IP address is in a blocked network.
 
-    IPv4-mapped IPv6 addresses (e.g. ``::ffff:127.0.0.1``) are normalized to
-    their IPv4 equivalent before checking, so the IPv4 blocklist cannot be
-    bypassed by encoding a private IPv4 address as IPv6.
+    IPv6 addresses that embed an IPv4 address (IPv4-mapped ``::ffff:127.0.0.1``,
+    6to4, Teredo, NAT64, SIIT and IPv4-compatible) are also checked as that IPv4
+    address, so the IPv4 blocklist cannot be bypassed by encoding a private IPv4
+    address as IPv6.
     """
     ip_addr = ipaddress.ip_address(ip)
 
-    # Normalize IPv4-mapped IPv6 → IPv4 so the IPv4 blocklist applies
-    if isinstance(ip_addr, ipaddress.IPv6Address) and ip_addr.ipv4_mapped:
-        ip_addr = ip_addr.ipv4_mapped
+    if any(ip_addr in network for network in BLOCKED_IP_NETWORKS):
+        return True
 
-    return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
+    if isinstance(ip_addr, ipaddress.IPv6Address):
+        embedded = _embedded_ipv4(ip_addr)
+        if embedded is not None:
+            return any(embedded in network for network in BLOCKED_IP_NETWORKS)
+
+    return False
 
 
 # Lower-cased: HTTP header names are case-insensitive, so a caller passing

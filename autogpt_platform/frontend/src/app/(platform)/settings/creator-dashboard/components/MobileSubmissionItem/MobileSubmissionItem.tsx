@@ -91,10 +91,10 @@ export function MobileSubmissionItem({
               delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
             }
       }
-      className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0"
+      className="flex flex-col gap-3 border-b border-separator px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-[8px] bg-zinc-100">
+        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-[8px] bg-surface-hover">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -111,7 +111,7 @@ export function MobileSubmissionItem({
               <UIIcon
                 icon={ImageNotFound01Icon}
                 size={18}
-                className="pointer-events-none text-zinc-400"
+                className="pointer-events-none text-foreground-subtle"
               />
             </div>
           )}
@@ -137,7 +137,7 @@ export function MobileSubmissionItem({
                 <UIIcon
                   icon={LinkSquare01Icon}
                   size={14}
-                  className="shrink-0 text-zinc-500"
+                  className="shrink-0 text-foreground-tertiary"
                   aria-hidden
                 />
               </Link>
@@ -150,7 +150,11 @@ export function MobileSubmissionItem({
                 {submission.name}
               </Text>
             )}
-            <Text variant="small" as="span" className="shrink-0 text-zinc-600">
+            <Text
+              variant="small"
+              as="span"
+              className="shrink-0 text-foreground-secondary"
+            >
               v{submission.graph_version}
             </Text>
           </div>
@@ -158,7 +162,7 @@ export function MobileSubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="mt-0.5 line-clamp-2 break-words text-zinc-500"
+              className="mt-0.5 line-clamp-2 break-words text-foreground-tertiary"
             >
               {submission.description}
             </Text>
@@ -171,7 +175,7 @@ export function MobileSubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:active:scale-100"
+              className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong active:scale-[0.92] motion-reduce:active:scale-100"
             >
               <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
@@ -217,6 +221,7 @@ export function MobileSubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
+                  // TODO(tokens): no exact role (text-rose-600 #E11D48, focus:text-rose-700 #BE123C)
                   className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
                 >
                   <UIIcon icon={Delete02Icon} size={14} />
@@ -230,28 +235,28 @@ export function MobileSubmissionItem({
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span
-          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-caption-sm font-medium leading-inherit ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={10} />
           {visual.label}
         </span>
-        <span className="whitespace-nowrap text-xs text-zinc-500">
+        <span className="whitespace-nowrap text-xs text-foreground-tertiary">
           {formatSubmittedAt(submission.submitted_at)}
         </span>
-        <span aria-hidden className="text-xs text-zinc-300">
+        <span aria-hidden className="text-xs text-foreground-disabled">
           ·
         </span>
-        <span className="whitespace-nowrap text-xs tabular-nums text-zinc-500">
+        <span className="whitespace-nowrap text-xs tabular-nums text-foreground-tertiary">
           {formatRuns(submission.run_count ?? 0)} runs
         </span>
         {hasRating ? (
           <>
-            <span aria-hidden className="text-xs text-zinc-300">
+            <span aria-hidden className="text-xs text-foreground-disabled">
               ·
             </span>
-            <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-zinc-500">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-foreground-tertiary">
               {submission.review_avg_rating!.toFixed(1)}
-              <UIIcon icon={StarIcon} size={10} className="text-amber-500" />
+              <UIIcon icon={StarIcon} size={10} className="text-warning" />
             </span>
           </>
         ) : null}
@@ -266,7 +271,7 @@ export function MobileSubmissionItem({
         }}
       >
         <Dialog.Content>
-          <Text variant="body" className="text-zinc-700">
+          <Text variant="body" className="text-foreground-body">
             This will remove <strong>{submission.name}</strong> from the store.
             This action cannot be undone.
           </Text>

@@ -128,7 +128,6 @@ from backend.util.exceptions import (
     ExpertWriteNotReadableError,
     NotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -364,6 +363,15 @@ async def list_templates(
     return [_to_model(row) for row in rows]
 
 
+async def get_template(template_id: str) -> Expert | None:
+    """One live roster template, read by id rather than found in the roster."""
+    row = await prisma.models.Expert.prisma().find_first(
+        where={"id": template_id, "isTemplate": True, "isArchived": False},
+        include=_TEMPLATE_WORKFLOW_INCLUDE,
+    )
+    return _to_model(row) if row else None
+
+
 def _template_where(
     search_query: str | None, category: str | None
 ) -> prisma.types.ExpertWhereInput:
@@ -388,7 +396,7 @@ async def with_bundled_skills(
 ) -> list[ExpertTemplate]:
     """Attach to each template the live Skills Hub listings it bundles —
     exactly what ``hire_expert`` installs."""
-    bundled = await _live_bundled_skills(user_id, [t.id for t in templates])
+    bundled = await _live_bundled_skills([t.id for t in templates])
     return [
         ExpertTemplate(
             **template.model_dump(), bundled_skills=bundled.get(template.id, [])
@@ -398,12 +406,9 @@ async def with_bundled_skills(
 
 
 async def _live_bundled_skills(
-    user_id: str | None, template_ids: list[str]
+    template_ids: list[str],
 ) -> dict[str, list[ExpertBundledSkill]]:
     """Per template id, the live Hub listings it bundles, in roster order."""
-    # The Hub routes' key, so nothing is linked or installed that would 404.
-    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or "anonymous"):
-        return {}
     rows = await prisma.models.ExpertSkillListing.prisma().find_many(
         where={"expertId": {"in": template_ids}}, order={"position": "asc"}
     )
@@ -2124,7 +2129,7 @@ async def _install_bundled_skills(
     Each install records its name on the row; a failed one is logged and
     leaves no name, so the hire never lists a skill it does not have.
     """
-    bundled = await _live_bundled_skills(user_id, [template_id])
+    bundled = await _live_bundled_skills([template_id])
     missing = [s for s in bundled.get(template_id, []) if s.slug not in installed]
     if not missing:
         return []

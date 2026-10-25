@@ -18,12 +18,21 @@ export function HelpItem({
 
   return (
     <div className="p-4">
-      <h3 className="mb-1 text-sm font-medium text-slate-950">{title}</h3>
-      <p className="text-sm text-slate-600">
+      <h3
+        // TODO(tokens): no exact role for text-slate-950 (#020617)
+        className="mb-1 text-sm font-medium text-slate-950"
+      >
+        {title}
+      </h3>
+      <p
+        // TODO(tokens): no exact role for text-slate-600 (#5B6A7E)
+        className="text-sm text-slate-600"
+      >
         {description}{" "}
         {linkText && (
           <Link
             href={href}
+            // TODO(tokens): no exact role for text-slate-950 (#020617), hover:text-slate-700 (#475263)
             className="inline-flex items-center font-medium text-slate-950 hover:text-slate-700"
           >
             {linkText}

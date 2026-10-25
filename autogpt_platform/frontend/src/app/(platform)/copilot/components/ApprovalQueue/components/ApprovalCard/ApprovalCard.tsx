@@ -78,11 +78,17 @@ export function ApprovalCard({
       <ApprovalHeadline item={item} />
       <div className="flex flex-col gap-3 sm:pl-[38px]">
         {failed && (
-          <p role="alert" className="text-sm text-red-600">
+          <p
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
+            role="alert"
+            className="text-sm text-red-600"
+          >
             Couldn&apos;t send your answer. Nothing ran. Try again.
           </p>
         )}
-        {reason && <p className="-mt-1 text-sm text-zinc-500">{reason}</p>}
+        {reason && (
+          <p className="-mt-1 text-sm text-foreground-tertiary">{reason}</p>
+        )}
         {item.spend && <MoneyBlock spend={item.spend} />}
         {read ? (
           item.passage && <HeldPassage passage={item.passage} />

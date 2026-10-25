@@ -30,7 +30,7 @@ from backend.data.workspace import (
     get_or_create_workspace,
     get_workspace,
     get_workspace_file,
-    get_workspace_total_size,
+    get_workspace_size_breakdown,
     rename_workspace_file,
 )
 from backend.data.workspace_scope import (
@@ -178,6 +178,9 @@ class StorageUsageResponse(BaseModel):
     limit_bytes: int
     used_percent: float
     file_count: int
+    # The part of used_bytes held by files the user's lists leave out: the
+    # skill packages hired experts read, and Otto's working files.
+    internal_bytes: int = 0
 
 
 class WorkspaceFileItem(BaseModel):
@@ -193,6 +196,9 @@ class WorkspaceFileItem(BaseModel):
     # Hired expert whose conversation the file lives in; None for personal
     # Otto chats, Builder output and uploads outside a chat.
     expert_id: str | None = None
+    # A skill package file or one of Otto's working files; only listed when
+    # the caller asks for them with ``include_internal``.
+    is_internal: bool = False
 
 
 class ListFilesResponse(BaseModel):
@@ -383,9 +389,12 @@ async def get_storage_usage(
     """
     workspace = await get_or_create_workspace(user_id)
 
-    used_bytes, file_count, limit_bytes = await asyncio.gather(
-        get_workspace_total_size(workspace.id),
-        count_workspace_files(workspace.id),
+    (used_bytes, internal_bytes), file_count, limit_bytes = await asyncio.gather(
+        get_workspace_size_breakdown(workspace.id),
+        # Bytes count every file, since all of them use the quota, and name
+        # the share the user cannot see in Files; the count is of the files
+        # the user can see.
+        count_workspace_files(workspace.id, include_internal=False),
         get_workspace_storage_limit_bytes(user_id),
     )
 
@@ -394,6 +403,7 @@ async def get_storage_usage(
         limit_bytes=limit_bytes,
         used_percent=round((used_bytes / limit_bytes) * 100, 1) if limit_bytes else 0,
         file_count=file_count,
+        internal_bytes=internal_bytes,
     )
 
 
@@ -432,6 +442,7 @@ def _to_file_item(
         expert_id=(
             expert_by_session.get(session_id_of_file) if session_id_of_file else None
         ),
+        is_internal=f.is_internal,
     )
 
 
@@ -490,6 +501,17 @@ async def list_workspace_files(
             "may read but which are not its own. Requires expert_id."
         ),
     ),
+    include_internal: Annotated[
+        bool,
+        Query(
+            description=(
+                "Also return the files the Files page leaves out: the skill "
+                "packages hired experts read (under /skills/ and "
+                "/experts/{id}/skills/) and Otto's own working files. Each "
+                "such file is listed with is_internal set."
+            ),
+        ),
+    ] = False,
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
@@ -517,6 +539,11 @@ async def list_workspace_files(
     opt-in so that a view already filtered to one expert keeps showing that
     expert's files and nothing else; the composer's picker sends it when its
     "only this expert" filter is switched off.
+
+    The listing is of the user's files: skill packages and Otto's working
+    files (``isInternal``, decided when each file is written) are left out in
+    the query, so paging stays correct. ``include_internal`` lists them too,
+    for a view that shows them apart.
     """
     # Treat empty-string session_id the same as omitted — an empty value
     # would otherwise silently list files across every session instead of
@@ -580,6 +607,10 @@ async def list_workspace_files(
         metadata_not_equals=metadata_not_equals,
         folder_id=folder_id,
         root_only=root_only,
+        # Skill packages and Otto's own working files (parked tool outputs,
+        # its build scratchpad) are not the user's; leaving them out here
+        # keeps paging correct. Opt-in for a view that shows them apart.
+        include_internal=include_internal,
     )
     if expert_id is not None:
         # Fails closed: an unowned or archived expert resolves to no sessions

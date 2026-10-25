@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Input } from "@/components/__legacy__/ui/input";

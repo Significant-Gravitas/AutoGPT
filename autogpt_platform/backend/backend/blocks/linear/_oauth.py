@@ -285,17 +285,6 @@ class LinearOAuthHandler(BaseOAuthHandler):
 
         return credentials.access_token.get_secret_value()
 
-    def needs_migration(self, credentials: OAuth2Credentials) -> bool:
-        """
-        Check if credentials represent an old long-lived token that needs migration.
-
-        Old tokens have no expiration time and no refresh token.
-        """
-        return (
-            credentials.access_token_expires_at is None
-            and credentials.refresh_token is None
-        )
-
     async def _request_username(self, access_token: str) -> Optional[str]:
         # Use the LinearClient to fetch user details using GraphQL
         from ._api import LinearClient

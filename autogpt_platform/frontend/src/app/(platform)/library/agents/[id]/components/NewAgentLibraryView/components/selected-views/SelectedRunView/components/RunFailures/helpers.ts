@@ -1,5 +1,6 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { beautifyString } from "@/lib/utils";
 
 export interface FailedStep {
@@ -10,7 +11,9 @@ export interface FailedStep {
 
 // Every step that errors records its message as an "error" output. Steps
 // swept to FAILED because the whole run ended have none, so they're skipped.
-export function getFailedSteps(run: GetV1GetExecutionDetails200): FailedStep[] {
+export function getFailedSteps(
+  run: GraphExecution | GraphExecutionWithNodes,
+): FailedStep[] {
   if (!("node_executions" in run)) return [];
   return run.node_executions.flatMap((nodeExecution) => {
     const error = nodeExecution.output_data.error?.[0];
@@ -27,7 +30,7 @@ export function getFailedSteps(run: GetV1GetExecutionDetails200): FailedStep[] {
   });
 }
 
-export function getRunError(run: GetV1GetExecutionDetails200) {
+export function getRunError(run: GraphExecution | GraphExecutionWithNodes) {
   if (run.status !== AgentExecutionStatus.FAILED) return null;
   return run.stats?.error || null;
 }

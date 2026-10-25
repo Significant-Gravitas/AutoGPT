@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
@@ -17,6 +17,10 @@ from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
+
+# How stale a key's recorded last use may get. Writing it on every request
+# would add a database write to every External API call.
+LAST_USED_RESOLUTION = timedelta(minutes=5)
 
 
 class APIKeyInfo(APIAuthorizationInfo):
@@ -149,10 +153,29 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
                 plaintext_key, matched_api_key
             )
 
+        await _record_use(matched_api_key)
         return matched_api_key.without_hash()
     except Exception as e:
         logger.error(f"Error while validating API key: {e}")
         raise RuntimeError("Failed to validate API key") from e
+
+
+async def _record_use(key_obj: APIKeyInfoWithHash) -> None:
+    """Stamp the key's last use, unless it was stamped within the resolution.
+
+    A failed write is logged and swallowed: it must never refuse a valid key.
+    """
+    now = datetime.now(timezone.utc)
+    if key_obj.last_used_at and now - key_obj.last_used_at < LAST_USED_RESOLUTION:
+        return
+    try:
+        await PrismaAPIKey.prisma().update(
+            where={"id": key_obj.id}, data={"lastUsedAt": now}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record use of API key #{key_obj.id}: {e}")
+        return
+    key_obj.last_used_at = now
 
 
 async def _migrate_key_to_secure_hash(

@@ -32,6 +32,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
     GraphExecutionEntry,
+    GraphExecutionMeta,
     NodeExecutionEntry,
     NodeExecutionResult,
     NodesInputMasks,
@@ -81,7 +82,7 @@ from backend.util.exceptions import (
 from backend.util.file import clean_exec_files
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
-from backend.util.process import AppProcess, set_service_name
+from backend.util.process import AppProcess, freeze_startup_heap, set_service_name
 from backend.util.retry import (
     continuous_retry,
     func_retry,
@@ -143,6 +144,74 @@ def _get_execution_credit_balance(
     return db_client.get_credits(graph_exec.user_id)
 
 
+RUN_OUTSIDE_ITS_ORG_ERROR = (
+    "This run was stopped because it was queued in an organization or team "
+    "you aren't a member of. New runs go to your own."
+)
+
+
+def _in_the_runners_org(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> bool:
+    """Whether the run is queued in an org (and team) its user belongs to.
+
+    ``add_graph_execution`` makes sure of that when it creates a run, so this
+    only fails for a run queued before it did, or one whose user has left the
+    org or team since it was created, resumed runs included. Such a run is
+    stopped rather than moved, since it may already have started there.
+    Expert runs keep their own tenancy.
+    """
+    context = graph_exec.execution_context
+    if context.expert_id or not context.organization_id:
+        return True
+    organization_id, team_id = db_client.resolve_member_tenancy(
+        graph_exec.user_id, context.organization_id, context.team_id
+    )
+    return (organization_id, team_id) == (context.organization_id, context.team_id)
+
+
+def _stop_outside_its_org(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    exec_meta: GraphExecutionMeta,
+    exec_stats: GraphExecutionStats,
+    log_metadata: LogMetadata,
+) -> None:
+    """Fail a run that failed ``_in_the_runners_org`` before it runs any
+    further, keeping the record of what it has already done.
+
+    The run's FAILED write fails its running nodes too
+    (``update_graph_execution_stats`` cascades). The ones still waiting are
+    failed here first, so a stop cut short in between leaves the run running,
+    to be picked up and stopped again. Once the run has failed, it's recorded
+    in the user's activity and analytics like any other failed run."""
+    log_metadata.warning(
+        f"Stopped graph execution #{graph_exec.graph_exec_id}: it was queued "
+        "in an org or team its user doesn't belong to."
+    )
+    for node_exec in db_client.get_node_executions(
+        graph_exec.graph_exec_id,
+        statuses=[ExecutionStatus.QUEUED, ExecutionStatus.REVIEW],
+    ):
+        update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec.node_exec_id,
+            status=ExecutionStatus.FAILED,
+        )
+    exec_stats.error = RUN_OUTSIDE_ITS_ORG_ERROR
+    if not update_graph_execution_state(
+        db_client=db_client,
+        graph_exec_id=graph_exec.graph_exec_id,
+        status=ExecutionStatus.FAILED,
+        stats=exec_stats,
+    ):
+        return
+    exec_meta.status = ExecutionStatus.FAILED
+    activity_events.handle_run_completed(db_client, graph_exec, exec_meta, exec_stats)
+    product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
+
+
 def _record_execution_failure(
     execution_stats: GraphExecutionStats,
     error: BaseException,
@@ -187,6 +256,11 @@ KNOWN_GRAPH_EXECUTION_ERRORS = (
 # (VALID_STATUS_TRANSITIONS); a direct QUEUED -> COMPLETED write is rejected
 # and leaves the node QUEUED after its run has finished.
 SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
+
+# Rows charged on their first dispatch: the charge precedes the RUNNING write,
+# and a block parks itself in REVIEW mid-run. A resume or a redelivery after a
+# pod died dispatches them without a second charge; gaps: #15327, Known limits.
+BILLED_REDISPATCH_STATUSES = (ExecutionStatus.REVIEW, ExecutionStatus.RUNNING)
 
 
 def _propagate_node_failure(
@@ -1086,6 +1160,12 @@ class ExecutionProcessor:
         exec_stats.activity_status = None
         exec_stats.correctness_score = None
 
+        if not _in_the_runners_org(db_client, graph_exec):
+            _stop_outside_its_org(
+                db_client, graph_exec, exec_meta, exec_stats, log_metadata
+            )
+            return
+
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
             cancel=cancel,
@@ -1236,6 +1316,13 @@ class ExecutionProcessor:
                 node_entry = node_exec.to_node_execution_entry(
                     graph_exec.execution_context
                 )
+                # A REVIEW/RUNNING row was charged when it was first
+                # dispatched, so it must not be charged again (#15272).
+                # A TERMINATED row is charged again: its interrupt settled the
+                # first charge, so a per-run block pays twice. Not reachable:
+                # no caller requeues a TERMINATED run.
+                if node_exec.status in BILLED_REDISPATCH_STATUSES:
+                    node_entry.redispatched_from = node_exec.status
                 node_entry.queued_at = node_exec.queue_time
                 node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)
@@ -1271,9 +1358,14 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs
+                # Charge usage (may raise) — skipped for dry runs and for
+                # REVIEW/RUNNING re-dispatches that were already charged.
                 try:
-                    if not graph_exec.execution_context.dry_run:
+                    if queued_node_exec.redispatched_from is not None:
+                        queued_node_exec.pre_flight_charge = (
+                            billing.redispatch_reconcile_baseline(queued_node_exec)
+                        )
+                    elif not graph_exec.execution_context.dry_run:
                         (
                             cost,
                             remaining_balance,
@@ -1675,6 +1767,7 @@ class ExecutionManager(AppProcess):
             f"[{self.service_name}] Loaded {block_count} blocks in "
             f"{time.monotonic() - load_started:.1f}s"
         )
+        freeze_startup_heap()
 
         self.cancel_thread.start()
         self.run_thread.start()

@@ -2,9 +2,10 @@
 
 import asyncio
 import base64
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -1307,15 +1308,18 @@ class TestGetOrCreateUserStatus:
             )
 
             result = await user_module.get_or_create_user_with_status(
-                {"sub": "user-hooked", "email": "hook@example.com"}
+                {"sub": "user-hooked", "email": "hook@example.com", "role": "admin"}
             )
 
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
         track.assert_called_once_with(user_id="user-hooked", signup_method="email")
-        # The email type and sign-in method MailerLite segments on.
-        person.assert_called_once_with("user-hooked", "hook@example.com", "email")
+        # The email type and sign-in method MailerLite segments on, and the
+        # token's role, which flags our own team.
+        person.assert_called_once_with(
+            "user-hooked", "hook@example.com", "email", "admin"
+        )
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):
@@ -1691,6 +1695,35 @@ class TestGetAuthUserFlagFields:
         assert fields is None
 
 
+class TestIsUserBanned:
+    """The ban states themselves are driven through the real dependencies in
+    ``api/banned_account_test.py``; these pin what those can't reach."""
+
+    @pytest.mark.asyncio
+    async def test_a_missing_auth_row_is_not_a_ban(self):
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            mock_auth_user.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            assert await user_module.is_auth_user_banned("no-auth-row") is False
+
+    @pytest.mark.asyncio
+    async def test_the_answer_is_shared_until_it_expires(self, mocker):
+        """Every request asks, so a hit must not reach the database."""
+        mocker.patch("backend.data.db.is_connected", return_value=True)
+        user_id = f"cached-{uuid.uuid4()}"
+        now = datetime.now(timezone.utc)
+        row = MagicMock(banned=True, banExpires=now + timedelta(days=1))
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            find_unique = AsyncMock(return_value=row)
+            mock_auth_user.prisma.return_value.find_unique = find_unique
+            assert await user_module.is_user_banned(user_id) is True
+            assert await user_module.is_user_banned(user_id) is True
+        user_module.is_user_banned.cache_delete(user_id)
+
+        find_unique.assert_awaited_once_with(where={"id": user_id})
+
+
 class TestGetUserDefaultChatRoute:
     @pytest.mark.asyncio
     async def test_returns_the_saved_route(self):
@@ -1964,7 +1997,33 @@ async def test_unsubscribe_error_does_not_repeat_the_token():
     never expires."""
     token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
 
-    with pytest.raises(DatabaseError) as exc:
+    with pytest.raises(ValueError) as exc:
         await user_module.unsubscribe_user_by_token(token)
 
     assert token not in str(exc.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("zero_daily_limit", [False, True])
+async def test_disabling_notifications_zeroes_the_daily_limit_only_when_asked(
+    zero_daily_limit: bool,
+):
+    with (
+        patch.object(user_module, "PrismaUser") as mock_prisma_user,
+        patch.object(user_module.get_user_by_id, "cache_delete") as cache_delete,
+    ):
+        mock_prisma_user.prisma.return_value.update = AsyncMock()
+
+        await user_module.disable_all_user_notifications(
+            "user-1", zero_daily_limit=zero_daily_limit
+        )
+
+    written = mock_prisma_user.prisma.return_value.update.await_args.kwargs
+    assert written["where"] == {"id": "user-1"}
+    assert written["data"]["briefingFrequency"] == "OFF"
+    assert written["data"]["alertsEnabled"] is False
+    assert written["data"]["notifyOnStoreVerdict"] is False
+    assert ("maxEmailsPerDay" in written["data"]) is zero_daily_limit
+    if zero_daily_limit:
+        assert written["data"]["maxEmailsPerDay"] == 0
+    cache_delete.assert_called_once_with("user-1")

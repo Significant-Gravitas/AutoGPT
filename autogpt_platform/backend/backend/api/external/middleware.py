@@ -1,5 +1,6 @@
 from typing import Optional
 
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
@@ -14,6 +15,7 @@ from backend.data.auth.oauth import (
     is_access_token,
     validate_access_token,
 )
+from backend.data.user import is_user_banned
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
@@ -44,6 +46,7 @@ async def resolve_auth_info(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
+            await _refuse_banned_owner(api_key_info)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -56,13 +59,15 @@ async def resolve_auth_info(
         if not is_access_token(bearer.credentials) and (
             api_key_info := await validate_api_key(bearer.credentials)
         ):
+            await _refuse_banned_owner(api_key_info)
             return api_key_info
 
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
-            return token_info
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await _refuse_banned_owner(token_info)
+        return token_info
 
     return None
 
@@ -126,6 +131,19 @@ async def require_auth(
             detail="Missing authentication. Provide API key or access token.",
         )
     return auth
+
+
+async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:
+    if await owner_is_banned(auth):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_BANNED_DETAIL
+        )
+
+
+async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
+    """Whether the account a credential belongs to is banned; for verifiers that
+    resolve credentials outside `resolve_auth_info`, such as v2's MCP server."""
+    return await is_user_banned(auth.user_id)
 
 
 def require_permission(*permissions: APIKeyPermission):

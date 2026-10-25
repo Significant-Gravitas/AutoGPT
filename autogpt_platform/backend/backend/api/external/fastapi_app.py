@@ -37,10 +37,6 @@ async def v1_spec_redirect(request: Request) -> RedirectResponse:
 external_api.mount("/v1", v1_app)
 external_api.mount("/v2", v2_app)
 
-# The scrape endpoint stays mounted for Prometheus everywhere.
-instrument_fastapi(
-    external_api,
-    service_name="external-api",
-    expose_endpoint=True,
-    endpoint="/metrics",
-)
+# The REST API process this app is mounted in serves the metrics on their own
+# port, never on this public app.
+instrument_fastapi(external_api, service_name="external-api", expose_endpoint=False)

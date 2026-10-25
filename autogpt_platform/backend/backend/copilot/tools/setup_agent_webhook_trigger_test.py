@@ -1,10 +1,14 @@
 """Tests for SetupAgentWebhookTriggerTool."""
 
+import datetime
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
+from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.triggers import setup_triggered_preset
 from backend.blocks._base import BlockType
 from backend.copilot.tools.models import ErrorResponse, SetupRequirementsResponse
 from backend.copilot.tools.setup_agent_webhook_trigger import (
@@ -12,6 +16,7 @@ from backend.copilot.tools.setup_agent_webhook_trigger import (
     TriggerConfigRequiredResponse,
     TriggerSetupResponse,
 )
+from backend.data.integrations import WebhookWithoutSecrets
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsFieldInfo,
@@ -24,6 +29,7 @@ from backend.util.exceptions import (
     NotFoundError,
     WebhookRegistrationError,
 )
+from backend.util.service import _build_return_adapter
 
 from ._test_data import make_session
 
@@ -91,14 +97,40 @@ def _make_graph(
     return graph
 
 
-def _make_preset(*, provider: str, url: str):
-    preset = MagicMock()
-    preset.id = "preset-1"
-    preset.name = "My Trigger"
-    preset.is_active = True
-    preset.webhook.url = url
-    preset.webhook.provider = provider
-    return preset
+def _make_preset(*, provider: str, webhook_id: str) -> LibraryAgentPreset:
+    """The preset as the tool receives it: built by the library, sent by the
+    database manager as JSON and rebuilt by the RPC client's validator."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    preset = LibraryAgentPreset(
+        id="preset-1",
+        user_id=_USER,
+        created_at=now,
+        updated_at=now,
+        graph_id="graph-1",
+        graph_version=1,
+        name="My Trigger",
+        description="",
+        is_active=True,
+        inputs={},
+        credentials={},
+        webhook_id=webhook_id,
+        webhook=WebhookWithoutSecrets(
+            id=webhook_id,
+            user_id=_USER,
+            provider=ProviderName(provider),
+            credentials_id="cred-gh-1",
+            webhook_type="repo",
+            resource="owner/repo",
+            events=[],
+            secret="signing-secret",
+            provider_webhook_id="provider-webhook-1",
+        ),
+    )
+    adapter = _build_return_adapter(
+        setup_triggered_preset, LibraryAgentPreset, "setup_triggered_preset"
+    )
+    assert adapter is not None
+    return adapter.validate_python(json.loads(preset.model_dump_json()))
 
 
 def _patches(graph, *, matched=None, available=None, preset=None, graph_db_mock=None):
@@ -161,10 +193,7 @@ async def test_graph_is_loaded_with_subgraphs(tool, session):
     """Without sub-graphs, a sub-agent's credentials are missing from the card
     and the registered trigger fails on every firing."""
     graph = _make_graph(manual=True, regular_credentials={})
-    preset = _make_preset(
-        provider="generic_webhook",
-        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
-    )
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
     graph_db_mock = MagicMock()
     ctxs, _ = _patches(graph, preset=preset, graph_db_mock=graph_db_mock)
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
@@ -179,10 +208,7 @@ async def test_graph_is_loaded_with_subgraphs(tool, session):
 async def test_manual_webhook_no_creds_proceeds(tool, session):
     """Manual webhook with no required credentials: create the preset, return URL."""
     graph = _make_graph(manual=True, regular_credentials={})
-    preset = _make_preset(
-        provider="generic_webhook",
-        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
-    )
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
     ctxs, setup_mock = _patches(graph, preset=preset)
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
         result = await tool._execute(
@@ -190,7 +216,9 @@ async def test_manual_webhook_no_creds_proceeds(tool, session):
         )
     assert isinstance(result, TriggerSetupResponse)
     assert result.manual_setup_required is True
-    assert result.webhook_url and "backend.agpt.co" in result.webhook_url
+    assert preset.webhook is not None
+    assert result.webhook_url == preset.webhook.url
+    assert result.webhook_url.endswith("/webhooks/wh-1/ingress")
     # The URL lives on webhook_url (rendered in the card's copy box) and must
     # NOT be duplicated inline in the user-facing message.
     assert result.webhook_url not in result.message
@@ -204,10 +232,7 @@ async def test_expert_session_passes_expert_scope_to_trigger_setup(
 ):
     session.expert_id = "expert-1"
     graph = _make_graph(manual=True, regular_credentials={})
-    preset = _make_preset(
-        provider="generic_webhook",
-        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
-    )
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
     ctxs, setup_mock = _patches(graph, preset=preset)
     installed = patch(
         "backend.copilot.tools.setup_agent_webhook_trigger.require_installed_workflow",
@@ -230,7 +255,7 @@ async def test_expert_session_attributes_trigger_to_expert(tool, request):
     to preset creation, so its webhook fires count as the expert's work."""
     session = make_session(_USER, expert_id="expert-1")
     graph = _make_graph(manual=True, regular_credentials={})
-    preset = _make_preset(provider="generic_webhook", url="https://x/ingress")
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
     ctxs, setup_mock = _patches(graph, preset=preset)
     installed = patch(
         "backend.copilot.tools.setup_agent_webhook_trigger.require_installed_workflow",
@@ -251,7 +276,7 @@ async def test_plain_session_does_not_attribute_trigger(tool, session):
     """A plain (non-expert) chat forwards no expert; setup_triggered_preset's
     graph-level fallback still applies but the tool passes None."""
     graph = _make_graph(manual=True, regular_credentials={})
-    preset = _make_preset(provider="generic_webhook", url="https://x/ingress")
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
     ctxs, setup_mock = _patches(graph, preset=preset)
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
         await tool._execute(
@@ -323,10 +348,7 @@ async def test_provider_webhook_explicit_selection_proceeds(tool, session):
             )
         },
     )
-    preset = _make_preset(
-        provider="github",
-        url="https://backend.agpt.co/api/integrations/github/webhooks/wh-2/ingress",
-    )
+    preset = _make_preset(provider="github", webhook_id="wh-2")
     ctxs, setup_mock = _patches(
         graph,
         matched={"github_credentials": _github_meta()},
@@ -395,10 +417,7 @@ async def test_provider_webhook_config_and_creds_provided_proceeds(tool, session
             "required": ["repo"],
         },
     )
-    preset = _make_preset(
-        provider="github",
-        url="https://backend.agpt.co/api/integrations/github/webhooks/wh-3/ingress",
-    )
+    preset = _make_preset(provider="github", webhook_id="wh-3")
     ctxs, setup_mock = _patches(
         graph,
         matched={"github_credentials": _github_meta()},
@@ -497,10 +516,7 @@ async def test_setup_failure_expert_workspace_unavailable(tool, session):
 async def test_library_agent_id_resolves_and_proceeds(tool, session):
     """Passing library_agent_id resolves the graph via get_library_agent."""
     graph = _make_graph(manual=True, regular_credentials={})
-    preset = _make_preset(
-        provider="generic_webhook",
-        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
-    )
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
     ctxs, setup_mock = _patches(graph, preset=preset)
     mock_lib_db = MagicMock()
     mock_lib_db.get_library_agent = AsyncMock(

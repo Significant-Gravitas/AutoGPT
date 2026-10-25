@@ -18,7 +18,7 @@ export function BriefingByline({ briefing }: Props) {
         <Text variant="small-medium" as="span" tone="primary">
           {author.name}
         </Text>
-        <span aria-hidden="true" className="text-zinc-300">
+        <span aria-hidden="true" className="text-foreground-disabled">
           ·
         </span>
         <Text variant="small" as="span" tone="muted">

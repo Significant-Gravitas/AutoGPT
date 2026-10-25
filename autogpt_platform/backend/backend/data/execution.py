@@ -1561,6 +1561,11 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # The status a REVIEW/RUNNING row had when a resumed or redelivered run
+    # dispatched it again. Its first dispatch was already charged, so this
+    # one must not be (#15272), and the status says what is still billed:
+    # see `billing.redispatch_reconcile_baseline`. Also exclude=True.
+    redispatched_from: Optional[ExecutionStatus] = Field(default=None, exclude=True)
     # When the node was queued and by what: ``graph_start`` for a node queued
     # before this executor picked the run up (an entry node, or one left
     # queued by an interrupted run), ``node_output`` for one queued by an

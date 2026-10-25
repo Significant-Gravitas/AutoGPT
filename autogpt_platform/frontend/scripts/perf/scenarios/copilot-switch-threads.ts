@@ -20,8 +20,13 @@ export const copilotSwitchThreads: Scenario = {
     if (await expand.isVisible()) await expand.click();
     const loadAll = page.getByRole("button", { name: "Load all Otto chats" });
     if (await loadAll.isVisible()) await loadAll.click();
+    // The AppSidebar lists chats as links, the copilot's own ChatSidebar as
+    // buttons whose name also carries the date.
     const links = COPILOT_SESSIONS.map((session) =>
-      page.getByRole("link", { name: session.title, exact: true }),
+      page
+        .getByRole("link", { name: session.title, exact: true })
+        .or(page.getByRole("button", { name: session.title }))
+        .first(),
     );
     for (const link of links) {
       await link.waitFor({ state: "visible", timeout: READY_TIMEOUT_MS });

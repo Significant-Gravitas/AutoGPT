@@ -5,6 +5,7 @@ All subprocess calls are mocked — no agent-browser binary or real browser need
 
 import asyncio
 import json
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,10 +17,12 @@ from .agent_browser import (
     BrowserActTool,
     BrowserNavigateTool,
     BrowserScreenshotTool,
+    _empty_config,
     _ensure_session,
     _fire_and_forget_save,
     _has_local_session,
     _restore_browser_state,
+    _run,
     _save_browser_state,
     close_browser_daemon,
     close_browser_session,
@@ -31,6 +34,8 @@ from .models import (
     ErrorResponse,
     ResponseType,
 )
+
+_PROXY_URL = "socks5://127.0.0.1:1080"
 
 # ---------------------------------------------------------------------------
 # Autouse fixture — mock state persistence helpers for all existing tests.
@@ -49,6 +54,9 @@ def _reset_and_mock_state(monkeypatch):
     _mod._touched_sessions.clear()
     _mod._pending_saves.clear()
     _mod._closing_sessions.clear()
+    monkeypatch.setattr(
+        "backend.copilot.tools.agent_browser.egress_proxy_url", lambda: _PROXY_URL
+    )
     monkeypatch.setattr(
         "backend.copilot.tools.agent_browser._ensure_session", AsyncMock()
     )
@@ -875,6 +883,202 @@ class TestRunHelper:
         assert rc == 1
         assert "agent-browser" in stderr
         assert "not installed" in stderr
+
+
+# ---------------------------------------------------------------------------
+# Network egress: every command keeps Chromium behind the egress proxy
+# ---------------------------------------------------------------------------
+
+
+def _spawn_ok() -> MagicMock:
+    proc = MagicMock(returncode=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    return proc
+
+
+def _injected(cmds: list[list[str]]) -> bool:
+    """Whether any command carries a second, model- or page-supplied
+    --proxy-bypass after the one _run sets."""
+    return any(cmd.count("--proxy-bypass") > 1 for cmd in cmds)
+
+
+class TestBrowserEgress:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("open", "https://example.com"),
+            ("get", "url"),
+            ("cookies", "set", "sid", "abc", "--domain", "example.com"),
+            ("close",),
+        ],
+    )
+    async def test_every_command_launches_chromium_behind_the_proxy(self, args):
+        # agent-browser relaunches Chromium when launch options change, so a
+        # command without them (even `close`) would drop the proxy.
+        with patch("asyncio.create_subprocess_exec", return_value=_spawn_ok()) as spawn:
+            rc, _, _ = await _run("sess", *args)
+
+        assert rc == 0
+        cmd = list(spawn.call_args.args)
+        assert cmd[cmd.index("--proxy") + 1] == _PROXY_URL
+        assert cmd[cmd.index("--proxy-bypass") + 1] == "<-loopback>"
+        assert "--disable-quic" in cmd[cmd.index("--args") + 1].split(",")
+        with open(cmd[cmd.index("--config") + 1]) as f:
+            assert json.load(f) == {}
+        assert cmd[-len(args) :] == list(args)
+
+    @pytest.mark.asyncio
+    async def test_agent_browser_gets_no_configuration_from_the_environment(
+        self, monkeypatch
+    ):
+        # Each of these would attach to or start a browser without the proxy.
+        for name, value in {
+            "AGENT_BROWSER_CDP": "ws://127.0.0.1:9222",
+            "AGENT_BROWSER_PROVIDER": "browserbase",
+            "AGENT_BROWSER_AUTO_CONNECT": "1",
+            "AGENT_BROWSER_EXTENSIONS": "/tmp/extension",
+            "AGENT_BROWSER_PROXY": "",
+            "HTTP_PROXY": "http://proxy.internal:3128",
+            "no_proxy": "*",
+        }.items():
+            monkeypatch.setenv(name, value)
+        monkeypatch.setenv("AGENT_BROWSER_EXECUTABLE_PATH", "/usr/bin/chromium")
+
+        with patch("asyncio.create_subprocess_exec", return_value=_spawn_ok()) as spawn:
+            await _run("sess", "get", "url")
+
+        env = spawn.call_args.kwargs["env"]
+        assert not [
+            name
+            for name in env
+            if name.startswith("AGENT_BROWSER_")
+            and name != "AGENT_BROWSER_EXECUTABLE_PATH"
+        ]
+        assert "HTTP_PROXY" not in env and "no_proxy" not in env
+        assert env["AGENT_BROWSER_EXECUTABLE_PATH"] == "/usr/bin/chromium"
+        assert env["PATH"] == os.environ["PATH"]
+
+    def test_empty_config_is_recreated_after_tmp_cleanup(self):
+        # A long-lived pod can lose /tmp files; a missing --config file would
+        # make every later browser command fail.
+        first = _empty_config()
+        os.unlink(first)
+
+        second = _empty_config()
+
+        with open(second) as f:
+            assert json.load(f) == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "arg",
+        [
+            "--proxy-bypass",
+            "--proxy",
+            "--args",
+            "--executable-path",
+            "--allow-file-access",
+            "--cdp",
+            "--config",
+            "--restore=other-session",
+            "--restore=a b",
+            "-p",
+            # agent-browser's only upper-case flag: prints its version and
+            # exits 0, so the action would report success without running
+            "-V",
+        ],
+    )
+    async def test_refuses_arguments_shaped_like_agent_browser_options(self, arg):
+        with patch("asyncio.create_subprocess_exec") as spawn:
+            rc, _, stderr = await _run("sess", "fill", arg, "*")
+
+        assert rc == 1
+        assert "option" in stderr
+        spawn.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "-5",
+            "-",
+            "--",
+            "- first item",
+            "-- Best regards",
+            "a --proxy b",
+            "--Proxy",
+            # base64url cookie values can start with a dash
+            "-Xy9_zQ-token",
+        ],
+    )
+    async def test_passes_ordinary_text_that_starts_with_a_dash(self, value):
+        with patch("asyncio.create_subprocess_exec", return_value=_spawn_ok()) as spawn:
+            rc, _, _ = await _run("sess", "fill", "@e1", value)
+
+        assert rc == 0
+        assert list(spawn.call_args.args)[-1] == value
+
+    @pytest.mark.asyncio
+    async def test_proxy_start_failure_fails_closed(self, monkeypatch):
+        def broken() -> str:
+            raise RuntimeError("bind failed")
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.agent_browser.egress_proxy_url", broken
+        )
+        with patch("asyncio.create_subprocess_exec") as spawn:
+            rc, _, _ = await _run("sess", "open", "https://example.com")
+
+        assert rc == 1
+        spawn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_browser_act_cannot_turn_the_proxy_off(self):
+        spawned: list[list[str]] = []
+
+        async def spawn(*cmd, **kwargs):
+            spawned.append(list(cmd))
+            return _spawn_ok()
+
+        with patch("asyncio.create_subprocess_exec", side_effect=spawn):
+            result = await BrowserActTool()._execute(
+                user_id=None,
+                session=make_session(),
+                action="fill",
+                target="--proxy-bypass",
+                value="*",
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert not _injected(spawned)
+
+    @pytest.mark.asyncio
+    async def test_restored_cookie_cannot_turn_the_proxy_off(self):
+        # Cookie names come from the sites the browser visited.
+        state = {
+            "url": "",
+            "cookies": [
+                {"name": "--proxy-bypass", "value": "*", "domain": "example.com"},
+                {"name": "sid", "value": "abc", "domain": "example.com"},
+            ],
+            "local_storage": {"--proxy-bypass": "*"},
+        }
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="file-1")
+        mock_mgr.read_file.return_value = json.dumps(state).encode("utf-8")
+        spawned: list[list[str]] = []
+
+        async def spawn(*cmd, **kwargs):
+            spawned.append(list(cmd))
+            return _spawn_ok()
+
+        with patch("asyncio.create_subprocess_exec", side_effect=spawn):
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                await _restore_browser_state("sess", "user1", make_session("sess"))
+
+        assert not _injected(spawned)
+        assert any("sid" in cmd for cmd in spawned)
 
 
 # ---------------------------------------------------------------------------

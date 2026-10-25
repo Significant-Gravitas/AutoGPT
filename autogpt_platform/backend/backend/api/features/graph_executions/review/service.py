@@ -57,6 +57,10 @@ class ReviewOutcome(BaseModel):
     auto_approval_failed_count: int = Field(
         description="Approved reviews whose auto-approve-future record failed to save"
     )
+    awaiting_other_cards: bool = Field(
+        default=False,
+        description="The answers started no chat turn: other cards in the chat wait",
+    )
 
 
 async def process_reviews(
@@ -66,12 +70,14 @@ async def process_reviews(
     graph_exec_id: Optional[str] = None,
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
+    wait_for_other_cards: bool = False,
 ) -> ReviewOutcome:
     """Approve or reject reviews, then resume the run once none are pending.
 
     `graph_exec_id` pins the run the decisions must belong to, for a caller
     that already knows it from the URL; without it the run is taken from the
-    reviews themselves, which must then all belong to one.
+    reviews themselves, which must then all belong to one. `wait_for_other_cards`
+    is a chat queue's answer, which starts no turn while another card waits.
     """
     if not reviews:
         raise HTTPException(
@@ -142,6 +148,9 @@ async def process_reviews(
             {review.node_exec_id: review.chat_rule_scope for review in reviews},
         )
 
+    # A held call finishes on its own: an answer starts the chat's next turn, or
+    # from the chat's own queue, its last answer does.
+    awaiting_other_cards = False
     if chat_session_id is not None and updated_reviews:
         # A workflow step's card answers the step's own row; its run resumes
         # below, so the card never wakes the chat.
@@ -163,11 +172,11 @@ async def process_reviews(
                     organization_id=organization_id,
                     team_id=team_id,
                 )
-        # A held call finishes on its own: the answer starts the chat's next turn.
-        await wake_for_held_calls(
+        awaiting_other_cards = not await wake_for_held_calls(
             user_id,
             chat_session_id,
             [r for r in updated_reviews.values() if not is_step_card(r)],
+            until_last=wait_for_other_cards,
         )
         if finished.failed:
             # Each card is kept, so answering it again finishes the job.
@@ -195,6 +204,7 @@ async def process_reviews(
             1 for r in updated_reviews.values() if r.status == ReviewStatus.REJECTED
         ),
         auto_approval_failed_count=failed,
+        awaiting_other_cards=awaiting_other_cards,
     )
 
 

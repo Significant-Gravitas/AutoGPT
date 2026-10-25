@@ -1,12 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ErrorEvent } from "@sentry/nextjs";
 
-const { initMock, reportingObserverIntegrationMock } = vi.hoisted(() => ({
-  initMock: vi.fn(),
-  reportingObserverIntegrationMock: vi.fn((options?: { types?: string[] }) => ({
-    name: "ReportingObserver",
-    options,
-  })),
+const mirrorEvent = vi.hoisted(() => vi.fn((event: ErrorEvent) => event));
+vi.mock("@/services/analytics/sentry-posthog", () => ({
+  createPostHogSentryProcessor: () => mirrorEvent,
 }));
+
+const { initMock, reportingObserverIntegrationMock, holdReplayBackForMock } =
+  vi.hoisted(() => ({
+    initMock: vi.fn(),
+    holdReplayBackForMock: vi.fn(),
+    reportingObserverIntegrationMock: vi.fn(
+      (options?: { types?: string[] }) => ({
+        name: "ReportingObserver",
+        options,
+      }),
+    ),
+  }));
 
 vi.mock("@sentry/nextjs", () => {
   function stubIntegration(name: string) {
@@ -22,16 +32,35 @@ vi.mock("@sentry/nextjs", () => {
     httpClientIntegration: stubIntegration("HttpClient"),
     featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
-    replayCanvasIntegration: stubIntegration("ReplayCanvas"),
     captureRouterTransitionStart: vi.fn(),
   };
 });
+
+vi.mock("@/lib/session-replay", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/session-replay")>()),
+  holdReplayBackFor: holdReplayBackForMock,
+}));
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe("Sentry client instrumentation", () => {
+  it("holds session replay back as Next starts each navigation", async () => {
+    const Sentry = await import("@sentry/nextjs");
+    const { onRouterTransitionStart } = await import(
+      "../../instrumentation-client"
+    );
+
+    onRouterTransitionStart("/link/t-1", "push");
+
+    expect(Sentry.captureRouterTransitionStart).toHaveBeenCalledWith(
+      "/link/t-1",
+      "push",
+    );
+    expect(holdReplayBackForMock).toHaveBeenCalledWith("/link/t-1");
+  });
+
   it("does not forward browser deprecation reports to Sentry", async () => {
     await import("../../instrumentation-client");
 
@@ -97,8 +126,41 @@ describe("Sentry client instrumentation", () => {
     };
 
     expect(beforeSend).toBeTypeOf("function");
+    mirrorEvent.mockClear();
     expect(beforeSend(rscFallback, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(fetchError, {})).toBe(fetchError);
+    expect(mirrorEvent).toHaveBeenCalledExactlyOnceWith(fetchError);
+  });
+
+  it("sends errors whose trace context carries no IP address or email", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const event = beforeSend(
+      {
+        exception: { values: [{ type: "Error", value: "boom" }] },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "client.address": "203.0.113.7",
+              "user.email": "ada@example.com",
+              user: "ada@example.com",
+              "user.id": "user-1",
+              "url.path": "/library",
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event.contexts.trace.data).toEqual({
+      "user.id": "user-1",
+      "url.path": "/library",
+    });
   });
 
   it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {
@@ -135,9 +197,25 @@ describe("Sentry client instrumentation", () => {
       },
     };
 
+    mirrorEvent.mockClear();
     expect(beforeSend(injectedProbe, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(blocked, {})).toBe(blocked);
     expect(beforeSend(ourWarning, {})).toBe(ourWarning);
+    expect(mirrorEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("traces every transaction but profiles one in ten", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const { tracesSampleRate, profilesSampleRate, replaysOnErrorSampleRate } =
+      initMock.mock.calls[0][0];
+
+    expect(tracesSampleRate).toBe(1);
+    expect(profilesSampleRate).toBe(0.1);
+    expect(replaysOnErrorSampleRate).toBe(1);
   });
 
   it("tags events with the environment the deployment names for itself", async () => {

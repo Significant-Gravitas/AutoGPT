@@ -1,5 +1,6 @@
 """CoPilot tools for workspace file operations."""
 
+import asyncio
 import base64
 import logging
 import mimetypes
@@ -8,6 +9,7 @@ from collections import deque
 from typing import Any, Optional
 
 from prisma.enums import APIKeyPermission
+from pydantic import Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
@@ -18,7 +20,18 @@ from backend.copilot.context import (
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_image import (
+    BINARY_IMAGE_READ_GUIDANCE,
+    IMAGE_EXTENSIONS,
+    IMAGE_MIME_TYPES,
+    IMAGE_READ_DESCRIPTION,
+    IMAGE_TOO_LARGE_MESSAGE,
+    MAX_IMAGE_BYTES,
+    ImageReadError,
+    prepare_image,
+)
 from backend.copilot.tools.workdir import (
     resolve_sandbox_path_or_error,
     save_to_workdir,
@@ -152,8 +165,6 @@ _TEXT_MIME_PREFIXES = (
     "application/x-python",
     "application/x-sh",
 )
-
-_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
 def _is_text_mime(mime_type: str) -> bool:
@@ -333,6 +344,10 @@ class WorkspaceFileMetadataResponse(ToolResponseBase):
     preview: str | None = None  # First 500 chars for text files
 
 
+# What write_workspace_file stamps on every file it writes.
+AGENT_CREATED_METADATA = {"origin": "agent-created"}
+
+
 class WorkspaceWriteResponse(ToolResponseBase):
     """Response after writing a file to workspace."""
 
@@ -347,6 +362,9 @@ class WorkspaceWriteResponse(ToolResponseBase):
     download_url: str
     source: str | None = None  # "content", "base64", or "copied from <path>"
     content_preview: str | None = None  # First 200 chars for text files
+    # Otto's own working file (e.g. build_state.json), as the write marked it.
+    # For the activity log only; neither the model nor the client sees it.
+    is_internal: bool = Field(default=False, exclude=True)
 
 
 class WorkspaceDeleteResponse(ToolResponseBase):
@@ -581,7 +599,7 @@ def _folder_subtree(
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
+    MAX_INLINE_SIZE_BYTES = 32 * 1024
     PREVIEW_SIZE = 500
 
     @property
@@ -600,13 +618,11 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Read a file from persistent workspace. Specify file_id or path. "
-            "Small text/image files return inline; large/binary return metadata+URL. "
-            "Use save_to_path to copy to working dir for processing. "
-            "Use offset/length for paginated reads. "
-            "Paths resolve in the current session; use /sessions/<id>/... or "
-            "file_id to reach elsewhere. An expert chat reads its own "
-            "conversations, ones it delegated, and the user's files."
+            "Read workspace file_id or path. Small text is inline; other files return metadata+URL. "
+            + IMAGE_READ_DESCRIPTION
+            + "save_to_path copies for processing; offset/length paginate text. "
+            "Paths are session-relative; use /sessions/<id>/... or file_id elsewhere. "
+            "Expert chats can read their own/delegated conversations and the user's files."
         )
 
     @property
@@ -718,6 +734,9 @@ class ReadWorkspaceFileTool(BaseTool):
                 return resolved
             target_file_id, file_info = resolved
 
+            # A saved Google block output, read back, is still Google data.
+            google_data = file_info.metadata.get(GOOGLE_DATA_METADATA_KEY) is True
+
             # If save_to_path, read + save; cache bytes for possible inline reuse.
             cached_content: bytes | None = None
             if save_to_path:
@@ -726,6 +745,49 @@ class ReadWorkspaceFileTool(BaseTool):
                 if isinstance(result, ErrorResponse):
                     return result
                 save_to_path = result
+
+            is_image = (
+                file_info.mime_type in IMAGE_MIME_TYPES
+                or os.path.splitext(file_info.name)[1].lower() in IMAGE_EXTENSIONS
+            )
+            if is_image and (char_offset > 0 or char_length is not None):
+                return ErrorResponse(
+                    message="Image not shown: offset/length only apply to text. Read the whole image.",
+                    session_id=session_id,
+                ).from_outside()
+            if is_image and not force_download_url:
+                try:
+                    if file_info.size_bytes > MAX_IMAGE_BYTES:
+                        raise ImageReadError(IMAGE_TOO_LARGE_MESSAGE)
+                    image = await asyncio.to_thread(
+                        prepare_image,
+                        (
+                            cached_content
+                            if cached_content is not None
+                            else await manager.read_file_by_id(target_file_id)
+                        ),
+                    )
+                except ImageReadError as exc:
+                    return ErrorResponse(
+                        message=str(exc)
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    ).from_outside()
+                return (
+                    WorkspaceFileMetadataResponse(
+                        file_id=file_info.id,
+                        name=file_info.name,
+                        path=file_info.path,
+                        mime_type=image.mime_type,
+                        size_bytes=file_info.size_bytes,
+                        download_url=f"workspace://{target_file_id}",
+                        message=f"Viewed {file_info.name} as an image (first frame only)."
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    )
+                    .with_image(image)
+                    .with_google_data(google_data)
+                )
 
             # Ranged read: return a character slice directly. A slice is at
             # most _MAX_RANGE_CHARS long, and only the bytes it can reach are
@@ -777,14 +839,12 @@ class ReadWorkspaceFileTool(BaseTool):
                         f"at most {per_read} per read"
                     ),
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
-            is_image = file_info.mime_type in _IMAGE_MIME_TYPES
 
-            # Inline content for small text/image files
-            if is_small and (is_text or is_image) and not force_download_url:
+            if is_small and is_text and not force_download_url:
                 content = cached_content or await manager.read_file_by_id(
                     target_file_id
                 )
@@ -802,7 +862,7 @@ class ReadWorkspaceFileTool(BaseTool):
                     content_base64=base64.b64encode(content).decode("utf-8"),
                     message=msg,
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             # Metadata + download URL for large/binary files
             preview: str | None = None
@@ -824,19 +884,32 @@ class ReadWorkspaceFileTool(BaseTool):
             if save_to_path:
                 msg += f" — saved to {save_to_path}"
             else:
+                msg += " — use save_to_path to copy this file to the working directory for processing"
+            if (
+                file_info.mime_type == "application/pdf"
+                or file_info.mime_type.startswith("video/")
+            ):
+                msg += ". " + BINARY_IMAGE_READ_GUIDANCE
+            elif file_info.mime_type.startswith("image/") and not is_image:
                 msg += (
-                    " — use read_workspace_file with this file_id to retrieve content"
+                    ". Image not shown: convert it to PNG/JPEG/GIF/WebP, then read it."
                 )
-            return WorkspaceFileMetadataResponse(
-                file_id=file_info.id,
-                name=file_info.name,
-                path=file_info.path,
-                mime_type=file_info.mime_type,
-                size_bytes=file_info.size_bytes,
-                download_url=f"workspace://{target_file_id}",
-                preview=preview,
-                message=msg,
-                session_id=session_id,
+            return (
+                WorkspaceFileMetadataResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type=file_info.mime_type,
+                    size_bytes=file_info.size_bytes,
+                    download_url=f"workspace://{target_file_id}",
+                    preview=preview,
+                    message=msg,
+                    session_id=session_id,
+                )
+                .from_outside(
+                    file_info.name, file_info.path, file_info.mime_type, preview
+                )
+                .with_google_data(google_data)
             )
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
@@ -965,7 +1038,8 @@ class WriteWorkspaceFileTool(BaseTool):
         result: ToolResponseBase,
         **kwargs,
     ) -> ActivityEventDraft | None:
-        if not isinstance(result, WorkspaceWriteResponse):
+        # A working file is Otto's bookkeeping, not work delivered.
+        if not isinstance(result, WorkspaceWriteResponse) or result.is_internal:
             return None
         return ActivityEventDraft(
             category="FILE",
@@ -1062,7 +1136,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 path=path,
                 mime_type=mime_type,
                 overwrite=overwrite,
-                metadata={"origin": "agent-created"},
+                metadata=AGENT_CREATED_METADATA,
             )
 
             # Build informative source label and message.
@@ -1111,6 +1185,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 content_preview=preview,
                 message=msg,
                 session_id=session_id,
+                is_internal=rec.is_internal,
             )
         except VirusDetectedError as e:
             logger.warning(f"Virus detected in uploaded file: {e.threat_name}")

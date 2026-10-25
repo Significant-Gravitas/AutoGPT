@@ -13,23 +13,34 @@ interface Props {
 
 export function Breadcrumbs({ items }: Props) {
   return (
-    <div className="mb-4 flex h-auto flex-wrap items-center justify-start gap-2 md:mb-0 md:gap-2">
+    <div
+      data-slot="breadcrumbs"
+      className="mb-4 flex h-auto flex-wrap items-center justify-start gap-2 md:mb-0 md:gap-2"
+    >
       {items.map((item, index) => (
         <React.Fragment key={index}>
           {item.link ? (
             <Link
               href={item.link}
-              className="text-sm font-[400] text-zinc-600 transition-colors hover:text-zinc-900 hover:no-underline"
+              data-slot="breadcrumbs-link"
+              className="text-body font-normal leading-5 text-foreground-secondary transition-colors hover:text-foreground-strong hover:no-underline"
             >
               {item.name}
             </Link>
           ) : (
-            <span className="text-sm font-[400] text-zinc-900">
+            <span
+              data-slot="breadcrumbs-current"
+              className="text-body font-normal leading-5 text-foreground-strong"
+            >
               {item.name}
             </span>
           )}
           {index < items.length - 1 && (
-            <Text variant="small-medium" className="text-zinc-600">
+            <Text
+              variant="small-medium"
+              data-slot="breadcrumbs-separator"
+              className="text-foreground-secondary"
+            >
               /
             </Text>
           )}

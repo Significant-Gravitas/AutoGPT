@@ -5,6 +5,8 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 
 from backend.copilot.constants import legacy_chat_session_id
+from backend.copilot.gate.held import answered_cards as held_answered_cards
+from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import get_graph_execution_meta
 from backend.data.human_review import (
@@ -136,6 +138,20 @@ async def list_pending_reviews_for_chat_session(
     return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
 
 
+@router.get(
+    "/session/{chat_session_id}/answered",
+    summary="Get Answered Reviews Waiting to Run for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+)
+async def list_answered_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> List[PendingHumanReviewModel]:
+    """The chat's answered cards whose calls have not run yet, oldest first, so
+    its box still shows them as answered, with Close and continue, after a reload."""
+    return await held_answered_cards(user_id, chat_session_id)
+
+
 @router.post(
     "/action",
     response_model=ReviewResponse,
@@ -146,7 +162,9 @@ async def process_review_action(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ReviewResponse:
     """Process reviews with approve or reject actions."""
-    outcome = await process_reviews(user_id, request.reviews)
+    outcome = await process_reviews(
+        user_id, request.reviews, wait_for_other_cards=request.wait_for_other_cards
+    )
 
     error_message = None
     if outcome.auto_approval_failed_count:
@@ -161,4 +179,20 @@ async def process_review_action(
         rejected_count=outcome.rejected_count,
         failed_count=outcome.auto_approval_failed_count,
         error=error_message,
+        awaiting_other_cards=outcome.awaiting_other_cards,
     )
+
+
+@router.post(
+    "/session/{chat_session_id}/continue",
+    summary="Continue Chat With Answered Reviews",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
+async def continue_with_answered_reviews(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> None:
+    """Start the chat's turn with the cards answered so far; the rest stay open
+    and the turn is told how many still wait."""
+    await wake_for_held_calls(user_id, chat_session_id)

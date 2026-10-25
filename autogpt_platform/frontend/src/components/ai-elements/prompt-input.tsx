@@ -14,9 +14,8 @@ import type { ChatStatus } from "ai";
 import type {
   ComponentProps,
   FormEvent,
-  FormEventHandler,
   HTMLAttributes,
-  KeyboardEventHandler,
+  KeyboardEvent,
   ReactNode,
 } from "react";
 
@@ -32,10 +31,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Children, useCallback, useLayoutEffect, useRef } from "react";
+import { Children, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import { isKey } from "@/lib/keyboard";
+import { isTouchDevice } from "@/lib/platform";
 
 // ============================================================================
 // PromptInput — form wrapper
@@ -59,20 +59,17 @@ export function PromptInput({
 }: PromptInputProps) {
   const formRef = useRef<HTMLFormElement | null>(null);
 
-  const handleSubmit: FormEventHandler<HTMLFormElement> = useCallback(
-    async (event) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      const formData = new FormData(form);
-      const text = (formData.get("message") as string) || "";
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const text = (formData.get("message") as string) || "";
 
-      const result = onSubmit(text, event);
-      if (result instanceof Promise) {
-        await result;
-      }
-    },
-    [onSubmit],
-  );
+    const result = onSubmit(text, event);
+    if (result instanceof Promise) {
+      await result;
+    }
+  }
 
   return (
     <form
@@ -140,7 +137,9 @@ export function PromptInputTextarea({
   // Ref keeps autoResize stable inside the memoized change handler while
   // still reaching the latest callback.
   const onMultilineChangeRef = useRef(onMultilineChange);
-  onMultilineChangeRef.current = onMultilineChange;
+  useInsertionEffect(() => {
+    onMultilineChangeRef.current = onMultilineChange;
+  });
   // Wrapping is judged at the width the box has in the host's single row,
   // remembered from the last time it sat there. Judging it at whatever width
   // the box has right now lets the layout argue with itself: text that wraps
@@ -234,33 +233,27 @@ export function PromptInputTextarea({
     return () => observer.disconnect();
   }, []);
 
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      autoResize(e.currentTarget);
-      onChange?.(e);
-    },
-    [onChange],
-  );
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    autoResize(e.currentTarget);
+    onChange?.(e);
+  }
 
-  const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = useCallback(
-    (e) => {
-      // Call external handler first
-      onKeyDown?.(e);
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // Call external handler first
+    onKeyDown?.(e);
 
-      if (e.defaultPrevented) return;
+    if (e.defaultPrevented) return;
 
-      if (isKey(e, "Enter")) {
-        if (e.shiftKey) return;
-        // On touch-first devices (phones/tablets) Enter inserts a newline;
-        // users send with the submit button instead.
-        if (window.matchMedia?.("(pointer: coarse)")?.matches) return;
-        e.preventDefault();
+    if (isKey(e, "Enter")) {
+      if (e.shiftKey) return;
+      // On touch-first devices (phones/tablets) Enter inserts a newline;
+      // users send with the submit button instead.
+      if (isTouchDevice()) return;
+      e.preventDefault();
 
-        e.currentTarget.form?.requestSubmit();
-      }
-    },
-    [onKeyDown],
-  );
+      e.currentTarget.form?.requestSubmit();
+    }
+  }
 
   return (
     <InputGroupTextarea
@@ -368,21 +361,18 @@ export function PromptInputSubmit({
     Icon = <UIIcon icon={StopIcon} className="size-4" />;
   }
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (canStop && onStop) {
-        e.preventDefault();
-        onStop();
-        return;
-      }
-      if (isGenerating) {
-        e.preventDefault();
-        return;
-      }
-      onClick?.(e);
-    },
-    [canStop, isGenerating, onStop, onClick],
-  );
+  function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
+    if (canStop && onStop) {
+      e.preventDefault();
+      onStop();
+      return;
+    }
+    if (isGenerating) {
+      e.preventDefault();
+      return;
+    }
+    onClick?.(e);
+  }
 
   return (
     <InputGroupButton

@@ -14,7 +14,7 @@ from backend.api.features.library.model import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
-from backend.copilot.context import is_unattended_turn
+from backend.copilot.context import get_current_permissions, is_unattended_turn
 from backend.copilot.gate.subject import (
     NO_OP,
     Subject,
@@ -23,6 +23,8 @@ from backend.copilot.gate.subject import (
 )
 from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import denied_graph_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_chat_outcome
 from backend.copilot.tree import charge_credits
@@ -490,6 +492,11 @@ class RunAgentTool(BaseTool):
                     graph_id=graph.id,
                     graph_version=graph.version,
                 ).from_outside()
+
+            # Before the credential and input prompts: no setup card for a
+            # run that the ceiling refuses anyway.
+            if refusal := _provider_refusal(graph, session_id):
+                return refusal
 
             # Step 2: Check credentials and inputs
             graph_credentials, prereq_error = await self._check_prerequisites(
@@ -1022,6 +1029,8 @@ class RunAgentTool(BaseTool):
         under the graph's own safe-mode setting rather than pausing again.
         """
         session_id = session.session_id
+        if refusal := _provider_refusal(graph, session_id):
+            return refusal
 
         # Check rate limits (dry runs don't count against the session limit)
         if (
@@ -1322,6 +1331,8 @@ class RunAgentTool(BaseTool):
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
         session_id = session.session_id
+        if refusal := _provider_refusal(graph, session_id):
+            return refusal
 
         # Validate schedule params
         schedule_name = schedule_name.strip()
@@ -1470,6 +1481,24 @@ def _unexpected_error(error: Exception, session: ChatSession) -> ErrorResponse:
         error=str(error),
         session_id=session.session_id,
     ).from_outside(str(error))
+
+
+def _provider_refusal(graph: GraphModel, session_id: str) -> ErrorResponse | None:
+    """Refuse an agent whose blocks act with a provider's credentials the run
+    may not use: the run's ceiling on connected accounts covers what it
+    launches, as it covers its own blocks (``run_block``) and its sandbox."""
+    denied = denied_graph_providers(get_current_permissions(), graph)
+    if not denied:
+        return None
+    names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+    return ErrorResponse(
+        message=(
+            f"Workflow '{graph.name}' acts with the user's {names} account, which "
+            "this run is not permitted to use. Tell the user it is outside what "
+            "this run was allowed to do."
+        ),
+        session_id=session_id,
+    ).from_outside(graph.name)
 
 
 # One lookup for the run and for the gate: were they two, a drift between

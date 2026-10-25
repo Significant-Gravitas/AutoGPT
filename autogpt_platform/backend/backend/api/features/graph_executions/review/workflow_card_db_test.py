@@ -34,7 +34,7 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.tools.run_capability import RunCapabilityTool
-from backend.data.execution import ExecutionContext
+from backend.data.execution import ExecutionContext, GraphExecutionEntry
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     get_pending_reviews_for_user,
@@ -231,6 +231,51 @@ async def test_a_step_parks_on_its_card_and_the_card_resumes_the_run(
     # The card finished through the run's resume, not as a held call.
     assert await held._held(chat.session_id) == {}
     assert await run.step() == (False, _INPUT)
+
+
+async def test_a_run_its_card_resumed_asks_the_chat_again_at_its_next_step(
+    setup_test_user, test_user_id, flags, client
+):
+    """The resume the card publishes, replayed as the executor would: the run's
+    next irreversible step parks on a new card in the same chat (#15300)."""
+    chat, run = await _parked(test_user_id)
+    queue = AsyncMock()
+    with patch(
+        "backend.executor.utils.get_async_execution_queue",
+        AsyncMock(return_value=queue),
+    ):
+        await _answer(client, run.card_id, approved=True)
+
+    queue.publish_message.assert_awaited_once()
+    resumed = GraphExecutionEntry.model_validate_json(
+        queue.publish_message.call_args.kwargs["message"]
+    ).execution_context
+    assert (resumed.graph_exec_id, resumed.approval_chat_id) == (
+        run.graph_exec_id,
+        chat.session_id,
+    )
+
+    await run.next_step()
+    outputs = [
+        output
+        async for output in _BLOCK.execute(
+            _INPUT,
+            execution_context=resumed.model_copy(
+                update={"node_id": run.node_id, "node_exec_id": run.node_exec_id}
+            ),
+            user_id=test_user_id,
+            node_id=run.node_id,
+            node_exec_id=run.node_exec_id,
+            graph_exec_id=run.graph_exec_id,
+            graph_id=run.graph_id,
+            graph_version=1,
+        )
+    ]
+
+    assert outputs == []
+    card = await run.card()
+    assert card is not None and card.status == ReviewStatus.WAITING
+    assert card.session_id == chat.session_id
 
 
 async def test_a_card_declined_in_chat_rejects_the_step_and_asks_from_now_on(
