@@ -187,35 +187,42 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             role="user", content=f"{_integrations_block()}{instructions}{text}"
         ),
     ]
-    data = None
+    greeting: str | None = None
+    prompts: list[SuggestedPrompt] = []
     # Two attempts: at temperature 0.6 an occasional generation comes back
-    # truncated, malformed or without the integrations of enough prompts,
-    # and one retry is far cheaper than shipping the generic fallback to a
-    # brand-new user.
+    # truncated, malformed, without a greeting or without the integrations
+    # of enough prompts, and one retry is far cheaper than shipping the
+    # generic fallback to a brand-new user. A retry never replaces a better
+    # attempt, and greeting and prompts always come from the same one.
     for attempt in range(2):
         generated = await _generate(client, messages, attempt)
-        if generated is None:
+        candidate = _greeting_of(generated)
+        if generated is None or candidate is None:
             continue
-        data = generated
-        if len(_parse_prompts(data.get("prompts"))) >= MIN_PROMPTS:
+        candidate_prompts = _parse_prompts(generated.get("prompts"))
+        if greeting is None or len(candidate_prompts) > len(prompts):
+            greeting, prompts = candidate, candidate_prompts
+        if len(prompts) >= MIN_PROMPTS:
             break
         logger.warning(
             "Brain dump greeting: too few prompts with integrations (attempt %s)",
             attempt + 1,
         )
-    if data is None:
+    if greeting is None:
         return fallback_intro(text)
-
-    greeting = data.get("greeting")
-    if not isinstance(greeting, str) or not greeting.strip():
-        return fallback_intro(text)
-
-    prompts = _parse_prompts(data.get("prompts"))
     if len(prompts) < MIN_PROMPTS:
         # A greeting with two suggestions under it looks broken; the
         # generic set is better than a half-empty one.
-        return greeting.strip()[:MAX_GREETING_CHARS], fallback_prompts()
-    return greeting.strip()[:MAX_GREETING_CHARS], prompts[:MAX_PROMPTS]
+        return greeting, fallback_prompts()
+    return greeting, prompts[:MAX_PROMPTS]
+
+
+def _greeting_of(data: dict | None) -> str | None:
+    """The generation's greeting, trimmed, or ``None`` if it has none."""
+    greeting = data.get("greeting") if data else None
+    if not isinstance(greeting, str) or not greeting.strip():
+        return None
+    return greeting.strip()[:MAX_GREETING_CHARS]
 
 
 async def _generate(

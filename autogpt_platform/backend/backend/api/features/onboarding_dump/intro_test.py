@@ -235,3 +235,49 @@ async def test_a_malformed_icon_costs_only_the_icon(client: MagicMock, icon: obj
     _, prompts = await intro.generate_intro(TRANSCRIPT)
 
     assert [p.icon for p in prompts] == [intro.DEFAULT_PROMPT_ICON] * 5
+
+
+def _attempt(greeting: str, prompt_count: int) -> SimpleNamespace:
+    body = {
+        "greeting": greeting,
+        "prompts": [
+            {"title": f"Task {i}", "prompt": "Do it.", "integrations": []}
+            for i in range(prompt_count)
+        ],
+    }
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(body)))]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_retry_without_a_greeting_keeps_the_first_attempts_greeting(
+    client: MagicMock,
+):
+    """The first attempt's greeting was good but its prompts too few; a
+    retry that comes back without a greeting must not cost the user it."""
+    client.chat.completions.create.side_effect = [
+        _attempt("You sell stickers.", 2),
+        _attempt("", 5),
+    ]
+
+    greeting, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == "You sell stickers."
+    assert prompts == intro.fallback_prompts()
+
+
+@pytest.mark.asyncio
+async def test_a_first_attempt_without_a_greeting_is_asked_for_again(
+    client: MagicMock,
+):
+    client.chat.completions.create.side_effect = [
+        _attempt("", 5),
+        _attempt("You sell stickers.", 5),
+    ]
+
+    greeting, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert client.chat.completions.create.await_count == 2
+    assert greeting == "You sell stickers."
+    assert [p.title for p in prompts] == [f"Task {i}" for i in range(5)]
