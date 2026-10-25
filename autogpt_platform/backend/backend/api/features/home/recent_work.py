@@ -101,12 +101,13 @@ def compose_recent_work(
         target.items.append(_compose_item(event, session_titles))
         target.touch(event.created_at)
 
-    for expert_id, row in finished_delegation_items(
-        delegations or [], since, timezone_name
-    ):
+    finished = finished_delegation_items(delegations or [], since, timezone_name)
+    for expert_id, row in finished:
         target = bucket(("expert", expert_id))
         target.delegations.append(row)
         target.touch(row.occurred_at)
+    # The header's counts read every row the card lists, a hand-off as a run.
+    handed_back = [row.status for _, row in finished]
 
     groups = sorted(
         (_compose_group(found) for found in buckets.values()),
@@ -115,8 +116,10 @@ def compose_recent_work(
     )
     return HomeRecentWork(
         window_started_at=since,
-        completed_count=sum(item.status == "COMPLETED" for item in run_items),
-        failed_count=sum(item.status == "FAILED" for item in run_items),
+        completed_count=sum(item.status == "COMPLETED" for item in run_items)
+        + handed_back.count("completed"),
+        failed_count=sum(item.status == "FAILED" for item in run_items)
+        + handed_back.count("failed"),
         groups=groups[:_MAX_GROUPS],
         total_count=len(displayable),
     )

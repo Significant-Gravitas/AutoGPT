@@ -191,3 +191,34 @@ def test_finished_hand_offs_land_under_the_teammate_who_took_them():
             "/copilot?sessionId=otto-chat",
         ),
     ]
+
+
+def test_recent_work_counts_the_hand_offs_it_lists():
+    """The header's "N completed" and "N failed" read the rows under them: a
+    week of finished hand-offs is not "0 completed". A stopped hand-off is
+    neither, as a stopped run is neither; one still working, or older than
+    the week, is not listed and not counted."""
+    ended = _NOW - timedelta(minutes=5)
+    rows = [
+        _delegation("completed", sub_session_id="done-1", finished_at=ended),
+        _delegation("completed", sub_session_id="done-2", finished_at=ended),
+        _delegation("failed", sub_session_id="failed-1", finished_at=ended),
+        _delegation("cancelled", sub_session_id="stopped-1", finished_at=ended),
+        _delegation("running", sub_session_id="working-1"),
+        _delegation(
+            "completed", sub_session_id="old-1", finished_at=_NOW - timedelta(days=9)
+        ),
+    ]
+
+    work = compose_recent_work(
+        now=_NOW,
+        executions=[],
+        events=[],
+        expert_by_id={"expert-alex": _expert()},
+        agent_by_graph={},
+        session_titles={},
+        delegations=rows,
+        timezone_name="UTC",
+    )
+
+    assert (work.completed_count, work.failed_count) == (2, 1)
