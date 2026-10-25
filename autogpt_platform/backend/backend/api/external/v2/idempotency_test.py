@@ -45,10 +45,10 @@ async def test_a_first_request_claims_the_key_and_records_its_run(
         await claim.record("run-1")
 
     redis.set.assert_any_await(
-        f"v2:idem:{USER_ID}:{ORG_ID}:{KEY}", _held(), nx=True, ex=86400
+        f"v2:idem:{USER_ID}:{ORG_ID}:-:{KEY}", _held(), nx=True, ex=86400
     )
     redis.set.assert_awaited_with(
-        f"v2:idem:{USER_ID}:{ORG_ID}:{KEY}", _held("run-1"), ex=86400
+        f"v2:idem:{USER_ID}:{ORG_ID}:-:{KEY}", _held("run-1"), ex=86400
     )
 
 
@@ -85,7 +85,7 @@ async def test_a_failed_run_releases_its_key_for_a_retry(
         async with idempotent_run(KEY, _tenant(), REQUEST):
             raise RuntimeError("enqueue failed")
 
-    redis.delete.assert_awaited_once_with(f"v2:idem:{USER_ID}:{ORG_ID}:{KEY}")
+    redis.delete.assert_awaited_once_with(f"v2:idem:{USER_ID}:{ORG_ID}:-:{KEY}")
 
 
 async def test_a_run_that_started_keeps_its_key_even_if_the_response_fails(
@@ -220,6 +220,22 @@ async def test_the_same_key_in_two_organizations_claims_twice(
         await claim.record("run-1")
     async with idempotent_run(KEY, other_org, REQUEST) as claim:
         assert claim.existing_run_id is None
+
+
+async def test_the_same_key_in_two_teams_claims_twice(
+    key_store: dict[str, str],
+) -> None:
+    """A run lands in the caller's team, so a key reused under another
+    `X-Team-Id` must start a run there rather than replay the first."""
+    one_team = _tenant().model_copy(update={"team_id": "team-1"})
+    other_team = _tenant().model_copy(update={"team_id": "team-2"})
+
+    async with idempotent_run(KEY, one_team, REQUEST) as claim:
+        await claim.record("run-1")
+    async with idempotent_run(KEY, other_team, REQUEST) as claim:
+        assert claim.existing_run_id is None
+    async with idempotent_run(KEY, one_team, REQUEST) as claim:
+        assert claim.existing_run_id == "run-1"
 
 
 async def test_a_cancelled_request_releases_its_key(

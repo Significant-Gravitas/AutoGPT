@@ -15,6 +15,7 @@ from prisma.enums import APIKeyPermission
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.copilot.tools.manage_presets import UpdatePresetTool
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.model import CredentialsMetaInput
 from backend.util.exceptions import ConflictError, ExpertRunPausedError
 
 from ..models import (
@@ -32,6 +33,11 @@ ORG = "org-1"
 SECRET = "whsec-do-not-leak"
 PROVIDER_HOOK_ID = "provider-hook-do-not-leak"
 TRIGGER_SECRET = "delivery-secret-do-not-leak"
+NEW_CREDENTIALS = {
+    "github_credentials": CredentialsMetaInput(
+        id="cred-2", provider="github", type="api_key", title="GitHub"
+    )
+}
 
 
 @pytest.fixture(autouse=True)
@@ -374,6 +380,87 @@ async def test_new_inputs_on_a_trigger_without_credentials_move_it_to_its_new_we
 
     attach.assert_awaited_once_with(USER_ID, "p-1", "hook-2")
     prune.assert_awaited_once_with(USER_ID, "hook-1")
+
+
+async def test_new_credentials_alone_are_saved_with_the_saved_inputs(
+    mocker: pytest_mock.MockFixture, stored: AsyncMock
+):
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(inputs={"topic": "x"}),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(webhook_input_node=None),
+    )
+
+    await presets.update_preset(
+        request=AgentPresetUpdateRequest(credentials_inputs=NEW_CREDENTIALS),
+        preset_id="p-1",
+        auth=_key(),
+    )
+
+    rows = stored.update.await_args.kwargs["data"]["InputPresets"]["create"]
+    assert sorted(row["name"] for row in rows) == ["github_credentials", "topic"]
+
+
+async def test_new_credentials_alone_move_a_trigger_keeping_its_secret_settings(
+    mocker: pytest_mock.MockFixture, stored: AsyncMock
+):
+    """Reads leave the secret settings out, so they come from the saved preset."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(
+            webhook_input_node=Mock(id="node-1"), organization_id=ORG, team_id=None
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.resolve_member_tenancy",
+        new_callable=AsyncMock,
+        return_value=(ORG, None),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.make_node_credentials_input_map",
+        return_value={},
+    )
+    register = mocker.patch(
+        "backend.api.features.library.triggers.setup_webhook_for_block",
+        new_callable=AsyncMock,
+        return_value=(Mock(id="hook-2"), None),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.set_preset_webhook",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers._prune_dangling_webhook",
+        new_callable=AsyncMock,
+    )
+
+    await presets.update_preset(
+        request=AgentPresetUpdateRequest(credentials_inputs=NEW_CREDENTIALS),
+        preset_id="p-1",
+        auth=_key(),
+    )
+
+    assert register.await_args.kwargs["trigger_config"]["secret_token"] == (
+        TRIGGER_SECRET
+    )
+    rows = stored.update.await_args.kwargs["data"]["InputPresets"]["create"]
+    assert sorted(row["name"] for row in rows) == [
+        "constants",
+        "github_credentials",
+        "secret_token",
+    ]
 
 
 @pytest.fixture

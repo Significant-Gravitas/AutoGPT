@@ -9,6 +9,7 @@ Fails **open** on Redis errors: a transient Redis blip logs a warning and
 lets the request through rather than blocking all API traffic.
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Optional
@@ -19,6 +20,9 @@ from pydantic import BaseModel
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
+
+# Every v2 request waits on these checks, so a slow Redis fails them open fast.
+REDIS_TIMEOUT_SECONDS = 0.25
 
 
 class RateLimitState(BaseModel):
@@ -54,9 +58,9 @@ class RateLimiter:
         now = datetime.now(UTC)
         key = self._key(user_id, now)
         try:
-            redis = await get_redis_async()
-            await redis.set(key, 0, ex=self.window_seconds, nx=True)
-            count = await redis.incr(key)
+            count = await asyncio.wait_for(
+                self._count(key), timeout=REDIS_TIMEOUT_SECONDS
+            )
         except Exception as e:
             # A Redis outage fails every caller open, so the subject adds nothing;
             # for the credential buckets it would also put a credential in the log.
@@ -91,12 +95,23 @@ class RateLimiter:
         count exists to bound. Fails open, like ``check``.
         """
         try:
-            redis = await get_redis_async()
-            count = await redis.get(self._key(user_id, datetime.now(UTC)))
+            count = await asyncio.wait_for(
+                self._read(self._key(user_id, datetime.now(UTC))),
+                timeout=REDIS_TIMEOUT_SECONDS,
+            )
         except Exception as e:
             logger.warning(f"Rate-limit peek ({self.name}) failed open: {e}")
             return False
         return count is not None and int(count) >= self.max_requests
+
+    async def _count(self, key: str) -> int:
+        redis = await get_redis_async()
+        await redis.set(key, 0, ex=self.window_seconds, nx=True)
+        return await redis.incr(key)
+
+    async def _read(self, key: str) -> Optional[bytes | str]:
+        redis = await get_redis_async()
+        return await redis.get(key)
 
     def _key(self, user_id: str, now: datetime) -> str:
         bucket = int(now.timestamp()) // self.window_seconds

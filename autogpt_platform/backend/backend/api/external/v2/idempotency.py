@@ -72,6 +72,7 @@ async def idempotent_run(
         key=key,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
+        team_id=auth.team_id,
         fingerprint=fingerprint,
     )
     if key is None:
@@ -130,10 +131,12 @@ class RunClaim:
         user_id: str,
         organization_id: str,
         fingerprint: str,
+        team_id: Optional[str] = None,
     ) -> None:
         self.key = key
         self.user_id = user_id
         self.organization_id = organization_id
+        self.team_id = team_id
         self.fingerprint = fingerprint
         self.holds_key = False
         self.run_id: Optional[str] = None
@@ -141,9 +144,10 @@ class RunClaim:
 
     @property
     def redis_key(self) -> str:
-        # Per organization: a run in one org is invisible to the same user's
-        # requests from another, so a shared key there must start its own run.
-        return f"v2:idem:{self.user_id}:{self.organization_id}:{self.key}"
+        # Per organization and team, where a run lands: a shared key there must
+        # start its own run rather than replay one from elsewhere.
+        team = self.team_id or "-"
+        return f"v2:idem:{self.user_id}:{self.organization_id}:{team}:{self.key}"
 
     def stored_value(self, run_id: Optional[str] = None) -> str:
         """What the key holds: the request it was claimed for, and its run."""

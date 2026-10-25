@@ -179,9 +179,9 @@ async def update_preset(
 ) -> AgentPreset:
     """Update properties of a preset. Only provided fields will be updated.
 
-    New `inputs` on a webhook trigger re-register its webhook, with the saved
-    credentials unless the request brings new ones, and keep the secret
-    settings in its `hidden_inputs` unless the request sets them. Setting
+    New `inputs` or `credentials_inputs` on a webhook trigger re-register its
+    webhook; whichever the request leaves out keeps its saved value, and new
+    inputs keep the secret settings in its `hidden_inputs` unless they set them. Setting
     `is_active` to true also needs `RUN_AGENT`: an active trigger starts runs.
     """
     if request.is_active and APIKeyPermission.RUN_AGENT not in auth.scopes:
@@ -198,6 +198,9 @@ async def update_preset(
     if inputs is not None and credentials is None:
         # Without credentials the trigger's webhook would keep the old config.
         credentials = current.credentials
+    elif credentials is not None and inputs is None:
+        # Saved whole, so a trigger's secret settings survive the rewrite.
+        inputs = current.inputs
 
     preset = await triggers.update_triggered_preset(
         user_id=auth.user_id,

@@ -4,8 +4,9 @@ A cap the caller cannot see forces it to retry blind, and an anonymous bucket
 keyed on a header the caller writes is not a cap at all.
 """
 
+import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest import mock
 
 import pytest
@@ -23,6 +24,7 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.settings import Config
 
 PEER = "10.0.0.9"
+MID_MINUTE = datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
 
 
 async def test_a_request_under_the_cap_is_told_where_it_stands(
@@ -186,12 +188,21 @@ class _Counters:
 
 @pytest.fixture
 def counters(mocker: pytest_mock.MockFixture) -> _Counters:
+    """Its limiters' clock stays mid-minute, so no test's calls split across
+    two windows."""
     store = _Counters()
     mocker.patch(
         "backend.api.utils.rate_limit.get_redis_async",
         new=mock.AsyncMock(return_value=store),
     )
+    mocker.patch("backend.api.utils.rate_limit.datetime", _MidMinute)
     return store
+
+
+class _MidMinute(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return MID_MINUTE.astimezone(tz)
 
 
 async def _send_with_key(key: bytes, verify: mock.AsyncMock) -> int:
@@ -274,10 +285,7 @@ async def test_an_address_failing_across_many_heads_is_refused_unhashed(
         "backend.api.external.v2.global_rate_limit.resolve_request_auth",
         new=mock.AsyncMock(side_effect=HTTPException(status_code=401, detail="no")),
     )
-    # Both buckets, so a minute turning over before the request changes nothing.
-    now = datetime.now(UTC)
-    for minute in (now, now + timedelta(minutes=1)):
-        counters.counts[global_rate_limit._failed_auth_limiter._key(PEER, minute)] = 300
+    counters.counts[global_rate_limit._failed_auth_limiter._key(PEER, MID_MINUTE)] = 300
 
     assert await _send_with_key(b"agpt_fresh", verify) == 429
     verify.assert_not_awaited()
@@ -450,3 +458,30 @@ async def test_a_limiter_that_fails_open_logs_no_subject(
 
     assert "failed open" in caplog.text
     assert "agpt_abc" not in caplog.text
+
+
+@pytest.mark.parametrize("call, open_answer", [("check", None), ("exhausted", False)])
+async def test_a_hanging_redis_fails_the_limiter_open_fast(
+    mocker: pytest_mock.MockFixture, call: str, open_answer: object
+):
+    """Every v2 request waits on these checks."""
+    mocker.patch(
+        "backend.api.utils.rate_limit.get_redis_async",
+        new=mock.AsyncMock(return_value=_HangingRedis()),
+    )
+    limiter = RateLimiter("probe", max_requests=1, window_seconds=60)
+
+    answer = await asyncio.wait_for(getattr(limiter, call)("user-1"), timeout=5)
+
+    assert answer is open_answer
+
+
+class _HangingRedis:
+    async def set(self, *args, **kwargs):
+        await asyncio.Event().wait()
+
+    async def incr(self, *args, **kwargs):
+        await asyncio.Event().wait()
+
+    async def get(self, *args, **kwargs):
+        await asyncio.Event().wait()
