@@ -55,7 +55,7 @@ export default function AuthorizePage() {
     error,
     refetch,
   } = useGetOauthGetOauthAppInfo(
-    clientID || "",
+    encodeURIComponent(clientID || ""),
     { redirect_uri: redirectURI },
     {
       query: {
