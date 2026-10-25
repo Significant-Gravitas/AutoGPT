@@ -23,6 +23,7 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from backend.copilot import delegation_cap, stream_registry, turn_budget
+from backend.copilot.baseline import service as baseline_service
 from backend.copilot.delegation_settings import DelegationSettings
 from backend.copilot.gate import policy as gate_policy
 from backend.copilot.gate.policy import Effect
@@ -34,6 +35,7 @@ from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import NoResultsResponse, ToolResponseBase
 from backend.copilot.turn_pause import PAUSE_KEY
 
+from .baseline_turns import BaselineTurns
 from .executor_turns import Executor, SdkTurnsViaExecutor
 from .ledger import PlatformLedger
 from .provider import FakeProvider
@@ -136,6 +138,47 @@ async def test_a_delegated_turn_stops_at_its_cap_and_waits_on_the_user(
     assert (session_id, user_id) == (session.session_id, session.user_id)
     assert question == delegation_cap.cap_question(CAP_USD)
     settings.stop_delegation_at_cap.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_cap_that_cannot_be_read_never_leaves_a_counted_turn(
+    provider: FakeProvider, ledger: PlatformLedger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A turn on the baseline engine is counted on its box, and only the
+    turn's try/finally releases that count. Reading the hand-off's cap can
+    fail (the cost store is down); it must fail before the turn is counted,
+    or the expert's box stays unpaused at every later turn end."""
+    scenario = next(s for s in SCENARIOS if s.id == "baseline-openrouter")
+    config = _config(baseline_service.config, scenario, provider).model_copy(
+        update={"use_e2b_sandbox": True, "e2b_api_key": "e2b-test"}
+    )
+    run_turn = BaselineTurns(
+        monkeypatch,
+        config,
+        base_url=f"{provider.url}{scenario.client_path}",
+        model=scenario.model,
+    )
+    counted = AsyncMock()
+    released = MagicMock()
+    for name, value in {
+        "get_or_create_sandbox": AsyncMock(return_value=MagicMock()),
+        "count_expert_turn": counted,
+        "_pause_counted_box": released,
+        "_pause_uncounted_box": MagicMock(),
+        "cap_guard_for": AsyncMock(side_effect=RuntimeError("cost store down")),
+    }.items():
+        monkeypatch.setattr(baseline_service, name, value)
+    # Not an expert's session: the harness keeps the expert's DB lookups out,
+    # and the box is counted for any session that has one.
+    session = _session(scenario)
+    session.metadata.delegated_by_session_id = "otto-chat"
+    session.metadata.delegation_cap_usd = CAP_USD
+    session.messages.append(ChatMessage(role="user", content=PROMPT))
+
+    with pytest.raises(RuntimeError, match="cost store down"):
+        await run_turn(session, PROMPT, new_pod=False)
+
+    assert counted.await_count == released.call_count
 
 
 class _Lookup(BaseTool):

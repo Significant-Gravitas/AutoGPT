@@ -2004,6 +2004,11 @@ async def stream_chat_completion_baseline(
             active_model,
         )
 
+    # A delegated thread stops at what its hand-off cap has left. Read before
+    # the box is set up and counted: a read that fails ends the turn here,
+    # with nothing on the box for the turn's finally to release.
+    cap_guard = await cap_guard_for(user_id, session)
+
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
     e2b_api_key = config.active_e2b_api_key
@@ -2638,8 +2643,6 @@ async def stream_chat_completion_baseline(
     # the current binding lazily so the executor always sees the latest session.
     _session_holder: list[ChatSession] = [session]
     final_checkpoint: StreamCheckpoint | None = None
-    # A delegated thread stops at what its hand-off cap has left.
-    cap_guard = await cap_guard_for(user_id, session)
     landed_at_cap: list[bool] = [False]
     cap_pause: TurnPause | None = None
 
