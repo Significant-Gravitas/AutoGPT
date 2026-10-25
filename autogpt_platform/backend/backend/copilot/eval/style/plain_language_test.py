@@ -1,9 +1,13 @@
 """The eval case for SECRT-3158: an expert's reply names no tool, file path,
 shell command or internal id. Pure checks, so they run without the roster."""
 
-from .models import ScoredResponse
-from .plain_language import TOOL_NAMES, technical_terms
-from .runner import summarize_expert
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from .models import ScoredResponse, StyleEvalResult
+from .plain_language import TOOL_NAMES, leaking_experts, technical_terms
+from .runner import main, summarize_expert
 
 _TOOLS = frozenset({"run_capability", "bash_exec", "TodoWrite", "Read", "web_search"})
 
@@ -104,6 +108,47 @@ def test_the_summary_counts_replies_that_leak():
         _row("Maya", "Called bash_exec", ["bash_exec"]),
     ]
     assert summarize_expert("Maya", rows).technical_replies == 2
+
+
+def test_the_gate_names_every_expert_whose_replies_leak():
+    summaries = [
+        summarize_expert("Maya", [_row("Maya", "Ran sed -i", ["sed -i"])]),
+        summarize_expert("Max", [_row("Max", "Your brief is ready.", [])]),
+    ]
+    assert leaking_experts(summaries) == ["Maya"]
+
+
+@pytest.mark.parametrize("terms, exits", [(["sed -i"], True), ([], False)])
+def test_a_run_whose_replies_leak_fails_the_command(terms, exits):
+    result = _result([_row("Maya", "reply", terms)])
+    with (
+        patch("sys.argv", ["expert-style-eval"]),
+        patch("backend.copilot.eval.style.runner.run", AsyncMock(return_value=result)),
+    ):
+        if exits:
+            with pytest.raises(SystemExit) as raised:
+                main()
+            assert raised.value.code == 1
+        else:
+            main()
+
+
+def _result(rows: list[ScoredResponse]) -> StyleEvalResult:
+    return StyleEvalResult(
+        run_id="r",
+        ts="t",
+        fingerprint="f",
+        chat_model="m",
+        judge_model="j",
+        experts=[summarize_expert("Maya", rows)],
+        separation=None,
+        comparison=[],
+        cost_usd=0.0,
+        cost_known=True,
+        input_tokens=0,
+        output_tokens=0,
+        responses=rows,
+    )
 
 
 def _row(expert: str, response: str, terms: list[str]) -> ScoredResponse:

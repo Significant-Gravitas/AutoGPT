@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import logging
 import statistics
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,7 +60,7 @@ from .models import (
     Separation,
     StyleEvalResult,
 )
-from .plain_language import TOOL_NAMES, technical_terms
+from .plain_language import TOOL_NAMES, leaking_experts, technical_terms
 from .scorer import judge_response, response_score
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,17 @@ async def run(options: RunOptions) -> StyleEvalResult | None:
     )
     options.out.write_text(result.model_dump_json(indent=2), encoding="utf-8")
     print_summary(result, options.out)
-    if options.write_baseline:
+    leaking = leaking_experts(result.experts)
+    if leaking:
+        print(
+            "plain-language gate FAILED: replies showed technical terms for "
+            f"{', '.join(leaking)} (see technical_terms in {options.out})"
+        )
+    if options.write_baseline and leaking:
+        # A baseline that leaked would make leaking the norm later runs are
+        # read against.
+        print("baseline: NOT rewritten; this run failed the plain-language gate")
+    elif options.write_baseline:
         save_baseline(new_baseline(result, rows, parts))
         print(f"baseline: rewritten from this run ({len(result.experts)} experts)")
     return result
@@ -680,7 +691,9 @@ def main() -> None:
         )
     except ValidationError as invalid:
         parser.error(str(invalid))
-    asyncio.run(run(options))
+    result = asyncio.run(run(options))
+    if result is not None and leaking_experts(result.experts):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

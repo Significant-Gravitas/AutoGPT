@@ -11,6 +11,8 @@ from collections.abc import Iterable
 
 from backend.copilot.tools import TOOL_REGISTRY
 
+from .models import ExpertSummary
+
 # SDK built-ins with compound names; "Read" or "Write" alone are English words.
 TOOL_NAMES = frozenset(TOOL_REGISTRY) | {"TodoWrite", "WebFetch", "WebSearch"}
 
@@ -59,6 +61,12 @@ _COMMAND_POSITION = re.compile(
 _UUID = re.compile(
     r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE
 )
+
+
+def leaking_experts(summaries: Iterable[ExpertSummary]) -> list[str]:
+    """The experts any of whose replies showed the user a technical term. The
+    eval fails on any: a leak is a defect, not a style score to average away."""
+    return [s.expert for s in summaries if s.technical_replies]
 
 
 def technical_terms(text: str, tool_names: Iterable[str]) -> list[str]:

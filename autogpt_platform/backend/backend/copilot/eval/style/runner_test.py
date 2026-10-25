@@ -392,6 +392,26 @@ async def test_write_baseline_stores_every_prompt_of_this_run(
     assert written.fingerprint == result.fingerprint
 
 
+@pytest.mark.asyncio
+async def test_a_run_whose_replies_leak_never_becomes_the_baseline(
+    stubbed_models, tmp_path: Path
+):
+    """A baseline that leaked would make leaking the norm a later run is read
+    against (SECRT-3158)."""
+    _, save_baseline = stubbed_models
+    leaky = Turn(
+        text="I patched brief.md with sed -i.",
+        truncated=False,
+        usage=Usage(model="m", input_tokens=1, output_tokens=1, cost_usd=0.0),
+        tool_calls=[],
+    )
+    with patch(f"{_RUNNER}.generate_turn", AsyncMock(return_value=leaky)):
+        result = await run(RunOptions(out=tmp_path / "r.json", write_baseline=True))
+    assert result is not None
+    assert all(e.technical_replies == 27 for e in result.experts)
+    save_baseline.assert_not_called()
+
+
 def test_drift_names_the_components_that_moved_since_the_baseline():
     """The one line that decides whether a run is worth paying for."""
     baseline = load_baseline()
