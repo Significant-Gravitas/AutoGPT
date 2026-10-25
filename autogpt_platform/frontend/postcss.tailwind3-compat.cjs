@@ -59,7 +59,9 @@
     on one element set the same property, the other one won. The utilities
     are put back in that order, sorted as Tailwind 3 sorted them: by all of a
     class's variants together, so `max-md:[&>svg]:size-5` follows
-    `[&>svg]:size-4`; `outline-none` also goes back in front of the
+    `[&>svg]:size-4`, and then arbitrary properties after the other
+    utilities of the same variants (`[animation-timing-function:...]` beats
+    tailwindcss-animate's `ease-*`); `outline-none` also goes back in front of the
     outline width, offset and colour classes it used to come before.
   - `transition-none` sets no timing or duration, and `justify-self-start` /
     `-end` mean `start` / `end`, as in Tailwind 3.
@@ -419,6 +421,17 @@ function unescapeClass(name) {
 
 // `hover:data-[x=y]:bg-red` -> ["hover", "data-[x=y]"]
 function variantsOf(node) {
+  return splitClass(node)?.variants ?? null;
+}
+
+// `md:[mask:none]` -> true: an arbitrary property, which Tailwind 3 put after
+// the other utilities of the same variants.
+function isArbitraryProperty(node) {
+  const utility = splitClass(node)?.utility ?? "";
+  return /^!?\[[a-zA-Z-]+:.+\]!?$/.test(utility);
+}
+
+function splitClass(node) {
   let rule = node;
   if (node.type === "atrule") {
     rule = null;
@@ -440,7 +453,7 @@ function variantsOf(node) {
       current = "";
     } else current += ch;
   }
-  return parts;
+  return { variants: parts, utility: current };
 }
 
 // Tailwind 3 gave every variant a bit, in the order above, and sorted a
@@ -448,14 +461,18 @@ function variantsOf(node) {
 // decides first, then the next highest, and a class with one more variant
 // sorts after one without it (`max-md:[&>svg]:size-5` after `[&>svg]:size-4`).
 function sortKey(node) {
-  return (variantsOf(node) ?? []).map(variantRank).sort((a, b) => b - a);
+  return {
+    variants: (variantsOf(node) ?? []).map(variantRank).sort((a, b) => b - a),
+    arbitrary: isArbitraryProperty(node) ? 1 : 0,
+  };
 }
 
 function compareKeys(a, b) {
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    if (a[i] !== b[i]) return a[i] - b[i];
+  const [va, vb] = [a.variants, b.variants];
+  for (let i = 0; i < Math.min(va.length, vb.length); i++) {
+    if (va[i] !== vb[i]) return va[i] - vb[i];
   }
-  return a.length - b.length;
+  return va.length - vb.length || a.arbitrary - b.arbitrary;
 }
 
 // One rule per at-rule block, so each sorts by its own variants.

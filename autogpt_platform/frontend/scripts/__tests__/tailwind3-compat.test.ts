@@ -70,6 +70,8 @@ const CLASSES = [
   "[&>svg]:size-4",
   "max-md:[&>svg]:size-5",
   "max-md:w-8",
+  "ease-in-out",
+  "[animation-timing-function:cubic-bezier(0.32,0.72,0,1)]",
   // Tailwind 3 generated nothing for these.
   "size-13",
   "shadow-xs",
@@ -289,6 +291,17 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       at(".focus-visible\\:-outline-offset-2:focus-visible"),
     );
     expect(declarations(root, ".text-lg")["line-height"]).toBe("1.75rem");
+    // Arbitrary properties come after the other utilities of the same
+    // variants, so they beat tailwindcss-animate's `ease-*` timing.
+    const easeRules: number[] = [];
+    order.forEach((selector, index) => {
+      if (selector === ".ease-in-out") easeRules.push(index);
+    });
+    expect(
+      at(
+        ".\\[animation-timing-function\\:cubic-bezier\\(0\\.32\\,0\\.72\\,0\\,1\\)\\]",
+      ),
+    ).toBeGreaterThan(Math.max(...easeRules));
     // Media blocks are split to sort each rule and merged back; `outline-none`
     // still moves in front of the outline offset inside the merged block.
     const media = await postcss([
