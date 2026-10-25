@@ -12,7 +12,9 @@ const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
 // Read by the React Compiler coverage test too, so both cover the same files.
 export const reactCompilerSources = [
   "/src/app/(platform)/copilot/",
-  "/src/components/ai-elements/",
+  "/src/components/organisms/Conversation/",
+  "/src/components/organisms/Message/",
+  "/src/components/organisms/PromptInput/",
 ];
 
 /** @type {import('next').NextConfig} */

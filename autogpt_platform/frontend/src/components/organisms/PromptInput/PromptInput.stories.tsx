@@ -16,7 +16,7 @@ import {
   PromptInputButton,
   PromptInputSubmit,
   PromptInputTextarea,
-} from "./prompt-input";
+} from "./PromptInput";
 
 // The classes ChatInput gives its send and Queue buttons on the default
 // (single pill row) composer.
