@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 # Stay up for health-checks and runtime reconfiguration when no adapter is
 # configured (e.g. deployed without a Discord token).
 _NO_ADAPTER_SLEEP_SECONDS = 3600
+# Long enough for the Discord client to close its gateway connection, short
+# enough that a hung adapter cannot stall the shutdown.
+_ADAPTER_STOP_TIMEOUT_SECONDS = 10
 
 
 class CoPilotChatBridge(AppService):
@@ -53,6 +56,8 @@ class CoPilotChatBridge(AppService):
         # they can await adapter methods directly.
         self._api: BotBackend | None = None
         self._adapters_by_platform: dict[str, PlatformAdapter] = {}
+        # Set by `_run_adapters` so `cleanup` can cancel it while the loop runs.
+        self._adapters_task: asyncio.Task[None] | None = None
 
     @classmethod
     def get_port(cls) -> int:
@@ -66,6 +71,7 @@ class CoPilotChatBridge(AppService):
         super().run_service()
 
     async def _run_adapters(self) -> None:
+        self._adapters_task = asyncio.current_task()
         api = BotBackend()
         self._api = api
         socket_adapters = _build_socket_adapters(api)
@@ -115,11 +121,32 @@ class CoPilotChatBridge(AppService):
         # already torn down.
         self._adapters_by_platform = {}
         self._api = None
+        if future.cancelled():
+            logger.info("CoPilotChatBridge adapters stopped")
+            return
         exc = future.exception()
         if exc is not None:
             logger.error("CoPilotChatBridge adapters crashed: %r", exc, exc_info=exc)
         else:
             logger.warning("CoPilotChatBridge adapters exited without error")
+
+    def cleanup(self):
+        # Stopping the loop alone abandons the adapters task mid-await; cancel it
+        # first so its `finally` closes each adapter's connection.
+        task = self._adapters_task
+        try:
+            if task is not None and self.shared_event_loop.is_running():
+                self.shared_event_loop.call_soon_threadsafe(task.cancel)
+                self.run_and_wait(
+                    asyncio.wait([task]), timeout=_ADAPTER_STOP_TIMEOUT_SECONDS
+                )
+        except TimeoutError:
+            logger.warning(
+                "CoPilotChatBridge adapters did not stop within "
+                f"{_ADAPTER_STOP_TIMEOUT_SECONDS}s; continuing cleanup"
+            )
+        finally:
+            super().cleanup()
 
     async def health_check(self) -> str:
         if not self._adapters_healthy:
