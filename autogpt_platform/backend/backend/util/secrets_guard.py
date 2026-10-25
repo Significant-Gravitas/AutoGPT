@@ -75,6 +75,7 @@ def check_secrets(settings: Settings | None = None) -> None:
     """Raise if a required secret is missing or is a known-published value."""
     settings = settings or Settings()
     _warn_on_published_credentials(settings)
+    _warn_on_missing_passwords(settings)
     secrets = settings.secrets
     configured = {
         "ENCRYPTION_KEY": secrets.encryption_key,
@@ -110,8 +111,7 @@ def check_secrets(settings: Settings | None = None) -> None:
 
 def _warn_on_published_credentials(settings: Settings) -> None:
     """Warn about each service password that is a published value. The service
-    keeps working on it; anyone who can reach that service can log in too. Warn
-    as well about a Compose service left with no password, which doesn't work."""
+    keeps working on it; anyone who can reach that service can log in too."""
     credentials = {
         f"The database password in {name}": _url_password(os.environ.get(name, ""))
         for name in ("DATABASE_URL", "DIRECT_URL")
@@ -128,6 +128,11 @@ def _warn_on_published_credentials(settings: Settings) -> None:
                 f"[SECURITY] {name} is a password published in this repository's "
                 f"public .env.default files, so anyone can know it. {CREDENTIAL_HINT}"
             )
+
+
+def _warn_on_missing_passwords(settings: Settings) -> None:
+    """Warn about each Compose service the backend uses that has no password:
+    Redis then lets anyone on its networks in, and the others don't work."""
     # `redis-0` is the Compose cluster, whose shards take REDIS_PASSWORD from
     # backend/.env; one from before they had a password runs them without one.
     if settings.config.redis_host == "redis-0" and not settings.config.redis_password:
