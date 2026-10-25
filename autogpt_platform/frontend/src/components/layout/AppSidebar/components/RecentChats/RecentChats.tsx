@@ -154,7 +154,7 @@ export function RecentChats() {
           onClick={() => loadMore()}
           disabled={isLoadingMore}
           // TODO(tokens): no fitting role for hover:bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a border colour), not a fill
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-surface-active px-2 py-1.5 text-body leading-5 text-foreground-emphasis hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-body-lg max-md:leading-6"
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-surface-active px-2 py-1.5 text-foreground-emphasis hover:bg-zinc-300 disabled:opacity-60 max-md:py-3"
         >
           {isLoadingMore && (
             <LoadingSpinner
@@ -162,7 +162,9 @@ export function RecentChats() {
               className="size-4 text-foreground-tertiary"
             />
           )}
-          {isLoadingMore ? "Loading…" : "Load more"}
+          <Text as="span" variant="body-tight-touch" className="text-inherit">
+            {isLoadingMore ? "Loading…" : "Load more"}
+          </Text>
         </button>
       )}
 

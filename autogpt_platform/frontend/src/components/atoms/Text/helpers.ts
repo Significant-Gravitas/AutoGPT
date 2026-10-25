@@ -39,11 +39,34 @@ export const variants = {
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-semibold-tight":
     "font-sans text-body-lg font-semibold leading-6 text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-tight":
     "font-sans text-body font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-medium-tight":
+    "font-sans text-body font-medium leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5,
+  // stepping up to body-lg (16px/24px) below md like the raw sizes it replaced.
+  "body-tight-touch":
+    "font-sans text-body font-normal leading-5 text-foreground-base max-md:text-body-lg max-md:leading-6",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-semibold-tight":
+    "font-sans text-body font-semibold leading-5 text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  "body-sm-medium-inherit":
+    "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
+  // body-sm-medium-inherit that steps up to body (14px/20px) below md, like
+  // the responsive raw sizes it replaced.
+  "body-sm-medium-inherit-touch":
+    "font-sans text-body-sm font-medium leading-inherit text-foreground-base max-md:text-body max-md:leading-5",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4,
+  // stepping up to body (14px/20px) below md like the raw sizes it replaced.
+  "small-medium-tight-touch":
+    "font-sans text-caption font-medium leading-4 text-foreground-base max-md:text-body max-md:leading-5",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
@@ -98,9 +121,16 @@ export const variantElementMap: Record<Variant, As> = {
   "large-medium": "p",
   "large-semibold": "p",
   "large-semibold-tight": "p",
+  "lg-semibold": "h3",
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
+  "body-medium-tight": "p",
+  "body-tight-touch": "p",
+  "body-semibold-tight": "p",
+  "body-sm-medium-inherit": "p",
+  "body-sm-medium-inherit-touch": "p",
+  "small-medium-tight-touch": "p",
   small: "p",
   "small-medium": "p",
   "small-tight": "p",
