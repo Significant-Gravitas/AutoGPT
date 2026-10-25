@@ -57,7 +57,9 @@
     after `data-*` (tailwind-scrollbar 3 registered them again), `dark:` came
     before the breakpoints and `*:` next to `first:`, so when two such classes
     on one element set the same property, the other one won. The utilities
-    are put back in that order; `outline-none` also goes back in front of the
+    are put back in that order, sorted as Tailwind 3 sorted them: by all of a
+    class's variants together, so `max-md:[&>svg]:size-5` follows
+    `[&>svg]:size-4`; `outline-none` also goes back in front of the
     outline width, offset and colour classes it used to come before.
   - `transition-none` sets no timing or duration, and `justify-self-start` /
     `-end` mean `start` / `end`, as in Tailwind 3.
@@ -441,21 +443,56 @@ function variantsOf(node) {
   return parts;
 }
 
-function sortKey(node, insideAtRule) {
-  const variants = variantsOf(node) ?? [];
-  // Inside a media block the media variant is shared, so the next one sorts.
-  const ordered = insideAtRule
-    ? variants.filter((v) => !AT_RULE_VARIANT.test(v))
-    : variants;
-  return [variantRank(ordered[0]), variantRank(ordered[1])];
+// Tailwind 3 gave every variant a bit, in the order above, and sorted a
+// class by all of its variants ORed together. So the class's highest variant
+// decides first, then the next highest, and a class with one more variant
+// sorts after one without it (`max-md:[&>svg]:size-5` after `[&>svg]:size-4`).
+function sortKey(node) {
+  return (variantsOf(node) ?? []).map(variantRank).sort((a, b) => b - a);
 }
 
-function sortNodes(nodes, insideAtRule) {
+function compareKeys(a, b) {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return a.length - b.length;
+}
+
+// One rule per at-rule block, so each sorts by its own variants.
+function splitAtRules(nodes) {
+  return nodes.flatMap((node) => {
+    if (
+      node.type !== "atrule" ||
+      !/^(media|supports|container)$/.test(node.name) ||
+      !node.nodes ||
+      node.nodes.length < 2
+    ) {
+      return [node];
+    }
+    return node.nodes.map((child) => node.clone({ nodes: [child.clone()] }));
+  });
+}
+
+function mergeAdjacentAtRules(nodes) {
+  const merged = [];
+  for (const node of nodes) {
+    const last = merged[merged.length - 1];
+    if (
+      node.type === "atrule" &&
+      last?.type === "atrule" &&
+      last.name === node.name &&
+      last.params === node.params
+    ) {
+      last.append(node.nodes.map((child) => child.clone()));
+    } else merged.push(node);
+  }
+  return merged;
+}
+
+function sortNodes(nodes) {
   return nodes
-    .map((node, index) => ({ node, index, key: sortKey(node, insideAtRule) }))
-    .sort(
-      (a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1] || a.index - b.index,
-    )
+    .map((node, index) => ({ node, index, key: sortKey(node) }))
+    .sort((a, b) => compareKeys(a.key, b.key) || a.index - b.index)
     .map((entry) => entry.node);
 }
 
@@ -511,16 +548,11 @@ function restoreRuleOrder(root) {
   );
   if (start < 0 || end < 0) return;
   const block = root.nodes.slice(start + 1, end);
-  const sorted = sortNodes(block, false);
+  const sorted = mergeAdjacentAtRules(sortNodes(splitAtRules(block)));
   for (const node of block) node.remove();
   root.nodes[start].after(sorted);
   for (const node of sorted) {
-    if (node.type === "atrule" && node.nodes) {
-      const inner = sortNodes(node.nodes, true);
-      node.removeAll();
-      node.append(inner);
-      moveOutlineNone(node);
-    }
+    if (node.type === "atrule" && node.nodes) moveOutlineNone(node);
   }
   moveOutlineNone(root);
   root.nodes[start].remove();

@@ -67,6 +67,9 @@ const CLASSES = [
   "focus-visible:-outline-offset-2",
   "text-lg",
   "leading-relaxed",
+  "[&>svg]:size-4",
+  "max-md:[&>svg]:size-5",
+  "max-md:w-8",
   // Tailwind 3 generated nothing for these.
   "size-13",
   "shadow-xs",
@@ -286,6 +289,14 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       at(".focus-visible\\:-outline-offset-2:focus-visible"),
     );
     expect(declarations(root, ".text-lg")["line-height"]).toBe("1.75rem");
+    // Tailwind 3 sorted by all of a class's variants together, so a
+    // breakpoint on top of an arbitrary variant comes after the bare one.
+    expect(at(".max-md\\:\\[\\&\\>svg\\]\\:size-5 > svg")).toBeGreaterThan(
+      at(".\\[\\&\\>svg\\]\\:size-4 > svg"),
+    );
+    expect(at(".max-md\\:w-8")).toBeLessThan(
+      at(".\\[\\&\\>svg\\]\\:size-4 > svg"),
+    );
   });
 
   it("generates nothing for classes Tailwind 3 had no value for", async () => {
