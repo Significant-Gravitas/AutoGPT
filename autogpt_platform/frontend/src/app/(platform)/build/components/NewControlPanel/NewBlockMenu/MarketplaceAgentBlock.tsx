@@ -69,9 +69,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            className={cn(
-              "line-clamp-1 text-zinc-800 group-disabled:text-zinc-400",
-            )}
+            tone="emphasis"
+            className={cn("line-clamp-1 group-disabled:text-zinc-400")}
           >
             {highlightText(title, highlightedText)}
           </Text>
@@ -80,9 +79,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            className={cn(
-              "truncate text-zinc-500 group-disabled:text-zinc-400",
-            )}
+            tone="muted"
+            className={cn("truncate group-disabled:text-zinc-400")}
           >
             By {creator_name}
           </Text>
@@ -92,9 +90,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            className={cn(
-              "truncate text-zinc-500 group-disabled:text-zinc-400",
-            )}
+            tone="muted"
+            className={cn("truncate group-disabled:text-zinc-400")}
           >
             {number_of_runs} runs
           </Text>
