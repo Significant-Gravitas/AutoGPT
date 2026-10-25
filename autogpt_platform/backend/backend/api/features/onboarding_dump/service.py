@@ -45,6 +45,7 @@ from backend.api.features.onboarding_dump.rate_limit import (
 )
 from backend.copilot.db import user_has_any_session
 from backend.data.onboarding import format_brain_dump_for_extraction
+from backend.data.onboarding_role import OnboardingRole, get_onboarding_role
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -548,6 +549,20 @@ async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
     return understanding.user_role, understanding.pain_points
 
 
+async def _wizard_role(user_id: str) -> OnboardingRole | None:
+    """The role the wizard kept; other writers rewrite the understanding's copy,
+    so it stands in only for an account the wizard kept none for."""
+    try:
+        role = await get_onboarding_role(user_id)
+    except Exception as e:
+        logger.warning(f"Brain dump intro: onboarding role read failed: {e}")
+        role = None
+    if role is not None:
+        return role
+    user_role, _ = await _safe_understanding(user_id)
+    return OnboardingRole.from_understanding(user_role)
+
+
 async def _safe_templates() -> list[Expert]:
     try:
         return await list_templates()
@@ -753,10 +768,9 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
 
     team, team_pending = await _team_for_intro(user_id, dump)
     if dump is None or _nothing_to_reflect(dump):
-        user_role, _ = await _safe_understanding(user_id)
         return IntroCardResponse(
             path="B",
-            greeting=prompts.path_b_greeting(user_role),
+            greeting=prompts.path_b_greeting(await _wizard_role(user_id)),
             prompts=intro.fallback_prompts(),
             team=team,
             team_pending=team_pending,
