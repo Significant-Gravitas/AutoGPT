@@ -93,7 +93,8 @@ export const CustomControls = memo(
         ),
         label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
         onClick: handleTutorialClick,
-        className: `h-10 w-10 border-none ${isTutorialRunning || isTutorialLoading ? "bg-surface-hover" : "bg-surface"}`,
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+        className: `h-10 w-10 border-none ${isTutorialRunning || isTutorialLoading ? "bg-zinc-100" : "bg-surface"}`,
         disabled: isTutorialLoading,
       },
       {
@@ -119,7 +120,8 @@ export const CustomControls = memo(
           ? "Canvas is locked because this is a read-only workflow"
           : "Toggle Lock",
         onClick: () => setIsLocked(!isLocked),
-        className: `h-10 w-10 border-none ${isLocked ? "bg-surface-hover" : "bg-surface"}`,
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
+        className: `h-10 w-10 border-none ${isLocked ? "bg-zinc-100" : "bg-surface"}`,
         disabled: isReadOnly,
       },
     ];

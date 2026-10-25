@@ -46,7 +46,7 @@ export const createRunSteps = (tour: any): StepOptions[] => [
   {
     id: "show-output",
     title: "View the Output",
-    // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
+    // TODO(tokens): no exact role: ring-blue-200 #BFDBFE; no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41, SECRT-3154)
     text: `
       <div class="text-body text-foreground-emphasis">
         <p class="text-body font-normal text-foreground-emphasis m-0">Here's the <strong>output</strong> of your block!</p>
@@ -56,7 +56,7 @@ export const createRunSteps = (tour: any): StepOptions[] => [
           <p class="text-body-sm leading-inherit text-info-foreground m-0 mt-1">After each run, you can see the result of each block at the bottom of the block.</p>
         </div>
         
-        <div class="mt-2 p-2 bg-surface-hover ring-1 ring-border-base rounded-xl">
+        <div class="mt-2 p-2 bg-zinc-100 ring-1 ring-border-base rounded-xl">
           <p class="text-body-sm leading-inherit text-foreground-secondary m-0">The output shows:</p>
           <ul class="text-body-sm leading-inherit text-foreground-tertiary m-0 mt-1 pl-4">
             <li>• The calculated result</li>
