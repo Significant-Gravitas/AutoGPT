@@ -35,8 +35,15 @@ export const variants = {
   "large-semibold": "font-sans text-body-lg font-semibold text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-tight":
+    "font-sans text-body font-normal leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-medium-tight":
+    "font-sans text-body font-medium leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  "small-mono": "font-mono text-caption font-normal text-foreground-base",
 
   // Label Text
   label:
@@ -62,6 +69,8 @@ export const tones = {
   error: "text-error", // #EF4444
   warning: "text-warning-foreground", // #B45309
   success: "text-success", // #149443
+  // The parent's colour, for copy inside a control that changes it on hover.
+  inherit: "text-inherit",
 } as const;
 
 export type Tone = keyof typeof tones;
@@ -80,8 +89,11 @@ export const variantElementMap: Record<Variant, As> = {
   "large-semibold": "p",
   body: "p",
   "body-medium": "p",
+  "body-tight": "p",
+  "body-medium-tight": "p",
   small: "p",
   "small-medium": "p",
+  "small-mono": "p",
   label: "span",
   eyebrow: "span",
 };
