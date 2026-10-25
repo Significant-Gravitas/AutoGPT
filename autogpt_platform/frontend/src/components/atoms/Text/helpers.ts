@@ -13,7 +13,9 @@ export type As =
   | "kbd"
   | "li"
   | "dt"
-  | "dd";
+  | "dd"
+  | "th"
+  | "td";
 
 // Typography comes from the size roles in tailwind.config.ts; each bundles
 // its line-height. TODO(tokens): SECRT-3152, the rem-based heading tracking
@@ -33,6 +35,9 @@ export const variants = {
   large: "font-sans text-body-lg font-normal text-foreground-base",
   "large-medium": "font-sans text-body-lg font-medium text-foreground-base",
   "large-semibold": "font-sans text-body-lg font-semibold text-foreground-base",
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
+  "large-medium-tight":
+    "font-sans text-body-lg font-medium leading-6 text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
@@ -48,6 +53,13 @@ export const variants = {
     "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-semibold-tight":
+    "font-sans text-body font-semibold leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-mono-tight":
+    "font-mono text-body font-normal leading-5 text-foreground-base",
+  "small-mono": "font-mono text-caption font-normal text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-tight":
     "font-sans text-caption font-normal leading-4 text-foreground-base",
@@ -63,49 +75,22 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-mono-tight-tracking":
     "font-mono text-caption font-normal leading-4 tracking-tight text-foreground-base",
-
-  // Label Text
-  label:
-    "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
-  eyebrow:
-    "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-foreground-tertiary",
-
-  // Copy that moved off raw sizes in DS3a-2 (SECRT-3112), named like the
-  // tight variants above: <size>[-<weight>][-mono]-<line height>.
-  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
-  "body-semibold-tight":
-    "font-sans text-body font-semibold leading-5 text-foreground-base",
-  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
-  "body-mono-tight":
-    "font-mono text-body font-normal leading-5 text-foreground-base",
-  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
-  "small-semibold-tight":
-    "font-sans text-caption font-semibold leading-4 text-foreground-base",
-  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
-  "small-mono-bold-tight":
-    "font-mono text-caption font-bold leading-4 text-foreground-base",
-  // Keeps the parent's line height, like the raw size it replaced.
-  "tiny-inherit":
-    "font-sans text-tiny font-normal leading-inherit text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
-  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
-  "caption-sm-mono":
-    "font-mono text-caption-sm font-normal text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-loose":
     "font-sans text-caption font-normal leading-5 text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
-  "body-semibold": "font-sans text-body font-semibold text-foreground-base",
-  // h3 at semibold; the tracking is h3's (TODO(tokens): SECRT-3152 above).
-  "h3-semibold":
-    "font-poppins text-heading font-semibold text-foreground-base tracking-[-0.01313rem]",
-  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
-  "large-medium-tight":
-    "font-sans text-body-lg font-medium leading-6 text-foreground-base",
+  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
+  "caption-sm-mono":
+    "font-mono text-caption-sm font-normal text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  "tiny-inherit":
+    "font-sans text-tiny font-normal leading-inherit text-foreground-base",
+
   // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
   "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
   // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
@@ -121,6 +106,27 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25 (text-xs leading-tight); caption plus leading-tight.
   "small-lh-tight":
     "font-sans text-caption font-normal leading-tight text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
+  "lg-medium": "font-sans text-lg font-medium text-foreground-base",
+  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
+  "2xl-bold-tracking-tight":
+    "font-sans text-2xl font-bold tracking-tight text-foreground-base",
+
+  // Label Text
+  label:
+    "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
+  eyebrow:
+    "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-foreground-tertiary",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-semibold-tight":
+    "font-sans text-caption font-semibold leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-mono-bold-tight":
+    "font-mono text-caption font-bold leading-4 text-foreground-base",
+  "body-semibold": "font-sans text-body font-semibold text-foreground-base",
+  // h3 at semibold; the tracking is h3's (TODO(tokens): SECRT-3152 above).
+  "h3-semibold":
+    "font-poppins text-heading font-semibold text-foreground-base tracking-[-0.01313rem]",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -165,6 +171,7 @@ export const variantElementMap: Record<Variant, As> = {
   large: "p",
   "large-medium": "p",
   "large-semibold": "p",
+  "large-medium-tight": "p",
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
@@ -179,24 +186,26 @@ export const variantElementMap: Record<Variant, As> = {
   "small-uppercase-tight": "span",
   "small-mono-tight": "code",
   "small-mono-tight-tracking": "code",
-  label: "span",
-  eyebrow: "span",
   "body-semibold-tight": "p",
   "body-mono-tight": "code",
-  "small-semibold-tight": "p",
-  "small-mono-bold-tight": "code",
-  "tiny-inherit": "span",
+  "small-mono": "p",
   "small-relaxed": "p",
-  "caption-sm-mono": "span",
   "small-loose": "p",
   "small-medium-loose": "p",
-  "body-semibold": "p",
-  "h3-semibold": "h3",
-  "large-medium-tight": "p",
+  "caption-sm-mono": "span",
+  "tiny-inherit": "span",
   "lg-semibold": "h3",
   "2xl-bold": "div",
   "2xl": "span",
   "body-medium-lh-none": "span",
   "body-medium-lh-snug": "p",
   "small-lh-tight": "p",
+  "lg-medium": "h3",
+  "2xl-bold-tracking-tight": "h1",
+  label: "span",
+  eyebrow: "span",
+  "small-semibold-tight": "p",
+  "small-mono-bold-tight": "code",
+  "body-semibold": "p",
+  "h3-semibold": "h3",
 };

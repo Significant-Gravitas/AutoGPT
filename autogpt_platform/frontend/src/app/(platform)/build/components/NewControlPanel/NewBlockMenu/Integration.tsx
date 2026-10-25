@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
@@ -26,6 +26,7 @@ export const Integration: IntegrationComponent = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       className={cn(
         "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-50 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
@@ -50,9 +51,8 @@ export const Integration: IntegrationComponent = ({
           {title && (
             <Text
               variant="body-medium"
-              as="p"
               tone="body"
-              className="line-clamp-1 flex-1 group-disabled:text-zinc-400"
+              className="line-clamp-1 flex-1 group-disabled:text-foreground-subtle"
             >
               {beautifyString(title)}
             </Text>
@@ -61,7 +61,7 @@ export const Integration: IntegrationComponent = ({
             variant="body-medium"
             as="span"
             tone="muted"
-            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-zinc-400"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-foreground-subtle"
           >
             {number_of_blocks}
           </Text>
@@ -70,7 +70,7 @@ export const Integration: IntegrationComponent = ({
           variant="small-loose"
           as="span"
           tone="muted"
-          className="line-clamp-1 group-disabled:text-zinc-400"
+          className="line-clamp-1 group-disabled:text-foreground-subtle"
         >
           {description}
         </Text>

@@ -14,14 +14,14 @@ import {
   TableBody,
 } from "@/components/molecules/Table/components/TablePrimitives";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { Text } from "@/components/atoms/Text/Text";
 import { ChevronDown, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/models/storeListingWithVersionsAdminView";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
@@ -103,7 +103,7 @@ export function ExpandableRow({
                 <Link
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                 >
-                  <Button size="sm" variant="outline">
+                  <Button size="legacy-sm" variant="legacy-outline">
                     <Eye className="mr-2 h-4 w-4" />
                     Preview
                   </Button>
@@ -234,7 +234,10 @@ export function ExpandableRow({
                                 <Link
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                 >
-                                  <Button size="sm" variant="outline">
+                                  <Button
+                                    size="legacy-sm"
+                                    variant="legacy-outline"
+                                  >
                                     <Eye className="mr-2 h-4 w-4" />
                                     Preview
                                   </Button>

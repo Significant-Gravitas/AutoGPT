@@ -9,7 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Select,
   SelectContent,
@@ -17,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
-import { Text } from "@/components/atoms/Text/Text";
 import { Textarea } from "@/components/atoms/Textarea/Textarea";
 
 interface RefundModalProps {
@@ -91,7 +91,6 @@ export const RefundModal = ({
             {transactions.length === 0 ? (
               <Text
                 variant="body-tight"
-                as="p"
                 // TODO(tokens): no exact role (text-gray-500 #6B7280)
                 className="text-gray-500"
               >
@@ -150,10 +149,12 @@ export const RefundModal = ({
           </div>
         </div>
         <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="legacy-outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleRefundRequest}>Request Refund</Button>
+          <Button variant="legacy-default" onClick={handleRefundRequest}>
+            Request Refund
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
