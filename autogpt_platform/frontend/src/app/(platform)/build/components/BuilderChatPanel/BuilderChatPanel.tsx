@@ -10,6 +10,7 @@ import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
 import { BubbleChatIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   className?: string;
@@ -67,7 +68,8 @@ export function BuilderChatPanel({ className }: Props) {
             ref={panelRef}
             role="complementary"
             aria-label="Builder chat panel"
-            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:h-[75vh]"
+            // TODO(tokens): no fitting role for border-slate-200 #CFD4DB; #CFD4DB is node-border (the builder node ring), node-selected (the selected builder node ring)
+            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-2xl sm:h-[75vh]"
           >
             <PanelHeader
               onClose={handleToggle}
@@ -80,25 +82,46 @@ export function BuilderChatPanel({ className }: Props) {
               {hasNoModel ? (
                 <NoModelNotice />
               ) : activeError && activeRetry ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-slate-600">
-                  <p className="font-medium text-slate-800">
+                <Text
+                  variant="body-tight"
+                  as="div"
+                  // TODO(tokens): no exact role: text-slate-600 #5B6A7E
+                  className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-slate-600"
+                >
+                  <Text
+                    variant="body-medium-tight"
+                    // TODO(tokens): no exact role: text-slate-800 #475263
+                    className="text-slate-800"
+                  >
                     {activeErrorTitle}
-                  </p>
-                  <p className="text-slate-500">
+                  </Text>
+                  <Text
+                    variant="body-tight"
+                    // TODO(tokens): no exact role: text-slate-500 #64748B
+                    className="text-slate-500"
+                  >
                     Something went wrong. Retry to try again.
-                  </p>
+                  </Text>
                   <button
                     type="button"
                     onClick={activeRetry}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                    // TODO(tokens): no exact role: border-slate-300 #B8BFCA, text-slate-700 #475263, hover:bg-slate-50 #F7F8F9, focus-visible:ring-violet-400 #A78BFA
+                    className="rounded-md border border-slate-300 bg-surface px-3 py-1.5 text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                   >
-                    Retry
+                    <Text variant="body-medium-tight" as="span" tone="inherit">
+                      Retry
+                    </Text>
                   </button>
-                </div>
+                </Text>
               ) : isBootstrapping ? (
-                <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
+                <Text
+                  variant="body-tight"
+                  as="div"
+                  // TODO(tokens): no exact role: text-slate-500 #64748B
+                  className="flex flex-1 items-center justify-center px-4 py-6 text-slate-500"
+                >
                   Preparing builder chat…
-                </div>
+                </Text>
               ) : sessionId ? (
                 <>
                   <div className="flex min-h-0 flex-1 flex-col">
@@ -111,7 +134,10 @@ export function BuilderChatPanel({ className }: Props) {
                       queuedMessages={queuedMessages}
                     />
                   </div>
-                  <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-2 pt-2">
+                  <div
+                    // TODO(tokens): no exact role: border-slate-100 #EFF1F4
+                    className="relative shrink-0 border-t border-slate-100 bg-surface px-3 pb-2 pt-2"
+                  >
                     <ChatInput
                       inputId="builder-chat-input"
                       onSend={onSend}
@@ -126,9 +152,14 @@ export function BuilderChatPanel({ className }: Props) {
                   </div>
                 </>
               ) : (
-                <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
+                <Text
+                  variant="body-tight"
+                  as="div"
+                  // TODO(tokens): no exact role: text-slate-500 #64748B
+                  className="flex flex-1 items-center justify-center px-4 py-6 text-slate-500"
+                >
                   Open a workflow to start chatting with the builder.
-                </div>
+                </Text>
               )}
             </div>
           </div>
@@ -142,10 +173,13 @@ export function BuilderChatPanel({ className }: Props) {
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
           "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
+          // TODO(tokens): no exact role: focus-visible:ring-violet-400 #A78BFA
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2",
           isOpen
-            ? "bg-slate-800 text-white hover:bg-slate-700"
-            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+            ? // TODO(tokens): no exact role: bg-slate-800 #475263, hover:bg-slate-700 #475263
+              "bg-slate-800 text-action-foreground hover:bg-slate-700"
+            : // TODO(tokens): no exact role: text-slate-700 #475263, hover:bg-slate-50 #F7F8F9; no fitting role for border-slate-200 #CFD4DB; #CFD4DB is node-border (the builder node ring), node-selected (the selected builder node ring)
+              "border border-slate-200 bg-surface text-slate-700 hover:bg-slate-50",
         )}
       >
         {isOpen ? (
