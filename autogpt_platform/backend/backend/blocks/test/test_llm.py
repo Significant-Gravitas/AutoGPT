@@ -7,6 +7,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import groq
 import httpx
 import openai
 import pytest
@@ -1603,6 +1604,10 @@ class TestLLMRequestTimeout:
                 ),
                 id="anthropic-sdk",
             ),
+            pytest.param(
+                lambda: groq.APITimeoutError(request=httpx.Request("POST", "http://x")),
+                id="groq-sdk",
+            ),
         ],
     )
     @pytest.mark.asyncio
@@ -1803,16 +1808,29 @@ class TestLLMRequestTimeout:
         assert alerts[0].json_fields["user_id"] == "u-2"
         assert alerts[0].json_fields["node_exec_id"] == "ne-2"
 
+    @pytest.mark.parametrize(
+        "sdk_timeout",
+        [
+            pytest.param(openai.APITimeoutError, id="openai-sdk"),
+            pytest.param(anthropic.APITimeoutError, id="anthropic-sdk"),
+            # Unrelated to openai's class; a shortened per-attempt slice lets it
+            # surface before the outer wait_for, so the seam must name it too.
+            pytest.param(groq.APITimeoutError, id="groq-sdk"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_fast_failure_warns_instead_of_alerting(self, monkeypatch):
+    async def test_fast_failure_warns_instead_of_alerting(
+        self, monkeypatch, sdk_timeout
+    ):
         """A connect-phase failure burns no provider spend; paging on it during an
         outage would bury the cutoffs that cost money. Asserts the warning is
-        actually emitted — absence alone would pass against a no-op helper."""
+        actually emitted — absence alone would pass against a no-op helper, and
+        the warning proves each SDK's timeout was classified at the seam."""
         monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 3600)
 
         with self._captured_logs() as records:
             await self._run_block_expecting_failure(
-                openai.APITimeoutError(request=httpx.Request("POST", "http://x"))
+                sdk_timeout(request=httpx.Request("POST", "http://x"))
             )
 
         assert not self._alerts(records)

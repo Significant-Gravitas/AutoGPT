@@ -13,6 +13,7 @@ from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast, get_args
 
 import anthropic
+import groq
 import openai
 from anthropic.types import ToolParam
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
@@ -333,12 +334,13 @@ async def llm_call(
                 # Retry loops may pass a leftover shared-deadline slice.
                 timeout=timeout,
             )
-        # SDK-native timeouts never reach the wait_for, so both are caught here
+        # SDK-native timeouts never reach the wait_for, so they are caught here
         # to keep this the single place that reports burned spend.
         except (
             asyncio.TimeoutError,
             openai.APITimeoutError,
             anthropic.APITimeoutError,
+            groq.APITimeoutError,
         ) as e:
             _log_timeout_outcome(
                 elapsed=_now() - started,
@@ -883,7 +885,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 # connect/read timeout burns the full retry budget.
                 if isinstance(
                     e,
-                    (TimeoutError, openai.APITimeoutError, anthropic.APITimeoutError),
+                    (
+                        TimeoutError,
+                        openai.APITimeoutError,
+                        anthropic.APITimeoutError,
+                        groq.APITimeoutError,
+                    ),
                 ):
                     # Already classified and logged at the llm_call seam.
                     # A request that hung once will most likely hang again on
