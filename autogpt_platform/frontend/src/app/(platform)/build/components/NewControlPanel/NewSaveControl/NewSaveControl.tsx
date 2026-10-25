@@ -55,7 +55,7 @@ export const NewSaveControl = () => {
         sideOffset={15}
         align="start"
         data-id="save-control-popover-content"
-        className="w-96 max-w-[400px] rounded-xlarge border-neutral-200 text-neutral-950"
+        className="w-96 max-w-[400px] rounded-xlarge border-neutral-200 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
       >
         <Card className="border-none dark:bg-slate-900">
           <Form {...form}>

@@ -143,7 +143,7 @@ export const DateInput = ({
             not a text colour (SECRT-3154). */}
         <PopoverContent
           data-slot="date-input-popup"
-          className="w-auto rounded-medium border-neutral-200 p-0 text-neutral-950"
+          className="w-auto rounded-medium border-neutral-200 p-0 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
           sideOffset={6}
         >
           <Calendar
