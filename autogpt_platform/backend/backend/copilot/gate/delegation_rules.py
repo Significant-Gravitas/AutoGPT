@@ -31,6 +31,16 @@ NEW_HIRE_WINDOW = timedelta(days=7)
 _HAND_OFF_ASKS_FIRST = (
     "Your delegation settings say Ask first, so this hand-off needs your approval."
 )
+_SETTINGS_UNREADABLE = (
+    "Your delegation settings couldn't be read, so this hand-off needs your "
+    "approval."
+)
+# What a lost read falls back to: the strictest the settings can be. It asks
+# before anything leaves the platform and holds every hand-off, so a read
+# that fails never makes the gate more permissive than the user set it.
+UNREADABLE_SETTINGS = DelegationSettings(
+    mode="ask_first", ask_before_external=True, new_experts_ask_first=True
+)
 _NEW_HIRE_ASKS_FIRST = (
     "{name} joined your team this week and new experts start in Ask first, "
     "so this hand-off needs your approval."
@@ -63,6 +73,8 @@ async def hand_off_hold(
     if effect_for(tool_name) is not Effect.TEAM or session.expert_id is not None:
         return None
     settings = await turn_delegation_settings(user_id)
+    if settings is UNREADABLE_SETTINGS:
+        return _SETTINGS_UNREADABLE
     if settings.mode == "ask_first":
         return _HAND_OFF_ASKS_FIRST
     if not settings.new_experts_ask_first:
@@ -83,8 +95,8 @@ async def hired_lately(user_id: str, expert_id: str) -> bool:
 async def turn_delegation_settings(user_id: str) -> DelegationSettings:
     """The user's settings, read once per turn.
 
-    Unreadable settings fall back to the defaults, which ask before anything
-    leaves the platform: a lost read must not make the gate more permissive.
+    Unreadable settings fall back to ``UNREADABLE_SETTINGS``, the strictest
+    the settings can be: a lost read must not make the gate more permissive.
     """
     cache = turn_delegation_settings_cache()
     if user_id in cache:
@@ -93,7 +105,7 @@ async def turn_delegation_settings(user_id: str) -> DelegationSettings:
         settings = await delegation_db().get_delegation_settings(user_id)
     except Exception:
         logger.warning(f"Delegation settings unreadable for {user_id}", exc_info=True)
-        return DelegationSettings()
+        return UNREADABLE_SETTINGS
     cache[user_id] = settings
     return settings
 

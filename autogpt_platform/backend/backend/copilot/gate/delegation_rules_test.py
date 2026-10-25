@@ -141,3 +141,15 @@ async def test_unreadable_settings_keep_asking(settings):
     )
 
     assert verdict is Verdict.ASK
+
+
+@pytest.mark.asyncio
+async def test_unreadable_settings_hold_otto_s_hand_off(settings):
+    """A lost read must not run a hand-off the user's settings may hold."""
+    settings.get_delegation_settings.side_effect = RuntimeError("down")
+
+    reason = await delegation_rules.hand_off_hold(
+        "delegate_to_expert", {"expert_id": "bea"}, "u1", _session()
+    )
+
+    assert reason is not None and "couldn't be read" in reason
