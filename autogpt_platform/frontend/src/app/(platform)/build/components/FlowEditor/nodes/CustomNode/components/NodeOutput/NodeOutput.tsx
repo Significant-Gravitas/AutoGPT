@@ -36,9 +36,9 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
         <AccordionItem value="node-output" className="border-none">
           <AccordionTrigger className="py-2 hover:no-underline">
             <Text
-              variant="body-medium"
+              variant="body-semibold"
               // TODO(tokens): no exact role: text-slate-700 #475263
-              className="!font-semibold text-slate-700"
+              className="text-slate-700"
             >
               Node Output
             </Text>
@@ -89,9 +89,9 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     <div key={key} className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
                         <Text
-                          variant="small-medium"
+                          variant="small-semibold"
                           // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                          className="!font-semibold text-slate-600"
+                          className="text-slate-600"
                         >
                           Pin:
                         </Text>
@@ -105,9 +105,9 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                       </div>
                       <div className="w-full space-y-2">
                         <Text
-                          variant="small"
+                          variant="small-semibold"
                           // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                          className="!font-semibold text-slate-600"
+                          className="text-slate-600"
                         >
                           Data:
                         </Text>

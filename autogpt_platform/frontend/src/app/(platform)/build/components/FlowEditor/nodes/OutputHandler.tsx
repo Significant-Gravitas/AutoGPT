@@ -133,22 +133,19 @@ export const OutputHandler = ({
                 </TooltipProvider>
               )}
               <Text
-                variant="body"
+                variant={isBroken ? "body-line-through" : "body"}
                 className={cn(
                   // TODO(tokens): no exact role: text-slate-700 #475263
                   "text-slate-700",
-                  isBroken && "text-error line-through",
+                  isBroken && "text-error",
                 )}
               >
                 {fieldTitle}
               </Text>
               <Text
-                variant="small"
+                variant={isBroken ? "small-line-through" : "small"}
                 as="span"
-                className={cn(
-                  colorClass,
-                  isBroken && "!text-error line-through",
-                )}
+                className={cn(colorClass, isBroken && "!text-error")}
               >
                 ({displayType})
               </Text>
@@ -186,9 +183,9 @@ export const OutputHandler = ({
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
-          variant="body"
+          variant="body-semibold"
           // TODO(tokens): no exact role: text-slate-700 #475263
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          className="flex items-center gap-2 text-slate-700"
         >
           Output{" "}
           <Icon

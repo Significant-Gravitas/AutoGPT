@@ -100,9 +100,9 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
 
           <div className="flex items-center gap-2">
             <Text
-              variant="small"
+              variant="small-medium"
               // TODO(tokens): no exact role: !text-slate-500 #64748B
-              className="shrink-0 !font-medium !text-slate-500"
+              className="shrink-0 !text-slate-500"
             >
               #{nodeId.split("-")[0]}
             </Text>

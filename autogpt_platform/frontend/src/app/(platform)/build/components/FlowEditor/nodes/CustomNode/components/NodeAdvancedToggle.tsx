@@ -37,10 +37,10 @@ export function NodeAdvancedToggle({
         aria-expanded={showAdvanced}
       >
         <Text
-          variant="body"
+          variant="body-semibold"
           as="span"
           // TODO(tokens): no exact role: text-slate-700 #475263
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          className="flex items-center gap-2 text-slate-700"
         >
           Advanced{" "}
           <Icon

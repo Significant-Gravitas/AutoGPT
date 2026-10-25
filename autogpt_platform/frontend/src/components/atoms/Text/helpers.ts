@@ -47,11 +47,22 @@ export const variants = {
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-medium-tight":
     "font-sans text-body font-medium leading-5 text-foreground-base",
+  "body-semibold": "font-sans text-body font-semibold text-foreground-base",
+  // Struck through, e.g. a field whose connection is broken.
+  "body-line-through":
+    "font-sans text-body font-normal line-through text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-tight-italic":
+    "font-sans text-body font-normal italic leading-5 text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-semibold-tight":
     "font-sans text-body font-semibold leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  "small-semibold": "font-sans text-caption font-semibold text-foreground-base",
+  // Struck through, e.g. a field whose connection is broken.
+  "small-line-through":
+    "font-sans text-caption font-normal line-through text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-tight":
     "font-sans text-caption font-normal leading-4 text-foreground-base",
@@ -70,6 +81,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
+  // A link inside a block card. TODO(tokens): no role is 0.75rem/1.25rem.
+  "small-medium-loose-underline":
+    "font-sans text-caption font-medium leading-5 underline text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
   "small-relaxed":
     "font-sans text-caption font-normal leading-relaxed text-foreground-base",
@@ -121,11 +135,17 @@ export const variantElementMap: Record<Variant, As> = {
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
+  "body-semibold": "p",
+  "body-line-through": "p",
+  "body-tight-italic": "p",
   "body-medium-tight": "p",
   "body-semibold-tight": "p",
   small: "p",
   "small-medium": "p",
   "small-tight": "p",
+  "small-semibold": "p",
+  "small-line-through": "p",
+  "small-medium-loose-underline": "p",
   "small-medium-tight": "p",
   "small-mono-tight": "code",
   "small-medium-mono-tight": "code",
