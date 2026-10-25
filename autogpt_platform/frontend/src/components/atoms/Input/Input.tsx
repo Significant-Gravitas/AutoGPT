@@ -1,7 +1,3 @@
-import {
-  Input as BaseInput,
-  type InputProps,
-} from "@/components/__legacy__/ui/input";
 import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { forwardRef, ReactNode, useState } from "react";
@@ -9,6 +5,7 @@ import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { BaseInput, type BaseInputProps } from "./BaseInput";
 import { useInput } from "./useInput";
 import { BareInput, type BareInputProps } from "./BareInput";
 import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
@@ -16,7 +13,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
-export interface TextFieldProps extends Omit<InputProps, "size" | "onKeyDown"> {
+export interface TextFieldProps
+  extends Omit<BaseInputProps, "size" | "onKeyDown"> {
   label: string;
   id: string;
   hideLabel?: boolean;
@@ -39,7 +37,7 @@ export interface TextFieldProps extends Omit<InputProps, "size" | "onKeyDown"> {
     | "textarea"
     | "date"
     | "datetime-local";
-  // Widened over InputProps, which only describes the <input> branch, so the
+  // Widened over BaseInputProps, which only describes the <input> branch, so the
   // handler is callable with either element's event and needs no cast.
   onKeyDown?: React.KeyboardEventHandler<InputElement>;
   // Textarea-specific props
