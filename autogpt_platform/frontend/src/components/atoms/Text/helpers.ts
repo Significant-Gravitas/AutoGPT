@@ -13,7 +13,9 @@ export type As =
   | "kbd"
   | "li"
   | "dt"
-  | "dd";
+  | "dd"
+  | "th"
+  | "td";
 
 // Typography comes from the size roles in tailwind.config.ts; each bundles
 // its line-height. TODO(tokens): SECRT-3152, the rem-based heading tracking
@@ -47,7 +49,7 @@ export const variants = {
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-semibold-tight":
     "font-sans text-body font-semibold leading-5 text-foreground-base",
-  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm) in the mono family.
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-mono-tight":
     "font-mono text-body font-normal leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
@@ -67,6 +69,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
   "small-medium-loose":
     "font-sans text-caption font-medium leading-5 text-foreground-base",
+  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
+  "caption-sm-mono":
+    "font-mono text-caption-sm font-normal text-foreground-base",
   // Keeps the parent's line height, like the raw size it replaced.
   "tiny-inherit":
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
@@ -141,6 +146,7 @@ export const variantElementMap: Record<Variant, As> = {
   "small-relaxed": "p",
   "small-loose": "p",
   "small-medium-loose": "p",
+  "caption-sm-mono": "span",
   "tiny-inherit": "span",
   "lg-semibold": "h3",
   "2xl-bold": "div",
