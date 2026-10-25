@@ -626,11 +626,11 @@ async def _get_node_credentials(
 
     Only OAuth credentials change under a running block: a refresh replaces the
     tokens, and a provider runtime checkpoints rotated ones through the lease.
-    A lease on any other kind protects nothing, and makes every other node on
-    the same credential wait for this one, up to the lock's 60 s TTL; an
-    Orchestrator's tools on its own API key waited that long. The caller checks
-    that the stored type matches ``credentials_meta``, so an OAuth credential
-    never runs unleased.
+    A lease on any other kind would protect nothing, and would make every other
+    node on the same credential wait for this one, up to the lock's 60 s TTL,
+    including the tools an Orchestrator runs on its own API key. The caller
+    checks that the stored type matches ``credentials_meta``, so an OAuth
+    credential never runs unleased.
     """
     if credentials_meta.type == "oauth2":
         lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)

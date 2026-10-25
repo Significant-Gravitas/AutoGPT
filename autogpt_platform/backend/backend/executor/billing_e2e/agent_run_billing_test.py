@@ -44,10 +44,10 @@ MODEL = LLMModel("claude-sonnet-5-5")
 PRICE_PER_REPLY = int(TOKEN_COST[MODEL].input * INPUT_TOKENS_PER_REPLY / 1_000_000)
 # The agent calls its tool twice, then answers: three agent replies.
 TOOL_CALLS = 2
-# The most a tool's model call may trail the agent's request for it. A tool on
-# the agent's own key once waited for the agent's hold on that key to expire,
-# a minute after the agent took it. On time it follows in about a second, so
-# this leaves a slow runner room on both sides.
+# The most a tool's model call may trail the agent's request for it. A tool
+# that had to wait for the agent's hold on their shared key to expire would
+# start a minute after the agent took it. On time it follows in about a second,
+# so this leaves a slow runner room on both sides.
 TOOL_CALL_DELAY_LIMIT_S = 30
 PLATFORM_ANTHROPIC_KEY = "billing-e2e-platform-key"  # pragma: allowlist secret
 
