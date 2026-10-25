@@ -352,8 +352,8 @@ function ExternalLinkModal({
         </Text>
         {/* TODO(tokens): no exact role for bg-neutral-100 #F5F5F5 */}
         <Text
-          variant="small"
-          className="mt-2 break-all rounded-md bg-neutral-100 p-3 font-mono"
+          variant="small-mono"
+          className="mt-2 break-all rounded-md bg-neutral-100 p-3"
         >
           {url}
         </Text>
@@ -444,19 +444,18 @@ export const MessageResponse = memo(function MessageResponse({
         // header, hairline row separators and tabular figures.
         "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-body-sm [&_table]:tabular-nums [&_table]:leading-inherit",
         "[&_tbody]:bg-transparent [&_thead]:bg-message-table-header",
-        // The th, td and td code sizes below stay raw: Streamdown merges
-        // className again with its own tailwind-merge (default config), which
-        // reads text-caption-sm, text-body-sm and text-caption as colours and
-        // drops them beside the colour in the same scope.
-        // TODO(tokens): text-caption-sm holds [&_th]:text-[11px] but Streamdown's
-        // merge drops it (see above); no exact role for [&_th]:text-indigo-950/70 #1E1B4B
-        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-eyebrow [&_th]:text-indigo-950/70",
+        // Streamdown merges className again with its own tailwind-merge
+        // (default config), which reads the size roles as colours and drops
+        // them beside a colour in the same scope; the sizes therefore sit in
+        // their own [&_table_*] scope. th and inline code keep the 20px
+        // line-height their own text-sm gives them.
+        "[&_table_td]:text-body-sm [&_table_td_code]:text-caption [&_table_td_code]:leading-5 [&_table_th]:text-caption-sm [&_table_th]:leading-5",
+        // TODO(tokens): no exact role for [&_th]:text-indigo-950/70 #1E1B4B
+        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-eyebrow [&_th]:text-indigo-950/70",
         "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
-        // TODO(tokens): text-body-sm holds [&_td]:text-[13px] but Streamdown's merge drops it (see above)
-        "[&_td]:border-b [&_td]:border-separator [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-[13px] [&_td]:leading-5 [&_td]:text-foreground-body [&_td]:transition-colors",
+        "[&_td]:border-b [&_td]:border-separator [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-foreground-body [&_td]:transition-colors",
         "[&_td_strong]:font-medium [&_td_strong]:text-foreground",
-        // TODO(tokens): text-caption holds [&_td_code]:text-[12px] but Streamdown's merge drops it (see above)
-        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-surface-hover [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-[12px] [&_td_code]:text-foreground-body",
+        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-surface-hover [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-foreground-body",
         "[&_tbody_tr:last-child_td]:border-b-0",
         "[&_tbody_tr:hover_td]:bg-surface-muted",
         className,
