@@ -16,8 +16,8 @@ from .routes import v1_router
 DESCRIPTION = """
 The v1 API provides access to core AutoGPT functionality for external integrations.
 
-**Deprecated**: v1 reaches its end of life on 2026-12-31. New integrations
-should use [v2](../v2/docs).
+**Deprecated**: v1 stops working on 2027-02-01; its last day of service is
+2027-01-31. New integrations should use [v2](../v2/docs).
 
 For authentication details and usage examples, see the
 [API Integration Guide](https://agpt.co/docs/platform/api-and-integrations/api-guide).

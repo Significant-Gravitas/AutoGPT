@@ -9,7 +9,7 @@ icon: code
 
 The AutoGPT Platform API lets your code do what you do in the AutoGPT web app: run agents from your library, read their outputs, build new agents, schedule them, answer their human-in-the-loop reviews, and manage files and credentials. The same API ships with AutoGPT Cloud and with every self-hosted instance, so an integration written against one works against the other by changing a single URL.
 
-This section documents **API v2**. v1 is deprecated and stops working on **2026-12-31**; see [Migrate from v1](migrate-from-v1.md).
+This section documents **API v2**. v1 is deprecated and stops working on **2027-02-01**; its last day of service is 2027-01-31. See [Migrate from v1](migrate-from-v1.md).
 
 ## Start here
 
@@ -71,7 +71,7 @@ For tools and AI agents, everything on this site is available as plain text:
 | Version | Status | Path |
 | --- | --- | --- |
 | **v2** | Current. Use it for everything new. | `/external-api/v2/...` |
-| v1 | Deprecated. Stops working on 2026-12-31. | `/external-api/v1/...` |
+| v1 | Deprecated. Stops working on 2027-02-01; last day of service 2027-01-31. | `/external-api/v1/...` |
 
 Within v2, changes are additive: new endpoints, new optional parameters and new response fields can appear at any time, so ignore fields you don't recognise. Anything that would break a working integration ships as a new version.
 

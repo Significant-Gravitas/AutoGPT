@@ -1,13 +1,13 @@
 ---
 description: >-
-  Move an integration from the deprecated v1 API to v2 before v1 stops working
-  on 2026-12-31: endpoint mapping, permission changes and behaviour changes.
+  Move an integration from the deprecated v1 API to v2 by 2027-01-31, v1's last
+  day of service: endpoint mapping, permission changes and behaviour changes.
 icon: arrow-right-arrow-left
 ---
 
 # Migrate from v1
 
-API v1 (`/external-api/v1/...`) is deprecated and **stops working on 2026-12-31**. Both versions run side by side until then, on the same keys, so you can move one call at a time.
+API v1 (`/external-api/v1/...`) is deprecated and **stops working on 2027-02-01**; its last day of service is 2027-01-31. Both versions run side by side until then, on the same keys, so you can move one call at a time.
 
 ## What changes
 
@@ -81,4 +81,4 @@ The v2 run object returns everything at once: `status`, `outputs` keyed by outpu
 3. Replace graph runs with library-agent runs, and send an `Idempotency-Key`.
 4. Read `items` and follow `next_cursor` on every list.
 5. Parse errors from `error.code`.
-6. Test against your instance, then remove every `/external-api/v1` call before 2026-12-31.
+6. Test against your instance, then remove every `/external-api/v1` call by 2027-01-31, v1's last day of service.
