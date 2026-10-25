@@ -357,6 +357,35 @@ describe("first-run walkthrough", () => {
     expect(document.cookie).toContain("sidebar_open=false");
   });
 
+  it("leaves the sidebar collapsed if the person collapses it during the walkthrough", async () => {
+    // Collapsing it (Ctrl/Cmd+B) is their choice and saves it; the walkthrough
+    // must not reopen it over that, or give it back opened afterwards.
+    document.cookie = "sidebar_open=false; path=/";
+    render(
+      <SidebarProvider defaultOpen={false} persistState>
+        <SidebarState />
+        <Targets />
+        <FirstRunTour />
+      </SidebarProvider>,
+    );
+    openTour("menu");
+    await waitFor(() =>
+      expect(screen.getByTestId("sidebar-state").textContent).toBe("open"),
+    );
+
+    await userEvent.keyboard("{Control>}b{/Control}");
+    await waitFor(() =>
+      expect(screen.getByTestId("sidebar-state").textContent).toBe("collapsed"),
+    );
+    await act(async () => {});
+    expect(screen.getByTestId("sidebar-state").textContent).toBe("collapsed");
+
+    await userEvent.click(screen.getByRole("button", { name: "Skip tour" }));
+    await act(async () => {});
+    expect(screen.getByTestId("sidebar-state").textContent).toBe("collapsed");
+    expect(document.cookie).toContain("sidebar_open=false");
+  });
+
   it("opens the phone's sidebar for the steps that live there, so the real controls are lit", async () => {
     // Pointing at the menu button and saying "open the menu" asked for a tap
     // the walkthrough's scrim and focus trap do not allow.

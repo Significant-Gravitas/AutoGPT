@@ -43,15 +43,23 @@ export function useFirstRunTour() {
 
   // A collapsed sidebar is borrowed: opened without saving the preference,
   // and collapsed again when the walkthrough ends.
-  const openedSidebar = useRef(false);
+  // Once per walkthrough: collapsing it mid-way is the person's own choice.
+  const sidebarLoan = useRef<"pending" | "not-needed" | "borrowed" | "taken">(
+    "pending",
+  );
   useEffect(() => {
-    if (!isOpen || isMobile || isSidebarOpen) return;
-    openedSidebar.current = true;
-    setSidebarOpen(true, { persist: false });
+    if (!isOpen || isMobile) return;
+    if (sidebarLoan.current === "pending") {
+      sidebarLoan.current = isSidebarOpen ? "not-needed" : "borrowed";
+      if (!isSidebarOpen) setSidebarOpen(true, { persist: false });
+    } else if (sidebarLoan.current === "borrowed" && !isSidebarOpen) {
+      sidebarLoan.current = "taken";
+    }
   }, [isOpen, isMobile, isSidebarOpen, setSidebarOpen]);
   // The setter changes identity as the sidebar opens; hand back on unmount.
   const giveSidebarBack = useStableCallback(() => {
-    if (openedSidebar.current) setSidebarOpen(false, { persist: false });
+    if (sidebarLoan.current === "borrowed")
+      setSidebarOpen(false, { persist: false });
   });
   useEffect(() => giveSidebarBack, [giveSidebarBack]);
 

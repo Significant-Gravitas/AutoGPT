@@ -34,7 +34,11 @@ vi.mock("@/services/usageExperience/useUsageExperience", () => ({
 }));
 
 const sessionList = vi.hoisted(() => ({
-  current: { sessions: [] as { id: string }[], isLoading: false },
+  current: {
+    sessions: [] as { id: string }[],
+    isLoading: false,
+    isListLoaded: true,
+  },
 }));
 vi.mock("@/app/(platform)/copilot/useSessionList", () => ({
   useSessionList: () => sessionList.current,
@@ -95,7 +99,7 @@ beforeEach(() => {
   window.localStorage.clear();
   capture.mockReset();
   onboarding.current = { state: { completedSteps: [] }, completeStep: vi.fn() };
-  sessionList.current = { sessions: [], isLoading: false };
+  sessionList.current = { sessions: [], isLoading: false, isListLoaded: true };
   act(() => useContextualTipStore.setState({ requested: [], shown: [] }));
   stubLayout();
 });
@@ -221,6 +225,9 @@ describe("contextual tips — when an expert is proposed", () => {
 describe("contextual tips — the first second chat", () => {
   it("counts going from one chat to two, and nothing else", () => {
     expect(isFirstSecondChat(1, 2)).toBe(true);
+    expect(isFirstSecondChat(0, 2)).toBe(true);
+    expect(isFirstSecondChat(0, 3)).toBe(true);
+    expect(isFirstSecondChat(2, 3)).toBe(false);
     expect(isFirstSecondChat(null, 2)).toBe(false);
     expect(isFirstSecondChat(0, 1)).toBe(false);
     expect(isFirstSecondChat(5, 6)).toBe(false);
@@ -239,10 +246,15 @@ describe("contextual tips — the first second chat", () => {
       sessionList.current = {
         sessions: sessionsOf(counts[0]),
         isLoading: false,
+        isListLoaded: true,
       };
       const { rerender, unmount } = render(<Page />);
       for (const count of counts.slice(1)) {
-        sessionList.current = { sessions: sessionsOf(count), isLoading: false };
+        sessionList.current = {
+          sessions: sessionsOf(count),
+          isLoading: false,
+          isListLoaded: true,
+        };
         rerender(<Page />);
       }
       await act(async () => {});
@@ -253,7 +265,11 @@ describe("contextual tips — the first second chat", () => {
   });
 
   it("starts counting afresh for another account", async () => {
-    sessionList.current = { sessions: [{ id: "a" }], isLoading: false };
+    sessionList.current = {
+      sessions: [{ id: "a" }],
+      isLoading: false,
+      isListLoaded: true,
+    };
     const { rerender } = render(<Page />);
 
     // Someone else signs in here and already has two chats.
@@ -261,6 +277,7 @@ describe("contextual tips — the first second chat", () => {
     sessionList.current = {
       sessions: [{ id: "x" }, { id: "y" }],
       isLoading: false,
+      isListLoaded: true,
     };
     rerender(<Page />);
     await act(async () => {});
@@ -268,14 +285,59 @@ describe("contextual tips — the first second chat", () => {
     expect(useContextualTipStore.getState().requested).toEqual([]);
   });
 
+  it("counts going straight from no chats to two, but only from a list that loaded", async () => {
+    // A new account's first two chats can land in one refresh. A list that
+    // failed to load reads as empty too, and must not make someone with
+    // several chats look new.
+    sessionList.current = {
+      sessions: [],
+      isLoading: false,
+      isListLoaded: false,
+    };
+    const { rerender } = render(<Page />);
+    sessionList.current = {
+      sessions: [{ id: "a" }, { id: "b" }, { id: "c" }],
+      isLoading: false,
+      isListLoaded: true,
+    };
+    rerender(<Page />);
+    await act(async () => {});
+    expect(useContextualTipStore.getState().requested).toEqual([]);
+
+    // Same component, an account with no chats yet that then gets two.
+    auth.userID = "user-2";
+    sessionList.current = {
+      sessions: [],
+      isLoading: false,
+      isListLoaded: true,
+    };
+    rerender(<Page />);
+    sessionList.current = {
+      sessions: [{ id: "x" }, { id: "y" }],
+      isLoading: false,
+      isListLoaded: true,
+    };
+    rerender(<Page />);
+    await waitFor(() =>
+      expect(useContextualTipStore.getState().requested).toContain(
+        "second-chat",
+      ),
+    );
+  });
+
   it("points at the chat list when a second chat appears", async () => {
-    sessionList.current = { sessions: [{ id: "a" }], isLoading: false };
+    sessionList.current = {
+      sessions: [{ id: "a" }],
+      isLoading: false,
+      isListLoaded: true,
+    };
     const { rerender } = render(<Page />);
     expect(screen.queryByTestId("contextual-tip")).toBeNull();
 
     sessionList.current = {
       sessions: [{ id: "b" }, { id: "a" }],
       isLoading: false,
+      isListLoaded: true,
     };
     rerender(<Page />);
 
@@ -286,11 +348,13 @@ describe("contextual tips — the first second chat", () => {
     sessionList.current = {
       sessions: [{ id: "a" }, { id: "b" }, { id: "c" }],
       isLoading: false,
+      isListLoaded: true,
     };
     const { rerender } = render(<Page />);
     sessionList.current = {
       sessions: [{ id: "d" }, { id: "a" }, { id: "b" }, { id: "c" }],
       isLoading: false,
+      isListLoaded: true,
     };
     rerender(<Page />);
 

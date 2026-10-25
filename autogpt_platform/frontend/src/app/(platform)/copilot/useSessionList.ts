@@ -116,6 +116,8 @@ export function useSessionList({ enabled = true }: Args = {}) {
   return {
     sessions,
     isLoading: query.isLoading,
+    /** The list came back; an empty `sessions` is then really empty. */
+    isListLoaded: query.isSuccess && query.data.pages[0]?.status === 200,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: query.fetchNextPage,

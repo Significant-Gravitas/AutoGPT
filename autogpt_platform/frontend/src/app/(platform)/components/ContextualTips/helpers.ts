@@ -25,7 +25,7 @@ export function setTipSeen(id: TipID, userID: string | null | undefined) {
 }
 
 export function isFirstSecondChat(mostSeen: number | null, count: number) {
-  return mostSeen === 1 && count >= 2;
+  return mostSeen !== null && mostSeen < 2 && count >= 2;
 }
 
 // Built once per tip: the measuring hook keys on the list's identity.

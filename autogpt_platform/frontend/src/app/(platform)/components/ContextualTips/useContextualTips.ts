@@ -96,17 +96,17 @@ export function useContextualTips() {
 // Watched on the chat list, so every way of starting a chat counts. Goes by
 // the most chats seen per account, so a dip back to one does not count.
 function useSecondChatMoment(isLoggedIn: boolean, userID: string | null) {
-  const { sessions, isLoading } = useSessionList({ enabled: isLoggedIn });
+  const { sessions, isListLoaded } = useSessionList({ enabled: isLoggedIn });
   const mostSeen = useRef<{ userID: string | null; count: number } | null>(
     null,
   );
   const count = sessions.length;
 
   useEffect(() => {
-    if (!isLoggedIn || isLoading) return;
+    if (!isLoggedIn || !isListLoaded) return;
     const seen = mostSeen.current?.userID === userID ? mostSeen.current : null;
     if (isFirstSecondChat(seen?.count ?? null, count))
       requestTip("second-chat");
     mostSeen.current = { userID, count: Math.max(seen?.count ?? 0, count) };
-  }, [isLoggedIn, isLoading, count, userID]);
+  }, [isLoggedIn, isListLoaded, count, userID]);
 }
