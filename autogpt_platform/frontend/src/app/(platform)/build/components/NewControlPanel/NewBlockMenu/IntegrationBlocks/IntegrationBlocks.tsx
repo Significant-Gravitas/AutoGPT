@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import React, { Fragment } from "react";
 import { IntegrationBlock } from "../IntergrationBlock";
@@ -73,20 +73,20 @@ export const IntegrationBlocks = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <Button
-              variant={"link"}
-              className="p-0 text-zinc-800"
+              variant={"legacy-link"}
+              className="p-0 text-foreground-emphasis"
               onClick={() => {
                 setIntegration(undefined);
               }}
             >
-              <Text as="span" variant="body-medium" tone="inherit">
+              <Text variant="body-medium" as="span" tone="inherit">
                 Integrations
               </Text>
             </Button>
-            <Text variant="body-medium" as="p" tone="emphasis">
+            <Text variant="body-medium" tone="emphasis">
               /
             </Text>
-            <Text variant="body-medium" as="p" tone="emphasis">
+            <Text variant="body-medium" tone="emphasis">
               {integration}
             </Text>
           </div>
@@ -94,7 +94,7 @@ export const IntegrationBlocks = () => {
             variant="body"
             as="span"
             tone="muted"
-            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-zinc-400"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-foreground-subtle"
           >
             {totalBlocks}
           </Text>

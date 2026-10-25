@@ -1,7 +1,7 @@
 "use client";
 
 import { downloadAsAdmin } from "@/app/(platform)/admin/marketplace/actions";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
@@ -29,8 +29,8 @@ export function DownloadAgentAdminButton({
 
   return (
     <Button
-      size="sm"
-      variant="outline"
+      size="legacy-sm"
+      variant="legacy-outline"
       onClick={handleDownload}
       disabled={isLoading}
     >

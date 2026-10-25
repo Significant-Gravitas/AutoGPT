@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
@@ -38,6 +38,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
   return (
     <Button
+      variant="legacy-default"
       className={cn(
         "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 p-[0.625rem] pr-[0.875rem] text-start shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
@@ -64,7 +65,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             variant="body-medium"
             as="span"
             tone="emphasis"
-            className={cn("line-clamp-1 group-disabled:text-zinc-400")}
+            className="line-clamp-1 group-disabled:text-foreground-subtle"
           >
             {highlightText(title, highlightedText)}
           </Text>
@@ -75,7 +76,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
               variant="small-loose"
               as="span"
               tone="muted"
-              className={cn("line-clamp-1 group-disabled:text-zinc-400")}
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
             </Text>
@@ -87,16 +88,18 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             variant="small-loose"
             as="span"
             tone="muted"
-            className={cn("line-clamp-1 group-disabled:text-zinc-400")}
+            className="line-clamp-1 group-disabled:text-foreground-subtle"
           >
             Version {version}
           </Text>
 
+          {/* TODO(tokens): #DADADC is surface-active (a pressed fill) and
+              border-base (a border); no role holds it as a static fill. */}
           <Text
             variant="small-medium-loose"
             as="span"
             tone="muted"
-            className={cn("rounded-[0.75rem] bg-zinc-200 px-[0.5rem]")}
+            className="rounded-[0.75rem] bg-zinc-200 px-[0.5rem]"
           >
             Your Workflow
           </Text>
