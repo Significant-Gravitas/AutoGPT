@@ -1,5 +1,8 @@
 import { Clock01Icon } from "@hugeicons/core-free-icons";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { getTextDecisions } from "../../../cardDecisions";

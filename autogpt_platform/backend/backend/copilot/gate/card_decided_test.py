@@ -223,13 +223,15 @@ async def test_a_claim_whose_request_died_lapses(
     """Tab A claims, then its worker is killed before it saves or gives the
     claim back. The card must not stay locked: once the lease is past, the
     next answer lands. An accepted answer never lapses."""
-    mocker.patch.object(card_decided, "_PENDING_LEASE_MS", 200)
+    # Long enough that the live checks below never outlast it on a slow
+    # runner; the sleep then outlasts it.
+    mocker.patch.object(card_decided, "_PENDING_LEASE_MS", 2000)
     session = f"s-{uuid.uuid4()}"
     assert await _claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
     await card_decided.accept_claim(session, ["c-2"], "tab-a", "tab-a")
     assert await _claim(session, ["c-1"], "tab-b") == "pending"
 
-    await asyncio.sleep(0.3)  # A is gone
+    await asyncio.sleep(2.2)  # A is gone
 
     assert await _claim(session, ["c-1"], "tab-b") == "claimed"
     assert await _claim(session, ["c-2"], "tab-b") == "answered"
