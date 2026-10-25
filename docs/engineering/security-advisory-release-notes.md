@@ -20,7 +20,11 @@ publish its private advisories.
    put email addresses in public acknowledgments without explicit consent.
 4. After publication, the public sync opens a PR updating `SECURITY.md` with
    accepted reporter, finder and analyst credits. It lists handles and profile
-   links without maintaining counts. Historical acknowledgments stay outside
+   links without maintaining counts, with a researcher's chosen name beside the
+   handle when `RESEARCHER_NAMES` in `security_public_sync.py` has one (add one
+   only when the researcher asks). Credits held by our own team, listed in
+   `TEAM_LOGINS` in `security_release_notes.py`, are left out of both
+   `SECURITY.md` and release notes. Historical acknowledgments stay outside
    the generated block. Pending or declined invitations and unpublished reports
    are never inputs to the public backfill.
 

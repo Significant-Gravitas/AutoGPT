@@ -10,6 +10,7 @@ from security_public_api import PublicDataError, PublicErrorCode
 from security_release_notes import (
     BASE_URL,
     END,
+    LOGIN_PATTERN,
     START,
     accepted_researchers,
     fetch_advisories,
@@ -21,7 +22,26 @@ CREDIT_START = "<!-- security-credits:start -->"
 CREDIT_END = "<!-- security-credits:end -->"
 GHSA_PATTERN = r"GHSA-[a-z0-9]{4}(?:-[a-z0-9]{4}){2}"
 CVE_PATTERN = r"CVE-\d{4}-\d{4,}"
-LOGIN_PATTERN = r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"
+# Names researchers chose to be credited by, as SECURITY.md listed them before the
+# credits were generated. Add one only when a researcher asks for it.
+RESEARCHER_NAMES = {
+    "1024wlsdud": "Dirstibone",
+    "DavidCarliez": "David Carliez",
+    "Fried-Squid": "Ace",
+    "Fushuling": "狗and猫",
+    "geckosecurity": "Gecko Security",
+    "Greg-Kim": "Minjoon Gregorio Kim",
+    "jjjutla": "JJ",
+    "MegaManSec": "Joshua Rogers",
+    "nkoorty": "Artemiy",
+    "pavanchow": "Pavan Nallamothu",
+    "programsurf": "Sunwoo Lee",
+    "RacerZ-fighting": "RacerZ",
+    "sivaadityacoder": "Panuganti Siva Aditya",
+    "TrebledJ": "Johnathan",
+    "YLChen-007": "Edward-x",
+    "yoonsh": "Seunghyun Yoon",
+}
 TAG_PATTERN = (
     r"(?:autogpt-platform-beta-v|agpt-platform-beta-v|autogpt-v|v)\d+\.\d+\.\d+"
 )
@@ -144,7 +164,12 @@ def managed_section(existing, start, end, section, *, append=False):
 
 
 def researcher_links(logins):
-    return ", ".join(f"[@{login}](https://github.com/{login})" for login in logins)
+    links = []
+    for login in logins:
+        link = f"[@{login}](https://github.com/{login})"
+        name = RESEARCHER_NAMES.get(login)
+        links.append(f"{name} ({link})" if name else link)
+    return ", ".join(links)
 
 
 def credit_notes(snapshot, existing):

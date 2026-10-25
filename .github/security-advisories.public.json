@@ -168,8 +168,7 @@
         "autogpt-platform-beta-v0.6.52"
       ],
       "researchers": [
-        "222n5",
-        "kcze"
+        "222n5"
       ]
     },
     {
@@ -188,9 +187,7 @@
       "release_tags": [
         "autogpt-platform-beta-v0.6.1"
       ],
-      "researchers": [
-        "Pwuts"
-      ]
+      "researchers": []
     },
     {
       "cve_id": "CVE-2025-32422",

@@ -13,7 +13,14 @@ from urllib.error import HTTPError
 import security_public_api as api
 import security_public_publish as publish
 import security_public_sync as sync
-from security_release_notes import BASE_URL, END, START, fetch_advisories
+from security_release_notes import (
+    BASE_URL,
+    END,
+    LOGIN_PATTERN,
+    START,
+    TEAM_LOGINS,
+    fetch_advisories,
+)
 from test_security_release_notes import TAG, advisory
 
 CANARY = "PRIVATE-CANARY-DO-NOT-PUBLISH"
@@ -378,6 +385,39 @@ class PublicProjectionTests(unittest.TestCase):
         with self.assertRaises(api.PublicDataError) as raised:
             sync.public_snapshot([item])
         self.assertIs(raised.exception.code, api.PublicErrorCode.RELEASE_MAPPING)
+
+    def test_team_credits_are_not_outside_acknowledgments(self):
+        item = advisory()
+        item["credits_detailed"] += [
+            {"user": {"login": "kcze"}, "state": "accepted", "type": "analyst"},
+            {"user": {"login": "PWUTS"}, "state": "accepted", "type": "finder"},
+        ]
+        snapshot = sync.public_snapshot([item])
+        self.assertEqual(snapshot["advisories"][0]["researchers"], ["researcher"])
+        for text in (
+            sync.credit_notes(snapshot, POLICY),
+            sync.public_release_notes(snapshot, TAG, ""),
+        ):
+            self.assertIn("@researcher", text)
+            self.assertNotIn("kcze", text.casefold())
+            self.assertNotIn("pwuts", text.casefold())
+
+    def test_chosen_names_appear_beside_handles(self):
+        item = advisory()
+        item["credits_detailed"].append(
+            {"user": {"login": "MegaManSec"}, "state": "accepted", "type": "reporter"}
+        )
+        snapshot = sync.public_snapshot([item])
+        named = "Joshua Rogers ([@MegaManSec](https://github.com/MegaManSec))"
+        credits = sync.credit_notes(snapshot, POLICY)
+        self.assertIn(f"- {named}\n", credits)
+        self.assertIn("- [@researcher](https://github.com/researcher)\n", credits)
+        self.assertIn(named, sync.public_release_notes(snapshot, TAG, ""))
+        for login, name in sync.RESEARCHER_NAMES.items():
+            with self.subTest(login=login):
+                self.assertRegex(login, f"^{LOGIN_PATTERN}$")
+                self.assertRegex(name, r"^[\w .'-]+$")
+                self.assertNotIn(login.casefold(), TEAM_LOGINS)
 
     def test_changed_public_data_or_malformed_markers_do_not_overwrite_files(self):
         with TemporaryDirectory() as directory:
