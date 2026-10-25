@@ -25,6 +25,9 @@ export const variants = {
   h3: "font-poppins text-heading font-medium text-foreground-base tracking-[-0.01313rem]",
   h4: "font-poppins text-heading-sm font-medium text-foreground-base",
   h5: "font-poppins text-body-lg font-medium leading-6 text-foreground-base",
+  // The h5 size and line-height at semibold (the wallet panel title).
+  "h5-semibold":
+    "font-poppins text-body-lg font-semibold leading-6 text-foreground-base",
 
   // Body Text
   lead: "font-sans text-lead font-normal text-foreground-base",
@@ -33,10 +36,22 @@ export const variants = {
   large: "font-sans text-body-lg font-normal text-foreground-base",
   "large-medium": "font-sans text-body-lg font-medium text-foreground-base",
   "large-semibold": "font-sans text-body-lg font-semibold text-foreground-base",
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
+  "large-semibold-tight":
+    "font-sans text-body-lg font-semibold leading-6 text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-tight":
+    "font-sans text-body font-normal leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-tight":
+    "font-sans text-caption font-normal leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25rem; caption plus leading-5.
+  "small-loose":
+    "font-sans text-caption font-normal leading-5 text-foreground-base",
 
   // Label Text
   label:
@@ -72,16 +87,21 @@ export const variantElementMap: Record<Variant, As> = {
   h3: "h3",
   h4: "h4",
   h5: "h5",
+  "h5-semibold": "h5",
   lead: "p",
   "lead-medium": "p",
   "lead-semibold": "p",
   large: "p",
   "large-medium": "p",
   "large-semibold": "p",
+  "large-semibold-tight": "p",
   body: "p",
   "body-medium": "p",
+  "body-tight": "p",
   small: "p",
   "small-medium": "p",
+  "small-tight": "p",
+  "small-loose": "p",
   label: "span",
   eyebrow: "span",
 };

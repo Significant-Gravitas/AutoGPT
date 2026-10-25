@@ -57,10 +57,10 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     <div className="flex min-h-0 flex-1 flex-col">
       {showTitle && (
         <Text
-          variant="large-semibold"
+          variant="large-semibold-tight"
           as="h2"
           tone="primary"
-          className="shrink-0 px-6 pb-1 pt-6 leading-6"
+          className="shrink-0 px-6 pb-1 pt-6"
         >
           {TAB_TITLES[activeTab]}
         </Text>
