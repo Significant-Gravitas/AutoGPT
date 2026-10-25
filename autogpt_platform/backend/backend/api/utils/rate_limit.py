@@ -58,12 +58,9 @@ class RateLimiter:
             await redis.set(key, 0, ex=self.window_seconds, nx=True)
             count = await redis.incr(key)
         except Exception as e:
-            logger.warning(
-                "Rate-limit check (%s) failed open for user %s: %s",
-                self.name,
-                user_id,
-                e,
-            )
+            # A Redis outage fails every caller open, so the subject adds nothing;
+            # for the credential buckets it would also put a credential in the log.
+            logger.warning(f"Rate-limit check ({self.name}) failed open: {e}")
             return None
 
         state = RateLimitState(
@@ -97,9 +94,7 @@ class RateLimiter:
             redis = await get_redis_async()
             count = await redis.get(self._key(user_id, datetime.now(UTC)))
         except Exception as e:
-            logger.warning(
-                "Rate-limit peek (%s) failed open for %s: %s", self.name, user_id, e
-            )
+            logger.warning(f"Rate-limit peek ({self.name}) failed open: {e}")
             return False
         return count is not None and int(count) >= self.max_requests
 

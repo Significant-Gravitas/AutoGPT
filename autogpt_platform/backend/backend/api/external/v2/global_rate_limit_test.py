@@ -2,10 +2,12 @@
 
 import pytest
 import pytest_mock
+from autogpt_libs.api_key.keysmith import APIKeySmith
 
 from backend.api.external.v2 import global_rate_limit
 from backend.api.external.v2.global_rate_limit import (
     GlobalRateLimitMiddleware,
+    _credential_bucket,
     client_ip,
 )
 from backend.util.settings import Config
@@ -96,3 +98,17 @@ async def _call_middleware(forwarded: str) -> None:
         "client": (PEER, 0),
     }
     await GlobalRateLimitMiddleware(app)(scope, receive, send)
+
+
+def test_a_key_s_bucket_carries_no_part_of_the_key():
+    """The bucket is logged when Redis fails and names a Redis key."""
+    key = f"{APIKeySmith.PREFIX}headpart-the-rest-of-the-secret"
+    same_head = f"{APIKeySmith.PREFIX}headpart-another-secret"
+    other_head = f"{APIKeySmith.PREFIX}otherhed-the-rest-of-the-secret"
+
+    bucket = _credential_bucket("203.0.113.7", key, None)
+
+    assert bucket is not None
+    assert key[: APIKeySmith.HEAD_LENGTH] not in bucket
+    assert bucket == _credential_bucket("203.0.113.7", same_head, None)
+    assert bucket != _credential_bucket("203.0.113.7", other_head, None)
