@@ -1,10 +1,16 @@
 "use client";
 
+import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 import React from "react";
 import { cn } from "@/lib/utils";
-import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+
+export const CollapsibleRoot = CollapsiblePrimitive.Root;
+
+export const CollapsibleTrigger = CollapsiblePrimitive.CollapsibleTrigger;
+
+export const CollapsibleContent = CollapsiblePrimitive.CollapsibleContent;
 
 interface Props {
   trigger: React.ReactNode;
@@ -39,13 +45,13 @@ export function Collapsible({
   };
 
   return (
-    <CollapsiblePrimitive.Root
+    <CollapsibleRoot
       open={openState}
       onOpenChange={handleOpenChange}
       data-slot="collapsible"
       className={cn("w-full", className)}
     >
-      <CollapsiblePrimitive.Trigger
+      <CollapsibleTrigger
         data-slot="collapsible-trigger"
         className={cn(
           "flex w-full items-center justify-between text-left transition-all duration-200 hover:opacity-80",
@@ -66,15 +72,15 @@ export function Collapsible({
             )}
           />
         </div>
-      </CollapsiblePrimitive.Trigger>
-      <CollapsiblePrimitive.Content
+      </CollapsibleTrigger>
+      <CollapsibleContent
         data-slot="collapsible-panel"
         className={cn("overflow-hidden", contentClassName)}
       >
         <div data-slot="collapsible-panel-content" className="pt-2">
           {children}
         </div>
-      </CollapsiblePrimitive.Content>
-    </CollapsiblePrimitive.Root>
+      </CollapsibleContent>
+    </CollapsibleRoot>
   );
 }
