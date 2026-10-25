@@ -677,18 +677,30 @@ function MCPToolCard({
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
         <div className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-800/50">
-          <table className="w-full text-caption leading-4">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 dark:border-slate-700">
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
+                >
                   Parameter
-                </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                </Text>
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
+                >
                   Type
-                </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                </Text>
+                <Text
+                  variant="small-medium-tight"
+                  as="th"
+                  className="px-2 py-1 text-left text-gray-500 dark:text-gray-400"
+                >
                   Description
-                </th>
+                </Text>
               </tr>
             </thead>
             <tbody>
@@ -699,18 +711,30 @@ function MCPToolCard({
                     key={name}
                     className="border-b border-gray-50 last:border-0 dark:border-slate-700/50"
                   >
-                    <td className="px-2 py-1 font-mono text-caption-sm leading-inherit text-gray-700 dark:text-gray-300">
+                    <Text
+                      variant="caption-sm-mono"
+                      as="td"
+                      className="px-2 py-1 text-gray-700 dark:text-gray-300"
+                    >
                       {name}
                       {required.has(name) && (
                         <span className="ml-0.5 text-red-400">*</span>
                       )}
-                    </td>
-                    <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
+                    </Text>
+                    <Text
+                      variant="small-tight"
+                      as="td"
+                      className="px-2 py-1 text-gray-500 dark:text-gray-400"
+                    >
                       {schemaTypeLabel(prop)}
-                    </td>
-                    <td className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400">
+                    </Text>
+                    <Text
+                      variant="small-tight"
+                      as="td"
+                      className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400"
+                    >
                       {prop.description ?? "—"}
-                    </td>
+                    </Text>
                   </tr>
                 );
               })}
