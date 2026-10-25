@@ -31,7 +31,6 @@ What this module is NOT responsible for (caller wraps):
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import functools
 import json as json_module
 import logging
@@ -46,7 +45,7 @@ import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from openai.types.shared_params import ResponseFormatJSONObject
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic.dataclasses import dataclass
 
 from backend.data.llm_registry.llm_models import (
@@ -104,8 +103,7 @@ def request_timeout(timeout_seconds: float) -> httpx.Timeout:
     )
 
 
-@dataclasses.dataclass
-class HttpAttemptLog:
+class HttpAttemptLog(BaseModel):
     """Each HTTP request an SDK sent for one block LLM call, retries included.
 
     One timeout covers every SDK retry and its backoff, so only the start of
@@ -113,8 +111,8 @@ class HttpAttemptLog:
     """
 
     clock: Callable[[], float]
-    starts: list[float] = dataclasses.field(default_factory=list)
-    statuses: list[int] = dataclasses.field(default_factory=list)
+    starts: list[float] = Field(default_factory=list)
+    statuses: list[int] = Field(default_factory=list)
 
 
 # Set by the block-side llm_call; other callers leave it None and record nothing.
