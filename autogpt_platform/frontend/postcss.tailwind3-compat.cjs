@@ -541,22 +541,27 @@ function variantPrefix(node) {
 }
 
 // Tailwind 3 emitted `outline-none` before the outline width, offset and
-// colour utilities of the same variants.
-function moveOutlineNone(container) {
-  for (const node of [...container.nodes]) {
+// colour utilities of the same variants. `siblings` are utility rules of one
+// parent, in order; rules outside the utility block are never moved.
+function moveOutlineNone(siblings) {
+  const list = [...siblings];
+  for (const node of [...list]) {
     if (!isOutlineNone(node)) continue;
     const prefix = variantPrefix(node);
-    const before = container.nodes.find(
-      (other) =>
-        other !== node &&
+    const at = list.indexOf(node);
+    const before = list.find(
+      (other, index) =>
+        index < at &&
         other.type === "rule" &&
-        container.index(other) < container.index(node) &&
         variantPrefix(other) === prefix &&
         other.nodes.some(
           (d) => d.type === "decl" && OUTLINE_SETTINGS.has(d.prop),
         ),
     );
-    if (before) before.before(node);
+    if (!before) continue;
+    before.before(node);
+    list.splice(at, 1);
+    list.splice(list.indexOf(before), 0, node);
   }
 }
 
@@ -573,9 +578,9 @@ function restoreRuleOrder(root) {
   for (const node of block) node.remove();
   root.nodes[start].after(sorted);
   for (const node of sorted) {
-    if (node.type === "atrule" && node.nodes) moveOutlineNone(node);
+    if (node.type === "atrule" && node.nodes) moveOutlineNone(node.nodes);
   }
-  moveOutlineNone(root);
+  moveOutlineNone(sorted.filter((node) => node.type === "rule"));
   root.nodes[start].remove();
   root.nodes
     .find(

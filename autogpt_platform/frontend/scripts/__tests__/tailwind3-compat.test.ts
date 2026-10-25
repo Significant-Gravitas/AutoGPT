@@ -79,7 +79,15 @@ const CLASSES = [
   "disabled:opacity-1",
 ];
 
-async function compile() {
+// One compile for the file: every test reads the same result, and the
+// PostCSS run over the whole stylesheet is the slow part.
+let compiled: Promise<Root> | undefined;
+function compile() {
+  compiled ??= compileStylesheet();
+  return compiled;
+}
+
+async function compileStylesheet() {
   const from = join(frontend, "src/app/globals.css");
   const css = `${readFileSync(from, "utf8")}\n@source inline(${JSON.stringify(CLASSES.join(" "))});\n`;
   const result = await postcss(plugins).process(css, { from });
