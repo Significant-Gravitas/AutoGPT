@@ -701,20 +701,21 @@ async def _call_anthropic_messages(
     http_client = _attempt_logging_http_client(anthropic)
     try:
         client = anthropic.AsyncAnthropic(api_key=api_key, http_client=http_client)
-        resp = await client.messages.create(**create_kwargs)
-    except anthropic.BadRequestError as exc:
-        # Self-heal for models the deny-list doesn't know yet.
-        if "temperature" not in create_kwargs or not (
-            _is_temperature_deprecation_error(exc)
-        ):
-            raise
-        logger.warning(
-            "Anthropic model %s rejected temperature — retrying without it. "
-            "Add the model to _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES.",
-            model,
-        )
-        create_kwargs.pop("temperature")
-        resp = await client.messages.create(**create_kwargs)
+        try:
+            resp = await client.messages.create(**create_kwargs)
+        except anthropic.BadRequestError as exc:
+            # Self-heal for models the deny-list doesn't know yet.
+            if "temperature" not in create_kwargs or not (
+                _is_temperature_deprecation_error(exc)
+            ):
+                raise
+            logger.warning(
+                "Anthropic model %s rejected temperature — retrying without it. "
+                "Add the model to _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES.",
+                model,
+            )
+            create_kwargs.pop("temperature")
+            resp = await client.messages.create(**create_kwargs)
     finally:
         await http_client.aclose()
     if not resp.content:
