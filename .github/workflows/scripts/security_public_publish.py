@@ -14,6 +14,8 @@ from security_public_api import (
     public_pages,
 )
 from security_public_sync import (
+    END,
+    START,
     TAG_PATTERN,
     current_snapshot,
     matches,
@@ -59,10 +61,9 @@ def patch_release(release_id, body):
         raise PublicDataError(PublicErrorCode.RELEASE_UPDATE)
 
 
-def update_releases(expected_digest, *, apply=False):
+def update_releases(expected_digest, *, apply=False, preview=False):
     snapshot = current_snapshot(expected_digest)
     candidates = []
-    immutable = 0
     for release in public_pages("releases"):
         if not published_release(release):
             continue
@@ -71,20 +72,17 @@ def update_releases(expected_digest, *, apply=False):
         )
         if notes == (release.get("body") or ""):
             continue
-        if release.get("immutable"):
-            immutable += 1
-            continue
         candidates.append(release)
     # Recheck the public projection after reading release metadata, before any write.
     current_snapshot(expected_digest)
     updated = 0
+    sections = []
     for candidate in candidates:
         release, _ = public_json(f"releases/{candidate['id']}")
         if (
             not published_release(release)
             or release["id"] != candidate["id"]
             or release["tag_name"] != candidate["tag_name"]
-            or release.get("immutable")
         ):
             raise PublicDataError(PublicErrorCode.RELEASE_CHANGED)
         body = public_release_notes(
@@ -95,13 +93,36 @@ def update_releases(expected_digest, *, apply=False):
                 patch_release(release["id"], body)
                 time.sleep(1)
             updated += 1
-    return {"changed_releases": updated, "immutable_releases_skipped": immutable}
+            if preview:
+                tag = release["tag_name"]
+                section = public_release_notes(snapshot, tag, f"{START}\n{END}\n")
+                sections.append(
+                    f"### [{tag}](https://github.com/{REPOSITORY}/releases/tag/{tag})"
+                    f"\n\n```markdown\n{section}```\n"
+                )
+    result = {"changed_releases": updated}
+    if preview:
+        result["preview"] = (
+            "## Proposed public security sections\n\n"
+            f"Releases to update: {updated}\n\n"
+            "Each section below replaces the managed security section or is appended "
+            "if none exists. Other release text is preserved. "
+            "Existing release text and raw advisory content are not included "
+            "in this preview.\n\n" + "\n".join(sections)
+        )
+    return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-digest", required=True)
-    parser.add_argument("--apply", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true")
+    mode.add_argument(
+        "--preview",
+        action="store_true",
+        help="Show only proposed public security sections",
+    )
     args = parser.parse_args()
     try:
         if args.apply and (
@@ -111,11 +132,10 @@ def main():
             or not os.environ.get("GH_TOKEN")
         ):
             raise PublicDataError(PublicErrorCode.WRITE_CONTEXT)
-        print(
-            json.dumps(
-                update_releases(args.expected_digest, apply=args.apply), sort_keys=True
-            )
+        result = update_releases(
+            args.expected_digest, apply=args.apply, preview=args.preview
         )
+        print(result["preview"] if args.preview else json.dumps(result, sort_keys=True))
     except PublicDataError as error:
         parser.exit(1, f"Public release sync failed: {error.code.value}\n")
     except Exception:

@@ -486,7 +486,7 @@ class ReleaseWriterTests(unittest.TestCase):
             )
             write.assert_not_called()
 
-    def test_drafts_immutable_releases_and_dry_run_are_never_written(self):
+    def test_drafts_and_dry_run_are_never_written(self):
         with patch.object(
             publish, "current_snapshot", return_value=self.snapshot
         ), patch.object(
@@ -494,7 +494,6 @@ class ReleaseWriterTests(unittest.TestCase):
             "public_pages",
             return_value=[
                 dict(self.release, draft=True, body=CANARY),
-                dict(self.release, immutable=True),
                 self.release,
             ],
         ), patch.object(
@@ -504,9 +503,151 @@ class ReleaseWriterTests(unittest.TestCase):
         ) as write:
             self.assertEqual(
                 publish.update_releases(self.digest),
-                {"changed_releases": 1, "immutable_releases_skipped": 1},
+                {"changed_releases": 1},
             )
             write.assert_not_called()
+
+    def test_immutable_release_updates_only_notes_even_if_immutability_changed(self):
+        for was_immutable in (False, True):
+            with self.subTest(was_immutable=was_immutable):
+                latest = dict(
+                    self.release,
+                    immutable=True,
+                    assets=[{"name": CANARY}],
+                    body="Maintainer's latest notes\n",
+                )
+                with patch.object(
+                    publish, "current_snapshot", return_value=self.snapshot
+                ), patch.object(
+                    publish,
+                    "public_pages",
+                    return_value=[dict(self.release, immutable=was_immutable)],
+                ), patch.object(
+                    publish, "public_json", return_value=(latest, {})
+                ), patch.object(
+                    publish.subprocess,
+                    "run",
+                    return_value=subprocess.CompletedProcess([], 0, CANARY, CANARY),
+                ) as run:
+                    self.assertEqual(
+                        publish.update_releases(self.digest, apply=True),
+                        {"changed_releases": 1},
+                    )
+                run.assert_called_once()
+                payload = json.loads(run.call_args.kwargs["input"])
+                self.assertEqual(set(payload), {"body"})
+                self.assertTrue(payload["body"].startswith(latest["body"]))
+                self.assertIn("GHSA-aaaa-bbbb-cccc", payload["body"])
+                self.assertNotIn(CANARY, run.call_args.kwargs["input"])
+
+    def test_cli_preview_shows_only_generated_public_sections_and_never_writes(self):
+        item = advisory()
+        item["summary"] = CANARY
+        item["description"] += CANARY
+        item["cve_id"] = "CVE-2026-12345"
+        item["credits_detailed"].append(
+            {
+                "user": {"login": "pending-person"},
+                "state": "pending",
+                "type": "reporter",
+            }
+        )
+        private = dict(item, state="draft", ghsa_id="GHSA-dead-beef-cafe")
+        digest = sync.snapshot_digest(sync.public_snapshot([item]))
+        release = dict(
+            self.release,
+            immutable=True,
+            name=CANARY,
+            body=f"{CANARY}\n{START}\n{CANARY}\n{END}\n{CANARY}\n",
+        )
+        with patch.dict(os.environ, self.write_environment, clear=True), patch(
+            "sys.argv", ["publish", "--expected-digest", digest, "--preview"]
+        ), patch.object(
+            sync, "fetch_advisories", return_value=[private, item]
+        ), patch.object(
+            publish, "public_pages", return_value=[dict(release, draft=True), release]
+        ), patch.object(
+            publish, "public_json", return_value=(release, {})
+        ), patch.object(
+            publish, "patch_release"
+        ) as write, contextlib.redirect_stdout(
+            io.StringIO()
+        ) as output:
+            publish.main()
+        preview = output.getvalue()
+        self.assertIn("Releases to update: 1", preview)
+        self.assertIn(f"{BASE_URL}/releases/tag/{TAG}", preview)
+        self.assertIn(
+            "```markdown\n"
+            f"{START}\n## Security fixes\n\n"
+            f"- [GHSA-aaaa-bbbb-cccc]({BASE_URL}/security/advisories/GHSA-aaaa-bbbb-cccc)"
+            " (CVE-2026-12345). Thanks to [@researcher](https://github.com/researcher).\n"
+            f"\n{END}\n```",
+            preview,
+        )
+        for forbidden in (CANARY, "pending-person", private["ghsa_id"]):
+            self.assertNotIn(forbidden, preview)
+        write.assert_not_called()
+
+    def test_preview_includes_withdrawal_replacement_without_old_report_text(self):
+        release = dict(self.release, body=f"{START}\n{CANARY}\n{END}\n")
+        with patch.object(
+            publish, "current_snapshot", return_value=EMPTY
+        ), patch.object(publish, "public_pages", return_value=[release]), patch.object(
+            publish, "public_json", return_value=(release, {})
+        ), patch.object(
+            publish, "patch_release"
+        ) as write:
+            result = publish.update_releases(sync.snapshot_digest(EMPTY), preview=True)
+        self.assertEqual(result["changed_releases"], 1)
+        self.assertIn(
+            "No currently published advisories are linked to this release.",
+            result["preview"],
+        )
+        self.assertNotIn(CANARY, result["preview"])
+        write.assert_not_called()
+
+    def test_cli_preview_failure_emits_no_partial_sections(self):
+        with patch(
+            "sys.argv", ["publish", "--expected-digest", self.digest, "--preview"]
+        ), patch.object(
+            publish, "current_snapshot", return_value=self.snapshot
+        ), patch.object(
+            publish,
+            "public_pages",
+            return_value=[self.release, dict(self.release, id=124)],
+        ), patch.object(
+            publish,
+            "public_json",
+            side_effect=[(self.release, {}), ValueError(CANARY)],
+        ), patch.object(
+            publish, "patch_release"
+        ) as write, contextlib.redirect_stdout(
+            io.StringIO()
+        ) as stdout, contextlib.redirect_stderr(
+            io.StringIO()
+        ) as stderr, self.assertRaises(
+            SystemExit
+        ):
+            publish.main()
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertNotIn(CANARY, stderr.getvalue())
+        write.assert_not_called()
+
+    def test_cli_rejects_preview_combined_with_apply_before_fetching(self):
+        with patch(
+            "sys.argv",
+            ["publish", "--expected-digest", self.digest, "--preview", "--apply"],
+        ), patch.object(
+            publish, "update_releases"
+        ) as update, contextlib.redirect_stderr(
+            io.StringIO()
+        ), self.assertRaises(
+            SystemExit
+        ) as raised:
+            publish.main()
+        self.assertEqual(raised.exception.code, 2)
+        update.assert_not_called()
 
     def test_changed_projection_and_invalid_markers_prevent_all_writes(self):
         with patch.object(
@@ -609,7 +750,7 @@ class ReleaseWriterTests(unittest.TestCase):
                 self.assertNotIn(CANARY, output.getvalue())
 
     def test_cli_allows_writes_with_complete_trusted_context(self):
-        result = {"changed_releases": 0, "immutable_releases_skipped": 0}
+        result = {"changed_releases": 0}
         with patch.dict(os.environ, self.write_environment, clear=True), patch(
             "sys.argv", ["publish", "--expected-digest", self.digest, "--apply"]
         ), patch.object(
@@ -618,7 +759,7 @@ class ReleaseWriterTests(unittest.TestCase):
             io.StringIO()
         ) as output:
             publish.main()
-        update.assert_called_once_with(self.digest, apply=True)
+        update.assert_called_once_with(self.digest, apply=True, preview=False)
         self.assertEqual(json.loads(output.getvalue()), result)
         self.assertNotIn(CANARY, output.getvalue())
 

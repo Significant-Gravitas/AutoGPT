@@ -46,14 +46,14 @@ jobs:
         env:
           EXPECTED_DIGEST: ${{ steps.public.outputs.digest }}
         run: python .github/workflows/scripts/security_public_sync.py credits --root content --expected-digest "$EXPECTED_DIGEST"
-      - name: Check release-note reconciliation without writing
+      - name: Preview public release-note sections without writing
         env:
           EXPECTED_DIGEST: ${{ steps.public.outputs.digest }}
-        run: python .github/workflows/scripts/security_public_publish.py --expected-digest "$EXPECTED_DIGEST"
+        run: python .github/workflows/scripts/security_public_publish.py --expected-digest "$EXPECTED_DIGEST" --preview >> "$GITHUB_STEP_SUMMARY"
 
   credits-pr:
     needs: public-data
-    if: vars.PUBLIC_SECURITY_SYNC_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
+    if: vars.PUBLIC_SECURITY_CREDITS_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -113,8 +113,8 @@ jobs:
             - [ ] Maintainer reviewed the diff and approved any pending CI runs
 
   release-notes:
-    needs: [public-data, credits-pr]
-    if: vars.PUBLIC_SECURITY_SYNC_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
+    needs: public-data
+    if: vars.PUBLIC_SECURITY_RELEASE_NOTES_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

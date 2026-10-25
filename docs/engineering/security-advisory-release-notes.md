@@ -52,9 +52,10 @@ response bodies are never printed; unexpected failures keep a generic message.
 
 The jobs have separate permissions and no shared report artifacts:
 
-1. The read-only job checks out trusted `master` code and produces only a
-   snapshot digest and source commit. It also checks release reconciliation
-   without writing.
+1. The read-only job checks out trusted `master` code and passes only a
+   snapshot digest and source commit to the writers. Its job summary previews
+   the exact generated security sections and their public target releases.
+   The preview contains no existing release text or raw advisory content.
 2. The credits job uses that exact code commit, re-fetches anonymous public
    records, and requires the digest to agree. It treats `dev` as data, generates
    the two allowed files, and opens or updates one PR against `dev`. The existing
@@ -63,7 +64,9 @@ The jobs have separate permissions and no shared report artifacts:
 3. The release job independently re-fetches and compares public records, then
    rechecks the projection after reading release metadata. It reads each target
    release anonymously immediately before updating its managed section. Drafts
-   and immutable releases are not edited. It preserves all other notes from that
+   are not edited. Published immutable releases are eligible because GitHub
+   permits updating their notes while protecting their tags and assets.
+   The writer sends only the release body. It preserves all other notes from that
    fresh read. GitHub does not document conditional PATCH support for releases:
    an edit racing the final read and write can still be overwritten. Avoid manual
    release-note edits during this short job, and inspect concurrent changes before
@@ -71,9 +74,10 @@ The jobs have separate permissions and no shared report artifacts:
 
 Both writer jobs fetch their pinned public source without checkout actions or
 credentials. GitHub permissions remain job-scoped, so their workflow code and
-actions must be trusted. The release job also requires the credits job to succeed:
-failed validation or credit preparation stops release updates until a successful
-rerun, even if the failure was limited to creating the credits PR.
+actions must be trusted. Both writers depend on successful validation and credit
+preparation in the read-only job. Each has its own enablement switch; opening a
+credits PR does not enable or approve release updates. A PR creation failure does
+not block an independently enabled release writer.
 
 The release writer uses only the repository's short-lived `GITHUB_TOKEN` with
 `contents: write`. The credits writer additionally needs `pull-requests: write`.
@@ -93,27 +97,33 @@ history remain public history; withdrawal cannot erase previously published data
 ### Enable after review
 
 1. Merge the implementation through `dev` to `master`; the schedule and trusted
-   code both run from `master`. Keep `PUBLIC_SECURITY_SYNC_ENABLED` unset initially.
+   code both run from `master`. Keep `PUBLIC_SECURITY_CREDITS_ENABLED` and
+   `PUBLIC_SECURITY_RELEASE_NOTES_ENABLED` unset initially.
 2. Dispatch **Security - Public advisory sync** on `master` with `dry_run: true`.
-   Check that it succeeds and the changed-release/immutable-release counts are
-   expected. Local dry runs can use the same commands below.
-3. Set the repository Actions variable `PUBLIC_SECURITY_SYNC_ENABLED` to `true`,
-   then dispatch with `dry_run: false`. This enables the six-hourly PR and release
-   writers. Leaving the variable unset disables both writers even when dispatch
-   asks to apply changes.
+   Review each target release and proposed security section in the job summary.
+   The sections replace only the managed block; unrelated release text is omitted
+   from the preview and preserved when writing. Local dry runs use the command below.
+3. Set only `PUBLIC_SECURITY_CREDITS_ENABLED=true`, then dispatch with
+   `dry_run: false`. This enables the credits PR writer without editing releases.
 4. Review the generated credits PR. GitHub may require a maintainer to approve
    CI workflows for a PR created with `GITHUB_TOKEN`; this automation does not
    approve or merge its own PRs. The repository must allow Actions to create PRs.
+5. After reviewing the public release preview, set
+   `PUBLIC_SECURITY_RELEASE_NOTES_ENABLED=true` and dispatch with `dry_run: false`.
+   Verify the first applied release sections and preservation of unrelated notes.
+   Subsequent scheduled runs reconcile releases automatically.
 
-To stop writes, unset the variable. To recover from an API limit, changed digest,
+Both switches default to disabled. `dry_run: true` disables both writers regardless
+of their switches. Each switch can be disabled independently, and the former
+`PUBLIC_SECURITY_SYNC_ENABLED` variable has no effect.
+
+To stop all writes, unset both switches. To recover from an API limit, changed digest,
 concurrent edit or failed update, rerun the workflow; generation is idempotent.
 Some release updates may already have succeeded before a later request fails.
-Immutable release notes need a separate distribution channel, such as a link to
-the repository's public advisories, because the workflow cannot edit them.
 
 ```sh
 digest=$(python .github/workflows/scripts/security_public_sync.py digest)
-python .github/workflows/scripts/security_public_publish.py --expected-digest "$digest"
+python .github/workflows/scripts/security_public_publish.py --expected-digest "$digest" --preview
 ```
 
 Publication, verifying first fixed versions, duplicate consolidation and consent
@@ -123,6 +133,7 @@ publishing sensitive content on GitHub; only approved, already public identifier
 are copied. Review changes to the workflow and generator as privileged code.
 
 GitHub documents [unauthenticated access to public repository advisories](https://docs.github.com/en/rest/security-advisories/repository-advisories#list-repository-security-advisories),
+[editable release notes on immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases),
 [token permissions and event behavior](https://docs.github.com/en/actions/concepts/security/github_token),
 and [scheduled workflow behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 See also the REST API's [conditional-request limitations](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests).
