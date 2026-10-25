@@ -40,12 +40,15 @@ function AccountMentionComposer({ expertId }: Props) {
     <div className="w-full max-w-2xl pt-80">
       {sent && (
         <div className="mb-8 flex justify-end">
-          <div
+          <Text
+            as="div"
+            variant="large-loose"
+            tone="primary"
             data-testid="sent-message"
-            className="max-w-full whitespace-pre-wrap rounded-3xl bg-surface-hover px-4 py-2.5 text-body-lg leading-8 text-foreground-strong"
+            className="max-w-full whitespace-pre-wrap rounded-3xl bg-surface-hover px-4 py-2.5"
           >
             <CredentialMentionMarkdown>{sent}</CredentialMentionMarkdown>
-          </div>
+          </Text>
         </div>
       )}
       <form

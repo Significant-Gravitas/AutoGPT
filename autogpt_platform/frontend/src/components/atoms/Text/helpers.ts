@@ -39,6 +39,9 @@ export const variants = {
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-semibold-tight":
     "font-sans text-body-lg font-semibold leading-6 text-foreground-base",
+  // TODO(tokens): no role is 1rem/2rem; body-lg plus leading-8.
+  "large-loose":
+    "font-sans text-body-lg font-normal leading-8 text-foreground-base",
   // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
   "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
@@ -121,6 +124,7 @@ export const variantElementMap: Record<Variant, As> = {
   "large-medium": "p",
   "large-semibold": "p",
   "large-semibold-tight": "p",
+  "large-loose": "p",
   "lg-semibold": "h3",
   body: "p",
   "body-medium": "p",
