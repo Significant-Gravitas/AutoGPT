@@ -8,14 +8,14 @@ describe("MCPAuthSchemeField", () => {
       <MCPAuthSchemeField
         value="bearer"
         onChange={vi.fn()}
-        labelClassName="text-xs"
+        labelClassName="mt-1"
       />,
     );
 
     const label = screen.getByText("Authentication type");
     expect(label.tagName).toBe("LABEL");
     expect(label.getAttribute("data-slot")).toBeNull();
-    expect(label.className).toBe("text-xs");
+    expect(label.className).toBe("mt-1");
   });
 
   it("renders the label through Text when given a variant, still naming the select", () => {
