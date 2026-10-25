@@ -43,6 +43,7 @@ export const variants = {
     "font-sans text-body font-medium leading-5 text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  "small-mono": "font-mono text-caption font-normal text-foreground-base",
 
   // Label Text
   label:
@@ -92,6 +93,7 @@ export const variantElementMap: Record<Variant, As> = {
   "body-medium-tight": "p",
   small: "p",
   "small-medium": "p",
+  "small-mono": "p",
   label: "span",
   eyebrow: "span",
 };
