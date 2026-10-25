@@ -8,8 +8,8 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-} from "./conversation";
-import { Message, MessageContent, MessageResponse } from "./message";
+} from "./Conversation";
+import { Message, MessageContent, MessageResponse } from "../Message/Message";
 
 const TURNS = Array.from({ length: 12 }, (_, index) => ({
   id: `turn-${index + 1}`,

@@ -10,7 +10,7 @@ import {
   MessageBranchSelector,
   MessageContent,
   MessageResponse,
-} from "./message";
+} from "./Message";
 
 const meta: Meta<typeof MessageBranch> = {
   title: "AI Elements/MessageBranch",
