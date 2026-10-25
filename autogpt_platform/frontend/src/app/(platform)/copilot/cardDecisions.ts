@@ -37,9 +37,16 @@ export function decisionLine({
   decision,
 }: DecisionLineArgs): string {
   const verb = verbFor(kind);
+  const shown = plainName(name);
   return decision === "approved"
-    ? `Approved: ${verb} ${name} (confirmation_id: ${confirmationId}).`
-    : `Not approved: do not ${verb} ${name}, discard that proposal (confirmation_id: ${confirmationId}).`;
+    ? `Approved: ${verb} ${shown} (confirmation_id: ${confirmationId}).`
+    : `Not approved: do not ${verb} ${shown}, discard that proposal (confirmation_id: ${confirmationId}).`;
+}
+
+// The line is a protocol the chat and the gate both parse: a line break,
+// tab or control character in a name would read differently on each side.
+function plainName(name: string): string {
+  return name.replace(/[\s\p{Cc}]+/gu, " ").trim();
 }
 
 function verbFor(kind: DecisionLineArgs["kind"]): DecisionVerb {

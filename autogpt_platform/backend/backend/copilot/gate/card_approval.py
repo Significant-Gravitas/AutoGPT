@@ -112,9 +112,7 @@ async def withdraw_card_approvals_recorded_by(
 
 def parse_card_decisions(message: str) -> list[CardDecision]:
     """Every decision line in a message, in order; other lines are skipped."""
-    return [
-        decision for line in message.splitlines() if (decision := _parse_line(line))
-    ]
+    return [decision for line in _lines(message) if (decision := _parse_line(line))]
 
 
 def strip_card_decisions(message: str, confirmation_ids: Collection[str]) -> str:
@@ -122,7 +120,7 @@ def strip_card_decisions(message: str, confirmation_ids: Collection[str]) -> str
     to send once those cards turn out to be answered already."""
     kept = [
         line
-        for line in message.splitlines()
+        for line in _lines(message)
         if not (
             (decision := _parse_line(line))
             and decision.confirmation_id in confirmation_ids
@@ -139,7 +137,7 @@ def card_decision_metadata(message: str) -> dict[str, Any] | None:
     with anything else in it, or a line that names no hire, create or update,
     is the user's own words and keeps no metadata.
     """
-    lines = [line for line in message.splitlines() if line.strip()]
+    lines = [line for line in _lines(message) if line.strip()]
     decisions = [decision for line in lines if (decision := _parse_line(line))]
     if not decisions or len(decisions) != len(lines):
         return None
@@ -178,6 +176,12 @@ def _key(session_id: str) -> str:
 
 def _field(user_id: str, confirmation_id: str) -> str:
     return f"{user_id}:{confirmation_id}"
+
+
+def _lines(message: str) -> list[str]:
+    # Newlines alone end a line, as the chat splits it; splitlines() would
+    # also break on \v, \f, \x85 and the like, and read a line apart.
+    return message.split("\n")
 
 
 def _parse_line(line: str) -> CardDecision | None:

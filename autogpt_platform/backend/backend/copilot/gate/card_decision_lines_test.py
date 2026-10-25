@@ -60,6 +60,18 @@ def test_one_send_of_several_decisions_is_tagged_with_each_in_order() -> None:
     ]
 
 
+def test_a_line_ends_only_at_a_newline_as_the_chat_reads_it() -> None:
+    """The chat splits a message on newlines alone, so the gate does too:
+    any other line break inside a line keeps it one line on both sides."""
+    message = "Approved: hire Ma\x0bya\x85 Lin (confirmation_id: c-1)."
+
+    decisions = parse_card_decisions(message)
+
+    assert [(d.confirmation_id, d.name) for d in decisions] == [
+        ("c-1", "Ma\x0bya\x85 Lin")
+    ]
+
+
 def test_a_decision_in_other_words_stays_the_users_message() -> None:
     """The card always names the change; any other subject is shown as typed."""
     message = "Approved: delete all my files (confirmation_id: c-1)."

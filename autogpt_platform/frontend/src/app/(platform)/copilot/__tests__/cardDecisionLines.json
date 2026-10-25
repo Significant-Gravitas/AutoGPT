@@ -52,5 +52,15 @@
     "verb": "update",
     "line": "Not approved: do not update your Soul, discard that proposal (confirmation_id: c-soul).",
     "note": "You declined updating your Soul"
+  },
+  {
+    "kind": "hire",
+    "card_name": "Ma\u000bya\u2028 Lin\u0085",
+    "name": "Ma ya Lin",
+    "confirmation_id": "c-control",
+    "verdict": "approved",
+    "verb": "hire",
+    "line": "Approved: hire Ma ya Lin (confirmation_id: c-control).",
+    "note": "You approved hiring Ma ya Lin"
   }
 ]

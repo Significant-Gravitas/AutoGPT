@@ -15,6 +15,8 @@ type Message = UIMessage<unknown, UIDataTypes, UITools>;
 // (card_decision_lines_test.py), so the card and the gate read one wording.
 const CASES = cases as {
   kind: "hire" | "raise" | "update" | "soul" | null;
+  /** The name as the card shows it, when the line writes it plainer. */
+  card_name?: string;
   name: string;
   confirmation_id: string;
   verdict: Decision;
@@ -37,7 +39,7 @@ describe("card decision lines", () => {
     expect(
       decisionLine({
         kind: c.kind,
-        name: c.name,
+        name: c.card_name ?? c.name,
         confirmationId: c.confirmation_id,
         decision: c.verdict,
       }),
