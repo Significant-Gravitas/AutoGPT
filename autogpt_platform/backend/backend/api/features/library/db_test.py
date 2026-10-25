@@ -1733,6 +1733,48 @@ async def test_create_expert_preset_rejects_shared_webhook(mocker):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("credentials, saved", [({}, True), (None, False)])
+async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
+    mocker, credentials, saved
+):
+    """Inputs and credentials share their rows, so one is never replaced alone;
+    a preset that needs no credentials sends `{}`."""
+    mocker.patch.object(
+        db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    preset_client = AsyncMock()
+    mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+    )
+    mocker.patch.object(db, "transaction", fake_tx)
+    mocker.patch.object(
+        library_model.LibraryAgentPreset, "from_db", return_value=MagicMock()
+    )
+
+    update = db.update_preset(
+        user_id="owner",
+        preset_id="preset-1",
+        inputs={"topic": "x"},
+        credentials=credentials,
+    )
+
+    if not saved:
+        with pytest.raises(ValueError):
+            await update
+        preset_client.update.assert_not_awaited()
+        return
+    await update
+    rows = preset_client.update.await_args.kwargs["data"]["InputPresets"]["create"]
+    assert [row["name"] for row in rows] == ["topic"]
+
+
+@pytest.mark.asyncio
 async def test_update_expert_preset_rehomes_on_metadata_only_update(mocker):
     current = MagicMock(
         id="preset-1",

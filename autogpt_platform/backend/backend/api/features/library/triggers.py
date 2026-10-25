@@ -206,15 +206,21 @@ async def update_triggered_preset(
                     f"Could not update trigger configuration: {feedback}"
                 )
 
-    updated = await db.update_preset(
-        user_id=user_id,
-        preset_id=preset_id,
-        inputs=inputs,
-        credentials=credentials,
-        name=name,
-        description=description,
-        is_active=is_active,
-    )
+    try:
+        updated = await db.update_preset(
+            user_id=user_id,
+            preset_id=preset_id,
+            inputs=inputs,
+            credentials=credentials,
+            name=name,
+            description=description,
+            is_active=is_active,
+        )
+    except Exception:
+        # A webhook registered for this update is attached only after it.
+        if new_webhook and new_webhook.id != current.webhook_id:
+            await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
     if trigger_inputs_updated:
         new_webhook_id = new_webhook.id if new_webhook else None

@@ -1,9 +1,11 @@
 """What the v2 preset routes do beyond the tenant check: webhook upkeep, the
 expert a preset runs for, and what a response leaves out."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
+import prisma.models
 import pytest
 import pytest_mock
 from fastapi import HTTPException, Response
@@ -21,6 +23,7 @@ from ..models import (
     AgentPresetUpdateRequest,
     AgentTriggerSetupRequest,
 )
+from ..pagination import PageRequest
 from ..tenancy import TenantContext
 from . import presets
 
@@ -145,6 +148,27 @@ async def test_a_run_missing_a_required_input_is_refused(
     add.assert_not_awaited()
 
 
+async def test_a_trigger_s_settings_are_not_checked_as_graph_inputs(
+    mocker: pytest_mock.MockFixture, can_pay: None
+):
+    """A trigger's inputs configure its block; the graph's inputs come from
+    each event."""
+    _stub_preset_and_graph(
+        mocker,
+        _trigger(),
+        input_schema={"properties": {"topic": {}}, "required": ["topic"]},
+    )
+    add = mocker.patch(
+        "backend.executor.utils.add_graph_execution",
+        new_callable=AsyncMock,
+        return_value=_run(),
+    )
+
+    await _execute()
+
+    assert add.await_args.kwargs["inputs"]["secret_token"] == TRIGGER_SECRET
+
+
 def test_the_hidden_settings_are_every_trigger_block_s_secret_inputs():
     """Read from the blocks, so a new trigger's secret is hidden without a list."""
     assert {"secret_token", "signing_secret"} <= presets.secret_trigger_inputs()
@@ -164,6 +188,23 @@ async def test_a_read_withholds_a_trigger_s_secret_settings(
     assert TRIGGER_SECRET not in read.model_dump_json()
     assert read.inputs == {"constants": {"a": 1}}
     assert read.hidden_inputs == ["secret_token"]
+
+
+async def test_a_listing_withholds_a_trigger_s_secret_settings(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.api.features.library.db.list_presets",
+        new_callable=AsyncMock,
+        return_value=Mock(presets=[_trigger()], pagination=Mock(total_items=1)),
+    )
+
+    listed = await presets.list_presets(
+        graph_id=None, page=PageRequest(limit=20), auth=_key()
+    )
+
+    assert TRIGGER_SECRET not in listed.model_dump_json()
+    assert listed.items[0].hidden_inputs == ["secret_token"]
 
 
 async def test_setting_up_a_trigger_returns_its_secret_settings_once(
@@ -204,7 +245,7 @@ async def test_an_update_that_leaves_out_a_hidden_setting_keeps_it(
         return_value=_trigger(),
     )
 
-    await presets.update_preset(
+    updated = await presets.update_preset(
         request=AgentPresetUpdateRequest(inputs={"constants": {"a": 2}}),
         preset_id="p-1",
         auth=_key(),
@@ -214,6 +255,7 @@ async def test_an_update_that_leaves_out_a_hidden_setting_keeps_it(
         "constants": {"a": 2},
         "secret_token": TRIGGER_SECRET,
     }
+    assert TRIGGER_SECRET not in updated.model_dump_json()
 
 
 @pytest.mark.parametrize("scopes, allowed", [([], False), (["RUN_AGENT"], True)])
@@ -256,6 +298,100 @@ def test_turning_a_preset_on_over_mcp_needs_the_run_permission(
     args: dict, needed: list[APIKeyPermission]
 ):
     assert UpdatePresetTool().external_permissions(args) == needed
+
+
+async def test_new_inputs_on_a_preset_without_credentials_are_saved(
+    mocker: pytest_mock.MockFixture, stored: AsyncMock
+):
+    """Its saved credentials, `{}`, go along with the new inputs."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(webhook_input_node=None),
+    )
+
+    await presets.update_preset(
+        request=AgentPresetUpdateRequest(inputs={"topic": "x"}),
+        preset_id="p-1",
+        auth=_key(),
+    )
+
+    rows = stored.update.await_args.kwargs["data"]["InputPresets"]["create"]
+    assert [row["name"] for row in rows] == ["topic"]
+
+
+async def test_new_inputs_on_a_trigger_without_credentials_move_it_to_its_new_webhook(
+    mocker: pytest_mock.MockFixture, stored: AsyncMock
+):
+    """The new webhook is registered before the inputs are saved, so a refused
+    save would leave it attached to nothing."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(
+            webhook_input_node=Mock(id="node-1"), organization_id=ORG, team_id=None
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.resolve_member_tenancy",
+        new_callable=AsyncMock,
+        return_value=(ORG, None),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.make_node_credentials_input_map",
+        return_value={},
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.setup_webhook_for_block",
+        new_callable=AsyncMock,
+        return_value=(Mock(id="hook-2"), None),
+    )
+    attach = mocker.patch(
+        "backend.api.features.library.db.set_preset_webhook",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    prune = mocker.patch(
+        "backend.api.features.library.triggers._prune_dangling_webhook",
+        new_callable=AsyncMock,
+    )
+
+    await presets.update_preset(
+        request=AgentPresetUpdateRequest(inputs={"constants": {"a": 2}}),
+        preset_id="p-1",
+        auth=_key(),
+    )
+
+    attach.assert_awaited_once_with(USER_ID, "p-1", "hook-2")
+    prune.assert_awaited_once_with(USER_ID, "hook-1")
+
+
+@pytest.fixture
+def stored(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """`db.update_preset` runs for real; only its Prisma calls are stubbed."""
+
+    @asynccontextmanager
+    async def no_transaction():
+        yield None
+
+    client = AsyncMock()
+    mocker.patch("backend.api.features.library.db.transaction", no_transaction)
+    mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=client)
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+    )
+    mocker.patch.object(LibraryAgentPreset, "from_db", return_value=_preset())
+    return client
 
 
 def _trigger() -> LibraryAgentPreset:

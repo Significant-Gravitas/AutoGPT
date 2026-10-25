@@ -5,7 +5,7 @@ keyed on a header the caller writes is not a cap at all.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest import mock
 
 import pytest
@@ -274,9 +274,10 @@ async def test_an_address_failing_across_many_heads_is_refused_unhashed(
         "backend.api.external.v2.global_rate_limit.resolve_request_auth",
         new=mock.AsyncMock(side_effect=HTTPException(status_code=401, detail="no")),
     )
-    counters.counts[
-        global_rate_limit._failed_auth_limiter._key(PEER, datetime.now(UTC))
-    ] = 300
+    # Both buckets, so a minute turning over before the request changes nothing.
+    now = datetime.now(UTC)
+    for minute in (now, now + timedelta(minutes=1)):
+        counters.counts[global_rate_limit._failed_auth_limiter._key(PEER, minute)] = 300
 
     assert await _send_with_key(b"agpt_fresh", verify) == 429
     verify.assert_not_awaited()
