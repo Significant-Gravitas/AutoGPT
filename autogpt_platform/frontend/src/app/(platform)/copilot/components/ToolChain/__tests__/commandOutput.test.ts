@@ -145,6 +145,23 @@ describe("stepFailed", () => {
     expect(stepFailed("cd drafts && test -f brief.md", exit(1))).toBe(false);
     expect(stepFailed("test -f a || grep -q x b", exit(1))).toBe(false);
     expect(stepFailed("grep -q x a && wc -l a", exit(1))).toBe(false);
+    expect(stepFailed("grep -q x f && echo ok", exit(1))).toBe(false);
+    expect(stepFailed("./build.sh || grep -q x f", exit(1))).toBe(false);
+    expect(stepFailed("cat log | grep -q x && echo ok", exit(1))).toBe(false);
+  });
+
+  it("calls a quiet exit 1 a failure when a command that is not a test could have produced it", () => {
+    expect(stepFailed("grep -q x f && ./publish.sh", exit(1))).toBe(true);
+    expect(stepFailed("grep -q x f || ./fallback.sh", exit(1))).toBe(true);
+    expect(
+      stepFailed("test -f a && ./publish.sh || grep -q x b", exit(1)),
+    ).toBe(false);
+    expect(stepFailed("grep -q x f && ./publish.sh && echo ok", exit(1))).toBe(
+      true,
+    );
+    expect(stepFailed("grep -q x f | ./publish.sh", exit(1))).toBe(true);
+    expect(stepFailed("echo ok && ./publish.sh", exit(1))).toBe(true);
+    expect(stepFailed("echo ok", exit(1))).toBe(true);
   });
 
   it("calls a step that complained on stderr a failure, test-style or not", () => {
