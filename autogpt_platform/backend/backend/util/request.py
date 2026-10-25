@@ -21,6 +21,7 @@ from tenacity import (
 )
 
 from backend.util.json import loads
+from backend.util.settings import Config
 
 
 class HTTPClientError(Exception):
@@ -40,7 +41,21 @@ class HTTPServerError(Exception):
 
 
 # Default User-Agent for all requests
+class ResponseTooLargeError(ValueError):
+    """The response body is over the caller's size limit."""
+
+    def __init__(self, limit: int):
+        super().__init__(f"Response body is larger than {limit} bytes")
+        self.limit = limit
+
+
 DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravitas/AutoGPT; info@agpt.co) aiohttp"
+
+# A response is read in chunks and dropped once it passes the limit, so a
+# large or endless body can't fill the process's memory before anyone checks
+# its size. Downloads share the file-size setting.
+DEFAULT_MAX_RESPONSE_BYTES = Config().max_file_size_mb * 1024 * 1024
+RESPONSE_READ_CHUNK_SIZE = 64 * 1024
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
@@ -475,7 +490,9 @@ class Requests:
         extra_headers: dict[str, str] | None = None,
         retry_max_wait: float = 300.0,
         retry_max_attempts: int | None = None,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
     ):
+        self.max_response_bytes = max_response_bytes
         self.trusted_origins = []
         for url in trusted_origins or []:
             hostname = parse_url(url).netloc  # {host}[:{port}]
@@ -641,7 +658,7 @@ class Requests:
                     try:
                         response.raise_for_status()
                     except ClientResponseError as e:
-                        body = await response.read()
+                        body = await _read_body(response, self.max_response_bytes)
                         raise http_status_error(
                             response.status, response.reason, body
                         ) from e
@@ -656,7 +673,7 @@ class Requests:
                         return Response(
                             response=response,
                             url=original_url,
-                            body=await response.read(),
+                            body=await _read_body(response, self.max_response_bytes),
                         )
 
                     # The base URL is the pinned_url we just used
@@ -705,7 +722,7 @@ class Requests:
                 return Response(
                     response=response,
                     url=original_url,
-                    body=await response.read(),
+                    body=await _read_body(response, self.max_response_bytes),
                 )
 
     async def get(self, url: str, *args, **kwargs) -> Response:
@@ -728,3 +745,21 @@ class Requests:
 
     async def patch(self, url: str, *args, **kwargs) -> Response:
         return await self.request("PATCH", url, *args, **kwargs)
+
+
+async def _read_body(response: ClientResponse, limit: int) -> bytes:
+    """Buffer the body, refusing it as soon as it's known to be over the limit."""
+    declared = response.content_length
+    if declared is not None and declared > limit:
+        response.close()
+        raise ResponseTooLargeError(limit)
+
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in response.content.iter_chunked(RESPONSE_READ_CHUNK_SIZE):
+        received += len(chunk)
+        if received > limit:
+            response.close()
+            raise ResponseTooLargeError(limit)
+        chunks.append(chunk)
+    return b"".join(chunks)
