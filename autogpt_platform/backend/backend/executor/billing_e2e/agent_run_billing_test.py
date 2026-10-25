@@ -19,6 +19,7 @@ import sys
 import textwrap
 from uuid import uuid4
 
+import psutil
 import pytest
 
 from backend.api.model import CreateGraph
@@ -205,8 +206,32 @@ async def _run_on_an_executor_pod(run_entry: str, model_url: str) -> None:
             "ANTHROPIC_BASE_URL": model_url,
         },
     )
-    output, _ = await asyncio.wait_for(pod.communicate(run_entry.encode()), 600)
+    try:
+        output, _ = await asyncio.wait_for(pod.communicate(run_entry.encode()), 600)
+    except BaseException:
+        # A run that hangs or is cancelled must not outlive the test, and
+        # neither must the database service the pod started, a grandchild
+        # through multiprocessing's forkserver.
+        if pod.returncode is None:
+            _kill_process_tree(pod.pid)
+            await pod.wait()
+        raise
     assert pod.returncode == 0, output.decode(errors="replace")[-6000:]
+
+
+def _kill_process_tree(pid: int) -> None:
+    try:
+        root = psutil.Process(pid)
+        # Collected before any kill: a killed parent's children are reparented
+        # and no longer found under it.
+        processes = [root, *root.children(recursive=True)]
+    except psutil.NoSuchProcess:
+        return
+    for process in processes:
+        try:
+            process.kill()
+        except psutil.NoSuchProcess:
+            pass
 
 
 def _free_port() -> int:
