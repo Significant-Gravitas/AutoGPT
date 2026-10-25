@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 from uuid import uuid4
 
 import fastapi
@@ -26,6 +26,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.gate import card_decided
 from backend.copilot.gate.card_approval import approved_on_card, card_decision_metadata
+from backend.copilot.gate.card_decided import CardClaim, ClaimResult
 from backend.copilot.model import AutopilotMode, ChatMessage, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.pending_messages import PendingMessage
@@ -289,6 +290,12 @@ def test_stream_chat_rejects_too_many_file_ids():
     assert response.status_code == 422
 
 
+def _claimed(result: ClaimResult) -> CardClaim:
+    """What claim_answer says about card c-1, the card these tests answer."""
+    answered = frozenset({"c-1"}) if result == "answered" else frozenset()
+    return CardClaim(result=result, answered=answered)
+
+
 def _mock_stream_internals(
     mocker: pytest_mock.MockerFixture,
     *,
@@ -341,7 +348,7 @@ def _mock_stream_internals(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="claimed",
+        return_value=_claimed("claimed"),
     )
     # A failed send reads the chat for its answer: nothing was saved.
     mocker.patch(
@@ -705,7 +712,7 @@ def test_stream_chat_drops_a_second_answer_to_an_answered_card(
     answered = mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="answered",
+        return_value=_claimed("answered"),
     )
 
     response = client.post(
@@ -723,6 +730,7 @@ def test_stream_chat_drops_a_second_answer_to_an_answered_card(
         "sess-1",
         ["c-1"],
         owner=chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-2"),
+        attempt=ANY,
     )
     record.assert_not_awaited()
     mocks.enqueue.assert_not_awaited()
@@ -740,7 +748,7 @@ def test_stream_chat_keeps_the_users_words_but_not_a_second_answer(
     answered = mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="answered",
+        return_value=_claimed("answered"),
     )
     message = (
         "Not approved: do not hire Maya, discard that proposal "
@@ -772,7 +780,7 @@ def test_stream_chat_asks_to_retry_while_another_answer_is_being_sent(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="pending",
+        return_value=_claimed("pending"),
     )
 
     response = client.post(
@@ -797,7 +805,7 @@ def test_stream_chat_marks_a_saved_answer_accepted(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="claimed",
+        return_value=_claimed("claimed"),
     )
     accept = mocker.patch(
         "backend.api.features.chat.routes.accept_claim",
@@ -818,6 +826,7 @@ def test_stream_chat_marks_a_saved_answer_accepted(
         "sess-1",
         ["c-1"],
         chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1"),
+        ANY,
     )
 
 
@@ -837,7 +846,7 @@ def test_queue_pending_message_marks_a_queued_answer_accepted(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="claimed",
+        return_value=_claimed("claimed"),
     )
     queued = QueuePendingMessageResponse(
         buffer_length=1, max_buffer_length=10, turn_in_flight=True
@@ -875,7 +884,7 @@ def test_stream_chat_sends_the_first_answer_to_a_card(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="claimed",
+        return_value=_claimed("claimed"),
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
 
@@ -918,6 +927,7 @@ def test_stream_chat_gives_back_a_card_claim_when_the_turn_is_not_scheduled(
         "sess-1",
         ["c-1"],
         chat_routes.scoped_client_message_id(test_user_id, "sess-1", "click-1"),
+        ANY,
     )
     # Nothing was saved: the approval it recorded must not let a confirm pass.
     withdraw.assert_awaited_once_with(test_user_id, "sess-1", ["c-1"])
@@ -939,7 +949,7 @@ def test_queue_pending_message_queues_the_users_words_but_not_a_second_answer(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="answered",
+        return_value=_claimed("answered"),
     )
 
     response = client.post(
@@ -974,17 +984,15 @@ async def test_a_card_approval_stands_only_once_its_answer_is_saved(
         return_value=None,
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
-    admission, _ = await chat_routes._admit_card_answer(
+    answer = await chat_routes._admit_card_answer(
         test_user_id, session_id, line, card_decision_metadata(line), "click-1"
     )
-    assert admission == "claimed"
+    assert answer.admission == "claimed"
 
     if saved:
-        await chat_routes._accept_card_answer(session_id, line, "click-1")
+        await chat_routes._accept_card_answer(session_id, answer)
     else:
-        await chat_routes._release_card_answer(
-            test_user_id, session_id, line, "click-1", admission
-        )
+        await chat_routes._release_card_answer(test_user_id, session_id, answer)
 
     assert (
         await approved_on_card(
@@ -1014,7 +1022,7 @@ async def test_a_turn_that_fails_after_saving_its_answer_keeps_the_approval(
         new_callable=AsyncMock,
         return_value=None,
     )
-    admission, _ = await chat_routes._admit_card_answer(
+    answer = await chat_routes._admit_card_answer(
         test_user_id, session_id, line, card_decision_metadata(line), "click-1"
     )
     # The row was saved before the turn failed to dispatch.
@@ -1029,9 +1037,7 @@ async def test_a_turn_that_fails_after_saving_its_answer_keeps_the_approval(
         ]
     )
 
-    await chat_routes._release_card_answer(
-        test_user_id, session_id, line, "click-1", admission
-    )
+    await chat_routes._release_card_answer(test_user_id, session_id, answer)
 
     assert await approved_on_card(
         "confirm_expert_change",
@@ -1040,11 +1046,51 @@ async def test_a_turn_that_fails_after_saving_its_answer_keeps_the_approval(
         session_id,
     )
     get_session.return_value = None
-    assert (
-        await card_decided.claim_answer(
-            test_user_id, session_id, ["c-1"], owner="tab-b"
+    other_tab = await card_decided.claim_answer(
+        test_user_id, session_id, ["c-1"], owner="tab-b", attempt="b"
+    )
+    assert other_tab.result == "answered"
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+async def test_a_failed_send_does_not_take_back_its_retransmits_approval(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A retransmit arrives while the first copy is still sending. The first
+    then fails and takes its approvals back; the copy, which shares its client
+    id, must not have ridden on them, so whichever copy saves has one."""
+    session_id = f"s-{uuid4()}"
+    mocker.patch(
+        "backend.copilot.gate.card_decided.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    metadata = card_decision_metadata(line)
+    first = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, metadata, "click-1"
+    )
+
+    with pytest.raises(HTTPException) as copy:
+        await chat_routes._admit_card_answer(
+            test_user_id, session_id, line, metadata, "click-1"
         )
-        == "answered"
+    assert copy.value.status_code == 503
+    await chat_routes._release_card_answer(test_user_id, session_id, first)
+
+    retry = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, metadata, "click-1"
+    )
+    assert retry.admission == "claimed"
+    await chat_routes._accept_card_answer(session_id, retry)
+    assert await approved_on_card(
+        "confirm_expert_change",
+        {"confirmation_id": "c-1"},
+        test_user_id,
+        session_id,
     )
 
 
@@ -1060,7 +1106,7 @@ def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="held",
+        return_value=_claimed("held"),
     )
     mocker.patch(
         "backend.api.features.chat.routes.claim_client_message",
@@ -1100,7 +1146,7 @@ def test_queue_pending_message_gives_back_a_card_claim_only_when_not_queued(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="claimed",
+        return_value=_claimed("claimed"),
     )
     mocker.patch(
         "backend.api.features.chat.routes.queue_pending_for_http",
@@ -1639,7 +1685,7 @@ def test_queue_pending_message_tags_a_queued_decision(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="claimed",
+        return_value=_claimed("claimed"),
     )
 
     response = client.post(
@@ -1648,6 +1694,104 @@ def test_queue_pending_message_tags_a_queued_decision(
 
     assert response.status_code == 200
     assert push.await_args.args[1].metadata == metadata
+
+
+_BOTH_CARDS = (
+    "Approved: hire Maya (confirmation_id: c-1).\n"
+    "Not approved: do not hire Ada, discard that proposal (confirmation_id: c-2)."
+)
+_OPEN_CARD = (
+    "Not approved: do not hire Ada, discard that proposal (confirmation_id: c-2)."
+)
+# Another tab answered c-1 between this tab's check and its send.
+_HALF_ANSWERED = [
+    CardClaim(result="answered", answered=frozenset({"c-1"})),
+    CardClaim(result="claimed"),
+]
+
+
+def test_stream_chat_sends_the_open_card_of_a_group_another_tab_half_answered(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """The decision on the card still open must land, alone and tagged; it
+    used to be refused with the one already answered."""
+    mocks = _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    claim = mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        side_effect=_HALF_ANSWERED,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": _BOTH_CARDS})
+
+    assert response.status_code == 200
+    assert claim.await_args_list[1].args[2] == ["c-2"]
+    record.assert_awaited_once_with(test_user_id, "sess-1", _OPEN_CARD)
+    saved = mocks.enqueue.await_args.kwargs
+    assert saved["message"] == _OPEN_CARD
+    assert saved["message_metadata"] == card_decision_metadata(_OPEN_CARD)
+
+
+def test_queue_pending_message_queues_the_open_card_of_a_half_answered_group(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        side_effect=_HALF_ANSWERED,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": _BOTH_CARDS}
+    )
+
+    assert response.status_code == 200
+    queued = push.await_args.args[1]
+    assert queued.content == _OPEN_CARD
+    assert queued.metadata == card_decision_metadata(_OPEN_CARD)
+
+
+def test_stream_chat_tells_a_retransmit_its_send_is_still_in_progress(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value=_claimed("in_progress"),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Approved: hire Maya (confirmation_id: c-1).",
+            "message_id": "click-1",
+        },
+    )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"] == "Your message is still being sent, retry shortly"
+    )
+    record.assert_not_awaited()
 
 
 def test_stream_chat_retransmits_of_a_started_turn_queue_nothing(
@@ -3535,7 +3679,7 @@ def test_queue_pending_message_answers_a_card_once(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        return_value="answered" if answered else "claimed",
+        return_value=_claimed("answered" if answered else "claimed"),
     )
     push = mocker.patch(
         "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",

@@ -10,6 +10,8 @@ import logging
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
+from pydantic import BaseModel
+
 from backend.copilot.gate.card_approval import (
     CARD_DECISION_KIND,
     parse_card_decisions,
@@ -20,7 +22,14 @@ from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
 
-ClaimResult = Literal["answered", "pending", "claimed", "held"]
+ClaimResult = Literal["answered", "pending", "in_progress", "claimed", "held"]
+
+
+class CardClaim(BaseModel):
+    result: ClaimResult
+    # The cards that were answered already, when ``result`` is "answered".
+    answered: frozenset[str] = frozenset()
+
 
 _KEY = "copilot:gate:card_decided:"
 # Far past a proposal's 15 minutes; the chat itself is the lasting record.
@@ -31,57 +40,69 @@ _TTL_SECONDS = 7 * 24 * 60 * 60
 _SERVER_WRITTEN_KEYS = frozenset(
     {"from_session_id", "held_call", "held_calls_answered"}
 )
-# A claim is "owner|pending|<deadline ms>" while that request is still saving
-# or queueing the answer, and "owner|accepted" once it has: only then is the
-# card answered. A pending claim can be given back if the request fails, and
-# lapses at its deadline if the request died before it could (a killed
-# worker): saving or queueing takes seconds, so a claim this old is no one's.
+# A claim is "owner|pending|attempt|<deadline ms>" while a request is still
+# saving or queueing the answer, and "owner|accepted" once it has: only then
+# is the card answered. The owner is the send's client id, which a retransmit
+# shares; the attempt is the one request. A pending claim is given back if its
+# request fails, and lapses at its deadline if the request died before it
+# could (a killed worker): saving or queueing takes seconds.
 _PENDING_LEASE_MS = 60_000
 # All or nothing: a request that names an id someone else holds takes none.
-# 0: someone else's accepted answer, 3: someone else's still pending,
-# 1: claimed now, 2: already this owner's.
+# {0, ids...}: answered already, by someone else; {3}: someone else's still
+# pending; {4}: another attempt of this send is still pending; {1}: claimed
+# now; {2}: this send's answer was already accepted.
 _CLAIM = """
 local now = redis.call('TIME')
 now = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
-local pending = ARGV[1] .. '|pending|'
 local accepted = ARGV[1] .. '|accepted'
+local sent = ARGV[1] .. '|pending|'
+local mine = sent .. ARGV[2] .. '|'
 local take = {}
-for i = 4, #ARGV do
+local answered = {}
+for i = 5, #ARGV do
   local value = redis.call('HGET', KEYS[1], ARGV[i])
-  local mine = value == accepted
-    or (value and string.sub(value, 1, #pending) == pending)
   if not value then
     table.insert(take, ARGV[i])
-  elseif not mine then
-    if string.sub(value, -9) == '|accepted' then return 0 end
-    local deadline = tonumber(string.match(value, '|pending|(%d+)$'))
-    if deadline and deadline > now then return 3 end
-    table.insert(take, ARGV[i])
+  elseif value ~= accepted and string.sub(value, 1, #mine) ~= mine then
+    if string.sub(value, -9) == '|accepted' then
+      table.insert(answered, ARGV[i])
+    else
+      local deadline = tonumber(string.match(value, '|(%d+)$'))
+      if deadline and deadline > now then
+        if string.sub(value, 1, #sent) == sent then return {4} end
+        return {3}
+      end
+      table.insert(take, ARGV[i])
+    end
   end
 end
-if #take == 0 then return 2 end
-local claim = pending .. (now + tonumber(ARGV[3]))
+if #answered > 0 then
+  table.insert(answered, 1, 0)
+  return answered
+end
+if #take == 0 then return {2} end
+local claim = mine .. (now + tonumber(ARGV[4]))
 for _, id in ipairs(take) do redis.call('HSET', KEYS[1], id, claim) end
-redis.call('EXPIRE', KEYS[1], ARGV[2])
-return 1
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+return {1}
 """
-# Only the request that holds a pending claim marks it accepted.
+# Only the attempt that holds a pending claim marks it accepted.
 _ACCEPT = """
-local pending = ARGV[1] .. '|pending|'
-for i = 2, #ARGV do
+local mine = ARGV[1] .. '|pending|' .. ARGV[2] .. '|'
+for i = 3, #ARGV do
   local value = redis.call('HGET', KEYS[1], ARGV[i])
-  if value and string.sub(value, 1, #pending) == pending then
+  if value and string.sub(value, 1, #mine) == mine then
     redis.call('HSET', KEYS[1], ARGV[i], ARGV[1] .. '|accepted')
   end
 end
 return 1
 """
-# Only the request that claimed an id gives it back, and only while pending.
+# Only the attempt that claimed an id gives it back, and only while pending.
 _RELEASE = """
-local pending = ARGV[1] .. '|pending|'
-for i = 2, #ARGV do
+local mine = ARGV[1] .. '|pending|' .. ARGV[2] .. '|'
+for i = 3, #ARGV do
   local value = redis.call('HGET', KEYS[1], ARGV[i])
-  if value and string.sub(value, 1, #pending) == pending then
+  if value and string.sub(value, 1, #mine) == mine then
     redis.call('HDEL', KEYS[1], ARGV[i])
   end
 end
@@ -90,19 +111,25 @@ return 1
 
 
 async def claim_answer(
-    user_id: str, session_id: str, confirmation_ids: list[str], owner: str
-) -> ClaimResult:
+    user_id: str,
+    session_id: str,
+    confirmation_ids: list[str],
+    owner: str,
+    attempt: str,
+) -> CardClaim:
     """Claim these cards for this request, unless something else answered one.
 
-    ``owner`` is the request's scoped client message id. "claimed": this
-    request took the claim; it marks it accepted with ``accept_claim`` once
-    the answer is saved or queued, or gives it back with ``release_claim``.
-    "held": it was already this owner's (a retransmit of the answering
-    request) or the store is down, so there is nothing to give back.
-    "answered": the chat, or another request's accepted answer, came first.
-    "pending": another request holds the card but has not saved yet; it may
-    still fail, so this one is neither answered nor taken, and should retry.
-    A pending claim whose request died lapses after ``_PENDING_LEASE_MS``.
+    ``owner`` is the send's scoped client message id, shared by its
+    retransmits; ``attempt`` is this request. "claimed": this request took
+    the claim; it marks it accepted with ``accept_claim`` once the answer is
+    saved or queued, or gives it back with ``release_claim``. "held": this
+    send's answer was already accepted (a retransmit of a saved send), or the
+    store is down, so there is nothing to give back. "answered": the chat, or
+    another send's accepted answer, came first, for the ``answered`` ids.
+    "pending": another send holds a card but has not saved yet; it may still
+    fail, so this one is neither answered nor taken, and should retry.
+    "in_progress": the same, for an earlier attempt of this very send. A
+    pending claim whose request died lapses after ``_PENDING_LEASE_MS``.
     """
     try:
         session = await get_chat_session(session_id, user_id)
@@ -111,19 +138,22 @@ async def claim_answer(
             f"Could not read session {session_id} for card answers", exc_info=True
         )
         session = None
-    if session and decided_ids(session.messages, owner) & set(confirmation_ids):
-        return "answered"
-    claimed = await _claim(session_id, confirmation_ids, owner)
-    return "answered" if claimed == "taken" else claimed
+    if session:
+        answered = decided_ids(session.messages, owner) & set(confirmation_ids)
+        if answered:
+            return CardClaim(result="answered", answered=frozenset(answered))
+    return await _claim(session_id, confirmation_ids, owner, attempt)
 
 
 async def accept_claim(
-    session_id: str, confirmation_ids: list[str], owner: str
+    session_id: str, confirmation_ids: list[str], owner: str, attempt: str
 ) -> None:
     """Mark this request's claim answered once its answer is saved or queued."""
     try:
         redis = await get_redis_async()
-        await redis.eval(_ACCEPT, 1, f"{_KEY}{session_id}", owner, *confirmation_ids)
+        await redis.eval(
+            _ACCEPT, 1, f"{_KEY}{session_id}", owner, attempt, *confirmation_ids
+        )
     except Exception:
         logger.warning(
             f"Could not accept card answers for session {session_id}", exc_info=True
@@ -211,13 +241,15 @@ def is_server_written(metadata: Mapping[str, Any]) -> bool:
 
 
 async def release_claim(
-    session_id: str, confirmation_ids: list[str], owner: str
+    session_id: str, confirmation_ids: list[str], owner: str, attempt: str
 ) -> None:
     """Give back a claim when the request that took it saved nothing, so a
     retry of the same answer under a new message id is not refused."""
     try:
         redis = await get_redis_async()
-        await redis.eval(_RELEASE, 1, f"{_KEY}{session_id}", owner, *confirmation_ids)
+        await redis.eval(
+            _RELEASE, 1, f"{_KEY}{session_id}", owner, attempt, *confirmation_ids
+        )
     except Exception:
         logger.warning(
             f"Could not release card answers for session {session_id}", exc_info=True
@@ -225,29 +257,36 @@ async def release_claim(
 
 
 async def _claim(
-    session_id: str, confirmation_ids: list[str], owner: str
-) -> Literal["claimed", "held", "taken", "pending"]:
+    session_id: str, confirmation_ids: list[str], owner: str, attempt: str
+) -> CardClaim:
     try:
         redis = await get_redis_async()
-        result = int(
-            await redis.eval(
-                _CLAIM,
-                1,
-                f"{_KEY}{session_id}",
-                owner,
-                _TTL_SECONDS,
-                _PENDING_LEASE_MS,
-                *confirmation_ids,
-            )
+        reply = await redis.eval(
+            _CLAIM,
+            1,
+            f"{_KEY}{session_id}",
+            owner,
+            attempt,
+            _TTL_SECONDS,
+            _PENDING_LEASE_MS,
+            *confirmation_ids,
         )
     except Exception:
         logger.warning(
             f"Could not claim card answers for session {session_id}", exc_info=True
         )
         # Fail open, with nothing taken and so nothing to give back.
-        return "held"
-    if result == 0:
-        return "taken"
-    if result == 3:
-        return "pending"
-    return "claimed" if result == 1 else "held"
+        return CardClaim(result="held")
+    code, *answered = reply
+    return CardClaim(
+        result=_CLAIM_RESULTS[int(code)], answered=frozenset(str(a) for a in answered)
+    )
+
+
+_CLAIM_RESULTS: dict[int, ClaimResult] = {
+    0: "answered",
+    1: "claimed",
+    2: "held",
+    3: "pending",
+    4: "in_progress",
+}

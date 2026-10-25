@@ -24,6 +24,14 @@ needs_redis = pytest.mark.skipif(
 )
 
 
+async def _claim(
+    session_id: str, ids: list[str], owner: str, attempt: str | None = None
+) -> str:
+    """One attempt per owner unless a test says otherwise."""
+    claim = await card_decided._claim(session_id, ids, owner, attempt or owner)
+    return claim.result
+
+
 def _tagged(row_id: str, *confirmation_ids: str) -> ChatMessage:
     return ChatMessage(
         id=row_id,
@@ -91,7 +99,7 @@ async def test_only_one_of_two_racing_answers_claims_a_card() -> None:
     session = f"s-{uuid.uuid4()}"
 
     results = await asyncio.gather(
-        *(card_decided._claim(session, ["c-1"], f"tab-{i}") for i in range(10))
+        *(_claim(session, ["c-1"], f"tab-{i}") for i in range(10))
     )
 
     assert results.count("claimed") == 1
@@ -104,23 +112,23 @@ async def test_only_one_of_two_racing_answers_claims_a_card() -> None:
 async def test_a_claim_is_all_or_nothing_and_its_own_retry_holds_it() -> None:
     session = f"s-{uuid.uuid4()}"
 
-    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
-    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "held"
-    assert await card_decided._claim(session, ["c-2", "c-3"], "tab-b") == "pending"
+    assert await _claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
+    assert await _claim(session, ["c-1", "c-2"], "tab-a") == "held"
+    assert await _claim(session, ["c-2", "c-3"], "tab-b") == "pending"
     # The refused claim took nothing, so c-3 is still free.
-    assert await card_decided._claim(session, ["c-3"], "tab-b") == "claimed"
+    assert await _claim(session, ["c-3"], "tab-b") == "claimed"
 
 
 @needs_redis
 async def test_a_failed_request_gives_back_only_its_own_claim() -> None:
     session = f"s-{uuid.uuid4()}"
-    assert await card_decided._claim(session, ["c-1"], "tab-a") == "claimed"
+    assert await _claim(session, ["c-1"], "tab-a") == "claimed"
 
-    await card_decided.release_claim(session, ["c-1"], "tab-b")
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "pending"
+    await card_decided.release_claim(session, ["c-1"], "tab-b", "tab-b")
+    assert await _claim(session, ["c-1"], "tab-b") == "pending"
 
-    await card_decided.release_claim(session, ["c-1"], "tab-a")
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
+    await card_decided.release_claim(session, ["c-1"], "tab-a", "tab-a")
+    assert await _claim(session, ["c-1"], "tab-b") == "claimed"
 
 
 @needs_redis
@@ -137,10 +145,10 @@ async def test_answers_dropped_before_they_were_saved_are_forgotten(
         await card_approval.record_card_decisions(
             "u-1", session_id, f"Approved: hire Maya (confirmation_id: {cid})."
         )
-        assert (
-            await card_decided._claim(session_id, [cid], f"queued-{cid}") == "claimed"
+        assert await _claim(session_id, [cid], f"queued-{cid}") == "claimed"
+        await card_decided.accept_claim(
+            session_id, [cid], f"queued-{cid}", f"queued-{cid}"
         )
-        await card_decided.accept_claim(session_id, [cid], f"queued-{cid}")
 
     await forget_unsaved_answers(
         "u-1",
@@ -151,11 +159,11 @@ async def test_answers_dropped_before_they_were_saved_are_forgotten(
         ],
     )
 
-    assert await card_decided._claim(session_id, ["c-1"], "tab-b") == "claimed"
+    assert await _claim(session_id, ["c-1"], "tab-b") == "claimed"
     assert not await card_approval.approved_on_card(
         "confirm_expert_change", {"confirmation_id": "c-1"}, "u-1", session_id
     )
-    assert await card_decided._claim(session_id, ["c-2"], "tab-b") == "taken"
+    assert await _claim(session_id, ["c-2"], "tab-b") == "answered"
     assert await card_approval.approved_on_card(
         "confirm_expert_change", {"confirmation_id": "c-2"}, "u-1", session_id
     )
@@ -166,19 +174,19 @@ async def test_an_answer_still_being_sent_is_waited_on_not_taken_as_given() -> N
     """Tab A claims, tab B asks while A is still sending. If A then fails,
     B's retry must land; if A saves, B's must be refused."""
     session = f"s-{uuid.uuid4()}"
-    assert await card_decided._claim(session, ["c-1"], "tab-a") == "claimed"
+    assert await _claim(session, ["c-1"], "tab-a") == "claimed"
 
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "pending"
-    await card_decided.release_claim(session, ["c-1"], "tab-a")  # A failed
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
+    assert await _claim(session, ["c-1"], "tab-b") == "pending"
+    await card_decided.release_claim(session, ["c-1"], "tab-a", "tab-a")  # A failed
+    assert await _claim(session, ["c-1"], "tab-b") == "claimed"
 
-    await card_decided.accept_claim(session, ["c-1"], "tab-b")  # B saved
-    assert await card_decided._claim(session, ["c-1"], "tab-a") == "taken"
+    await card_decided.accept_claim(session, ["c-1"], "tab-b", "tab-b")  # B saved
+    assert await _claim(session, ["c-1"], "tab-a") == "answered"
     # An accepted answer is not given back by a late failure path either.
-    await card_decided.release_claim(session, ["c-1"], "tab-b")
-    assert await card_decided._claim(session, ["c-1"], "tab-a") == "taken"
+    await card_decided.release_claim(session, ["c-1"], "tab-b", "tab-b")
+    assert await _claim(session, ["c-1"], "tab-a") == "answered"
     # Its own retry still holds it.
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "held"
+    assert await _claim(session, ["c-1"], "tab-b") == "held"
 
 
 @needs_redis
@@ -190,20 +198,58 @@ async def test_a_claim_whose_request_died_lapses(
     next answer lands. An accepted answer never lapses."""
     mocker.patch.object(card_decided, "_PENDING_LEASE_MS", 200)
     session = f"s-{uuid.uuid4()}"
-    assert await card_decided._claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
-    await card_decided.accept_claim(session, ["c-2"], "tab-a")
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "pending"
+    assert await _claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
+    await card_decided.accept_claim(session, ["c-2"], "tab-a", "tab-a")
+    assert await _claim(session, ["c-1"], "tab-b") == "pending"
 
     await asyncio.sleep(0.3)  # A is gone
 
-    assert await card_decided._claim(session, ["c-1"], "tab-b") == "claimed"
-    assert await card_decided._claim(session, ["c-2"], "tab-b") == "taken"
+    assert await _claim(session, ["c-1"], "tab-b") == "claimed"
+    assert await _claim(session, ["c-2"], "tab-b") == "answered"
     # A's late paths no longer touch B's claim.
-    await card_decided.release_claim(session, ["c-1"], "tab-a")
-    await card_decided.accept_claim(session, ["c-1"], "tab-a")
-    assert await card_decided._claim(session, ["c-1"], "tab-c") == "pending"
-    await card_decided.accept_claim(session, ["c-1"], "tab-b")
-    assert await card_decided._claim(session, ["c-1"], "tab-c") == "taken"
+    await card_decided.release_claim(session, ["c-1"], "tab-a", "tab-a")
+    await card_decided.accept_claim(session, ["c-1"], "tab-a", "tab-a")
+    assert await _claim(session, ["c-1"], "tab-c") == "pending"
+    await card_decided.accept_claim(session, ["c-1"], "tab-b", "tab-b")
+    assert await _claim(session, ["c-1"], "tab-c") == "answered"
+
+
+@needs_redis
+async def test_a_retransmit_does_not_ride_on_a_claim_still_being_sent() -> None:
+    """Two copies of one send share its client id. While the first is still
+    sending, the copy neither holds its claim nor records anything: if the
+    first then fails and takes its approvals back, the copy's retry claims
+    afresh. Once the first saved, the copy holds it as before."""
+    session = f"s-{uuid.uuid4()}"
+    first = await card_decided._claim(session, ["c-1"], "click-1", "try-1")
+    assert first.result == "claimed"
+
+    copy = await card_decided._claim(session, ["c-1"], "click-1", "try-2")
+    assert copy.result == "in_progress"
+
+    await card_decided.release_claim(session, ["c-1"], "click-1", "try-1")
+    retry = await card_decided._claim(session, ["c-1"], "click-1", "try-3")
+    assert retry.result == "claimed"
+    await card_decided.accept_claim(session, ["c-1"], "click-1", "try-3")
+    late = await card_decided._claim(session, ["c-1"], "click-1", "try-4")
+    assert late.result == "held"
+
+
+@needs_redis
+async def test_a_claim_names_the_cards_someone_else_answered() -> None:
+    """Another tab answered one card of a group: the claim says which, takes
+    nothing, and the open card can still be claimed on its own."""
+    session = f"s-{uuid.uuid4()}"
+    assert (await card_decided._claim(session, ["c-1"], "tab-a", "a")).result == (
+        "claimed"
+    )
+    await card_decided.accept_claim(session, ["c-1"], "tab-a", "a")
+
+    both = await card_decided._claim(session, ["c-1", "c-2"], "tab-b", "b")
+    assert both.result == "answered"
+    assert both.answered == {"c-1"}
+    rest = await card_decided._claim(session, ["c-2"], "tab-b", "b")
+    assert rest.result == "claimed"
 
 
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
@@ -215,32 +261,28 @@ async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
     )
     claim = mocker.patch.object(card_decided, "_claim", new_callable=AsyncMock)
 
-    assert await claim_answer("u-1", "s-1", ["c-1"], owner="row-9") == "answered"
+    claimed = await claim_answer("u-1", "s-1", ["c-1"], owner="row-9", attempt="a")
+    assert claimed.result == "answered"
+    assert claimed.answered == {"c-1"}
     claim.assert_not_awaited()
 
 
-@pytest.mark.parametrize(
-    "claimed, result",
-    [
-        ("claimed", "claimed"),
-        ("held", "held"),
-        ("taken", "answered"),
-        ("pending", "pending"),
-    ],
-)
 async def test_an_unanswered_card_is_answered_by_whoever_claims_it(
-    mocker: pytest_mock.MockerFixture, claimed: str, result: str
+    mocker: pytest_mock.MockerFixture,
 ) -> None:
     session = mocker.MagicMock(messages=[_tagged("row-1", "c-1")])
     mocker.patch.object(
         card_decided, "get_chat_session", new_callable=AsyncMock, return_value=session
     )
+    taken = card_decided.CardClaim(result="claimed")
     claim = mocker.patch.object(
-        card_decided, "_claim", new_callable=AsyncMock, return_value=claimed
+        card_decided, "_claim", new_callable=AsyncMock, return_value=taken
     )
 
-    assert await claim_answer("u-1", "s-1", ["c-2"], owner="row-9") == result
-    claim.assert_awaited_once_with("s-1", ["c-2"], "row-9")
+    assert await claim_answer("u-1", "s-1", ["c-2"], owner="row-9", attempt="a") is (
+        taken
+    )
+    claim.assert_awaited_once_with("s-1", ["c-2"], "row-9", "a")
 
 
 async def test_a_store_outage_never_blocks_an_answer(
@@ -257,4 +299,5 @@ async def test_a_store_outage_never_blocks_an_answer(
     )
 
     # Nothing to give back either: the claim was never taken.
-    assert await claim_answer("u-1", "s-1", ["c-1"], owner="row-9") == "held"
+    claimed = await claim_answer("u-1", "s-1", ["c-1"], owner="row-9", attempt="a")
+    assert claimed.result == "held"

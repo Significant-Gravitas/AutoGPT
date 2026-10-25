@@ -10,7 +10,7 @@ a note of what was decided instead of the line itself.
 
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -91,10 +91,17 @@ def parse_card_decisions(message: str) -> list[CardDecision]:
     ]
 
 
-def strip_card_decisions(message: str) -> str:
-    """The message without its decision lines: what is left of a user's own
-    words once the cards those lines answer turn out to be answered already."""
-    kept = [line for line in message.splitlines() if not _parse_line(line)]
+def strip_card_decisions(message: str, confirmation_ids: Collection[str]) -> str:
+    """The message without its decision lines on these cards: what is left
+    to send once those cards turn out to be answered already."""
+    kept = [
+        line
+        for line in message.splitlines()
+        if not (
+            (decision := _parse_line(line))
+            and decision.confirmation_id in confirmation_ids
+        )
+    ]
     return "\n".join(kept).strip()
 
 
