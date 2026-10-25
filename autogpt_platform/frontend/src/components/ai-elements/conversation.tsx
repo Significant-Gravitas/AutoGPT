@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
@@ -33,6 +34,8 @@ export const ConversationContent = ({
     scrollClassName={cn(
       // Contain the overscroll so a fling past either end bounces the thread
       // instead of dragging the page, composer and all, with it.
+      // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9:
+      // border-strong is a border and foreground-disabled a text colour
       "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
       scrollClassName,
     )}
@@ -63,11 +66,17 @@ export const ConversationEmptyState = ({
   >
     {children ?? (
       <>
+        {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
         {icon && <div className="text-neutral-500">{icon}</div>}
         <div className="space-y-1">
-          <h3 className="text-sm font-medium">{title}</h3>
+          <Text variant="body-medium-tight" tone="inherit" as="h3">
+            {title}
+          </Text>
+          {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
           {description && (
-            <p className="text-sm text-neutral-500">{description}</p>
+            <Text variant="body-tight" as="p" className="text-neutral-500">
+              {description}
+            </Text>
           )}
         </div>
       </>

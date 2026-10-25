@@ -1,6 +1,7 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { isKey } from "@/lib/keyboard";
+import { isMicrophonePermissionDenied } from "@/lib/microphone";
 import { isTouchDevice } from "@/lib/platform";
 import React, { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { downloadRecording } from "../../voice/downloadRecording";
@@ -233,7 +234,7 @@ export function useVoiceRecording({
       }, 100);
     } catch (err) {
       console.error("Failed to start recording:", err);
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
+      if (isMicrophonePermissionDenied(err)) {
         setError("Microphone permission denied");
       } else {
         setError("Failed to access microphone");
