@@ -3,10 +3,10 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import { cn } from "@/lib/utils";
 import {
   ArrowDown01Icon,
@@ -31,7 +31,7 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
   );
 
   return (
-    <Collapsible asChild open={open} onOpenChange={setOpen}>
+    <CollapsibleRoot asChild open={open} onOpenChange={setOpen}>
       <section
         aria-labelledby={headingID}
         className="border-t border-separator"
@@ -50,7 +50,7 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
           ))}
         </CollapsibleContent>
       </section>
-    </Collapsible>
+    </CollapsibleRoot>
   );
 }
 
@@ -129,9 +129,9 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
             )}
           />
         </span>
-        <span className="shrink-0 font-sans text-sm text-foreground-tertiary">
+        <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
           {group.done ? "Done" : `$${group.amount.toFixed(2)}`}
-        </span>
+        </Text>
       </button>
 
       {open && group.rows.map((row) => <EarnTaskRow key={row.key} row={row} />)}
@@ -146,9 +146,9 @@ function EarnTaskRow({ row }: { row: EarnRow }) {
         <StatusIcon done={row.done} />
         <Text variant="body">{row.label}</Text>
       </div>
-      <span className="shrink-0 font-sans text-sm text-foreground-tertiary">
+      <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
         {row.done ? "Done" : `$${row.amount.toFixed(2)}`}
-      </span>
+      </Text>
     </div>
   );
 }
