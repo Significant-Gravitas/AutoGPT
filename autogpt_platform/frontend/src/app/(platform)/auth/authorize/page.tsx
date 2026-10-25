@@ -12,41 +12,10 @@ import {
   useGetOauthGetOauthAppInfo,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+import { SCOPE_DESCRIPTIONS } from "@/lib/api-key-scopes";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-
-// Human-readable scope descriptions
-const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
-  IDENTITY: "View your user ID, e-mail, and timezone",
-  EXECUTE_GRAPH: "Run your workflows",
-  READ_GRAPH: "View your workflows and their configurations",
-  WRITE_GRAPH: "Create and edit your workflows, and choose which version runs",
-  WRITE_LIBRARY:
-    "Add, organize, fork and remove workflows in your library, including their schedules and triggers",
-  EXECUTE_BLOCK: "Execute individual blocks",
-  READ_BLOCK: "View available blocks",
-  READ_STORE: "Access the Marketplace",
-  WRITE_STORE: "Create, update, and delete marketplace submissions",
-  READ_LIBRARY: "View your library workflows and folders",
-  RUN_AGENT: "Run workflows from your library",
-  READ_RUN: "View run details and history",
-  WRITE_RUN: "Stop and delete runs",
-  SHARE_RUN: "Share and unshare workflow runs",
-  READ_RUN_REVIEW: "View pending human-in-the-loop reviews",
-  WRITE_RUN_REVIEW: "Submit human-in-the-loop review responses",
-  READ_SCHEDULE: "View your schedules",
-  WRITE_SCHEDULE: "Create and delete schedules",
-  READ_CREDITS:
-    "View your credit balance, transactions, invoices and subscription",
-  READ_FILES: "List and download workspace files",
-  WRITE_FILES: "Upload and delete workspace files",
-  USE_TOOLS:
-    "Search and fetch web pages for you; web searches use your AutoPilot allowance",
-  MANAGE_INTEGRATIONS: "Set up new integrations",
-  READ_INTEGRATIONS: "View your connected integrations",
-  DELETE_INTEGRATIONS: "Remove connected integrations",
-};
 
 export default function AuthorizePage() {
   const searchParams = useSearchParams();
