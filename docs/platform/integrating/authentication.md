@@ -144,7 +144,9 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 | `READ_CREDITS` | Read the credit balance, transactions, invoices, subscription and cost summary. |
 | `USE_TOOLS` | MCP tools that act from platform infrastructure: web search (which counts against your AutoPilot usage allowance), web fetch and searching feature requests. |
 
-Three endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, `POST /library/presets/setup-trigger` needs `WRITE_LIBRARY` and `RUN_AGENT`, because a webhook trigger starts runs, and sharing a run needs `READ_RUN` and `SHARE_RUN`.
+Three endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, `POST /library/presets/setup-trigger` needs `WRITE_LIBRARY` and `RUN_AGENT`, because a webhook trigger starts runs, and sharing a run needs `READ_RUN` and `SHARE_RUN`. For the same reason, `PATCH /library/presets/{preset_id}` with `is_active: true` needs `RUN_AGENT` as well as `WRITE_LIBRARY`.
+
+A webhook trigger's secret settings, such as a generic webhook's `secret_token`, are returned only by the request that creates the trigger. Later reads list them in `hidden_inputs` and leave them out of `inputs`; an update that leaves them out keeps them.
 
 Activating a version, with `PUT /graphs/{graph_id}` or by setting the active version, moves the agent's webhook triggers onto it only if the credential also has `RUN_AGENT`: a trigger runs the version it is attached to, so moving it decides what its next event runs. Without `RUN_AGENT` the triggers keep running the version they were on.
 

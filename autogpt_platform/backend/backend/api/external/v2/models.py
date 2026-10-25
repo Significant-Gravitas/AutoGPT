@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import date as date_
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal, Optional, Self, TypeAlias
+from typing import TYPE_CHECKING, Any, Collection, Literal, Optional, Self, TypeAlias
 
 from pydantic import BaseModel, Field, JsonValue, field_validator
 
@@ -673,6 +673,11 @@ class AgentPreset(TenantedResource):
     description: str
     is_active: bool
     inputs: dict[str, Any]
+    hidden_inputs: list[str] = Field(
+        default_factory=list,
+        description="A trigger's secret settings that are set but returned only when "
+        "it is created. An update that leaves them out of `inputs` keeps them",
+    )
     webhook_id: Optional[str] = Field(
         default=None,
         description="Webhook ID if this preset is triggered by a webhook",
@@ -686,7 +691,9 @@ class AgentPreset(TenantedResource):
     updated_at: datetime
 
     @classmethod
-    def from_internal(cls, p: _LibraryAgentPreset) -> Self:
+    def from_internal(cls, p: _LibraryAgentPreset, hide: Collection[str] = ()) -> Self:
+        """`hide` names the secret settings a trigger's `inputs` leave out."""
+        hidden = sorted(name for name in hide if p.webhook_id and name in p.inputs)
         return cls(
             id=p.id,
             graph_id=p.graph_id,
@@ -694,7 +701,8 @@ class AgentPreset(TenantedResource):
             name=p.name,
             description=p.description,
             is_active=p.is_active,
-            inputs=p.inputs,
+            inputs={k: v for k, v in p.inputs.items() if k not in hidden},
+            hidden_inputs=hidden,
             webhook_id=p.webhook_id,
             webhook_url=p.webhook.url if p.webhook else None,
             created_at=p.created_at,

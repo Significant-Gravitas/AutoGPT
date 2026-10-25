@@ -271,6 +271,10 @@ class UpdatePresetTool(BaseTool):
     def allow_external_use(self):
         return True, [APIKeyPermission.WRITE_LIBRARY]
 
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # An active trigger starts runs, so turning one on is a run.
+        return [APIKeyPermission.RUN_AGENT] if args.get("is_active") is True else []
+
     @property
     def description(self) -> str:
         return (

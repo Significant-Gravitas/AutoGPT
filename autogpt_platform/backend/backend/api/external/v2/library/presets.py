@@ -5,10 +5,11 @@ Provides endpoints for managing agent presets (saved run configurations) and
 the webhook triggers built on them.
 """
 
+import functools
 import logging
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -18,6 +19,7 @@ from backend.api.features.library.model import (
     LibraryAgentPreset,
     LibraryAgentPresetCreatable,
 )
+from backend.blocks import get_blocks
 from backend.data import graph as graph_db
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
@@ -72,7 +74,7 @@ async def list_presets(
     )
 
     return page.paged(
-        [AgentPreset.from_internal(p) for p in result.presets],
+        [AgentPreset.from_internal(p, secret_trigger_inputs()) for p in result.presets],
         total_count=result.pagination.total_items,
     )
 
@@ -87,7 +89,9 @@ async def get_preset(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> AgentPreset:
     """Get details of a specific preset."""
-    return AgentPreset.from_internal(await _preset_in_tenant(preset_id, auth))
+    return AgentPreset.from_internal(
+        await _preset_in_tenant(preset_id, auth), secret_trigger_inputs()
+    )
 
 
 @presets_router.post(
@@ -145,6 +149,7 @@ async def setup_trigger(
     schema and credentials. Use it to populate `trigger_config` and
     `credentials_inputs`. For a trigger you set up by hand in the other service,
     the response's `webhook_url` is where that service must send its events.
+    This response is the only one that returns the trigger's secret settings.
     """
     await _graph_in_tenant(request.graph_id, request.graph_version, auth)
 
@@ -175,25 +180,35 @@ async def update_preset(
     """Update properties of a preset. Only provided fields will be updated.
 
     New `inputs` on a webhook trigger re-register its webhook, with the saved
-    credentials unless the request brings new ones.
+    credentials unless the request brings new ones, and keep the secret
+    settings in its `hidden_inputs` unless the request sets them. Setting
+    `is_active` to true also needs `RUN_AGENT`: an active trigger starts runs.
     """
+    if request.is_active and APIKeyPermission.RUN_AGENT not in auth.scopes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing required permission(s): RUN_AGENT",
+        )
     current = await _preset_in_tenant(preset_id, auth)
 
+    inputs = request.inputs
     credentials = request.credentials_inputs
-    if request.inputs is not None and credentials is None:
+    if inputs is not None and current.webhook_id:
+        inputs = {**_kept_secrets(current.inputs), **inputs}
+    if inputs is not None and credentials is None:
         # Without credentials the trigger's webhook would keep the old config.
         credentials = current.credentials
 
     preset = await triggers.update_triggered_preset(
         user_id=auth.user_id,
         preset_id=preset_id,
-        inputs=request.inputs,
+        inputs=inputs,
         credentials=credentials,
         name=request.name,
         description=request.description,
         is_active=request.is_active,
     )
-    return AgentPreset.from_internal(preset)
+    return AgentPreset.from_internal(preset, secret_trigger_inputs())
 
 
 @presets_router.delete(
@@ -322,3 +337,19 @@ async def _graph_in_tenant(
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} v{graph_version} not found")
     return graph
+
+
+@functools.cache
+def secret_trigger_inputs() -> frozenset[str]:
+    """The inputs any webhook trigger block marks secret, which reads leave out."""
+    return frozenset(
+        name
+        for block_cls in get_blocks().values()
+        if (block := block_cls()).webhook_config
+        for name, spec in block.input_schema.jsonschema().get("properties", {}).items()
+        if isinstance(spec, dict) and spec.get("secret") is True
+    )
+
+
+def _kept_secrets(saved: dict) -> dict:
+    return {name: saved[name] for name in secret_trigger_inputs() if name in saved}

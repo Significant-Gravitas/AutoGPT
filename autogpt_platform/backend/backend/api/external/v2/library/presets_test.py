@@ -6,14 +6,21 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
-from fastapi import Response
+from fastapi import HTTPException, Response
 from fastapi.exceptions import RequestValidationError
+from prisma.enums import APIKeyPermission
 
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.copilot.tools.manage_presets import UpdatePresetTool
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.exceptions import ConflictError, ExpertRunPausedError
 
-from ..models import AgentPreset, AgentPresetRunRequest, AgentPresetUpdateRequest
+from ..models import (
+    AgentPreset,
+    AgentPresetRunRequest,
+    AgentPresetUpdateRequest,
+    AgentTriggerSetupRequest,
+)
 from ..tenancy import TenantContext
 from . import presets
 
@@ -21,6 +28,7 @@ USER_ID = "user-1"
 ORG = "org-1"
 SECRET = "whsec-do-not-leak"
 PROVIDER_HOOK_ID = "provider-hook-do-not-leak"
+TRIGGER_SECRET = "delivery-secret-do-not-leak"
 
 
 @pytest.fixture(autouse=True)
@@ -137,6 +145,126 @@ async def test_a_run_missing_a_required_input_is_refused(
     add.assert_not_awaited()
 
 
+def test_the_hidden_settings_are_every_trigger_block_s_secret_inputs():
+    """Read from the blocks, so a new trigger's secret is hidden without a list."""
+    assert {"secret_token", "signing_secret"} <= presets.secret_trigger_inputs()
+
+
+async def test_a_read_withholds_a_trigger_s_secret_settings(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+
+    read = await presets.get_preset(preset_id="p-1", auth=_key())
+
+    assert TRIGGER_SECRET not in read.model_dump_json()
+    assert read.inputs == {"constants": {"a": 1}}
+    assert read.hidden_inputs == ["secret_token"]
+
+
+async def test_setting_up_a_trigger_returns_its_secret_settings_once(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=Mock()
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.setup_triggered_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+
+    created = await presets.setup_trigger(
+        request=AgentTriggerSetupRequest(
+            name="On delivery", graph_id="graph-1", graph_version=1, trigger_config={}
+        ),
+        auth=_key(),
+    )
+
+    assert created.inputs["secret_token"] == TRIGGER_SECRET
+    assert created.hidden_inputs == []
+
+
+async def test_an_update_that_leaves_out_a_hidden_setting_keeps_it(
+    mocker: pytest_mock.MockFixture,
+):
+    """A client sends back what it read; that must not switch off the check."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    update = mocker.patch(
+        "backend.api.features.library.triggers.update_triggered_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+
+    await presets.update_preset(
+        request=AgentPresetUpdateRequest(inputs={"constants": {"a": 2}}),
+        preset_id="p-1",
+        auth=_key(),
+    )
+
+    assert update.await_args.kwargs["inputs"] == {
+        "constants": {"a": 2},
+        "secret_token": TRIGGER_SECRET,
+    }
+
+
+@pytest.mark.parametrize("scopes, allowed", [([], False), (["RUN_AGENT"], True)])
+async def test_turning_a_preset_on_needs_the_run_permission(
+    mocker: pytest_mock.MockFixture, scopes: list[str], allowed: bool
+):
+    """An active trigger starts runs, which spend credits."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    update = mocker.patch(
+        "backend.api.features.library.triggers.update_triggered_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    request = AgentPresetUpdateRequest(is_active=True)
+    auth = _key([APIKeyPermission.WRITE_LIBRARY, *map(APIKeyPermission, scopes)])
+
+    if allowed:
+        await presets.update_preset(request=request, preset_id="p-1", auth=auth)
+        update.assert_awaited_once()
+    else:
+        with pytest.raises(HTTPException) as refused:
+            await presets.update_preset(request=request, preset_id="p-1", auth=auth)
+        assert refused.value.status_code == 403
+        update.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "args, needed",
+    [
+        ({"preset_id": "p-1", "is_active": True}, [APIKeyPermission.RUN_AGENT]),
+        ({"preset_id": "p-1", "is_active": False}, []),
+        ({"preset_id": "p-1", "name": "x"}, []),
+    ],
+)
+def test_turning_a_preset_on_over_mcp_needs_the_run_permission(
+    args: dict, needed: list[APIKeyPermission]
+):
+    assert UpdatePresetTool().external_permissions(args) == needed
+
+
+def _trigger() -> LibraryAgentPreset:
+    return _preset(
+        webhook=True,
+        inputs={"secret_token": TRIGGER_SECRET, "constants": {"a": 1}},
+    )
+
+
 def _stub_preset_and_graph(
     mocker: pytest_mock.MockFixture,
     preset: LibraryAgentPreset,
@@ -163,7 +291,9 @@ async def _execute():
     )
 
 
-def _preset(webhook: bool = False, expert_id: str | None = None) -> LibraryAgentPreset:
+def _preset(
+    webhook: bool = False, expert_id: str | None = None, inputs: dict | None = None
+) -> LibraryAgentPreset:
     now = datetime.now(tz=timezone.utc)
     return LibraryAgentPreset.model_validate(
         {
@@ -173,7 +303,7 @@ def _preset(webhook: bool = False, expert_id: str | None = None) -> LibraryAgent
             "graph_version": 1,
             "name": "Preset",
             "description": "",
-            "inputs": {},
+            "inputs": inputs or {},
             "credentials": {},
             "created_at": now,
             "updated_at": now,
@@ -219,10 +349,10 @@ def _run() -> GraphExecutionMeta:
     )
 
 
-def _key() -> TenantContext:
+def _key(scopes: list[APIKeyPermission] | None = None) -> TenantContext:
     return TenantContext(
         user_id=USER_ID,
-        scopes=[],
+        scopes=scopes or [],
         type="api_key",
         organization_id=ORG,
     )
