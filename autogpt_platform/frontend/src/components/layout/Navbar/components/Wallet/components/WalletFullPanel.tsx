@@ -36,8 +36,9 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
           <Text
             variant="body-tight"
             as="div"
+            tone="inherit"
             // TODO(tokens): no exact role for bg-violet-100 (#EDE9FE)
-            className="rounded-lg bg-violet-100 px-3 py-2 text-accent-strong"
+            className="rounded-lg bg-violet-100 px-3 py-2"
           >
             Earn credits{" "}
             <Text as="span" variant="body-semibold-tight" tone="inherit">
