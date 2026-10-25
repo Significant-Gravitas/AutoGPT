@@ -187,9 +187,7 @@ const MultiSelectorTrigger = forwardRef<
         <Badge
           key={item}
           className={cn(
-            // The legacy secondary badge's dark: classes, which the atom's
-            // chip does not carry.
-            "flex items-center gap-1 rounded-xl px-1 pl-2 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-50 dark:focus:ring-neutral-300",
+            "flex items-center gap-1 rounded-xl px-1 pl-2",
             activeIndex === index && "ring-2 ring-muted-foreground",
           )}
           variant="secondary"
