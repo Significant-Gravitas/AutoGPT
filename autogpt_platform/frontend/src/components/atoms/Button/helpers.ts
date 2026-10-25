@@ -11,10 +11,17 @@ import { LinkProps } from "next/link";
 // The compact family keeps the look of the deleted components/ui/button
 // (SECRT-3113): rounded-md, no border, 14px/20px text and a 16px svg. Pair a
 // compact-* variant with a compact-* size.
+// The deleted file's dark: classes are carried verbatim.
 // TODO(tokens): no role holds neutral-900 #171717, neutral-100 #F5F5F5 or
-// neutral-200 #E5E5E5 (border is #E4E4E7), so they stay raw.
+// neutral-200 #E5E5E5 (border is #E4E4E7), so they stay raw. Four colours
+// whose role matches in light mode stay raw too, because the role's .dark
+// value differs from this button's dark colour (SECRT-3154):
+// ring-neutral-950 (focus: no .dark value, dark ring is neutral-300),
+// text-neutral-50 on primary (primary-foreground: .dark #18181B, dark text is
+// neutral-900 #171717), bg-red-500 (error: no .dark value, dark bg is red-900)
+// and bg-white (surface: no .dark value, dark bg is neutral-950).
 const COMPACT_BASE =
-  "gap-2 rounded-md border-0 min-w-0 text-body leading-5 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
+  "gap-2 rounded-md border-0 min-w-0 text-body leading-5 focus-visible:ring-neutral-950 dark:focus-visible:ring-neutral-300 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
 
 // Extended button variants based on our design system.
 // TODO(tokens): no role or scale value is identical for the outline border
@@ -46,10 +53,10 @@ export const extendedButtonVariants = cva(
           linkFocusClasses,
           "inline-flex items-center gap-2 border-none bg-transparent px-0 py-0 text-left",
         ),
-        "compact-primary": `${COMPACT_BASE} bg-neutral-900 text-primary-foreground shadow hover:bg-neutral-900/90`,
-        "compact-destructive": `${COMPACT_BASE} bg-error text-destructive-foreground shadow-sm hover:bg-error/90`,
-        "compact-outline": `${COMPACT_BASE} border border-neutral-200 bg-surface shadow-sm hover:bg-neutral-100 hover:text-neutral-900`,
-        "compact-ghost": `${COMPACT_BASE} hover:bg-neutral-100 hover:text-neutral-900`,
+        "compact-primary": `${COMPACT_BASE} bg-neutral-900 text-neutral-50 shadow hover:bg-neutral-900/90 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50/90`,
+        "compact-destructive": `${COMPACT_BASE} bg-red-500 text-destructive-foreground shadow-sm hover:bg-red-500/90 dark:bg-red-900 dark:text-neutral-50 dark:hover:bg-red-900/90`,
+        "compact-outline": `${COMPACT_BASE} border border-neutral-200 bg-white shadow-sm hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:bg-neutral-800 dark:hover:text-neutral-50`,
+        "compact-ghost": `${COMPACT_BASE} hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50`,
       },
       size: {
         small: "px-3 py-2 text-body leading-5 gap-1.5 h-9 min-w-[5.5rem]",
