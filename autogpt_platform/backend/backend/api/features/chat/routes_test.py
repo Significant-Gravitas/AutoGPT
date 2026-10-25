@@ -29,6 +29,7 @@ from backend.copilot.gate.card_approval import approved_on_card, card_decision_m
 from backend.copilot.gate.card_decided import CardClaim, ClaimResult
 from backend.copilot.model import AutopilotMode, ChatMessage, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
+from backend.copilot.pending_message_helpers import PENDING_CALL_LIMIT
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
@@ -292,8 +293,12 @@ def test_stream_chat_rejects_too_many_file_ids():
 
 def _claimed(result: ClaimResult) -> CardClaim:
     """What claim_answer says about card c-1, the card these tests answer."""
-    answered = frozenset({"c-1"}) if result == "answered" else frozenset()
-    return CardClaim(result=result, answered=answered)
+    card = frozenset({"c-1"})
+    if result == "answered":
+        return CardClaim(result=result, answered=card)
+    return CardClaim(
+        result=result, claimed=card if result == "claimed" else frozenset()
+    )
 
 
 def _mock_stream_internals(
@@ -836,9 +841,11 @@ def test_stream_chat_marks_a_saved_answer_accepted(
 def test_queue_pending_message_marks_a_queued_answer_accepted(
     mocker: pytest_mock.MockerFixture, status: int | None
 ) -> None:
-    from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
-
-    _mock_stream_queue_internals(mocker)
+    # The rate cap is charged after the push lands: over it, the 429 still
+    # leaves the decision queued.
+    _mock_stream_queue_internals(
+        mocker, call_count=PENDING_CALL_LIMIT + 1 if status else 1
+    )
     mocker.patch(
         "backend.api.features.chat.routes.record_card_decisions",
         new_callable=AsyncMock,
@@ -847,17 +854,6 @@ def test_queue_pending_message_marks_a_queued_answer_accepted(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
         return_value=_claimed("claimed"),
-    )
-    queued = QueuePendingMessageResponse(
-        buffer_length=1, max_buffer_length=10, turn_in_flight=True
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.queue_pending_for_http",
-        new_callable=AsyncMock,
-        side_effect=(
-            HTTPException(status_code=status, detail="slow down") if status else None
-        ),
-        return_value=queued,
     )
     accept = mocker.patch(
         "backend.api.features.chat.routes.accept_claim",
@@ -1094,6 +1090,96 @@ async def test_a_failed_send_does_not_take_back_its_retransmits_approval(
     )
 
 
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+async def test_a_replayed_send_does_not_restore_a_used_approval(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """The approval is one-time: the confirm uses it up. Replaying the same
+    send afterwards must not record it again, or a second confirm passes."""
+    session_id = f"s-{uuid4()}"
+    mocker.patch(
+        "backend.copilot.gate.card_decided.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    line = "Approved: hire Maya (confirmation_id: c-1)."
+    sent = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, "click-1", has_attachments=False
+    )
+    await chat_routes._accept_card_answer(session_id, sent)
+    confirm = ("confirm_expert_change", {"confirmation_id": "c-1"})
+    assert await approved_on_card(*confirm, test_user_id, session_id)
+
+    replay = await chat_routes._admit_card_answer(
+        test_user_id, session_id, line, "click-1", has_attachments=False
+    )
+
+    assert replay.admission == "unclaimed"
+    assert not await approved_on_card(*confirm, test_user_id, session_id)
+
+
+async def test_queue_pending_message_keeps_a_cancelled_push_that_landed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """No message_id, so no client key to read back. The request is
+    cancelled while its shielded push is still going, and the push lands:
+    the decision is queued, so its claim and approval must stand."""
+    _mock_stream_queue_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value=_claimed("claimed"),
+    )
+    accept = mocker.patch(
+        "backend.api.features.chat.routes.accept_claim", new_callable=AsyncMock
+    )
+    release = mocker.patch(
+        "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
+    )
+    withdraw = mocker.patch(
+        "backend.api.features.chat.routes.withdraw_card_approvals",
+        new_callable=AsyncMock,
+    )
+    pushing = asyncio.Event()
+    lands = asyncio.Event()
+
+    async def slow_push(*args: object, **kwargs: object) -> int:
+        pushing.set()
+        await lands.wait()
+        return 1
+
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        side_effect=slow_push,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as http:
+        send = asyncio.create_task(
+            http.post(
+                "/sessions/sess-1/messages/pending",
+                json={"message": "Approved: hire Maya (confirmation_id: c-1)."},
+            )
+        )
+        await pushing.wait()
+        send.cancel()
+        await asyncio.sleep(0)
+        lands.set()
+        with pytest.raises(asyncio.CancelledError):
+            await send
+
+    accept.assert_awaited_once()
+    release.assert_not_awaited()
+    withdraw.assert_not_awaited()
+
+
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -1138,7 +1224,9 @@ def test_queue_pending_message_gives_back_a_card_claim_only_when_not_queued(
     mocker: pytest_mock.MockerFixture, status: int, released: bool
 ) -> None:
     """A 429 comes after the push: the decision stays queued, so its claim stays."""
-    _mock_stream_queue_internals(mocker)
+    _mock_stream_queue_internals(
+        mocker, call_count=PENDING_CALL_LIMIT + 1 if status == 429 else 1
+    )
     mocker.patch(
         "backend.api.features.chat.routes.record_card_decisions",
         new_callable=AsyncMock,
@@ -1148,11 +1236,12 @@ def test_queue_pending_message_gives_back_a_card_claim_only_when_not_queued(
         new_callable=AsyncMock,
         return_value=_claimed("claimed"),
     )
-    mocker.patch(
-        "backend.api.features.chat.routes.queue_pending_for_http",
-        new_callable=AsyncMock,
-        side_effect=HTTPException(status_code=status, detail="no"),
-    )
+    if status == 400:
+        mocker.patch(
+            "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=400, detail="no"),
+        )
     release = mocker.patch(
         "backend.api.features.chat.routes.release_claim", new_callable=AsyncMock
     )
@@ -1706,7 +1795,7 @@ _OPEN_CARD = (
 # Another tab answered c-1 between this tab's check and its send.
 _HALF_ANSWERED = [
     CardClaim(result="answered", answered=frozenset({"c-1"})),
-    CardClaim(result="claimed"),
+    CardClaim(result="claimed", claimed=frozenset({"c-2"})),
 ]
 
 
@@ -1789,7 +1878,7 @@ def test_stream_chat_tags_a_half_answered_group_by_what_it_saves_after_a_409(
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
         new_callable=AsyncMock,
-        side_effect=[*_HALF_ANSWERED, CardClaim(result="claimed")],
+        side_effect=[*_HALF_ANSWERED, CardClaim(result="claimed", claimed={"c-2"})],
     )
 
     response = client.post("/sessions/sess-1/stream", json={"message": _BOTH_CARDS})

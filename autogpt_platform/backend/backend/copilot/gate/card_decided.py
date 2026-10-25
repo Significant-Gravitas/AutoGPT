@@ -22,13 +22,17 @@ from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
 
-ClaimResult = Literal["answered", "pending", "in_progress", "claimed", "held"]
+ClaimResult = Literal[
+    "answered", "pending", "in_progress", "claimed", "replayed", "held"
+]
 
 
 class CardClaim(BaseModel):
     result: ClaimResult
     # The cards that were answered already, when ``result`` is "answered".
     answered: frozenset[str] = frozenset()
+    # The cards this claim took, when ``result`` is "claimed".
+    claimed: frozenset[str] = frozenset()
 
 
 _KEY = "copilot:gate:card_decided:"
@@ -49,8 +53,8 @@ _SERVER_WRITTEN_KEYS = frozenset(
 _PENDING_LEASE_MS = 60_000
 # All or nothing: a request that names an id someone else holds takes none.
 # {0, ids...}: answered already, by someone else; {3}: someone else's still
-# pending; {4}: another attempt of this send is still pending; {1}: claimed
-# now; {2}: this send's answer was already accepted.
+# pending; {4}: another attempt of this send is still pending; {1, ids...}:
+# claimed now, those ids; {2}: this send's answer was already accepted.
 _CLAIM = """
 local now = redis.call('TIME')
 now = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
@@ -61,9 +65,9 @@ local take = {}
 local answered = {}
 for i = 5, #ARGV do
   local value = redis.call('HGET', KEYS[1], ARGV[i])
-  if not value then
+  if not value or string.sub(value, 1, #mine) == mine then
     table.insert(take, ARGV[i])
-  elseif value ~= accepted and string.sub(value, 1, #mine) ~= mine then
+  elseif value ~= accepted then
     if string.sub(value, -9) == '|accepted' then
       table.insert(answered, ARGV[i])
     else
@@ -84,7 +88,8 @@ if #take == 0 then return {2} end
 local claim = mine .. (now + tonumber(ARGV[4]))
 for _, id in ipairs(take) do redis.call('HSET', KEYS[1], id, claim) end
 redis.call('EXPIRE', KEYS[1], ARGV[3])
-return {1}
+table.insert(take, 1, 1)
+return take
 """
 # Only the attempt that holds a pending claim marks it accepted.
 _ACCEPT = """
@@ -121,10 +126,13 @@ async def claim_answer(
 
     ``owner`` is the send's scoped client message id, shared by its
     retransmits; ``attempt`` is this request. "claimed": this request took
-    the claim; it marks it accepted with ``accept_claim`` once the answer is
-    saved or queued, or gives it back with ``release_claim``. "held": this
-    send's answer was already accepted (a retransmit of a saved send), or the
-    store is down, so there is nothing to give back. "answered": the chat, or
+    the ``claimed`` cards; it marks them accepted with ``accept_claim`` once
+    the answer is saved or queued, or gives them back with ``release_claim``.
+    "replayed": this very send was already saved or queued (the chat holds
+    its row, or its claim was accepted): the request is a replay, to be
+    deduplicated, and records nothing, since the approval it recorded may
+    already be used up. "held": the store is down; the request goes on as if
+    it claimed, with nothing to give back. "answered": the chat, or
     another send's accepted answer, came first, for the ``answered`` ids.
     "pending": another send holds a card but has not saved yet; it may still
     fail, so this one is neither answered nor taken, and should retry.
@@ -142,6 +150,9 @@ async def claim_answer(
         answered = decided_ids(session.messages, owner) & set(confirmation_ids)
         if answered:
             return CardClaim(result="answered", answered=frozenset(answered))
+        # Answered by no row but this send's own: it was saved already.
+        if decided_ids(session.messages, None) & set(confirmation_ids):
+            return CardClaim(result="replayed")
     return await _claim(session_id, confirmation_ids, owner, attempt)
 
 
@@ -280,17 +291,19 @@ async def _claim(
             f"Could not claim card answers for session {session_id}", exc_info=True
         )
         # Fail open, with nothing taken and so nothing to give back.
-        return CardClaim(result="held")
-    code, *answered = reply
-    return CardClaim(
-        result=_CLAIM_RESULTS[int(code)], answered=frozenset(str(a) for a in answered)
-    )
+        return CardClaim(result="held", claimed=frozenset(confirmation_ids))
+    code, *ids = reply
+    result = _CLAIM_RESULTS[int(code)]
+    named = frozenset(str(cid) for cid in ids)
+    if result == "answered":
+        return CardClaim(result=result, answered=named)
+    return CardClaim(result=result, claimed=named)
 
 
 _CLAIM_RESULTS: dict[int, ClaimResult] = {
     0: "answered",
     1: "claimed",
-    2: "held",
+    2: "replayed",
     3: "pending",
     4: "in_progress",
 }

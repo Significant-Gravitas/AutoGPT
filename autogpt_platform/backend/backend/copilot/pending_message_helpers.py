@@ -10,6 +10,7 @@ routes.py stays free of Redis/Lua details.
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
@@ -220,6 +221,7 @@ async def queue_pending_for_http(
     expert_id: str | None,
     client_message_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    on_queued: Callable[[], Awaitable[None]] | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -241,6 +243,11 @@ async def queue_pending_for_http(
     the key back so a genuine retry can.  A copy that arrives while another
     is still being pushed waits for its outcome, and gets a 503 if that
     outlasts the wait.
+
+    ``on_queued`` runs once the message is in the queue, judged by the push
+    itself: on success, before a 429 from the rate cap, for a retransmit of
+    a send already accepted, and after the caller is cancelled while a push
+    that then lands was still going, with or without a client id.
 
     Raises :class:`HTTPException` with status 429 if the rate cap is hit or
     400 if an expert session attaches a file outside its scope; otherwise
@@ -281,6 +288,8 @@ async def queue_pending_for_http(
                 "for session=%s",
                 session_id,
             )
+            if on_queued is not None:
+                await on_queued()
             return await already_accepted_response(session_id)
         if claim == "reserved":
             raise client_message_in_progress_error()
@@ -299,16 +308,15 @@ async def queue_pending_for_http(
         response = await asyncio.shield(push)
     except asyncio.CancelledError:
         # The append may already have landed (the push still awaits its
-        # SPUBLISH), so settle the claim by what the push did, not by the
-        # cancellation: releasing it would let a retry queue a second copy.
-        if client_message_id is not None:
-            await finish_despite_cancellation(
-                asyncio.ensure_future(
-                    _settle_claim_of_cancelled_push(
-                        push, session_id, client_message_id, claim_owner
-                    )
+        # SPUBLISH), so settle by what the push did, not by the cancellation:
+        # releasing the claim would let a retry queue a second copy.
+        await finish_despite_cancellation(
+            asyncio.ensure_future(
+                _settle_cancelled_push(
+                    push, session_id, client_message_id, claim_owner, on_queued
                 )
             )
+        )
         raise
     except BaseException:
         if client_message_id is not None:
@@ -323,6 +331,8 @@ async def queue_pending_for_http(
         )
     if client_message_id is not None:
         await accept_client_message(session_id, client_message_id, claim_owner)
+    if on_queued is not None:
+        await on_queued()
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -341,21 +351,22 @@ async def queue_pending_for_http(
     return response
 
 
-async def _settle_claim_of_cancelled_push(
+async def _settle_cancelled_push(
     push: "asyncio.Future[QueuePendingMessageResponse]",
     session_id: str,
-    client_message_id: str,
+    client_message_id: str | None,
     owner: str,
+    on_queued: Callable[[], Awaitable[None]] | None,
 ) -> None:
     try:
-        response = await push
+        queued = (await push).turn_in_flight
     except Exception:
-        await release_client_message(session_id, client_message_id, owner)
-        return
-    if response.turn_in_flight:
-        await accept_client_message(session_id, client_message_id, owner)
-    else:
-        await release_client_message(session_id, client_message_id, owner)
+        queued = False
+    if client_message_id is not None:
+        settle = accept_client_message if queued else release_client_message
+        await settle(session_id, client_message_id, owner)
+    if queued and on_queued is not None:
+        await on_queued()
 
 
 def client_message_in_progress_error() -> HTTPException:

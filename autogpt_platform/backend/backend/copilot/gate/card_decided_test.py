@@ -109,11 +109,11 @@ async def test_only_one_of_two_racing_answers_claims_a_card() -> None:
 
 
 @needs_redis
-async def test_a_claim_is_all_or_nothing_and_its_own_retry_holds_it() -> None:
+async def test_a_claim_is_all_or_nothing_and_an_attempt_asking_again_keeps_it() -> None:
     session = f"s-{uuid.uuid4()}"
 
     assert await _claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
-    assert await _claim(session, ["c-1", "c-2"], "tab-a") == "held"
+    assert await _claim(session, ["c-1", "c-2"], "tab-a") == "claimed"
     assert await _claim(session, ["c-2", "c-3"], "tab-b") == "pending"
     # The refused claim took nothing, so c-3 is still free.
     assert await _claim(session, ["c-3"], "tab-b") == "claimed"
@@ -212,8 +212,8 @@ async def test_an_answer_still_being_sent_is_waited_on_not_taken_as_given() -> N
     # An accepted answer is not given back by a late failure path either.
     await card_decided.release_claim(session, ["c-1"], "tab-b", "tab-b")
     assert await _claim(session, ["c-1"], "tab-a") == "answered"
-    # Its own retry still holds it.
-    assert await _claim(session, ["c-1"], "tab-b") == "held"
+    # A replay of the saved send is a replay, not a new answer.
+    assert await _claim(session, ["c-1"], "tab-b") == "replayed"
 
 
 @needs_redis
@@ -259,7 +259,7 @@ async def test_a_retransmit_does_not_ride_on_a_claim_still_being_sent() -> None:
     assert retry.result == "claimed"
     await card_decided.accept_claim(session, ["c-1"], "click-1", "try-3")
     late = await card_decided._claim(session, ["c-1"], "click-1", "try-4")
-    assert late.result == "held"
+    assert late.result == "replayed"
 
 
 @needs_redis
@@ -277,6 +277,23 @@ async def test_a_claim_names_the_cards_someone_else_answered() -> None:
     assert both.answered == {"c-1"}
     rest = await card_decided._claim(session, ["c-2"], "tab-b", "b")
     assert rest.result == "claimed"
+
+
+async def test_a_replay_of_a_saved_send_is_not_a_new_answer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The chat holds this very send's row (row-9 is its client id): the
+    request is a replay, to be deduplicated, and records nothing."""
+    session = mocker.MagicMock(messages=[_tagged("row-9", "c-1")])
+    mocker.patch.object(
+        card_decided, "get_chat_session", new_callable=AsyncMock, return_value=session
+    )
+    claim = mocker.patch.object(card_decided, "_claim", new_callable=AsyncMock)
+
+    replay = await claim_answer("u-1", "s-1", ["c-1"], owner="row-9", attempt="a")
+
+    assert replay.result == "replayed"
+    claim.assert_not_awaited()
 
 
 async def test_a_card_answered_in_the_chat_is_refused_without_a_claim(
