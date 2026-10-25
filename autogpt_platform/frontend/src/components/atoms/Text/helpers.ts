@@ -106,9 +106,10 @@ export const variants = {
   // Keeps the parent's line height, like the raw size it replaced.
   "tiny-inherit":
     "font-sans text-tiny font-normal leading-inherit text-foreground-base",
-  // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
-  "caption-sm-mono":
-    "font-mono text-caption-sm font-normal text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  // TODO(tokens): no mono role at caption-sm (0.6875rem, text-[11px]).
+  "caption-sm-mono-inherit":
+    "font-mono text-caption-sm font-normal leading-inherit text-foreground-base",
 
   // Label Text
   label:
@@ -180,7 +181,7 @@ export const variantElementMap: Record<Variant, As> = {
   "small-medium-loose": "p",
   "small-relaxed": "p",
   "tiny-inherit": "span",
-  "caption-sm-mono": "span",
+  "caption-sm-mono-inherit": "span",
   label: "span",
   eyebrow: "span",
 };
