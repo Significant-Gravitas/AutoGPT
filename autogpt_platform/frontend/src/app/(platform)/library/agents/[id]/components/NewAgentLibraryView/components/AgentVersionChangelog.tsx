@@ -66,9 +66,7 @@ export function AgentVersionChangelog({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Text variant="body" className="font-semibold">
-              v{versionInfo.version}
-            </Text>
+            <Text variant="body-semibold">v{versionInfo.version}</Text>
             {versionInfo.isCurrentVersion && (
               <Text
                 variant="small-medium-tight"
