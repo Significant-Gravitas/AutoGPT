@@ -1063,6 +1063,13 @@ class RunAgentTool(BaseTool):
         if org_id is None:
             org_id, team_id = await orgs_db().get_user_default_team(user_id)
 
+        # An External API call's session is never saved, so no chat can take the
+        # run's approvals or vouch for it on resume: it is an API run, as on v1.
+        trigger, trigger_ref = (
+            (ExecutionTrigger.API, "mcp")
+            if session.external_caller
+            else (ExecutionTrigger.COPILOT, session_id)
+        )
         try:
             execution = await execution_utils.add_graph_execution(
                 graph_id=library_agent.graph_id,
@@ -1074,8 +1081,8 @@ class RunAgentTool(BaseTool):
                 team_id=team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
-                trigger=ExecutionTrigger.COPILOT,
-                trigger_ref=session_id,
+                trigger=trigger,
+                trigger_ref=trigger_ref,
                 pause_irreversible_actions=(
                     not dry_run
                     and not gate_approved
