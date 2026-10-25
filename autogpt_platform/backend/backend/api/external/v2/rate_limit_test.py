@@ -4,6 +4,7 @@ A cap the caller cannot see forces it to retry blind, and an anonymous bucket
 keyed on a header the caller writes is not a cap at all.
 """
 
+import logging
 from datetime import UTC, datetime
 from unittest import mock
 
@@ -429,3 +430,22 @@ def _principal(user_id: str) -> APIAuthorizationInfo:
     return APIAuthorizationInfo(
         user_id=user_id, scopes=[], type="api_key", created_at=datetime.now(UTC)
     )
+
+
+@pytest.mark.parametrize("call", ["check", "exhausted"])
+async def test_a_limiter_that_fails_open_logs_no_subject(
+    mocker: pytest_mock.MockFixture, caplog: pytest.LogCaptureFixture, call: str
+):
+    """A pre-verification bucket names an API key by its head; a Redis outage
+    must not put that in the log."""
+    mocker.patch(
+        "backend.api.utils.rate_limit.get_redis_async",
+        new=mock.AsyncMock(side_effect=ConnectionError("down")),
+    )
+    limiter = RateLimiter("probe", max_requests=1, window_seconds=60)
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.utils.rate_limit"):
+        await getattr(limiter, call)("203.0.113.7:agpt_abc")
+
+    assert "failed open" in caplog.text
+    assert "agpt_abc" not in caplog.text

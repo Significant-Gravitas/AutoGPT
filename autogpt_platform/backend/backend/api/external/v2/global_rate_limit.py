@@ -133,7 +133,7 @@ def _credential_bucket(
 ) -> Optional[str]:
     """The pre-verification bucket of a credential that costs work to check, or None.
 
-    An API key is bucketed by a digest of its head. `X-API-Key` is always tried as a key,
+    An API key is bucketed by its head. `X-API-Key` is always tried as a key,
     so its value is too, even in the token format. A bearer in the access-token
     format is only ever looked up as a token (see `resolve_auth_info`), so it
     is bucketed by a digest of the token. Any other value is refused without a
@@ -143,19 +143,19 @@ def _credential_bucket(
         credential = api_key
     elif bearer is not None:
         if is_access_token(bearer.credentials):
-            return f"{ip}:token:{_digest(bearer.credentials)}"
+            return f"{ip}:token:{_token_digest(bearer.credentials)}"
         credential = bearer.credentials
     else:
         return None
     if not credential.startswith(APIKeySmith.PREFIX):
         return None
-    return f"{ip}:key:{_digest(credential[: APIKeySmith.HEAD_LENGTH])}"
+    return f"{ip}:{credential[: APIKeySmith.HEAD_LENGTH]}"
 
 
-def _digest(credential: str) -> str:
-    """Names a bucket without putting any of the credential, or the digest it is
-    stored under, in Redis or a log."""
-    return hashlib.sha256(f"v2-rate-limit:{credential}".encode()).hexdigest()[:32]
+def _token_digest(token: str) -> str:
+    """Names a token's bucket without putting the token, or the digest it is
+    stored under, in Redis."""
+    return hashlib.sha256(f"v2-rate-limit:{token}".encode()).hexdigest()[:32]
 
 
 async def _refuse_before_verifying(ip: str, bucket: str) -> Optional[Response]:
