@@ -295,6 +295,38 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
     });
 
+    it("drops a card decision the server refused, so the card asks again", async () => {
+      server.use(
+        copilotStreamErrorHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          status: 503,
+          body: {
+            detail:
+              "Another answer to this card is still being sent. Try again in a moment.",
+          },
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("Approved: hire Maya (confirmation_id: c-1).");
+
+      // Left on screen, the unsaved row reads as the card's answer.
+      await waitFor(() => {
+        const userRows =
+          path === "stream runtime"
+            ? getTurnRuntime(TEST_SESSION_ID)
+                .getSnapshot()
+                .segments.filter((seg) => seg.kind === "user")
+            : useCopilotStreamStore
+                .getState()
+                .getMessageSnapshot(TEST_SESSION_ID)
+                .filter((message) => message.role === "user");
+        expect(userRows).toHaveLength(0);
+      });
+      expect(document.body.textContent).not.toContain("confirmation_id");
+    });
+
     it("surfaces an HTTP 500 response as a visible error", async () => {
       server.use(
         copilotStreamErrorHandler({

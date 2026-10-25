@@ -664,11 +664,11 @@ export function ExpertChangeGroup({
     void Promise.resolve(actions.onSend(message))
       .catch((error: unknown) =>
         toastSendFailure({
-          title: "Couldn't send message",
+          title: "Couldn't send your decision",
           error,
-          recovery: "it is still in the thread, use Retry to send it again",
+          recovery: "the card is still open, so you can send it again",
           paywallRecovery:
-            "it is still in the thread, use Retry once you have a plan",
+            "the card is still open, so you can send it again once you have a plan",
         }),
       )
       .finally(() => setSent(false));

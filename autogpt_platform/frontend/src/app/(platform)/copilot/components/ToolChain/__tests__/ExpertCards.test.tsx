@@ -530,9 +530,9 @@ describe("expert approval", () => {
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "Couldn't send message",
+          title: "Couldn't send your decision",
           description:
-            "boom — it is still in the thread, use Retry to send it again.",
+            "boom — the card is still open, so you can send it again.",
           variant: "destructive",
         }),
       ),

@@ -320,6 +320,12 @@ export function useCopilotStream({
       };
       const failureForThisTurn = providerFailureRef.current;
       providerFailureRef.current = null;
+      // A card decision the server refused is the card's protocol: left on
+      // screen, the unsaved row reads as the card's answer, so it goes and
+      // the card asks again. If the row did save, the refetch brings it back.
+      const unsentDecision = isDecisionOnlyText(
+        coord.lastSubmittedMessageText ?? "",
+      );
       // Resuming keeps the send in flight, and a refused send's text is kept
       // by `restoreUnsentSend` when the composer is busy.
       let keepSendMemory = false;
@@ -373,8 +379,8 @@ export function useCopilotStream({
           lastSubmittedMessageText: null,
         });
       }
-      if (kickoffExpertId) {
-        releaseKickoffPending();
+      if (kickoffExpertId || (unsentDecision && !keepSendMemory)) {
+        if (kickoffExpertId) releaseKickoffPending();
         useCopilotStreamStore.getState().updateCoord(sessionId, {
           lastSubmittedMessageText: null,
           lastSubmittedKickoffExpertId: null,

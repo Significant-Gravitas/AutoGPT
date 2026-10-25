@@ -135,7 +135,15 @@ export function useCopilotRuntimeStream({
     // The backend refuses a turn over our cap (429) or without a plan (402)
     // before persisting its prompt: put the text back in an empty composer
     // and drop the bubble.
+    // A card decision the server refused is the card's protocol: left on
+    // screen, the unsaved row reads as the card's answer, so it goes and the
+    // card asks again. If the row did save, the refetch brings it back.
+    const unsentDecision = isDecisionOnlyText(
+      coord.lastSubmittedMessageText ?? "",
+    );
+    let keepsUnsentRow = false;
     function restoreUnsentSend() {
+      keepsUnsentRow = true;
       if (!coord.lastSubmittedMessageText) return;
       // A proposal card's decision line is the card's protocol, id and all:
       // the card asks again instead.
@@ -160,10 +168,17 @@ export function useCopilotRuntimeStream({
           setRateLimitMessage(limitFailure?.message || message);
         }
       },
-      onReconnect: () => runtime?.ensureConnected(),
+      onReconnect: () => {
+        keepsUnsentRow = true;
+        runtime?.ensureConnected();
+      },
       onPaywall: restoreUnsentSend,
       isUserStoppingRef,
     });
+    if (unsentDecision && !keepsUnsentRow) {
+      clearRecovery();
+      runtime?.dropUnsentUserRow();
+    }
     if (!kickoffExpertId) return;
     if (userId && kickoffAttemptToken) {
       void withKickoffLock(userId, kickoffExpertId, async () => {
