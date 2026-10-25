@@ -22,7 +22,7 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
     >();
   return {
     ...actual,
-    toast: (...args: Parameters<typeof actual.toast>) => toastSpy(...args),
+    toast: toastSpy,
   };
 });
 
@@ -92,11 +92,9 @@ describe("Memory chat start", () => {
         }),
       );
     });
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("complementary", { name: "Memory chat panel" }),
-      ).toBeNull();
-    });
+    expect(
+      screen.queryByRole("complementary", { name: "Memory chat panel" }),
+    ).toBeNull();
     expect(screen.queryByText("Could not start the memory chat")).toBeNull();
     expect(captureException).not.toHaveBeenCalled();
   });
@@ -109,8 +107,9 @@ describe("Memory chat start", () => {
     expect(
       await screen.findByText("Could not start the memory chat"),
     ).toBeDefined();
-    expect(captureException).toHaveBeenCalledOnce();
-    expect(captureException.mock.calls[0][0]).toMatchObject({ status: 500 });
+    expect(captureException).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ status: 500 }),
+    );
     expect(toastSpy).not.toHaveBeenCalledWith(
       expect.objectContaining({ replaceKey: PAYWALL_TOAST_KEY }),
     );
