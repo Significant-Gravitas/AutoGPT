@@ -863,7 +863,6 @@ describe("ToolResult", () => {
       ["curl -fs https://shop.example/api/orders", 22, ""],
       ["./check_stock.sh", 2, "ERROR: stock file missing"],
       ["grep -c TBD brief.md missing.md", 2, ""],
-      ["test -f brief.md && wc -l brief.md", 1, ""],
     ])(
       "calls a non-zero exit a failure even with nothing on stderr (%s)",
       (command, exitCode, stdout) => {
@@ -884,6 +883,8 @@ describe("ToolResult", () => {
       "[ -d drafts ]",
       "cat a.txt | grep -q x",
       "diff old.csv new.csv",
+      "grep -q TBD brief.md && echo found",
+      "test -f brief.md && wc -l brief.md",
     ])(
       "does not call an expected 'no' (exit 1 from %s) a failure",
       (command) => {

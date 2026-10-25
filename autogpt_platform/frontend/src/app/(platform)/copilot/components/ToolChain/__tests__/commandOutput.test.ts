@@ -130,31 +130,48 @@ describe("stepFailed", () => {
     expect(stepFailed(null, exit(1))).toBe(true);
   });
 
-  it("lets through only exit 1 from a predicate command that runs last", () => {
+  it("reads exit 1 with nothing on stderr from a test-style command as a 'no'", () => {
     expect(stepFailed("grep -q TBD brief.md", exit(1))).toBe(false);
     expect(stepFailed("cd drafts; test -f brief.md", exit(1))).toBe(false);
     expect(stepFailed("ls drafts\ntest -f brief.md", exit(1))).toBe(false);
     expect(stepFailed("! [ -d drafts ]", exit(1))).toBe(false);
     expect(stepFailed("grep -q TBD brief.md", exit(2))).toBe(true);
-    expect(stepFailed("grep -q x a && wc -l a", exit(1))).toBe(true);
   });
 
-  it("calls exit 1 from an && or || chain a failure: any link may have set it", () => {
-    expect(stepFailed("cd drafts && test -f brief.md", exit(1))).toBe(true);
-    expect(stepFailed("cd missing && grep -q TBD brief.md", exit(1))).toBe(
-      true,
-    );
+  it("reads a test-style && or || chain that exits 1 quietly as a 'no'", () => {
     expect(stepFailed("grep -q TBD brief.md && echo found", exit(1))).toBe(
-      true,
+      false,
     );
-    expect(stepFailed("test -f a || grep -q x b", exit(1))).toBe(true);
+    expect(stepFailed("cd drafts && test -f brief.md", exit(1))).toBe(false);
+    expect(stepFailed("test -f a || grep -q x b", exit(1))).toBe(false);
+    expect(stepFailed("grep -q x a && wc -l a", exit(1))).toBe(false);
+  });
+
+  it("calls a step that complained on stderr a failure, test-style or not", () => {
+    const complained = (stderr: string, code = 1) => ({
+      stdout: "",
+      stderr,
+      exit_code: code,
+    });
+    expect(
+      stepFailed(
+        "cd missing && grep -q TBD brief.md",
+        complained("cd: missing: No such file or directory"),
+      ),
+    ).toBe(true);
+    expect(
+      stepFailed(
+        "grep -q TBD gone.md",
+        complained("grep: gone.md: No such file", 2),
+      ),
+    ).toBe(true);
   });
 
   it("reads a quoted | or ; as part of the argument, not a new command", () => {
     expect(stepFailed('grep -Eq "TBD|TODO" brief.md', exit(1))).toBe(false);
     expect(stepFailed("grep -q 'a;b' notes.txt", exit(1))).toBe(false);
     expect(stepFailed('cat log | grep -q "x|y"', exit(1))).toBe(false);
-    expect(stepFailed('grep -q "a|b" f && ./publish.sh', exit(1))).toBe(true);
+    expect(stepFailed('grep -q "a|b" f; ./publish.sh', exit(1))).toBe(true);
     expect(stepFailed("grep -q TBD brief.md 2>&1", exit(1))).toBe(false);
     expect(stepFailed("grep -q x\\;y notes.txt", exit(1))).toBe(false);
     expect(stepFailed("sleep 5 & ./sync.sh", exit(1))).toBe(true);
