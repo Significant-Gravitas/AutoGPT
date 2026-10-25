@@ -2,7 +2,10 @@
 
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
-import { IconStarFilled, IconMore } from "@/components/__legacy__/ui/icons";
+import {
+  MoreVerticalGlyph,
+  StarFilledGlyph,
+} from "@/components/atoms/Icon/drawnIcons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Status } from "@/components/__legacy__/Status";
 import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
@@ -88,7 +91,11 @@ export const AgentTableCard = ({
           // TODO(tokens): no exact role (hover:bg-neutral-100 #F5F5F5, dark:hover:bg-neutral-700)
           className="h-fit rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700"
         >
-          <IconMore
+          <Icon
+            icon={MoreVerticalGlyph}
+            aria-label="Icon"
+            viewBox="0 0 20 20"
+            strokeWidth={1.5}
             // TODO(tokens): no exact role (text-neutral-800 #262626, dark:text-neutral-200)
             className="h-5 w-5 text-neutral-800 dark:text-neutral-200"
           />
@@ -116,7 +123,9 @@ export const AgentTableCard = ({
           >
             {(rating ?? 0).toFixed(1)}
           </span>
-          <IconStarFilled
+          <Icon
+            icon={StarFilledGlyph}
+            aria-label="Icon"
             // TODO(tokens): no exact role (text-neutral-800 #262626, dark:text-neutral-200)
             className="h-4 w-4 text-neutral-800 dark:text-neutral-200"
           />

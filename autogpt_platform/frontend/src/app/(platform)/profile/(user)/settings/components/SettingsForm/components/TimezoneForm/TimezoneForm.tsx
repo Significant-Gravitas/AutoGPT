@@ -5,7 +5,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import {
   Form,
   FormControl,
@@ -52,7 +52,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
   });
 
   return (
-    <Card>
+    <Card variant="outlined">
       <CardHeader>
         <CardTitle>Timezone</CardTitle>
       </CardHeader>
