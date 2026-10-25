@@ -21,6 +21,7 @@ from backend.sdk import (
 from backend.util.request import HTTPClientError, HTTPServerError
 
 from ._api import (
+    AirtableWebhookEvent,
     WebhookFilters,
     WebhookSpecification,
     create_webhook,
@@ -130,7 +131,7 @@ class AirtableWebhookManager(BaseWebhooksManager):
         # Prepare webhook specification
         webhook_specification = WebhookSpecification(
             filters=WebhookFilters(
-                dataTypes=events,
+                dataTypes=[AirtableWebhookEvent(event) for event in events],
             )
         )
 
