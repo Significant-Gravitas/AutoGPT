@@ -47,6 +47,17 @@ async def test_an_error_found_once_the_redirect_uri_checks_out_goes_back_to_it()
     assert parse_qs(sent_to.query)["error"] == ["unsupported_response_type"]
 
 
+@pytest.mark.asyncio
+async def test_an_unexpected_failure_once_the_redirect_uri_checks_out_goes_back_to_it():
+    failing_issue = AsyncMock(side_effect=RuntimeError("database unavailable"))
+    with patch.object(oauth, "create_authorization_code", failing_issue):
+        response = await _authorize("active", REGISTERED, response_type="code")
+
+    sent_to = urlparse(response.redirect_url)
+    assert f"{sent_to.scheme}://{sent_to.netloc}{sent_to.path}" == REGISTERED
+    assert parse_qs(sent_to.query)["error"] == ["server_error"]
+
+
 async def _authorize(app_state: str, redirect_uri: str, *, response_type: str):
     app = None if app_state == "unknown" else _app(is_active=app_state == "active")
     with patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)):
