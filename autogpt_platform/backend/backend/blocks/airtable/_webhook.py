@@ -6,7 +6,6 @@ import base64
 import hashlib
 import hmac
 import logging
-from enum import Enum
 from typing import cast
 
 from fastapi import HTTPException, Request
@@ -30,12 +29,6 @@ from ._api import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class AirtableWebhookEvent(str, Enum):
-    TABLE_DATA = "tableData"
-    TABLE_FIELDS = "tableFields"
-    TABLE_METADATA = "tableMetadata"
 
 
 class AirtableWebhookManager(BaseWebhooksManager):
