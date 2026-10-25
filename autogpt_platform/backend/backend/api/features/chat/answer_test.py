@@ -157,6 +157,34 @@ def test_raising_the_cap_resumes_the_thread(seams, test_user_id):
     )
 
 
+def test_a_raise_reaches_the_turn_it_starts(seams, mocker: pytest_mock.MockerFixture):
+    """The turn the raise resumes reads its session from the cache, where the
+    turn that landed on the cap left the old cap. The cache goes before that
+    turn is dispatched, or it starts on the old cap and parks again at once."""
+    from backend.copilot import delegation_cap
+
+    order: list[str] = []
+    db = MagicMock(
+        raise_delegation_cap=AsyncMock(
+            side_effect=lambda *_a: order.append("row") or 7.0
+        )
+    )
+    mocker.patch.object(delegation_cap, "delegation_db", return_value=db)
+    mocker.patch.object(
+        delegation_cap,
+        "invalidate_session_cache",
+        AsyncMock(side_effect=lambda *_a: order.append("cache")),
+    )
+    mocker.patch.object(answer, "raise_cap", delegation_cap.raise_cap)
+    seams["schedule"].side_effect = lambda **_k: order.append("dispatch") or "turn-1"
+    _parked_on_cap(seams)
+
+    response = client.post("/sessions/sub-1/messages", json={"message": "Raise by $5"})
+
+    assert response.status_code == 200
+    assert order == ["row", "cache", "dispatch"]
+
+
 def test_a_refused_turn_leaves_the_cap_where_it_was(seams):
     """Admission runs before the raise: a 429 must not have spent the answer."""
     _parked_on_cap(seams)
