@@ -117,10 +117,40 @@ async def test_a_put_back_queues_it_again_unread(queue):
     assert await take_recording_read(client, **take, payload=IMAGE, pending_id="b")
 
     length = await put_back_unread(
-        client, **take, payload=IMAGE, pending_id="b", max_len=10, ttl_seconds=60
+        client,
+        **take,
+        payload=IMAGE,
+        pending_id="b",
+        enqueued_at=0.0,
+        max_len=10,
+        ttl_seconds=60,
     )
 
     assert length == 3
     assert await client.lrange(keys["queue_key"], 0, -1) == [BEFORE, AFTER, IMAGE]
     assert await _read(client, keys) == set()
     assert 0 < await client.ttl(keys["queue_key"]) <= 60
+
+
+async def test_a_put_back_returns_it_to_its_place_by_enqueue_time(queue):
+    client, keys = queue
+    take = {"queue_key": keys["queue_key"], "read_key": keys["read_key"]}
+    timed = [
+        json.dumps({"id": i, "enqueued_at": t})
+        for i, t in (("x", 1.0), ("y", 2.0), ("z", 3.0))
+    ]
+    await client.delete(keys["queue_key"])
+    await client.rpush(keys["queue_key"], *timed)
+    assert await take_recording_read(client, **take, payload=timed[1], pending_id="y")
+
+    await put_back_unread(
+        client,
+        **take,
+        payload=timed[1],
+        pending_id="y",
+        enqueued_at=2.0,
+        max_len=10,
+        ttl_seconds=60,
+    )
+
+    assert await client.lrange(keys["queue_key"], 0, -1) == timed

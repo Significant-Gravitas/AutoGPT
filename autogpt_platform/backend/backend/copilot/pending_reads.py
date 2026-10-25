@@ -59,9 +59,20 @@ return 1
 
 
 # KEYS: queue, read set. ARGV: the stored payload, its id, the queue's cap,
-# the queue's TTL.
+# the queue's TTL, its enqueue time. It goes back before the first message
+# queued after it, so turns still read the queue in the order it was typed.
 _PUT_BACK_UNREAD_LUA = """
-redis.call('RPUSH', KEYS[1], ARGV[1])
+local placed = false
+for _, item in ipairs(redis.call('LRANGE', KEYS[1], 0, -1)) do
+    local ok, entry = pcall(cjson.decode, item)
+    local at = ok and type(entry) == 'table' and tonumber(entry['enqueued_at'])
+    if at and at > tonumber(ARGV[5]) then
+        redis.call('LINSERT', KEYS[1], 'BEFORE', item, ARGV[1])
+        placed = true
+        break
+    end
+end
+if not placed then redis.call('RPUSH', KEYS[1], ARGV[1]) end
 redis.call('LTRIM', KEYS[1], -tonumber(ARGV[3]), -1)
 redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
 redis.call('SREM', KEYS[2], ARGV[2])
@@ -131,12 +142,13 @@ async def put_back_unread(
     read_key: str,
     payload: str,
     pending_id: str,
+    enqueued_at: float,
     max_len: int,
     ttl_seconds: int,
 ) -> int:
-    """Append *payload* to the queue again and forget that *pending_id* was
-    read, at once, so it reads as waiting and never as read and gone.
-    Returns the queue's length."""
+    """Return *payload* to its place in the queue (by *enqueued_at*) and
+    forget that *pending_id* was read, at once, so it reads as waiting and
+    never as read and gone. Returns the queue's length."""
     result = await cast(
         "Any",
         redis.eval(
@@ -148,6 +160,7 @@ async def put_back_unread(
             pending_id,
             max_len,
             ttl_seconds,
+            enqueued_at,
         ),
     )
     return int(result)

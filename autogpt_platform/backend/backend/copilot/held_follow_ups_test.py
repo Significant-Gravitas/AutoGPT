@@ -194,6 +194,24 @@ async def test_a_refused_resend_puts_the_follow_up_back(
     assert not await was_pending_message_read("sess-1", status)
 
 
+@pytest.mark.asyncio
+async def test_a_refused_resend_goes_back_where_it_was_in_the_queue(
+    fake_redis: _FakeRedis,
+) -> None:
+    first, second, third = await _queued("status?", "and Monday", "and Tuesday")
+    await hold_follow_ups_at_turn_end("sess-1", "turn-1", "error")
+    taken = await take_follow_up("sess-1", second)
+
+    await restore_held_follow_up("sess-1", taken)
+
+    # The next turn reads them in the order they were typed.
+    assert [m.id for m in await peek_pending_messages("sess-1")] == [
+        first,
+        second,
+        third,
+    ]
+
+
 @pytest.mark.parametrize(
     "failed, cancelled, paused, reason",
     [

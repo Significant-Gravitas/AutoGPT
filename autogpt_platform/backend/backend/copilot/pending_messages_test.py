@@ -142,10 +142,10 @@ class _FakeRedis:
         *keys_and_args: Any,
     ) -> int | list[str | bytes]:
         keys, args = keys_and_args[:numkeys], keys_and_args[numkeys:]
-        if "cjson.decode" in script:
-            return self._pop_recording_reads(*keys, *args)
         if "SREM" in script:
             return self._put_back_unread(*keys, *args)
+        if "cjson.decode" in script:
+            return self._pop_recording_reads(*keys, *args)
         if "LREM" in script:
             return self._take_recording_read(*keys, *args)
         [key] = keys
@@ -191,10 +191,16 @@ class _FakeRedis:
         pending_id: str,
         max_len: int,
         ttl: int,
+        enqueued_at: float,
     ) -> int:
         """``pending_reads.put_back_unread``, in one step like the Lua."""
         lst = self.lists.setdefault(key, [])
-        lst.append(payload)
+        later = [
+            index
+            for index, item in enumerate(lst)
+            if json.loads(item).get("enqueued_at", 0) > float(enqueued_at)
+        ]
+        lst.insert(later[0] if later else len(lst), payload)
         self.lists[key] = lst[-int(max_len) :]
         self.ttls[key] = int(ttl)
         self.sets.get(read_key, set()).discard(pending_id)

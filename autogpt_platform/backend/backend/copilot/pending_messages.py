@@ -527,8 +527,9 @@ async def take_pending_message_by_id(
 
 
 async def put_back_pending_message(session_id: str, message: PendingMessage) -> None:
-    """Return a message taken by id to the queue, unread again in the same
-    step: a refused resend leaves it waiting, never read and gone."""
+    """Return a message taken by id to its place in the queue, unread again
+    in the same step: a refused resend leaves it waiting where it was, never
+    read and gone."""
     redis = await get_redis_async()
     await put_back_unread(
         redis,
@@ -536,6 +537,7 @@ async def put_back_pending_message(session_id: str, message: PendingMessage) -> 
         read_key=_read_key(session_id),
         payload=message.model_dump_json(),
         pending_id=message.id,
+        enqueued_at=message.enqueued_at,
         max_len=MAX_PENDING_MESSAGES,
         ttl_seconds=PENDING_TTL_SECONDS,
     )
