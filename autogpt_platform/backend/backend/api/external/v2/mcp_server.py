@@ -454,7 +454,12 @@ def _create_tool_handler(
         # comes back as a setup card, and an ambiguous one as a question.
         set_turn_unattended(session, scheduled=False)
 
-        result = await _execute_tool_sync(tool, user_id, session, kwargs)
+        try:
+            result = await _execute_tool_sync(tool, user_id, session, kwargs)
+        except Exception:
+            # As in chat: the caller gets no internal exception text.
+            logger.exception(f"MCP tool {tool.name} failed")
+            raise ToolError(f"{tool.name} failed unexpectedly; retry shortly")
 
         parts = []
         for block in result.get("content", []):

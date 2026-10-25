@@ -109,9 +109,16 @@ async def create_preset(
 ) -> AgentPreset:
     """Create a new preset with saved inputs and credentials for an agent.
 
-    The inputs may leave out required ones, which a run then supplies.
+    The inputs may leave out required ones, which a run then supplies. An
+    active preset of an agent with a webhook trigger also needs `RUN_AGENT`.
     """
     graph = await _graph_in_tenant(request.graph_id, request.graph_version, auth)
+    if (
+        request.is_active
+        and graph.webhook_input_node
+        and APIKeyPermission.RUN_AGENT not in auth.scopes
+    ):
+        raise _run_permission_missing()
     assert_inputs_match(graph.input_schema, request.inputs, partial=True)
 
     preset = await library_db.create_preset(
@@ -190,15 +197,15 @@ async def update_preset(
 
     New `inputs` or `credentials_inputs` on a webhook trigger re-register its
     webhook; whichever the request leaves out keeps its saved value, and new
-    inputs keep the secret settings in its `hidden_inputs` unless they set them. Setting
-    `is_active` to true also needs `RUN_AGENT`: an active trigger starts runs.
+    inputs keep the secret settings in its `hidden_inputs` unless they set them.
+    Setting `is_active` to true, or reconfiguring a trigger that stays active,
+    also needs `RUN_AGENT`: an active trigger starts runs.
     """
-    if request.is_active and APIKeyPermission.RUN_AGENT not in auth.scopes:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Missing required permission(s): RUN_AGENT",
-        )
     current = await _preset_in_tenant(preset_id, auth)
+    if APIKeyPermission.RUN_AGENT not in auth.scopes and await _leaves_a_live_trigger(
+        request, current, auth.user_id
+    ):
+        raise _run_permission_missing()
 
     inputs = request.inputs
     credentials = request.credentials_inputs
@@ -324,6 +331,30 @@ async def execute_preset(
             raise ConflictError(str(e)) from e
         await claim.record(result.id)
         return AgentGraphRun.from_internal(result)
+
+
+async def _leaves_a_live_trigger(
+    request: AgentPresetUpdateRequest, current: LibraryAgentPreset, user_id: str
+) -> bool:
+    """Whether the update turns the preset on, or re-registers the webhook of a
+    trigger that stays on."""
+    if request.is_active:
+        return True
+    if request.is_active is False or not current.is_active:
+        return False
+    if request.inputs is None and request.credentials_inputs is None:
+        return False
+    graph = await graph_db.get_graph(
+        current.graph_id, current.graph_version, user_id=user_id
+    )
+    return bool(graph and graph.webhook_input_node)
+
+
+def _run_permission_missing() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Missing required permission(s): RUN_AGENT",
+    )
 
 
 async def _preset_in_tenant(preset_id: str, auth: TenantContext) -> LibraryAgentPreset:

@@ -144,7 +144,7 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 | `READ_CREDITS` | Read the credit balance, transactions, invoices, subscription and cost summary. |
 | `USE_TOOLS` | MCP tools that act from platform infrastructure: web search (which counts against your AutoPilot usage allowance), web fetch and searching feature requests. |
 
-Three endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, `POST /library/presets/setup-trigger` needs `WRITE_LIBRARY` and `RUN_AGENT`, because a webhook trigger starts runs, and sharing a run needs `READ_RUN` and `SHARE_RUN`. For the same reason, `PATCH /library/presets/{preset_id}` with `is_active: true` needs `RUN_AGENT` as well as `WRITE_LIBRARY`.
+Three endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, `POST /library/presets/setup-trigger` needs `WRITE_LIBRARY` and `RUN_AGENT`, because a webhook trigger starts runs, and sharing a run needs `READ_RUN` and `SHARE_RUN`. For the same reason, `RUN_AGENT` is needed as well as `WRITE_LIBRARY` by `PATCH /library/presets/{preset_id}` when it sets `is_active: true` or gives an active trigger new `inputs` or `credentials_inputs`, and by `POST /library/presets` for an active preset of an agent with a webhook trigger.
 
 A webhook trigger's secret settings, such as a generic webhook's `secret_token`, are returned only by the request that creates the trigger. Later reads list them in `hidden_inputs` and leave them out of `inputs`; an update that leaves them out keeps them.
 

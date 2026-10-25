@@ -249,6 +249,29 @@ async def test_team_pinned_key_resolves_to_its_team(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "team_member",
+    [
+        None,
+        Mock(status="INACTIVE", Team=Mock(orgId=ORG_A)),
+        Mock(status="ACTIVE", Team=Mock(orgId=ORG_B)),
+    ],
+    ids=["removed", "inactive", "team-moved-orgs"],
+)
+async def test_team_pinned_key_is_rejected_once_its_team_membership_ends(
+    mocker: pytest_mock.MockFixture, team_member: Mock | None
+) -> None:
+    """Leaving a team must disable the keys pinned to it."""
+    prisma = _mock_membership(mocker, org_id=ORG_A)
+    prisma.teammember.find_unique = AsyncMock(return_value=team_member)
+
+    with pytest.raises(NotAuthorizedError):
+        await resolve_tenant(
+            _credential(organization_id=ORG_A, team_id_restriction=TEAM_A)
+        )
+
+
+@pytest.mark.asyncio
 async def test_key_without_org_falls_back_to_the_personal_org_at_org_home(
     mocker: pytest_mock.MockFixture,
 ) -> None:

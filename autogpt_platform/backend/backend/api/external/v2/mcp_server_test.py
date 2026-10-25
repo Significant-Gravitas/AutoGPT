@@ -1,6 +1,7 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
 import json
+import logging
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -680,3 +681,32 @@ def test_a_single_bearer_credential_is_accepted() -> None:
     assert not _ambiguous_credentials(
         {"type": "http", "headers": [(b"authorization", b"Bearer agpt_a")]}
     )
+
+
+async def test_a_tool_that_fails_unexpectedly_returns_no_internal_text(
+    mocker: pytest_mock.MockerFixture,
+    no_tenancy_lookups: mock.AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    """The failure is logged here; the client gets a generic error."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("get_agent_building_guide")),
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_calls.is_user_paywalled",
+        new_callable=mock.AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server._execute_tool_sync",
+        new_callable=mock.AsyncMock,
+        side_effect=RuntimeError("relation /srv/internal.sql does not exist"),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        result = await _call("get_agent_building_guide", {})
+
+    assert result.isError
+    assert "internal.sql" not in result.content[0].text
+    assert "internal.sql" in caplog.text

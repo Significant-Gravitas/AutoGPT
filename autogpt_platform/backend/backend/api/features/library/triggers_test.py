@@ -384,15 +384,16 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failing", ["update", "set_webhook"])
 @pytest.mark.parametrize("registered, pruned", [("wh-new", True), ("wh-old", False)])
 async def test_a_failed_update_prunes_only_the_webhook_it_registered(
-    registered, pruned
+    failing, registered, pruned
 ):
-    """The new webhook is attached after the update, so a failed update would
-    leave it registered with the provider and attached to nothing."""
+    """The new webhook is attached last, so a failure before that would leave
+    it registered with the provider and attached to nothing."""
     current = _preset(webhook_id="wh-old")
     with _update_patches(current=current, webhook=MagicMock(id=registered)) as m:
-        m["update"].side_effect = RuntimeError("database down")
+        m[failing].side_effect = RuntimeError("database down")
         with pytest.raises(RuntimeError):
             await update_triggered_preset(
                 user_id=_USER,
@@ -400,7 +401,6 @@ async def test_a_failed_update_prunes_only_the_webhook_it_registered(
                 inputs={"repo": "owner/repo"},
                 credentials={},
             )
-    m["set_webhook"].assert_not_awaited()
     assert m["prune"].await_args_list == ([call(_USER, registered)] if pruned else [])
 
 

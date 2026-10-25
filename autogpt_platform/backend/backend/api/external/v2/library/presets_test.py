@@ -34,6 +34,7 @@ ORG = "org-1"
 SECRET = "whsec-do-not-leak"
 PROVIDER_HOOK_ID = "provider-hook-do-not-leak"
 TRIGGER_SECRET = "delivery-secret-do-not-leak"
+RUNNER = [APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT]
 NEW_CREDENTIALS = {
     "github_credentials": CredentialsMetaInput(
         id="cred-2", provider="github", type="api_key", title="GitHub"
@@ -83,7 +84,7 @@ async def test_new_trigger_inputs_re_register_the_webhook_with_saved_credentials
     await presets.update_preset(
         request=AgentPresetUpdateRequest(inputs={"repo": "a/b"}),
         preset_id=current.id,
-        auth=_key(),
+        auth=_key(RUNNER),
     )
 
     assert update.await_args.kwargs["inputs"] == {"repo": "a/b"}
@@ -189,7 +190,7 @@ async def test_a_preset_for_a_graph_a_hired_expert_installed_is_that_expert_s(
     mocker.patch(
         "backend.data.graph.get_graph",
         new_callable=AsyncMock,
-        return_value=Mock(input_schema={"properties": {}}),
+        return_value=Mock(input_schema={"properties": {}}, webhook_input_node=None),
     )
     save = mocker.patch(
         (
@@ -306,7 +307,7 @@ async def test_an_update_that_leaves_out_a_hidden_setting_keeps_it(
     updated = await presets.update_preset(
         request=AgentPresetUpdateRequest(inputs={"constants": {"a": 2}}),
         preset_id="p-1",
-        auth=_key(),
+        auth=_key(RUNNER),
     )
 
     assert update.await_args.kwargs["inputs"] == {
@@ -345,11 +346,106 @@ async def test_turning_a_preset_on_needs_the_run_permission(
 
 
 @pytest.mark.parametrize(
+    "is_active, trigger_graph, request_active, refused",
+    [
+        (True, True, None, True),
+        (True, True, False, False),
+        (True, False, None, False),
+        (False, True, None, False),
+    ],
+    ids=["arms-a-trigger", "turns-it-off", "not-a-trigger", "stays-off"],
+)
+async def test_new_inputs_on_a_trigger_that_stays_on_need_the_run_permission(
+    mocker: pytest_mock.MockFixture,
+    is_active: bool,
+    trigger_graph: bool,
+    request_active: bool | None,
+    refused: bool,
+):
+    """New inputs register its webhook, and an active trigger starts runs."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_preset().model_copy(update={"is_active": is_active}),
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(webhook_input_node=Mock() if trigger_graph else None),
+    )
+    update = mocker.patch(
+        "backend.api.features.library.triggers.update_triggered_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(),
+    )
+    request = AgentPresetUpdateRequest(inputs={"repo": "a/b"}, is_active=request_active)
+    writer = _key([APIKeyPermission.WRITE_LIBRARY])
+
+    if not refused:
+        await presets.update_preset(request=request, preset_id="p-1", auth=writer)
+        update.assert_awaited_once()
+        return
+    with pytest.raises(HTTPException) as refusal:
+        await presets.update_preset(request=request, preset_id="p-1", auth=writer)
+    assert refusal.value.status_code == 403
+    update.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "trigger_graph, is_active, refused",
+    [(True, True, True), (True, False, False), (False, True, False)],
+    ids=["active-trigger", "inactive-trigger", "not-a-trigger"],
+)
+async def test_creating_an_active_trigger_preset_needs_the_run_permission(
+    mocker: pytest_mock.MockFixture,
+    trigger_graph: bool,
+    is_active: bool,
+    refused: bool,
+):
+    """New inputs would then arm it, and turning it on needs the permission."""
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(
+            input_schema={"properties": {}},
+            webhook_input_node=Mock() if trigger_graph else None,
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    create = mocker.patch(
+        "backend.api.features.library.db.create_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(),
+    )
+    request = AgentPresetCreateRequest(
+        name="Preset", graph_id="graph-1", graph_version=1, is_active=is_active
+    )
+    writer = _key([APIKeyPermission.WRITE_LIBRARY])
+
+    if not refused:
+        await presets.create_preset(request=request, auth=writer)
+        create.assert_awaited_once()
+        return
+    with pytest.raises(HTTPException) as refusal:
+        await presets.create_preset(request=request, auth=writer)
+    assert refusal.value.status_code == 403
+    create.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
     "args, needed",
     [
         ({"preset_id": "p-1", "is_active": True}, [APIKeyPermission.RUN_AGENT]),
         ({"preset_id": "p-1", "is_active": False}, []),
         ({"preset_id": "p-1", "name": "x"}, []),
+        # New inputs re-register a trigger's webhook, and the tool can't see
+        # the graph before it runs.
+        ({"preset_id": "p-1", "inputs": {"a": 1}}, [APIKeyPermission.RUN_AGENT]),
+        ({"preset_id": "p-1", "inputs": {"a": 1}, "is_active": False}, []),
     ],
 )
 def test_turning_a_preset_on_over_mcp_needs_the_run_permission(
@@ -376,7 +472,7 @@ async def test_new_inputs_on_a_preset_without_credentials_are_saved(
     await presets.update_preset(
         request=AgentPresetUpdateRequest(inputs={"topic": "x"}),
         preset_id="p-1",
-        auth=_key(),
+        auth=_key(RUNNER),
     )
 
     rows = stored.update.await_args.kwargs["data"]["InputPresets"]["create"]
@@ -427,7 +523,7 @@ async def test_new_inputs_on_a_trigger_without_credentials_move_it_to_its_new_we
     await presets.update_preset(
         request=AgentPresetUpdateRequest(inputs={"constants": {"a": 2}}),
         preset_id="p-1",
-        auth=_key(),
+        auth=_key(RUNNER),
     )
 
     attach.assert_awaited_once_with(USER_ID, "p-1", "hook-2")
@@ -451,7 +547,7 @@ async def test_new_credentials_alone_are_saved_with_the_saved_inputs(
     await presets.update_preset(
         request=AgentPresetUpdateRequest(credentials_inputs=NEW_CREDENTIALS),
         preset_id="p-1",
-        auth=_key(),
+        auth=_key(RUNNER),
     )
 
     rows = stored.update.await_args.kwargs["data"]["InputPresets"]["create"]
@@ -501,7 +597,7 @@ async def test_new_credentials_alone_move_a_trigger_keeping_its_secret_settings(
     await presets.update_preset(
         request=AgentPresetUpdateRequest(credentials_inputs=NEW_CREDENTIALS),
         preset_id="p-1",
-        auth=_key(),
+        auth=_key(RUNNER),
     )
 
     assert register.await_args.kwargs["trigger_config"]["secret_token"] == (
