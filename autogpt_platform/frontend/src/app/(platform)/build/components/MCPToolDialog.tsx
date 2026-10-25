@@ -483,7 +483,7 @@ export function MCPToolDialog({
                 variant="body-tight"
                 role="alert"
                 aria-live="polite"
-                className="text-red-700 dark:text-red-400"
+                className="text-error-foreground dark:text-red-400"
               >
                 {error}
               </Text>
@@ -618,7 +618,7 @@ function MCPToolCard({
           variant="body-semibold-tight"
           as="span"
           tone="inherit"
-          className="flex-1 dark:text-white"
+          className="flex-1 dark:text-action-foreground"
         >
           {tool.name}
         </Text>
