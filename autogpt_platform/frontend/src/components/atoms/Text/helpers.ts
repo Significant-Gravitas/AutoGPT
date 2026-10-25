@@ -61,6 +61,7 @@ export const variants = {
   "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
   // The sans sibling of caption-sm-mono: caption-sm (0.6875rem/1rem) as it is.
   "caption-sm": "font-sans text-caption-sm font-normal text-foreground-base",
+  "small-mono": "font-mono text-caption font-normal text-foreground-base",
 
   // Label Text
   label:
@@ -117,6 +118,7 @@ export const variantElementMap: Record<Variant, As> = {
   "lg-medium": "h3",
   "2xl-bold": "div",
   "caption-sm": "kbd",
+  "small-mono": "p",
   label: "span",
   eyebrow: "span",
 };
