@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from .models import ScoredResponse, StyleEvalResult
-from .plain_language import TOOL_NAMES, leaking_experts, technical_terms
+from .plain_language import (
+    TOOL_NAMES,
+    leaking_experts,
+    possible_technical_terms,
+    technical_terms,
+)
 from .runner import main, summarize_expert
 
 _TOOLS = frozenset({"run_capability", "bash_exec", "TodoWrite", "Read", "web_search"})
@@ -68,9 +73,23 @@ def test_common_subcommands_are_caught():
 
 
 def test_a_command_after_a_run_verb_is_caught():
-    reply = "I'm running cat brief now, then executing python3 report."
-    assert technical_terms(reply, _TOOLS) == ["cat brief", "python3 report"]
-    assert technical_terms("cat brief shows the dates.", _TOOLS) == ["cat brief"]
+    reply = "I'm running grep notes now, then executing python3 report."
+    assert technical_terms(reply, _TOOLS) == ["grep notes", "python3 report"]
+    assert technical_terms("jq orders shows the dates.", _TOOLS) == ["jq orders"]
+
+
+def test_a_bare_word_like_command_is_reported_but_never_fails_the_gate():
+    """ "Running cat brief" reads like a command; "ran head office numbers" is
+    prose. Bare, the two can't be told apart, so the gate stays on what is
+    certain and the eval reports the rest (SECRT-3158)."""
+    for reply, possible in [
+        ("I'm running cat brief now.", ["cat brief"]),
+        ("cat brief shows the dates.", ["cat brief"]),
+        ("I ran head office numbers for you.", ["head office"]),
+        ("Running export reports next.", ["export reports"]),
+    ]:
+        assert technical_terms(reply, _TOOLS) == []
+        assert possible_technical_terms(reply) == possible
 
 
 def test_a_command_in_inline_code_after_a_run_verb_is_caught():
@@ -87,9 +106,11 @@ def test_ordinary_words_after_a_run_verb_stay_plain():
     assert technical_terms(reply, _TOOLS) == []
 
 
-def test_a_command_that_is_also_a_word_still_counts_with_an_argument():
+def test_a_command_that_is_also_a_word_is_possible_with_an_argument():
     reply = "Running sort orders now. Running make build next."
-    assert technical_terms(reply, _TOOLS) == ["sort orders", "make build"]
+    assert technical_terms(reply, _TOOLS) == []
+    assert possible_technical_terms(reply) == ["sort orders", "make build"]
+    assert possible_technical_terms("Running sort on items now.") == []
 
 
 def test_a_product_name_ending_in_js_is_not_a_file():
@@ -108,6 +129,15 @@ def test_the_summary_counts_replies_that_leak():
         _row("Maya", "Called bash_exec", ["bash_exec"]),
     ]
     assert summarize_expert("Maya", rows).technical_replies == 2
+
+
+def test_the_summary_counts_possible_leaks_apart_from_the_gate():
+    row = _row("Maya", "Running cat brief now.", [])
+    row.possible_terms = ["cat brief"]
+    summary = summarize_expert("Maya", [row])
+    assert summary.possible_technical_replies == 1
+    assert summary.technical_replies == 0
+    assert leaking_experts([summary]) == []
 
 
 def test_the_gate_names_every_expert_whose_replies_leak():

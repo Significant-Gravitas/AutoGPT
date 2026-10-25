@@ -48,14 +48,25 @@ _FUNCTION_WORDS = (
     "this|that|these|those|my|your|our|their|its|all|any|some"
 )
 _ARG = r"[\w~/-]+(?:\.[\w~/-]+)*"
-# A command and its argument in command position: opening a line or sentence
-# ("cat brief shows…") or right after a run verb ("I'm running cat brief"),
-# bare or quoted as inline code ("I ran `cat brief`"). Prepositions such as
-# "with" are left out: "listings with cat food" is prose.
-_COMMAND_POSITION = re.compile(
+# Command position: opening a line or sentence, or right after a run verb.
+# Prepositions such as "with" are left out: "listings with cat food" is prose.
+_POSITION = (
     r"(?:^|(?<=[.!?]\s)|\b(?:[Rr]un(?:s|ning)?|[Rr]an|[Ee]xecut(?:e|es|ed|ing)"
-    r"|[Cc]all(?:s|ed|ing)?)\s+)[`'\"]?"
-    rf"((?:{_CODE_ONLY})\s+{_ARG}|(?:{_WORDLIKE})\s+(?!(?:{_FUNCTION_WORDS})\b){_ARG})",
+    r"|[Cc]all(?:s|ed|ing)?)\s+)"
+)
+# Certain, and so gating: a code-only command with its argument, bare or
+# quoted ("I'm running grep notes"), or any command quoted as inline code
+# ("I ran `cat brief`").
+_COMMAND_POSITION = re.compile(
+    _POSITION + rf"(?:[`'\"]((?:{_WORDLIKE}|{_CODE_ONLY})\s+{_ARG})"
+    rf"|((?:{_CODE_ONLY})\s+{_ARG}))",
+    re.MULTILINE,
+)
+# Possible, and so only reported: a bare everyday-word command before an
+# argument. "Running cat brief" and "ran head office numbers" read the same,
+# so a gate on this would fail runs on prose.
+_POSSIBLE_COMMAND = re.compile(
+    _POSITION + rf"((?:{_WORDLIKE})\s+(?!(?:{_FUNCTION_WORDS})\b){_ARG})",
     re.MULTILINE,
 )
 _UUID = re.compile(
@@ -76,9 +87,16 @@ def technical_terms(text: str, tool_names: Iterable[str]) -> list[str]:
     for pattern in (_CAPABILITY_ID, _tool_pattern(tool_names), _PATH, _FILE_NAME):
         found += pattern.findall(remaining)
         remaining = pattern.sub(" ", remaining)
-    found += _COMMAND.findall(remaining) + _COMMAND_POSITION.findall(remaining)
+    found += _COMMAND.findall(remaining)
+    found += [m[1] or m[2] for m in _COMMAND_POSITION.finditer(remaining)]
     found += _UUID.findall(remaining)
     return list(dict.fromkeys(found))
+
+
+def possible_technical_terms(text: str) -> list[str]:
+    """Commands that are also everyday words, bare in command position: worth
+    reading, not proof of a leak, so the eval reports them without gating."""
+    return list(dict.fromkeys(_POSSIBLE_COMMAND.findall(_LINK.sub(_link_label, text))))
 
 
 def _link_label(link: re.Match[str]) -> str:

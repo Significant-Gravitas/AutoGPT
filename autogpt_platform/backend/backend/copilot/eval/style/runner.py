@@ -60,7 +60,12 @@ from .models import (
     Separation,
     StyleEvalResult,
 )
-from .plain_language import TOOL_NAMES, leaking_experts, technical_terms
+from .plain_language import (
+    TOOL_NAMES,
+    leaking_experts,
+    possible_technical_terms,
+    technical_terms,
+)
 from .scorer import judge_response, response_score
 
 logger = logging.getLogger(__name__)
@@ -284,6 +289,7 @@ async def generate(
         )
         row.response, row.truncated = turn.text, turn.truncated
         row.technical_terms = technical_terms(turn.text, TOOL_NAMES)
+        row.possible_terms = possible_technical_terms(turn.text)
         row.generation, row.tool_calls = turn.usage, turn.tool_calls
         row.rounds, row.hit_round_cap = turn.rounds, turn.hit_round_cap
         if turn.hit_round_cap:
@@ -488,6 +494,7 @@ def summarize_expert(name: str, rows: list[ScoredResponse]) -> ExpertSummary:
         tool_calls=sum(len(r.tool_calls) for r in own),
         round_cap_hits=sum(1 for r in own if r.hit_round_cap),
         technical_replies=sum(1 for r in own if r.technical_terms),
+        possible_technical_replies=sum(1 for r in own if r.possible_terms),
     )
 
 
@@ -576,6 +583,7 @@ def print_summary(result: StyleEvalResult, out: Path) -> None:
             f"min {s.scores.min:6.2f}  n {s.scores.n:3d}  below60 {s.below_60}  "
             f"errors {s.errors}  tool calls {s.tool_calls}  "
             f"cap hits {s.round_cap_hits}  technical {s.technical_replies}  "
+            f"possible {s.possible_technical_replies}  "
             f"[{kinds}]"
         )
     if result.separation:

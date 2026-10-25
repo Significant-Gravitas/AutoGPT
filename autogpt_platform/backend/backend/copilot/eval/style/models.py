@@ -93,6 +93,8 @@ class ScoredResponse(BaseModel):
     hit_round_cap: bool = False
     # Tool names, paths, commands or ids the reply shows the user.
     technical_terms: list[str] = []
+    # Bare everyday-word commands ("running cat brief"): reported, not gated.
+    possible_terms: list[str] = []
     judgement: Judgement | None = None
     score: float | None = None
     error: str | None = None
@@ -121,6 +123,7 @@ class ExpertSummary(BaseModel):
     tool_calls: int = 0
     round_cap_hits: int = 0
     technical_replies: int = 0
+    possible_technical_replies: int = 0
 
 
 class PairedAdvantage(BaseModel):
