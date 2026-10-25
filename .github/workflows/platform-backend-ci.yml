@@ -17,6 +17,8 @@ on:
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
+      # The chat's technical-terms rules, which the expert style eval reads.
+      - "autogpt_platform/frontend/src/app/(platform)/copilot/components/ToolChain/technicalTerms.json"
   pull_request:
     branches: [master, dev, release-*]
     paths:
@@ -33,6 +35,8 @@ on:
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
+      # The chat's technical-terms rules, which the expert style eval reads.
+      - "autogpt_platform/frontend/src/app/(platform)/copilot/components/ToolChain/technicalTerms.json"
   merge_group:
   # On-demand run of the full backend test + coverage suite for any branch.
   # Useful when a branch's changes don't match the paths filter above (so the

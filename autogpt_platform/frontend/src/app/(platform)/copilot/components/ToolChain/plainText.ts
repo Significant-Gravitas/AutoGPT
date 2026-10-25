@@ -1,86 +1,88 @@
-// Shell commands, matched by the forms they take rather than as bare words,
-// so "the cat food listings" or "the head office rota" stay plain text.
-// Commands that are also everyday words ("sort", "export", "find") count as a
-// command only before an argument, never before a function word: "Running
-// sort on items" is prose, "Running sort orders" is a command.
-const WORDLIKE =
-  "cat|head|tail|less|sort|cut|tr|find|touch|ln|zip|node|make|echo|export";
-const CODE_ONLY =
-  "wc|uniq|xargs|rm|cp|mv|tar|unzip|gzip|wget|curl|ssh|scp|rsync|python3?|pip3?|npm|pnpm|yarn|git|docker|chmod|chown|mkdir|sudo|sed|awk|grep|bash|sh|ls|cd|printf|jq";
-const SHELL = `${WORDLIKE}|${CODE_ONLY}`;
-const FUNCTION_WORDS =
-  "on|of|for|to|the|a|an|and|or|in|at|by|from|with|into|about|over|through|this|that|these|those|my|your|our|their|its|all|any|some";
+import rules from "./technicalTerms.json";
 
-// Verbs that put the next word in command position. Prepositions such as
-// "with" are left out: "listings with cat food photos" is prose.
-const RUN_VERB =
-  "(?:[Rr]un(?:s|ning)?|[Rr]an|[Ee]xecut(?:e|es|ed|ing)|[Cc]all(?:s|ed|ing)?)";
+// The rules live in technicalTerms.json, shared with the expert style eval
+// (backend copilot/eval/style/plain_language.py), which renders and applies
+// them the same way: what the chat hides is what the eval fails a reply for.
+// Both test suites run the file's examples.
 
-const TECHNICAL_PATTERNS = [
-  // Paths: "~/x", "./x", "/x", or any token with two slashes in it.
-  /(?:^|\s)[~.]?\/\w/,
-  /\S+\/\S*\//,
-  /\b[\w-]+\.(?:md|csv|tsv|jsonl?|py|sh|txt|ya?ml|toml|html|log|xlsx)\b/i,
-  // A script by its file name ("index.js"); "Next.js" or "Node.js" is a
-  // product name, not a file.
-  /\b[a-z0-9_][\w-]*\.(?:js|ts)\b/,
-  /`/,
-  /&&|\|\||\s\|\s|\$\(/,
-  /\b(?:sed|awk|grep|mkdir|chmod|sudo|curl|npm|pip3?|bash)\b|\bcd\s|\bls\b/,
-  // A command with a flag or a path after it: "head -n 5", "wc -l", "cp ./a".
-  new RegExp(`\\b(?:${SHELL})\\s+(?:-{1,2}\\w|[~./])`),
-  /\bgit\s+(?:status|log|diff|add|commit|push|pull|clone|checkout|branch|show|stash|reset|merge|rebase)\b/,
-  /\b(?:npm|pnpm|yarn|pip3?)\s+(?:install|run|ci|add)\b/,
-  // A command and its argument in command position: opening the text ("cat
-  // brief") or right after a run verb ("Running cat brief", "ran head …").
-  new RegExp(
-    `(?:^|\\b${RUN_VERB}\\s+)(?:(?:${CODE_ONLY})\\s+\\S|(?:${WORDLIKE})\\s+(?!(?:${FUNCTION_WORDS})\\b)\\S)`,
-  ),
-  // Tool and argument names: snake_case identifiers.
-  /\b[a-z]+_[a-z_]+\b/,
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
-];
+type Tier = "certain" | "possible";
 
-// Two words joined by a slash that are ordinary writing, not a folder and a
-// file ("reports/brief"). "24/7" and "Instagram/Shopify" never look like a
-// path in the first place: a path pair is two lowercase words.
-const PROSE_PAIRS = new Set([
-  "and/or",
-  "he/she",
-  "his/her",
-  "him/her",
-  "she/he",
-  "they/them",
-  "yes/no",
-  "pros/cons",
-  "input/output",
-  "inputs/outputs",
-  "read/write",
-  "on/off",
-  "true/false",
-  "before/after",
-  "either/or",
-  "in/out",
-  "up/down",
-  "start/end",
-  "open/close",
-  "buy/sell",
-  "online/offline",
-]);
-const SLASH_PAIR = /\b([a-z][\w-]*)\/([a-z][\w-]*)\b/g;
+const WORDS: Record<string, string[]> = rules.words;
+const FRAGMENTS: Record<string, string> = rules.fragments;
+const PLACEHOLDER = /\{([A-Z_]+)(?::(exact|noabbr))?\}/g;
+const ABBREVIATION_LETTERS = 3;
+
+const SOURCES: Record<Tier, string[]> = {
+  certain: rules.certain.map((rule) => render(rule.pattern)),
+  possible: rules.possible.map((rule) => render(rule.pattern)),
+};
+const TESTS = [...SOURCES.certain, ...SOURCES.possible].map(
+  (source) => new RegExp(source, "m"),
+);
 
 /** Whether text a business owner would see names a path, file, shell
- *  command, tool name or internal id: detail that belongs behind "Show
- *  technical details", never in a label or a summary. */
+ *  command, tool name or internal id, in any case: detail that belongs
+ *  behind "Show technical details", never in a label or a summary. A label
+ *  costs nothing to replace, so the possible rules count too. */
 export function looksTechnical(text: string): boolean {
-  return (
-    TECHNICAL_PATTERNS.some((pattern) => pattern.test(text)) ||
-    hasPathPair(text)
+  return TESTS.some((pattern) => pattern.test(text));
+}
+
+/** The terms each tier finds, in the order the rules run, once each: what
+ *  the eval reports for the same text. */
+export function findTechnicalTerms(text: string): Record<Tier, string[]> {
+  return {
+    certain: find(SOURCES.certain, text),
+    possible: find(SOURCES.possible, text),
+  };
+}
+
+function find(sources: string[], text: string): string[] {
+  const found: string[] = [];
+  let remaining = text;
+  for (const source of sources) {
+    const pattern = new RegExp(source, "gm");
+    for (const match of remaining.matchAll(pattern))
+      found.push(match.slice(1).find(Boolean) ?? match[0]);
+    remaining = remaining.replace(pattern, " ");
+  }
+  return [...new Set(found)];
+}
+
+function render(pattern: string): string {
+  const expanded = Object.entries(FRAGMENTS).reduce(
+    (result, [name, fragment]) => result.replaceAll(`{${name}}`, fragment),
+    pattern,
+  );
+  return expanded.replace(PLACEHOLDER, (_, name: string, mode?: string) =>
+    [...WORDS[name]]
+      .sort((a, b) => b.length - a.length)
+      .map((word) => wordPattern(word, mode ?? "any"))
+      .join("|"),
   );
 }
 
-function hasPathPair(text: string): boolean {
-  return [...text.matchAll(SLASH_PAIR)].some(
-    ([pair]) => !PROSE_PAIRS.has(pair.toLowerCase()),
-  );
+/** A word as written, or in any case. A short word in capitals ("CD", "RM")
+ *  reads as an abbreviation, so `noabbr` matches it only in lower or title
+ *  case. */
+function wordPattern(word: string, mode: string): string {
+  if (mode === "exact") return escape(word);
+  if (
+    mode === "noabbr" &&
+    word.replace(/[^A-Za-z]/g, "").length <= ABBREVIATION_LETTERS
+  ) {
+    const lower = word.toLowerCase();
+    return `(?:${escape(lower)}|${escape(lower.charAt(0).toUpperCase() + lower.slice(1))})`;
+  }
+  return [...word]
+    .map((char) =>
+      /[A-Za-z]/.test(char)
+        ? `[${char.toLowerCase()}${char.toUpperCase()}]`
+        : escape(char),
+    )
+    .join("");
+}
+
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 }

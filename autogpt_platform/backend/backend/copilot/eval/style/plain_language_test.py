@@ -1,12 +1,14 @@
 """The eval case for SECRT-3158: an expert's reply names no tool, file path,
 shell command or internal id. Pure checks, so they run without the roster."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from .models import ScoredResponse, StyleEvalResult
 from .plain_language import (
+    RULES_PATH,
     TOOL_NAMES,
     leaking_experts,
     possible_technical_terms,
@@ -15,6 +17,17 @@ from .plain_language import (
 from .runner import main, summarize_expert
 
 _TOOLS = frozenset({"run_capability", "bash_exec", "TodoWrite", "Read", "web_search"})
+
+
+@pytest.mark.parametrize(
+    "example",
+    json.loads(RULES_PATH.read_text())["examples"],
+    ids=lambda example: example["text"][:40],
+)
+def test_the_shared_examples_hold_here_as_in_the_chat(example):
+    """The chat's plainText.test.ts runs the same examples: one rule set."""
+    assert technical_terms(example["text"], ()) == example["certain"]
+    assert possible_technical_terms(example["text"]) == example["possible"]
 
 
 def test_a_plain_reply_passes():
@@ -28,7 +41,7 @@ def test_a_plain_reply_passes():
 
 def test_tool_names_are_caught_but_not_the_english_words_they_resemble():
     reply = "I'll call run_capability on the hire_expert tool, then Read the notes."
-    assert technical_terms(reply, _TOOLS) == ["run_capability"]
+    assert technical_terms(reply, _TOOLS) == ["run_capability", "hire_expert"]
     assert technical_terms("Updated the plan with `tool:list_schedules`.", _TOOLS) == [
         "tool:list_schedules"
     ]
@@ -165,6 +178,37 @@ def test_a_command_that_is_also_a_word_is_possible_with_an_argument():
 def test_a_product_name_ending_in_js_is_not_a_file():
     assert technical_terms("Your store runs on Next.js and Node.js.", _TOOLS) == []
     assert technical_terms("I updated index.js for you.", _TOOLS) == ["index.js"]
+
+
+@pytest.mark.parametrize(
+    "reply, terms",
+    [
+        ("Running Bash script now.", ["Bash script"]),
+        ("I Ran Git Status, then NPM Install.", ["Git Status", "NPM Install"]),
+        ("Running Sed -i on the brief.", ["Sed -i"]),
+        ("Calling Bash_Exec next.", ["Bash_Exec"]),
+        ("Executing Python3 report.", ["Python3 report"]),
+        ("Saved Brief.MD and Calendar.CSV.", ["Brief.MD", "Calendar.CSV"]),
+        ("Saved Index.JS.", ["Index.JS"]),
+        ("I ran `Cat brief`.", ["Cat brief"]),
+        ("Saved it to ~/Workspace/Drafts and /TMP.", ["~/Workspace/Drafts", "/TMP"]),
+    ],
+)
+def test_technical_terms_are_caught_whatever_the_case(reply, terms):
+    assert technical_terms(reply, _TOOLS) == terms
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Running the CD sales promo this week.",
+        "Ran the RM spend report.",
+        "Your store runs on Next.JS.",
+        "Running the Cat Food promo.",
+    ],
+)
+def test_capitalised_prose_stays_plain(reply):
+    assert technical_terms(reply, _TOOLS) == []
 
 
 def test_the_registry_names_are_the_ones_checked():

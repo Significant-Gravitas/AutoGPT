@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { looksTechnical } from "../plainText";
+import { findTechnicalTerms, looksTechnical } from "../plainText";
+import rules from "../technicalTerms.json";
 
 describe("looksTechnical", () => {
   it.each([
@@ -57,5 +58,44 @@ describe("looksTechnical", () => {
     "Updating the Node.js and Vue.js notes",
   ])("passes %j", (text) => {
     expect(looksTechnical(text)).toBe(false);
+  });
+});
+
+describe("looksTechnical whatever the case", () => {
+  it.each([
+    "Running Bash script",
+    "Ran Git Status",
+    "Running Sed -i on the brief",
+    "Calling Bash_exec",
+    "Running Python3 report",
+    "Checking Git Log for changes",
+    "Running CURL -fs on the feed",
+    "Saving Index.JS",
+    "Running NPM Install",
+    "Opening /TMP",
+  ])("flags %j", (text) => {
+    expect(looksTechnical(text)).toBe(true);
+  });
+
+  it.each([
+    "Running the CD sales promo",
+    "Ran the RM spend report",
+    "Running the Cat Food promo",
+    "Checking the Next.JS storefront",
+  ])("passes %j", (text) => {
+    expect(looksTechnical(text)).toBe(false);
+  });
+});
+
+describe("the rules shared with the expert style eval", () => {
+  // The backend's plain_language_test.py runs the same examples.
+  it.each(rules.examples)("hold for $text", (example) => {
+    expect(findTechnicalTerms(example.text)).toEqual({
+      certain: example.certain,
+      possible: example.possible,
+    });
+    expect(looksTechnical(example.text)).toBe(
+      example.certain.length + example.possible.length > 0,
+    );
   });
 });
