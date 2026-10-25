@@ -120,6 +120,24 @@ describe("setupPushSubscription", () => {
     expect(result).toBe(false);
     expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
   });
+
+  it("neither subscribes nor reports to the server once cancelled", async () => {
+    const result = await setupPushSubscription(() => true);
+    expect(result).toBe(false);
+    expect(mockSubscribeToPush).not.toHaveBeenCalled();
+    expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+  });
+
+  it("does not report a subscription to the server when cancelled while subscribing", async () => {
+    let cancelled = false;
+    mockSubscribeToPush.mockImplementation(async () => {
+      cancelled = true;
+      return mockSubscription;
+    });
+    const result = await setupPushSubscription(() => cancelled);
+    expect(result).toBe(false);
+    expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+  });
 });
 
 describe("teardownPushSubscription", () => {

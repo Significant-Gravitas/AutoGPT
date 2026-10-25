@@ -1,5 +1,6 @@
 "use client";
 
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useEffect, useRef, useState } from "react";
 import { setupPushSubscription, teardownPushSubscription } from "./helpers";
@@ -13,12 +14,15 @@ import type { PushSWMessage } from "./types";
  * 1. The browser supports Push API + Service Workers
  * 2. Notification permission is already "granted" (requested by copilot flow)
  * 3. The user is authenticated
+ * 4. The user has notifications switched on
  *
- * On logout, unsubscribes both locally and on the backend so the previous
- * user doesn't keep receiving OS notifications.
+ * Switching notifications off, or logging out, unsubscribes both locally and
+ * on the backend. The backend pushes to every subscription a user has, so
+ * keeping one would keep the OS notifications coming.
  */
 export function usePushNotifications() {
   const { user } = useAuth();
+  const isEnabled = useCopilotUIStore((s) => s.isNotificationsEnabled);
   const registeredRef = useRef(false);
   const wasAuthedRef = useRef(false);
   const [renewCount, setRenewCount] = useState(0);
@@ -26,16 +30,31 @@ export function usePushNotifications() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    if (user) {
+    let cancelled = false;
+
+    if (user && isEnabled) {
       wasAuthedRef.current = true;
       if (registeredRef.current) return;
-      setupPushSubscription()
+      setupPushSubscription(() => cancelled)
         .then((sent) => {
-          if (sent) registeredRef.current = true;
+          if (sent && !cancelled) registeredRef.current = true;
         })
         .catch((error) =>
           console.error("Push notification setup failed:", error),
         );
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (user) {
+      // Also runs on load, so a browser subscribed before this check existed
+      // drops its subscription the next time the app opens.
+      wasAuthedRef.current = true;
+      registeredRef.current = false;
+      teardownPushSubscription().catch((error) =>
+        console.error("Push notification teardown failed:", error),
+      );
       return;
     }
 
@@ -45,7 +64,7 @@ export function usePushNotifications() {
     teardownPushSubscription().catch((error) =>
       console.error("Push notification teardown failed:", error),
     );
-  }, [user, renewCount]);
+  }, [user, isEnabled, renewCount]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

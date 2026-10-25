@@ -14,7 +14,14 @@ import { withPushSubscriptionLock } from "./subscription-lock";
 const LOGOUT_TEARDOWN_TIMEOUT_MS = 3_000;
 const TEARDOWN_LOCK_WAIT_MS = 2_000;
 
-export async function setupPushSubscription(): Promise<boolean> {
+/**
+ * `isCancelled` lets the caller drop a setup the user has since overtaken, by
+ * switching notifications off or signing out. It is checked inside the lock,
+ * so a teardown that got the lock first is never undone by a late subscribe.
+ */
+export async function setupPushSubscription(
+  isCancelled: () => boolean = () => false,
+): Promise<boolean> {
   if (!isPushSupported()) return false;
   if (Notification.permission !== "granted") return false;
 
@@ -27,10 +34,10 @@ export async function setupPushSubscription(): Promise<boolean> {
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || (await fetchVapidPublicKey());
   if (!vapidKey) return false;
 
-  const subscription = await withPushSubscriptionLock(() =>
-    subscribeToPush(registration, vapidKey),
+  const subscription = await withPushSubscriptionLock(async () =>
+    isCancelled() ? null : subscribeToPush(registration, vapidKey),
   );
-  if (!subscription) return false;
+  if (!subscription || isCancelled()) return false;
 
   return sendSubscriptionToServer(subscription);
 }

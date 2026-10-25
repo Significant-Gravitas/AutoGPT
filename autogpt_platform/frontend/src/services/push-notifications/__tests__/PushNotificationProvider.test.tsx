@@ -354,6 +354,93 @@ describe("PushNotificationProvider", () => {
     });
   });
 
+  describe("notifications switch", () => {
+    it("removes a leftover subscription instead of subscribing when the switch is off", async () => {
+      notificationsEnabledMock.mockReturnValue(false);
+
+      render(<PushNotificationProvider />);
+
+      await waitFor(() => {
+        expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+      });
+      expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
+        mockSubscription.endpoint,
+      );
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
+      expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+    });
+
+    it("unsubscribes when the switch is turned off", async () => {
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalled();
+      });
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+
+      await waitFor(() => {
+        expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+      });
+      expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
+        mockSubscription.endpoint,
+      );
+    });
+
+    it("subscribes again when the switch is turned back on", async () => {
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(1);
+      });
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockUnsubscribeFromPush).toHaveBeenCalled();
+      });
+
+      notificationsEnabledMock.mockReturnValue(true);
+      rerender(<PushNotificationProvider />);
+
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it("does not subscribe when the switch is turned off while setup is still running", async () => {
+      delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      let resolveVapidKey: (key: string) => void = () => undefined;
+      mockFetchVapidPublicKey.mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveVapidKey = resolve;
+        }),
+      );
+      mockRegistration.pushManager.getSubscription = vi
+        .fn()
+        .mockResolvedValue(null);
+
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockFetchVapidPublicKey).toHaveBeenCalled();
+      });
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockRegistration.pushManager.getSubscription).toHaveBeenCalled();
+      });
+
+      resolveVapidKey("vapid-key-123");
+
+      await waitFor(() => {
+        expect(mockFetchVapidPublicKey).toHaveBeenCalledTimes(1);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
+      expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+    });
+  });
+
   describe("client URL reporting", () => {
     it("posts the current URL on mount", () => {
       render(<PushNotificationProvider />);

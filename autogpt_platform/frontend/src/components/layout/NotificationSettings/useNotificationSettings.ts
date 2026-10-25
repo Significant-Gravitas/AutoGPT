@@ -16,7 +16,8 @@ import {
  * our single app-level switch.
  *
  * We can never revoke a granted permission — "off" only ever means our own
- * flag. Once the user has denied at the browser level, the switch is inert
+ * flag, which also drops this browser's push subscription (see
+ * `usePushNotifications`). Once the user has denied at the browser level, the switch is inert
  * and the surface has to send them to their browser's site settings.
  */
 export function useNotificationSettings() {

@@ -6,7 +6,9 @@ import { useEffect } from "react";
 /**
  * Forwards the user's notification toggle to the push service worker so that
  * disabling notifications also suppresses OS-level pushes (which arrive
- * directly via FCM and bypass any in-page gating).
+ * directly via FCM and bypass any in-page gating) at once. It only covers
+ * the moment until `usePushNotifications` has removed the subscription, which
+ * is what actually stops them.
  *
  * SW state resets on every restart, so the hook also re-sends on mount and
  * on `controllerchange` to re-sync after updates/installs.
