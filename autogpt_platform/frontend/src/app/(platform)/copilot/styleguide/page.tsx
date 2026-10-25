@@ -4,12 +4,12 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import {
   Conversation,
   ConversationContent,
-} from "@/components/ai-elements/conversation";
+} from "@/components/organisms/Conversation/Conversation";
 import {
   Message,
   MessageContent,
   MessageResponse,
-} from "@/components/ai-elements/message";
+} from "@/components/organisms/Message/Message";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   CredentialsProvidersContext,
