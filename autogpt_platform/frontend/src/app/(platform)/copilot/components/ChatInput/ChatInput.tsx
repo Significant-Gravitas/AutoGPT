@@ -3,7 +3,7 @@ import type { MentionInput } from "./useChatMentions";
 import {
   PromptInputButton,
   PromptInputSubmit,
-} from "@/components/ai-elements/prompt-input";
+} from "@/components/organisms/PromptInput/PromptInput";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {

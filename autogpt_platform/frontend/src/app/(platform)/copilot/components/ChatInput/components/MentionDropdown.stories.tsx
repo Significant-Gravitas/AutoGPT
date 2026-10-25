@@ -2,7 +2,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
-import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
+import { PromptInputSubmit } from "@/components/organisms/PromptInput/PromptInput";
 import {
   InputGroup,
   InputGroupAddon,
