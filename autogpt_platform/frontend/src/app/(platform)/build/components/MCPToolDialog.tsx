@@ -432,9 +432,16 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-caption leading-4 text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
-                or enter an API credential manually
+                <Text
+                  variant="small-tight"
+                  as="span"
+                  tone="inherit"
+                  className="underline"
+                >
+                  or enter an API credential manually
+                </Text>
               </button>
             )}
 
