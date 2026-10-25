@@ -5,7 +5,7 @@ import {
   previewColumns,
   summarizeData,
 } from "../commandOutput";
-import { stepFailed } from "../stepOutcome";
+import { stepFailed, stepOutput } from "../stepOutcome";
 
 describe("summarizeData", () => {
   it("reads CSV with quoted commas as one table", () => {
@@ -204,6 +204,59 @@ describe("stepFailed", () => {
   });
 });
 
+describe("stepOutput", () => {
+  it("reads the outcome of a result too large for the chat from its kept tail", () => {
+    const failed = truncatedEnvelope({
+      stdout: "x".repeat(120_000),
+      stderr: "",
+      exit_code: 3,
+    });
+    expect(stepOutput(failed)).toMatchObject({ stderr: "", exit_code: 3 });
+    expect(stepFailed("./export.sh", stepOutput(failed))).toBe(true);
+
+    const fine = truncatedEnvelope({
+      stdout: "x".repeat(120_000),
+      stderr: "",
+      exit_code: 0,
+    });
+    expect(stepFailed("./export.sh", stepOutput(fine))).toBe(false);
+  });
+
+  it("reads a timeout or a complaint on stderr from the tail too", () => {
+    const timedOut = truncatedEnvelope({
+      stdout: "x".repeat(120_000),
+      stderr: "",
+      exit_code: -1,
+      timed_out: true,
+    });
+    expect(stepOutput(timedOut)).toMatchObject({ timed_out: true });
+    const complained = truncatedEnvelope({
+      stdout: "x".repeat(120_000),
+      stderr: 'cut: "x": bad delimiter',
+      exit_code: 1,
+    });
+    expect(stepOutput(complained)).toMatchObject({
+      stderr: 'cut: "x": bad delimiter',
+    });
+    expect(stepFailed("cut -d x f", stepOutput(complained))).toBe(true);
+  });
+
+  it("ignores an exit code printed inside the output itself", () => {
+    const printed = truncatedEnvelope({
+      stdout: `{"exit_code": 0}${"x".repeat(120_000)}`,
+      stderr: "",
+      exit_code: 2,
+    });
+    expect(stepOutput(printed)).toMatchObject({ exit_code: 2 });
+  });
+
+  it("passes an object through and reads nothing from other text", () => {
+    expect(stepOutput({ exit_code: 0 })).toEqual({ exit_code: 0 });
+    expect(stepOutput("plain text")).toBeNull();
+    expect(stepOutput(null)).toBeNull();
+  });
+});
+
 describe("dataFile and previewColumns", () => {
   it("names the download by what was printed", () => {
     const table = {
@@ -237,3 +290,18 @@ describe("dataFile and previewColumns", () => {
     ]);
   });
 });
+
+/** A bash result as the backend sends one too large for the chat: the JSON,
+ *  cut in the middle, inside a `<tool-output-truncated>` envelope. */
+function truncatedEnvelope(fields: Record<string, unknown>): string {
+  const json = JSON.stringify({
+    type: "bash_exec",
+    message: "Command executed",
+    session_id: "s",
+    ...fields,
+    timed_out: fields.timed_out ?? false,
+  });
+  const kept = 2_000;
+  const cut = `${json.slice(0, kept)}… (omitted ${json.length - 2 * kept} chars)…${json.slice(-kept)}`;
+  return `<tool-output-truncated total_chars=${json.length} workspace_path="tool-outputs/c.json">\n${cut}\nFull output (${json.length} chars) saved to workspace.\n</tool-output-truncated>`;
+}

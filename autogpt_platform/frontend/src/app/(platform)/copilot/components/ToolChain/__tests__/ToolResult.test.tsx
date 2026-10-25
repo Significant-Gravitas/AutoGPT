@@ -1004,6 +1004,31 @@ describe("ToolResult", () => {
       expect(screen.getByText(/Preview of 90,000 characters/)).toBeDefined();
     });
 
+    it.each([
+      [3, true],
+      [0, false],
+    ])(
+      "reads an oversized bash result's exit %i from what was kept",
+      (exitCode, failed) => {
+        const tail = `"stderr": "", "exit_code": ${exitCode}, "timed_out": false}`;
+        const envelope = [
+          '<tool-output-truncated total_chars=120000 workspace_path="tool-outputs/x.json">',
+          `{"type": "bash_exec", "message": "Command executed", "stdout": "ERROR: export… (omitted 110000 chars)…rows done", ${tail}`,
+          "Full output (120,000 chars) saved to workspace.",
+          "</tool-output-truncated>",
+        ].join("\n");
+        render(
+          <ToolResult
+            row={row(envelope, "bash_exec", { command: "./export.sh" })}
+          />,
+        );
+
+        expect(screen.queryByText("This step didn't work") !== null).toBe(
+          failed,
+        );
+      },
+    );
+
     it("previews CSV printed by a bash step as a table, with the file to download", async () => {
       const user = userEvent.setup();
       const csv = [

@@ -7,6 +7,26 @@ const ANSWERS_NO = /^(?:grep|egrep|fgrep|rg|test|\[\[?|diff|cmp)(?:\s|$)/;
 const COMPLAINS_ON_FAILURE =
   /^(?:echo|printf|true|:|cd|pwd|mkdir|cat|ls|wc|cp|mv|rm|touch|head|tail|sort|uniq|ln|chmod)(?:\s|$)/;
 
+// The fields that say how a shell step ended, as they appear in its JSON. A
+// quoted value may hold escaped quotes; inside the command's own output the
+// field names are escaped too (`\"exit_code\"`), so they never match.
+const OUTCOME_FIELD =
+  /"(type|stderr|exit_code|timed_out)":\s*("(?:[^"\\]|\\.)*"|-?\d+|true|false)/g;
+
+/** What a shell step signalled. A result too large for the chat arrives as
+ *  text: its JSON cut in the middle, inside a `<tool-output-truncated>`
+ *  envelope. A bash result ends with stderr, exit_code and timed_out, so the
+ *  cut keeps them, and the last occurrence of each is the real one. */
+export function stepOutput(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value))
+    return value as Record<string, unknown>;
+  if (typeof value !== "string") return null;
+  const fields: Record<string, unknown> = {};
+  for (const [, name, raw] of value.matchAll(OUTCOME_FIELD))
+    fields[name] = JSON.parse(raw);
+  return "exit_code" in fields || fields.type === "error" ? fields : null;
+}
+
 /** Whether a shell step failed, read from what it signalled. The tool's own
  *  error or a timeout is a failure; so is anything on stderr, since commands
  *  report their faults there (`cd: missing: No such file or directory`), and

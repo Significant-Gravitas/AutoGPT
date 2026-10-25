@@ -1,7 +1,7 @@
 "use client";
 
 import { summarizeData } from "./commandOutput";
-import { stepFailed } from "./stepOutcome";
+import { stepFailed, stepOutput } from "./stepOutcome";
 import { DataPreview } from "./DataPreview";
 import type { ChainRow } from "./helpers";
 import { asObject, str } from "./resultHelpers";
@@ -21,7 +21,11 @@ export function CommandResult({ row }: Props) {
   const input = asObject(row.input);
   const stdout = output ? str(output, "stdout") : null;
   const data = stdout ? summarizeData(stdout) : null;
-  const failed = stepFailed(input ? str(input, "command") : null, output);
+  // Read from the text when the result was too large to arrive as JSON.
+  const failed = stepFailed(
+    input ? str(input, "command") : null,
+    stepOutput(row.output),
+  );
   // The tool can refuse a call outright (no command, no sandbox): an error
   // payload with no exit code at all.
   const refusal = output?.type === "error" ? str(output, "message") : null;
