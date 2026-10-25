@@ -88,7 +88,7 @@ describe("tutorial requirement and connection status", () => {
     nodes.first = { id: "n1", data: { hardcodedValues: { a: 1 } } };
     vi.advanceTimersByTime(300);
     expect(classes("#requirements-box")).toEqual(
-      expect.arrayContaining(["bg-warning-surface", "ring-warning-border"]),
+      expect.arrayContaining(["bg-warning-surface", "ring-amber-200"]),
     );
     expect(classes("#requirements-title")).toContain("text-amber-600");
     step.when?.hide?.();
@@ -118,7 +118,7 @@ describe("tutorial requirement and connection status", () => {
     nodes.second = { id: "n2", data: { hardcodedValues: {} } };
     vi.advanceTimersByTime(300);
     expect(classes("#second-calc-requirements-box")).toEqual(
-      expect.arrayContaining(["bg-warning-surface", "ring-warning-border"]),
+      expect.arrayContaining(["bg-warning-surface", "ring-amber-200"]),
     );
     step.when?.hide?.();
   });

@@ -46,7 +46,8 @@ const bannerStyles: Record<
   },
   warning: {
     bg: "bg-warning-surface",
-    ring: "ring-warning-border",
+    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+    ring: "ring-amber-200",
     // TODO(tokens): no exact role: text-amber-800 #92400E
     text: "text-amber-800",
   },

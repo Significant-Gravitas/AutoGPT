@@ -9,9 +9,9 @@ import {
 import { ICONS } from "../icons";
 import { banner } from "../styles";
 
-// TODO(tokens): no exact role: text-amber-600 #D97706
+// TODO(tokens): no exact role: text-amber-600 #D97706; no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
 const getRequirementsHtml = () => `
-  <div id="requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-warning-border rounded-2xl">
+  <div id="requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-amber-200 rounded-2xl">
     <p id="requirements-title" class="text-body leading-5 font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
     <ul id="requirements-list" class="text-body-sm leading-inherit text-amber-600 m-0 pl-4 space-y-1">
       <li id="req-a" class="flex items-center gap-2">
@@ -33,7 +33,8 @@ const updateToSuccessState = () => {
   const reqList = document.querySelector("#requirements-list");
 
   if (reqBox && reqTitle) {
-    reqBox.classList.remove("bg-warning-surface", "ring-warning-border");
+    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+    reqBox.classList.remove("bg-warning-surface", "ring-amber-200");
     // TODO(tokens): no exact role: ring-green-200 #94D5AC
     reqBox.classList.add("bg-success-surface", "ring-green-200");
     // TODO(tokens): no exact role: text-amber-600 #D97706
@@ -54,7 +55,8 @@ const updateToWarningState = () => {
   if (reqBox && reqTitle) {
     // TODO(tokens): no exact role: ring-green-200 #94D5AC
     reqBox.classList.remove("bg-success-surface", "ring-green-200");
-    reqBox.classList.add("bg-warning-surface", "ring-warning-border");
+    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+    reqBox.classList.add("bg-warning-surface", "ring-amber-200");
     reqTitle.classList.remove("text-success");
     // TODO(tokens): no exact role: text-amber-600 #D97706
     reqTitle.classList.add("text-amber-600");

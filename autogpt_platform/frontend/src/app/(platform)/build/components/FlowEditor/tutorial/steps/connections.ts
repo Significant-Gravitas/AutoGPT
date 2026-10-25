@@ -9,9 +9,9 @@ import { banner } from "../styles";
 import { useEdgeStore } from "../../../../stores/edgeStore";
 import { TUTORIAL_SELECTORS } from "../constants";
 
-// TODO(tokens): no exact role: ring-green-200 #94D5AC, text-amber-600 #D97706
+// TODO(tokens): no exact role: ring-green-200 #94D5AC, text-amber-600 #D97706; no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
 const getConnectionStatusHtml = (id: string, isConnected: boolean = false) => `
-  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-success-surface ring-1 ring-green-200" : "bg-warning-surface ring-1 ring-warning-border"} rounded-2xl text-center text-body leading-5 ${isConnected ? "text-success" : "text-amber-600"}">
+  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-success-surface ring-1 ring-green-200" : "bg-warning-surface ring-1 ring-amber-200"} rounded-2xl text-center text-body leading-5 ${isConnected ? "text-success" : "text-amber-600"}">
     ${isConnected ? "✅ Connected!" : "Waiting for connection..."}
   </div>
 `;
@@ -27,7 +27,8 @@ const updateConnectionStatus = (
       message || (isConnected ? "✅ Connected!" : "Waiting for connection...");
     statusEl.classList.remove(
       "bg-warning-surface",
-      "ring-warning-border",
+      // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+      "ring-amber-200",
       // TODO(tokens): no exact role: text-amber-600 #D97706
       "text-amber-600",
       "bg-success-surface",
@@ -47,7 +48,8 @@ const updateConnectionStatus = (
       // TODO(tokens): no exact role: text-amber-600 #D97706
       statusEl.classList.add(
         "bg-warning-surface",
-        "ring-warning-border",
+        // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+        "ring-amber-200",
         // TODO(tokens): no exact role: text-amber-600 #D97706
         "text-amber-600",
       );
