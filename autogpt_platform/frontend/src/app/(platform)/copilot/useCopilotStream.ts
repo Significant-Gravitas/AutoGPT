@@ -58,6 +58,7 @@ import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 import { RESTORE_STALL_TIMEOUT_MS } from "./restoreConstants";
 import { useStreamActivityWatchdog } from "./useStreamActivityWatchdog";
 import { useFollowBackendTurn } from "./useFollowBackendTurn";
+import { useFollowQueuedTurn } from "./useFollowQueuedTurn";
 import { useWakeResync } from "./useWakeResync";
 
 /**
@@ -107,6 +108,10 @@ interface UseCopilotStreamArgs {
    *  above, it means the turn has persisted nothing yet. */
   activeTurnStartedAt?: string | null;
   hasActiveStream: boolean;
+  /** The session's ``chat_status``; undefined while it is being read. A turn
+   *  queued behind the user's running cap is followed until it starts, in
+   *  every chat that streams through this hook. */
+  sessionChatStatus: string | undefined;
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Model tier override. `undefined` = let backend decide. */
   copilotModel: CopilotLlmModel | undefined;
@@ -122,6 +127,7 @@ export function useCopilotStream({
   activeTurnStartMessageId = null,
   activeTurnStartedAt = null,
   hasActiveStream,
+  sessionChatStatus,
   refetchSession,
   copilotModel,
 }: UseCopilotStreamArgs) {
@@ -739,6 +745,12 @@ export function useCopilotStream({
     status,
     refetchSession,
     hasResumedRef,
+  });
+  useFollowQueuedTurn({
+    enabled: !!sessionId,
+    sessionChatStatus,
+    refetchSession,
+    followBackendTurn,
   });
 
   // Wake detection: refetch + optional resume when the page becomes visible

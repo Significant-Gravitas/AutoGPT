@@ -95,6 +95,8 @@ const OTHER_SURFACES: Surface[] = [
           status="ready"
           error={undefined}
           queuedChips={{ messages: [], heldReason: null, onRetry: vi.fn() }}
+          sessionChatStatus="idle"
+          turnStats={undefined}
           onSend={async () => {}}
           onStop={vi.fn()}
           onRetry={vi.fn()}

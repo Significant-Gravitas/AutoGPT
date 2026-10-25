@@ -45,7 +45,6 @@ import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
 import { useExpertKickoff } from "./useExpertKickoff";
-import { useFollowQueuedTurn } from "./useFollowQueuedTurn";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
@@ -194,6 +193,7 @@ function useCopilotPageSession() {
     activeTurnStartMessageId,
     activeTurnStartedAt: activeStreamStartedAt,
     hasActiveStream,
+    sessionChatStatus,
     refetchSession,
     // Sent whenever the picker can set it. The tier control is not behind
     // CHAT_MODE_OPTION -- it renders from the server's connection offer --
@@ -655,13 +655,6 @@ function useCopilotPageChat(
 export function useCopilotPage() {
   const session = useCopilotPageSession();
   const stream = useCopilotStream(session.streamArgs);
-  // The runtime chat follows a turn queued at the running cap itself.
-  useFollowQueuedTurn({
-    enabled: !!session.sessionId,
-    sessionChatStatus: session.sessionChatStatus,
-    refetchSession: session.streamArgs.refetchSession,
-    followBackendTurn: stream.followBackendTurn,
-  });
   return useCopilotPageChat(session, stream);
 }
 

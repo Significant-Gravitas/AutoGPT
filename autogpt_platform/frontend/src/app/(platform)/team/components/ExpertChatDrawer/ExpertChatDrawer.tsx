@@ -115,6 +115,8 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
     onSend,
     onActionSend,
     queuedChips,
+    sessionChatStatus,
+    turnStats,
     isResolvingSession,
     isCreating,
     pendingSend,
@@ -140,6 +142,8 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
               isLoading={false}
               sessionID={sessionId}
               queuedChips={queuedChips}
+              sessionChatStatus={sessionChatStatus}
+              turnStats={turnStats}
               pendingSend={pendingSend}
               variant="compact"
               showThreadHeader={false}

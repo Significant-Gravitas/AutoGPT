@@ -19,6 +19,8 @@ interface Props {
   queuedChips: React.ComponentProps<
     typeof ChatMessagesContainer
   >["queuedChips"];
+  sessionChatStatus: string | undefined;
+  turnStats: React.ComponentProps<typeof ChatMessagesContainer>["turnStats"];
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onRetry: () => void;
@@ -35,6 +37,8 @@ export function MemoryChatPanel({
   status,
   error,
   queuedChips,
+  sessionChatStatus,
+  turnStats,
   onSend,
   onStop,
   onRetry,
@@ -101,6 +105,8 @@ export function MemoryChatPanel({
                     isLoading={false}
                     sessionID={sessionId}
                     queuedChips={queuedChips}
+                    sessionChatStatus={sessionChatStatus}
+                    turnStats={turnStats}
                   />
                 </div>
                 <div className="relative shrink-0 border-t border-separator bg-surface px-3 pb-2 pt-2">
