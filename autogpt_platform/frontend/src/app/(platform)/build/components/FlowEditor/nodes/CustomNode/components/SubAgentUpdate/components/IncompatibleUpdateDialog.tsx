@@ -220,10 +220,10 @@ function TwoColumnSection({
               ))
             ) : (
               <Text
-                variant="body-tight"
+                variant="body-tight-italic"
                 as="li"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="italic text-gray-400"
+                className="text-gray-400"
               >
                 None
               </Text>
@@ -263,10 +263,10 @@ function TwoColumnSection({
               ))
             ) : (
               <Text
-                variant="body-tight"
+                variant="body-tight-italic"
                 as="li"
                 // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="italic text-gray-400"
+                className="text-gray-400"
               >
                 None
               </Text>

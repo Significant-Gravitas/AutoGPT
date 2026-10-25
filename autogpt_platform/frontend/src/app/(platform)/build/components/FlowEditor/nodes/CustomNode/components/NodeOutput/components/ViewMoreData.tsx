@@ -117,9 +117,9 @@ export const ViewMoreData = ({
                           <div key={key} className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
                               <Text
-                                variant="body-medium"
+                                variant="body-semibold"
                                 // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                                className="!font-semibold text-slate-600"
+                                className="text-slate-600"
                               >
                                 Pin:
                               </Text>
@@ -133,9 +133,9 @@ export const ViewMoreData = ({
                             </div>
                             <div className="w-full space-y-2">
                               <Text
-                                variant="body-medium"
+                                variant="body-semibold"
                                 // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                                className="!font-semibold text-slate-600"
+                                className="text-slate-600"
                               >
                                 Data:
                               </Text>
