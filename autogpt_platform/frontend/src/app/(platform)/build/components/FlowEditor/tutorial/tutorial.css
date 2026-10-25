@@ -18,9 +18,9 @@
   animation: new-builder-tutorial-pulse 2s ease-in-out infinite;
 }
 
-/* TODO(tokens): no exact role: the pulse ring white #FFFFFF (card holds it, a
-   surface fill, not a shadow), violet #7c3aed #7C3AED (accent is #7C3BED),
-   #8b5cf6 #8B5CF6 and rgba(124, 58, 237) #7C3AED. */
+/* TODO(tokens): no fitting role for the pulse ring white #FFFFFF; #FFFFFF is
+   card (a surface fill, not a shadow). No exact role: violet #7c3aed #7C3AED
+   (accent is #7C3BED), #8b5cf6 #8B5CF6 and rgba(124, 58, 237) #7C3AED. */
 @keyframes new-builder-tutorial-pulse {
   0%,
   100% {
