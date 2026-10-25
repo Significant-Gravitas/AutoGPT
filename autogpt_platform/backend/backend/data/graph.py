@@ -801,17 +801,6 @@ class GraphModel(Graph, GraphMeta):
             if not v[0].is_auto_credential
         }
 
-    @property
-    def auto_credentials_inputs(
-        self,
-    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
-        """Credentials embedded in file fields (_credentials_id), resolved at execution time."""
-        return {
-            k: v
-            for k, v in self.aggregate_credentials_inputs().items()
-            if v[0].is_auto_credential
-        }
-
     def reassign_ids(
         self, user_id: str, reassign_graph_id: bool = False
     ) -> dict[str, str]:
