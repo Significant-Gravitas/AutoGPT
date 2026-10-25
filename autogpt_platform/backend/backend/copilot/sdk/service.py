@@ -5034,13 +5034,17 @@ async def _persist_stranded_followups(
     and a card decision among them would hold its card until it expired."""
     try:
         stranded = await drain_pending_for_persist(session.session_id)
-        if stranded:
-            await persist_pending_as_user_rows(
-                session,
-                state.transcript_builder if state is not None else None,
-                stranded,
-                log_prefix=log_prefix,
-            )
+        if stranded and await persist_pending_as_user_rows(
+            session,
+            state.transcript_builder if state is not None else None,
+            stranded,
+            log_prefix=log_prefix,
+        ):
+            # Saved rows the CLI's transcript lacks, as mid-turn ones are:
+            # the upload steps its watermark back so the next turn fills
+            # them in.
+            if state is not None:
+                state.midturn_user_rows += len(stranded)
     except Exception:
         logger.warning(
             "%s Could not save follow-ups left waiting to be saved",
