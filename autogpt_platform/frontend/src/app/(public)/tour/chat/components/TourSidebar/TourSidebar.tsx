@@ -156,7 +156,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     <Text
                       as="span"
                       variant="body-sm-medium-inherit"
-                      className="text-inherit"
+                      tone="inherit"
                     >
                       Workspace
                     </Text>

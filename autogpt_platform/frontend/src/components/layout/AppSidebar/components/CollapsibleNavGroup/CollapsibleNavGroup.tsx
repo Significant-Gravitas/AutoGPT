@@ -44,7 +44,7 @@ export function CollapsibleNavGroup({
             <Text
               as="span"
               variant="body-sm-medium-inherit-touch"
-              className="text-inherit"
+              tone="inherit"
             >
               {label}
             </Text>
