@@ -6,6 +6,7 @@ import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -119,6 +120,10 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       pendingPromptRef.current = MEMORY_CHAT_PROMPTS[lastSeedRef.current];
       setSessionId(response.data.id);
     } catch (err) {
+      if (toastIfPlanRequired(err, "The memory chat needs an active plan")) {
+        if (generation === scopeGenRef.current) setIsOpen(false);
+        return;
+      }
       Sentry.captureException(err);
       if (generation === scopeGenRef.current) setStartError(true);
     } finally {
