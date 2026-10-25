@@ -38,6 +38,7 @@ from backend.copilot.gate.mcp_seam import (
     screen_non_registry_read,
 )
 from backend.copilot.gate.reads import model_view
+from backend.copilot.gate.review import call_args
 from backend.copilot.google_data_redaction import remember_cut_google_output
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
@@ -379,8 +380,13 @@ def _mcp_error(message: str) -> dict[str, Any]:
 
 
 def _failure_key(tool_name: str, args: dict[str, Any]) -> str:
-    """Compute a stable fingerprint for (tool_name, args) used by the circuit breaker."""
-    args_key = json.dumps(args, sort_keys=True, default=str)
+    """Compute a stable fingerprint for (tool_name, args) used by the circuit breaker.
+
+    Label-only arguments (bash_exec's ``purpose``) are left out, as they are
+    for the gate's approvals: rewording the label on each retry is the same
+    failing call, not a fresh one.
+    """
+    args_key = json.dumps(call_args(tool_name, args), sort_keys=True, default=str)
     return f"{tool_name}:{args_key}"
 
 

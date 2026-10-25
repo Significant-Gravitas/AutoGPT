@@ -21,12 +21,15 @@ from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
+    _MAX_CONSECUTIVE_TOOL_FAILURES,
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
     BASELINE_ONLY_MCP_TOOLS,
     BLOCKED_TOOLS,
     SDK_DISALLOWED_TOOLS,
+    _check_circuit_breaker,
     _make_truncating_wrapper,
+    _record_tool_failure,
     _strip_llm_fields,
     _text_from_mcp_result,
     cap_late_tool_result,
@@ -1506,6 +1509,30 @@ class TestEmptyArgsCircuitBreaker:
         text = _text_from_mcp_result(result)
         assert "STOP" in text
         assert "Do NOT retry" in text
+
+
+class TestCircuitBreakerIgnoresLabels:
+    """A shell step's ``purpose`` only labels it (SECRT-3158): rewording it on
+    each retry of the same failing command must not reset the breaker."""
+
+    @pytest.fixture(autouse=True)
+    def _init_context(self):
+        set_execution_context(
+            user_id="test", session=None, sandbox=None, sdk_cwd="/tmp/test"
+        )
+
+    def test_a_reworded_purpose_is_the_same_failing_call(self):
+        for attempt in range(_MAX_CONSECUTIVE_TOOL_FAILURES):
+            args = {"command": "./publish.sh", "purpose": f"Publishing, try {attempt}"}
+            assert _check_circuit_breaker("bash_exec", args) is None
+            _record_tool_failure("bash_exec", args)
+        retry = {"command": "./publish.sh", "purpose": "Publishing the post again"}
+        assert "STOP" in (_check_circuit_breaker("bash_exec", retry) or "")
+
+    def test_a_different_command_is_a_different_call(self):
+        for _ in range(_MAX_CONSECUTIVE_TOOL_FAILURES):
+            _record_tool_failure("bash_exec", {"command": "./publish.sh"})
+        assert _check_circuit_breaker("bash_exec", {"command": "./check.sh"}) is None
 
 
 class TestNonRegistryGateSeam:
