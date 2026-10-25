@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 _MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
-_TIMEOUT_SECONDS = 30
+_TIMEOUT_SECONDS = 45
+# The model thinks adaptively and the thinking counts against this: at 3,000
+# one call in five came back cut off mid-JSON.
+_MAX_TOKENS = 6_000
 
 # The Langfuse copy of these instructions wins whenever it is reachable,
 # so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
@@ -41,7 +44,7 @@ LANGFUSE_PROMPT_CACHE_TTL_SECONDS = 300
 
 MIN_PROMPTS = 5
 MAX_PROMPTS = 6
-MAX_GREETING_CHARS = 500
+MAX_GREETING_CHARS = 650
 MAX_TITLE_CHARS = 120
 MAX_PROMPT_CHARS = 2_000
 
@@ -72,6 +75,16 @@ PROMPT_ICONS = frozenset(
     }
 )
 DEFAULT_PROMPT_ICON = "sparkle"
+
+# Sent as the system message on every generation, whichever copy of the
+# instructions is in use: the Langfuse copy wins in prod and predates it.
+COVERAGE_CONTRACT = """Leave out none of the problems the user described. \
+The greeting names every one, grouping those that belong together. Name a \
+problem no workflow or expert can take over too (a machine, a recipe, \
+on-site hardware, a personal decision), as something you will work through \
+with them yourself, never as a job for the team. When the transcript has \
+such a problem, make the last suggested prompt that work. The greeting may \
+run to 600 characters when it has to."""
 
 # The local fallback for the Langfuse-managed instructions. The greeting
 # diagnoses the dump so the user can see they were heard; the suggested
@@ -173,9 +186,12 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=_MODEL,
-                    messages=[{"role": "user", "content": content}],
+                    messages=[
+                        {"role": "system", "content": COVERAGE_CONTRACT},
+                        {"role": "user", "content": content},
+                    ],
                     temperature=0.6,
-                    max_tokens=3000,
+                    max_tokens=_MAX_TOKENS,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
@@ -201,8 +217,8 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     if len(prompts) < MIN_PROMPTS:
         # A greeting with two suggestions under it looks broken; the
         # generic set is better than a half-empty one.
-        return greeting.strip()[:MAX_GREETING_CHARS], fallback_prompts()
-    return greeting.strip()[:MAX_GREETING_CHARS], prompts[:MAX_PROMPTS]
+        return _clip_greeting(greeting), fallback_prompts()
+    return _clip_greeting(greeting), prompts[:MAX_PROMPTS]
 
 
 def _integrations_block() -> str:
@@ -245,6 +261,16 @@ async def _fetch_langfuse_prompt() -> str | None:
     except Exception as e:  # local prompt is the fallback
         logger.warning("Brain dump greeting: Langfuse prompt fetch failed: %s", e)
         return None
+
+
+def _clip_greeting(greeting: str) -> str:
+    """``greeting`` within the cap, ended at a sentence rather than mid-word."""
+    text = greeting.strip()
+    if len(text) <= MAX_GREETING_CHARS:
+        return text
+    cut = text[:MAX_GREETING_CHARS]
+    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    return cut[: end + 1] if end > 0 else cut
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
