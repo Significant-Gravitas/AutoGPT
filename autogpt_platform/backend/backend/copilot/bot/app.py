@@ -5,7 +5,6 @@ other services to push messages into chat platforms.
 
 import asyncio
 import logging
-from concurrent.futures import Future
 from typing import Literal
 
 from backend.platform_linking.models import Platform
@@ -56,7 +55,7 @@ class CoPilotChatBridge(AppService):
         # they can await adapter methods directly.
         self._api: BotBackend | None = None
         self._adapters_by_platform: dict[str, PlatformAdapter] = {}
-        # Set by `_run_adapters` so `cleanup` can cancel it while the loop runs.
+        # Set by `run_service` so `cleanup` can cancel it while the loop runs.
         self._adapters_task: asyncio.Task[None] | None = None
 
     @classmethod
@@ -64,14 +63,12 @@ class CoPilotChatBridge(AppService):
         return Settings().config.copilot_chat_bridge_port
 
     def run_service(self) -> None:
-        future = asyncio.run_coroutine_threadsafe(
-            self._run_adapters(), self.shared_event_loop
-        )
-        future.add_done_callback(self._on_adapters_exit)
+        # Created before the loop runs, so a cleanup that lands first still finds it.
+        self._adapters_task = self.shared_event_loop.create_task(self._run_adapters())
+        self._adapters_task.add_done_callback(self._on_adapters_exit)
         super().run_service()
 
     async def _run_adapters(self) -> None:
-        self._adapters_task = asyncio.current_task()
         api = BotBackend()
         self._api = api
         socket_adapters = _build_socket_adapters(api)
@@ -108,12 +105,11 @@ class CoPilotChatBridge(AppService):
             )
             await api.close()
 
-    def _on_adapters_exit(self, future: "Future[None]") -> None:
+    def _on_adapters_exit(self, future: "asyncio.Future[None]") -> None:
         """Surface exceptions from `_run_adapters` and flip the health flag.
 
-        `run_coroutine_threadsafe` would otherwise swallow the exception
-        into the returned future, leaving the FastAPI health endpoint
-        cheerfully reporting OK on a dead bridge.
+        A crash would otherwise stay inside the task, leaving the FastAPI
+        health endpoint cheerfully reporting OK on a dead bridge.
         """
         self._adapters_healthy = False
         # Drop the adapter/api handles so outbound RPCs raise UnhealthyService

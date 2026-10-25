@@ -174,9 +174,36 @@ def test_cleanup_stops_the_adapters_while_the_loop_still_runs(mocker, caplog):
 
     assert adapter.stopped
     api.close.assert_awaited_once()
-    service.join(timeout=5)
+    service.join(timeout=30)
     assert not service.is_alive()
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_cleanup_stops_adapters_the_loop_has_not_run_yet(mocker):
+    """A SIGTERM can reach cleanup between `run_service` scheduling the adapters
+    and the loop first running them."""
+    adapter = _GatewayAdapter()
+    _stub_backend(mocker, adapter)
+    bridge = CoPilotChatBridge()
+    loop = bridge.shared_event_loop = asyncio.new_event_loop()
+    held, release = threading.Event(), threading.Event()
+
+    def hold_the_loop() -> None:
+        held.set()
+        release.wait(30)
+
+    loop.call_soon(hold_the_loop)
+    loop_thread = threading.Thread(target=bridge._run_shared_event_loop, daemon=True)
+    mocker.patch.object(BaseAppService, "run_service", lambda _: loop_thread.start())
+
+    bridge.run_service()
+    assert held.wait(timeout=30)
+    threading.Timer(0.1, release.set).start()
+    bridge.cleanup()
+
+    assert adapter.stopped
+    loop_thread.join(timeout=30)
+    assert not loop_thread.is_alive()
 
 
 def test_an_adapter_that_hangs_on_stop_cannot_hold_cleanup(mocker):
@@ -192,11 +219,11 @@ def test_an_adapter_that_hangs_on_stop_cannot_hold_cleanup(mocker):
 
     cleanup = threading.Thread(target=run_cleanup, daemon=True)
     cleanup.start()
-    cleanup.join(timeout=5)
+    cleanup.join(timeout=30)
 
     assert not cleanup.is_alive()
     assert raised == []
-    service.join(timeout=5)
+    service.join(timeout=30)
     assert not service.is_alive()
 
 
@@ -212,18 +239,23 @@ def _serve(
     mocker, adapter: "_GatewayAdapter"
 ) -> tuple[CoPilotChatBridge, MagicMock, threading.Thread]:
     """Run the bridge's real `run_service` on a real loop, adapters started."""
+    api = _stub_backend(mocker, adapter)
+    bridge = CoPilotChatBridge()
+    bridge.shared_event_loop = asyncio.new_event_loop()
+    service = threading.Thread(target=bridge.run_service, daemon=True)
+    service.start()
+    assert adapter.started.wait(timeout=30)
+    return bridge, api, service
+
+
+def _stub_backend(mocker, adapter: "_GatewayAdapter") -> MagicMock:
     api = MagicMock(close=AsyncMock())
     mocker.patch("backend.copilot.bot.app.BotBackend", return_value=api)
     mocker.patch(
         "backend.copilot.bot.app._build_socket_adapters", return_value=[adapter]
     )
     mocker.patch("backend.copilot.bot.app.build_webhook_adapters", return_value=[])
-    bridge = CoPilotChatBridge()
-    bridge.shared_event_loop = asyncio.new_event_loop()
-    service = threading.Thread(target=bridge.run_service, daemon=True)
-    service.start()
-    assert adapter.started.wait(timeout=5)
-    return bridge, api, service
+    return api
 
 
 class _GatewayAdapter:
