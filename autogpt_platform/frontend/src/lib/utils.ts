@@ -13,14 +13,14 @@ import {
 // Teach tailwind-merge the text token names in tailwind.config.ts, so that
 // `text-body` is read as a font size rather than a colour (and survives next
 // to `text-zinc-500`) and conflicting sizes, line-heights and letter-spacings
-// collapse to the last one.
-//
-// TODO(tokens): SECRT-3155. The custom radius names (rounded-xsmall …
-// rounded-2xlarge) are not registered yet: registering them changes what
-// renders wherever a caller overrides a radius (CancelRecordingDialog,
-// TextInputExpanderModal), so those call sites are fixed first.
+// collapse to the last one. The radius names do the same for every
+// `rounded-*` corner group, so `rounded-xl` and `rounded-2xlarge` no longer
+// both survive and leave the winner to stylesheet order.
 const twMerge = extendTailwindMerge({
   extend: {
+    theme: {
+      borderRadius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
+    },
     classGroups: {
       "font-size": [
         {

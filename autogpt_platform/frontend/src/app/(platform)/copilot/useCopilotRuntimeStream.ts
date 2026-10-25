@@ -36,6 +36,7 @@ import { useCopilotUIStore, type CopilotLlmModel } from "./store";
 import {
   createAssistantRunJoiner,
   createTailRenderer,
+  statsOfAssistantRuns,
 } from "./stream/renderTail";
 import {
   getTurnRuntime,
@@ -240,7 +241,13 @@ export function useCopilotRuntimeStream({
         : [],
     [sessionId, joinAssistantRuns, history.messages, tail.messages],
   );
-  const turnStats = withLatestUser(messages, history.stats, tail.stats);
+  const turnStats = withLatestUser(
+    messages,
+    statsOfAssistantRuns(
+      [...history.messages, ...tail.messages],
+      new Map([...history.stats, ...tail.stats]),
+    ),
+  );
 
   async function sendMessage(input: SendInput) {
     if (!runtime || !sessionId) return;
@@ -414,13 +421,8 @@ function prospectiveCut(runtime: TurnRuntime | null, view: SessionView | null) {
   return sequences.length ? Math.max(...sequences) + 1 : 0;
 }
 
-function withLatestUser(
-  messages: UIMessage[],
-  historyStats: TurnStatsMap,
-  tailStats: TurnStatsMap,
-) {
-  const stats: TurnStatsMap = new Map(historyStats);
-  tailStats.forEach((value, key) => stats.set(key, value));
+function withLatestUser(messages: UIMessage[], merged: TurnStatsMap) {
+  const stats: TurnStatsMap = new Map(merged);
   const latestUser = messages.findLast((m) => m.role === "user");
   stats.forEach((value, key) => {
     if (value.isLatestUserMessage && key !== latestUser?.id) {

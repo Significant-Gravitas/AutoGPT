@@ -125,6 +125,11 @@ ExecutionMode = Literal["sync", "batch", "flex"]
 # sync fallback with a log line.
 _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 
+# Claude 5 thinks adaptively on OpenRouter, and the thinking counts against
+# max_tokens: a call capped this low for a short answer can think its whole cap
+# away and answer nothing (1 in 5 store categories, 7 in 9 consult verdicts).
+NO_REASONING_MAX_TOKENS = 512
+
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
 # this model." (verified live: opus-4-7 and opus-4-8 reject;
@@ -1010,6 +1015,7 @@ async def _call_openai_compat(
         # Ask OpenRouter to surface per-request USD cost on `usage.cost`.
         # Same shape used by backend/executor/simulator.py — keep aligned.
         extra_body["usage"] = {"include": True}
+        extra_body.update(small_call_reasoning(model, max_tokens))
         call_kwargs["extra_headers"] = {
             "HTTP-Referer": "https://agpt.co",
             "X-Title": "AutoGPT",
@@ -1029,9 +1035,12 @@ async def _call_openai_compat(
         raise ValueError(f"{base_url} returned empty choices in response")
 
     cache_read, cache_creation = _extract_openai_compat_cache_tokens(response)
+    finish_reason = response.choices[0].finish_reason
 
     return ProviderResponse(
         content=response.choices[0].message.content or "",
+        # Callers check Anthropic's "max_tokens"; OpenAI calls it "length".
+        stop_reason="max_tokens" if finish_reason == "length" else finish_reason,
         prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
         completion_tokens=(response.usage.completion_tokens if response.usage else 0),
         cache_read_tokens=cache_read,
@@ -1190,6 +1199,7 @@ async def call_provider_openai_compat_sync(
     extra_body: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
     timeout_seconds: float | None = None,
+    temperature: float | None = None,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> Any:
     """Non-streaming OpenAI-compat chat call, returns the raw SDK
@@ -1221,6 +1231,10 @@ async def call_provider_openai_compat_sync(
         "max_tokens": max_tokens,
         "timeout": request_timeout(timeout_seconds),
     }
+    if temperature is not None:
+        create_kwargs["temperature"] = temperature
+    if client.base_url.host == httpx.URL(OPENROUTER_BASE_URL).host:
+        extra_body = {**(extra_body or {}), **small_call_reasoning(model, max_tokens)}
     if extra_body:
         create_kwargs["extra_body"] = extra_body
     if extra_headers:
@@ -1234,6 +1248,18 @@ async def call_provider_openai_compat_sync(
         )
     except asyncio.TimeoutError as exc:
         raise timeout_error(model, timeout_seconds) from exc
+
+
+def small_call_reasoning(model: str, max_tokens: int) -> dict[str, Any]:
+    """OpenRouter ``extra_body`` turning reasoning off for a small Claude 5 call.
+
+    Empty for a bigger cap or any other model, whose thinking the caller keeps.
+    """
+    if max_tokens > NO_REASONING_MAX_TOKENS:
+        return {}
+    if not strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES):
+        return {}
+    return {"reasoning": {"enabled": False}}
 
 
 def timeout_error(target: str, timeout_seconds: float) -> TimeoutError:
