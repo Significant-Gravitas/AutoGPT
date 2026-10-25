@@ -113,6 +113,7 @@ const SheetTitle = React.forwardRef<
   <SheetPrimitive.Title
     ref={ref}
     className={cn(
+      // TODO(tokens): no role holds 18px (text-lg = 1.125rem / 1.75rem); the type scale goes 16px (body-lg) to 20px (lead). SECRT-3152
       "text-lg font-semibold text-neutral-950 dark:text-neutral-50",
       className,
     )}
@@ -127,7 +128,10 @@ const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-neutral-500 dark:text-neutral-400", className)}
+    className={cn(
+      "text-body leading-5 text-neutral-500 dark:text-neutral-400",
+      className,
+    )}
     {...props}
   />
 ));

@@ -4,7 +4,7 @@ import { CategoryKey } from "../BlockMenuFilters/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { useFilterSheet } from "./useFilterSheet";
 import { INITIAL_CREATORS_TO_SHOW } from "./constant";
