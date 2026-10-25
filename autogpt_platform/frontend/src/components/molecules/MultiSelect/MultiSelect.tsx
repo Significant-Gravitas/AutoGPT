@@ -288,9 +288,8 @@ const MultiSelectorList = forwardRef<
         <Text
           variant="body-tight"
           as="span"
-          tone="inherit"
           data-slot="multi-select-empty-text"
-          className="text-muted-foreground"
+          className="block text-muted-foreground"
         >
           No results found
         </Text>
@@ -332,7 +331,14 @@ const MultiSelectorItem = forwardRef<
       )}
       onMouseDown={mousePreventDefault}
     >
-      {children}
+      <Text
+        variant="body-tight"
+        as="span"
+        tone="inherit"
+        data-slot="multi-select-item-label"
+      >
+        {children}
+      </Text>
       {isIncluded && (
         <Check data-slot="multi-select-item-check" className="h-4 w-4" />
       )}

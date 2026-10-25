@@ -69,7 +69,7 @@ const CommandItem = React.forwardRef<
       className={cn(
         // TODO(tokens): no exact role: data-[selected=true]:bg-neutral-100
         // #F5F5F5, data-[selected=true]:text-neutral-900 #171717.
-        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-body leading-5 outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-neutral-100 data-[selected=true]:text-neutral-900 data-[disabled=true]:opacity-50 dark:data-[selected=true]:bg-neutral-800 dark:data-[selected=true]:text-neutral-50",
+        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-neutral-100 data-[selected=true]:text-neutral-900 data-[disabled=true]:opacity-50 dark:data-[selected=true]:bg-neutral-800 dark:data-[selected=true]:text-neutral-50",
         className,
       )}
       {...props}
