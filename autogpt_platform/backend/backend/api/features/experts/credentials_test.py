@@ -1,5 +1,7 @@
 """Tests for per-expert credential grants and the enforcement they drive."""
 
+import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -10,6 +12,7 @@ from pydantic import SecretStr
 from backend.api.features.experts.credentials import (
     _derive_from_workflows,
     _to_refs,
+    expert_allowed_credential_ids,
     filter_credentials_for_expert,
     settle_credential_seed,
 )
@@ -19,6 +22,7 @@ from backend.data.model import (
     OAuth2Credentials,
 )
 from backend.executor.utils import _enforce_expert_credential_scope
+from backend.util.exceptions import ExpertNotFoundError
 
 
 def _api_key_credential(credential_id: str, provider: str) -> APIKeyCredentials:
@@ -325,6 +329,134 @@ async def test_settling_the_seed_stamps_even_when_derivation_was_incomplete(
 
     seed.assert_awaited_once_with("user-1", expert)
     stamp.assert_awaited_once_with("expert-1")
+
+
+_CREDENTIALS = "backend.api.features.experts.credentials"
+
+
+@pytest.mark.asyncio
+async def test_the_grants_are_read_beside_the_ownership_check(
+    mocker: pytest_mock.MockFixture,
+):
+    """Each read returns only once both are in flight, so reading the grants
+    after the ownership check times out."""
+    started: list[str] = []
+    both = asyncio.Event()
+
+    def in_flight(name: str, value):
+        async def read(*_args, **_kwargs):
+            started.append(name)
+            if len(started) == 2:
+                both.set()
+            await asyncio.wait_for(both.wait(), timeout=1)
+            return value
+
+        return read
+
+    seeded = SimpleNamespace(
+        id="expert-1", credentialsSeededAt=datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
+    mocker.patch(
+        f"{_CREDENTIALS}._owned_expert",
+        AsyncMock(side_effect=in_flight("expert", seeded)),
+    )
+    grants = mocker.patch(
+        f"{_CREDENTIALS}._grants",
+        AsyncMock(side_effect=in_flight("grants", [_Grant("cred-a", "github")])),
+    )
+    seed = mocker.patch(f"{_CREDENTIALS}._seed_if_needed", AsyncMock())
+
+    assert await expert_allowed_credential_ids("user-1", "expert-1") == ["cred-a"]
+    assert sorted(started) == ["expert", "grants"]
+    seed.assert_not_awaited()
+    assert grants.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_seed_stamped_while_the_grants_were_read_has_them_read_again(
+    mocker: pytest_mock.MockFixture,
+):
+    """Another call seeded the expert during these reads: its grants landed
+    after this grants read started, its stamp before the expert read ended."""
+    just_seeded = SimpleNamespace(
+        id="expert-1", credentialsSeededAt=datetime.now(timezone.utc)
+    )
+    mocker.patch(f"{_CREDENTIALS}._owned_expert", AsyncMock(return_value=just_seeded))
+    grants = mocker.patch(
+        f"{_CREDENTIALS}._grants",
+        AsyncMock(side_effect=[[], [_Grant("cred-seeded", "github")]]),
+    )
+    seed = mocker.patch(f"{_CREDENTIALS}._seed_if_needed", AsyncMock())
+
+    assert await expert_allowed_credential_ids("user-1", "expert-1") == ["cred-seeded"]
+    seed.assert_not_awaited()
+    assert grants.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_an_expert_seeded_by_the_read_gets_the_grants_the_seed_wrote(
+    mocker: pytest_mock.MockFixture,
+):
+    unseeded = SimpleNamespace(id="expert-1", credentialsSeededAt=None)
+    mocker.patch(f"{_CREDENTIALS}._owned_expert", AsyncMock(return_value=unseeded))
+    grants = mocker.patch(
+        f"{_CREDENTIALS}._grants",
+        AsyncMock(side_effect=[[], [_Grant("cred-seeded", "github")]]),
+    )
+    seed = mocker.patch(f"{_CREDENTIALS}._seed_if_needed", AsyncMock())
+
+    ids = await expert_allowed_credential_ids("user-1", "expert-1")
+
+    assert ids == ["cred-seeded"]
+    seed.assert_awaited_once_with("user-1", unseeded)
+    assert grants.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_an_expert_the_user_does_not_own_grants_nothing(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        f"{_CREDENTIALS}._owned_expert",
+        AsyncMock(side_effect=ExpertNotFoundError("Expert #expert-1 not found")),
+    )
+    mocker.patch(
+        f"{_CREDENTIALS}._grants", AsyncMock(return_value=[_Grant("cred-a", "x")])
+    )
+
+    with pytest.raises(ExpertNotFoundError):
+        await expert_allowed_credential_ids("user-1", "expert-1")
+
+
+@pytest.mark.asyncio
+async def test_an_unowned_expert_is_not_found_even_when_the_grants_read_fails_first(
+    mocker: pytest_mock.MockFixture,
+):
+    async def not_owned(*_args):
+        await asyncio.sleep(0.05)
+        raise ExpertNotFoundError("Expert #expert-1 not found")
+
+    mocker.patch(f"{_CREDENTIALS}._owned_expert", AsyncMock(side_effect=not_owned))
+    mocker.patch(
+        f"{_CREDENTIALS}._grants", AsyncMock(side_effect=RuntimeError("db down"))
+    )
+
+    with pytest.raises(ExpertNotFoundError):
+        await expert_allowed_credential_ids("user-1", "expert-1")
+
+
+@pytest.mark.asyncio
+async def test_a_failed_grants_read_fails_the_call(mocker: pytest_mock.MockFixture):
+    seeded = SimpleNamespace(
+        id="expert-1", credentialsSeededAt=datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
+    mocker.patch(f"{_CREDENTIALS}._owned_expert", AsyncMock(return_value=seeded))
+    mocker.patch(
+        f"{_CREDENTIALS}._grants", AsyncMock(side_effect=RuntimeError("db down"))
+    )
+
+    with pytest.raises(RuntimeError):
+        await expert_allowed_credential_ids("user-1", "expert-1")
 
 
 def test_refs_carry_the_service_behind_an_mcp_credential():
