@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { streamRequestBody } from "../copilotStreamTransport";
 import { getKickoffExpertIdFromMetadata } from "../expertKickoff";
+import { WORKSPACE_FOLDER_PART_TYPE } from "../helpers/workspaceAttachments";
 import {
   CopilotAuthError,
   getCopilotAuthHeaders,
@@ -808,9 +809,8 @@ export class TurnRuntime {
     } else if (this.sendWentNowhere(lost, end)) {
       // The stream closed cleanly, yet no turn took the prompt and the
       // backend neither queued it nor stored it: say so, never sit idle.
-      this.error = new SendNotDeliveredError(
-        this.takeUnsentPrompt(lost.prompt),
-      );
+      const unsent = this.takeUnsentPrompt(lost.prompt);
+      this.error = new SendNotDeliveredError(unsent.text, unsent.files);
       this.emitNow();
       this.handlers.onError?.(this.error, null);
       return;
@@ -828,12 +828,16 @@ export class TurnRuntime {
         s.sequence === null,
     );
     const prompt = this.segments[index];
-    if (prompt?.kind !== "user") return "";
+    if (prompt?.kind !== "user") return { text: "", files: [] };
     this.segments.splice(index, 1);
     if (this.segments.length === 0) this.ownedFrom = null;
-    return prompt.message.parts
-      .map((part) => (part.type === "text" ? part.text : ""))
-      .join("");
+    const { parts } = prompt.message;
+    return {
+      text: parts
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join(""),
+      files: parts.flatMap(attachmentName),
+    };
   }
 
   // Only a stream the server answered and closed says so: a send this tab
@@ -1623,11 +1627,25 @@ export class MessageTooLongError extends SendRefusedError {
 
 /** A send's stream closed without any turn, queue or row taking it. */
 export class SendNotDeliveredError extends Error {
-  /** `text` is what was sent, for the composer to offer again. */
-  constructor(readonly text = "") {
+  /** `text` is what was sent, for the composer to offer again; `files` names
+   *  the attachments it carried, which have to be attached again. */
+  constructor(
+    readonly text = "",
+    readonly files: string[] = [],
+  ) {
     super("The message was not delivered.");
     this.name = "SendNotDeliveredError";
   }
+}
+
+// What a sent attachment is called, to ask for it again by name.
+function attachmentName(part: UIMessage["parts"][number]): string[] {
+  if (part.type === "file") return [part.filename ?? "a file"];
+  if (part.type === WORKSPACE_FOLDER_PART_TYPE && "data" in part) {
+    const { name } = part.data as { name?: unknown };
+    return typeof name === "string" ? [name] : [];
+  }
+  return [];
 }
 
 /** The session the chat follows is gone. */

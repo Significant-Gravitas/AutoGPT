@@ -575,6 +575,36 @@ describe("recovery", () => {
     expect(textsOf(render())).toEqual([]);
   });
 
+  it("a lost send of only files reports them by name", async () => {
+    backend.respond(({ method }) => (method === "POST" ? "empty" : "stream"));
+    void runtime.send(
+      {
+        parts: [
+          {
+            type: "file",
+            url: "/api/proxy/api/workspace/files/file-1/download",
+            mediaType: "application/pdf",
+            filename: "q3-plan.pdf",
+          },
+          {
+            type: "data-workspace-folder",
+            data: { id: "folder-1", name: "Launch notes", fileCount: 2 },
+          },
+        ],
+      },
+      undefined,
+    );
+    await advance(10_000);
+
+    const error = snapshot().error;
+    expect(error).toBeInstanceOf(SendNotDeliveredError);
+    expect((error as SendNotDeliveredError).text).toBe("");
+    expect((error as SendNotDeliveredError).files).toEqual([
+      "q3-plan.pdf",
+      "Launch notes",
+    ]);
+  });
+
   it.each(["silent", "heartbeat-then-silent"] as const)(
     "a send this tab gave up on for silence (%s) is not reported as undelivered",
     async (answer) => {

@@ -19,6 +19,15 @@ describe("describeChatError", () => {
     expect(action).toBeNull();
   });
 
+  it("a lost send with attachments asks for them again", () => {
+    const { title } = describeChatError(
+      new SendNotDeliveredError("", ["q3-plan.pdf"]),
+    );
+    expect(title).toBe(
+      "Your message didn't go through. Attach your files again and send it.",
+    );
+  });
+
   it("a message over the length limit says to shorten it", () => {
     const guidance = describeChatError(
       new MessageTooLongError('{"detail":[…]}', 422),

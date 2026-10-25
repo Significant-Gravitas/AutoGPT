@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotUIStore } from "../store";
+import { getTurnRuntime } from "../stream/turnRuntime";
 import {
   renderHost,
   resetChatRuntimes,
@@ -114,6 +115,41 @@ describe("a send that went nowhere", () => {
       ),
     ).toBeDefined();
     await waitFor(() => expect(composer().value).toBe(SENT));
+  }, 20_000);
+
+  it("names the files of a lost send that was only files, instead of dropping it silently", async () => {
+    renderHost();
+    answerWithABareStream();
+    await waitFor(() => expect(getTurnRuntime(TEST_SESSION_ID)).toBeDefined());
+
+    void getTurnRuntime(TEST_SESSION_ID)!.send(
+      {
+        parts: [
+          {
+            type: "file",
+            url: "/api/proxy/api/workspace/files/file-1/download",
+            mediaType: "application/pdf",
+            filename: "q3-plan.pdf",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    expect(
+      await screen.findByText(
+        "Your message didn't go through. Attach your files again and send it.",
+        undefined,
+        { timeout: 10_000 },
+      ),
+    ).toBeDefined();
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Your files weren't sent",
+        description: "Attach q3-plan.pdf again and send.",
+      }),
+    );
+    expect(composer().value).toBe("");
   }, 20_000);
 
   it("leaves a new draft alone and still offers the lost text", async () => {

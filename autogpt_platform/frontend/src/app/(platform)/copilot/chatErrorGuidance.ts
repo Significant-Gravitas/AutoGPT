@@ -30,7 +30,10 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     };
   if (error instanceof SendNotDeliveredError)
     return {
-      title: "Your message didn't go through. Send it again.",
+      title:
+        error.files.length > 0
+          ? "Your message didn't go through. Attach your files again and send it."
+          : "Your message didn't go through. Send it again.",
       action: null,
     };
   if (error instanceof ChatUnavailableError || status === 404)

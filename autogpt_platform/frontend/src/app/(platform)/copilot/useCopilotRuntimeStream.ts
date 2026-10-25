@@ -158,6 +158,13 @@ export function useCopilotRuntimeStream({
     // resend, never a newer send's, and its bubble is already gone. (A
     // kickoff never lands here: the runtime leaves it to the kickoff hook.)
     if (error instanceof SendNotDeliveredError) {
+      // Sent files can't be put back in the composer: name them, so a
+      // message that was only files is not lost without a word.
+      if (error.files.length > 0)
+        toast({
+          title: "Your files weren't sent",
+          description: `Attach ${error.files.join(", ")} again and send.`,
+        });
       if (!error.text) return;
       // A Retry the server didn't run is still its held chip, or already in
       // the chat: never a composer copy as well.
