@@ -7,7 +7,9 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { describe, expect, test, vi } from "vitest";
+import type { DelegationSettings } from "@/app/api/__generated__/models/delegationSettings";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import AutopilotPage from "../page";
 import { mockOttoApi, SETTINGS } from "./delegationFixtures";
@@ -140,4 +142,117 @@ describe("Otto's Settings tab", () => {
       expect(toggle.getAttribute("aria-checked")).toBe("true"),
     );
   });
+
+  test("two quick changes both reach the server", async () => {
+    mockOttoApi();
+    const server_ = holdFirstSave();
+    renderPage();
+    await openSettings();
+
+    const toggle = await screen.findByRole("switch", {
+      name: "New experts start in ask-first",
+    });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(server_.received).toHaveLength(1));
+    // Changed while the first save is still on its way.
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Per-delegation cap" }),
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "$5.00" }));
+    await waitFor(() => expect(server_.settled()).toBe(true));
+
+    await waitFor(() =>
+      expect(server_.current()).toEqual({
+        ...SETTINGS,
+        new_experts_ask_first: true,
+        per_delegation_cap_usd: 5,
+      }),
+    );
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(
+      screen.getByRole("combobox", { name: "Per-delegation cap" }).textContent,
+    ).toBe("$5.00");
+  });
+
+  test("a change that fails is undone alone, and the next one still saves", async () => {
+    mockOttoApi();
+    const server_ = holdFirstSave({ fail: true });
+    renderPage();
+    await openSettings();
+
+    const toggle = await screen.findByRole("switch", {
+      name: "New experts start in ask-first",
+    });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(server_.received).toHaveLength(1));
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Per-delegation cap" }),
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "$5.00" }));
+    await waitFor(() => expect(server_.settled()).toBe(true));
+
+    await waitFor(() =>
+      expect(server_.current()).toEqual({
+        ...SETTINGS,
+        per_delegation_cap_usd: 5,
+      }),
+    );
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("false"),
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Per-delegation cap" }).textContent,
+    ).toBe("$5.00");
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't save the delegation settings",
+      }),
+    );
+  });
 });
+
+/** A settings server that answers the first save last when the page sends
+ *  a second save before the first is answered (it holds the first until the
+ *  second arrives), or after a short wait when it doesn't. With ``fail`` the
+ *  first save is refused. */
+function holdFirstSave({ fail = false } = {}) {
+  let current: DelegationSettings = { ...SETTINGS };
+  const received: DelegationSettings[] = [];
+  let answered = 0;
+  let secondArrived = () => {};
+  const second = new Promise<void>((resolve) => {
+    secondArrived = resolve;
+  });
+  server.use(
+    http.get("/api/proxy/api/experts/delegation-settings", () =>
+      HttpResponse.json(current),
+    ),
+    http.put(
+      "/api/proxy/api/experts/delegation-settings",
+      async ({ request }) => {
+        const body = (await request.json()) as DelegationSettings;
+        received.push(body);
+        if (received.length === 2) secondArrived();
+        if (received.length === 1) {
+          await Promise.race([
+            second.then(() => new Promise((r) => setTimeout(r, 50))),
+            new Promise((r) => setTimeout(r, 500)),
+          ]);
+          if (fail) {
+            answered += 1;
+            return HttpResponse.json({ detail: "Not saved" }, { status: 422 });
+          }
+        }
+        current = body;
+        answered += 1;
+        return HttpResponse.json(current);
+      },
+    ),
+  );
+  return {
+    received,
+    current: () => current,
+    // Both saves have their answer.
+    settled: () => received.length >= 2 && answered === received.length,
+  };
+}
