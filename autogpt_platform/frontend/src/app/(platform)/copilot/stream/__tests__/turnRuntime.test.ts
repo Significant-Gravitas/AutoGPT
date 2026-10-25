@@ -575,6 +575,22 @@ describe("recovery", () => {
     expect(textsOf(render())).toEqual([]);
   });
 
+  it("a retransmit of a send the backend already holds is not reported as undelivered", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, null);
+    // Its row is stored and no turn is left to stream: the route says so.
+    backend.respond(({ method }) =>
+      method === "POST" ? "accepted" : "stream",
+    );
+    void runtime.send({ text: "What is my team working on?" }, undefined);
+    await advance(10_000);
+
+    expect(snapshot().error).not.toBeInstanceOf(SendNotDeliveredError);
+    expect(onError).not.toHaveBeenCalled();
+    // The stored row stands for it; no second, unsent bubble.
+    expect(textsOf(render())).toEqual([]);
+  });
+
   it("a lost send of only files reports them by name", async () => {
     backend.respond(({ method }) => (method === "POST" ? "empty" : "stream"));
     void runtime.send(

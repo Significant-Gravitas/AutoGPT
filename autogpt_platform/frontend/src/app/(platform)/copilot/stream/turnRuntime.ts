@@ -154,6 +154,9 @@ interface Connection {
   followUp: boolean;
   /** The backend stored this send's prompt; its turn waits for a free slot. */
   turnQueued: boolean;
+  /** The backend already held this send's row (a retransmit of a send it
+   *  took), so no turn started for it. */
+  sendAccepted: boolean;
   /** An expert's hidden kickoff, which the kickoff hook recovers itself. */
   kickoff: boolean;
 }
@@ -166,7 +169,12 @@ type Lost = Pick<
   Partial<
     Pick<
       Connection,
-      "followUp" | "turnQueued" | "frames" | "closedByClient" | "kickoff"
+      | "followUp"
+      | "turnQueued"
+      | "sendAccepted"
+      | "frames"
+      | "closedByClient"
+      | "kickoff"
     >
   >;
 
@@ -490,6 +498,7 @@ export class TurnRuntime {
       kickoff: init.kickoff ?? false,
       followUp: false,
       turnQueued: false,
+      sendAccepted: false,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -567,6 +576,11 @@ export class TurnRuntime {
       frame.chunk.type === "data-turn-queued"
     ) {
       conn.turnQueued = true;
+    } else if (
+      frame.kind === "synthetic" &&
+      frame.chunk.type === "data-send-accepted"
+    ) {
+      conn.sendAccepted = true;
     }
     this.emit();
   }
@@ -631,7 +645,8 @@ export class TurnRuntime {
     if (!seg) {
       // The page shows a queued follow-up as a chip; the prompt drawn at
       // send would sit above the running turn and take that turn's prompt row.
-      if (conn.followUp) this.dropUnsentUserRow();
+      // A send the backend already held is its stored row in the history.
+      if (conn.followUp || conn.sendAccepted) this.dropUnsentUserRow();
       this.findLostTurn(conn, end);
       return;
     }
@@ -852,6 +867,7 @@ export class TurnRuntime {
       lost.prompt !== null &&
       !lost.followUp &&
       !lost.turnQueued &&
+      !lost.sendAccepted &&
       !this.runningTurn() &&
       !this.lostSendLanded(lost.prompt)
     );

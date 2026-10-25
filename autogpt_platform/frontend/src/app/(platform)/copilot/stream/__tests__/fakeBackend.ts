@@ -15,6 +15,12 @@ const QUEUED_STREAM = emptyStream({
 });
 // A send no turn, queue or row took: framing and nothing else.
 const EMPTY_STREAM = emptyStream();
+// What it answers a retransmit of a send whose row it already holds.
+const ACCEPTED_STREAM = emptyStream({
+  type: "data-send-accepted",
+  data: {},
+  transient: true,
+});
 // What it answers a send it queued behind the turn already running.
 const FOLLOW_UP_STREAM = emptyStream({
   type: "data-follow-up-queued",
@@ -47,6 +53,8 @@ type Responder = (request: { method: string; url: URL }) =>
   | "follow-up-queued"
   // The route closed the send's stream without taking it anywhere.
   | "empty"
+  // The route already held the send's row, so it started no turn.
+  | "accepted"
   // A heartbeat, then nothing: the route went quiet mid-send.
   | "heartbeat-then-silent"
   | { status: number; body: unknown };
@@ -91,6 +99,11 @@ export function fakeBackend(turn: RecordedTurn) {
     if (answer === "network-error") throw new TypeError("Failed to fetch");
     if (answer === "follow-up-queued")
       return new Response(FOLLOW_UP_STREAM, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    if (answer === "accepted")
+      return new Response(ACCEPTED_STREAM, {
         status: 200,
         headers: { "content-type": "text/event-stream" },
       });
