@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -43,6 +44,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
 
   return (
     <Button
+      variant="legacy-default"
       className={cn(
         "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 p-[0.625rem] pr-[0.875rem] text-start shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
@@ -65,41 +67,48 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       </div>
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="body-medium"
+            as="span"
+            tone="emphasis"
+            className="line-clamp-1 group-disabled:text-foreground-subtle"
           >
             {highlightText(title, highlightedText)}
-          </span>
+          </Text>
         )}
         <div className="flex items-center space-x-2.5">
-          <span
-            className={cn(
-              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small-loose"
+            as="span"
+            tone="muted"
+            className="truncate group-disabled:text-foreground-subtle"
           >
             By {creator_name}
-          </span>
+          </Text>
 
           <span className="font-sans text-zinc-400">•</span>
 
-          <span
-            className={cn(
-              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small-loose"
+            as="span"
+            tone="muted"
+            className="truncate group-disabled:text-foreground-subtle"
           >
             {number_of_runs} runs
-          </span>
+          </Text>
           <span className="font-sans text-zinc-400">•</span>
           <Link
             href={`/marketplace/agent/${creator_name}/${slug}`}
             className="flex gap-0.5 truncate"
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="font-sans text-xs leading-5 text-blue-700 underline">
+            <Text
+              variant="small-medium-loose"
+              as="span"
+              className="text-blue-700 underline"
+            >
               Workflow page
-            </span>
+            </Text>
             <Icon
               icon={LinkSquare01Icon}
               className="h-4 w-4 text-blue-700"

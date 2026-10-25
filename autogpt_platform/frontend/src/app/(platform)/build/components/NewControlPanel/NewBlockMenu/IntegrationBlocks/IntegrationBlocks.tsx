@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import React, { Fragment } from "react";
 import { IntegrationBlock } from "../IntergrationBlock";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
@@ -72,24 +73,31 @@ export const IntegrationBlocks = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <Button
-              variant={"link"}
-              className="p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800"
+              variant={"legacy-link"}
+              className="p-0 text-foreground-emphasis"
               onClick={() => {
                 setIntegration(undefined);
               }}
             >
-              Integrations
+              <Text variant="body-medium" as="span" tone="inherit">
+                Integrations
+              </Text>
             </Button>
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+            <Text variant="body-medium" tone="emphasis">
               /
-            </p>
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+            </Text>
+            <Text variant="body-medium" tone="emphasis">
               {integration}
-            </p>
+            </Text>
           </div>
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
+          <Text
+            variant="body"
+            as="span"
+            tone="muted"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-foreground-subtle"
+          >
             {totalBlocks}
-          </span>
+          </Text>
         </div>
         <div className="space-y-3">
           {allBlocks.map((block) => (

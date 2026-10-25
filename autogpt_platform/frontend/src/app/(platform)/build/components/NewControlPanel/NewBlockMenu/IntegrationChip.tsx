@@ -1,4 +1,5 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
@@ -21,6 +22,7 @@ export const IntegrationChip: IntegrationChipComponent = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       className={cn(
         "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-[0.5rem] bg-zinc-50 p-2 pr-3 shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
@@ -40,9 +42,9 @@ export const IntegrationChip: IntegrationChipComponent = ({
         )}
       </div>
       {name && (
-        <span className="truncate font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+        <Text variant="body" as="span" tone="emphasis" className="truncate">
           {beautifyString(name)}
-        </span>
+        </Text>
       )}
     </Button>
   );
