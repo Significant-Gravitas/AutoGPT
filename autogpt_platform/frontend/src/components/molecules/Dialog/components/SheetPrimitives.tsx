@@ -9,17 +9,29 @@ import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
 
-const SheetTrigger = SheetPrimitive.Trigger;
-
-const SheetClose = SheetPrimitive.Close;
+// With `asChild` the child is the trigger element and keeps its own slot.
+const SheetTrigger = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Trigger>
+>((props, ref) => (
+  <SheetPrimitive.Trigger
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "sheet-trigger" })}
+    {...props}
+  />
+));
+SheetTrigger.displayName = SheetPrimitive.Trigger.displayName;
 
 const SheetPortal = SheetPrimitive.Portal;
 
+// TODO(tokens): black (#141414) is held only by the `foreground-base` role,
+// a text colour, not a scrim (SECRT-3154).
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    data-slot="sheet-overlay"
     className={cn(
       "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
@@ -30,8 +42,10 @@ const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
+// The dark: classes never apply (forcedTheme="light") and are DS6's
+// (SECRT-3116) to delete.
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-white p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out dark:bg-neutral-950",
+  "fixed z-50 gap-4 bg-surface p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out dark:bg-neutral-950",
   {
     variants: {
       side: {
@@ -53,6 +67,7 @@ interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
+// TODO(tokens): no role holds neutral-100 (#F5F5F5).
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
@@ -61,12 +76,18 @@ const SheetContent = React.forwardRef<
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
+      data-slot="sheet-popup"
       className={cn(sheetVariants({ side }), className)}
       {...props}
     >
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity data-[state=open]:bg-neutral-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-neutral-950 focus:ring-offset-2 disabled:pointer-events-none dark:ring-offset-neutral-950 dark:data-[state=open]:bg-neutral-800 dark:focus:ring-neutral-300">
-        <Cross2Icon className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+      <SheetPrimitive.Close
+        data-slot="sheet-close"
+        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity data-[state=open]:bg-neutral-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none dark:ring-offset-neutral-950 dark:data-[state=open]:bg-neutral-800 dark:focus:ring-neutral-300"
+      >
+        <Cross2Icon data-slot="sheet-close-icon" className="h-4 w-4" />
+        <span data-slot="sheet-close-label" className="sr-only">
+          Close
+        </span>
       </SheetPrimitive.Close>
       {children}
     </SheetPrimitive.Content>
@@ -79,6 +100,7 @@ const SheetHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
+    data-slot="sheet-header"
     className={cn(
       "flex flex-col space-y-2 text-center sm:text-left",
       className,
@@ -88,26 +110,16 @@ const SheetHeader = ({
 );
 SheetHeader.displayName = "SheetHeader";
 
-const SheetFooter = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-      className,
-    )}
-    {...props}
-  />
-);
-SheetFooter.displayName = "SheetFooter";
-
+// TODO(tokens): no size role for text-lg (18px). neutral-950 (#0A0A0A) is held
+// only by the `focus` role, the focus-ring colour, which is not a text colour
+// (SECRT-3154).
 const SheetTitle = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Title
     ref={ref}
+    data-slot="sheet-title"
     className={cn(
       "text-lg font-semibold text-neutral-950 dark:text-neutral-50",
       className,
@@ -117,13 +129,18 @@ const SheetTitle = React.forwardRef<
 ));
 SheetTitle.displayName = SheetPrimitive.Title.displayName;
 
+// TODO(tokens): no role holds neutral-500 (#737373).
 const SheetDescription = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-neutral-500 dark:text-neutral-400", className)}
+    data-slot="sheet-description"
+    className={cn(
+      "text-body leading-5 text-neutral-500 dark:text-neutral-400",
+      className,
+    )}
     {...props}
   />
 ));
@@ -131,13 +148,9 @@ SheetDescription.displayName = SheetPrimitive.Description.displayName;
 
 export {
   Sheet,
-  SheetPortal,
-  SheetOverlay,
-  SheetTrigger,
-  SheetClose,
   SheetContent,
-  SheetHeader,
-  SheetFooter,
-  SheetTitle,
   SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
 };
