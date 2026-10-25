@@ -4,7 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ButtonHTMLAttributes, ComponentProps } from "react";
 
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
@@ -84,7 +84,8 @@ export const ConversationEmptyState = ({
   </div>
 );
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
+export type ConversationScrollButtonProps =
+  ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const ConversationScrollButton = ({
   className,
