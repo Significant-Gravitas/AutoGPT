@@ -29,8 +29,6 @@ interface Props {
   transcript?: string;
   disabled?: boolean;
   path: string;
-  /** Sends the ask's answer to Otto as an ordinary message. */
-  onAnswer: (message: string) => unknown;
 }
 
 // The orb travels into this card's heading from the loader, so the
@@ -62,7 +60,6 @@ export function OnboardingIntroCard({
   transcript = "",
   disabled = false,
   path,
-  onAnswer,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
@@ -162,7 +159,7 @@ export function OnboardingIntroCard({
       </motion.div>
 
       <motion.div {...reveal(promptsStart)}>
-        <IntroStandup path={path} disabled={disabled} onAnswer={onAnswer} />
+        <IntroStandup path={path} disabled={disabled} />
       </motion.div>
 
       {suggestions.tasks.length > 0 && (

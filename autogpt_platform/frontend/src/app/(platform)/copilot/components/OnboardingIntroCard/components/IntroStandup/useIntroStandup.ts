@@ -2,7 +2,6 @@ import {
   useGrantExpertCredentials,
   useListExpertSetupItems,
   useListExperts,
-  useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
@@ -17,21 +16,14 @@ import { toConnectableProviders } from "@/components/contextual/IntegrationsPane
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-experts";
 import { requestComposerVoice } from "@/services/onboarding/composer-voice-request";
-import { toastSendFailure } from "../../../../helpers/sendFailureToast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { buildTeam, chooseAsk, type IntroAsk, joinNames } from "./helpers";
+import { buildTeam, chooseAsk, joinNames } from "./helpers";
 
 const COMPOSER_INPUT_ID = "chat-input-empty";
 const SETUP_RETRIES = 3;
 
-export function useIntroStandup({
-  path,
-  onAnswer,
-}: {
-  path: string;
-  onAnswer: (message: string) => unknown;
-}) {
+export function useIntroStandup({ path }: { path: string }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [connectDismissed, setConnectDismissed] = useState(false);
@@ -45,9 +37,6 @@ export function useIntroStandup({
           ? SETUP_POLL_MS
           : false,
     },
-  });
-  const templatesQuery = useListExpertTemplates(undefined, {
-    query: { select: (res) => okData(res) ?? [] },
   });
   const setupQuery = useListExpertSetupItems({
     query: {
@@ -79,7 +68,6 @@ export function useIntroStandup({
   const team = setupQuery.isFetched
     ? buildTeam({
         hires: hiresQuery.data ?? [],
-        templates: templatesQuery.data ?? [],
         setupItems: setupQuery.data ?? null,
         unchecked,
       })
@@ -89,21 +77,17 @@ export function useIntroStandup({
   const isSettled =
     hiresQuery.data !== undefined &&
     setupQuery.data !== undefined &&
-    templatesQuery.isFetched &&
     providersQuery.data !== undefined &&
     !unchecked.failed;
-  const ask = useHeldAsk(
-    isSettled
-      ? chooseAsk({
-          path,
-          team,
-          setupItems,
-          isConnectable: (provider) => connectable.has(provider),
-          connectDismissed,
-        })
-      : null,
-    unchecked.holding,
-  );
+  const ask = isSettled
+    ? chooseAsk({
+        path,
+        team,
+        setupItems,
+        isConnectable: (provider) => connectable.has(provider),
+        connectDismissed,
+      })
+    : null;
 
   async function handleConnected(credential: CredentialsMetaResponse) {
     setIsConnectOpen(false);
@@ -127,18 +111,6 @@ export function useIntroStandup({
     }
   }
 
-  async function answer(message: string) {
-    try {
-      await onAnswer(message);
-    } catch (error) {
-      toastSendFailure({
-        title: "Could not send that to Otto",
-        error,
-        recovery: "you can pick it again",
-      });
-    }
-  }
-
   function focusComposer() {
     document.getElementById(COMPOSER_INPUT_ID)?.focus();
   }
@@ -153,7 +125,6 @@ export function useIntroStandup({
     dismissConnect: () => setConnectDismissed(true),
     startVoice: requestComposerVoice,
     focusComposer,
-    answer,
     // The same check the composer's mic makes; the card renders after mount.
     canRecord:
       typeof navigator !== "undefined" &&
@@ -204,14 +175,5 @@ function useUncheckedHires(args: {
   }, [finished.at, refetchSetup]);
 
   const ids = args.setupUpdatedAt >= current.at ? [] : current.ids;
-  const failed = ids.length > 0 && args.setupFailed;
-  return { ids, failed, holding: ids.length > 0 && !failed };
-}
-
-// While a re-read is in flight the ask on screen stays as it was, so a job
-// choice never flashes up only to be replaced by a connect ask.
-function useHeldAsk(live: IntroAsk, holding: boolean) {
-  const [held, setHeld] = useState(live);
-  if (!holding && JSON.stringify(held) !== JSON.stringify(live)) setHeld(live);
-  return holding ? held : live;
+  return { ids, failed: ids.length > 0 && args.setupFailed };
 }

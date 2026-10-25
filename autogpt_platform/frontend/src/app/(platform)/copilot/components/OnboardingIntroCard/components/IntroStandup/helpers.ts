@@ -1,6 +1,5 @@
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { ExpertSetupItem } from "@/app/api/__generated__/models/expertSetupItem";
-import type { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
@@ -19,15 +18,7 @@ export interface TeamMember {
   area: string;
   /** A schedule the install created and that is not paused. */
   schedule: string | null;
-  /** A job the user can ask for; nothing runs it until they do. */
-  offer: string | null;
   status: MemberStatus;
-}
-
-export interface PickChoice {
-  expertId: string;
-  label: string;
-  message: string;
 }
 
 export type IntroAsk =
@@ -38,33 +29,23 @@ export type IntroAsk =
       names: string[];
       expertIds: string[];
     }
-  | { kind: "pick"; choices: PickChoice[] }
   | { kind: "dump" }
   | null;
 
 export const VISIBLE_MEMBERS = 3;
-const MAX_CHOICES = 3;
 
 export function buildTeam(args: {
   hires: Expert[];
-  templates: ExpertTemplate[];
   /** `null` when the setup gaps could not be read. */
   setupItems: ExpertSetupItem[] | null;
   /** Hires whose setup gaps are not known yet; `failed` once reading them has. */
   unchecked?: { ids: string[]; failed: boolean };
 }): TeamMember[] {
-  const dayOneByTemplate = new Map(
-    args.templates.map((template) => [template.id, template.day_one ?? []]),
-  );
   const gaps = getSetupGaps(args.setupItems ?? []);
   return args.hires.map((expert) => ({
     expert,
     area: expert.job_title || getExpertRoleLabel(expert.role),
     schedule: getRunningSchedule(expert),
-    offer: getDayOneOffer(
-      expert,
-      dayOneByTemplate.get(expert.source_template_id ?? "") ?? [],
-    ),
     status: args.unchecked?.ids.includes(expert.id)
       ? args.unchecked.failed
         ? "unchecked"
@@ -127,18 +108,6 @@ function getRunningSchedule(expert: Expert) {
   return workflow.name ? `${workflow.name} · ${when}` : when;
 }
 
-// The template's day-one job, offered for the user to pick; its timing is
-// dropped because a pick starts it now. A hire whose template has none offers
-// the first workflow it installed.
-function getDayOneOffer(
-  expert: Expert,
-  dayOne: NonNullable<ExpertTemplate["day_one"]>,
-) {
-  const first = dayOne[0];
-  if (first) return first.title;
-  return expert.workflows.find((workflow) => workflow.name)?.name ?? null;
-}
-
 export function getTeamSummary(team: TeamMember[]) {
   const counts = new Map<MemberStatus, number>();
   team.forEach((member) =>
@@ -173,17 +142,7 @@ export function chooseAsk(args: {
     ? null
     : getConnectAsk(args.setupItems, args.team, args.isConnectable);
   if (connect) return connect;
-
-  const choices = args.team
-    .filter((member) => member.offer && member.status !== "failed")
-    .slice(0, MAX_CHOICES)
-    .map((member) => ({
-      expertId: member.expert.id,
-      label: `${member.expert.name}: ${member.offer}`,
-      message: `Let's start with ${member.expert.name}'s day-one job: ${member.offer}.`,
-    }));
-  if (choices.length > 0) return { kind: "pick", choices };
-
+  // Path A's next steps are the suggested tasks, written from the dump.
   if (args.path === "B") return { kind: "dump" };
   return null;
 }

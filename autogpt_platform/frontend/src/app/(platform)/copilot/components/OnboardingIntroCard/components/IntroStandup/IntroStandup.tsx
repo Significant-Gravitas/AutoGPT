@@ -9,12 +9,12 @@ import { useIntroStandup } from "./useIntroStandup";
 interface Props {
   path: string;
   disabled: boolean;
-  onAnswer: (message: string) => unknown;
 }
 
 /** The rest of Otto's first turn after the greeting: the team he hired for
- *  the user, each hire's running schedule and setup status, and one ask. */
-export function IntroStandup({ path, disabled, onAnswer }: Props) {
+ *  the user, each hire's running schedule and setup status, and an ask when
+ *  he needs one. */
+export function IntroStandup({ path, disabled }: Props) {
   const {
     team,
     ask,
@@ -25,9 +25,8 @@ export function IntroStandup({ path, disabled, onAnswer }: Props) {
     dismissConnect,
     startVoice,
     focusComposer,
-    answer,
     canRecord,
-  } = useIntroStandup({ path, onAnswer });
+  } = useIntroStandup({ path });
 
   return (
     <>
@@ -38,7 +37,6 @@ export function IntroStandup({ path, disabled, onAnswer }: Props) {
           disabled={disabled}
           onConnect={openConnect}
           onDismissConnect={dismissConnect}
-          onAnswer={answer}
           onStartVoice={startVoice}
           onType={focusComposer}
           canRecord={canRecord}

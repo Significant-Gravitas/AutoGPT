@@ -46,7 +46,7 @@ export function TeamCard({ team }: Props) {
         {visible.map((member) => (
           <li
             key={member.expert.id}
-            className="flex min-w-0 items-start gap-3 px-4 py-3"
+            className="flex min-w-0 items-center gap-3 px-4 py-3"
           >
             <ExpertAvatar
               name={member.expert.name}
@@ -85,7 +85,7 @@ export function TeamCard({ team }: Props) {
               tone="muted"
               as="span"
               role="status"
-              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap pt-0.5"
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap"
             >
               <span
                 aria-hidden

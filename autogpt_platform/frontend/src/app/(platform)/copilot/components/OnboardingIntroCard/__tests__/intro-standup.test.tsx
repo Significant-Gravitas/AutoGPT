@@ -135,7 +135,7 @@ function serve(args: {
   /** Given how many times the roster has been read so far. */
   setup?: ExpertSetupItem[] | ((rosterReads: number) => ExpertSetupItem[]);
   path?: "A" | "B";
-  templatesDelayMs?: number;
+  tasks?: { id: string; title: string; prompt: string }[];
   setupDelayMs?: number;
 }) {
   let reads = 0;
@@ -150,17 +150,14 @@ function serve(args: {
       team_pending: false,
     }),
     http.get("*/api/onboarding/brain-dump/suggested-tasks", () =>
-      HttpResponse.json({ tasks: [], stored: true }),
+      HttpResponse.json({ tasks: args.tasks ?? [], stored: true }),
     ),
     getListExpertIdentitiesMockHandler([]),
     getListExpertsMockHandler(() => {
       reads += 1;
       return typeof args.hires === "function" ? args.hires(reads) : args.hires;
     }),
-    getListExpertTemplatesMockHandler(async () => {
-      if (args.templatesDelayMs) await delay(args.templatesDelayMs);
-      return TEMPLATES;
-    }),
+    getListExpertTemplatesMockHandler(TEMPLATES),
     getListExpertSetupItemsMockHandler(async () => {
       const rosterReads = reads;
       if (args.setupDelayMs) await delay(args.setupDelayMs);
@@ -309,43 +306,32 @@ describe("Otto's first turn on Home — the team", () => {
     expect(row.textContent).not.toContain("Personal Newsletter");
   });
 
-  it("offers the first installed workflow when the template promises nothing", async () => {
+  it("centres each row's text against the avatar, one line or two", async () => {
     serve({
       hires: [
-        makeExpert({
-          id: "max",
-          name: "Max",
-          source_template_id: "tpl-unknown",
-          workflows: [{ graph_id: "g", name: "Lead list" } as never],
-        }),
+        {
+          ...nadia,
+          workflows: [
+            {
+              graph_id: "g",
+              name: "Personal Newsletter",
+              schedule_cron: "40 7 * * *",
+              schedule_id: "schedule-1",
+            } as never,
+          ],
+        },
+        robin,
       ],
     });
     renderHome();
 
-    const ask = await findAsk();
-    expect(
-      within(ask).getByRole("button", { name: "Max: Lead list" }),
-    ).toBeDefined();
-    expect((await findTeam()).textContent).not.toContain("Lead list");
+    // happy-dom lays nothing out, so the alignment class is what it can see.
+    const rows = within(await findTeam()).getAllByRole("listitem");
+    rows.forEach((row) => {
+      expect(row.className).toContain("items-center");
+      expect(row.className).not.toContain("items-start");
+    });
   });
-
-  it.each(["allow", "inputs", "workflow"] as const)(
-    "shows a hire whose schedule waits on %s as needing setup, not ready",
-    async (resolution) => {
-      serve({
-        hires: [nadia, robin],
-        setup: [makeSetupItem("nadia", { resolution, providers: [] })],
-      });
-      renderHome();
-
-      const team = await findTeam();
-      const rows = within(team).getAllByRole("listitem");
-      expect(within(rows[0]).getByRole("status").textContent).toBe(
-        "Needs setup",
-      );
-      expect(within(rows[1]).getByRole("status").textContent).toBe("Ready");
-    },
-  );
 
   it("names the connection when a hire waits on one and on other setup", async () => {
     serve({
@@ -431,9 +417,11 @@ describe("Otto's first turn on Home — the one ask", () => {
     ).toBe("Needs a connection");
 
     fireEvent.click(within(ask).getByRole("button", { name: "Not now" }));
-    expect(
-      await screen.findByText("Which should the team start on first?"),
-    ).toBeDefined();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "One thing I need from you" }),
+      ).toBeNull(),
+    );
   });
 
   it("asks for a connection a hire turns out to need once its install finishes", async () => {
@@ -447,9 +435,6 @@ describe("Otto's first turn on Home — the one ask", () => {
     renderHome();
 
     expect(
-      await screen.findByText("Want to start here?", {}, { timeout: 3000 }),
-    ).toBeDefined();
-    expect(
       await screen.findByRole(
         "button",
         { name: "Connect Notion" },
@@ -458,8 +443,7 @@ describe("Otto's first turn on Home — the one ask", () => {
     ).toBeDefined();
   }, 10_000);
 
-  it("holds the ask while a finished install's setup gaps are re-read", async () => {
-    // No day-one job, so only the workflows the install brings give a choice.
+  it("shows no stale Ready and no ask when the re-read keeps failing", async () => {
     const max = makeExpert({
       id: "max",
       name: "Max",
@@ -474,43 +458,7 @@ describe("Otto's first turn on Home — the one ask", () => {
               workflows: [{ graph_id: "g", name: "Lead list" } as never],
             },
       ],
-      setup: (rosterReads) => (rosterReads > 1 ? [makeSetupItem("max")] : []),
-      setupDelayMs: 400,
-    });
-    const asked: string[] = [];
-    const observer = new MutationObserver(() => {
-      const ask = screen.queryByRole("region", {
-        name: "One thing I need from you",
-      });
-      if (ask?.textContent) asked.push(ask.textContent);
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    renderHome();
-
-    await screen.findByRole(
-      "button",
-      { name: "Connect Notion" },
-      { timeout: 6_000 },
-    );
-    observer.disconnect();
-    expect(asked.some((text) => text.includes("Lead list"))).toBe(false);
-  }, 10_000);
-
-  it("shows no stale Ready and no job choice when the re-read keeps failing", async () => {
-    const max = makeExpert({
-      id: "max",
-      name: "Max",
-      source_template_id: "tpl-unknown",
-    });
-    serve({
-      hires: (read) => [
-        read === 1
-          ? { ...max, setup_status: "installing" }
-          : {
-              ...max,
-              workflows: [{ graph_id: "g", name: "Lead list" } as never],
-            },
-      ],
+      path: "B",
     });
     let setupReads = 0;
     server.use(
@@ -549,11 +497,10 @@ describe("Otto's first turn on Home — the one ask", () => {
       screen.queryByRole("region", { name: "One thing I need from you" }),
     ).toBeNull();
     expect(painted.some((text) => text.startsWith("Ready|"))).toBe(false);
-    expect(painted.some((text) => text.includes("Lead list"))).toBe(false);
   }, 20_000);
 
   it("shows no Ready and no ask when the first read of setup gaps keeps failing", async () => {
-    serve({ hires: [nadia, robin] });
+    serve({ hires: [nadia, robin], path: "B" });
     let setupReads = 0;
     server.use(
       http.get("/api/proxy/api/experts/setup", () => {
@@ -599,13 +546,13 @@ describe("Otto's first turn on Home — the one ask", () => {
       screen.queryByRole("region", { name: "One thing I need from you" }),
     ).toBeNull();
     expect(painted.some((text) => text.includes("Ready"))).toBe(false);
-    expect(painted.some((text) => text.includes("Triages"))).toBe(false);
   }, 20_000);
 
   it("asks nothing while the connectable services could not be read", async () => {
     serve({
       hires: [nadia, robin],
       setup: [makeSetupItem("nadia")],
+      path: "B",
     });
     let providerReads = 0;
     server.use(
@@ -686,37 +633,6 @@ describe("Otto's first turn on Home — the one ask", () => {
     );
   }, 20_000);
 
-  it("waits for the day-one jobs before asking, so the choices never change under the cursor", async () => {
-    serve({
-      hires: [
-        {
-          ...nadia,
-          workflows: [{ graph_id: "g", name: "Newsletter workflow" } as never],
-        },
-      ],
-      templatesDelayMs: 300,
-    });
-    const asked: string[] = [];
-    const observer = new MutationObserver(() => {
-      const ask = screen.queryByRole("region", {
-        name: "One thing I need from you",
-      });
-      if (ask?.textContent) asked.push(ask.textContent);
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    renderHome();
-
-    await screen.findByRole(
-      "button",
-      { name: /^Nadia: Drafts Monday's newsletter/ },
-      { timeout: 3000 },
-    );
-    observer.disconnect();
-    expect(asked.some((text) => text.includes("Newsletter workflow"))).toBe(
-      false,
-    );
-  });
-
   it("gives every waiting hire the connection once it is made", async () => {
     const granted: string[] = [];
     serve({
@@ -764,22 +680,74 @@ describe("Otto's first turn on Home — the one ask", () => {
     await waitFor(() => expect(granted.sort()).toEqual(["nadia", "robin"]));
   });
 
-  it("asks which job starts first, and sends the pick to Otto as a message", async () => {
-    serve({ hires: [nadia, robin] });
-    const onStartTask = renderHome();
-
-    const ask = await findAsk();
-    expect(ask.textContent).toContain("Which should the team start on first?");
-    // The template's timing is a promise; a pick starts the job now.
-    await userEvent.click(
-      within(ask).getByRole("button", {
-        name: "Robin: Triages the support inbox each morning",
+  it("offers no job from a hire's template, leaving the next step to the suggested tasks", async () => {
+    serve({
+      hires: [nadia, robin],
+      tasks: [
+        {
+          id: "0",
+          title: "Turn last week's posts into Monday's newsletter",
+          prompt: "Draft Monday's newsletter from last week's posts.",
+        },
+      ],
+    });
+    let providerReads = 0;
+    server.use(
+      http.get("/api/proxy/api/integrations/providers", () => {
+        providerReads += 1;
+        return HttpResponse.json([
+          { name: "notion", supported_auth_types: ["api_key"] },
+        ]);
       }),
     );
+    const painted: string[] = [];
+    const observer = new MutationObserver(() => {
+      const card = screen.queryByTestId("onboarding-intro-card");
+      if (card?.textContent) painted.push(card.textContent);
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    renderHome();
 
-    expect(onStartTask).toHaveBeenCalledWith(
-      "Let's start with Robin's day-one job: Triages the support inbox each morning.",
+    const team = await findTeam();
+    await waitFor(() =>
+      expect(
+        within(team)
+          .getAllByRole("status")
+          .map((status) => status.textContent),
+      ).toEqual(["Ready", "Ready"]),
     );
+    expect(
+      await screen.findByText(
+        "Turn last week's posts into Monday's newsletter",
+      ),
+    ).toBeDefined();
+    await waitFor(() => expect(providerReads).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    observer.disconnect();
+    expect(
+      screen.queryByRole("region", { name: "One thing I need from you" }),
+    ).toBeNull();
+    // The roster's day-one copy is the template's promise, not the user's ask.
+    expect(painted.some((text) => text.includes("Drafts Monday's"))).toBe(
+      false,
+    );
+    expect(painted.some((text) => text.includes("Triages"))).toBe(false);
+  });
+
+  it("asks a user with a team who skipped the dump to talk through their week", async () => {
+    serve({ hires: [nadia, robin], path: "B" });
+    stubMicrophone(true);
+    renderHome();
+
+    const ask = await findAsk();
+    expect(
+      within(ask).getByRole("button", { name: "Talk me through your week" }),
+    ).toBeDefined();
+    expect(ask.textContent).not.toContain("Triages");
   });
 
   it("names only the hires whose grant failed", async () => {
@@ -828,25 +796,6 @@ describe("Otto's first turn on Home — the one ask", () => {
         expect.objectContaining({
           title: "Couldn't give Robin access to Notion",
         }),
-      ),
-    );
-  });
-
-  it("says so when the pick could not be sent to Otto", async () => {
-    serve({ hires: [nadia, robin] });
-    renderHome(
-      vi.fn(async () => {
-        throw new Error("network down");
-      }),
-    );
-
-    await userEvent.click(
-      within(await findAsk()).getByRole("button", { name: /^Robin: Triages/ }),
-    );
-
-    await waitFor(() =>
-      expect(toastSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Could not send that to Otto" }),
       ),
     );
   });

@@ -136,7 +136,6 @@ export function EmptySession({
               transcript={intro.transcript}
               disabled={isComposerDisabled || !!atReset}
               path={intro.path}
-              onAnswer={onStartTask ?? onSend}
             />
           ) : intro.isAwaitingGreeting ? (
             // Behind the welcome modal's blur and for as long as the

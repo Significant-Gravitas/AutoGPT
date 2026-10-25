@@ -91,7 +91,6 @@ describe("OnboardingIntroCard — content", () => {
     const { container } = render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -111,7 +110,6 @@ describe("OnboardingIntroCard — content", () => {
     render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions([PROMPTS[1]])}
@@ -127,7 +125,6 @@ describe("OnboardingIntroCard — content", () => {
     render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions([])}
@@ -146,7 +143,6 @@ describe("OnboardingIntroCard — picking a prompt", () => {
     render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS, onSelectPrompt)}
@@ -165,7 +161,6 @@ describe("OnboardingIntroCard — picking a prompt", () => {
     render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS, onSelectPrompt)}
@@ -187,7 +182,6 @@ describe("OnboardingIntroCard — transcript copy", () => {
     render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -202,7 +196,6 @@ describe("OnboardingIntroCard — transcript copy", () => {
     const { container } = render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -228,7 +221,6 @@ describe("OnboardingIntroCard — transcript copy", () => {
     const { container } = render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}
@@ -256,7 +248,6 @@ describe("OnboardingIntroCard — transcript copy", () => {
     const { container } = render(
       <OnboardingIntroCard
         path="A"
-        onAnswer={vi.fn()}
         name="Alex"
         greeting={GREETING}
         suggestions={makeSuggestions(PROMPTS)}

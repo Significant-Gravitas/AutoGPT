@@ -9,7 +9,6 @@ interface Props {
   disabled: boolean;
   onConnect: () => void;
   onDismissConnect: () => void;
-  onAnswer: (message: string) => unknown;
   onStartVoice: () => void;
   onType: () => void;
   canRecord: boolean;
@@ -20,7 +19,6 @@ export function AskCard({
   disabled,
   onConnect,
   onDismissConnect,
-  onAnswer,
   onStartVoice,
   onType,
   canRecord,
@@ -42,32 +40,6 @@ export function AskCard({
         >
           Not now
         </Button>
-      </AskFrame>
-    );
-  }
-
-  if (ask.kind === "pick") {
-    return (
-      <AskFrame
-        body={
-          ask.choices.length > 1
-            ? "Which should the team start on first?"
-            : "Want to start here?"
-        }
-        stacked
-      >
-        {ask.choices.map((choice) => (
-          <Button
-            key={choice.expertId}
-            size="small"
-            variant="secondary"
-            disabled={disabled}
-            onClick={() => onAnswer(choice.message)}
-            className="h-auto min-h-9 justify-start whitespace-normal py-2 text-left"
-          >
-            {choice.label}
-          </Button>
-        ))}
       </AskFrame>
     );
   }
@@ -99,15 +71,7 @@ export function AskCard({
   );
 }
 
-function AskFrame({
-  body,
-  stacked = false,
-  children,
-}: {
-  body: string;
-  stacked?: boolean;
-  children: ReactNode;
-}) {
+function AskFrame({ body, children }: { body: string; children: ReactNode }) {
   return (
     <section
       aria-label="One thing I need from you"
@@ -119,15 +83,7 @@ function AskFrame({
       <Text variant="body" tone="primary" className="mt-1 text-pretty">
         {body}
       </Text>
-      <div
-        className={
-          stacked
-            ? "mt-3 flex flex-col items-stretch gap-2"
-            : "mt-3 flex flex-wrap items-center gap-2"
-        }
-      >
-        {children}
-      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">{children}</div>
     </section>
   );
 }
