@@ -169,8 +169,9 @@ async def test_a_pass_registers_what_the_row_records_and_reads_no_flag(
     env.db.update(EXPERT.scope_key, community_job_id=None)
     env.db.update(OTHER_EXPERT.scope_key, community_job_id=None, nightly_job_id=None)
     _lose_every_cron(env)
-    flags = AsyncMock(return_value=False)
-    monkeypatch.setattr(scope_jobs, "is_feature_enabled", flags)
+    flags = AsyncMock(return_value=(False, True))
+    monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flags)
+    monkeypatch.setattr(scope_reconcile, "evaluate_feature_flag", flags, raising=False)
 
     report = await env.reconcile()
 

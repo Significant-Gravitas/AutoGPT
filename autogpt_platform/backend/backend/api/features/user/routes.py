@@ -24,6 +24,8 @@ from backend.data.user import (
     update_user_timezone,
     verify_preference_token,
 )
+from backend.notifications.posthog_audience import mark_internal_on_sign_in
+from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -63,6 +65,9 @@ async def get_or_create_user_route(
     result = await get_or_create_user_with_status(user_data)
     response.headers[USER_CREATED_HEADER] = str(result.was_created).lower()
     user = result.user
+    if not result.was_created:
+        # A new account was just sent its properties, `is_internal` included.
+        mark_internal_on_sign_in(user.id, user.email, user_data.get("role"))
 
     # Fire-and-forget: populate business understanding from Tally form.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
@@ -180,11 +185,15 @@ async def apply_email_preference_choice(
     if user_id is None:
         raise HTTPException(status_code=400, detail="Invalid or expired link")
 
-    current = await get_user_notification_preference(user_id)
-    updated = _preference_with_choice(current, choice)
-    if updated is None:
-        raise HTTPException(status_code=400, detail="Unknown preference choice")
-    return await update_user_notification_preference(user_id, updated)
+    try:
+        current = await get_user_notification_preference(user_id)
+        updated = _preference_with_choice(current, choice)
+        if updated is None:
+            raise HTTPException(status_code=400, detail="Unknown preference choice")
+        return await update_user_notification_preference(user_id, updated)
+    except NotFoundError:
+        # A deleted user's link is refused like a forged one.
+        raise HTTPException(status_code=400, detail="Invalid or expired link") from None
 
 
 def _preference_with_choice(

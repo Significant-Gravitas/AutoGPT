@@ -9,7 +9,7 @@ import {
   type ConsentState,
 } from "./consent";
 
-// A script that already ran (DataFast, Vercel Analytics, session replay)
+// A script that already ran (DataFast, Vercel Speed Insights, session replay)
 // cannot be unloaded, so taking a category back reloads the page to shed it.
 // Granting needs no reload: consumers pick it up through useConsent.
 export function ConsentWithdrawalReload() {
@@ -31,8 +31,16 @@ export function ConsentWithdrawalReload() {
   return null;
 }
 
+// No script runs on preferences consent, so taking it back leaves nothing to
+// shed; the Google tag gets that change as a Consent Mode update.
+const SCRIPT_CATEGORIES: ConsentCategory[] = [
+  "analytics",
+  "monitoring",
+  "advertising",
+];
+
 function wasWithdrawn(previous: ConsentState, next: ConsentState): boolean {
-  return (Object.keys(previous) as ConsentCategory[]).some(
+  return SCRIPT_CATEGORIES.some(
     (category) => previous[category] && !next[category],
   );
 }

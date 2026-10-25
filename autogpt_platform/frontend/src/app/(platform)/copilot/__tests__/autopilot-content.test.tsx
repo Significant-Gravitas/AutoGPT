@@ -263,7 +263,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       await waitFor(
         () => {
-          expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+          expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
           expect(
             screen.queryByRole("button", { name: /submit/i }),
           ).not.toBeNull();

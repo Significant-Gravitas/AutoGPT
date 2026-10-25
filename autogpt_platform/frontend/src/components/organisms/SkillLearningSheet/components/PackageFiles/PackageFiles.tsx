@@ -14,20 +14,30 @@ export function PackageFiles({ before, after }: Props) {
   return (
     <section
       aria-label="Package file changes"
+      data-slot="skill-learning-sheet-package-files"
       className="flex min-w-0 flex-col gap-2"
     >
       <Text variant="small-medium">Package file changes</Text>
       {changes.map((change) => (
         <details
           key={change.path}
-          className="min-w-0 rounded-lg border border-zinc-200 p-3"
+          data-slot="skill-learning-sheet-package-files-item"
+          className="min-w-0 rounded-lg border border-border-base p-3"
         >
-          <summary className="cursor-pointer break-all text-sm">
-            <span>{change.path}</span>
+          <summary
+            data-slot="skill-learning-sheet-package-files-item-summary"
+            className="cursor-pointer break-all text-sm"
+          >
+            <span data-slot="skill-learning-sheet-package-files-item-path">
+              {change.path}
+            </span>
             {" · "}
             {!change.after ? "Removed" : change.before ? "Updated" : "Added"}
           </summary>
-          <div className="mt-3 flex min-w-0 flex-col gap-3">
+          <div
+            data-slot="skill-learning-sheet-package-files-item-previews"
+            className="mt-3 flex min-w-0 flex-col gap-3"
+          >
             <FilePreview file={change.before} label="Previous file" />
             <FilePreview file={change.after} label="New file" />
           </div>

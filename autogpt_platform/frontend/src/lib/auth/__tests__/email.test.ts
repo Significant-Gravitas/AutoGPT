@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: () => "https://backend.example.com",
+    isCloud: () => true,
   },
 }));
 
@@ -11,7 +12,10 @@ vi.mock("../service-token", () => ({
   mintServiceToken: (...args: unknown[]) => mintServiceTokenMock(...args),
 }));
 
+import { Resolver } from "node:dns/promises";
 import { sendAuthEmail } from "../email";
+import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
+import { clearMailServerCache } from "../email-deliverability";
 
 const resetUrl = "https://platform.example.com/reset-password?token=abc123";
 const args = {
@@ -27,6 +31,7 @@ beforeEach(() => {
   mintServiceTokenMock.mockReset();
   mintServiceTokenMock.mockResolvedValue("svc-token");
   vi.stubGlobal("fetch", fetchMock);
+  clearMailServerCache();
 });
 
 afterEach(() => {
@@ -99,5 +104,78 @@ describe("sendAuthEmail", () => {
 
     const logged = infoSpy.mock.calls.map((c) => String(c[0]));
     expect(logged.some((l) => l.includes(resetUrl))).toBe(false);
+  });
+
+  it.each([
+    ["a domain that does not exist", "ENOTFOUND"],
+    ["a domain with no MX, A or AAAA record", "ENODATA"],
+  ])("refuses %s as undeliverable without sending", async (_, code) => {
+    vi.stubEnv("NODE_ENV", "production");
+    const error = Object.assign(new Error(code), { code });
+    vi.spyOn(Resolver.prototype, "resolveMx").mockRejectedValue(error);
+    vi.spyOn(Resolver.prototype, "resolve4").mockRejectedValue(error);
+    vi.spyOn(Resolver.prototype, "resolve6").mockRejectedValue(error);
+
+    await expect(sendAuthEmail(args)).rejects.toMatchObject({
+      body: { code: UNDELIVERABLE_EMAIL_CODE },
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // Outside production a failed send logs the link instead, but this one is
+  // an answer about the address, not a missing mailer.
+  it.each(["production", "development"])(
+    "refuses an address the mail provider won't deliver to (%s)",
+    async (nodeEnv) => {
+      vi.stubEnv("NODE_ENV", nodeEnv);
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ detail: "email_undeliverable" }), {
+          status: 422,
+        }),
+      );
+
+      await expect(sendAuthEmail(args)).rejects.toMatchObject({
+        body: { code: UNDELIVERABLE_EMAIL_CODE },
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    [422, { detail: [{ loc: ["body", "to"], msg: "not an email" }] }],
+    [500, { detail: "email_undeliverable" }],
+  ])(
+    "still throws in production on a %i that isn't the refusal",
+    async (status, body) => {
+      vi.stubEnv("NODE_ENV", "production");
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify(body), { status }),
+      );
+
+      await expect(sendAuthEmail(args)).rejects.toThrow(
+        `Backend auth-email send failed (${status})`,
+      );
+    },
+  );
+
+  it("still sends to a disposable domain", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await sendAuthEmail({ ...args, to: "user@mailinator.com" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still sends when the DNS lookup errors", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    vi.spyOn(Resolver.prototype, "resolveMx").mockRejectedValue(
+      Object.assign(new Error("ESERVFAIL"), { code: "ESERVFAIL" }),
+    );
+
+    await sendAuthEmail(args);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

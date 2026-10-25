@@ -52,6 +52,7 @@ export function ExpertAvatar({
   }
   return (
     <span
+      data-slot="expert-avatar"
       style={{
         width: size,
         height: size,
@@ -65,18 +66,26 @@ export function ExpertAvatar({
         className,
       )}
     >
-      <Avatar className="size-full rounded-[inherit]">
+      <Avatar
+        data-slot="expert-avatar-frame"
+        className="size-full rounded-[inherit]"
+      >
         <AvatarImage
           src={src}
           alt={name ?? "Expert"}
           width={size}
           height={size}
+          data-slot="expert-avatar-image"
           className="object-contain"
         />
         <AvatarFallback
+          data-slot="expert-avatar-fallback"
           accessibleLabel={name ? `${name}, AI Expert` : "AI Expert"}
         >
-          <span className="text-sm">
+          <span
+            data-slot="expert-avatar-initial"
+            className="text-body leading-5"
+          >
             {name?.slice(0, 1).toUpperCase() ?? "?"}
           </span>
         </AvatarFallback>

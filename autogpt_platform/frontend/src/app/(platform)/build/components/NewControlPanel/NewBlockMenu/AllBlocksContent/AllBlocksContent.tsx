@@ -1,6 +1,7 @@
 import React, { Fragment } from "react";
 import { Block } from "../Block";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { beautifyString } from "@/lib/utils";
 import { useAllBlockContent } from "./useAllBlockContent";
@@ -57,12 +58,19 @@ export const AllBlocksContent = () => {
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              <Text variant="body-medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
-              </p>
-              <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
+              </Text>
+              {/* TODO(tokens): #EFEFF0 is surface-hover (a hover fill) and
+                  separator (a border); no role holds it as a static fill. */}
+              <Text
+                variant="body"
+                as="span"
+                tone="secondary"
+                className="rounded-full bg-zinc-100 px-[0.375rem]"
+              >
                 {category.total_blocks}
-              </span>
+              </Text>
             </div>
 
             <div className="space-y-2">
@@ -96,12 +104,19 @@ export const AllBlocksContent = () => {
 
               {category.total_blocks > category.blocks.length && (
                 <Button
-                  variant={"link"}
-                  className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
+                  variant={"legacy-link"}
+                  className="px-0 text-foreground-secondary hover:text-foreground-emphasis"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
-                  see all
+                  <Text
+                    variant="body-medium"
+                    as="span"
+                    tone="inherit"
+                    className="underline"
+                  >
+                    see all
+                  </Text>
                 </Button>
               )}
             </div>

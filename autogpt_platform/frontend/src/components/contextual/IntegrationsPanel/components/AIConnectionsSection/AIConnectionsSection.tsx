@@ -57,11 +57,11 @@ export function AIConnectionsSection() {
         variant="small-medium"
         as="h2"
         id="ai-connections-heading"
-        className="uppercase tracking-[0.06em] text-[#505057]"
+        className="uppercase tracking-eyebrow text-foreground-body"
       >
         AI subscriptions
       </Text>
-      <Text variant="body" className="mt-2 max-w-[600px] text-[#505057]">
+      <Text variant="body" className="mt-2 max-w-[600px] text-foreground-body">
         {hasChoice
           ? "These power Otto and your experts. Pick the one new chats should start on — you can still change it per conversation, and nothing switches on its own."
           : "These power Otto and your experts. Link a subscription and you can choose which one new chats start on."}
@@ -158,11 +158,16 @@ function ConnectionRow({
           aria-hidden
           className={cn(
             "mt-[3px] flex h-4 w-4 flex-none items-center justify-center rounded-full border",
+            // TODO(tokens): no exact role for border-[#7444E5], border-[#9A9A9F]
             isSelected ? "border-[#7444E5]" : "border-[#9A9A9F]",
           )}
         >
           {isSelected && (
-            <span className="h-2 w-2 rounded-full bg-[#7444E5]" aria-hidden />
+            <span
+              // TODO(tokens): no exact role for bg-[#7444E5]
+              className="h-2 w-2 rounded-full bg-[#7444E5]"
+              aria-hidden
+            />
           )}
         </span>
       )}
@@ -182,39 +187,62 @@ function ConnectionRow({
       )}
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex flex-wrap items-center gap-2">
-          <Text variant="body-medium" as="span" className="text-black">
+          <Text
+            variant="body-medium"
+            as="span"
+            className="text-foreground-base"
+          >
             {connection.display_name}
           </Text>
           {connection.auth_method !== "deployment" &&
             connection.credential_id &&
             isSelectable(connection) && (
-              <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#E8F8F0] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#157E58]">
+              <span
+                // TODO(tokens): no exact role for bg-[#E8F8F0], text-[#157E58]
+                className="inline-flex items-center gap-1 rounded-[10px] bg-[#E8F8F0] px-2 py-[2px] text-body-sm font-medium leading-5 text-[#157E58]"
+              >
                 <Icon icon={CheckmarkCircle02Icon} size={13} />
                 Connected
               </span>
             )}
           {account && (
-            <span className="max-w-full truncate rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]">
+            <span
+              // TODO(tokens): no exact role for bg-[#EFF1F4]
+              className="max-w-full truncate rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-body-sm font-medium leading-5 text-foreground-body"
+            >
               {account}
             </span>
           )}
           {isSelected && (
-            <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#F1EBFF] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#4A25AD]">
+            <span
+              // TODO(tokens): no exact role for bg-[#F1EBFF], text-[#4A25AD]
+              className="inline-flex items-center gap-1 rounded-[10px] bg-[#F1EBFF] px-2 py-[2px] text-body-sm font-medium leading-5 text-[#4A25AD]"
+            >
               <Icon icon={SparklesIcon} size={13} />
               Used for new chats
             </span>
           )}
         </span>
-        <Text variant="small" as="span" className="text-[#505057]">
+        <Text variant="small" as="span" className="text-foreground-body">
           {connection.description}
         </Text>
         {tierSummary(connection) && (
-          <Text variant="small" as="span" className="text-[#7A7A80]">
+          <Text
+            // TODO(tokens): no exact role for text-[#7A7A80]
+            variant="small"
+            as="span"
+            className="text-[#7A7A80]"
+          >
             {tierSummary(connection)}
           </Text>
         )}
         {connection.lock_reason && (
-          <Text variant="small" as="span" className="text-[#7A7A80]">
+          <Text
+            // TODO(tokens): no exact role for text-[#7A7A80]
+            variant="small"
+            as="span"
+            className="text-[#7A7A80]"
+          >
             {connection.lock_reason}
           </Text>
         )}
@@ -235,7 +263,7 @@ function ConnectionRow({
 
   if (!selectable) {
     return (
-      <div className="flex w-full items-start gap-3 rounded-2xl border border-[#DADADC] bg-white p-4">
+      <div className="flex w-full items-start gap-3 rounded-2xl border border-border-base bg-surface p-4">
         {body}
         {manage}
       </div>
@@ -245,10 +273,11 @@ function ConnectionRow({
   return (
     <div
       className={cn(
-        "flex w-full items-start rounded-2xl border bg-white pr-4 transition-colors",
+        "flex w-full items-start rounded-2xl border bg-surface pr-4 transition-colors",
+        // TODO(tokens): no exact role for border-[#7444E5], ring-[#7444E5]
         isSelected
           ? "border-[#7444E5] ring-1 ring-[#7444E5]"
-          : "border-[#DADADC] hover:bg-[#F9F9FA]",
+          : "border-border-base hover:bg-surface-muted",
       )}
     >
       <button
@@ -259,6 +288,7 @@ function ConnectionRow({
         onClick={onSelect}
         className={cn(
           "flex min-w-0 flex-1 items-start gap-3 rounded-2xl p-4 text-left",
+          // TODO(tokens): no exact role for focus-visible:ring-[#7444E5]
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7444E5]",
           isSaving && "cursor-progress opacity-70",
         )}

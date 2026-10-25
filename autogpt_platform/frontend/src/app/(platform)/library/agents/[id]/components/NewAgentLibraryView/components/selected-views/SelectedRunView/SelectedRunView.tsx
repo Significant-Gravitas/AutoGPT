@@ -143,7 +143,7 @@ export function SelectedRunView({
                             emptyMessage="No pending reviews for this execution"
                           />
                         ) : (
-                          <Text variant="body" className="text-zinc-700">
+                          <Text variant="body" className="text-foreground-body">
                             No pending reviews for this execution
                           </Text>
                         )}
@@ -178,13 +178,23 @@ export function SelectedRunView({
                   <div className="scroll-mt-4">
                     <RunDetailCard title="Output">
                       {isLoading ? (
-                        <div className="text-neutral-500">
+                        <div
+                          // TODO(tokens): no exact role for text-neutral-500 (#737373)
+                          className="text-neutral-500"
+                        >
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
-                        <RunOutputs outputs={run.outputs as any} />
+                        <RunOutputs
+                          outputs={run.outputs as any}
+                          hiddenFromReplay
+                        />
                       ) : (
-                        <Text variant="body" className="text-neutral-600">
+                        <Text
+                          // TODO(tokens): no exact role for text-neutral-600 (#525252)
+                          variant="body"
+                          className="text-neutral-600"
+                        >
                           No output from this run.
                         </Text>
                       )}

@@ -122,7 +122,15 @@ async def test_hybrid_search_with_custom_schema():
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
-async def test_hybrid_search_without_embeddings():
+@pytest.mark.parametrize(
+    "error, warns",
+    [
+        (Exception("Embedding generation failed"), True),
+        (embeddings.PublicSearchBudgetSpent(), False),
+    ],
+    ids=["embedding-failed", "budget-spent"],
+)
+async def test_hybrid_search_without_embeddings(error, warns, caplog):
     """Test hybrid search gracefully degrades when embeddings are unavailable."""
     mock_results = [
         {
@@ -153,7 +161,7 @@ async def test_hybrid_search_without_embeddings():
         with patch(
             "backend.api.features.store.hybrid_search.query_raw_with_schema"
         ) as mock_query:
-            mock_embed.side_effect = Exception("Embedding generation failed")
+            mock_embed.side_effect = error
             mock_query.return_value = mock_results
 
             results, total = await hybrid_search(
@@ -165,6 +173,7 @@ async def test_hybrid_search_without_embeddings():
             assert len(results) == 1
             assert results[0]["slug"] == "test-agent"
             assert total == 1
+            assert ("Failed to generate query embedding" in caplog.text) is warns
 
 
 @pytest.mark.asyncio(loop_scope="session")

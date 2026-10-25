@@ -139,7 +139,7 @@ vi.mock("../useVoiceRecording", () => ({
   }),
 }));
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({
     disabled,
     status,
@@ -734,6 +734,23 @@ describe("ChatInput dry-run toggle", () => {
 });
 
 describe("ChatInput guided prompt prefill", () => {
+  it("prefills a guided prompt without opening the keyboard on touch devices", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList);
+    try {
+      mockInitialPrompt = NEW_SKILL_PROMPT;
+      render(<ChatInput onSend={mockOnSend} />);
+      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+      await waitFor(() => expect(textarea.value).toBe(NEW_SKILL_PROMPT));
+      expect(document.activeElement).not.toBe(textarea);
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
   it("prefills the composer and focuses it when an initial prompt arrives after mount", async () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;

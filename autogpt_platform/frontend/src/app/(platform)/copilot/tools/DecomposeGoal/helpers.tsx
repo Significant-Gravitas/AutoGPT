@@ -119,11 +119,12 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
+  // TODO(tokens): no exact role for neutral-400 #A3A3A3
   return <Icon icon={CheckListIcon} size={14} className="text-neutral-400" />;
 }
 
@@ -138,6 +139,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CheckmarkCircle02Icon}
           size={18}
+          // TODO(tokens): no exact role for emerald-500 #10B981
           className="text-emerald-500"
           aria-label="completed"
         />
@@ -147,7 +149,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={Loading03Icon}
           size={18}
-          className="animate-spin text-blue-500"
+          className="animate-spin text-info"
           aria-label="in progress"
         />
       );
@@ -156,7 +158,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CancelCircleIcon}
           size={18}
-          className="text-red-500"
+          className="text-error"
           aria-label="failed"
         />
       );
@@ -165,6 +167,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CircleDashedIcon}
           size={18}
+          // TODO(tokens): no exact role for neutral-400 #A3A3A3
           className="text-neutral-400"
           aria-label="pending"
         />

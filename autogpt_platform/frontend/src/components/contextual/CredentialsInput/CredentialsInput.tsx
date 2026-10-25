@@ -239,7 +239,7 @@ export function CredentialsInput({
           {removedCredentialTitle && (
             <Alert variant="warning" aria-live="polite" className="mt-2">
               <AlertDescription>
-                <Text variant="body" unmask={false}>
+                <Text variant="body">
                   {getRemovedCredentialMessage(
                     removedCredentialTitle,
                     selectedCredential,
@@ -251,7 +251,7 @@ export function CredentialsInput({
           )}
 
           {oAuthError && (
-            <Text variant="body" className="mt-2 text-red-500">
+            <Text variant="body" className="mt-2 text-error">
               Error: {oAuthError}
             </Text>
           )}

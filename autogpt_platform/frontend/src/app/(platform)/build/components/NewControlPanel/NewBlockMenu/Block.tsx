@@ -1,7 +1,8 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import React, { ButtonHTMLAttributes, useState } from "react";
+import React, { ButtonHTMLAttributes, memo, useState } from "react";
 import { highlightText } from "./helpers";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
@@ -23,18 +24,14 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   blockData: BlockInfo;
 }
 
-interface BlockComponent extends React.FC<Props> {
-  Skeleton: React.FC<{ className?: string }>;
-}
-
-export const Block: BlockComponent = ({
+function BlockCard({
   title,
   description,
   highlightedText,
   className,
   blockData,
   ...rest
-}) => {
+}: Props) {
   const setBlockMenuOpen = useControlPanelStore(
     (state) => state.setBlockMenuOpen,
   );
@@ -121,6 +118,7 @@ export const Block: BlockComponent = ({
   return (
     <>
       <Button
+        variant="legacy-default"
         draggable={!isMCPBlock}
         data-id={blockDataId}
         className={cn(
@@ -135,25 +133,27 @@ export const Block: BlockComponent = ({
       >
         <div className="flex flex-1 flex-col items-start gap-0.5">
           {title && (
-            <span
-              className={cn(
-                "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-              )}
+            <Text
+              variant="body-medium"
+              as="span"
+              tone="emphasis"
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
                 highlightedText,
               )}
-            </span>
+            </Text>
           )}
           {description && (
-            <span
-              className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-              )}
+            <Text
+              variant="small-loose"
+              as="span"
+              tone="muted"
+              className="line-clamp-1 group-disabled:text-foreground-subtle"
             >
               {highlightText(description, highlightedText)}
-            </span>
+            </Text>
           )}
         </div>
         <div
@@ -173,7 +173,7 @@ export const Block: BlockComponent = ({
       )}
     </>
   );
-};
+}
 
 const BlockSkeleton = () => {
   return (
@@ -187,4 +187,8 @@ const BlockSkeleton = () => {
   );
 };
 
-Block.Skeleton = BlockSkeleton;
+// Memoised: a list re-renders for its own reasons (a new page arriving, a
+// filter count updating) without the rows' props changing.
+export const Block = Object.assign(memo(BlockCard), {
+  Skeleton: BlockSkeleton,
+});

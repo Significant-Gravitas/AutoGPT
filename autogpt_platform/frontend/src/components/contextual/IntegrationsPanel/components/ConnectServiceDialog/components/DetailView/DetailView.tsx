@@ -88,11 +88,16 @@ export function DetailView({
           name={provider.name}
         />
         <div className="flex min-w-0 flex-col gap-1">
-          <Text variant="h4" as="h2" className="text-[#1F1F20]">
+          <Text
+            // TODO(tokens): no exact role for text-[#1F1F20]
+            variant="h4"
+            as="h2"
+            className="text-[#1F1F20]"
+          >
             {provider.name}
           </Text>
           {description ? (
-            <Text variant="small" className="text-[#83838C]">
+            <Text variant="small" className="text-foreground-tertiary">
               {description}
             </Text>
           ) : null}

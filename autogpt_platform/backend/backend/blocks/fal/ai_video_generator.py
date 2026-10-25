@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from enum import Enum
-from typing import Any
 
 from backend.blocks._base import (
     Block,
@@ -85,28 +84,6 @@ class AIVideoGeneratorBlock(Block):
             "Authorization": f"Key {api_key}",
             "Content-Type": "application/json",
         }
-
-    async def _submit_request(
-        self, url: str, headers: dict[str, str], data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Submit a request to the FAL API."""
-        try:
-            response = await Requests().post(url, headers=headers, json=data)
-            return response.json()
-        except ClientResponseError as e:
-            logger.error(f"FAL API request failed: {str(e)}")
-            raise RuntimeError(f"Failed to submit request: {str(e)}")
-
-    async def _poll_status(
-        self, status_url: str, headers: dict[str, str]
-    ) -> dict[str, Any]:
-        """Poll the status endpoint until completion or failure."""
-        try:
-            response = await Requests().get(status_url, headers=headers)
-            return response.json()
-        except ClientResponseError as e:
-            logger.error(f"Failed to get status: {str(e)}")
-            raise RuntimeError(f"Failed to get status: {str(e)}")
 
     async def generate_video(
         self, input_data: Input, credentials: FalCredentials

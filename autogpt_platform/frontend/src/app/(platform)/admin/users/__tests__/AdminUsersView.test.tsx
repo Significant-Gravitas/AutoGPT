@@ -336,6 +336,8 @@ function mockUserRoutes(user: typeof ALEX) {
     http.get(`*/api/admin/users/${user.id}/organizations`, () =>
       HttpResponse.json([ORGANISATION]),
     ),
+    // The admin's own session, for the Sign-ins card's "that's you" warning.
+    http.get("*/api/auth/get-session", () => HttpResponse.json(null)),
   );
 }
 

@@ -17,7 +17,9 @@ from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
+    _single_provider,
     check_hitl_review,
+    check_spend_approval,
     execute_block,
     get_block_provider,
     get_inputs_from_schema,
@@ -202,6 +204,102 @@ class TestExecuteBlockCreditCharging:
         call_kwargs = mock_credit.spend_credits.call_args.kwargs
         assert call_kwargs["cost"] == 10
         assert call_kwargs["metadata"].reason == "copilot_block_execution"
+
+    async def test_prices_with_resolved_credentials_not_model_supplied(self):
+        """A credentials value the model wrote into input_data must not change
+        the price: the block runs with the resolved credential, so it is priced
+        (and charged) with that one."""
+        block = _make_block()
+        credit_patch, mock_credit = _patch_credit_db(get_credits_return=100)
+        resolved = CredentialsMetaInput(
+            id=exa_credentials.id,
+            provider=exa_credentials.provider,
+            type=exa_credentials.type,
+        )
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.get = AsyncMock(return_value=exa_credentials)
+        priced: list[dict] = []
+
+        def _price(_block, input_data, **_kwargs):
+            priced.append(dict(input_data))
+            creds = input_data.get("credentials") or {}
+            return (10, {}) if creds.get("id") == exa_credentials.id else (0, {})
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            patch("backend.copilot.tools.helpers.block_usage_cost", side_effect=_price),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={
+                    "text": "hello",
+                    "credentials": {"id": "stub", "provider": "exa", "type": "api_key"},
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-stub",
+                matched_credentials={"credentials": resolved},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert priced and priced[0]["credentials"]["id"] == exa_credentials.id
+        mock_credit.spend_credits.assert_awaited_once()
+        assert mock_credit.spend_credits.call_args.kwargs["cost"] == 10
+
+    async def test_spend_approval_prices_with_resolved_credentials(self):
+        """The expert spend threshold is judged on what the run will cost, so a
+        credentials value the model wrote must not hide a paid block from it."""
+        resolved = CredentialsMetaInput(
+            id=exa_credentials.id,
+            provider=exa_credentials.provider,
+            type=exa_credentials.type,
+        )
+        prep = BlockPreparation(
+            block=_make_block(),
+            block_id="block-1",
+            input_data={
+                "text": "hello",
+                "credentials": {"id": "stub", "provider": "exa", "type": "api_key"},
+            },
+            matched_credentials={"credentials": resolved},
+            input_schema={},
+            credentials_fields={"credentials"},
+            required_non_credential_keys=set(),
+            provided_input_keys={"text"},
+            synthetic_graph_id=f"{COPILOT_SESSION_PREFIX}{_SESSION}",
+            synthetic_node_id=f"{COPILOT_NODE_PREFIX}block-1",
+        )
+
+        def _price(_block, input_data, **_kwargs):
+            creds = input_data.get("credentials") or {}
+            return (10, {}) if creds.get("id") == exa_credentials.id else (0, {})
+
+        approvals = MagicMock()
+        approvals.spend_approval_required = AsyncMock(return_value=None)
+        with (
+            patch("backend.copilot.tools.helpers.block_usage_cost", side_effect=_price),
+            patch(
+                "backend.copilot.tools.helpers.spend_approval_db",
+                return_value=approvals,
+            ),
+        ):
+            result = await check_spend_approval(
+                prep, _USER, make_session(_USER, expert_id="expert-a")
+            )
+
+        assert result is None
+        approvals.spend_approval_required.assert_awaited_once()
+        # The model's own value stays on the request; only the price follows
+        # the resolved credential.
+        assert prep.input_data["credentials"]["id"] == "stub"
 
     async def test_returns_error_when_insufficient_credits_before_exec(self):
         """Pre-execution check should return ErrorResponse when balance < cost."""
@@ -2272,3 +2370,14 @@ async def test_scheduled_expert_turn_does_not_offer_a_credential_of_the_wrong_ty
     assert isinstance(result, ErrorResponse)
     assert "exa-oauth" not in result.message
     assert "connect exa" in result.message
+
+
+@pytest.mark.parametrize(
+    ("providers", "details"),
+    [({"github"}, {"provider": "github"}), (set(), None), ({"github", "slack"}, None)],
+    ids=["one", "none", "several"],
+)
+def test_a_failure_names_its_provider_only_when_there_is_one(providers, details):
+    """A scheduled chat's failure streak keys on it, and its card's Reconnect
+    opens it: with several to fix, neither could pick one."""
+    assert _single_provider(providers) == details

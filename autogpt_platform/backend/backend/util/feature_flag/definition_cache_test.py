@@ -431,10 +431,14 @@ class TestLaunchDarklyBackendIsUntouched:
         build = mocker.patch.object(ph, "get_flag_definition_cache")
         ld_client.variation_detail.return_value = served(True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
         build.assert_not_called()
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestAgainstTheRealSDK:
     """The SDK's own poll, driven through the provider."""
 
