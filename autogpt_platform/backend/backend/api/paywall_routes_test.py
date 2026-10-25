@@ -80,7 +80,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/orgs/{org_id}/invitations",
     "DELETE /api/orgs/{org_id}/invitations/{invitation_id}",
     "GET /api/orgs/{org_id}/members",
-    "POST /api/orgs/{org_id}/members",
     "DELETE /api/orgs/{org_id}/members/{uid}",
     "PATCH /api/orgs/{org_id}/members/{uid}",
     "POST /api/orgs/{org_id}/transfer-ownership",
