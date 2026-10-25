@@ -13,7 +13,8 @@ export type As =
   | "kbd"
   | "li"
   | "dt"
-  | "dd";
+  | "dd"
+  | "pre";
 
 // Typography comes from the size roles in tailwind.config.ts; each bundles
 // its line-height. TODO(tokens): SECRT-3152, the rem-based heading tracking
@@ -61,6 +62,9 @@ export const variants = {
   "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
   // The sans sibling of caption-sm-mono: caption-sm (0.6875rem/1rem) as it is.
   "caption-sm": "font-sans text-caption-sm font-normal text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm) in the mono family.
+  "body-mono-tight":
+    "font-mono text-body font-normal leading-5 text-foreground-base",
 
   // Label Text
   label:
@@ -117,6 +121,7 @@ export const variantElementMap: Record<Variant, As> = {
   "lg-medium": "h3",
   "2xl-bold": "div",
   "caption-sm": "kbd",
+  "body-mono-tight": "code",
   label: "span",
   eyebrow: "span",
 };
