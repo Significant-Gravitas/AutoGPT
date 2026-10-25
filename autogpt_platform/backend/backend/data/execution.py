@@ -642,6 +642,7 @@ async def get_graph_executions(
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
     expert_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -662,13 +663,15 @@ async def get_graph_executions(
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
-    # Scope by user_id and optionally team_id. Don't conflate either with
-    # organizationId — those are separate columns in the schema and a
+    # Scope by user_id and optionally team_id or organization_id. Don't
+    # conflate them: they are separate columns in the schema, and a
     # team_id/user_id value is not a valid organizationId.
     if user_id:
         where_filter["userId"] = user_id
     if team_id:
         where_filter["teamId"] = team_id
+    if organization_id:
+        where_filter["organizationId"] = organization_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:

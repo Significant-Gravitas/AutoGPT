@@ -10,6 +10,7 @@ from backend.data.execution import (
     create_graph_execution,
     get_graph_execution,
     get_graph_execution_meta,
+    get_graph_executions,
     get_graph_executions_paginated,
 )
 
@@ -90,6 +91,16 @@ async def test_executions_paginated_org_visibility_coexists_with_status_or(
     assert where["AND"] == VISIBILITY_AND
     assert where["OR"] == [{"executionStatus": ExecutionStatus.RUNNING}]
     assert "userId" not in where
+
+
+@pytest.mark.asyncio
+async def test_a_users_runs_can_be_listed_for_one_org(mock_exec_client):
+    """Used to stop the runs a member started in an org they're removed from:
+    their runs in other orgs aren't touched."""
+    await get_graph_executions(user_id="u-1", organization_id="org-1")
+
+    where = mock_exec_client.find_many.call_args.kwargs["where"]
+    assert (where["userId"], where["organizationId"]) == ("u-1", "org-1")
 
 
 @pytest.mark.asyncio
