@@ -350,11 +350,13 @@ async def _admit_card_answer(
     requests. A card the chat already answered, in this tab or another, is
     not answered again: its line is dropped, and the decisions on cards still
     open go on, so no later reader takes the dropped line for a second
-    answer. A message left with nothing is "refused". "claimed" means this
-    request took the claim: accept it once the answer is saved or queued, or
-    give it back (approvals and all) if it is not. Called just before the row
-    is saved or queued. The row's tag is read from what is left to save, so
-    it never names a card whose line was dropped.
+    answer. A message left with nothing, and nothing attached, is "refused".
+    "claimed" means this request took the claim: accept it once the answer
+    is saved or queued, or give it back (approvals and all) if it is not.
+    Called just before the row is saved or queued, with what the user typed
+    and never text the server appends (attachment names): only the user's
+    own words answer a card. The row's tag is read from what is left to
+    save, so it never names a card whose line was dropped.
     """
     answer = CardAnswer(
         admission="unclaimed",
@@ -402,7 +404,9 @@ async def _admit_card_answer(
         logger.info(f"Refused a second answer to a card in session {session_id}")
         answer.message = strip_card_decisions(answer.message, claim.answered or ids)
         ids = _card_ids(answer.message)
-        if not answer.message:
+        if not answer.message and not has_attachments:
+            # What was attached still goes, on every path, with or without
+            # a turn running.
             answer.admission = "refused"
     answer.metadata = _card_answer_metadata(
         answer.message, has_attachments=has_attachments
@@ -2274,6 +2278,7 @@ async def stream_chat_post(
     # Expert sessions may only attach files from the expert's own
     # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
+    files_block = ""
     if request.file_ids or request.folder_ids:
         files = await resolve_attachments_for_http(
             user_id,
@@ -2285,7 +2290,7 @@ async def stream_chat_post(
             user_id, request.folder_ids or [], expert_id=session.expert_id
         )
         sanitized_file_ids = [wf.id for wf in files] or None
-        message += build_files_block(files, folders)
+        files_block = build_files_block(files, folders)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -2307,15 +2312,22 @@ async def stream_chat_post(
     # the row may not be written yet, and a queued copy never gets this id.
     # A copy that finds the key reserved waits for this request's outcome, so
     # it is never told a send was taken that is then refused.
+    #
+    # Decisions are read from what the user typed, before the attachment
+    # names go on: a file name is not the user pressing Approve.
     card_answer = _no_card_answer(message, card_owner)
     if request.is_user_message:
         card_answer = await _admit_card_answer(
-            user_id, session_id, message, card_owner, has_attachments=has_attachments
+            user_id,
+            session_id,
+            message,
+            card_owner,
+            has_attachments=bool(files_block),
         )
     if card_answer.admission == "refused":
         # Answered already: the client's refetch shows the answer.
         return _empty_ui_message_stream_response()
-    message = card_answer.message
+    message = card_answer.message + files_block
     if not request.expert_kickoff:
         message_metadata = card_answer.metadata
     claim_owner = uuid4().hex

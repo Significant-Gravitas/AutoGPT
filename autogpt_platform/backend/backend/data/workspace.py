@@ -604,6 +604,15 @@ async def resolve_attachable_workspace_files(
     return files
 
 
+# Every character str.splitlines() ends a line at. A name keeps to its own
+# line, so nothing in it reads as a line of the message (a card decision, say).
+_LINE_BREAKS = re.compile(r"[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]+")
+
+
+def _on_one_line(name: str) -> str:
+    return _LINE_BREAKS.sub(" ", name)
+
+
 def build_files_block(
     files: list[UserWorkspaceFile],
     folders: Optional[list["WorkspaceFolder"]] = None,
@@ -619,11 +628,13 @@ def build_files_block(
     if not files and not folders:
         return ""
     lines = [
-        f"- {f.name} ({f.mimeType}, {round(f.sizeBytes / 1024, 1)} KB), file_id={f.id}"
+        f"- {_on_one_line(f.name)} ({f.mimeType}, "
+        f"{round(f.sizeBytes / 1024, 1)} KB), file_id={f.id}"
         for f in files
     ]
     lines += [
-        f"- {d.name} (folder, {d.file_count} file(s) directly inside), folder_id={d.id}"
+        f"- {_on_one_line(d.name)} (folder, {d.file_count} file(s) directly inside),"
+        f" folder_id={d.id}"
         for d in folders or []
     ]
     hints = []
