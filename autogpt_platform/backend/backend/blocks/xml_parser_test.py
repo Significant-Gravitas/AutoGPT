@@ -156,6 +156,8 @@ async def test_run_rejects_attributes_with_clear_error(xml):
         ("&amp;lt; stays escaped once", "&lt; stays escaped once"),
         ("&nbsp; &unknown; a & b", "&nbsp; &unknown; a & b"),
         ("&#x110000; &#xD800;", "&#x110000; &#xD800;"),
+        ("&#0; &#x1; &#xFFFE;", "&#0; &#x1; &#xFFFE;"),
+        ("a&#9;b&#10;c&#xD;d", "a\tb\nc\rd"),
     ],
 )
 async def test_run_decodes_xml_entities_once(text, expected):

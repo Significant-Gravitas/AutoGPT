@@ -24,12 +24,22 @@ _XML_ENTITY_RE = re.compile(
 _XML_NAMED_ENTITIES = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}
 
 
+def _is_xml_char(codepoint: int) -> bool:
+    """XML 1.0 Char production."""
+    return (
+        codepoint in (0x9, 0xA, 0xD)
+        or 0x20 <= codepoint <= 0xD7FF
+        or 0xE000 <= codepoint <= 0xFFFD
+        or 0x10000 <= codepoint <= 0x10FFFF
+    )
+
+
 def _decode_xml_entity(match: re.Match[str]) -> str:
     hex_code, dec_code, name = match.groups()
     if name:
         return _XML_NAMED_ENTITIES[name]
     codepoint = int(hex_code, 16) if hex_code else int(dec_code)
-    if codepoint > 0x10FFFF or 0xD800 <= codepoint <= 0xDFFF:
+    if not _is_xml_char(codepoint):
         return match.group(0)
     return chr(codepoint)
 
