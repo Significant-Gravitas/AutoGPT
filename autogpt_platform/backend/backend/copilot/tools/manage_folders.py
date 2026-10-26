@@ -8,6 +8,7 @@ from backend.api.features.library import model as library_model
 from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
+from backend.util.exceptions import NotFoundError
 
 from .base import BaseTool
 from .external_scope import error_detail, external_tenancy, external_tenant
@@ -551,7 +552,9 @@ class MoveAgentsToFolderTool(BaseTool):
                 "agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Library agent IDs to move.",
+                    "description": (
+                        "Library agent IDs to move (graph IDs are also accepted)."
+                    ),
                     "entity": "library_agent",
                 },
                 "folder_id": {
@@ -590,6 +593,12 @@ class MoveAgentsToFolderTool(BaseTool):
                 folder_id=folder_id,
                 user_id=user_id,
             )
+        except NotFoundError as e:
+            return ErrorResponse(
+                message=f"Nothing was moved. {e}",
+                error="not_found",
+                session_id=session_id,
+            )
         except Exception as e:
             return ErrorResponse(
                 message=f"Failed to move workflows: {error_detail(e, session)}",
@@ -597,14 +606,18 @@ class MoveAgentsToFolderTool(BaseTool):
                 session_id=session_id,
             )
 
+        if not moved:
+            return ErrorResponse(
+                message="No workflows were moved.",
+                error="no_agents_moved",
+                session_id=session_id,
+            )
+
         moved_ids = [a.id for a in moved]
         agent_names = [a.name for a in moved]
         dest = "the folder" if folder_id else "root level"
-        names_str = (
-            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} workflow(s)"
-        )
         return AgentsMovedToFolderResponse(
-            message=f"Moved {names_str} to {dest}.",
+            message=f"Moved {', '.join(agent_names)} to {dest}.",
             agent_ids=moved_ids,
             agent_names=agent_names,
             folder_id=folder_id,

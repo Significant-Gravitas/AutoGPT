@@ -262,7 +262,7 @@ async def delete_folder(
     response_model=list[library_model.LibraryAgent],
     responses={
         200: {"description": "Agents moved successfully"},
-        404: {"description": "Folder not found"},
+        404: {"description": "Agent or folder not found"},
         500: {"description": "Server error"},
     },
 )
