@@ -39,6 +39,8 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    Credentials,
+    CredentialsMetaInput,
     GraphExecutionStats,
     NodeExecutionStats,
     OAuth2Credentials,
@@ -440,10 +442,10 @@ async def execute_node(
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
 
-    # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
-    # changes during execution. ⚠️ This means a set of credentials can only be used by
-    # one (running) block at a time; simultaneous execution of blocks using same
-    # credentials is not supported.
+    # Last-minute fetch credentials. OAuth credentials come with a system-wide lease
+    # that stops them being refreshed or replaced during execution. ⚠️ This means
+    # an OAuth credential can only be used by one (running) block at a time;
+    # simultaneous execution of blocks using the same one is not supported.
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
@@ -499,7 +501,9 @@ async def execute_node(
                     await enforce_codex_access(user_id)
                 continue
             try:
-                lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+                credentials, lease = await _get_node_credentials(
+                    creds_manager, user_id, credentials_meta
+                )
             except ValueError:
                 # Credential was deleted or doesn't exist.
                 # If the field has a default, run without credentials.
@@ -511,8 +515,8 @@ async def execute_node(
                     input_data[field_name] = None
                     continue
                 raise
-            credential_leases[field_name] = lease
-            credentials = lease.credentials
+            if lease is not None:
+                credential_leases[field_name] = lease
             if not (
                 provider_matches(
                     credentials.provider,
@@ -525,8 +529,8 @@ async def execute_node(
                 )
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
-            extra_exec_kwargs[field_name] = lease.credentials
-            if _uses_provider_runtime(lease):
+            extra_exec_kwargs[field_name] = credentials
+            if lease is not None and _uses_provider_runtime(lease):
                 runtime_credential_leases[field_name] = lease
 
         # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
@@ -611,6 +615,32 @@ async def execute_node(
         # Restore scope AFTER error has been captured
         scope._user = original_user
         scope._tags = original_tags
+
+
+async def _get_node_credentials(
+    creds_manager: IntegrationCredentialsManager,
+    user_id: str,
+    credentials_meta: CredentialsMetaInput,
+) -> tuple[Credentials, CredentialLease | None]:
+    """Load a node's credentials, leased only if they can change mid-run.
+
+    Only OAuth credentials change under a running block: a refresh replaces the
+    tokens, and a provider runtime checkpoints rotated ones through the lease.
+    A lease on any other kind would protect nothing, and would make every other
+    node on the same credential wait for this one, up to the lock's 60 s TTL,
+    including the tools an Orchestrator runs on its own API key. The caller
+    checks that the stored type matches ``credentials_meta``, so an OAuth
+    credential never runs unleased.
+    """
+    if credentials_meta.type == "oauth2":
+        lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+        return lease.credentials, lease
+    credentials = await creds_manager.get(user_id, credentials_meta.id)
+    if credentials is None:
+        raise ValueError(
+            f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+        )
+    return credentials, None
 
 
 async def _release_credential_leases(

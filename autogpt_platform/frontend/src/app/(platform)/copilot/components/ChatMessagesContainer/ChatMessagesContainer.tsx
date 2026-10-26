@@ -6,8 +6,11 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+} from "@/components/organisms/Conversation/Conversation";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools } from "ai";

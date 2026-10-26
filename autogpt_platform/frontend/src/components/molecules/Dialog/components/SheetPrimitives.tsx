@@ -9,7 +9,18 @@ import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
 
-const SheetTrigger = SheetPrimitive.Trigger;
+// With `asChild` the child is the trigger element and keeps its own slot.
+const SheetTrigger = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Trigger>
+>((props, ref) => (
+  <SheetPrimitive.Trigger
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "sheet-trigger" })}
+    {...props}
+  />
+));
+SheetTrigger.displayName = SheetPrimitive.Trigger.displayName;
 
 const SheetPortal = SheetPrimitive.Portal;
 
@@ -20,6 +31,7 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    data-slot="sheet-overlay"
     className={cn(
       "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
@@ -64,12 +76,18 @@ const SheetContent = React.forwardRef<
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
+      data-slot="sheet-popup"
       className={cn(sheetVariants({ side }), className)}
       {...props}
     >
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity data-[state=open]:bg-neutral-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none dark:ring-offset-neutral-950 dark:data-[state=open]:bg-neutral-800 dark:focus:ring-neutral-300">
-        <Cross2Icon className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+      <SheetPrimitive.Close
+        data-slot="sheet-close"
+        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-neutral-100 dark:ring-offset-neutral-950 dark:focus:ring-neutral-300 dark:data-[state=open]:bg-neutral-800"
+      >
+        <Cross2Icon data-slot="sheet-close-icon" className="h-4 w-4" />
+        <span data-slot="sheet-close-label" className="sr-only">
+          Close
+        </span>
       </SheetPrimitive.Close>
       {children}
     </SheetPrimitive.Content>
@@ -82,6 +100,7 @@ const SheetHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
+    data-slot="sheet-header"
     className={cn(
       "flex flex-col space-y-2 text-center sm:text-left",
       className,
@@ -100,6 +119,7 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Title
     ref={ref}
+    data-slot="sheet-title"
     className={cn(
       "text-lg font-semibold text-neutral-950 dark:text-neutral-50",
       className,
@@ -116,6 +136,7 @@ const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Description
     ref={ref}
+    data-slot="sheet-description"
     className={cn(
       "text-body leading-5 text-neutral-500 dark:text-neutral-400",
       className,

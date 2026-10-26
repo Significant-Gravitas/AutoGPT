@@ -27,14 +27,15 @@ def workspace(mocker):
         id="ws-001", user_id="test-user-id", created_at=now, updated_at=now
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=workspace,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size", return_value=0
+        "backend.api.features.workspace.service.get_workspace_total_size",
+        return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         return_value=250 * 1024 * 1024,
     )
     return workspace
@@ -91,7 +92,7 @@ def test_upload_storage_error_hides_exception_details(client, workspace, mocker)
         side_effect=OSError(36, "File name too long", secret)
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager", return_value=manager
+        "backend.api.features.workspace.service.WorkspaceManager", return_value=manager
     )
 
     response = client.post(
@@ -108,7 +109,7 @@ def test_upload_conflict_retains_useful_message(client, workspace, mocker):
     manager = MagicMock()
     manager.write_file = AsyncMock(side_effect=ValueError("File already exists"))
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager", return_value=manager
+        "backend.api.features.workspace.service.WorkspaceManager", return_value=manager
     )
 
     response = client.post(

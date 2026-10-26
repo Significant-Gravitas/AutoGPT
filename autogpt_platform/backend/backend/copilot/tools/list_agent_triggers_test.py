@@ -99,6 +99,7 @@ async def test_list_triggers_scopes_presets_to_session_expert(tool, session_expe
         graph_id="graph-1",
         expert_id=session_expert_id,
         filter_by_expert=True,
+        organization_id=None,
     )
 
 

@@ -345,20 +345,29 @@ async def charge_reconciled_usage(
         # the USER ledger: no org context, or a personal org (which bills
         # the owner's wallet). Real-org deductions come from OrgBalance, so
         # the user's personal auto-top-up must not trigger for those.
-        user_ledger = not org_id or (
-            await db_client.get_personal_org_owner(org_id) is not None
-        )
-        if delta > 0 and user_ledger:
-            # handle_low_balance is sync + does a blocking RPC; dispatch to
-            # thread so we don't block the event loop. Rare path (threshold
-            # crossings only).
-            await asyncio.to_thread(
-                handle_low_balance,
-                get_db_client(),
-                node_exec.user_id,
-                remaining_balance,
-                delta,
-            )
+        # The delta has landed, so a failed check is logged here instead of
+        # dropping the delta via the handler below.
+        if delta > 0:
+            try:
+                user_ledger = not org_id or (
+                    await db_client.get_personal_org_owner(org_id) is not None
+                )
+                if user_ledger:
+                    # handle_low_balance is sync + does a blocking RPC;
+                    # dispatch to thread so we don't block the event loop.
+                    # Rare path (threshold crossings only).
+                    await asyncio.to_thread(
+                        handle_low_balance,
+                        get_db_client(),
+                        node_exec.user_id,
+                        remaining_balance,
+                        delta,
+                    )
+            except Exception:
+                logger.exception(
+                    f"Low-balance check failed after reconciling node "
+                    f"{node_exec.node_exec_id}"
+                )
         # Keep the expert's weekly meter honest for dynamic-cost blocks:
         # positive deltas add spend, refunds subtract.
         if node_exec.execution_context.expert_id:
@@ -396,9 +405,17 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
         total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
         node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
-            handle_low_balance(
-                get_db_client(), node_exec.user_id, remaining, total_cost
-            )
+            try:
+                handle_low_balance(
+                    get_db_client(), node_exec.user_id, remaining, total_cost
+                )
+            except Exception:
+                # The spend has landed: a failed alert must not report it as a
+                # failed charge, or the caller drops it from the run's cost.
+                logger.exception(
+                    f"Low-balance check failed after charging node "
+                    f"{node_exec.node_exec_id}"
+                )
         return total_cost, remaining
 
     return await asyncio.to_thread(_run)
