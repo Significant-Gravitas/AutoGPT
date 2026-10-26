@@ -777,7 +777,7 @@ async def _read_body(
         return await _read_up_to(response, cut_at + 1)
 
     declared = response.content_length
-    if declared is not None and declared > limit:
+    if declared is not None and declared > limit and _carries_a_body(response):
         response.close()
         raise ResponseTooLargeError(limit)
     body = await _read_up_to(response, limit + 1)
@@ -785,6 +785,14 @@ async def _read_body(
         response.close()
         raise ResponseTooLargeError(limit)
     return body
+
+
+def _carries_a_body(response: ClientResponse) -> bool:
+    """A HEAD response, and a 1xx, 204, 205 or 304 one, declares the
+    resource's Content-Length but transfers no body."""
+    if response.method.upper() == "HEAD":
+        return False
+    return response.status >= 200 and response.status not in (204, 205, 304)
 
 
 async def _read_up_to(response: ClientResponse, size: int) -> bytes:

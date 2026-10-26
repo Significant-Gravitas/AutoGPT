@@ -836,12 +836,33 @@ async def test_a_declared_length_over_the_limit_is_refused_before_any_read():
         def iter_chunked(self, size: int):
             raise AssertionError("the body was read")
 
-    response = MagicMock(content_length=10**12, content=NeverRead())
+    response = MagicMock(
+        method="GET", status=200, content_length=10**12, content=NeverRead()
+    )
 
     with pytest.raises(ResponseTooLargeError):
         await _read_body(response, 1024)
 
     response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
+    async def big(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", big)  # aiohttp answers HEAD for it too
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(max_response_bytes=4096).head(base)
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert response.headers.get("Content-Length") == "4097"
+    assert response.content == b""
 
 
 def test_the_default_limit_follows_the_file_size_setting():
