@@ -160,6 +160,7 @@ class TestPinned:
             "owner": "expert:exp-1",
             "user_id": "user-1",
             "swaps": True,
+            "providers": None,
             "sandbox_id": "sb-1",
             "secret_sha256": secret_digest("s3cr3t-256-bits"),
         }
@@ -190,6 +191,88 @@ class TestPinned:
             await create_sandbox(_sdk(_box()), owner, template="t")
             record = await credential_record("box-a1")
         assert record and record["swaps"] is swaps
+
+    @pytest.mark.asyncio
+    async def test_the_runs_provider_ceiling_is_on_the_record_at_every_pin(self):
+        """The swap service reads it from here: never from the box, and never
+        from the proxy's word."""
+        box, redis = _box("sb-1"), _redis()
+        cls = _sdk(box)
+        narrow = _OWNER.model_copy(update={"providers": ("github",)})
+        none = _OWNER.model_copy(update={"providers": ()})
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(cls, narrow, template="t")
+            created = cls.create.await_args.kwargs["network"]["egress_proxy"]
+            on_create = await credential_record(created["username"])
+            await connect_sandbox(cls, "sb-1", none)
+            repinned = box.update_network.await_args.args[0]["egress_proxy"]
+            on_reconnect = await credential_record(repinned["username"])
+        assert on_create and on_create["providers"] == ["github"]
+        assert on_reconnect and on_reconnect["providers"] == []
+
+    @pytest.mark.asyncio
+    async def test_a_pins_owner_is_decided_under_the_boxs_lock(self):
+        """Two concurrent reconnects apply in the order they decided, so a
+        later pin always sees what an earlier one recorded."""
+        box, redis = _box("sb-1"), _redis()
+        held: list[bool] = []
+
+        async def at_pin(owner):
+            held.append("e2b:egress:lock:sb-1" in redis.store)
+            return owner.model_copy(update={"providers": ("github",)})
+
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await connect_sandbox(_sdk(box), "sb-1", _OWNER, owner_at_pin=at_pin)
+            repinned = box.update_network.await_args.args[0]["egress_proxy"]
+            record = await credential_record(repinned["username"])
+            ceiling = await e2b_network.recorded_providers("sb-1")
+        assert held == [True]
+        assert record and record["providers"] == ["github"]
+        assert ceiling == ("github",)
+
+    @pytest.mark.asyncio
+    async def test_every_pin_is_audited_without_a_secret(self, caplog):
+        box, redis = _box("sb-1"), _redis()
+        cls = _sdk(box)
+        minted = ProxyCredential(username="box-a1", secret="s3cr3t-256-bits")
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}._mint", return_value=minted),
+            caplog.at_level("INFO", logger="backend.egress_audit"),
+        ):
+            await create_sandbox(cls, _OWNER, template="t")
+            await connect_sandbox(
+                cls, "sb-1", _OWNER.model_copy(update={"providers": ("github",)})
+            )
+        lines = [
+            json.loads(r.message)
+            for r in caplog.records
+            if r.name == "backend.egress_audit"
+        ]
+        assert lines == [
+            {
+                "event": "created",
+                "sandbox_id": "sb-1",
+                "owner": "expert:exp-1",
+                "user_id": "user-1",
+                "swaps": True,
+                "providers": "all",
+            },
+            {
+                "event": "reconnected",
+                "sandbox_id": "sb-1",
+                "owner": "expert:exp-1",
+                "user_id": "user-1",
+                "swaps": True,
+                "providers": ["github"],
+            },
+        ]
+        assert "s3cr3t" not in caplog.text and "box-a1" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_the_record_exists_before_the_box_does(self):
@@ -378,7 +461,8 @@ class TestPinned:
             await create_sandbox(_sdk(box), _OWNER, template="t")
             assert redis.store
             await forget_sandbox("sb-1")
-            assert redis.store == {}
+            # Only the ceiling stays, for the box's next re-pin to keep.
+            assert set(redis.store) == {"e2b:egress:ceiling:sb-1"}
             await forget_sandbox("sb-never-pinned")
 
     @pytest.mark.asyncio
@@ -478,3 +562,60 @@ def test_the_guard_sees_every_shape_of_a_direct_call(line, tmp_path, monkeypatch
     monkeypatch.setattr(backend, "__file__", str(package / "__init__.py"))
     with pytest.raises(AssertionError, match="sneaky.py:2"):
         test_every_sdk_create_and_connect_goes_through_the_chokepoint()
+
+
+class TestRecordedProviders:
+    """What a re-pin with no ceiling of its own keeps."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "providers, kept", [(("github",), ("github",)), ((), ()), (None, None)]
+    )
+    async def test_the_ceiling_on_record_is_kept(self, providers, kept):
+        redis = _redis()
+        owner = _OWNER.model_copy(update={"providers": providers})
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(_box("sb-1")), owner, template="t")
+            assert await e2b_network.recorded_providers("sb-1") == kept
+
+    @pytest.mark.asyncio
+    async def test_the_ceiling_outlives_a_pause(self):
+        """A pause revokes the credential; the desktop's re-pin after it must
+        still keep the restricted turn's ceiling, not widen it to all."""
+        redis = _redis()
+        owner = _OWNER.model_copy(update={"providers": ("github",)})
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(_box("sb-1")), owner, template="t")
+            await forget_sandbox("sb-1")
+            assert await e2b_network.recorded_providers("sb-1") == ("github",)
+
+    @pytest.mark.asyncio
+    async def test_a_reconnect_replaces_the_ceiling(self):
+        redis = _redis()
+        box = _box("sb-1")
+        narrow = _OWNER.model_copy(update={"providers": ("github",)})
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(box), _OWNER, template="t")
+            assert await e2b_network.recorded_providers("sb-1") is None
+            await connect_sandbox(_sdk(box), "sb-1", narrow)
+            assert await e2b_network.recorded_providers("sb-1") == ("github",)
+
+    @pytest.mark.asyncio
+    async def test_a_box_with_no_record_keeps_no_provider(self):
+        """Every box is pinned at create, so no record means it expired (a box
+        paused past its TTL): keeping every provider would fail open."""
+        with patch(f"{_M}.get_redis_async", AsyncMock(return_value=_redis())):
+            assert await e2b_network.recorded_providers("sb-paused-for-days") == ()
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_record_keeps_no_provider(self):
+        with patch(
+            f"{_M}.get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
+        ):
+            assert await e2b_network.recorded_providers("sb-1") == ()

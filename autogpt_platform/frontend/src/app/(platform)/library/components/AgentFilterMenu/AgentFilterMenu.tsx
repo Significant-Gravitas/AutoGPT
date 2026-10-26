@@ -14,7 +14,7 @@ interface Props {
 
 function buildOptions(summary: FleetSummary): SelectOption[] {
   return [
-    { value: "all", label: "All Agents" },
+    { value: "all", label: "All Workflows" },
     { value: "running", label: `Running (${summary.running})` },
     { value: "attention", label: `Needs Attention (${summary.error})` },
     { value: "listening", label: `Listening (${summary.listening})` },
@@ -33,13 +33,13 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
 
   return (
     <div className="flex items-center" data-testid="agent-filter-dropdown">
-      <span className="hidden whitespace-nowrap text-sm text-zinc-500 sm:inline">
+      <span className="hidden whitespace-nowrap text-sm text-foreground-tertiary sm:inline">
         filter
       </span>
       <Icon icon={FunnelIcon} className="ml-1 h-4 w-4 sm:hidden" />
       <Select
         id="agent-status-filter"
-        label="Filter agents"
+        label="Filter workflows"
         hideLabel
         value={value}
         onValueChange={handleChange}

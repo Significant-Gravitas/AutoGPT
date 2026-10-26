@@ -44,10 +44,12 @@ function toApiKeyResponse(key: ApiKeyRecord) {
 describe("ApiKeysPage", () => {
   let apiKeys: ApiKeyRecord[];
   let revokedKeyId: string;
+  let requestedPermissions: APIKeyPermission[] | undefined;
 
   beforeEach(() => {
     apiKeys = [];
     revokedKeyId = "";
+    requestedPermissions = undefined;
 
     server.use(
       getGetV1ListUserApiKeysMockHandler(() =>
@@ -59,6 +61,7 @@ describe("ApiKeysPage", () => {
           description?: string;
           permissions?: APIKeyPermission[];
         };
+        requestedPermissions = body.permissions;
 
         const createdKey: ApiKeyRecord = {
           id: `key-${apiKeys.length + 1}`,
@@ -116,6 +119,23 @@ describe("ApiKeysPage", () => {
     ).not.toBeNull();
   });
 
+  test("sends exactly the permissions left checked", async () => {
+    render(<ApiKeysPage />);
+
+    fireEvent.click(await screen.findByText("Create Key"));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Scoped Key" },
+    });
+    fireEvent.click(screen.getByLabelText(APIKeyPermission.READ_SCHEDULE));
+    fireEvent.click(screen.getByLabelText(APIKeyPermission.READ_RUN));
+    fireEvent.click(screen.getByLabelText(APIKeyPermission.READ_RUN));
+    fireEvent.click(screen.getByText("Create"));
+
+    await waitFor(() => {
+      expect(requestedPermissions).toEqual([APIKeyPermission.READ_SCHEDULE]);
+    });
+  });
+
   test("revokes an existing API key", async () => {
     apiKeys = [
       {
@@ -136,6 +156,37 @@ describe("ApiKeysPage", () => {
 
     await waitFor(() => {
       expect(revokedKeyId).toBe("key-1");
+    });
+  });
+
+  test("closes the create dialog with Cancel", async () => {
+    render(<ApiKeysPage />);
+
+    fireEvent.click(await screen.findByText("Create Key"));
+    expect(await screen.findByLabelText("Name")).toBeDefined();
+    fireEvent.click(screen.getByText("Cancel", { selector: "button" }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Name")).toBeNull();
+    });
+  });
+
+  test("closes the new key dialog with Close", async () => {
+    render(<ApiKeysPage />);
+
+    fireEvent.click(await screen.findByText("Create Key"));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "CLI Key" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    expect(
+      await screen.findByText("AutoGPT Platform API Key Created"),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByText("Close", { selector: "button" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("AutoGPT Platform API Key Created")).toBeNull();
     });
   });
 });

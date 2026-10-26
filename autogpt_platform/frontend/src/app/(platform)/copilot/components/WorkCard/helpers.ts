@@ -41,7 +41,7 @@ export function getWorkRunMetadata(value: unknown): WorkRunMetadata | null {
     executionId,
     graphId,
     libraryAgentId: asString(meta.library_agent_id),
-    graphName: asString(meta.graph_name) ?? "Agent task",
+    graphName: asString(meta.graph_name) ?? "Workflow task",
     status: asString(meta.status) ?? "completed",
     outputType,
     outputKey: asString(meta.output_key),

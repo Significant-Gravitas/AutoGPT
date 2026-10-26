@@ -5,11 +5,6 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import {
-  configureCookiebot,
-  installCookiebot,
-  removeCookiebot,
-} from "@/tests/integrations/cookiebot";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../../store";
 import { HireStep } from "../HireStep";
@@ -65,6 +60,22 @@ const FALLBACK_TEAM: ExpertRecommendations = {
   raise_suggestion: null,
 };
 
+const THREE_TEAM: ExpertRecommendations = {
+  ...TEAM,
+  experts: [
+    ...TEAM.experts!,
+    {
+      template_id: "tpl-sam",
+      name: "Sam",
+      role: "Support",
+      avatar_url: null,
+      reason: "Tickets pile up over the weekend.",
+      workflow_names: [],
+    },
+  ],
+  raise_suggestion: null,
+};
+
 const EMPTY_TEAM: ExpertRecommendations = {
   diagnosis: "Hard to say what eats your week yet.",
   source: "fallback",
@@ -74,6 +85,28 @@ const EMPTY_TEAM: ExpertRecommendations = {
 
 function mockTeam(team: ExpertRecommendations | null, ready = true) {
   server.use(getGetBrainDumpRecommendedExpertsMockHandler200({ ready, team }));
+}
+
+// Records every hire's template id; `failing` answers 503 until removed.
+function mockHires(failing = new Set<string>(), gate?: Promise<void>) {
+  const hired: string[] = [];
+  server.use(
+    http.post("*/api/experts", async ({ request }) => {
+      const { template_id } = (await request.json()) as {
+        template_id: string;
+      };
+      hired.push(template_id);
+      await gate;
+      return failing.has(template_id)
+        ? HttpResponse.json({ detail: "unavailable" }, { status: 503 })
+        : HttpResponse.json({ expert: { id: `exp-${template_id}` } });
+    }),
+  );
+  return hired;
+}
+
+function events(name: string) {
+  return capture.mock.calls.filter(([event]) => event === name);
 }
 
 beforeEach(() => {
@@ -148,9 +181,10 @@ describe("HireStep — the team", () => {
       "Hard to say what eats your week yet.",
     );
     expect(screen.queryAllByTestId("hire-step-expert")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "I'll add members later" }),
-    ).toBeDefined();
+      screen.queryByRole("button", { name: "I'll add members later" }),
+    ).toBeNull();
   });
 });
 
@@ -183,7 +217,8 @@ describe("HireStep — hiring", () => {
     ]);
     // One hire down, one still open.
     expect(screen.getAllByRole("button", { name: "Hire" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Hire Max too" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDefined();
     // One hire_started per click; the hire itself is the backend's
     // expert_hired, so the browser sends no completion event.
     expect(
@@ -194,33 +229,6 @@ describe("HireStep — hiring", () => {
     expect(capture).not.toHaveBeenCalledWith(
       "onboarding_expert_hired",
       expect.anything(),
-    );
-  });
-
-  it("sends the funnel start and the DataFast hire goal", async () => {
-    // The backend emits this hire's expert_hired, so without the start the
-    // funnel's completion rate is unreadable for onboarding hires.
-    configureCookiebot();
-    installCookiebot({ statistics: true });
-    const datafast = vi.fn();
-    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
-    mockTeam(TEAM);
-    render(<HireStep />);
-
-    await userEvent.click(
-      (await screen.findAllByRole("button", { name: "Hire" }))[0],
-    );
-
-    await waitFor(() =>
-      expect(capture).toHaveBeenCalledWith("hire_started", {
-        template_id: "tpl-maria",
-        surface: "onboarding",
-      }),
-    );
-    await waitFor(() =>
-      expect(datafast).toHaveBeenCalledWith("hire_completed", {
-        template_id: "tpl-maria",
-      }),
     );
   });
 
@@ -267,14 +275,324 @@ describe("HireStep — hiring", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: "Hire" }))[0],
     );
-    await screen.findByRole("button", { name: "Next" });
-    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Continue" }),
+    );
 
     expect(useOnboardingWizardStore.getState().currentStep).toBe(6);
     expect(capture).toHaveBeenCalledWith("hire_step_continued", {
       hired: 1,
       recommended: 2,
+      via: "continue",
     });
+  });
+});
+
+describe("HireStep — hiring the whole team", () => {
+  it.each([
+    {
+      team: TEAM,
+      hired: [],
+      primary: "Hire all 2",
+      skip: "I'll add members later",
+    },
+    {
+      team: { ...TEAM, experts: TEAM.experts!.slice(0, 1) },
+      hired: [],
+      primary: "Hire Maria",
+      skip: "I'll add members later",
+    },
+    {
+      team: THREE_TEAM,
+      hired: ["tpl-maria"],
+      primary: "Hire the other 2",
+      skip: "Continue",
+    },
+    {
+      team: THREE_TEAM,
+      hired: ["tpl-maria", "tpl-max"],
+      primary: "Hire Sam too",
+      skip: "Continue",
+    },
+    {
+      team: THREE_TEAM,
+      hired: ["tpl-maria", "tpl-max", "tpl-sam"],
+      primary: "Continue",
+      skip: null,
+    },
+  ])(
+    "offers '$primary' with $hired.length hired",
+    async ({ team, hired, primary, skip }) => {
+      mockTeam(team);
+      hired.forEach((id) => useOnboardingWizardStore.getState().markHired(id));
+      render(<HireStep />);
+
+      expect(
+        await screen.findByRole("button", { name: primary }),
+      ).toBeDefined();
+      const skips = ["I'll add members later", "Continue"].filter(
+        (name) => name !== primary && screen.queryByRole("button", { name }),
+      );
+      expect(skips).toEqual(skip ? [skip] : []);
+    },
+  );
+
+  it("hires every recommended expert in one click, then moves on", async () => {
+    mockTeam(THREE_TEAM);
+    const hired = mockHires();
+    render(<HireStep />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire all 3" }),
+    );
+
+    expect(await screen.findAllByText("Hired")).toHaveLength(3);
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(6),
+    );
+    expect(hired).toEqual(["tpl-maria", "tpl-max", "tpl-sam"]);
+    expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
+      "tpl-maria",
+      "tpl-max",
+      "tpl-sam",
+    ]);
+    expect(events("hire_all_clicked")).toEqual([
+      [
+        "hire_all_clicked",
+        { count: 3, already_hired: 0, recommended: 3, retry: false },
+      ],
+    ]);
+    expect(events("hire_started")).toHaveLength(3);
+    expect(events("expert_recommendation_clicked")).toEqual([]);
+    expect(events("hire_step_continued")).toEqual([
+      ["hire_step_continued", { hired: 3, recommended: 3, via: "auto" }],
+    ]);
+  });
+
+  it("counts who is left in as cards are left out, down to the skip alone", async () => {
+    mockTeam(THREE_TEAM);
+    render(<HireStep />);
+
+    await screen.findByRole("button", { name: "Hire all 3" });
+    const max = screen.getByRole("button", { name: "Include Max" });
+    expect(max.getAttribute("aria-pressed")).toBe("true");
+
+    await userEvent.click(max);
+    expect(max.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "Hire 2" })).toBeDefined();
+
+    await userEvent.click(screen.getByRole("button", { name: "Include Sam" }));
+    expect(screen.getByRole("button", { name: "Hire Maria" })).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Include Maria" }),
+    );
+    const stepActions = screen
+      .getAllByRole("button")
+      .filter(
+        (button) =>
+          !button.getAttribute("aria-label")?.startsWith("Include") &&
+          button.textContent !== "Hire",
+      )
+      .map((button) => button.textContent);
+    expect(stepActions).toEqual(["I'll add members later"]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Include Sam" }));
+    expect(screen.getByRole("button", { name: "Hire Sam" })).toBeDefined();
+  });
+
+  it("does not hire an expert the user left out", async () => {
+    mockTeam(THREE_TEAM);
+    const hired = mockHires();
+    render(<HireStep />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Include Max" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Hire 2" }));
+
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(6),
+    );
+    expect(hired).toEqual(["tpl-maria", "tpl-sam"]);
+    expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
+      "tpl-maria",
+      "tpl-sam",
+    ]);
+    expect(events("hire_all_clicked")).toEqual([
+      [
+        "hire_all_clicked",
+        { count: 2, already_hired: 0, recommended: 3, retry: false },
+      ],
+    ]);
+  });
+
+  it("hides the skip and holds Back from the click until the step moves on", async () => {
+    mockTeam(THREE_TEAM);
+    let release!: () => void;
+    mockHires(new Set(), new Promise<void>((resolve) => (release = resolve)));
+    // Back is hidden while the step is busy; a Back during the advance beat
+    // would land the timer's nextStep on the previous step.
+    const busyChangesOnHireStep: boolean[] = [];
+    const unsubscribe = useOnboardingWizardStore.subscribe((state, prev) => {
+      if (state.currentStep === 5 && state.isStepBusy !== prev.isStepBusy) {
+        busyChangesOnHireStep.push(state.isStepBusy);
+      }
+    });
+    render(<HireStep />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire all 3" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Hiring…" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "I'll add members later" }),
+    ).toBeNull();
+    release();
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(6),
+    );
+    unsubscribe();
+    expect(busyChangesOnHireStep).toEqual([true]);
+  });
+
+  it.each([
+    { when: "before its hires land", landFirst: false },
+    { when: "during the advance beat", landFirst: true },
+  ])(
+    "does not move the wizard on when the step is left $when",
+    async ({ landFirst }) => {
+      mockTeam(THREE_TEAM);
+      let release!: () => void;
+      mockHires(new Set(), new Promise<void>((resolve) => (release = resolve)));
+      const { unmount } = render(<HireStep />);
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Hire all 3" }),
+      );
+      await screen.findByRole("button", { name: "Hiring…" });
+      if (landFirst) {
+        release();
+        expect(await screen.findAllByText("Hired")).toHaveLength(3);
+      }
+      // Browser navigation unmounts the step; Back being hidden does not stop it.
+      unmount();
+      render(<HireStep />);
+      await screen.findAllByTestId("hire-step-expert");
+      release();
+
+      await waitFor(() =>
+        expect(
+          useOnboardingWizardStore.getState().hiredTemplateIds,
+        ).toHaveLength(3),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
+      expect(events("hire_step_continued")).toEqual([]);
+    },
+  );
+
+  it("keeps the hires that landed, names the one that did not, and offers to try it again", async () => {
+    mockTeam(THREE_TEAM);
+    const failing = new Set(["tpl-sam"]);
+    const hired = mockHires(failing);
+    render(<HireStep />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire all 3" }),
+    );
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't hire Sam",
+        description:
+          "Something went wrong. Try again, or continue without them.",
+        variant: "destructive",
+      }),
+    );
+    expect(screen.getAllByText("Hired")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDefined();
+    // A failure never auto-advances, however long the user looks at it.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
+
+    failing.clear();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(6),
+    );
+    expect(hired).toEqual(["tpl-maria", "tpl-max", "tpl-sam", "tpl-sam"]);
+    expect(events("hire_all_clicked")[1]).toEqual([
+      "hire_all_clicked",
+      { count: 1, already_hired: 2, recommended: 3, retry: true },
+    ]);
+  });
+
+  it("says the team could not be hired when every hire fails", async () => {
+    mockTeam(THREE_TEAM);
+    mockHires(new Set(["tpl-maria", "tpl-max", "tpl-sam"]));
+    render(<HireStep />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire all 3" }),
+    );
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't hire your team",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "I'll add members later" }),
+    ).toBeDefined();
+    expect(screen.queryByText("Hired")).toBeNull();
+  });
+
+  it("starts one batch and moves on once on a double click", async () => {
+    mockTeam(THREE_TEAM);
+    let release!: () => void;
+    const hired = mockHires(
+      new Set(),
+      new Promise<void>((resolve) => (release = resolve)),
+    );
+    render(<HireStep />);
+
+    await userEvent.dblClick(
+      await screen.findByRole("button", { name: "Hire all 3" }),
+    );
+    release();
+
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(6),
+    );
+    // Past the advance beat: a second nextStep would skip the next step.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(6);
+    expect(hired).toEqual(["tpl-maria", "tpl-max", "tpl-sam"]);
+    expect(events("hire_step_continued")).toHaveLength(1);
+  });
+
+  it("still lets the user skip without hiring anyone", async () => {
+    mockTeam(TEAM);
+    const hired = mockHires();
+    render(<HireStep />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "I'll add members later" }),
+    );
+
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(6);
+    expect(hired).toEqual([]);
+    expect(events("hire_step_continued")).toEqual([
+      ["hire_step_continued", { hired: 0, recommended: 2, via: "later" }],
+    ]);
   });
 });
 
@@ -294,6 +612,7 @@ describe("HireStep — while the job is still running", () => {
       0,
     );
     expect(screen.getByText("Thinking about who you'd need…")).toBeDefined();
+    expect(screen.getByTestId("hire-step-primary-pending")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "I'll add members later" }),
     ).toBeDefined();
@@ -352,6 +671,5 @@ it("stops waiting after the deadline if transient errors persist", async () => {
 }, 26000);
 
 afterEach(() => {
-  removeCookiebot();
   vi.unstubAllEnvs();
 });

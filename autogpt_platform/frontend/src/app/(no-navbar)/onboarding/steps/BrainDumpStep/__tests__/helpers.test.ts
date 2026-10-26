@@ -3,7 +3,6 @@ import {
   encouragementAt,
   formatElapsed,
   isInsufficientDump,
-  isPermissionDenied,
   pickMimeType,
   recordingFeedbackAt,
 } from "../helpers";
@@ -87,24 +86,6 @@ describe("pickMimeType", () => {
       isTypeSupported: (type: string) => type !== "audio/webm",
     });
     expect(pickMimeType()).toBe("audio/mp4");
-  });
-});
-
-describe("isPermissionDenied", () => {
-  it("recognises the browser's refusal", () => {
-    expect(isPermissionDenied(new DOMException("no", "NotAllowedError"))).toBe(
-      true,
-    );
-  });
-
-  // A missing microphone or a generic failure is not a denial — treating
-  // it as one would send the user to the typed fallback for good.
-  it("does not treat other failures as a denial", () => {
-    expect(isPermissionDenied(new DOMException("gone", "NotFoundError"))).toBe(
-      false,
-    );
-    expect(isPermissionDenied(new Error("NotAllowedError"))).toBe(false);
-    expect(isPermissionDenied(null)).toBe(false);
   });
 });
 

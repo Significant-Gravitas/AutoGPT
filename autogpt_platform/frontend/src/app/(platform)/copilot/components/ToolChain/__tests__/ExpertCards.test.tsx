@@ -17,6 +17,7 @@ import {
 } from "../ExpertCards";
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
+import gatedProposal from "./gatedProposal.json";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
@@ -410,6 +411,19 @@ describe("expert approval", () => {
       </CopilotChatActionsProvider>,
     );
   }
+
+  it("offers Approve on a preview run under Ask First", async () => {
+    const user = userEvent.setup();
+    renderGroup([expertPart("output-available", gatedProposal)]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    // The line gate/card_approval.py takes as the answer to the confirm.
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Otto (confirmation_id: 5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10).",
+    );
+  });
 
   it("moves to the next expert on each decision, then sends all of them", async () => {
     const user = userEvent.setup();

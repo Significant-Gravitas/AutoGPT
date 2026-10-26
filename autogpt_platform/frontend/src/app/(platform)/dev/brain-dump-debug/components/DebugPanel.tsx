@@ -54,7 +54,7 @@ export function DebugField({ label, value }: FieldProps) {
       <Text variant="label" className="text-zinc-500">
         {label}
       </Text>
-      <Text variant="body" unmask={false} className="break-all font-mono">
+      <Text variant="body" className="break-all font-mono">
         {value}
       </Text>
     </div>

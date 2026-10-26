@@ -109,11 +109,16 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            // TODO(tokens): no exact role for hover:bg-gray-100 (#F3F4F6)
             className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
+            <Icon
+              // TODO(tokens): no exact role for text-gray-400 (#9CA3AF)
+              icon={MoreVerticalIcon}
+              className="h-5 w-5 text-gray-400"
+            />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
