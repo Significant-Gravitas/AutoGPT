@@ -39,6 +39,7 @@ class ProviderBuilder:
         self._client_id_env_var: Optional[str] = None
         self._client_secret_env_var: Optional[str] = None
         self._description: Optional[str] = None
+        self._api_key_url: Optional[str] = None
         self._extra_config: dict = {}
 
     def with_oauth(
@@ -186,6 +187,16 @@ class ProviderBuilder:
         self._description = description
         return self
 
+    def with_api_key_url(self, url: str) -> "ProviderBuilder":
+        """Set the page where a user creates or copies their API key.
+
+        Exposed via ``GET /integrations/providers`` so the connect form can
+        link to it: someone pasting a key for the first time rarely knows
+        where the vendor keeps it.
+        """
+        self._api_key_url = url
+        return self
+
     def with_supported_auth_types(self, *types: CredentialsType) -> "ProviderBuilder":
         """Declare which credential types this provider accepts.
 
@@ -213,6 +224,7 @@ class ProviderBuilder:
             api_client_factory=self._api_client_factory,
             error_handler=self._error_handler,
             description=self._description,
+            api_key_url=self._api_key_url,
             **self._extra_config,
         )
 

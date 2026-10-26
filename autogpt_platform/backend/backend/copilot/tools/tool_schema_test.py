@@ -283,7 +283,14 @@ from ._test_data import make_session
 # brings the MCP tools' external schemas and the preset tools back:
 #     merged tree                                 77,510 (89 tools)
 #     + headroom                       +300       77,810
-_CHAR_BUDGET = 77_810
+#
+# SECRT-3150 adds request_integration (90 tools): the card that says a
+# service cannot be connected yet, instead of a hand-built HTTP request.
+# Description and argument text were trimmed to the minimum first.
+#     dev above                                    77,510 (89 tools)
+#     + request_integration          +409          77,919 (90 tools)
+#     + headroom                       +300       78,219
+_CHAR_BUDGET = 78_219
 
 
 @pytest.fixture(scope="module")
@@ -486,7 +493,12 @@ def test_total_schema_char_budget() -> None:
 # over it. Same headroom, for the same reason.
 #     merged tree                                 69,808
 #     + headroom                       +300       70,108
-_SESSION_WIRE_BUDGET = 70_108
+#
+# SECRT-3150's request_integration, measured the same way on dev f0ae7dfd4:
+#     dev                                         69,847
+#     + request_integration          +347          70,194
+#     + headroom                       +300       70,494
+_SESSION_WIRE_BUDGET = 70_494
 
 
 def test_largest_declared_session_wire_budget() -> None:

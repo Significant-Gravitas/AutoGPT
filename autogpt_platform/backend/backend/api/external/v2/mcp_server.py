@@ -134,6 +134,8 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "list_chat_platform_channels": "posts as the platform bot; no permission model yet",
     "create_feature_request": "writes to the platform's own Linear workspace, on "
     "the platform's key",
+    "request_integration": "renders the not-supported card in a chat session and, "
+    "like create_feature_request, writes to the platform's own Linear workspace",
     # Security
     "bash_exec": "sandboxed shell on platform infrastructure",
     "start_desktop": "sandboxed desktop on platform infrastructure",

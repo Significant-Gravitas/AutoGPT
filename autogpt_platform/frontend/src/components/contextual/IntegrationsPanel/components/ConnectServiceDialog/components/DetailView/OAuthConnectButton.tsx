@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 
+import { withArticle } from "../../helpers";
 import { useOAuthConnect } from "./useOAuthConnect";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -32,8 +33,8 @@ export function OAuthConnectButton({
   return (
     <div className="flex flex-col gap-3">
       <Text variant="body" className="text-foreground-body">
-        We&apos;ll open a {providerName} sign-in window. Approve access there to
-        finish connecting.
+        We&apos;ll open {withArticle(providerName)} sign-in window. Approve
+        access there to finish connecting.
       </Text>
       <Button
         type="button"

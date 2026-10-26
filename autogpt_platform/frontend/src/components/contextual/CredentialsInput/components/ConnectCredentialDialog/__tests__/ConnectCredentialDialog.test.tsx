@@ -6,8 +6,10 @@ import {
   render,
   screen,
   waitFor,
-} from "@testing-library/react";
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getGetV1ListProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import { server } from "@/mocks/mock-server";
 import { ConnectCredentialDialog } from "../ConnectCredentialDialog";
 
 vi.mock(
@@ -29,7 +31,12 @@ vi.mock(
       hostScopedHost,
       onInlineConnectSuccess,
     }: {
-      provider: { id: string; name: string; supportedAuthTypes: string[] };
+      provider: {
+        id: string;
+        name: string;
+        supportedAuthTypes: string[];
+        apiKeyUrl?: string | null;
+      };
       selectedMethod: string | null;
       onSelectMethod: (method: string) => void;
       hostScopedHost?: string;
@@ -42,6 +49,7 @@ vi.mock(
         </span>
         <span data-testid="selected-method">{selectedMethod ?? "none"}</span>
         <span data-testid="host-scoped-host">{hostScopedHost ?? "none"}</span>
+        <span data-testid="api-key-url">{provider.apiKeyUrl ?? "none"}</span>
         {provider.supportedAuthTypes.map((method) => (
           <button key={method} onClick={() => onSelectMethod(method)}>
             {`select-${method}`}
@@ -214,6 +222,32 @@ describe("ConnectCredentialDialog", () => {
     expect(screen.getByText("Connect AutoGPT to GitHub")).toBeDefined();
     expect(screen.getByTestId("auth-methods").textContent).toBe(
       "api_key,oauth2",
+    );
+  });
+
+  it("passes on where the provider keeps its API keys", async () => {
+    server.use(
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "printify",
+          supported_auth_types: ["api_key"],
+          api_key_url: "https://printify.com/app/account/api", // pragma: allowlist secret
+        },
+      ]),
+    );
+    renderDialog({
+      provider: "printify",
+      displayName: "Printify",
+      schema: {
+        credentials_provider: ["printify"],
+        credentials_types: ["api_key"],
+      } as unknown as BlockIOCredentialsSubSchema,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("api-key-url").textContent).toBe(
+        "https://printify.com/app/account/api",
+      ),
     );
   });
 

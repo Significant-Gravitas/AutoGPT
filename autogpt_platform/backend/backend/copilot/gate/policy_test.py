@@ -53,10 +53,22 @@ def test_an_unclassified_tool_is_a_platform_edit():
 
 @pytest.mark.parametrize(
     "tool",
-    ["connect_integration", "request_credential_grant", "resume_capability"],
+    [
+        "connect_integration",
+        "request_credential_grant",
+        "resume_capability",
+    ],
 )
 def test_questions_to_the_user_and_completions_are_never_gated(tool):
     assert effect_for(tool) is Effect.UNGATED
+
+
+@pytest.mark.parametrize("tool", ["create_feature_request", "request_integration"])
+def test_a_request_filed_in_the_users_name_is_a_platform_write(tool):
+    """Both create a Linear customer record from the user's email, so both
+    need the user's say in a mode that asks."""
+    assert effect_for(tool) is Effect.PLATFORM
+    assert verdict_for("ask_first", tool) is Verdict.ASK
 
 
 @pytest.mark.parametrize("tool", ["run_capability", "run_agent"])

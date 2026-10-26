@@ -56,6 +56,7 @@ class Provider:
         api_client_factory: Optional[Callable] = None,
         error_handler: Optional[Callable[[Exception], str]] = None,
         description: Optional[str] = None,
+        api_key_url: Optional[str] = None,
         **kwargs,
     ):
         self.name = name
@@ -65,6 +66,7 @@ class Provider:
         self.base_costs = base_costs or []
         self.supported_auth_types = supported_auth_types or set()
         self.description = description
+        self.api_key_url = api_key_url
         self._api_client_factory = api_client_factory
         self._error_handler = error_handler
 

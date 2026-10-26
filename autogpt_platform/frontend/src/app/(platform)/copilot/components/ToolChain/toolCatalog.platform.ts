@@ -273,6 +273,12 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Searched feature requests for",
     subject: (input) => quoted(input, "query"),
   },
+  request_integration: {
+    category: "feature",
+    running: "Checking whether Otto can connect",
+    done: "Checked whether Otto can connect",
+    subject: (input) => strField(input, "service"),
+  },
   create_feature_request: {
     category: "feature",
     running: "Filing feature request",

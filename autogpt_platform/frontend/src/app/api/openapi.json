@@ -32150,6 +32150,11 @@
             "title": "Description",
             "description": "One-line human-readable summary of what the provider does. Declared via ``ProviderBuilder.with_description(...)`` in the provider's ``_config.py``. ``None`` if not set."
           },
+          "api_key_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Api Key Url",
+            "description": "Page where the user creates or copies an API key for this provider. Declared via ``ProviderBuilder.with_api_key_url(...)``."
+          },
           "supported_auth_types": {
             "items": {
               "type": "string",
@@ -33125,6 +33130,7 @@
           "web_search",
           "feature_request_search",
           "feature_request_created",
+          "integration_request",
           "memory_store",
           "memory_search",
           "memory_forget_candidates",
@@ -35861,7 +35867,19 @@
         "properties": {
           "title": { "type": "string", "title": "Title" },
           "prompt": { "type": "string", "title": "Prompt" },
-          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "integrations": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Integrations"
+          },
+          "unsupported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Unsupported"
+          }
         },
         "type": "object",
         "required": ["title", "prompt"],
@@ -35886,6 +35904,18 @@
           "title": { "type": "string", "title": "Title" },
           "prompt": { "type": "string", "title": "Prompt" },
           "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "integrations": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Integrations"
+          },
+          "unsupported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Unsupported"
+          },
           "id": { "type": "string", "title": "Id" },
           "state": {
             "type": "string",

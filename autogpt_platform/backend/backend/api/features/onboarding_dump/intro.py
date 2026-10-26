@@ -14,13 +14,16 @@ import logging
 import os
 
 from langfuse import get_client
+from openai import AsyncOpenAI
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
 from backend.api.features.onboarding_dump.parsing import parse_response_json
-from backend.api.features.onboarding_dump.providers import (
-    known_providers,
-    provider_lines,
-)
+from backend.api.features.onboarding_dump.providers import connectable_lines
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -50,6 +53,8 @@ GREETING_CHAR_LIMIT = 600
 MAX_GREETING_CHARS = 650
 MAX_TITLE_CHARS = 120
 MAX_PROMPT_CHARS = 2_000
+MAX_INTEGRATIONS = 8
+MAX_INTEGRATION_CHARS = 60
 
 # Phosphor icon slugs the model may pick from — the frontend maps these to
 # real icon components and falls back to "sparkle" for anything else.
@@ -89,6 +94,18 @@ with them yourself, never as a job for the team. When the transcript has \
 such a problem, make the last suggested prompt that work. The greeting may \
 run to {GREETING_CHAR_LIMIT} characters when it has to."""
 
+# Sent as a second system message on every generation, for the same reason:
+# the Langfuse copy can predate this field, and the Home checklist labels
+# each task from it. Code-owned so the label never depends on a prompt
+# edit landing.
+INTEGRATIONS_CONTRACT = """Every object in "prompts" also has \
+"integrations": an array naming each outside service the task signs in to. \
+Use the id from the integrations list for a service on it. A service the \
+task needs that is not on the list goes in by its own name ("Shopify") and \
+the app shows it as not supported yet, so prefer tasks that run entirely on \
+listed services, include at most one that needs a service not on the list, \
+and put it last. Use [] when the task needs no sign-in."""
+
 # The local fallback for the Langfuse-managed instructions. The greeting
 # diagnoses the dump so the user can see they were heard; the suggested
 # prompts are what turn that into an action. A Langfuse edit must keep the
@@ -118,8 +135,8 @@ anything you were not told about, and never mention what you cannot do \
 or cannot reach — talk only about what you will take on.
 - "prompts": an array of 5-6 objects, each with:
   - "title": 8-14 words. Each title must feel like a small product built \
-specifically for THIS person — assembled from the exact tools, projects, \
-clients and pains they named. The reaction you are engineering is "wait, \
+specifically for THIS person — assembled from the projects, clients and \
+pains they named, and the tools they named that this platform can connect. The reaction you are engineering is "wait, \
 I can do THAT here?". Prefer compound automations that chain steps into \
 one flow (watch a source → extract what matters → draft the response → \
 deliver it on a schedule) over single actions. The test: if a title \
@@ -134,6 +151,7 @@ details from the title so work can start immediately.
 chart-bar, envelope, magnifying-glass, calendar-check, bell, \
 rocket-launch, file-text, globe, code, newspaper, users, shopping-cart, \
 chats, lightning, target, robot, clock, megaphone, currency-dollar.
+  - "integrations": see the system message.
 
 Example of the required jump in specificity (do NOT copy these, derive \
 your own from the transcript):
@@ -179,49 +197,103 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         return fallback_intro(text)
 
     instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
-    content = f"{_integrations_block()}{instructions}{text}"
-    data = None
+    messages: list[ChatCompletionMessageParam] = [
+        ChatCompletionSystemMessageParam(role="system", content=COVERAGE_CONTRACT),
+        ChatCompletionSystemMessageParam(role="system", content=INTEGRATIONS_CONTRACT),
+        ChatCompletionUserMessageParam(
+            role="user", content=f"{_integrations_block()}{instructions}{text}"
+        ),
+    ]
+    best: tuple[str, list[SuggestedPrompt]] | None = None
     # Two attempts: at temperature 0.6 an occasional generation comes back
-    # truncated or malformed, and one retry is far cheaper than shipping
-    # the generic fallback to a brand-new user.
+    # truncated, malformed, without a greeting or without the integrations
+    # of enough prompts, and one retry is far cheaper than shipping the
+    # generic fallback to a brand-new user. A retry never replaces a better
+    # attempt, and greeting and prompts always come from the same one.
     for attempt in range(2):
-        try:
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=_MODEL,
-                    messages=[
-                        {"role": "system", "content": COVERAGE_CONTRACT},
-                        {"role": "user", "content": content},
-                    ],
-                    temperature=0.6,
-                    max_tokens=_MAX_TOKENS,
-                ),
-                timeout=_TIMEOUT_SECONDS,
-            )
-            data = parse_response_json(response.choices[0].message.content or "")
-        except Exception as e:  # degrades to the template below
-            logger.warning(
-                "Brain dump greeting generation failed (attempt %s): %s",
-                attempt + 1,
-                e,
-            )
+        generated = await _generate(client, messages, attempt)
+        greeting = _greeting_of(generated)
+        if generated is None or greeting is None:
             continue
-        if data is not None:
+        parsed = _parse_prompts(generated.get("prompts"))
+        if best is None or _rank(parsed) > _rank(best[1]):
+            best = (greeting, parsed)
+        if len(_declared(best[1])) >= MIN_PROMPTS:
             break
-        logger.warning("Brain dump greeting: non-JSON output (attempt %s)", attempt + 1)
-    if data is None:
+        logger.warning(
+            "Brain dump greeting: too few prompts with integrations (attempt %s)",
+            attempt + 1,
+        )
+    if best is None:
         return fallback_intro(text)
+    greeting, parsed = best
+    return greeting, _usable_prompts(parsed)
 
-    greeting = data.get("greeting")
+
+def _usable_prompts(parsed: list[SuggestedPrompt]) -> list[SuggestedPrompt]:
+    """The prompts to show: the ones that declare their integrations; or,
+    when the model left that out of too many, all of its prompts, so a
+    model that ignores the field costs the labels' precision rather than
+    every new user their own tasks (each label still reads the task's
+    text); or the generic set, when there are too few to look whole."""
+    declared = _declared(parsed)
+    if len(declared) >= MIN_PROMPTS:
+        return declared[:MAX_PROMPTS]
+    if len(parsed) >= MIN_PROMPTS:
+        logger.warning(
+            "Brain dump greeting: the model left out integrations on "
+            "%s of %s prompts; keeping them, labelled from their text",
+            len(parsed) - len(declared),
+            len(parsed),
+        )
+        return parsed[:MAX_PROMPTS]
+    # A greeting with two suggestions under it looks broken; the generic
+    # set is better than a half-empty one.
+    return fallback_prompts()
+
+
+def _declared(prompts: list[SuggestedPrompt]) -> list[SuggestedPrompt]:
+    return [prompt for prompt in prompts if prompt.integrations is not None]
+
+
+def _rank(prompts: list[SuggestedPrompt]) -> tuple[bool, int, int]:
+    """Better attempts first: enough declared prompts, then more of them,
+    then more prompts at all."""
+    declared = len(_declared(prompts))
+    return declared >= MIN_PROMPTS, declared, len(prompts)
+
+
+def _greeting_of(data: dict | None) -> str | None:
+    """The generation's greeting, trimmed, or ``None`` if it has none."""
+    greeting = data.get("greeting") if data else None
     if not isinstance(greeting, str) or not greeting.strip():
-        return fallback_intro(text)
+        return None
+    return _clip_greeting(greeting)
 
-    prompts = _parse_prompts(data.get("prompts"))
-    if len(prompts) < MIN_PROMPTS:
-        # A greeting with two suggestions under it looks broken; the
-        # generic set is better than a half-empty one.
-        return _clip_greeting(greeting), fallback_prompts()
-    return _clip_greeting(greeting), prompts[:MAX_PROMPTS]
+
+async def _generate(
+    client: AsyncOpenAI, messages: list[ChatCompletionMessageParam], attempt: int
+) -> dict | None:
+    """One generation, parsed; ``None`` when it failed or was not JSON."""
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=_MODEL,
+                messages=messages,
+                temperature=0.6,
+                max_tokens=_MAX_TOKENS,
+            ),
+            timeout=_TIMEOUT_SECONDS,
+        )
+        data = parse_response_json(response.choices[0].message.content or "")
+    except Exception as e:  # degrades to the template
+        logger.warning(
+            "Brain dump greeting generation failed (attempt %s): %s", attempt + 1, e
+        )
+        return None
+    if data is None:
+        logger.warning("Brain dump greeting: non-JSON output (attempt %s)", attempt + 1)
+    return data
 
 
 def _integrations_block() -> str:
@@ -232,13 +304,13 @@ def _integrations_block() -> str:
     of the instructions (which end with ``Transcript:``) so the whole
     static half of the message stays a stable prefix.
     """
-    lines = provider_lines(known_providers())
+    lines = connectable_lines()
     if not lines:
         return ""
     return (
-        "These are the integrations this platform can connect to. Only "
-        "promise automations that these can actually carry out, and never "
-        "name a tool that is not on this list:\n"
+        "These are the integrations this platform can connect to. Build "
+        "the automations you promise on them: a tool that is not on this "
+        "list cannot be connected yet.\n"
         f"{lines}\n\n"
     )
 
@@ -281,6 +353,9 @@ def _clip_greeting(greeting: str) -> str:
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
+    """The usable prompts in ``raw``. One that does not say what it
+    connects to keeps ``integrations=None`` ("not declared"), which the
+    caller prefers to avoid (``_usable_prompts``)."""
     if not isinstance(raw, list):
         return []
     prompts = []
@@ -292,15 +367,42 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
             continue
         if not (isinstance(prompt, str) and prompt.strip()):
             continue
+        integrations = _parse_integrations(item.get("integrations"))
         icon = item.get("icon")
         prompts.append(
             SuggestedPrompt(
                 title=title.strip()[:MAX_TITLE_CHARS],
                 prompt=prompt.strip()[:MAX_PROMPT_CHARS],
-                icon=icon if icon in PROMPT_ICONS else DEFAULT_PROMPT_ICON,
+                icon=prompt_icon(icon),
+                integrations=integrations,
             )
         )
     return prompts
+
+
+def prompt_icon(raw: object) -> str:
+    """``raw`` if it is one of our icon slugs, else the default. Checks the
+    type first: a list or dict is unhashable, and the set lookup would raise
+    where a bad icon should only cost its icon."""
+    return raw if isinstance(raw, str) and raw in PROMPT_ICONS else DEFAULT_PROMPT_ICON
+
+
+def _parse_integrations(raw: object) -> list[str] | None:
+    """The services a prompt says it connects to; ``None`` if it did not say.
+
+    ``[]`` means no sign-in. A non-empty array with no usable name in it
+    (``[7]``) says nothing, not that: it would hide the service it meant.
+    """
+    if not isinstance(raw, list):
+        return None
+    names = [
+        name.strip()[:MAX_INTEGRATION_CHARS]
+        for name in raw
+        if isinstance(name, str) and name.strip()
+    ]
+    if raw and not names:
+        return None
+    return names[:MAX_INTEGRATIONS]
 
 
 def fallback_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
@@ -328,7 +430,8 @@ def fallback_prompts() -> list[SuggestedPrompt]:
     """Generic starters used when generation fails or there is no dump.
 
     Phrased as things the user might genuinely want on day one, not as
-    claims about this particular user.
+    claims about this particular user. None of them needs a service, and
+    each says so.
     """
     return [
         SuggestedPrompt(
@@ -339,6 +442,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "see the format before it goes on a schedule."
             ),
             icon="calendar-check",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Get a sourced research brief on any topic in minutes, not afternoons",
@@ -348,6 +452,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "I'm currently trying to learn about."
             ),
             icon="magnifying-glass",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Put an always-on watch on competitors and get pinged the moment they move",
@@ -357,6 +462,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "and set up alerts for them."
             ),
             icon="bell",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Have your next post or newsletter drafted in your voice, ready to edit",
@@ -366,6 +472,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "how close you get."
             ),
             icon="megaphone",
+            integrations=[],
         ),
         SuggestedPrompt(
             title="Find the two tasks eating your week and hand them to an expert today",
@@ -375,5 +482,6 @@ def fallback_prompts() -> list[SuggestedPrompt]:
                 "take over first and how."
             ),
             icon="robot",
+            integrations=[],
         ),
     ]

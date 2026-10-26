@@ -1520,6 +1520,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     todoist_client_id: str = Field(default="", description="Todoist client ID")
     todoist_client_secret: str = Field(default="", description="Todoist client secret")
 
+    etsy_client_id: str = Field(
+        default="", description="Etsy app keystring (OAuth client id)"
+    )
+    etsy_client_secret: str = Field(default="", description="Etsy app shared secret")
+
     stripe_api_key: str = Field(default="", description="Stripe API Key")
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 

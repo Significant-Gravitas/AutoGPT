@@ -104,3 +104,14 @@ def test_provider_listing_carries_the_service_identity(
     assert mcp["mcp_server"]["connection_mode"] == "hosted"
     assert "oauth" in mcp["mcp_server"]["auth_methods"]
     assert providers["mcp_sentry"]["service"] == "sentry"
+
+
+def test_providers_say_where_to_find_an_api_key():
+    """A provider that declares its key page hands it to the connect form;
+    one that does not leaves it empty rather than guessing."""
+    providers = {p["name"]: p for p in TestClient(app).get("/providers").json()}
+
+    assert providers["printify"]["api_key_url"] == (
+        "https://printify.com/app/account/api"
+    )
+    assert providers["openai"]["api_key_url"] is None

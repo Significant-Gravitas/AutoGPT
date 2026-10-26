@@ -26,6 +26,8 @@ class LinearClient:
         self,
         credentials: Union[OAuth2Credentials, APIKeyCredentials, None] = None,
         custom_requests: Optional[Requests] = None,
+        retry_max_attempts: Optional[int] = None,
+        retry_max_wait: float = 300.0,
     ):
         if custom_requests:
             self._requests = custom_requests
@@ -40,6 +42,8 @@ class LinearClient:
                 extra_headers=headers,
                 trusted_origins=["https://api.linear.app"],
                 raise_for_status=False,
+                retry_max_attempts=retry_max_attempts,
+                retry_max_wait=retry_max_wait,
             )
 
     async def _execute_graphql_request(

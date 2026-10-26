@@ -6,6 +6,7 @@ import {
   AuthType,
   type AuthMethod,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
+import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { useState } from "react";
 
@@ -31,6 +32,15 @@ export function useConnectCredentialDialog({
     credentialID,
   });
   const apiKey = useApiKeyConnectForm({ provider, onSuccess: handleConnected });
+  const { data: apiKeyUrl } = useGetV1ListProviders({
+    query: {
+      select: (response) =>
+        response.status === 200
+          ? (response.data.find((item) => item.name === provider)
+              ?.api_key_url ?? null)
+          : null,
+    },
+  });
 
   // The dialog stays mounted while closed, so a half-filled key or a
   // picked method would still be there the next time it opens.
@@ -58,6 +68,7 @@ export function useConnectCredentialDialog({
     selectedMethod,
     setSelectedMethod,
     apiKeyForm: apiKey.form,
+    apiKeyUrl: apiKeyUrl ?? null,
     handleApiKeySubmit: apiKey.handleSubmit,
     // Continue drives OAuth and the API-key form; the remaining methods
     // only show an unsupported notice.

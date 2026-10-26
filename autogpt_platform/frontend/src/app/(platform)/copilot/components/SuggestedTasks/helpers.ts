@@ -95,3 +95,12 @@ export function withState({ tasks, ids, state }: WithStateArgs) {
     ids.includes(task.id) ? { ...task, state } : task,
   );
 }
+
+/** "Needs Shopify, which isn't supported yet" for a task's unsupported tools. */
+export function formatUnsupported(services: string[] | undefined): string {
+  const names = (services ?? []).filter((name) => name.trim());
+  if (names.length === 0) return "";
+  if (names.length === 1) return `Needs ${names[0]}, which isn't supported yet`;
+  const list = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Needs ${list}, which aren't supported yet`;
+}

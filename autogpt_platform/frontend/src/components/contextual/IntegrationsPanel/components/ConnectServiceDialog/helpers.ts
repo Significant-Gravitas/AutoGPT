@@ -17,6 +17,7 @@ export interface ConnectableProvider {
   searchTerms?: string[];
   mcpServer?: ProviderMetadata["mcp_server"];
   iconId?: string;
+  apiKeyUrl?: string | null;
 }
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
@@ -52,12 +53,16 @@ export function withoutDuplicateKeyMethod(
   return authMethods.length ? { ...server, auth_methods: authMethods } : server;
 }
 
+/** "an Etsy", "a Printify": the article English puts before a name. */
+export function withArticle(name: string): string {
+  return `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
+}
+
 export function getSignInFallbackLabel(provider: ConnectableProvider): string {
   if (provider.mcpServer?.auth_methods.includes("oauth")) {
     return `Use the ${provider.name} sign-in instead`;
   }
-  const article = /^[aeiou]/i.test(provider.name) ? "an" : "a";
-  return `Use ${article} ${provider.name} token instead`;
+  return `Use ${withArticle(provider.name)} token instead`;
 }
 
 export function toConnectableProviders(
@@ -120,6 +125,9 @@ export function toConnectableProviders(
     }
     if (item.name === displayProvider && !item.mcp_server) {
       provider.description = item.description;
+    }
+    if (item.api_key_url && !item.mcp_server) {
+      provider.apiKeyUrl = item.api_key_url;
     }
     byService.set(key, provider);
   }

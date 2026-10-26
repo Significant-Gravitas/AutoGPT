@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 
@@ -6,6 +6,7 @@ import {
   filterConnectableProviders,
   toConnectableProviders,
   type ConnectableProvider,
+  withArticle,
 } from "../helpers";
 
 function makeMeta(overrides: Partial<ProviderMetadata> = {}): ProviderMetadata {
@@ -218,5 +219,13 @@ describe("filterConnectableProviders", () => {
 
     expect(filterConnectableProviders(openai, "chatgpt")).toEqual(openai);
     expect(filterConnectableProviders(openai, "codex")).toEqual(openai);
+  });
+});
+
+describe("withArticle", () => {
+  it("picks the article the name is spoken with", () => {
+    expect(withArticle("Etsy")).toBe("an Etsy");
+    expect(withArticle("Airtable")).toBe("an Airtable");
+    expect(withArticle("Printify")).toBe("a Printify");
   });
 });

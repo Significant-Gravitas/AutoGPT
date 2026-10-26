@@ -118,6 +118,7 @@ class ResponseType(str, Enum):
     # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
+    INTEGRATION_REQUEST = "integration_request"
 
     # Graphiti memory
     MEMORY_STORE = "memory_store"
@@ -1171,6 +1172,18 @@ class FeatureRequestCreatedResponse(ToolResponseBase):
     issue_url: str
     is_new_issue: bool  # False if added to existing
     customer_name: str
+
+
+class IntegrationRequestResponse(ToolResponseBase):
+    """A service the user needs that cannot be connected yet.
+
+    The chat shows it as a card of its own, so the gap is said plainly
+    instead of being worked around in prose.
+    """
+
+    type: ResponseType = ResponseType.INTEGRATION_REQUEST
+    service: str
+    recorded: bool  # False when the request could not be written down
 
 
 # MCP tool models

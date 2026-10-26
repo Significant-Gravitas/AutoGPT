@@ -39,6 +39,9 @@ class HTTPServerError(Exception):
         self.status_code = status_code
 
 
+# A file to upload as (form field, (file name, content, MIME type)).
+_Upload = tuple[str, tuple[str, bytes, str]]
+
 # Default User-Agent for all requests
 DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravitas/AutoGPT; info@agpt.co) aiohttp"
 
@@ -522,13 +525,18 @@ class Requests:
             retry_kwargs["stop"] = stop_after_attempt(self.retry_max_attempts)
             retry_kwargs["retry_error_callback"] = _return_last_result
 
+        # Bytes, not the caller's handles: every attempt (and every redirect
+        # hop) builds its form from fresh file objects, since a sent one is
+        # read to its end and may be closed.
+        uploads = _snapshot_files(files)
+
         @retry(**retry_kwargs)
         async def _make_request() -> Response:
             return await self._request(
                 method=method,
                 url=url,
                 headers=headers,
-                files=files,
+                uploads=uploads,
                 data=data,
                 json=json,
                 allow_redirects=allow_redirects,
@@ -546,7 +554,7 @@ class Requests:
         url: str,
         *,
         headers: Optional[dict] = None,
-        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
+        uploads: list[_Upload] | None = None,
         data: Any | None = None,
         json: Any | None = None,
         allow_redirects: bool = True,
@@ -559,33 +567,9 @@ class Requests:
         if "auth" in kwargs and isinstance(kwargs["auth"], tuple):
             kwargs["auth"] = aiohttp.BasicAuth(*kwargs["auth"])
 
-        if files is not None:
-            if json is not None:
-                raise ValueError(
-                    "Cannot mix file uploads with JSON body; "
-                    "use 'data' for extra form fields instead."
-                )
-
-            form = FormData(quote_fields=False)
-            # add normal form fields first
-            if isinstance(data, dict):
-                for k, v in data.items():
-                    form.add_field(k, str(v))
-            elif data is not None:
-                raise ValueError(
-                    "When uploading files, 'data' must be a dict of form fields."
-                )
-
-            # add the file parts
-            for field_name, (filename, fh, content_type) in files:
-                form.add_field(
-                    name=field_name,
-                    value=fh,
-                    filename=filename,
-                    content_type=content_type or "application/octet-stream",
-                )
-
-            data = form
+        # A new form per call; ``data`` keeps the caller's fields so a
+        # redirect hop can build its own.
+        body = data if uploads is None else _multipart_form(uploads, data, json)
 
         # Validate URL and get trust status
         parsed_url, is_trusted, ip_addresses = await validate_url_host(
@@ -642,7 +626,7 @@ class Requests:
                 parsed_url.geturl(),
                 headers=req_headers,
                 allow_redirects=False,
-                data=data,
+                data=body,
                 json=json,
                 **kwargs,
             ) as response:
@@ -696,7 +680,7 @@ class Requests:
                         headers=new_headers,
                         allow_redirects=allow_redirects,
                         max_redirects=max_redirects - 1,
-                        files=files,
+                        files=_fresh_files(uploads),
                         data=data,
                         json=json,
                         drop_headers=drop_headers
@@ -738,6 +722,48 @@ class Requests:
 
     async def patch(self, url: str, *args, **kwargs) -> Response:
         return await self.request("PATCH", url, *args, **kwargs)
+
+
+def _snapshot_files(
+    files: list[tuple[str, tuple[str, BytesIO, str]]] | None,
+) -> list[_Upload] | None:
+    """The caller's files as bytes (whatever their read position)."""
+    if files is None:
+        return None
+    return [(field, (name, fh.getvalue(), mime)) for field, (name, fh, mime) in files]
+
+
+def _fresh_files(
+    uploads: list[_Upload] | None,
+) -> list[tuple[str, tuple[str, BytesIO, str]]] | None:
+    if uploads is None:
+        return None
+    return [
+        (field, (name, BytesIO(content), mime))
+        for field, (name, content, mime) in uploads
+    ]
+
+
+def _multipart_form(uploads: list[_Upload], data: Any, json: Any) -> FormData:
+    """A multipart body: the form fields, then each file from a new handle."""
+    if json is not None:
+        raise ValueError(
+            "Cannot mix file uploads with JSON body; "
+            "use 'data' for extra form fields instead."
+        )
+    if data is not None and not isinstance(data, dict):
+        raise ValueError("When uploading files, 'data' must be a dict of form fields.")
+    form = FormData(quote_fields=False)
+    for key, value in (data or {}).items():
+        form.add_field(key, str(value))
+    for field_name, (filename, content, content_type) in uploads:
+        form.add_field(
+            name=field_name,
+            value=BytesIO(content),
+            filename=filename,
+            content_type=content_type or "application/octet-stream",
+        )
+    return form
 
 
 _READ_CHUNK_BYTES = 64 * 1024

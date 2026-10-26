@@ -10,17 +10,24 @@ import {
 } from "@/components/molecules/Form/Form";
 import type { ApiKeyConnectFormValues } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import type { UseFormReturn } from "react-hook-form";
+import { ApiKeyHelpLink } from "../ApiKeyHelpLink";
 
 interface Props {
   form: UseFormReturn<ApiKeyConnectFormValues>;
   providerName: string;
+  apiKeyUrl?: string | null;
   onSubmit: (values: ApiKeyConnectFormValues) => void;
 }
 
 // The API-key inputs for the expanded method card: compact spacing and
 // small text, and no submit button of its own — the panel footer's
 // Continue drives the same submit (Enter still works via the form).
-export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
+export function InlineApiKeyForm({
+  form,
+  providerName,
+  apiKeyUrl,
+  onSubmit,
+}: Props) {
   return (
     <Form form={form} onSubmit={onSubmit} className="space-y-2.5">
       <FormField
@@ -68,6 +75,7 @@ export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
           </FormItem>
         )}
       />
+      <ApiKeyHelpLink providerName={providerName} href={apiKeyUrl} />
 
       <FormField
         control={form.control}

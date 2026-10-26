@@ -18,6 +18,7 @@ from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
 from backend.api.features.experts.models import Expert
+from backend.api.features.integrations import support
 from backend.api.features.onboarding_dump import (
     db,
     intro,
@@ -926,6 +927,68 @@ async def test_intro_card_takes_path_a_with_the_stored_greeting(dumps: DumpStore
     assert [p.prompt for p in card.prompts] == ["Please handle them."]
     assert card.greeting_done is False
     assert card.transcript == TRANSCRIPT
+
+
+@pytest.mark.asyncio
+async def test_intro_card_labels_prompts_that_need_a_tool_we_cannot_connect(
+    dumps: DumpStore, mocker: MockerFixture
+):
+    mocker.patch.object(
+        support,
+        "connectable_services",
+        return_value=[support.ConnectableService(key="printify", name="Printify")],
+    )
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You sell stickers.",
+        suggestedPrompts=[
+            {
+                "title": "Turn each design into a listing",
+                "prompt": "List each sticker on Printify and Shopify.",
+                "integrations": ["printify", "Shopify"],
+            },
+            # Stored before prompts recorded their integrations.
+            {"title": "Sync Shopify orders", "prompt": "Pull my Shopify orders."},
+        ],
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert [p.unsupported for p in card.prompts] == [["Shopify"], ["Shopify"]]
+    assert card.prompts[0].integrations == ["printify", "Shopify"]
+
+
+@pytest.mark.asyncio
+async def test_a_stored_prompt_with_a_malformed_icon_costs_only_its_icon(
+    dumps: DumpStore,
+):
+    """A hand-edited or older row must not 500 the copilot home: an icon
+    that is a list or object falls back to the default."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You sell stickers.",
+        suggestedPrompts=[
+            {"title": "List stickers", "prompt": "Do it.", "icon": ["bell"]},
+            {"title": "Ship orders", "prompt": "Do it.", "icon": {"name": "bell"}},
+            {"title": "Watch prices", "prompt": "Do it.", "icon": "bell"},
+        ],
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert [p.icon for p in card.prompts] == [
+        intro.DEFAULT_PROMPT_ICON,
+        intro.DEFAULT_PROMPT_ICON,
+        "bell",
+    ]
 
 
 @pytest.mark.asyncio
