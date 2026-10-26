@@ -182,7 +182,7 @@ async def test_every_auth_http_call_has_a_finite_retry_budget() -> None:
                 200,
                 {"id_token": "id", "access_token": "at", "refresh_token": "rt"},
             ),
-            {"raise_for_status": False, "retry_max_attempts": 3},
+            {"raise_for_status": False, "retry_max_attempts": 1},
         ),
     ]
 

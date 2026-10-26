@@ -198,8 +198,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
             # Remove client credentials from body when using Basic Auth
             request_body.pop("client_id", None)
             request_body.pop("client_secret", None)
-
-        response = await Requests().post(
+        response = await Requests(retry_max_attempts=1 if is_refresh else None).post(
             self.token_url, data=request_body, headers=headers
         )
 

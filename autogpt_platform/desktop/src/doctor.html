@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'none'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+  <title>AutoGPT Doctor</title>
+  <link rel="stylesheet" href="doctor.css" />
+</head>
+<body>
+  <header><div><span class="eyebrow">AUTOGPT DESKTOP</span><h1>Doctor</h1><p>Understand what’s working and what needs attention.</p></div><span id="version" class="badge"></span></header>
+  <nav aria-label="Doctor sections">
+    <button type="button" data-tab="doctor" aria-pressed="true">Health</button>
+    <button type="button" data-tab="features" aria-pressed="false">Features</button>
+    <button type="button" data-tab="privacy" aria-pressed="false">Privacy</button>
+    <button type="button" data-tab="desktop" aria-pressed="false">Desktop</button>
+  </nav>
+  <main>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <section id="panel-doctor">
+      <div class="section-heading"><div><h2 id="summary-title">Check this installation</h2><p id="summary-detail">Doctor checks local services and saved connection availability. It does not change your data.</p></div><button id="run" class="primary" type="button">Run Doctor</button></div>
+      <div id="checks" class="cards"></div>
+      <div class="actions"><button id="connections" type="button">Open Connections</button><button id="logs" type="button">Show local logs</button></div>
+      <details id="report-preview"><summary>Preview support report</summary><p>This is exactly what will be exported. It contains check results and version information, without chats, files, credentials, usernames, paths, or raw logs. Nothing is uploaded.</p><pre id="preview">Run Doctor to prepare a report.</pre><button id="export" type="button" disabled>Export this report…</button></details>
+    </section>
+    <section id="panel-features" hidden><h2>Available on this computer</h2><p>Some features need additional services. A saved connection is not a guarantee that a provider will accept the next request.</p><div id="capabilities" class="cards"><p>Run Doctor to check feature availability.</p></div><div class="callout">If a connection expires or requires reconnection, open Connections and connect it again. Doctor never reads or exports your tokens.</div></section>
+    <section id="panel-privacy" hidden>
+      <h2>Privacy &amp; diagnostics</h2><p>Optional reporting is off until you choose to enable it. These choices apply to this installation and can be changed at any time.</p>
+      <form id="privacy-form">
+        <label class="setting"><span><strong>Share usage statistics</strong><span>App startup, runtime readiness, shutdown, and Doctor usage. Only event name, app version, operating system, and architecture.</span><small id="usage-destination"></small></span><input id="usageStatistics" type="checkbox" /></label>
+        <label class="setting"><span><strong>Share crash reports</strong><span>Failure categories and app/platform version information. No error messages, stack traces, memory dumps, or raw logs.</span><small id="crash-destination"></small></span><input id="crashReports" type="checkbox" /></label>
+        <div class="callout">Chats, prompts, file contents, credentials, account details, and session recordings are excluded. Connecting ChatGPT or another provider still sends the requests needed to use that service.</div>
+        <button class="primary" type="submit">Save privacy choices</button>
+      </form>
+    </section>
+    <section id="panel-desktop" hidden>
+      <h2>Desktop preferences</h2><p>Choose when AutoGPT runs on this computer.</p>
+      <form id="desktop-form">
+        <label class="setting"><span><strong>Launch at login</strong><span id="login-description"></span><small id="login-status"></small></span><input id="launchAtLogin" type="checkbox" /></label>
+        <label class="setting"><span><strong>Keep running when the window closes</strong><span>Workflows and Otto can keep working in the background. Reopen AutoGPT from its tray or menu-bar icon. Quit still closes the app.</span></span><input id="keepRunningInBackground" type="checkbox" /></label>
+        <div class="callout"><strong>Scheduling and sleep</strong><p>Scheduled workflows need AutoGPT running and the computer awake. Closing the app stops its scheduler; schedules missed while it is closed do not automatically catch up. Background mode does not prevent sleep.</p><p>After an interruption, unfinished work may resume when AutoGPT restarts. Choose Stop and quit to end active work.</p></div>
+        <button class="primary" type="submit">Save desktop preferences</button>
+      </form>
+    </section>
+  </main>
+  <script src="doctor-ui.js"></script>
+</body>
+</html>

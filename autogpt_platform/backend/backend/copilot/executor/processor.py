@@ -63,6 +63,7 @@ from backend.data.model import OAuth2Credentials
 from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
+from backend.integrations.credential_refresh import drain_credential_refreshes
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.microsoft_365_copilot.service import (
     stream_chat_completion_microsoft_365,
@@ -477,6 +478,8 @@ class CoPilotProcessor:
         rolling deploys survive via RabbitMQ redelivery — no bespoke
         shutdown notifier needed.
         """
+        if not drain_credential_refreshes():
+            logger.warning("Credential refresh did not drain before worker shutdown")
         coro = shutdown_workspace_storage()
         try:
             future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)
@@ -1008,6 +1011,10 @@ class CoPilotProcessor:
                         entry.session_id,
                         error_message=error_msg,
                         error_code=error_code,
+                        skip_error_publish=(
+                            cancel.is_set()
+                            and error_msg == stream_registry.CANCELLED_MESSAGE
+                        ),
                         turn_id=entry.turn_id,
                     )
                 except Exception as mark_err:

@@ -35,7 +35,7 @@ from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.redis_helpers import as_str, hash_compare_and_set
 from backend.util import tracing
 
@@ -186,6 +186,10 @@ def _get_turn_stream_key(turn_id: str) -> str:
     return f"{config.turn_stream_prefix}{turn_id}"
 
 
+def _get_turn_terminal_key(session_id: str, turn_id: str) -> str:
+    return f"terminal:{_get_session_meta_key(session_id)}:{turn_id}"
+
+
 def _get_turn_meta_key(turn_id: str) -> str:
     """The turn's own hash: its ``session_id`` and last ``checkpoint``.
 
@@ -291,6 +295,8 @@ async def create_session(
             "turn_id": turn_id,
             "blocking": "1" if blocking else "0",
             "status": session.status,
+            "error_message": "",
+            "error_code": "",
             "created_at": session.created_at.isoformat(),
         },
     )
@@ -553,10 +559,23 @@ async def subscribe_to_session(
 
     session = _parse_session_meta(meta, session_id)
     queue: asyncio.Queue[StreamEntry] = asyncio.Queue()
-    last_id, finished = await _replay(redis, session.turn_id, last_message_id, queue)
-    if session.status == "running":
-        _start_listener(session_id, queue, last_id, log_meta, session.turn_id)
+    last_id, finished, error_delivered = await _replay(
+        redis, session.turn_id, last_message_id, queue, session_id=session_id
+    )
+    if session.status == "running" and not finished:
+        _start_listener(
+            session_id,
+            queue,
+            last_id,
+            log_meta,
+            session.turn_id,
+            error_delivered=error_delivered,
+        )
     elif not finished:
+        if not error_delivered:
+            terminal = await _get_terminal_meta(redis, session_id, session.turn_id)
+            if error := _terminal_error(terminal, session.turn_id):
+                queue.put_nowait((None, error))
         queue.put_nowait((None, StreamFinish()))
 
     total_time = (time.perf_counter() - start_time) * 1000
@@ -608,10 +627,12 @@ async def subscribe_to_turn(
             raise TurnStreamTrimmed(_as_checkpoint(first_id, first_fields))
 
     queue: asyncio.Queue[StreamEntry] = asyncio.Queue()
-    last_id, finished = await _replay(redis, turn_id, after, queue)
+    last_id, finished, _ = await _replay(redis, turn_id, after, queue)
     if not finished:
         # Also for a turn already marked done: its finish lands just after.
-        _start_listener(session_id, queue, last_id, log_meta, turn_id)
+        _start_listener(
+            session_id, queue, last_id, log_meta, turn_id, recover_errors=False
+        )
     return queue
 
 
@@ -668,13 +689,18 @@ def _owned_by(
 
 
 async def _replay(
-    redis: Any, turn_id: str, after: str, queue: asyncio.Queue[StreamEntry]
-) -> tuple[str, bool]:
+    redis: Any,
+    turn_id: str,
+    after: str,
+    queue: asyncio.Queue[StreamEntry],
+    *,
+    session_id: str = "",
+) -> tuple[str, bool, bool]:
     """Queue every stored entry after ``after``, in batches of
     ``stream_replay_count``; returns the last id and whether the turn's
-    finish was among them."""
+    finish and error were among them."""
     stream_key = _get_turn_stream_key(turn_id)
-    last_id, finished = after, False
+    last_id, finished, error_delivered = after, False, False
     while True:
         batch = [
             entry
@@ -689,10 +715,20 @@ async def _replay(
             last_id = entry_id
             chunk = _chunk_from_fields(fields)
             if chunk is not None:
+                if (
+                    session_id
+                    and isinstance(chunk, StreamFinish)
+                    and not error_delivered
+                ):
+                    terminal = await _get_terminal_meta(redis, session_id, turn_id)
+                    if error := _terminal_error(terminal, turn_id):
+                        queue.put_nowait((None, error))
+                        error_delivered = True
                 queue.put_nowait((f"{turn_id}:{entry_id}", chunk))
+                error_delivered |= isinstance(chunk, StreamError)
                 finished = finished or isinstance(chunk, StreamFinish)
         if len(batch) < config.stream_replay_count:
-            return last_id, finished
+            return last_id, finished, error_delivered
 
 
 def _start_listener(
@@ -701,10 +737,21 @@ def _start_listener(
     last_id: str,
     log_meta: dict[str, Any],
     turn_id: str,
+    *,
+    error_delivered: bool = False,
+    recover_errors: bool = True,
 ) -> None:
     listener_task = asyncio.create_task(
         _without_child_spans(
-            _stream_listener(session_id, queue, last_id, log_meta, turn_id)
+            _stream_listener(
+                session_id,
+                queue,
+                last_id,
+                log_meta,
+                turn_id,
+                error_delivered=error_delivered,
+                recover_errors=recover_errors,
+            )
         )
     )
     _listener_sessions[id(queue)] = (session_id, listener_task)
@@ -740,12 +787,55 @@ def _stream_id(entry_id: str) -> tuple[int, int]:
     return int(ms), int(seq or 0)
 
 
+async def _get_terminal_meta(
+    redis: AsyncRedisClient, session_id: str, turn_id: str
+) -> Mapping[Any, Any]:
+    try:
+        raw = await redis.get(_get_turn_terminal_key(session_id, turn_id))
+        if isinstance(raw, (str, bytes)):
+            try:
+                terminal = orjson.loads(raw)
+                if (
+                    isinstance(terminal, dict)
+                    and terminal.get("turn_id") == turn_id
+                    and terminal.get("status") in ("failed", "completed")
+                ):
+                    return terminal
+            except orjson.JSONDecodeError:
+                logger.warning(
+                    f"Invalid terminal record for session {session_id} turn {turn_id}"
+                )
+        return await redis.hgetall(_get_session_meta_key(session_id))
+    except RedisError:
+        logger.warning(
+            f"Could not recover terminal error for session {session_id} turn {turn_id}",
+            exc_info=True,
+        )
+        return {}
+
+
+def _terminal_error(meta: Mapping[Any, Any], turn_id: str) -> StreamError | None:
+    if _as_text(meta.get("status")) != "failed":
+        return None
+    recorded_turn = _as_text(meta.get("turn_id"))
+    if turn_id and recorded_turn and recorded_turn != turn_id:
+        return None
+    if message := _as_text(meta.get("error_message")):
+        return StreamError(
+            errorText=message, code=_as_text(meta.get("error_code")) or None
+        )
+    return None
+
+
 async def _stream_listener(
     session_id: str,
     subscriber_queue: asyncio.Queue[StreamEntry],
     last_replayed_id: str,
     log_meta: dict | None = None,
     turn_id: str = "",
+    *,
+    error_delivered: bool = False,
+    recover_errors: bool = True,
 ) -> None:
     """Listen to Redis Stream for new messages using blocking XREAD.
 
@@ -823,12 +913,20 @@ async def _stream_listener(
             if not entries:
                 # Timeout - stop once the meta is gone (TTL), not running, or
                 # names a later turn.
-                meta_key = _get_session_meta_key(session_id)
                 status, meta_turn_id = await redis.hmget(
-                    meta_key, ["status", "turn_id"]
+                    _get_session_meta_key(session_id), ["status", "turn_id"]
                 )
                 if status != "running" or (meta_turn_id and meta_turn_id != turn_id):
                     try:
+                        if recover_errors and not error_delivered:
+                            terminal = await _get_terminal_meta(
+                                redis, session_id, turn_id
+                            )
+                            if error := _terminal_error(terminal, turn_id):
+                                await asyncio.wait_for(
+                                    subscriber_queue.put((None, error)),
+                                    timeout=QUEUE_PUT_TIMEOUT,
+                                )
                         await asyncio.wait_for(
                             subscriber_queue.put((None, StreamFinish())),
                             timeout=QUEUE_PUT_TIMEOUT,
@@ -859,6 +957,20 @@ async def _stream_listener(
                         chunk = _chunk_from_fields(msg_data)
                         if chunk:
                             try:
+                                if (
+                                    recover_errors
+                                    and isinstance(chunk, StreamFinish)
+                                    and not error_delivered
+                                ):
+                                    terminal = await _get_terminal_meta(
+                                        redis, session_id, turn_id
+                                    )
+                                    if error := _terminal_error(terminal, turn_id):
+                                        await asyncio.wait_for(
+                                            subscriber_queue.put((None, error)),
+                                            timeout=QUEUE_PUT_TIMEOUT,
+                                        )
+                                        error_delivered = True
                                 await asyncio.wait_for(
                                     subscriber_queue.put(
                                         (f"{turn_id}:{msg_id}", chunk)
@@ -867,6 +979,7 @@ async def _stream_listener(
                                 )
                                 # Update last delivered ID on successful delivery
                                 last_delivered_id = current_id
+                                error_delivered |= isinstance(chunk, StreamError)
                                 messages_delivered += 1
                                 if first_message_time is None:
                                     first_message_time = time.perf_counter()
@@ -1027,8 +1140,29 @@ async def mark_session_completed(
 
     # Atomic compare-and-swap: only update if status is "running". A turn's end
     # can wake the next one, so its late safety-net call must not close that.
+    terminal_error = error_message if error_message and not skip_error_publish else ""
+    terminal = {
+        "turn_id": turn_id,
+        "status": status,
+        "error_message": terminal_error,
+        "error_code": error_code if terminal_error and error_code else "",
+    }
     swapped = await hash_compare_and_set(
-        redis, meta_key, "status", expected="running", new=status, guard=guard
+        redis,
+        meta_key,
+        "status",
+        expected="running",
+        new=status,
+        guard=guard,
+        updates={
+            "error_message": terminal["error_message"],
+            "error_code": terminal["error_code"],
+        },
+        record=(
+            _get_turn_terminal_key(session_id, turn_id),
+            orjson.dumps(terminal).decode(),
+            config.stream_ttl,
+        ),
     )
 
     # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.

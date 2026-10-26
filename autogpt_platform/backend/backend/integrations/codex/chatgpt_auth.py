@@ -233,9 +233,7 @@ async def refresh_access_token(
     current_id_token: SecretStr | None = None,
 ) -> ChatGPTTokens:
     """Exchange a refresh token. OpenAI rotates it, so persist what comes back."""
-    response = await Requests(
-        raise_for_status=False, retry_max_attempts=_AUTH_RETRY_ATTEMPTS
-    ).post(
+    response = await Requests(raise_for_status=False, retry_max_attempts=1).post(
         OAUTH_TOKEN_URL,
         headers=_headers(content_type="application/x-www-form-urlencoded"),
         data={

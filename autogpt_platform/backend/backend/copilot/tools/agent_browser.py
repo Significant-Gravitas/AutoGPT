@@ -119,6 +119,29 @@ def _agent_browser_env() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+_DESKTOP_BROWSER_MESSAGE = "Browser automation is unavailable in the desktop app."
+
+
+def _desktop_browser_disabled() -> bool:
+    return os.environ.get("AUTOGPT_DESKTOP", "").strip().lower() not in {
+        "",
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _desktop_browser_error(session_id: str) -> ErrorResponse | None:
+    if _desktop_browser_disabled():
+        return ErrorResponse(
+            message=_DESKTOP_BROWSER_MESSAGE,
+            error="desktop_browser_unavailable",
+            session_id=session_id,
+        )
+    return None
+
+
 async def _run(
     session_name: str,
     *args: str,
@@ -135,6 +158,8 @@ async def _run(
 
     Chromium's traffic goes through the egress proxy (see the module docstring).
     """
+    if _desktop_browser_disabled():
+        return 1, "", _DESKTOP_BROWSER_MESSAGE
     if any(_OPTION_LIKE.fullmatch(arg) and arg not in _OWN_OPTIONS for arg in args):
         return 1, "", "Refused an argument that looks like an agent-browser option."
     try:
@@ -635,7 +660,10 @@ class BrowserNavigateTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return shutil.which("agent-browser") is not None
+        return (
+            not _desktop_browser_disabled()
+            and shutil.which("agent-browser") is not None
+        )
 
     async def _execute(
         self,
@@ -651,6 +679,8 @@ class BrowserNavigateTool(BaseTool):
         Note: for slow SPAs that never fully idle, the snapshot may reflect a
         partially-loaded state (the wait is best-effort).
         """
+        if error := _desktop_browser_error(session.session_id):
+            return error
         url = url.strip()
         wait_for = wait_for or "networkidle"
         session_name = session.session_id
@@ -802,7 +832,10 @@ class BrowserActTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return shutil.which("agent-browser") is not None
+        return (
+            not _desktop_browser_disabled()
+            and shutil.which("agent-browser") is not None
+        )
 
     async def _execute(
         self,
@@ -820,6 +853,8 @@ class BrowserActTool(BaseTool):
         ``agent-browser``, waits for the page to settle, and returns the
         accessibility-tree snapshot so the LLM can plan the next step.
         """
+        if error := _desktop_browser_error(session.session_id):
+            return error
         action = action.strip()
         target = target.strip()
         value = value.strip()
@@ -971,7 +1006,10 @@ class BrowserScreenshotTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return shutil.which("agent-browser") is not None
+        return (
+            not _desktop_browser_disabled()
+            and shutil.which("agent-browser") is not None
+        )
 
     async def _execute(
         self,
@@ -988,6 +1026,8 @@ class BrowserScreenshotTool(BaseTool):
         Returns a :class:`BrowserScreenshotResponse` with the workspace
         ``file_id`` the LLM should pass to ``read_workspace_file``.
         """
+        if error := _desktop_browser_error(session.session_id):
+            return error
         raw_annotate = annotate
         if isinstance(raw_annotate, str):
             annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}

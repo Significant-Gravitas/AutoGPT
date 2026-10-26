@@ -12,6 +12,11 @@ from backend.blocks.linear._oauth import LinearOAuthHandler
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.data.user import get_near_expiry_oauth_credentials
+from backend.integrations.credential_refresh import (
+    REFRESH_PENDING,
+    REFRESH_REVISION,
+    CredentialRefreshRequired,
+)
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     _invoke_creds_changed_hook,
@@ -37,6 +42,49 @@ def _reset_hook():
     ):
         yield
     unregister_creds_changed_hook()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider,pending,deleted",
+    [("codex", True, True), ("linear", True, False), ("codex", False, False)],
+)
+async def test_pending_delete_checks_provider_and_latest_state_under_lock(
+    mocker, provider, pending, deleted
+):
+    manager = IntegrationCredentialsManager()
+    current = _provider_runtime_credentials().model_copy(
+        update={
+            "provider": provider,
+            "metadata": {REFRESH_PENDING: "nonce"} if pending else {},
+        }
+    )
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(
+        manager.store, "get_creds_by_id", AsyncMock(return_value=current)
+    )
+    delete = mocker.patch.object(manager.store, "delete_creds_by_id", AsyncMock())
+    assert (
+        await manager.delete_pending_refresh("user-a", current.id, "codex") is deleted
+    )
+    assert delete.await_count == int(deleted)
+
+
+@pytest.mark.asyncio
+async def test_acquire_rejects_a_refresh_that_became_pending_after_get(mocker):
+    manager = IntegrationCredentialsManager()
+    current = _provider_runtime_credentials()
+    pending = current.model_copy(update={"metadata": {REFRESH_PENDING: "nonce"}})
+    lock = _owned_lock()
+    mocker.patch.object(manager, "get", AsyncMock(return_value=current))
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(manager, "_acquire_lock", AsyncMock(return_value=lock))
+    mocker.patch.object(
+        manager.store, "get_creds_by_id", AsyncMock(return_value=pending)
+    )
+    with pytest.raises(CredentialRefreshRequired):
+        await manager.acquire("user-a", current.id)
+    lock.release.assert_awaited_once()
 
 
 class TestRegisterCredsChangedHook:
@@ -152,7 +200,7 @@ async def test_refresh_idle_credentials_continues_after_a_failure(mocker, caplog
 @pytest.mark.asyncio
 @pytest.mark.parametrize("idle_days", [15, 30])
 @pytest.mark.parametrize("fail_first", [False, True])
-async def test_idle_sweep_maintains_unused_credentials_and_recovers_after_failure(
+async def test_idle_sweep_maintains_credentials_and_requires_reconnect_after_failed_exchange(
     mocker, idle_days, fail_first
 ):
     manager = IntegrationCredentialsManager()
@@ -186,18 +234,48 @@ async def test_idle_sweep_maintains_unused_credentials_and_recovers_after_failur
     )
     mocker.patch.object(manager, "_get_oauth_handler", AsyncMock(return_value=handler))
     mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
-    mocker.patch.object(manager, "_acquire_lock", AsyncMock(return_value=_owned_lock()))
+    mocker.patch.object(
+        manager,
+        "_fresh_refresh_lock",
+        AsyncMock(side_effect=lambda *_args, **_kwargs: _owned_lock()),
+    )
     mocker.patch.object(
         manager.store,
         "get_creds_by_id",
         AsyncMock(side_effect=lambda _user, credential_id: stored[credential_id]),
     )
 
-    async def persist(_user, credentials):
-        assert _user == "user-a"
-        stored[credentials.id] = credentials
+    mocker.patch.object(
+        manager.store,
+        "_get_persisted_user_creds_unlocked",
+        AsyncMock(side_effect=lambda _user: list(stored.values())),
+    )
 
-    mocker.patch.object(manager.store, "update_creds", AsyncMock(side_effect=persist))
+    async def begin(_user, expected, nonce, _deadline):
+        assert _user == "user-a" and stored[expected.id] == expected
+        stored[expected.id] = expected.model_copy(
+            update={
+                "access_token": SecretStr(""),
+                "refresh_token": None,
+                "provider_state": None,
+                "metadata": {
+                    REFRESH_PENDING: nonce,
+                    REFRESH_REVISION: nonce + ":pending",
+                },
+            }
+        )
+        return nonce
+
+    async def complete(_user, credentials, checkpoint, _deadline):
+        assert _user == "user-a"
+        assert stored[credentials.id].metadata[REFRESH_PENDING] == checkpoint
+        stored[credentials.id] = credentials
+        return True
+
+    mocker.patch.object(manager.store, "begin_refresh", AsyncMock(side_effect=begin))
+    mocker.patch.object(
+        manager.store, "complete_refresh", AsyncMock(side_effect=complete)
+    )
     response = MagicMock()
     response.json.return_value = {
         "access_token": "rotated-access",
@@ -217,12 +295,23 @@ async def test_idle_sweep_maintains_unused_credentials_and_recovers_after_failur
 
     await manager.refresh_idle_credentials()
     if fail_first:
-        assert stored[original.id] == original
+        assert stored[original.id].metadata[REFRESH_PENDING]
+        assert stored[original.id].refresh_token is None
         clock.return_value += 86_400
+        await manager.refresh_idle_credentials()
+        assert post.await_count == 1
+        stored[original.id] = original.model_copy(
+            update={
+                "refresh_token": SecretStr("reconnected-refresh"),
+                "metadata": {REFRESH_REVISION: "explicit-reconnect"},
+            }
+        )
         await manager.refresh_idle_credentials()
 
     assert post.await_count == 1 + fail_first
-    assert post.await_args.kwargs["data"]["refresh_token"] == "refresh"
+    assert post.await_args.kwargs["data"]["refresh_token"] == (
+        "reconnected-refresh" if fail_first else "refresh"
+    )
     assert stored[original.id].access_token.get_secret_value() == "rotated-access"
     assert stored[original.id].refresh_token == SecretStr("rotated-refresh")
     assert stored[original.id].access_token_expires_at == clock.return_value + 3_600
@@ -454,6 +543,9 @@ async def test_locked_refresh_reports_a_credential_type_change(mocker):
         api_key=SecretStr("replacement"),
     )
     mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(
+        manager, "_fresh_refresh_lock", AsyncMock(return_value=_owned_lock())
+    )
     mocker.patch.object(
         manager.store,
         "get_creds_by_id",

@@ -1,0 +1,16 @@
+{
+  "name": "autogpt-desktop-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Installs the packaged AutoGPT desktop app and tests it as a user would use it",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "scripts": {
+    "test": "playwright test",
+    "types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.19.1",
+    "typescript": "5.9.3"
+  }
+}

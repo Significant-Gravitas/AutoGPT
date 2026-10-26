@@ -1,0 +1,26 @@
+fix(backend/copilot): do not log the Claude account's email address
+
+In subscription mode (`CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`)
+`validate_subscription` logs the email address `claude auth status` reports,
+at INFO, once per process. Service logs are what people attach to bug
+reports, and nothing reads the address back. The sign-in method is still
+logged.
+
+Apply with `git apply` (or `git am` after adding From/Subject headers) on
+Significant-Gravitas/AutoGPT `dev`.
+---
+diff --git a/autogpt_platform/backend/backend/copilot/sdk/subscription.py b/autogpt_platform/backend/backend/copilot/sdk/subscription.py
+index 27ed9d6..529fc61 100644
+--- a/autogpt_platform/backend/backend/copilot/sdk/subscription.py
++++ b/autogpt_platform/backend/backend/copilot/sdk/subscription.py
+@@ -136,9 +136,8 @@ def validate_subscription() -> None:
+                 "or run `claude login`."
+             )
+         logger.info(
+-            "Claude subscription auth: method=%s, email=%s",
++            "Claude subscription auth: method=%s",
+             status.get("authMethod"),
+-            status.get("email"),
+         )
+     except json.JSONDecodeError:
+         logger.warning("Could not parse `claude auth status` output")

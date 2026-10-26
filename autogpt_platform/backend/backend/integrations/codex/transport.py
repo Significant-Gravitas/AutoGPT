@@ -236,8 +236,8 @@ class CodexTransport:
                     manager.get(user_id, credential_id),
                     timeout=lock_timeout_seconds,
                 )
-            except asyncio.TimeoutError:
-                raise CodexCredentialBusyError("codex_credential_busy") from None
+            except asyncio.TimeoutError as error:
+                raise CodexCredentialBusyError("codex_credential_busy") from error
 
         credentials = await load()
         if credentials is None:
@@ -253,8 +253,8 @@ class CodexTransport:
                     manager.acquire_lease(user_id, credential_id),
                     timeout=lock_timeout_seconds,
                 )
-            except asyncio.TimeoutError:
-                raise CodexCredentialBusyError("codex_credential_busy") from None
+            except asyncio.TimeoutError as error:
+                raise CodexCredentialBusyError("codex_credential_busy") from error
             try:
                 current = _validated_codex_credentials(legacy_lease.credentials)
                 if current.refresh_strategy == "provider_runtime":
@@ -266,10 +266,10 @@ class CodexTransport:
                             legacy_lease.checkpoint(migrated),
                             timeout=lock_timeout_seconds,
                         )
-                    except asyncio.TimeoutError:
+                    except asyncio.TimeoutError as error:
                         raise CodexCredentialBusyError(
                             "codex_credential_busy"
-                        ) from None
+                        ) from error
             finally:
                 await legacy_lease.release()
 

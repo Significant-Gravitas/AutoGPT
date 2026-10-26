@@ -4,6 +4,7 @@ import secrets
 from contextlib import suppress
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
+from uuid import uuid4
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
@@ -56,6 +57,7 @@ from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
 )
+from backend.integrations.credential_refresh import REFRESH_PENDING, REFRESH_REVISION
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -1749,6 +1751,8 @@ async def _upgrade_existing_credential(
         **(existing.metadata or {}),
         **(new_credentials.metadata or {}),
     }
+    merged.metadata.pop(REFRESH_PENDING, None)
+    merged.metadata[REFRESH_REVISION] = uuid4().hex
     # Preserve the existing refresh_token and username if the incremental
     # response doesn't carry them.  Providers like Google only return a
     # refresh_token on first authorization — dropping it here would orphan
@@ -1761,7 +1765,7 @@ async def _upgrade_existing_credential(
         merged.refresh_token_expires_at = existing.refresh_token_expires_at
     if not merged.username and existing.username:
         merged.username = existing.username
-    await creds_manager.update(user_id, merged)
+    await creds_manager.update(user_id, merged, reconnect_expected=existing)
     return merged
 
 

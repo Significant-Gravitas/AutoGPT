@@ -201,6 +201,7 @@ class _RefreshScenario:
             )
             for args in [(), ("refresh",), ("!time_sensitive",)]
         ]
+        self.lock_keys.append(str((f"user:{self.user}", "integrations")))
         self._mock_storage(mocker)
         self._mock_runtime(mocker)
         self.clock = mocker.patch("time.time", return_value=time.time())
@@ -215,8 +216,16 @@ class _RefreshScenario:
             "get_creds_by_provider",
             AsyncMock(side_effect=lambda *_args: [self.credentials]),
         )
+        mocker.patch.object(
+            self.manager.store,
+            "_get_persisted_user_creds_unlocked",
+            AsyncMock(side_effect=lambda *_args: [self.credentials]),
+        )
+        mocker.patch.object(
+            self.manager.store, "begin_refresh", AsyncMock(return_value="checkpoint")
+        )
         self.write = mocker.patch.object(
-            self.manager.store, "update_creds", AsyncMock()
+            self.manager.store, "complete_refresh", AsyncMock(return_value=True)
         )
 
     def _mock_runtime(self, mocker):

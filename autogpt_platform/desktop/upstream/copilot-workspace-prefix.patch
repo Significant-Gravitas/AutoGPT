@@ -1,0 +1,105 @@
+fix(backend/copilot): let an SDK turn start on Windows, and let the workspace prefix be moved
+
+No AutoPilot SDK turn can start when the backend runs on native Windows.
+`make_session_path`, `_make_sdk_cwd` and `_cleanup_sdk_tool_results` compare
+`os.path.normpath(path)` with `WORKSPACE_PREFIX`. On Windows normpath turns
+`/tmp/copilot-<id>` into `\tmp\copilot-<id>`, the prefix stays
+`/tmp/copilot-`, and the turn ends with "Session path escaped prefix".
+
+The prefix is now normalised the same way. On POSIX normpath leaves
+`/tmp/copilot-` as it is, so nothing changes there.
+
+`COPILOT_WORKSPACE_PREFIX` moves the workspaces. Unset, the prefix is what
+it was. It is there because `\tmp` on Windows is the top of whatever drive
+the backend runs from, shared by every user of the machine; a self-hosted
+or desktop install can point it into its own data directory. The path
+should still contain `tmp/copilot-`: `cleanup_stale_project_dirs` only
+sweeps transcript directories whose encoded name contains `-tmp-copilot-`.
+
+All three checks read the one constant (`_SDK_CWD_PREFIX` is an alias of it),
+so this is the only line that changes. `transcript._SAFE_CWD_PREFIX` is a
+fourth copy of the literal, but its only user, `write_transcript_to_tempfile`,
+is not called from anywhere, and is left alone here.
+
+The new tests load the module with `ntpath` and with `posixpath`, on any OS.
+
+Apply with `git apply` (or `git am` after adding From/Subject headers) on
+Significant-Gravitas/AutoGPT `dev`.
+---
+diff --git a/autogpt_platform/backend/backend/copilot/tools/sandbox.py b/autogpt_platform/backend/backend/copilot/tools/sandbox.py
+index aa15637..ff438fd 100644
+--- a/autogpt_platform/backend/backend/copilot/tools/sandbox.py
++++ b/autogpt_platform/backend/backend/copilot/tools/sandbox.py
+@@ -41,7 +41,12 @@ def has_full_sandbox() -> bool:
+     return _BWRAP_AVAILABLE
+ 
+ 
+-WORKSPACE_PREFIX = "/tmp/copilot-"
++# COPILOT_WORKSPACE_PREFIX moves the workspaces on a host with no /tmp (native
++# Windows). normpath is the identity on POSIX; on Windows it gives the prefix
++# the separators that the normalised paths compared with it have.
++WORKSPACE_PREFIX = os.path.normpath(
++    os.environ.get("COPILOT_WORKSPACE_PREFIX") or "/tmp/copilot-"
++)
+ 
+ 
+ def make_session_path(session_id: str) -> str:
+diff --git a/autogpt_platform/backend/backend/copilot/tools/sandbox_test.py b/autogpt_platform/backend/backend/copilot/tools/sandbox_test.py
+new file mode 100644
+index 0000000..dbc893a
+--- /dev/null
++++ b/autogpt_platform/backend/backend/copilot/tools/sandbox_test.py
+@@ -0,0 +1,53 @@
++"""Tests for the session workspace path (sandbox.make_session_path)."""
++
++import importlib
++import ntpath
++import os
++import posixpath
++
++import pytest
++
++from backend.copilot.tools import sandbox
++
++PREFIX_VARIABLE = "COPILOT_WORKSPACE_PREFIX"
++
++
++@pytest.fixture
++def sandbox_on(monkeypatch: pytest.MonkeyPatch):
++    """The module as it loads on a system with the given ``os.path``."""
++
++    def load(path_module, prefix: str | None = None):
++        monkeypatch.setattr(os, "path", path_module)
++        if prefix is None:
++            monkeypatch.delenv(PREFIX_VARIABLE, raising=False)
++        else:
++            monkeypatch.setenv(PREFIX_VARIABLE, prefix)
++        return importlib.reload(sandbox)
++
++    yield load
++    monkeypatch.undo()
++    importlib.reload(sandbox)
++
++
++def test_posix_default_is_unchanged(sandbox_on):
++    module = sandbox_on(posixpath)
++    assert module.WORKSPACE_PREFIX == "/tmp/copilot-"
++    assert module.make_session_path("abc-123") == "/tmp/copilot-abc-123"
++
++
++def test_session_path_can_be_built_on_windows(sandbox_on):
++    module = sandbox_on(ntpath)
++    assert module.make_session_path("abc-123") == "\\tmp\\copilot-abc-123"
++
++
++def test_prefix_can_be_moved_off_tmp(sandbox_on):
++    module = sandbox_on(ntpath, "C:/Users/someone/data/tmp/copilot-")
++    path = module.make_session_path("abc-123")
++    assert path == "C:\\Users\\someone\\data\\tmp\\copilot-abc-123"
++    assert path.startswith(module.WORKSPACE_PREFIX)
++
++
++def test_session_id_cannot_leave_the_prefix(sandbox_on):
++    module = sandbox_on(posixpath, "/srv/work/copilot-")
++    assert module.make_session_path("../../etc") == "/srv/work/copilot-etc"
++    assert module.make_session_path("") == "/srv/work/copilot-default"

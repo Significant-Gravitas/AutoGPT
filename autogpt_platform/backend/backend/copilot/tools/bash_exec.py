@@ -253,6 +253,10 @@ class BashExecTool(BaseTool):
         # `bash -l` runs these before the command itself.
         return {**await changed_login_files(sandbox), **scripts}
 
+    @property
+    def is_available(self) -> bool:
+        return bool(chat_config.active_e2b_api_key) or has_full_sandbox()
+
     async def _execute(
         self,
         user_id: str | None,

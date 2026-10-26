@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'" />
+    <title>AutoGPT</title>
+    <style>
+      :root { color-scheme: light dark; --fg: #18181b; --muted: #71717a; --bg: #ffffff; --accent: #7c3aed; --error: #dc2626; }
+      @media (prefers-color-scheme: dark) { :root { --fg: #fafafa; --muted: #a1a1aa; --bg: #18181b; --error: #f87171; } }
+      body { margin: 0; height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 0 40px;
+             font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      #message { color: var(--muted); min-height: 3em; }
+      .bar { height: 4px; background: color-mix(in srgb, var(--accent) 20%, transparent); border-radius: 2px; overflow: hidden; margin: 16px 0; }
+      .bar::after { content: ""; display: block; height: 100%; width: 35%; background: var(--accent); animation: slide 1.4s ease-in-out infinite; }
+      @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+      .failed .bar { display: none; }
+      .failed #message { color: var(--error); }
+      #actions { display: none; gap: 8px; }
+      .failed #actions { display: flex; }
+      #hint { color: var(--muted); font-size: 12px; }
+      #doctor-entry { margin-top: 18px; }
+      #privacy-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+      .failed #hint { display: none; }
+      button[hidden] { display: none; }
+      #update { border-color: var(--accent); }
+      button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--muted); background: transparent; color: var(--fg); cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>AutoGPT</h1>
+    <div class="bar"></div>
+    <div id="message">Starting…</div>
+    <div id="hint">The first start sets up a local database and can take a few minutes.</div>
+    <div id="actions">
+      <button id="update" hidden></button>
+      <button id="logs">Show logs</button>
+      <button id="quit">Quit</button>
+    </div>
+    <div id="doctor-entry"><button id="doctor">Open Doctor</button><div id="privacy-hint">Health checks, desktop preferences, and optional reporting choices.</div></div>
+    <script src="startup.js"></script>
+  </body>
+</html>

@@ -890,7 +890,7 @@ class TestPreserveRefreshTokenAndUsername:
 
         captured: dict[str, OAuth2Credentials] = {}
 
-        async def _capture_update(_user_id, creds):
+        async def _capture_update(_user_id, creds, *, reconnect_expected):
             captured["creds"] = creds
 
         with (
@@ -933,7 +933,7 @@ class TestPreserveRefreshTokenAndUsername:
 
         captured: dict[str, OAuth2Credentials] = {}
 
-        async def _capture_update(_user_id, creds):
+        async def _capture_update(_user_id, creds, *, reconnect_expected):
             captured["creds"] = creds
 
         with (

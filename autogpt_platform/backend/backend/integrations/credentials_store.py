@@ -5,6 +5,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import uuid4
 
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
@@ -19,6 +20,11 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
+from backend.integrations.credential_refresh import (
+    REFRESH_PENDING,
+    REFRESH_REVISION,
+    CredentialRefreshRequired,
+)
 from backend.util.cache import thread_cached
 from backend.util.settings import Settings
 
@@ -442,7 +448,13 @@ class IntegrationCredentialsStore:
         credentials = await self.get_all_creds(user_id)
         return list(set(c.provider for c in credentials))
 
-    async def update_creds(self, user_id: str, updated: Credentials) -> None:
+    async def update_creds(
+        self,
+        user_id: str,
+        updated: Credentials,
+        *,
+        reconnect_expected: OAuth2Credentials | None = None,
+    ) -> None:
         if updated.id in SYSTEM_CREDENTIAL_IDS:
             raise ValueError(
                 f"System credential #{updated.id} cannot be updated directly"
@@ -459,6 +471,23 @@ class IntegrationCredentialsStore:
                 raise ValueError(
                     f"AutoGPT-managed credential #{updated.id} cannot be updated"
                 )
+            if reconnect_expected is not None:
+                if (
+                    not isinstance(current, OAuth2Credentials)
+                    or not isinstance(updated, OAuth2Credentials)
+                    or current != reconnect_expected
+                    or not provider_matches(current.provider, updated.provider)
+                    or (current.username and updated.username != current.username)
+                    or updated.metadata.get(REFRESH_PENDING)
+                    or not updated.metadata.get(REFRESH_REVISION)
+                    or updated.metadata.get(REFRESH_REVISION)
+                    == current.metadata.get(REFRESH_REVISION)
+                ):
+                    raise ValueError(
+                        "Credential changed during reconnect; sign in again"
+                    )
+            elif current.metadata.get(REFRESH_PENDING):
+                raise CredentialRefreshRequired()
             if type(current) is not type(updated):
                 raise TypeError(
                     f"Can not update credentials with ID {updated.id} "
@@ -482,7 +511,34 @@ class IntegrationCredentialsStore:
             updated_credentials_list = [
                 updated if c.id == updated.id else c for c in persisted
             ]
-            await self._set_user_integration_creds(user_id, updated_credentials_list)
+            if reconnect_expected is None:
+                await self._set_user_integration_creds(
+                    user_id, updated_credentials_list
+                )
+            else:
+                await self._set_user_integration_creds(
+                    user_id,
+                    updated_credentials_list,
+                    reconnect_revisions={
+                        updated.id: current.metadata.get(REFRESH_REVISION)
+                    },
+                )
+
+    async def begin_refresh(
+        self, user_id: str, expected: OAuth2Credentials, nonce: str, deadline: float
+    ) -> str | None:
+        if expected.id in SYSTEM_CREDENTIAL_IDS or expected.is_managed:
+            raise ValueError("Rotating refresh requires user-owned credentials")
+        return await self.db_manager.begin_user_credential_refresh(
+            user_id, expected, nonce, deadline
+        )
+
+    async def complete_refresh(
+        self, user_id: str, updated: OAuth2Credentials, checkpoint: str, deadline: float
+    ) -> bool:
+        return await self.db_manager.complete_user_credential_refresh(
+            user_id, updated, checkpoint, deadline
+        )
 
     async def upsert_single_provider_creds(
         self,
@@ -524,9 +580,25 @@ class IntegrationCredentialsStore:
                 for credential in persisted
                 if not provider_matches(credential.provider, credentials.provider)
             ]
+            if isinstance(replacement, OAuth2Credentials):
+                replacement = replacement.model_copy(
+                    update={
+                        "metadata": {
+                            **replacement.metadata,
+                            REFRESH_REVISION: uuid4().hex,
+                        },
+                    }
+                )
             await self._set_user_integration_creds(
                 user_id,
                 [*kept, replacement],
+                reconnect_revisions={
+                    replacement.id: (
+                        compatible.metadata.get(REFRESH_REVISION)
+                        if compatible
+                        else None
+                    ),
+                },
             )
             return replacement
 
@@ -723,11 +795,20 @@ class IntegrationCredentialsStore:
             )
 
     async def _set_user_integration_creds(
-        self, user_id: str, credentials: list[Credentials]
+        self,
+        user_id: str,
+        credentials: list[Credentials],
+        *,
+        reconnect_revisions: dict[str, str | None] | None = None,
     ) -> None:
         # Remove default credentials from the list
         credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
-        await self.db_manager.set_user_credentials(user_id, credentials)
+        if reconnect_revisions is None:
+            await self.db_manager.set_user_credentials(user_id, credentials)
+        else:
+            await self.db_manager.set_user_credentials(
+                user_id, credentials, reconnect_revisions
+            )
 
     async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
         return await self.db_manager.get_user_integrations(user_id=user_id)

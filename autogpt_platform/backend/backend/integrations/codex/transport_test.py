@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import threading
+import traceback
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -119,10 +120,43 @@ async def test_runtime_snapshot_times_out_during_credential_contention() -> None
         "backend.integrations.codex.transport.IntegrationCredentialsManager",
         return_value=manager,
     ):
-        with pytest.raises(CodexCredentialBusyError, match="codex_credential_busy"):
+        with pytest.raises(
+            CodexCredentialBusyError, match="codex_credential_busy"
+        ) as caught:
             await CodexTransport().acquire_runtime_lease(
                 "user-a", "cred-id", lock_timeout_seconds=0.01
             )
+
+    timeout = caught.value.__cause__
+    assert isinstance(timeout, asyncio.TimeoutError)
+    cancelled = timeout.__cause__
+    assert isinstance(cancelled, asyncio.CancelledError)
+    assert any(
+        frame.name == "blocked_get"
+        for frame in traceback.extract_tb(cancelled.__traceback__)
+    )
+
+
+@pytest.mark.asyncio
+async def test_runtime_snapshot_preserves_an_inner_load_timeout() -> None:
+    timeout = TimeoutError("database read timed out")
+    manager = MagicMock()
+    manager.get = AsyncMock(side_effect=timeout)
+
+    with (
+        patch(
+            "backend.integrations.codex.transport.IntegrationCredentialsManager",
+            return_value=manager,
+        ),
+        pytest.raises(
+            CodexCredentialBusyError, match="codex_credential_busy"
+        ) as caught,
+    ):
+        await CodexTransport().acquire_runtime_lease(
+            "user-a", "cred-id", lock_timeout_seconds=1
+        )
+
+    assert caught.value.__cause__ is timeout
 
 
 @pytest.mark.asyncio
