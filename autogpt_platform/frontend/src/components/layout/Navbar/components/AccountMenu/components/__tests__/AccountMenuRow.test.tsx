@@ -91,7 +91,7 @@ describe("AccountMenuRow", () => {
     );
 
     const button = screen.getByRole("button", { name: /log out/i });
-    expect(button.className).toContain("hover:bg-red-50");
+    expect(button.className).toContain("hover:bg-error-surface");
   });
 
   test("shows pending spinner when useLinkStatus returns pending", async () => {

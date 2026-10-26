@@ -49,6 +49,7 @@ export function MultiToggle({
       role="group"
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy}
+      data-slot="multi-toggle"
       className={cn("flex flex-wrap gap-2", className)}
     >
       {items.map((item) => {
@@ -65,20 +66,24 @@ export function MultiToggle({
             disabled={item.disabled}
             onClick={() => handleToggle(item.value)}
             onKeyDown={(e) => handleKeyDown(e, item.value)}
+            data-slot="multi-toggle-item"
+            // TODO(tokens): no role for purple-50 (#F1EBFE) or purple-100
+            // (#EFE8FE); zinc-700 and zinc-200 have only text and surface
+            // roles, not a border or text one.
             className={cn(
               // Base button styles similar to outline variant
               "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-hover focus-visible:ring-offset-2",
               "disabled:pointer-events-none disabled:opacity-50",
               "rounded-full border font-sans",
-              "h-[2.25rem] px-4 py-2 text-sm leading-[22px]",
+              "h-[2.25rem] px-4 py-2 text-body leading-5.5",
               // Default outline styles
-              "border-zinc-700 bg-transparent text-black hover:bg-zinc-100",
+              "border-zinc-700 bg-transparent text-foreground-base hover:bg-surface-hover",
               // Selected styles with purple-600
               isSelected &&
-                "border-purple-600 bg-purple-50 text-purple-600 hover:bg-purple-100",
+                "border-brand-hover bg-purple-50 text-brand-hover hover:bg-purple-100",
               // Disabled styles
-              item.disabled && "border-zinc-200 text-zinc-200 opacity-50",
+              item.disabled && "border-border-base text-zinc-200 opacity-50",
             )}
           >
             {item.label}

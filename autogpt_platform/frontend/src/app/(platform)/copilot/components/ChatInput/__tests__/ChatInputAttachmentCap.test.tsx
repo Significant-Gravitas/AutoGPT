@@ -12,6 +12,7 @@ import { ChatInput } from "../ChatInput";
 // the cap notice stay real, because the cap is a claim about what the user
 // ends up seeing and being able to click.
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: undefined }),
   useGetV2ListChatConnections: () => ({
     data: { status: 200, data: { offers: [] } },
     isLoading: false,
@@ -21,18 +22,19 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 }));
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    copilotLlmModel: "standard",
-    setCopilotLlmModel: vi.fn(),
-    copilotLlmAuth: { authProvider: "platform", credentialId: null },
-    setCopilotLlmAuth: vi.fn(),
-    isDryRun: false,
-    setIsDryRun: vi.fn(),
-    initialPrompt: null,
-    setInitialPrompt: vi.fn(),
-    sentMessageCount: 0,
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      copilotLlmModel: "standard",
+      setCopilotLlmModel: vi.fn(),
+      copilotLlmAuth: { authProvider: "platform", credentialId: null },
+      setCopilotLlmAuth: vi.fn(),
+      isDryRun: false,
+      setIsDryRun: vi.fn(),
+      initialPrompt: null,
+      setInitialPrompt: vi.fn(),
+      sentMessageCount: 0,
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -61,7 +63,7 @@ vi.mock("../useVoiceRecording", () => ({
   }),
 }));
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({ disabled }: { disabled?: boolean }) => (
     <button disabled={disabled} data-testid="submit">
       Send

@@ -42,15 +42,21 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
                 }
                 className="underline"
               >
-                Agent Library
+                <Text variant="small-medium-inherit" as="span" tone="inherit">
+                  Workflow Library
+                </Text>
               </Link>
-              {!isNodeSaved && " (after saving the graph)"}.
+              {!isNodeSaved && " (after saving the workflow)"}.
             </Text>
           </AlertDescription>
         </Alert>
       </div>
 
-      <Text variant="small" className="mb-4 ml-6 !text-purple-700">
+      <Text
+        // TODO(tokens): no exact role: !text-purple-700 #5424AE
+        variant="small"
+        className="mb-4 ml-6 !text-purple-700"
+      >
         Below inputs are only for display purposes and cannot be edited.
       </Text>
     </>

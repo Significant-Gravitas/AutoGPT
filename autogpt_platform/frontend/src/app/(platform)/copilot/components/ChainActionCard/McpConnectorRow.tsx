@@ -60,21 +60,23 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-3 px-4 py-3">
-        <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1.5">
+        <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-separator bg-surface p-1.5">
           <ProviderAvatar id={iconId} name={request.service} />
         </span>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium text-zinc-900">
+          <span className="truncate text-sm font-medium text-foreground-strong">
             {request.service}
           </span>
           {host && (
-            <span className="truncate text-sm text-zinc-500">{host}</span>
+            <span className="truncate text-sm text-foreground-tertiary">
+              {host}
+            </span>
           )}
         </div>
 
         {request.connected ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
+          <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             Connected
           </span>
@@ -102,7 +104,10 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
       </div>
 
       {request.error && !request.connected && (
-        <div className="mx-4 mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div
+          // TODO(tokens): no exact role for border-red-200
+          className="mx-4 mb-3 rounded-xl border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground"
+        >
           {request.error}
         </div>
       )}
@@ -115,10 +120,10 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             disabled={request.loading}
             nameSuffix={request.service}
             className="grid gap-1"
-            labelClassName="text-xs font-medium text-zinc-700"
-            selectClassName="rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100"
+            labelClassName="text-xs font-medium text-foreground-body"
+            selectClassName="rounded-xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator"
           />
-          <p id={hintId} className="text-xs text-zinc-500">
+          <p id={hintId} className="text-xs text-foreground-tertiary">
             {mcpAuthTokenHint(authScheme)}
           </p>
           <div className="flex gap-2">
@@ -142,7 +147,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
                 token.trim() &&
                 submitCredential()
               }
-              className="flex-1 rounded-2xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+              className="flex-1 rounded-2xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
             />
             <Button
               variant="secondary"
@@ -158,7 +163,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
               id={errorId}
               role="alert"
               aria-live="polite"
-              className="text-xs text-red-700"
+              className="text-xs text-error-foreground"
             >
               {validationError}
             </p>

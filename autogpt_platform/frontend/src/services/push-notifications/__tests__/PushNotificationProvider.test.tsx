@@ -52,7 +52,7 @@ vi.mock("../registration", () => ({
   registerServiceWorker: () => mockRegisterServiceWorker(),
   subscribeToPush: (...args: [unknown, unknown]) =>
     mockSubscribeToPush(...args),
-  unsubscribeFromPush: (reg: unknown) => mockUnsubscribeFromPush(reg),
+  unsubscribeFromPush: (sub: unknown) => mockUnsubscribeFromPush(sub),
 }));
 
 const mockFetchVapidPublicKey = vi.fn();
@@ -333,7 +333,7 @@ describe("PushNotificationProvider", () => {
           mockSubscription.endpoint,
         );
       });
-      expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockRegistration);
+      expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
     });
 
     it("does not call teardown when user is null from the start", async () => {

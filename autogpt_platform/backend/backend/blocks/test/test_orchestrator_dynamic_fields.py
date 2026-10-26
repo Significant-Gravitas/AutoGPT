@@ -641,7 +641,7 @@ async def test_validation_errors_dont_pollute_conversation():
                 mock_execution_processor.on_node_execution.return_value = (
                     mock_node_stats
                 )
-                # Mock charge_node_usage (called after successful tool execution).
+                # Mock charge_node_usage (called before the tool executes).
                 # Must be AsyncMock because it is async and is awaited in
                 # _execute_single_tool_with_manager — a plain MagicMock would
                 # return a non-awaitable tuple and TypeError out, then be

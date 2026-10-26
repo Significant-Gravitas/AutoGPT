@@ -33,13 +33,17 @@ from __future__ import annotations
 
 import logging
 import secrets
+from datetime import datetime, timedelta, timezone
 
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from backend.data.model import APIKeyCredentials, Credentials
-from backend.integrations.ayrshare import AyrshareClient
+from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.credentials_store import IntegrationCredentialsStore
-from backend.integrations.managed_credentials import ManagedCredentialProvider
+from backend.integrations.managed_credentials import (
+    ManagedCredentialProvider,
+    ensure_managed_credential,
+)
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 
@@ -50,8 +54,9 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
     provider_name = "ayrshare"
 
     # Opt out of the credentials sweep — each Ayrshare profile counts
-    # against our subscription quota, so we only provision when the user
-    # explicitly triggers the SSO flow from a block.  See
+    # against our subscription quota, so we only provision through
+    # :func:`provision_profile`, when the user opens the SSO flow from a block
+    # or AutoPilot runs an Ayrshare block for them.  See
     # ``ManagedCredentialProvider.auto_provision`` for the gate semantics.
     auto_provision = False
 
@@ -176,3 +181,120 @@ def settings_available() -> bool:
     """
     settings = Settings()
     return bool(settings.secrets.ayrshare_api_key and settings.secrets.ayrshare_jwt_key)
+
+
+# Ayrshare JWT max lifetime is 2880 minutes (48 h).
+SSO_MAX_EXPIRY_MINUTES = 2880
+
+# The networks the Ayrshare-hosted social-linking page will *offer* the user
+# to connect.  Blocks exist for more platforms than are listed here; the list
+# is deliberately narrower so the rollout can verify each network end-to-end
+# before widening the user-visible surface.  Keep in sync with tested
+# platforms — extend as each is verified against the block + Ayrshare's
+# network-specific quirks.
+SSO_ALLOWED_SOCIAL = [
+    SocialPlatform.TWITTER,
+    SocialPlatform.LINKEDIN,
+    SocialPlatform.INSTAGRAM,
+    SocialPlatform.YOUTUBE,
+    SocialPlatform.TIKTOK,
+]
+
+
+class AyrshareNotConfiguredError(Exception):
+    """The org-level Ayrshare secrets are not set on this deployment."""
+
+
+class AyrshareProvisioningError(Exception):
+    """The per-user profile or its SSO link could not be created."""
+
+
+class AyrshareSSOLink(BaseModel):
+    url: str
+    expires_at: datetime
+
+
+def _configured_client() -> AyrshareClient:
+    if not settings_available():
+        raise AyrshareNotConfiguredError("Ayrshare integration is not configured")
+    try:
+        return AyrshareClient()
+    except MissingConfigError as exc:
+        raise AyrshareNotConfiguredError(
+            "Ayrshare integration is not configured"
+        ) from exc
+
+
+async def _provision_profile(
+    user_id: str, store: IntegrationCredentialsStore
+) -> APIKeyCredentials:
+    # On-demand provisioning: AyrshareManagedProvider opts out of the
+    # credentials sweep (profile quota is per-user subscription-bound), so a
+    # profile is only created for a user who actually needs one.
+    provisioned = await ensure_managed_credential(
+        user_id, store, AyrshareManagedProvider()
+    )
+    if not provisioned:
+        raise AyrshareProvisioningError("Failed to provision Ayrshare profile")
+
+    ayrshare_creds = [
+        c
+        for c in await store.get_creds_by_provider(user_id, "ayrshare")
+        if c.is_managed and isinstance(c, APIKeyCredentials)
+    ]
+    if not ayrshare_creds:
+        logger.error(
+            "Ayrshare credential provisioning did not produce a credential for user %s",
+            user_id,
+        )
+        raise AyrshareProvisioningError("Failed to provision Ayrshare profile")
+    return ayrshare_creds[0]
+
+
+async def provision_profile(
+    user_id: str, store: IntegrationCredentialsStore
+) -> APIKeyCredentials:
+    """Provision the user's managed profile if needed, without signing a link.
+
+    For callers that only need the profile to exist, such as AutoPilot, which
+    sends the user to the card's connect button (it fetches its own link
+    from ``/ayrshare/sso_url``) instead of putting a link in the chat.
+
+    Raises the same errors as :func:`get_sso_link`.
+    """
+    _configured_client()
+    return await _provision_profile(user_id, store)
+
+
+async def get_sso_link(
+    user_id: str, store: IntegrationCredentialsStore
+) -> AyrshareSSOLink:
+    """Provision the user's managed profile if needed and sign an SSO link.
+
+    The path the builder's ``/ayrshare/sso_url`` route takes to hand a user
+    the Ayrshare page where they link their social networks.
+
+    Raises :class:`AyrshareNotConfiguredError` when the org secrets are
+    missing, and :class:`AyrshareProvisioningError` when provisioning or
+    signing fails.
+    """
+    client = _configured_client()
+    profile = await _provision_profile(user_id, store)
+
+    try:
+        jwt_response = await client.generate_jwt(
+            private_key=Settings().secrets.ayrshare_jwt_key,
+            profile_key=profile.api_key.get_secret_value(),
+            allowed_social=SSO_ALLOWED_SOCIAL,
+            expires_in=SSO_MAX_EXPIRY_MINUTES,
+            verify=True,
+        )
+    except Exception as exc:
+        logger.error("Error generating Ayrshare JWT for user %s: %s", user_id, exc)
+        raise AyrshareProvisioningError("Failed to generate JWT") from exc
+
+    return AyrshareSSOLink(
+        url=jwt_response.url,
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(minutes=SSO_MAX_EXPIRY_MINUTES),
+    )

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import sys
 
+import pytest
 import sentry_sdk
 from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
@@ -22,7 +23,8 @@ from sentry_sdk.utils import event_from_exception, json_dumps
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
-from backend.util import feature_flag, metrics
+from backend.api.utils.client_ip import CLIENT_IP_TOKEN_HEADER
+from backend.util import feature_flag, metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -31,6 +33,7 @@ from backend.util.metrics import (
     _PIKA_RECONNECT_SIGNATURES,
     _before_send,
 )
+from backend.util.settings import AppEnvironment, BehaveAs, Config
 
 
 def _log_event(logger: str, message: str) -> dict:
@@ -401,6 +404,30 @@ def test_sentry_init_runs_outside_pytest(monkeypatch) -> None:
     assert calls[0]["dsn"] == _FAKE_DSN
 
 
+def test_sentry_init_samples_through_the_shared_sampler(monkeypatch) -> None:
+    """Probes, scrapes and WebSocket connections are dropped by the sampler;
+    see tracing_test for its rules."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["traces_sampler"] is tracing.traces_sampler
+
+
+def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> None:
+    """Only the RPC client attaches trace headers (service_test covers it), so a
+    block calling a user-supplied URL never hands it Sentry's trace or key."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["trace_propagation_targets"] == []
+
+
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
     """A spawned service subprocess does not inherit sys.modules, but does
     inherit PYTEST_CURRENT_TEST from the environment."""
@@ -467,3 +494,226 @@ def test_sentry_sdk_setup_from_sentry_init_hooks_no_launchdarkly(monkeypatch) ->
     finally:
         client.close()
     assert ld_clients == []
+
+
+# ---------- release and environment tagging ----------
+
+
+def _sentry_init_options(monkeypatch) -> dict:
+    """The options sentry_init() hands the SDK once past the pytest guard."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    return calls[0]
+
+
+def test_sentry_init_reports_the_deployed_commit_as_release(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", "0123abcd")
+
+    assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
+
+
+def test_sentry_init_trims_the_release(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", "  0123abcd\n")
+
+    assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
+
+
+@pytest.mark.parametrize("sha", ["", "   ", "\n"])
+def test_sentry_init_reports_no_release_for_a_blank_sha(monkeypatch, sha) -> None:
+    """A build made without the SENTRY_RELEASE build arg bakes in an empty
+    value, which has to read as no release rather than a blank one."""
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", sha)
+
+    assert _sentry_init_options(monkeypatch)["release"] is None
+
+
+def test_sentry_init_environment_override_wins(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "pr-123")
+    monkeypatch.setattr(metrics.settings.config, "app_env", AppEnvironment.PRODUCTION)
+    monkeypatch.setattr(metrics.settings.config, "behave_as", BehaveAs.CLOUD)
+
+    assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
+
+
+def test_sentry_init_trims_the_environment_override(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "  pr-123 ")
+
+    assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
+
+
+@pytest.mark.parametrize("override", ["", "   "])
+def test_sentry_init_computes_the_environment_without_an_override(
+    monkeypatch, override
+) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", override)
+    monkeypatch.setattr(metrics.settings.config, "app_env", AppEnvironment.PRODUCTION)
+    monkeypatch.setattr(metrics.settings.config, "behave_as", BehaveAs.CLOUD)
+
+    environment = _sentry_init_options(monkeypatch)["environment"]
+
+    assert environment == "app:prod-behave:cloud"
+
+
+def test_sentry_settings_read_the_deployment_env_vars(monkeypatch) -> None:
+    """The names infra sets: SENTRY_RELEASE, baked into the image, and
+    SENTRY_ENVIRONMENT, set per preview."""
+    monkeypatch.setenv("SENTRY_RELEASE", "0123abcd")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "pr-123")
+
+    config = Config()
+
+    assert config.sentry_release == "0123abcd"
+    assert config.sentry_environment == "pr-123"
+
+
+def test_sentry_settings_are_empty_for_blank_deployment_env_vars(monkeypatch) -> None:
+    monkeypatch.setenv("SENTRY_RELEASE", "")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "")
+
+    config = Config()
+
+    assert (config.sentry_release, config.sentry_environment) == ("", "")
+
+
+# ---------- personal data ----------
+
+
+def _event_with_personal_user() -> dict:
+    return {
+        "level": "error",
+        "user": {
+            "id": "user-1",
+            "email": "ada@example.com",
+            "ip_address": "203.0.113.7",
+            "name": "Ada Lovelace",
+            "segment": "pro",
+        },
+    }
+
+
+def test_before_send_keeps_only_the_user_id() -> None:
+    event = _before_send(_event_with_personal_user(), hint={})
+
+    assert event is not None
+    assert event["user"] == {"id": "user-1"}
+
+
+def test_before_send_transaction_keeps_only_the_user_id() -> None:
+    event = metrics._before_send_transaction(_event_with_personal_user(), hint={})
+
+    assert event["user"] == {"id": "user-1"}
+
+
+def test_sentry_init_sends_no_default_pii(monkeypatch) -> None:
+    assert _sentry_init_options(monkeypatch)["send_default_pii"] is False
+
+
+def test_before_send_drops_a_user_left_with_no_id() -> None:
+    event = _before_send(
+        {"level": "error", "user": {"email": "ada@example.com"}}, hint={}
+    )
+
+    assert event is not None
+    assert "user" not in event
+
+
+def test_before_send_transaction_drops_a_user_left_with_no_id() -> None:
+    event = metrics._before_send_transaction(
+        {"user": {"ip_address": "203.0.113.7"}}, hint={}
+    )
+
+    assert "user" not in event
+
+
+def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None:
+    def notify_user():
+        email = "ada@example.com"
+        user_email = "ada.lovelace@example.com"
+        recipient = "ada@example.org"
+        ip = "203.0.113.7"
+        ip_address = "198.51.100.4"
+        email_count = 1
+        if email and user_email and recipient and ip and ip_address and email_count:
+            raise RuntimeError("could not send the notification")
+
+    try:
+        notify_user()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+    event["extra"] = {
+        "Email": "ada@example.com",
+        "context": {"user_email": "ada.lovelace@example.com", "ip": "203.0.113.7"},
+        "ip_address": "198.51.100.4",
+        "email_verified": True,
+        "ip_allowlist_enabled": True,
+    }
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    body = json.loads(json_dumps(scrubbed))
+    assert body["extra"]["Email"] == "[Filtered]"
+    assert body["extra"]["context"] == {
+        "user_email": "[Filtered]",
+        "ip": "[Filtered]",
+    }
+    assert body["extra"]["ip_address"] == "[Filtered]"
+    frame_vars = body["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"]
+    for name in ("email", "user_email", "recipient", "ip", "ip_address"):
+        assert frame_vars[name] == "[Filtered]", name
+    # Keys that only mention an email or IP stay readable for debugging.
+    assert frame_vars["email_count"] == "1"
+    assert body["extra"]["email_verified"] is True
+    assert body["extra"]["ip_allowlist_enabled"] is True
+
+
+def _event_with_ip_headers() -> dict:
+    return {
+        "level": "error",
+        "request": {
+            "url": "https://backend.agpt.co/api/library",
+            "headers": {
+                "User-Agent": "ua",
+                "Content-Type": "application/json",
+                "Cf-Connecting-Ip": "203.0.113.7",
+                "True-Client-Ip": "203.0.113.7",
+                "Forwarded": "for=203.0.113.7",
+                "X-Forwarded-For": "203.0.113.7, 10.0.0.1",
+                "X-Real-Ip": "203.0.113.7",
+                "Cf-Ipcountry": "PL",
+                "Cf-Ipcity": "Warsaw",
+                "Cf-Iplatitude": "52.2",
+                "X-Vercel-Ip-City": "Warsaw",
+                # The frontend's signed client-IP token carries the visitor's IP too.
+                CLIENT_IP_TOKEN_HEADER: "203.0.113.7",
+                "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
+            },
+        },
+    }
+
+
+_KEPT_HEADERS = {
+    "User-Agent": "ua",
+    "Content-Type": "application/json",
+    "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
+}
+
+
+def test_before_send_drops_the_visitors_ip_and_location_headers() -> None:
+    event = _before_send(_event_with_ip_headers(), hint={})
+
+    assert event is not None
+    assert event["request"]["headers"] == _KEPT_HEADERS
+
+
+def test_before_send_transaction_drops_the_visitors_ip_and_location_headers() -> None:
+    event = metrics._before_send_transaction(_event_with_ip_headers(), hint={})
+
+    assert event["request"]["headers"] == _KEPT_HEADERS

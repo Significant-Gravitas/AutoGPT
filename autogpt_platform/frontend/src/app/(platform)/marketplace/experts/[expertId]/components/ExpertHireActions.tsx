@@ -11,7 +11,8 @@ const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
 // A white, hairline-bordered secondary so the button sits quietly next to
 // the status badge instead of reading as a solid grey slab.
 const SECONDARY_CLASS =
-  "border-zinc-200 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-zinc-300 hover:bg-zinc-50";
+  // TODO(tokens): no exact role: shadow-[…] #101828
+  "border-border-base bg-surface shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-border-strong hover:bg-surface-muted";
 
 interface Props {
   expert: Expert;
@@ -47,8 +48,11 @@ export function ExpertHireActions({
 
   if (hiredExpert) {
     return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="success" className={STATUS_CLASS}>
+      <div className="flex flex-col gap-2">
+        <Badge
+          variant="success"
+          className={`${STATUS_CLASS} w-full justify-center`}
+        >
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           On your team
         </Badge>
