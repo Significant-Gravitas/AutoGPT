@@ -1051,12 +1051,24 @@ class Stack:
         runs.record_stopped(self.stopped_runs, stopping)
         if self.queue:
             self.queue.cancel(stopping)
-        deadline = time.monotonic() + CANCEL_WAIT_SECONDS
-        while active and not self.hurry.is_set() and time.monotonic() < deadline:
+        started = time.monotonic()
+        deadline = started + CANCEL_WAIT_SECONDS
+        while True:
+            if not active:
+                outcome = "inactive"
+                break
+            if self.hurry.is_set():
+                outcome = "hurried"
+                break
+            if time.monotonic() >= deadline:
+                outcome = "deadline"
+                break
             if self.has_stopped(active):
+                outcome = "cancelled"
                 logger.info(f"{active.describe()} stopped")
                 break
             self.hurry.wait(0.5)
+        events.cancellation_wait(time.monotonic() - started, outcome)
         return True
 
     def in_progress(self) -> runs.Activity:

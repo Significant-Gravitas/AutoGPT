@@ -75,10 +75,11 @@ RESTART_BUDGET_SECONDS.
 
 The bundle is the installed app's, so a run may leave nothing in it: no file
 or directory added, changed or removed (the Next server's caches are probed
-on purpose), and nothing fetched. The runtime is started with every proxy
-variable pointing at a closed port, which the Prisma CLI (the one part of the
-stack that would download something, an engine, when it found none it liked)
-inherits: a download fails the migration instead of quietly succeeding.
+on purpose). The disposable settings supply a tiny local skills catalog and
+closed HTTP/HTTPS proxies to backend services and CLI tools, including Prisma.
+Proxy-aware downloads fail instead of quietly succeeding. These proxies are
+best-effort protection, not OS network isolation: the frontend does not inherit
+them, signup may do DNS lookups, and clients can bypass proxies.
 `--read-only` (macOS and Linux) goes further and takes write permission off
 the whole bundle for the run, as a system-wide install or a mounted AppImage
 has it, then also fails on any service log that mentions being refused.
@@ -94,11 +95,13 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import http.client
 import http.cookiejar
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -118,13 +121,17 @@ from pathlib import Path
 import psutil
 import psycopg2
 
-# The shell kills a runtime that takes a minute to stop (src/runtime.js); a
-# stop that would not survive that with room to spare is a failure here.
+# The ordinary stdin-close smoke keeps its existing budget. A stop
+# that ends runs has a separate, advertised grace (currently 120 seconds).
 STOP_BUDGET_SECONDS = 30
 # How long the runtime waits for runs it was asked to stop
 # (supervisor.CANCEL_WAIT_SECONDS). A stop that ends runs may take that much
 # longer; one whose runs cancel must not come near it.
 CANCEL_WAIT_SECONDS = 20
+# After the application tiers: durable settlement, parallel data stores
+# (the broker can take 35 seconds), epmd and final bookkeeping. This remains
+# a smoke limit, not the sum of every possible infrastructure timeout.
+STOP_INFRA_ALLOWANCE_SECONDS = 45
 
 OWNER_EMAIL = "owner@smoke.test"
 OWNER_PASSWORD = "first-password-of-the-owner"
@@ -178,9 +185,8 @@ STALE_LOCK = "exec_lock:left-by-the-smoke-test"
 RESTART_BUDGET_SECONDS = 120
 PHASES = ("config", "database", "cache", "queue", "migrations", "services", "frontend")
 
-# Nothing listens on the discard port. What the runtime starts with these in
-# its environment cannot reach the network through a proxy-aware client; its
-# own services are on loopback and exempt.
+# Closed proxies for clients that honor them; loopback services are exempt.
+# Services need these in settings.env because base_env drops ambient proxies.
 CLOSED_PROXY = "http://127.0.0.1:9"
 NO_WAY_OUT = {
     "HTTPS_PROXY": CLOSED_PROXY,
@@ -373,6 +379,7 @@ def smoke(
 ) -> int:
     if args.profile:
         choose_profile(data, args.profile)
+    configure_smoke(data)
     stale = left_by_earlier_runs(runtime)
     bundle_before = snapshot(runtime)
     starts: list[Checks] = [fresh_install]
@@ -893,6 +900,7 @@ def stop_the_runs(
             "the stopped AutoPilot turn has an original identity", bool(turn_id), True
         )
     heard = len(install.said.events)
+    budget = stop_runs_budget(install)
     asked = time.monotonic()
     process.stdin.write(json.dumps({"command": "stop", "drain": True}) + "\n")
     process.stdin.flush()
@@ -900,26 +908,43 @@ def stop_the_runs(
         time.sleep(3)
         process.stdin.close()
     try:
-        code = process.wait(CANCEL_WAIT_SECONDS + STOP_BUDGET_SECONDS)
+        code = process.wait(max(0, budget - (time.monotonic() - asked)))
     except subprocess.TimeoutExpired:
         process.kill()
         return [
-            f"the runtime did not stop within {CANCEL_WAIT_SECONDS + STOP_BUDGET_SECONDS}s of being asked to stop the runs"
+            f"the runtime did not stop within {budget:g}s of being asked to stop the runs"
         ]
     took = time.monotonic() - asked
     print(f"  stopped, runs and all, in {took:.1f}s")
     report.expect("the runtime's exit code after stopping the runs", code, 0)
-    asked_for = [
-        event.get("grace_seconds")
-        for event in install.said.events[heard:]
-        if event.get("step") == "stopping"
-    ]
+    report.expect(
+        "the runtime's shutdown events reached EOF",
+        install.said.finished.wait(min(3, max(0, budget - took))),
+        True,
+    )
+    shutdown = install.said.events[heard:]
+    stopping_events = [event for event in shutdown if event.get("step") == "stopping"]
+    asked_for = [event.get("grace_seconds") for event in stopping_events]
     enough = (
-        bool(asked_for) and asked_for[0] >= CANCEL_WAIT_SECONDS + STOP_BUDGET_SECONDS
+        bool(asked_for)
+        and isinstance(asked_for[0], (int, float))
+        and asked_for[0] >= budget
     )
     report.expect(
         "the shell was asked for the time that takes", enough, True, shown=asked_for
     )
+    phases = [
+        event
+        for event in shutdown
+        if event.get("event") == "shutdown" and event.get("phase") == "cancellation"
+    ]
+    report.expect("one cancellation phase was reported", len(phases), 1)
+    phase = phases[0] if len(phases) == 1 else {}
+    waited = phase.get("seconds")
+    measured = (
+        type(waited) in (int, float) and math.isfinite(waited) and 0 <= waited <= took
+    )
+    report.expect("the cancellation phase has a valid duration", measured, True)
     status, locked = watcher.last()
     report.note("the stopped run, when PostgreSQL last answered the watcher", status)
     status, unfinished = persisted_run(runtime, data, stopping.run)
@@ -942,25 +967,30 @@ def stop_the_runs(
         )
         report.expect(
             "...and did, well inside the wait",
-            took < CANCEL_WAIT_SECONDS,
+            measured
+            and phase.get("outcome") == "cancelled"
+            and waited < CANCEL_WAIT_SECONDS,
             True,
-            shown=f"{took:.1f}s",
+            shown=phase,
         )
         report.expect("its lock, when the cache last answered", locked, 0)
     elif stopping.hurried:
         report.expect(
             "asked a second time, the runtime waited no longer",
-            took < CANCEL_WAIT_SECONDS,
+            measured
+            and phase.get("outcome") == "hurried"
+            and waited < CANCEL_WAIT_SECONDS,
             True,
-            shown=f"{took:.1f}s",
+            shown=phase,
         )
     else:
-        waited = took >= CANCEL_WAIT_SECONDS
         report.expect(
             "a run that could not be cancelled was waited for, and then ended",
-            waited,
+            measured
+            and phase.get("outcome") == "deadline"
+            and waited >= CANCEL_WAIT_SECONDS,
             True,
-            shown=f"{took:.1f}s",
+            shown=phase,
         )
         report.note("its lock, when the cache last answered", locked)
     install.ended[stopping.run] = ("TERMINATED", "stopped as the app closed")
@@ -974,6 +1004,23 @@ def stop_the_runs(
                 "the AutoPilot turn's executor was asked to cancel it", heard, True
             )
     return report.failures
+
+
+def stop_runs_budget(install: Install) -> float:
+    from autogpt_desktop import apps
+
+    groups = apps.layout(merged=install.profile != "isolated")
+    tiers = (
+        [group for group in groups if group.name == apps.DATABASE_MANAGER],
+        [group for group in groups if group.name != apps.DATABASE_MANAGER],
+    )
+    hosts = sum(max(apps.host_stop_timeout(group) for group in tier) for tier in tiers)
+    return (
+        CANCEL_WAIT_SECONDS
+        + hosts
+        + apps.STOP_TIMEOUT_SECONDS
+        + STOP_INFRA_ALLOWANCE_SECONDS
+    )
 
 
 def persisted_run(runtime: Path, data: Path, run: str) -> tuple[str, int]:
@@ -1096,18 +1143,118 @@ def choose_profile(data: Path, profile: str) -> None:
         stream.write(f"AUTOGPT_DESKTOP_PROFILE={profile}\n")
 
 
+def configure_smoke(data: Path) -> None:
+    catalog = data.resolve() / "smoke-catalog"
+    skill = catalog / "skills" / "smoke-skill" / "SKILL.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    skill.write_bytes(
+        b'---\nname: smoke-skill\ndescription: "smoke-skill description"\n'
+        b'triggers: ["smoke-skill trigger"]\nversion: "1"\n---\n\n'
+        b"# smoke-skill\n\nBody of smoke-skill.\n"
+    )
+    listing = (
+        b"skills:\n- slug: smoke-skill\n  categories: [sales]\n"
+        b"  required_providers: []\n  source: platform\n"
+    )
+    (catalog / "catalog.yml").write_bytes(listing)
+    files = [
+        {
+            "path": "SKILL.md",
+            "sha256": hashlib.sha256(skill.read_bytes()).hexdigest(),
+            "executable": False,
+        }
+    ]
+    tree = json.dumps(
+        files, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    release = {
+        "schema_version": 2,
+        "release_key": "smoke-test",
+        "provenance": {"catalogue_repository": "test"},
+        "catalog_sha256": hashlib.sha256(listing).hexdigest(),
+        "packages": [
+            {
+                "slug": "smoke-skill",
+                "tree_sha256": hashlib.sha256(tree).hexdigest(),
+                "files": files,
+            }
+        ],
+        "experts": [],
+        "retirements": [],
+        "retired_experts": [],
+        "system_packages": [],
+    }
+    (catalog / "release.json").write_text(json.dumps(release) + "\n", encoding="utf-8")
+    settings = data / "config" / "settings.env"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    overlay = {**NO_WAY_OUT, **NO_SIGN_IN, "SKILLS_CATALOG_PATH": str(catalog)}
+    with settings.open("a", encoding="utf-8") as stream:
+        stream.write(
+            "\n" + "".join(f"{name}={value}\n" for name, value in overlay.items())
+        )
+
+
+def contract_environment(home: Path) -> dict[str, str]:
+    keep = {
+        "SYSTEMROOT",
+        "SYSTEMDRIVE",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "PROCESSOR_ARCHITECTURE",
+        "NUMBER_OF_PROCESSORS",
+        "LANG",
+    }
+    env = {name: value for name, value in os.environ.items() if name.upper() in keep}
+    system = env.get("SystemRoot") or env.get("SYSTEMROOT") or env.get("WINDIR")
+    env["PATH"] = (
+        str(Path(system) / "System32")
+        if sys.platform == "win32" and system
+        else os.defpath
+    )
+    env.update(
+        {
+            **NO_WAY_OUT,
+            **NO_SIGN_IN,
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONUTF8": "1",
+        }
+    )
+    for name, subdir in {
+        "APPDATA": "appdata",
+        "LOCALAPPDATA": "localappdata",
+        "XDG_CONFIG_HOME": ".config",
+        "XDG_CACHE_HOME": ".cache",
+        "CODEX_HOME": ".codex",
+        "CLAUDE_CONFIG_DIR": ".claude",
+        "TEMP": "temp",
+        "TMP": "temp",
+        "TMPDIR": "temp",
+    }.items():
+        directory = home / subdir
+        directory.mkdir(exist_ok=True)
+        env[name] = str(directory)
+    return env
+
+
 def backend_contract(runtime: Path) -> list[str]:
     """The bundle's backend still has the shape the service host depends on.
     Checked in an interpreter of its own, as a service would import it."""
     print("== the backend against the service host's contract")
-    result = subprocess.run(
-        [shell_command(runtime)[0], "-B", str(CONTRACT_SCRIPT), str(runtime)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        stdin=subprocess.DEVNULL,
-    )
+    with tempfile.TemporaryDirectory(prefix="autogpt-smoke-contract-") as home:
+        result = subprocess.run(
+            [shell_command(runtime)[0], "-B", str(CONTRACT_SCRIPT), str(runtime)],
+            env=contract_environment(Path(home)),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdin=subprocess.DEVNULL,
+            timeout=180,
+            check=False,
+        )
     lines = result.stdout.splitlines()  # among the backend's own logging
     broken = [line for line in lines if line.startswith("BROKEN:")]
     print("  " + "\n  ".join([*broken, *lines[-1:]]))
@@ -1229,6 +1376,7 @@ class Said:
         self.events: list[dict] = []
         self.url: str | None = None
         self.settled = threading.Event()
+        self.finished = threading.Event()
         threading.Thread(target=self.read, name="runtime-events", daemon=True).start()
 
     def read(self) -> None:
@@ -1245,6 +1393,7 @@ class Said:
             pass  # the pipe was closed under the reader
         finally:
             self.settled.set()
+            self.finished.set()
 
     def hear(self, event: dict) -> None:
         self.events.append(event)
@@ -1988,9 +2137,7 @@ def skills_catalog(data: Path, install: Install, report: Report) -> None:
                     shown=f"{after:.0f}s",
                 )
     published = wait_for(marker.exists, CATALOG_SECONDS)
-    # It downloads the catalog from GitHub; a machine without a network has
-    # no catalog and loses nothing else.
-    report.note("the skills catalog was published", published)
+    report.expect("the local skills catalog was published", published, True)
 
 
 def leave_runs_running(
@@ -2265,6 +2412,7 @@ def restart_after_runs_were_stopped(
     """After a stop that ended a run its executor could not be told to
     cancel: the run's message was still on the queue."""
     report = Report()
+    report.expect("the app's address after a third restart", url, install.address)
     owner = Browser(url)
     report.expect(
         "the owner signs in", owner.sign_in(OWNER_EMAIL, NEW_OWNER_PASSWORD)[0], 200

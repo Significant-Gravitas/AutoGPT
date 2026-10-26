@@ -6,14 +6,17 @@ and that the temporary data directory really goes.
 """
 
 import importlib
+import io
 import json
 import os
 import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import psutil
 import pytest
@@ -21,6 +24,448 @@ import pytest
 DESKTOP = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(DESKTOP / "build"))
 smoke_test = importlib.import_module("smoke_test")
+
+
+def test_lifecycle_smoke_configures_local_catalog_before_any_child(
+    tmp_path, monkeypatch
+):
+    from autogpt_desktop import settings
+    from autogpt_desktop.layout import DataDir
+
+    data = tmp_path / "smoke data"
+    called = []
+
+    def contract(runtime):
+        user = settings.read_user_settings(DataDir(data))
+        assert user.items() >= smoke_test.NO_WAY_OUT.items()
+        assert user["AUTOGPT_DESKTOP_PROFILE"] == "compact"
+        catalog = Path(user["SKILLS_CATALOG_PATH"])
+        assert catalog.is_absolute() and catalog.is_relative_to(data)
+        release = json.loads((catalog / "release.json").read_text())
+        assert [p["slug"] for p in release["packages"]] == ["smoke-skill"]
+        assert release["experts"] == []
+        assert (
+            release["catalog_sha256"]
+            == "09626479caa3d7fc5ae84bb5eb9fe153b7f7c079f532841dd0c9cf4bad173cf6"
+        )
+        assert release["packages"][0]["files"] == [
+            {
+                "path": "SKILL.md",
+                "executable": False,
+                "sha256": "aaa16bbeaf15f80f2ac2539752df87432010fd75e42b20bda7550755f0aee498",
+            }
+        ]
+        assert release["packages"][0]["tree_sha256"] == (
+            "5dcb29319a372ab8b0db67fc4f88c86bb9679e0e47ffac63ff367d398fbf0e78"
+        )
+        called.append("contract")
+        return []
+
+    monkeypatch.setattr(smoke_test, "backend_contract", contract)
+    monkeypatch.setattr(smoke_test, "snapshot", lambda _: {})
+    monkeypatch.setattr(smoke_test, "left_by_earlier_runs", lambda _: [])
+    monkeypatch.setattr(
+        smoke_test, "run", lambda *args: called.append(args[3].__name__) or []
+    )
+    args = SimpleNamespace(
+        profile="compact", quick=False, timeout=600, restart_budget=120, read_only=False
+    )
+    assert smoke_test.smoke(tmp_path / "bundle", data, args) == 0
+    assert called == [
+        "contract",
+        "fresh_install",
+        "restart",
+        "restart_with_a_password_reset",
+        "restart_after_runs_were_stopped",
+    ]
+
+
+def test_lifecycle_smoke_requires_catalog_publication(tmp_path, monkeypatch):
+    install = smoke_test.Install(False)
+    install.runtime = SimpleNamespace(children=list)
+    monkeypatch.setattr(smoke_test, "wait_for", lambda *args: False)
+    report = smoke_test.Report()
+    smoke_test.skills_catalog(tmp_path, install, report)
+    assert any("was published" in failure for failure in report.failures)
+
+
+def test_lifecycle_smoke_overlay_survives_service_environment_filtering(
+    tmp_path, monkeypatch
+):
+    from autogpt_desktop import apps, ports, settings
+    from autogpt_desktop.layout import Bundle, DataDir
+    from autogpt_desktop.process import base_env
+
+    data, bundle = DataDir(tmp_path / "smoke data"), Bundle(tmp_path / "bundle")
+    smoke_test.configure_smoke(data.root)
+    user = settings.read_user_settings(data)
+    port = {name: 20000 + index for index, name in enumerate(ports.PORT_NAMES)}
+    secret = dict.fromkeys(
+        (
+            "POSTGRES_PASSWORD",
+            "BETTER_AUTH_SECRET",
+            "ENCRYPTION_KEY",
+            "INTERNAL_API_KEY",
+            "UNSUBSCRIBE_SECRET_KEY",
+            "VAPID_PRIVATE_KEY",
+            "VAPID_PUBLIC_KEY",
+            "REDIS_PASSWORD",
+            "RABBITMQ_DEFAULT_USER",
+            "RABBITMQ_DEFAULT_PASS",
+            "AUTOGPT_FRONTEND_DB_PASSWORD",
+        ),
+        "synthetic-smoke-only",
+    )
+    backend = settings.backend_environment(bundle, data, port, secret, user)
+    monkeypatch.setattr(apps, "StopEvent", SimpleNamespace(create=lambda _: None))
+    host = apps.host_process(bundle, data, backend, apps.MERGED[0], None)
+    for env in (backend, host.env, {**base_env(), **backend}):
+        assert env.items() >= smoke_test.NO_WAY_OUT.items()
+        assert env["SKILLS_CATALOG_PATH"] == str(data.root / "smoke-catalog")
+    frontend = settings.frontend_environment(backend, port, secret, data)
+    assert not set(smoke_test.NO_WAY_OUT) & frontend.keys()
+
+
+def test_lifecycle_smoke_contract_child_has_disposable_clean_environment(
+    tmp_path, monkeypatch
+):
+    contamination = (
+        "CHAT_USE_LOCAL",
+        "OPENAI_API_KEY",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "NODE_OPTIONS",
+        "AUTOGPT_DESKTOP_NODE",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "AWS_PROFILE",
+        "GITHUB_TOKEN",
+    )
+    for name in contamination:
+        monkeypatch.setenv(name, "ambient-sentinel")
+    seen = []
+
+    def run(argv, **kwargs):
+        env = kwargs["env"]
+        assert not set(contamination) & env.keys()
+        assert argv[:2] == ["bundle-python", "-B"]
+        assert kwargs["timeout"] == 180 and kwargs["stdin"] == subprocess.DEVNULL
+        assert env.items() >= smoke_test.NO_WAY_OUT.items()
+        home = Path(env["HOME"])
+        assert home.is_dir() and str(home) != os.environ.get("USERPROFILE")
+        assert Path(env["CODEX_HOME"]).is_relative_to(home)
+        assert Path(env["CLAUDE_CONFIG_DIR"]).is_relative_to(home)
+        seen.append(home)
+        return subprocess.CompletedProcess(argv, 0, "1 of 1 dependencies hold\n", "")
+
+    monkeypatch.setattr(
+        smoke_test, "subprocess", SimpleNamespace(run=run, DEVNULL=subprocess.DEVNULL)
+    )
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["bundle-python"])
+    assert smoke_test.backend_contract(tmp_path) == []
+    assert seen and not seen[0].exists()
+
+
+class SmokeClock:
+    def __init__(self):
+        self.seconds = 0.0
+
+    def monotonic(self):
+        return self.seconds
+
+    def sleep(self, seconds):
+        self.seconds += seconds
+
+
+@pytest.fixture
+def lifecycle_stop(tmp_path, monkeypatch):
+    clock = SmokeClock()
+    monkeypatch.setattr(smoke_test, "time", clock)
+    install = smoke_test.Install(False)
+    install.profile = "compact"
+    install.stopping = smoke_test.Stopping(
+        "graph/run", "workers", None, "workers", None, cancels=False
+    )
+    install.said = SimpleNamespace(events=[], finished=threading.Event())
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs/workers.log").write_text("Received cancel for run\n")
+    (tmp_path / "logs/runtime.log").write_text("")
+    monkeypatch.setattr(
+        smoke_test,
+        "RunWatcher",
+        lambda *args: SimpleNamespace(last=lambda: ("TERMINATED", 0)),
+    )
+    monkeypatch.setattr(smoke_test, "persisted_run", lambda *args: ("TERMINATED", 0))
+    monkeypatch.setattr(smoke_test, "check_stop_records", lambda *args: None)
+    monkeypatch.setattr(smoke_test, "turn_in_progress", lambda *args: None)
+
+    class Process:
+        def __init__(self, phase, total, grace=120):
+            self.stdin = io.StringIO()
+            self.phase, self.total, self.grace = phase, total, grace
+            self.killed = False
+            self.waits = []
+            self.phase_events = [
+                {
+                    "event": "shutdown",
+                    "phase": "cancellation",
+                    "seconds": phase,
+                    "outcome": (
+                        "cancelled"
+                        if install.stopping.cancels
+                        else "hurried" if install.stopping.hurried else "deadline"
+                    ),
+                }
+            ]
+
+        def wait(self, timeout):
+            self.waits.append(timeout)
+            if self.total - clock.seconds > timeout:
+                raise subprocess.TimeoutExpired("fake-runtime", timeout)
+            clock.seconds = self.total
+            message = "Stopping 1 agent run"
+            install.said.events.append(
+                {"step": "stopping", "message": message, "grace_seconds": self.grace}
+            )
+            install.said.events.extend(self.phase_events)
+            install.said.finished.set()
+            return 0
+
+        def kill(self):
+            self.killed = True
+
+    return install, clock, Process
+
+
+@pytest.mark.parametrize(
+    "hurried,phase,total",
+    [(False, 20, 57), (True, 3, 40)],
+)
+def test_lifecycle_smoke_separates_cancel_wait_from_frozen_host_cleanup(
+    tmp_path, lifecycle_stop, hurried, phase, total
+):
+    install, _, Process = lifecycle_stop
+    install.stopping.hurried = hurried
+    process = Process(phase, total)
+    assert smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install) == []
+    assert not process.killed
+    assert install.ended["graph/run"][0] == "TERMINATED"
+    assert process.waits[0] <= 120 - (3 if hurried else 0)
+
+
+def test_lifecycle_smoke_rejects_missing_full_cancellation_wait(
+    tmp_path, lifecycle_stop
+):
+    install, _, Process = lifecycle_stop
+    failures = smoke_test.stop_the_runs(Process(1, 38), DESKTOP, tmp_path, install)
+    assert any("waited for" in failure for failure in failures)
+
+
+def test_lifecycle_smoke_fourth_restart_checks_the_public_address(
+    tmp_path, monkeypatch
+):
+    install = smoke_test.Install(False)
+    install.address = "http://127.0.0.1:10000"
+    monkeypatch.setattr(
+        smoke_test,
+        "Browser",
+        lambda _: SimpleNamespace(sign_in=lambda *args: (200, {})),
+    )
+    for name in (
+        "ended_runs_stay_ended",
+        "stopped_turns_are_not_run_again",
+        "run_agent",
+        "counted",
+        "stop_with_a_run_in_a_long_step",
+    ):
+        monkeypatch.setattr(smoke_test, name, lambda *args, **kwargs: None)
+    monkeypatch.setattr(smoke_test, "executor_host", lambda _: "workers")
+    monkeypatch.setattr(smoke_test, "wait_for", lambda *args: True)
+    failures = smoke_test.restart_after_runs_were_stopped(
+        "http://127.0.0.1:10001", tmp_path, install
+    )
+    assert any("address" in failure for failure in failures)
+
+
+@pytest.mark.parametrize("profile", ["compact", "balanced", "isolated"])
+def test_lifecycle_smoke_budget_follows_host_grace_and_parallel_tiers(
+    profile, monkeypatch
+):
+    from autogpt_desktop import apps, supervisor
+
+    install = smoke_test.Install(False)
+    install.profile = profile
+    assert smoke_test.CANCEL_WAIT_SECONDS == supervisor.CANCEL_WAIT_SECONDS
+    assert smoke_test.stop_runs_budget(install) == 101
+    assert smoke_test.stop_runs_budget(install) < supervisor.STOPPING_RUNS_GRACE_SECONDS
+    original = apps.host_stop_timeout
+    monkeypatch.setattr(
+        apps,
+        "host_stop_timeout",
+        lambda group: 38 if "executor" in group.services else original(group),
+    )
+    assert smoke_test.stop_runs_budget(install) == 109
+
+
+@pytest.mark.parametrize(
+    "phase,cancels,hurried", [(20, False, True), (20, True, False)]
+)
+def test_lifecycle_smoke_rejects_slow_cancel_or_ignored_hurry(
+    tmp_path, lifecycle_stop, phase, cancels, hurried
+):
+    install, _, Process = lifecycle_stop
+    install.stopping.cancels, install.stopping.hurried = cancels, hurried
+    failures = smoke_test.stop_the_runs(Process(phase, 57), DESKTOP, tmp_path, install)
+    assert any("wait" in failure for failure in failures)
+
+
+def test_lifecycle_smoke_cancellation_can_finish_before_slow_cleanup(
+    tmp_path, lifecycle_stop
+):
+    install, _, Process = lifecycle_stop
+    install.stopping.cancels = True
+    assert smoke_test.stop_the_runs(Process(2, 35), DESKTOP, tmp_path, install) == []
+
+
+@pytest.mark.parametrize(
+    "seconds", [True, None, "20", -1, float("nan"), float("inf"), 58]
+)
+def test_lifecycle_smoke_rejects_invalid_cancellation_measurements(
+    tmp_path, lifecycle_stop, seconds
+):
+    install, _, Process = lifecycle_stop
+    process = Process(20, 57)
+    process.phase_events[0]["seconds"] = seconds
+    failures = smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install)
+    assert any("cancellation phase" in failure for failure in failures)
+
+
+@pytest.mark.parametrize(
+    "outcome", [None, "cancelled", "hurried", "inactive", "unknown"]
+)
+def test_lifecycle_smoke_requires_deadline_outcome_for_frozen_run(
+    tmp_path, lifecycle_stop, outcome
+):
+    install, _, Process = lifecycle_stop
+    process = Process(20, 57)
+    process.phase_events[0]["outcome"] = outcome
+    failures = smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install)
+    assert any("waited for" in failure for failure in failures)
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_lifecycle_smoke_requires_exactly_one_cancellation_event(
+    tmp_path, lifecycle_stop, count
+):
+    install, _, Process = lifecycle_stop
+    process = Process(20, 57)
+    process.phase_events *= count
+    failures = smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install)
+    assert any("cancellation phase" in failure for failure in failures)
+
+
+def test_lifecycle_smoke_drains_final_events_after_process_exit(
+    tmp_path, lifecycle_stop
+):
+    install, _, Process = lifecycle_stop
+    process = Process(20, 57)
+    deferred = process.phase_events
+    process.phase_events = []
+    waits = []
+
+    def drained(timeout):
+        waits.append(timeout)
+        install.said.events.extend(deferred)
+        return True
+
+    install.said.finished = SimpleNamespace(set=lambda: None, wait=drained)
+    assert smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install) == []
+    assert waits and 0 < waits[0] <= 3
+
+
+def test_lifecycle_smoke_refuses_incomplete_event_drain(tmp_path, lifecycle_stop):
+    install, _, Process = lifecycle_stop
+    install.said.finished = SimpleNamespace(set=lambda: None, wait=lambda _: False)
+    failures = smoke_test.stop_the_runs(Process(20, 57), DESKTOP, tmp_path, install)
+    assert any("shutdown events" in failure for failure in failures)
+
+
+def test_lifecycle_smoke_event_reader_reports_eof_separately_from_ready():
+    install = smoke_test.Install(False)
+    event = {
+        "event": "shutdown",
+        "phase": "cancellation",
+        "seconds": 20,
+        "outcome": "deadline",
+    }
+    process = SimpleNamespace(stdout=io.StringIO(json.dumps(event) + "\n"))
+    said = smoke_test.Said(process, time.monotonic(), install)
+    assert said.finished.wait(2)
+    assert said.events == [event]
+
+
+def test_lifecycle_smoke_still_requires_enough_advertised_grace(
+    tmp_path, lifecycle_stop
+):
+    install, _, Process = lifecycle_stop
+    failures = smoke_test.stop_the_runs(
+        Process(20, 57, grace=60), DESKTOP, tmp_path, install
+    )
+    assert any("shell was asked" in failure for failure in failures)
+
+
+@pytest.mark.parametrize("hurried", [False, True])
+def test_lifecycle_smoke_total_deadline_includes_the_hurry_delay(
+    tmp_path, lifecycle_stop, hurried
+):
+    install, _, Process = lifecycle_stop
+    install.stopping.hurried = hurried
+    process = Process(3 if hurried else 20, 102)
+    failures = smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install)
+    assert process.killed and process.waits == [98 if hurried else 101]
+    assert failures == [
+        "the runtime did not stop within 101s of being asked to stop the runs"
+    ]
+
+
+@pytest.mark.parametrize("status,unfinished", [("RUNNING", 0), ("TERMINATED", 1)])
+def test_lifecycle_smoke_keeps_the_persisted_termination_oracle(
+    tmp_path, lifecycle_stop, monkeypatch, status, unfinished
+):
+    install, _, Process = lifecycle_stop
+    monkeypatch.setattr(smoke_test, "persisted_run", lambda *args: (status, unfinished))
+    failures = smoke_test.stop_the_runs(Process(20, 57), DESKTOP, tmp_path, install)
+    assert any("persisted" in failure for failure in failures)
+
+
+def test_lifecycle_smoke_keeps_leftover_failures(tmp_path, monkeypatch):
+    process = SimpleNamespace(pid=123, poll=lambda: 0)
+
+    def popen(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(
+        smoke_test, "subprocess", SimpleNamespace(Popen=popen, PIPE=subprocess.PIPE)
+    )
+    monkeypatch.setattr(
+        smoke_test, "psutil", SimpleNamespace(Process=lambda _: object())
+    )
+    monkeypatch.setattr(smoke_test, "Family", lambda *args: object())
+    monkeypatch.setattr(
+        smoke_test,
+        "Said",
+        lambda *args: SimpleNamespace(wait_for_ready=lambda _: "url"),
+    )
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["bundle-python"])
+    monkeypatch.setattr(smoke_test, "stop", lambda _: [])
+    monkeypatch.setattr(smoke_test, "stopped_gracefully", lambda *args: [])
+    monkeypatch.setattr(
+        smoke_test, "left_running", lambda _: ["owned process left running"]
+    )
+    failures = smoke_test.run(
+        DESKTOP, tmp_path, 600, lambda *args: [], smoke_test.Install(False)
+    )
+    assert failures == ["owned process left running"]
+
 
 posix_only = pytest.mark.skipif(
     sys.platform == "win32", reason="permission bits are POSIX's"

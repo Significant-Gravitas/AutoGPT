@@ -762,9 +762,13 @@ def test_stopping_the_runs_records_the_choice_asks_them_to_cancel_and_waits_for_
     assert 0.9 < time.monotonic() - started < 10
     assert runs.read_stopped(stack.stopped_runs) == ONE_RUN
     assert cancels.cancelled == [ONE_RUN]
-    [event] = events_of(capsys)
+    [event, cancellation] = events_of(capsys)
     assert event["step"] == "stopping" and event["message"] == "Stopping 1 agent run"
     assert event["grace_seconds"] == supervisor.STOPPING_RUNS_GRACE_SECONDS
+    assert cancellation["event"] == "shutdown"
+    assert cancellation["phase"] == "cancellation"
+    assert cancellation["outcome"] == "cancelled"
+    assert 0.9 < cancellation["seconds"] < 10
 
 
 def test_the_shell_is_asked_for_the_time_such_a_stop_can_take():

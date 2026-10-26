@@ -35,6 +35,17 @@ def stopping(message: str, grace_seconds: int) -> None:
     )
 
 
+def cancellation_wait(seconds: float, outcome: str) -> None:
+    _emit(
+        {
+            "event": "shutdown",
+            "phase": "cancellation",
+            "seconds": seconds,
+            "outcome": outcome,
+        }
+    )
+
+
 def activity(graph_runs: int, copilot_turns: int) -> None:
     """How many agent runs and AutoPilot turns are in progress, whenever
     that changes. The shell asks before it quits with any (src/quit.js)."""

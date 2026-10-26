@@ -79,6 +79,33 @@ def test_packaging_requires_explicit_opt_in_and_uses_isolated_identity():
     assert "AUTOGPT_DESKTOP_VERSION: 0.0.0-dev." in workflow
 
 
+def test_installed_windows_gate_uses_this_runs_artifact_on_a_fresh_runner():
+    workflow = CALLER.read_text("utf-8")
+    assert "  installed_windows:\n" in workflow
+    job = workflow.split("  installed_windows:\n", 1)[1]
+    assert "needs: package" in job
+    assert "runs-on: windows-2025" in job
+    assert "timeout-minutes: 45" in job
+    assert "actions/download-artifact@" in job
+    assert "desktop-experimental-windows-2025-${{ github.sha }}" in job
+    assert '"${{ github.sha }}"' in job and "--expected-commit" in job
+    assert "python -B build/installed_smoke_windows.py" in job
+    assert "build/build_runtime.py" not in job
+    assert "continue-on-error" not in job
+    assert "secrets" not in job
+
+
+def test_installed_windows_evidence_upload_is_an_exact_summary_allowlist():
+    workflow = CALLER.read_text("utf-8")
+    assert "  installed_windows:\n" in workflow
+    job = workflow.split("  installed_windows:\n", 1)[1]
+    upload = job.split("uses: actions/upload-artifact@", 1)[1]
+    paths = re.findall(r"^\s+path: (.+)$", upload, re.MULTILINE)
+    assert paths == ["${{ runner.temp }}/desktop-installed-smoke/result.json"]
+    assert "if: always()" in job
+    assert "retention-days: 7" in upload
+
+
 def test_every_path_that_triggers_the_build_exists():
     """A path filter naming a file upstream renamed never triggers again."""
     paths = re.findall(r'^\s+- "([^"]+)"$', CALLER.read_text("utf-8"), re.M)
