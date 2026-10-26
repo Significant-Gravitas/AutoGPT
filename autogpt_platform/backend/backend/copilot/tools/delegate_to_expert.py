@@ -28,24 +28,28 @@ expert handing work back to one already waiting on it
 (:func:`expert_delegation.chain_refusal`, shared with ``handoff_to_expert``).
 """
 
+import asyncio
 import logging
 import time
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot import stream_registry
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
     ChatSession,
     child_session_origin,
     create_chat_session,
+    delete_chat_session,
     get_chat_session,
 )
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.copilot.tree import SpawnRequest
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import chat_db, experts_db
 
 from .base import BaseTool
 from .expert_delegation import (
@@ -289,21 +293,26 @@ async def run_delegated_turn(
     """
     caller = await _caller_name(user_id, session.expert_id)
     started_at = time.monotonic()
-    outcome, result = await run_copilot_turn_via_queue(
-        session_id=inner_session_id,
-        user_id=user_id,
-        message=_handoff_message(caller, system_context, prompt),
-        timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
-        permissions=get_current_permissions(),
-        tool_call_id=(
-            f"delegate:{session.session_id}" if session.session_id else "delegate"
-        ),
-        tool_name="delegate_to_expert",
-        # A teammate keeps their own teammates; depth still bounds the chain.
-        spawn=SpawnRequest(may_spawn=True),
-        allow_queue=False,
-        message_metadata=sent_from_metadata(session, caller),
-    )
+    try:
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id=inner_session_id,
+            user_id=user_id,
+            message=_handoff_message(caller, system_context, prompt),
+            timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
+            permissions=get_current_permissions(),
+            tool_call_id=(
+                f"delegate:{session.session_id}" if session.session_id else "delegate"
+            ),
+            tool_name="delegate_to_expert",
+            # A teammate keeps their own teammates; depth still bounds the chain.
+            spawn=SpawnRequest(may_spawn=True),
+            allow_queue=False,
+            message_metadata=sent_from_metadata(session, caller),
+        )
+    except asyncio.CancelledError:
+        if opened_here:
+            await asyncio.shield(_drop_if_never_dispatched(inner_session_id, user_id))
+        raise
     elapsed = time.monotonic() - started_at
     discarded = opened_here and await discard_unused_sub_session(
         inner_session_id, user_id, outcome
@@ -354,6 +363,26 @@ async def _spawn_note() -> str:
     except Exception:
         logger.warning("Could not read the spawn state note", exc_info=True)
         return ""
+
+
+async def _drop_if_never_dispatched(inner_session_id: str, user_id: str) -> None:
+    """Remove a thread this call opened when its turn was cancelled before
+    any dispatch landed (the user pressed Stop mid-send), so it leaves no
+    empty chat behind. A dispatch registers the turn's stream meta and admits
+    the thread before publishing, so a thread with neither was never sent;
+    one that has either may hold the task and is kept."""
+    try:
+        if await stream_registry.get_session(inner_session_id) is not None:
+            return
+        if await chat_db().get_chat_session_status(inner_session_id) != (
+            CHAT_STATUS_IDLE
+        ):
+            return
+        await delete_chat_session(inner_session_id, user_id)
+    except Exception:
+        logger.warning(
+            "Could not clean up a cancelled delegation thread", exc_info=True
+        )
 
 
 def _error(message: str, session: ChatSession) -> ErrorResponse:

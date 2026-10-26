@@ -9,6 +9,7 @@ sub is created in, and who may poll it afterwards.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1067,3 +1068,61 @@ class TestAfterTheDispatch:
         assert isinstance(result, SubSessionStatusResponse)
         assert result.status == "running"
         assert result.sub_session_id == mock_sessions[0].session_id
+
+
+class TestStoppedMidSend:
+    """A turn cancelled while it opens a fresh delegation (the user pressed
+    Stop) must not leave an empty thread behind, and must not delete one the
+    task already reached (Sentry)."""
+
+    def _cancelled_send(self, monkeypatch, *, meta, status):
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.run_copilot_turn_via_queue",
+            AsyncMock(side_effect=asyncio.CancelledError()),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.stream_registry.get_session",
+            AsyncMock(return_value=meta),
+        )
+        chat = MagicMock()
+        chat.get_chat_session_status = AsyncMock(return_value=status)
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.chat_db", lambda: chat
+        )
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.delete_chat_session", deleted
+        )
+        return deleted
+
+    @pytest.mark.asyncio
+    async def test_a_thread_nothing_was_sent_to_is_removed(
+        self, roster, mock_sessions, monkeypatch
+    ):
+        deleted = self._cancelled_send(monkeypatch, meta=None, status="idle")
+        with pytest.raises(asyncio.CancelledError):
+            await DelegateToExpertTool()._execute(
+                user_id="alice",
+                session=_session(),
+                expert_id="expert-b",
+                prompt="hi",
+                wait_for_result=0,
+            )
+        deleted.assert_awaited_once_with(mock_sessions[0].session_id, "alice")
+
+    @pytest.mark.asyncio
+    async def test_a_thread_the_task_reached_is_kept(
+        self, roster, mock_sessions, monkeypatch
+    ):
+        deleted = self._cancelled_send(
+            monkeypatch, meta=MagicMock(status="running"), status="running"
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await DelegateToExpertTool()._execute(
+                user_id="alice",
+                session=_session(),
+                expert_id="expert-b",
+                prompt="hi",
+                wait_for_result=0,
+            )
+        deleted.assert_not_awaited()
