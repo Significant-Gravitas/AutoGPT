@@ -131,13 +131,9 @@ _PLATFORM = frozenset(
         "confirm_expert_change",
         "confirm_expert_soul_update",
         "grant_expert_credential",
-        "hire_expert",
         "install_expert_workflow",
-        "raise_expert",
         "remove_expert_workflow",
         "revoke_expert_credential",
-        "update_expert",
-        "update_expert_soul",
         "message_session",
         "run_sub_session",
         # Deletes inside the workspace: the user may have put the thing there.
@@ -161,6 +157,12 @@ _UNGATED = frozenset(
         "connect_integration",
         "request_credential_grant",
         "resume_capability",
+        # Previews: they only park a proposal and put it to the user on its own
+        # card. The confirm that applies it is what the gate holds.
+        "hire_expert",
+        "raise_expert",
+        "update_expert",
+        "update_expert_soul",
     }
 )
 

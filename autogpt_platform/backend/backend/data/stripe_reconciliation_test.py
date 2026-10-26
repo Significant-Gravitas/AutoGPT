@@ -312,7 +312,8 @@ async def test_sweep_incomplete_map_skips_downgrades(
     assert summary.skipped_incomplete == 1
     assert summary.downgrades == 0
     set_tier.assert_not_called()
-    mock_alert.assert_not_awaited()
+    mock_alert.assert_awaited_once()
+    assert "snapshot incomplete" in mock_alert.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -530,6 +531,7 @@ def test_summary_defaults_to_zero() -> None:
         "errors": 0,
         "skipped_incomplete": 0,
         "pagination_capped": False,
+        "failed_trial_subscriptions": [],
         "discrepancies": [],
     }
 
@@ -549,3 +551,210 @@ async def test_collect_status_page_timeout_marks_run_incomplete():
         capped = await _collect_status_page("active", {}, {})
 
     assert capped is True
+
+
+def _trial_sub(customer: str) -> dict:
+    sub = _sub(customer, "price_trial")
+    sub["metadata"] = {"trial_enrollment_id": f"enr_{customer}"}
+    return sub
+
+
+def _patch_sweep(
+    mocker: pytest_mock.MockFixture,
+    candidates: list[MagicMock],
+    by_status: dict[str, list[dict]],
+    trial_sync_error: Exception | None = None,
+    set_tier_side_effect: list | None = None,
+) -> AsyncMock:
+    """Wire a whole sweep run; returns the set_subscription_tier mock."""
+    mocker.patch(
+        "backend.data.stripe_reconciliation.build_price_to_tier_map",
+        new_callable=AsyncMock,
+        return_value={"price_pro": SubscriptionTier.PRO},
+    )
+    _patch_stripe_pages(mocker, by_status)
+    mocker.patch(
+        "backend.data.stripe_reconciliation.sync_subscription_from_stripe",
+        new_callable=AsyncMock,
+        side_effect=trial_sync_error,
+    )
+    mocker.patch(
+        "backend.data.stripe_reconciliation.User.prisma",
+        return_value=MagicMock(find_many=AsyncMock(return_value=candidates)),
+    )
+    return mocker.patch(
+        "backend.data.stripe_reconciliation.set_subscription_tier",
+        new_callable=AsyncMock,
+        side_effect=set_tier_side_effect,
+    )
+
+
+@pytest.mark.asyncio
+async def test_failed_trial_resync_skips_only_its_customer(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    """One broken trial subscription must not hold back every downgrade: the
+    absent customer is still downgraded, the broken one is left untouched."""
+    set_tier = _patch_sweep(
+        mocker,
+        candidates=[
+            _candidate("u_broken", "cus_broken", SubscriptionTier.TRIAL),
+            _candidate("u_gone", "cus_gone", SubscriptionTier.PRO),
+        ],
+        by_status={"trialing": [_trial_sub("cus_broken")]},
+        trial_sync_error=ValueError("Trial already consumed"),
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    set_tier.assert_awaited_once_with("u_gone", SubscriptionTier.NO_TIER)
+    assert summary.pagination_capped is False
+    assert summary.skipped_incomplete == 0
+    assert summary.downgrades == 1
+    assert summary.errors == 1
+    assert summary.failed_trial_subscriptions == ["sub_cus_broken"]
+    # The downgrade sends the usual discrepancy alert; the skipped customer
+    # adds exactly one run-health alert naming the broken subscription.
+    health = [
+        c.args[0]
+        for c in mock_alert.await_args_list
+        if "did not reconcile" in c.args[0]
+    ]
+    assert len(health) == 1 and "`sub_cus_broken`" in health[0]
+
+
+@pytest.mark.asyncio
+async def test_pagination_cap_still_blocks_downgrades(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    set_tier = _patch_sweep(
+        mocker,
+        candidates=[_candidate("u_gone", "cus_gone", SubscriptionTier.PRO)],
+        by_status={},
+    )
+    mocker.patch("backend.data.stripe_reconciliation._MAX_SUBSCRIPTION_PAGES", 1)
+
+    def _endless(*, status: str, limit: int, starting_after: str | None = None):
+        return MagicMock(data=[_sub(f"cus_{status}", "price_other")], has_more=True)
+
+    mocker.patch(
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
+        side_effect=_endless,
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    assert summary.pagination_capped is True
+    assert summary.skipped_incomplete == 1
+    set_tier.assert_not_called()
+    mock_alert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "list_failure,failed_trial,user_error,expected_text",
+    [
+        (True, False, False, "snapshot incomplete"),
+        (False, True, False, "`sub_cus_broken`"),
+        (False, False, True, "1 user(s) were not reconciled"),
+        (True, True, True, "snapshot incomplete"),
+        (False, False, False, None),
+    ],
+    ids=["list_failure", "failed_trial", "user_error", "all", "clean"],
+)
+async def test_run_health_alert_fires_once_and_only_when_needed(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+    list_failure: bool,
+    failed_trial: bool,
+    user_error: bool,
+    expected_text: str | None,
+) -> None:
+    # Every candidate sits on the trialing page with the right tier, so no run
+    # makes a correction and only the run-health alert can fire.
+    trialing = [_sub("cus_keep", "price_pro")]
+    candidates = [_candidate("u_keep", "cus_keep", SubscriptionTier.PRO)]
+    if failed_trial:
+        trialing.append(_trial_sub("cus_broken"))
+        candidates.append(_candidate("u_broken", "cus_broken", SubscriptionTier.TRIAL))
+    if user_error:
+        trialing.append(_sub("cus_err", "price_pro"))
+        candidates.append(_candidate("u_err", "cus_err", SubscriptionTier.PRO))
+    _patch_sweep(
+        mocker,
+        candidates,
+        {"trialing": trialing},
+        trial_sync_error=ValueError("Missing enrollment") if failed_trial else None,
+    )
+
+    async def _reconcile_pro(user, _subscription):
+        if user.id == "u_err":
+            raise RuntimeError("db down")
+        return SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.data.stripe_reconciliation._reconcile_pro_tier",
+        side_effect=_reconcile_pro,
+    )
+
+    def _list(*, status: str, limit: int, starting_after: str | None = None):
+        if status == "active" and list_failure:
+            raise stripe.StripeError("rate limited")
+        return MagicMock(data=trialing if status == "trialing" else [], has_more=False)
+
+    mocker.patch(
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
+        side_effect=_list,
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    assert summary.discrepancies == []
+    if expected_text is None:
+        mock_alert.assert_not_awaited()
+    else:
+        mock_alert.assert_awaited_once()
+        assert expected_text in mock_alert.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_alert_caps_listed_trial_subscription_ids(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    _patch_sweep(
+        mocker,
+        candidates=[],
+        by_status={"trialing": [_trial_sub(f"cus_{i}") for i in range(25)]},
+        trial_sync_error=ValueError("Missing enrollment"),
+    )
+
+    await reconcile_all_stripe_tiers()
+
+    message = mock_alert.await_args.args[0]
+    assert "25 trial subscription(s)" in message
+    assert "`sub_cus_19`" in message and "`sub_cus_20`" not in message
+    assert "and 5 more" in message
+
+
+@pytest.mark.asyncio
+async def test_failed_trial_without_customer_is_alerted_but_skips_nobody(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    orphan = _trial_sub("cus_x")
+    orphan["customer"] = None
+    set_tier = _patch_sweep(
+        mocker,
+        candidates=[_candidate("u_gone", "cus_gone", SubscriptionTier.PRO)],
+        by_status={"trialing": [orphan]},
+        trial_sync_error=ValueError("Missing enrollment"),
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    set_tier.assert_awaited_once_with("u_gone", SubscriptionTier.NO_TIER)
+    assert summary.errors == 0
+    assert summary.failed_trial_subscriptions == ["sub_cus_x"]

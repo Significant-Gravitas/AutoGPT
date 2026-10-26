@@ -20,6 +20,7 @@ export function PaymentDueAction({
   const stacked = layout === "stacked";
   return (
     <div
+      data-slot="payment-due-action"
       className={cn(
         stacked ? "space-y-2.5" : "flex flex-wrap items-center gap-x-4 gap-y-2",
       )}
@@ -30,7 +31,6 @@ export function PaymentDueAction({
         target="_blank"
         rel="noopener noreferrer"
         size={size}
-        unmask={false}
         className={stacked ? "w-full" : undefined}
         rightIcon={
           <Icon
@@ -44,7 +44,8 @@ export function PaymentDueAction({
       </Button>
       <Text
         variant="small"
-        className={cn("!text-xs !text-zinc-500", stacked && "text-center")}
+        tone="muted"
+        className={cn("!text-xs", stacked && "text-center")}
       >
         Opens a secure Stripe page. You can use a different card there.
       </Text>

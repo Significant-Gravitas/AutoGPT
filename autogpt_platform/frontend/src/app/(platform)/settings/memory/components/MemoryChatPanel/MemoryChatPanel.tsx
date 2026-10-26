@@ -50,12 +50,17 @@ export function MemoryChatPanel({
         <div
           role="complementary"
           aria-label="Memory chat panel"
-          className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl sm:h-[75vh]"
+          className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-base bg-surface shadow-2xl sm:h-[75vh]"
         >
-          <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-separator px-4 py-3">
             <div className="flex items-center gap-2">
-              <Icon icon={BrainIcon} size={18} className="text-violet-600" />
-              <span className="text-sm font-semibold text-zinc-800">
+              <Icon
+                // TODO(tokens): no exact role (text-violet-600 #7C3AED)
+                icon={BrainIcon}
+                size={18}
+                className="text-violet-600"
+              />
+              <span className="text-sm font-semibold text-foreground-emphasis">
                 {scopeName}&apos;s memory
               </span>
             </div>
@@ -71,11 +76,11 @@ export function MemoryChatPanel({
 
           <div className="flex h-0 min-h-0 flex-1 flex-col">
             {startError ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-zinc-600">
-                <p className="font-medium text-zinc-800">
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-foreground-secondary">
+                <p className="font-medium text-foreground-emphasis">
                   Could not start the memory chat
                 </p>
-                <p className="text-zinc-500">
+                <p className="text-foreground-tertiary">
                   Something went wrong. Retry to try again.
                 </p>
                 <Button variant="secondary" size="small" onClick={onRetry}>
@@ -83,7 +88,7 @@ export function MemoryChatPanel({
                 </Button>
               </div>
             ) : isStarting || !sessionId ? (
-              <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-zinc-500">
+              <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-foreground-tertiary">
                 Starting memory chat…
               </div>
             ) : (
@@ -98,7 +103,7 @@ export function MemoryChatPanel({
                     queuedMessages={queuedMessages}
                   />
                 </div>
-                <div className="relative shrink-0 border-t border-zinc-100 bg-white px-3 pb-2 pt-2">
+                <div className="relative shrink-0 border-t border-separator bg-surface px-3 pb-2 pt-2">
                   <ChatInput
                     inputId="memory-chat-input"
                     onSend={onSend}

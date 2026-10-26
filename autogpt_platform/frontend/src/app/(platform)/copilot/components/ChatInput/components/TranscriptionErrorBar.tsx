@@ -36,7 +36,7 @@ export function TranscriptionErrorBar({
     <div
       role="alert"
       className={cn(
-        "flex w-full flex-wrap items-center gap-1.5 rounded-2xl bg-red-50 px-3 py-1.5 text-sm text-red-700",
+        "flex w-full flex-wrap items-center gap-1.5 rounded-2xl bg-error-surface px-3 py-1.5 text-sm text-error-foreground",
         className,
       )}
     >

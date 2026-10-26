@@ -131,6 +131,7 @@ def test_capture_adds_the_base_properties_last(monkeypatch: pytest.MonkeyPatch) 
             "source": "chat_copilot",
         },
         uuid=None,
+        timestamp=None,
     )
 
 
@@ -382,3 +383,65 @@ def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
     assert kwargs["uuid"] == str(
         uuid.uuid5(uuid.NAMESPACE_URL, "user-1:briefing_delivered:briefing:b-1")
     )
+
+
+@pytest.fixture
+def shared_client(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+    return client
+
+
+def test_an_event_an_admin_caused_as_the_user_is_marked(shared_client: Mock) -> None:
+    token = posthog_client.set_impersonated(True)
+    try:
+        posthog_client.capture(
+            "user-1", PostHogEvent.AGENT_RUN_STARTED, {"impersonated": False}
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+    assert shared_client.capture.call_args.kwargs["properties"]["impersonated"] is True
+
+
+def test_an_event_the_user_caused_carries_no_mark(shared_client: Mock) -> None:
+    posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+
+    assert "impersonated" not in shared_client.capture.call_args.kwargs["properties"]
+
+
+def test_an_admin_acting_as_the_user_never_sets_their_person(
+    shared_client: Mock,
+) -> None:
+    token = posthog_client.set_impersonated(True)
+    try:
+        queued = posthog_client.capture(
+            "user-1",
+            PostHogEvent.SET_PERSON_PROPERTIES,
+            {"$set": {"onboarding_role": "Other"}},
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+    assert queued is False
+    shared_client.capture.assert_not_called()
+
+
+def test_an_event_joins_the_browser_session_of_its_request(
+    shared_client: Mock,
+) -> None:
+    token = posthog_client.set_session_id("0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f")
+    try:
+        posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+        posthog_client.capture(
+            "user-1", PostHogEvent.AGENT_RUN_STARTED, {"$session_id": "own"}
+        )
+    finally:
+        posthog_client.reset_session_id(token)
+    posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+
+    sent = [c.kwargs["properties"] for c in shared_client.capture.call_args_list]
+    assert sent[0]["$session_id"] == "0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f"
+    assert sent[1]["$session_id"] == "own"
+    assert "$session_id" not in sent[2]

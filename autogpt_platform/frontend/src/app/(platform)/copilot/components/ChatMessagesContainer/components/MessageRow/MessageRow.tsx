@@ -1,9 +1,13 @@
 import { memo, type ReactNode } from "react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
+import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
 import { WorkCard } from "../../../WorkCard/WorkCard";
 import { ChainMessageParts } from "../ChainMessageParts";
 import { MessageAttachments } from "../MessageAttachments";
@@ -56,6 +60,9 @@ interface Props {
   onRetry?: () => void;
 }
 
+// memo-boundary: a transcript row. The transcript re-renders on every
+// streamed flush, and a settled row's props stay the same, so only the
+// streaming row renders again.
 export const MessageRow = memo(function MessageRow({
   message,
   isLastAssistant,
@@ -77,6 +84,7 @@ export const MessageRow = memo(function MessageRow({
   const {
     runMetadata,
     runPreview,
+    notice,
     renderableParts,
     textParts,
     copyText,
@@ -106,6 +114,24 @@ export const MessageRow = memo(function MessageRow({
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <WorkCard metadata={runMetadata} preview={runPreview} />
+        </MessageContent>
+      </Message>
+    );
+  }
+
+  // A scheduled chat whose run was skipped says why, with the fix on a
+  // button. The model never reads this row back, and it is the owner's: a
+  // shared copy of the chat leaves it out.
+  if (notice) {
+    if (readOnly) return null;
+    return (
+      <Message
+        from={message.role}
+        data-message-id={message.id}
+        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+      >
+        <MessageContent className="group-[.is-assistant]:bg-transparent">
+          <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
         </MessageContent>
       </Message>
     );

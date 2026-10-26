@@ -33,7 +33,7 @@ function ExpertModeOptions({ expert }: Props) {
   return (
     <section
       aria-label={`${expert.name} approval mode`}
-      className="rounded-xl border border-zinc-200 bg-white p-4"
+      className="rounded-xl border border-border-base bg-surface p-4"
     >
       <Text variant="large-medium">Approvals</Text>
       <Text variant="small" tone="secondary" className="mt-1">
@@ -52,13 +52,16 @@ function ExpertModeOptions({ expert }: Props) {
             <label
               key={option.value}
               className={cn(
+                // TODO(tokens): no fitting role for has-[:focus-visible]:outline-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
                 "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-zinc-800",
                 isSelected
-                  ? "bg-white ring-2 ring-inset ring-zinc-800"
-                  : "bg-zinc-50 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-100",
+                  ? // TODO(tokens): no fitting role for ring-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
+                    "bg-surface ring-2 ring-inset ring-zinc-800"
+                  : "bg-surface-muted ring-1 ring-inset ring-border-base hover:bg-surface-hover",
                 option.value === "unsupervised" &&
                   isSelected &&
-                  "bg-amber-50 ring-amber-600",
+                  // TODO(tokens): no exact role: ring-amber-600 #D97706
+                  "bg-warning-surface ring-amber-600",
               )}
             >
               <input
@@ -72,17 +75,17 @@ function ExpertModeOptions({ expert }: Props) {
               <Icon
                 icon={option.icon}
                 size={18}
-                className="mt-0.5 shrink-0 text-zinc-700"
+                className="mt-0.5 shrink-0 text-foreground-body"
                 aria-hidden="true"
               />
               <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-zinc-900">
+                <Text variant="body-md-medium" as="span" tone="primary">
                   {option.label}
                   {option.value === DEFAULT_AUTOPILOT_MODE ? " (default)" : ""}
-                </span>
-                <span className="text-xs text-zinc-500">
+                </Text>
+                <Text variant="small-tight" as="span" tone="muted">
                   {option.description}
-                </span>
+                </Text>
               </span>
             </label>
           );
@@ -93,7 +96,7 @@ function ExpertModeOptions({ expert }: Props) {
         onConfirm={confirmUnsupervised}
         onCancel={cancelUnsupervised}
         title={`Run ${expert.name} unsupervised by default?`}
-        description={`AutoPilot will not ask before anything in new chats with ${expert.name}. Edits, commands and actions outside the platform, like sending a message or an email, run without your approval unless you switch a chat back from the composer.`}
+        description={`${expert.name} will not ask before anything in new chats. Edits, commands and actions outside the platform, like sending a message or an email, run without your approval unless you switch a chat back from the composer.`}
       />
     </section>
   );

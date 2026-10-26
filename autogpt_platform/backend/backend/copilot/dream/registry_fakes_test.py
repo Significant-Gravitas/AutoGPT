@@ -269,7 +269,6 @@ class RegistryEnv:
         self.scheduler = FakeScheduler()
         self.crons = FakeCronStore(self.scheduler)
         self.flags = {
-            Flag.GRAPHITI_COMMUNITIES_ENABLED: True,
             Flag.DREAM_PASS_ENABLED: True,
         }
         self.timezone: str | None = PARIS
@@ -290,8 +289,8 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     """Point the registry modules at a fresh set of fakes."""
     env = RegistryEnv()
 
-    async def flag(flag: Flag, user_id: str) -> bool:
-        return env.flags.get(flag, False)
+    async def flag(flag: Flag, user_id: str) -> tuple[bool, bool]:
+        return env.flags.get(flag, False), True
 
     async def owner_timezone(user_id: str) -> str | None:
         return env.timezone
@@ -299,7 +298,7 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     for module in (registry, scope_jobs, scope_crons, scope_reconcile):
         monkeypatch.setattr(module, "memory_schedule_db", lambda: env.db)
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: env.scheduler)
-    monkeypatch.setattr(scope_jobs, "is_feature_enabled", flag)
+    monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flag)
     monkeypatch.setattr(registry, "resolve_user_timezone", owner_timezone)
     # Every walk starts at the first scope, so a test sees key order.
     monkeypatch.setattr(scope_reconcile._Place, "last", "")

@@ -9,7 +9,6 @@ import {
 import { useBlockMenuStore } from "../stores/blockMenuStore";
 import { useControlPanelStore } from "../stores/controlPanelStore";
 import { DefaultStateType } from "../components/NewControlPanel/NewBlockMenu/types";
-import { SearchEntryFilterAnyOfItem } from "@/app/api/__generated__/models/searchEntryFilterAnyOfItem";
 
 // ---------------------------------------------------------------------------
 // Mocks for heavy child components
@@ -98,34 +97,21 @@ describe("blockMenuStore", () => {
     });
 
     it("adds a filter", () => {
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
-      expect(useBlockMenuStore.getState().filters).toEqual([
-        SearchEntryFilterAnyOfItem.blocks,
-      ]);
+      useBlockMenuStore.getState().addFilter("blocks");
+      expect(useBlockMenuStore.getState().filters).toEqual(["blocks"]);
     });
 
     it("removes a filter", () => {
-      useBlockMenuStore
-        .getState()
-        .setFilters([
-          SearchEntryFilterAnyOfItem.blocks,
-          SearchEntryFilterAnyOfItem.integrations,
-        ]);
-      useBlockMenuStore
-        .getState()
-        .removeFilter(SearchEntryFilterAnyOfItem.blocks);
-      expect(useBlockMenuStore.getState().filters).toEqual([
-        SearchEntryFilterAnyOfItem.integrations,
-      ]);
+      useBlockMenuStore.getState().setFilters(["blocks", "integrations"]);
+      useBlockMenuStore.getState().removeFilter("blocks");
+      expect(useBlockMenuStore.getState().filters).toEqual(["integrations"]);
     });
 
     it("replaces all filters with setFilters", () => {
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
-      useBlockMenuStore
-        .getState()
-        .setFilters([SearchEntryFilterAnyOfItem.marketplace_agents]);
+      useBlockMenuStore.getState().addFilter("blocks");
+      useBlockMenuStore.getState().setFilters(["marketplace_agents"]);
       expect(useBlockMenuStore.getState().filters).toEqual([
-        SearchEntryFilterAnyOfItem.marketplace_agents,
+        "marketplace_agents",
       ]);
     });
   });
@@ -204,16 +190,12 @@ describe("blockMenuStore", () => {
     });
 
     it("does not reset filters or creators (by design)", () => {
-      useBlockMenuStore
-        .getState()
-        .setFilters([SearchEntryFilterAnyOfItem.blocks]);
+      useBlockMenuStore.getState().setFilters(["blocks"]);
       useBlockMenuStore.getState().setCreators(["alice"]);
 
       useBlockMenuStore.getState().reset();
 
-      expect(useBlockMenuStore.getState().filters).toEqual([
-        SearchEntryFilterAnyOfItem.blocks,
-      ]);
+      expect(useBlockMenuStore.getState().filters).toEqual(["blocks"]);
       expect(useBlockMenuStore.getState().creators).toEqual(["alice"]);
     });
   });

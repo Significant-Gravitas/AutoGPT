@@ -19,6 +19,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.enums import APIKeyPermission
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -228,6 +229,11 @@ class ChatMessage(BaseModel):
     # from payloads like routing_source, and persisted the same way.
     langfuse_trace_id: str | None = Field(default=None, exclude=True)
 
+    # PostHog trace of the turn that wrote this assistant or reasoning row
+    # (``copilot.ai_spans``): the ``$ai_trace_id`` of its generations, which a
+    # rating of the reply carries. Internal and persisted like the above.
+    trace_id: str | None = Field(default=None, exclude=True)
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -296,6 +302,7 @@ class ChatMessage(BaseModel):
             ),
             llm_credential_id=prisma_message.llmCredentialId,
             langfuse_trace_id=prisma_message.langfuseTraceId,
+            trace_id=prisma_message.traceId,
         )
 
 
@@ -503,6 +510,21 @@ class ChatSession(ChatSessionInfo):
     guide in the system prompt. Cleared by the restart handler; never
     persisted — the durable mode signal is the tool call in message
     history."""
+
+    external_caller: bool = Field(default=False, exclude=True)
+    """Runtime flag: True when an External API client calls one tool directly
+    (the v2 MCP server). Each such call gets a fresh session with no history,
+    so the checks that look for an earlier call in this session (the
+    agent-building guide, the library search before creating an agent) could
+    never pass; the client is offered those same tools and decides itself
+    when to call them. Never persisted."""
+
+    external_permissions: frozenset[APIKeyPermission] = Field(
+        default=frozenset(), exclude=True
+    )
+    """Runtime: the permissions of the External API credential behind an
+    external call, for a tool whose effects reach past the permissions it is
+    exposed with. Never persisted."""
 
     @classmethod
     def new(
@@ -1172,6 +1194,7 @@ async def _save_session_to_db(
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
                     "langfuse_trace_id": msg.langfuse_trace_id,
+                    "trace_id": msg.trace_id,
                     "metadata": msg.metadata,
                 }
             )
@@ -1226,6 +1249,7 @@ async def _save_session_to_db(
                 llm_auth_provider=msg.llm_auth_provider,
                 llm_credential_id=msg.llm_credential_id,
                 langfuse_trace_id=msg.langfuse_trace_id,
+                trace_id=msg.trace_id,
             )
         except Exception as e:
             logger.error(
@@ -1571,6 +1595,98 @@ async def get_or_create_expert_kickoff_session(
         if existing is not None and existing.expert_id == expert_id:
             return existing
         raise
+
+
+class SessionIdConflictError(Exception):
+    """A client-named session id is taken by a session the caller cannot adopt."""
+
+
+async def get_or_create_client_chat_session(
+    user_id: str,
+    session_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    """Create the session the client named, or adopt it on a retry.
+
+    The client mints *session_id* before its first attempt, so a retry after a
+    lost response lands on the session that attempt committed instead of
+    leaving it empty behind a second one. The primary key is the claim, the
+    same way a turn-start send dedupes on its ``ChatMessage`` id.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted one
+    keeps the mode it started on, even if the expert's default changed since.
+
+    Raises:
+        SessionIdConflictError: the id belongs to another user's session, or
+            to one this create could not have made: another expert, another
+            organization or team, or a builder-bound session.
+    """
+    existing = await get_chat_session(session_id, user_id)
+    if existing is None:
+        try:
+            return await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                session_id=session_id,
+                organization_id=organization_id,
+                team_id=team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
+            )
+        except DatabaseError:
+            existing = await get_chat_session(session_id, user_id)
+            if existing is None:
+                if await get_chat_session(session_id) is not None:
+                    raise SessionIdConflictError(session_id)
+                raise
+    if not _client_session_in_scope(
+        existing,
+        organization_id=organization_id,
+        team_id=team_id,
+        expert_id=expert_id,
+    ):
+        raise SessionIdConflictError(session_id)
+    return existing
+
+
+def _client_session_in_scope(
+    session: ChatSession,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    expert_id: str | None,
+) -> bool:
+    """Whether a create with these arguments could have made *session*.
+
+    This endpoint only makes interactive sessions with no builder binding,
+    external platform, delegation or handoff, so a session that has any of
+    those came from another path and is never adopted. An expert session's
+    tenancy comes from the expert (``create_chat_session`` pins it to the
+    owner's private tenancy), so the expert match covers it.
+    """
+    metadata = session.metadata
+    if (
+        session.expert_id != expert_id
+        or metadata.origin != "interactive"
+        or metadata.builder_graph_id
+        or metadata.source_platform
+        or metadata.delegated_by_session_id
+        or metadata.delegated_by_expert_id
+        or metadata.handed_off_from_expert_id
+    ):
+        return False
+    if expert_id is not None:
+        return True
+    return session.organization_id == organization_id and session.team_id == team_id
 
 
 async def get_or_create_builder_session(

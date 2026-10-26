@@ -30,6 +30,7 @@ export function EditSkillForm({
   const hasNewerVersion = draft.baseVersionId !== (currentVersion?.id ?? null);
   return (
     <form
+      data-slot="edit-skill-form"
       className="flex flex-col gap-3"
       onSubmit={(event) => {
         event.preventDefault();
@@ -44,14 +45,21 @@ export function EditSkillForm({
       {hasNewerVersion && currentVersion ? (
         <section
           aria-label="Newer version available"
-          className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+          data-slot="edit-skill-form-conflict"
+          className="rounded-lg border border-warning-border bg-warning-surface p-3"
         >
           <Text variant="small" tone="primary">
             v{currentVersion.version} was saved while you were editing. Your
             draft is kept. Compare it with the current version before saving.
           </Text>
-          <details className="mt-2">
-            <summary className="cursor-pointer text-sm font-medium">
+          <details
+            data-slot="edit-skill-form-conflict-details"
+            className="mt-2"
+          >
+            <summary
+              data-slot="edit-skill-form-conflict-summary"
+              className="cursor-pointer text-sm font-medium"
+            >
               Review changes against v{currentVersion.version}
             </summary>
             {draft.description !== currentVersion.description ? (
@@ -59,7 +67,12 @@ export function EditSkillForm({
                 Current description: {currentVersion.description}
               </Text>
             ) : null}
-            <pre className="my-3 overflow-x-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-100">
+            <pre
+              data-slot="edit-skill-form-conflict-diff"
+              // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the
+              // dark code surface.
+              className="my-3 overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-zinc-100"
+            >
               {lineDiff(currentVersion.body ?? "", draft.body) ||
                 "Your procedure matches the current version."}
             </pre>
@@ -96,8 +109,14 @@ export function EditSkillForm({
         disabled={isBusy}
         onChange={(event) => onDraftChange({ body: event.target.value })}
       />
-      <label className="flex items-center justify-between gap-3">
-        <span className="flex flex-col">
+      <label
+        data-slot="edit-skill-form-auto-improve"
+        className="flex items-center justify-between gap-3"
+      >
+        <span
+          data-slot="edit-skill-form-auto-improve-text"
+          className="flex flex-col"
+        >
           <Text variant="small" tone="primary">
             Keep automatic improvements on
           </Text>
@@ -115,7 +134,10 @@ export function EditSkillForm({
           }
         />
       </label>
-      <div className="flex justify-end gap-2">
+      <div
+        data-slot="edit-skill-form-actions"
+        className="flex justify-end gap-2"
+      >
         <Button
           type="button"
           variant="ghost"

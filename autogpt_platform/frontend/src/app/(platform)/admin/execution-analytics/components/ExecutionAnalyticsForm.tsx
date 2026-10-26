@@ -1,5 +1,16 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-100 #F3F4F6, bg-red-100 #FDECEC, text-blue-700 #1D4ED8,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-700 #374151,
+// text-orange-600 #E77B00, text-purple-600 #6C2EDF, text-red-600 #D93636,
+// text-red-800 #832525.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill),
+// text-purple-600 = brand-hover (a hover fill).
+// TODO(tokens): chart and canvas colours, which have no tokens yet: #3B82F6,
+// #10B981, #F59E0B, #8B5CF6.
+
 import { useState, useEffect } from "react";
 import {
   LineChart,
@@ -12,17 +23,18 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Label } from "@/components/__legacy__/ui/label";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
+import { Label } from "@/components/atoms/Label/Label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+} from "@/components/atoms/Select/components/SelectPrimitives";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
@@ -306,7 +318,7 @@ export function ExecutionAnalyticsForm() {
   if (configError || !config) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-red-500">Failed to load configuration</div>
+        <div className="text-error">Failed to load configuration</div>
       </div>
     );
   }
@@ -317,9 +329,9 @@ export function ExecutionAnalyticsForm() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="graph_id">
-              Graph ID <span className="text-red-500">*</span>
+              Graph ID <span className="text-error">*</span>
             </Label>
-            <Input
+            <BaseInput
               id="graph_id"
               value={formData.graph_id}
               onChange={(e) => handleInputChange("graph_id", e.target.value)}
@@ -330,7 +342,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="graph_version">Graph Version</Label>
-            <Input
+            <BaseInput
               id="graph_version"
               type="number"
               value={formData.graph_version || ""}
@@ -346,7 +358,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="user_id">User ID</Label>
-            <Input
+            <BaseInput
               id="user_id"
               value={formData.user_id || ""}
               onChange={(e) => handleInputChange("user_id", e.target.value)}
@@ -356,7 +368,7 @@ export function ExecutionAnalyticsForm() {
 
           <div className="space-y-2">
             <Label htmlFor="created_after">Created After</Label>
-            <Input
+            <BaseInput
               id="created_after"
               type="datetime-local"
               value={formData.created_after || ""}
@@ -390,9 +402,9 @@ export function ExecutionAnalyticsForm() {
         <div className="border-t pt-6">
           <Collapsible
             trigger={
-              <h3 className="text-lg font-semibold text-gray-700">
+              <Text variant="lg-semibold" as="h3" className="text-gray-700">
                 Advanced Options
-              </h3>
+              </Text>
             }
             defaultOpen={false}
             className="space-y-4"
@@ -407,9 +419,11 @@ export function ExecutionAnalyticsForm() {
                     handleInputChange("skip_existing", checked)
                   }
                 />
-                <Label htmlFor="skip_existing" className="text-sm">
-                  Skip executions that already have activity status and
-                  correctness score
+                <Label htmlFor="skip_existing">
+                  <Text variant="body-medium-tight" as="span" tone="inherit">
+                    Skip executions that already have activity status and
+                    correctness score
+                  </Text>
                 </Label>
               </div>
 
@@ -420,8 +434,10 @@ export function ExecutionAnalyticsForm() {
                   checked={showAccuracyChart}
                   onCheckedChange={(checked) => setShowAccuracyChart(!!checked)}
                 />
-                <Label htmlFor="show_accuracy_chart" className="text-sm">
-                  Show accuracy trends chart and historical data visualization
+                <Label htmlFor="show_accuracy_chart">
+                  <Text variant="body-medium-tight" as="span" tone="inherit">
+                    Show accuracy trends chart and historical data visualization
+                  </Text>
                 </Label>
               </div>
 
@@ -440,10 +456,10 @@ export function ExecutionAnalyticsForm() {
                   rows={6}
                   className="resize-y"
                 />
-                <p className="text-sm text-gray-600">
+                <Text variant="body-tight" className="text-gray-600">
                   Customize how the AI evaluates execution success and failure.
                   Leave empty to use the default prompt shown above.
-                </p>
+                </Text>
               </div>
 
               {/* Custom User Prompt */}
@@ -461,7 +477,7 @@ export function ExecutionAnalyticsForm() {
                   rows={8}
                   className="resize-y"
                 />
-                <p className="text-sm text-gray-600">
+                <Text variant="body-tight" className="text-gray-600">
                   Customize the analysis instructions. Use{" "}
                   <code className="rounded bg-gray-100 px-1">
                     {"{{GRAPH_NAME}}"}
@@ -472,7 +488,7 @@ export function ExecutionAnalyticsForm() {
                   </code>{" "}
                   as placeholders. Leave empty to use the default template shown
                   above.
-                </p>
+                </Text>
               </div>
 
               {/* Quick Actions */}
@@ -537,8 +553,14 @@ export function ExecutionAnalyticsForm() {
       {trendsData && (
         <div className="space-y-4">
           <div className="flex items-start justify-between">
-            <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
-            <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            <Text variant="lg-semibold" as="h3" tone="inherit">
+              Execution Accuracy Trends
+            </Text>
+            <Text
+              variant="small-tight"
+              as="div"
+              className="rounded-md bg-info-surface px-3 py-2 text-blue-700"
+            >
               <p className="font-medium">
                 Chart Filters (matches monitoring system):
               </p>
@@ -547,28 +569,39 @@ export function ExecutionAnalyticsForm() {
                 <li>Last 30 days</li>
                 <li>Averages calculated from scored executions only</li>
               </ul>
-            </div>
+            </Text>
           </div>
 
           {/* Alert Section */}
           {trendsData.alert && (
-            <div className="rounded-lg border-l-4 border-red-500 bg-red-50 p-4">
+            <div className="rounded-lg border-l-4 border-error bg-error-surface p-4">
               <div className="flex items-start">
-                <span className="text-2xl">🚨</span>
+                <Text variant="2xl" as="span" tone="inherit">
+                  🚨
+                </Text>
                 <div className="ml-3 space-y-2">
-                  <h4 className="text-lg font-semibold text-red-800">
+                  <Text variant="lg-semibold" as="h4" className="text-red-800">
                     Accuracy Alert Detected
-                  </h4>
-                  <p className="text-red-700">
+                  </Text>
+                  <p className="text-error-foreground">
                     <strong>
                       {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
                     </strong>{" "}
                     detected for agent{" "}
-                    <code className="rounded bg-red-100 px-1 text-sm">
+                    <Text
+                      variant="body-mono-tight"
+                      as="code"
+                      tone="inherit"
+                      className="rounded bg-red-100 px-1"
+                    >
                       {formData.graph_id}
-                    </code>
+                    </Text>
                   </p>
-                  <div className="space-y-1 text-sm text-red-600">
+                  <Text
+                    variant="body-tight"
+                    as="div"
+                    className="space-y-1 text-red-600"
+                  >
                     <p>
                       • 3-day average:{" "}
                       <strong>
@@ -589,7 +622,7 @@ export function ExecutionAnalyticsForm() {
                         ).toLocaleString()}
                       </strong>
                     </p>
-                  </div>
+                  </Text>
                 </div>
               </div>
             </div>
@@ -597,39 +630,56 @@ export function ExecutionAnalyticsForm() {
 
           {/* Latest Data Summary */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="rounded-lg border bg-white p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">
+            <div className="rounded-lg border bg-surface p-4 text-center">
+              <Text
+                variant="2xl-bold"
+                as="div"
+                className="text-info-foreground"
+              >
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
-              </div>
-              <div className="text-sm text-gray-600">Daily Score</div>
+              </Text>
+              <Text variant="body-tight" as="div" className="text-gray-600">
+                Daily Score
+              </Text>
             </div>
-            <div className="rounded-lg border bg-white p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">
+            <div className="rounded-lg border bg-surface p-4 text-center">
+              <Text variant="2xl-bold" as="div" tone="success">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
-              </div>
-              <div className="text-sm text-gray-600">3-Day Avg</div>
+              </Text>
+              <Text variant="body-tight" as="div" className="text-gray-600">
+                3-Day Avg
+              </Text>
             </div>
-            <div className="rounded-lg border bg-white p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">
+            <div className="rounded-lg border bg-surface p-4 text-center">
+              <Text variant="2xl-bold" as="div" className="text-orange-600">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
-              </div>
-              <div className="text-sm text-gray-600">7-Day Avg</div>
+              </Text>
+              <Text variant="body-tight" as="div" className="text-gray-600">
+                7-Day Avg
+              </Text>
             </div>
-            <div className="rounded-lg border bg-white p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">
+            <div className="rounded-lg border bg-surface p-4 text-center">
+              <Text variant="2xl-bold" as="div" className="text-purple-600">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
-              </div>
-              <div className="text-sm text-gray-600">14-Day Avg</div>
+              </Text>
+              <Text variant="body-tight" as="div" className="text-gray-600">
+                14-Day Avg
+              </Text>
             </div>
           </div>
 
           {/* Chart Section - only show when toggle is enabled and historical data exists */}
           {showAccuracyChart && trendsData?.historical_data && (
             <div className="mt-6">
-              <h4 className="mb-4 text-lg font-semibold">
+              <Text
+                variant="lg-semibold"
+                as="h4"
+                tone="inherit"
+                className="mb-4"
+              >
                 Execution Accuracy Trends Chart
-              </h4>
-              <div className="rounded-lg border bg-white p-6">
+              </Text>
+              <div className="rounded-lg border bg-surface p-6">
                 <AccuracyChart data={trendsData.historical_data} />
               </div>
             </div>

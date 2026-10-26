@@ -42,7 +42,7 @@ export const TopicSurfaces: Story = {
           return (
             <div
               key={id}
-              className="rounded-2xl border border-zinc-200 bg-white p-2"
+              className="rounded-2xl border border-border-base bg-surface p-2"
             >
               <ExpertCover color={color} />
               <div className="relative -mt-12 px-3">
@@ -54,8 +54,10 @@ export const TopicSurfaces: Story = {
                   className="rounded-full ring-4 ring-white"
                 />
                 <p className="mt-2 font-semibold">{identity.name}</p>
-                <p className="text-sm text-zinc-500">{identity.job_title}</p>
-                <div className="my-3 flex items-center gap-2 text-sm text-zinc-500">
+                <p className="text-sm text-foreground-tertiary">
+                  {identity.job_title}
+                </p>
+                <div className="my-3 flex items-center gap-2 text-sm text-foreground-tertiary">
                   <ExpertAvatar
                     name={identity.name}
                     avatarUrl={identity.url}
@@ -85,7 +87,7 @@ export const Family: Story = {
       <div className="flex w-full max-w-5xl flex-col gap-6">
         {families.map((family) => (
           <div key={family}>
-            <p className="mb-2 text-sm font-medium capitalize text-zinc-500">
+            <p className="mb-2 text-sm font-medium capitalize text-foreground-tertiary">
               {family}
             </p>
             <div className="flex flex-wrap gap-4">

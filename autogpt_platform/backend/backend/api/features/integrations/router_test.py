@@ -1125,7 +1125,9 @@ class TestDeviceAuthEndpoints:
 
         mock_mgr.store.consume_state_token.assert_not_awaited()
 
-    def test_poll_race_loser_does_not_create_a_second_credential(self):
+    def test_poll_race_loser_does_not_create_a_second_credential(
+        self, resume_after_reconnect: MagicMock
+    ):
         """Two polls can both see an approval; only the one that consumes wins.
 
         `consume_state_token` returning None means another poll already handled
@@ -1184,6 +1186,7 @@ class TestDeviceAuthEndpoints:
         assert response.json()["status"] == "approved"
         assert response.json()["credentials"] is None
         mock_merge.assert_not_awaited()
+        resume_after_reconnect.assert_not_called()
 
     def test_poll_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
@@ -1204,7 +1207,9 @@ class TestDeviceAuthEndpoints:
         assert response.status_code == 502
         assert "internal-host-1" not in response.text
 
-    def test_poll_stores_the_credential_on_the_winning_approval(self):
+    def test_poll_stores_the_credential_on_the_winning_approval(
+        self, resume_after_reconnect: MagicMock
+    ):
         """The primary success path: consume wins, credential is stored.
 
         Every other approved-status test here makes `consume_state_token`
@@ -1264,6 +1269,8 @@ class TestDeviceAuthEndpoints:
         assert stored.scopes == ["userinfo:read", "payment_methods.agentic"]
         # And no secret rides along in the response.
         assert "do-not-leak" not in response.text
+        # Only the winner resumes the scheduled chats this connect fixes.
+        resume_after_reconnect.assert_called_once_with(JWT_USER_ID, "stripe_link")
 
     def test_poll_maps_a_missing_user_row_to_an_invalid_token(self):
         """A caller with no backend User row raises a Prisma RecordNotFound in

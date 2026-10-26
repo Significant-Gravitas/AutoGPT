@@ -103,7 +103,10 @@ export function SelectedScheduleView({
             <div id="schedule" className="scroll-mt-4">
               <RunDetailCard title="Schedule">
                 {isLoading || !schedule ? (
-                  <div className="text-neutral-500">
+                  <div
+                    // TODO(tokens): no exact role for text-neutral-500 (#737373)
+                    className="text-neutral-500"
+                  >
                     <LoadingSpinner />
                   </div>
                 ) : (
@@ -116,8 +119,8 @@ export function SelectedScheduleView({
                       <Text variant="large-medium">Recurrence</Text>
                       <Text variant="body" className="flex items-center gap-3">
                         {humanizeCronExpression(schedule.cron)}{" "}
-                        <span className="text-zinc-500">•</span>{" "}
-                        <span className="text-zinc-500">
+                        <span className="text-foreground-tertiary">•</span>{" "}
+                        <span className="text-foreground-tertiary">
                           {getTimezoneDisplayName(
                             schedule.timezone || userTimezone || "UTC",
                           )}
@@ -139,8 +142,8 @@ export function SelectedScheduleView({
                             hour12: false,
                           },
                         )}{" "}
-                        <span className="text-zinc-500">•</span>{" "}
-                        <span className="text-zinc-500">
+                        <span className="text-foreground-tertiary">•</span>{" "}
+                        <span className="text-foreground-tertiary">
                           {getTimezoneDisplayName(
                             schedule.timezone || userTimezone || "UTC",
                           )}

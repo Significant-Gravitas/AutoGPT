@@ -1,16 +1,16 @@
 import { useContext, useEffect, useState } from "react";
 import { z } from "zod";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
-  Form,
   FormDescription,
   FormField,
   FormLabel,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,
@@ -195,10 +195,12 @@ export function HostScopedCredentialsModal({
     >
       <Dialog.Content>
         {schema.description && (
-          <p className="mb-4 text-sm text-zinc-600">{schema.description}</p>
+          <Text variant="body-tight" as="p" tone="secondary" className="mb-4">
+            {schema.description}
+          </Text>
         )}
 
-        <Form {...form}>
+        <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
             <FormField
               control={form.control}
@@ -226,8 +228,16 @@ export function HostScopedCredentialsModal({
             />
 
             <div className="space-y-2">
-              <FormLabel>Headers</FormLabel>
-              <FormDescription className="max-w-md">
+              <FormLabel className="peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                <Text variant="body-medium-lh-none" as="span" tone="inherit">
+                  Headers
+                </Text>
+              </FormLabel>
+              <FormDescription
+                // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
+                // dark:text-neutral-400: the legacy FormDescription's, moved verbatim (DS6, SECRT-3116)
+                className="max-w-md text-[0.8rem] leading-inherit dark:text-neutral-400"
+              >
                 Add sensitive headers (like Authorization, X-API-Key) that
                 should be automatically included in requests to the specified
                 host.
@@ -290,7 +300,7 @@ export function HostScopedCredentialsModal({
               </Button>
             </div>
           </form>
-        </Form>
+        </FormProvider>
       </Dialog.Content>
     </Dialog>
   );

@@ -46,24 +46,30 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
   return (
     <section
       aria-label={`Fire ${expert.name}`}
-      className="overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
+      className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
-      <div className="flex items-start gap-3 border-b border-red-100 bg-red-50/60 px-5 py-4">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+      <div
+        // TODO(tokens): no exact role: border-red-100 #FDECEC
+        className="flex items-start gap-3 border-b border-red-100 bg-error-surface/60 px-5 py-4"
+      >
+        <span
+          // TODO(tokens): no exact role: bg-red-100 #FDECEC; no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill)
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600"
+        >
           <Icon icon={UserRemove01Icon} size={20} aria-hidden />
         </span>
         <div className="min-w-0">
-          <Text variant="large-medium" className="!text-zinc-900">
+          <Text variant="large-medium" className="!text-foreground-strong">
             Fire {expert.name}
           </Text>
-          <Text variant="body" className="mt-0.5 !text-zinc-600">
+          <Text variant="body-md" className="mt-0.5 !text-foreground-secondary">
             {expert.name} leaves your team and stops working for you. Here is
             what that means for what you have set up.
           </Text>
         </div>
       </div>
 
-      <ul className="divide-y divide-zinc-100 px-5">
+      <ul className="divide-y divide-separator px-5">
         <Consequence
           icon={Calendar03Icon}
           tone={pauseItems.length > 0 || isPreviewError ? "warn" : "neutral"}
@@ -82,9 +88,11 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
             <button
               type="button"
               onClick={() => void retryPreview()}
-              className="mt-1 text-sm font-medium text-zinc-700 underline underline-offset-2 hover:text-zinc-950"
+              className="mt-1 inline-flex text-foreground-body underline underline-offset-2 hover:text-foreground"
             >
-              Retry
+              <Text variant="body-md-medium" as="span" tone="inherit">
+                Retry
+              </Text>
             </button>
           ) : null}
           {pauseNames.length > 0 ? (
@@ -92,14 +100,23 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               {pauseNames.map((item) => (
                 <span
                   key={item.id}
-                  className="max-w-full truncate rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs text-amber-800"
+                  className="flex min-w-0 max-w-full rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5"
                 >
-                  {item.name}
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="warning-strong"
+                    className="truncate"
+                  >
+                    {item.name}
+                  </Text>
                 </span>
               ))}
               {hiddenPauseCount > 0 ? (
-                <span className="px-1 py-0.5 text-xs text-zinc-500">
-                  +{hiddenPauseCount} more
+                <span className="flex px-1 py-0.5">
+                  <Text variant="small-tight" as="span" tone="muted">
+                    +{hiddenPauseCount} more
+                  </Text>
                 </span>
               ) : null}
             </div>
@@ -134,10 +151,11 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
         />
       </ul>
 
-      <div className="flex justify-end border-t border-zinc-100 bg-zinc-50/60 px-5 py-3">
+      <div className="flex justify-end border-t border-separator bg-surface-muted/60 px-5 py-3">
         <Button
           variant="destructive"
           size="small"
+          textSize="body-md"
           onClick={onFire}
           data-testid="expert-fire-button"
         >
@@ -170,27 +188,35 @@ function Consequence({
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-lg border",
           isWarn
-            ? "border-amber-200 bg-amber-50 text-amber-600"
-            : "border-zinc-200 bg-zinc-50 text-zinc-500",
+            ? // TODO(tokens): no exact role: text-amber-600 #D97706
+              "border-warning-border bg-warning-surface text-amber-600"
+            : "border-border-base bg-surface-muted text-foreground-tertiary",
         )}
       >
         <Icon icon={icon} size={15} aria-hidden />
       </span>
       <div className="min-w-0 flex-1 pt-1">
         <div className="flex items-center justify-between gap-3">
-          <Text variant="body" className="!text-zinc-800">
+          <Text variant="body-md" className="!text-foreground-emphasis">
             {title}
           </Text>
           {tag ? (
             <span
               className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                "flex shrink-0 rounded-full px-2 py-0.5",
                 isWarn
-                  ? "bg-amber-50 text-amber-700"
-                  : "bg-emerald-50 text-emerald-700",
+                  ? "bg-warning-surface"
+                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5
+                    "bg-emerald-50",
               )}
             >
-              {tag}
+              <Text
+                variant="small-medium-tight"
+                as="span"
+                tone={isWarn ? "warning" : "success-strong"}
+              >
+                {tag}
+              </Text>
             </span>
           ) : null}
         </div>

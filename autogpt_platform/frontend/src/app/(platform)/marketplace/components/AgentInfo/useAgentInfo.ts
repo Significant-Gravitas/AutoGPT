@@ -6,7 +6,6 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
-import { analytics } from "@/services/analytics";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -51,11 +50,6 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
         await queryClient.invalidateQueries({
           queryKey: getGetV2ListLibraryAgentsQueryKey(),
         });
-
-        analytics.sendDatafastEvent("add_to_library", {
-          name: data.name,
-          id: data.id,
-        });
       }
 
       router.push(`/library/agents/${data.id}`);
@@ -76,7 +70,7 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
     }
   };
 
-  const handleDownload = async (agentId: string, agentName: string) => {
+  const handleDownload = async (agentName: string) => {
     try {
       const { data: file } = await downloadAgent();
 
@@ -84,11 +78,6 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
         file as object,
         agentGraphExportFilename(file, agentName),
       );
-
-      analytics.sendDatafastEvent("download_agent", {
-        name: agentName,
-        id: agentId,
-      });
 
       toast({
         title: "Download Complete",

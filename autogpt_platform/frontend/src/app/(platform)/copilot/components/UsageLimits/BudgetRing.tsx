@@ -33,6 +33,7 @@ export function BudgetRing({ label, percent }: Props) {
           fill="none"
           stroke="currentColor"
           strokeWidth={STROKE}
+          // TODO(tokens): no fitting role for text-zinc-200 #DADADC; #DADADC is surface-active (a fill) and border-base (a line colour)
           className="text-zinc-200"
         />
         <circle
@@ -46,7 +47,7 @@ export function BudgetRing({ label, percent }: Props) {
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={CIRCUMFERENCE * (1 - value / 100)}
           transform={`rotate(-90 ${center} ${center})`}
-          className="text-purple-500"
+          className="text-brand"
         />
       </svg>
     </span>

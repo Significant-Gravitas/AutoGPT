@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGetV2GetAnsweredReviewsWaitingToRunForChatSession } from "@/app/api/__generated__/endpoints/executions/executions";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
@@ -64,6 +65,17 @@ export function useCopilotPendingReviews({
           : false,
   });
   const { pendingReviews, refetch } = chatSessionId ? forChat : forRun;
+  // Fresh on every mount, never cached across one: the box seeds its receipts
+  // from the first answer, so a stale list would seed the wrong ones.
+  const { data: answeredReviews } =
+    useGetV2GetAnsweredReviewsWaitingToRunForChatSession(chatSessionId, {
+      query: {
+        enabled: !!chatSessionId,
+        select: okData,
+        gcTime: 0,
+        refetchOnWindowFocus: false,
+      },
+    });
 
   useEffect(() => {
     setHasRows(pendingReviews.length > 0);
@@ -77,7 +89,7 @@ export function useCopilotPendingReviews({
     if (status) refetch();
   }, [status, refetch]);
 
-  return { pendingReviews, refetch };
+  return { pendingReviews, answeredReviews, refetch };
 }
 
 function readStatus(raw: unknown) {

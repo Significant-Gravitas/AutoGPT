@@ -23,6 +23,9 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
+from backend.copilot.scheduled_chats.reconnect import (
+    resume_after_reconnect_in_background,
+)
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -82,7 +85,7 @@ from backend.integrations.service_identity import (
     service_for_credential,
     service_for_provider,
 )
-from backend.integrations.webhooks import get_webhook_manager
+from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
@@ -369,7 +372,10 @@ async def callback(
     if provider == ProviderName.CODEX:
         await enforce_codex_access_http(user_id)
         valid_state = await _verify_callback_state(user_id, state_token, provider)
-        return await _complete_codex_login(user_id, code, valid_state)
+        connected = await _complete_codex_login(user_id, code, valid_state)
+        # As every other connect: the fix for a chat paused on it.
+        resume_after_reconnect_in_background(user_id, provider.value)
+        return connected
 
     failure_class: product_analytics.OAuthExchangeFailureClass = "invalid_state"
     # Everything secret we send the provider, in case its error echoes it back.
@@ -411,6 +417,8 @@ async def callback(
         credential_type=credentials.type,
         method="oauth",
     )
+    # Reconnecting is the fix for a scheduled chat paused on this provider.
+    resume_after_reconnect_in_background(user_id, provider.value)
 
     return to_meta_response(credentials)
 
@@ -862,6 +870,7 @@ async def device_auth_poll(
             credential_type=credentials.type,
             method="device_code",
         )
+        resume_after_reconnect_in_background(user_id, provider.value)
         return DeviceAuthPollResponse(
             status="approved",
             credentials=to_meta_response(credentials),
@@ -1108,6 +1117,7 @@ async def create_credentials(
         credential_type=credentials.type,
         method="manual",
     )
+    resume_after_reconnect_in_background(user_id, provider.value)
     return to_meta_response(credentials)
 
 
@@ -1169,15 +1179,43 @@ async def delete_credentials(
         )
 
     try:
-        await remove_all_webhooks_for_credentials(user_id, creds, force)
+        tokens_revoked = await delete_credentials_and_dependents(
+            request, user_id, creds, provider, force
+        )
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
+    return CredentialsDeletionResponse(revoked=tokens_revoked)
+
+
+async def delete_credentials_and_dependents(
+    request: Request,
+    user_id: str,
+    creds: Credentials,
+    provider: ProviderName,
+    force: bool,
+) -> bool | None:
+    """Delete a user's credentials with what hangs off them.
+
+    Removes the webhooks registered with them first, then the credentials,
+    then revokes OAuth tokens at the provider. The External API's delete
+    calls this too, so neither surface can leave a live webhook or token
+    behind. Returns whether the provider revoked the tokens (None when there
+    were none to revoke).
+
+    Raises:
+        NeedConfirmation: a webhook is still in use and ``force`` is False;
+            nothing has been deleted.
+    """
+    await remove_all_webhooks_for_credentials(user_id, creds, force)
+
     tokens_revoked = None
     if provider == ProviderName.CODEX:
-        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
+        tokens_revoked = await revoke_codex_credentials(
+            creds_manager, user_id, creds.id
+        )
     else:
-        await creds_manager.delete(user_id, cred_id)
+        await creds_manager.delete(user_id, creds.id)
 
     if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
         if provider_matches(provider.value, ProviderName.MCP.value):
@@ -1196,7 +1234,7 @@ async def delete_credentials(
             handler = _get_provider_oauth_handler(request, provider)
         tokens_revoked = await handler.revoke_tokens(creds)
 
-    return CredentialsDeletionResponse(revoked=tokens_revoked)
+    return tokens_revoked
 
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
@@ -1214,6 +1252,12 @@ async def webhook_ingress_generic(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
+    if not supports_webhooks(provider):
+        # Worded like the unknown-webhook 404 below, so the two can't be told apart.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Webhook #{webhook_id} not found",
+        )
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
@@ -1239,15 +1283,6 @@ async def webhook_ingress_generic(
         )
 
     user_id = webhook.user_id
-    try:
-        credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
-            else None
-        )
-    except NotFoundError as e:
-        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     # Run provider signature verification (no-op for providers whose protocol
     # has no signing scheme). 403 on failure; not 404 — that would leak
@@ -1269,6 +1304,17 @@ async def webhook_ingress_generic(
     if await is_user_banned(user_id):
         logger.info(f"Dropping webhook #{webhook_id} delivery: owner is banned")
         return
+
+    # Only after the signature: loading can refresh the owner's OAuth token.
+    try:
+        credentials = (
+            await creds_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials

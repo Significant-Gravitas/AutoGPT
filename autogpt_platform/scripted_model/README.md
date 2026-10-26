@@ -10,15 +10,17 @@ and local test stacks. Self-hosted and hosted deployments never start it.
 
 ## How the platform reaches it
 
-`docker-compose.journeys.yml` puts the backend in OpenRouter mode with
-`CHAT_BASE_URL=http://scripted_model:4010/api/v1`, so both engines and every
-side call come here:
+`docker-compose.journeys.yml` points the chat, memory LLM and memory embedder
+base URLs at `http://scripted_model:4010/api/v1`, so both engines and their
+side calls come here:
 
 | Caller | Request | Dialect |
 | --- | --- | --- |
 | SDK engine (the Claude Agent SDK's CLI, the default) | `POST /api/v1/messages` | Anthropic Messages, streamed |
 | Baseline engine (`FORCE_FLAG_COPILOT_SDK=false`) | `POST /api/v1/chat/completions` | OpenAI chat completions, streamed |
 | Side calls (session title) | `POST /api/v1/chat/completions` | non-streamed, no tools |
+| Memory extraction | `POST /api/v1/responses` | OpenAI Responses, structured output |
+| Memory search | `POST /api/v1/embeddings` | OpenAI Embeddings |
 
 The CLI also sends `HEAD /api/api/hello` to check it can reach the server,
 and may ask `POST /api/v1/messages/count_tokens`; both are answered.
@@ -84,6 +86,14 @@ round or retry), or a tool the platform didn't offer. A journey fails loudly
 instead of waiting on a reply that never comes. A request that offers no tools
 is a side call and gets the script's `title`.
 
+Memory extraction requests get a minimal value for the object, array and scalar
+schema forms Graphiti requests. Lists are empty and scalar fields use neutral
+values, so the memory ingestion pipeline runs successfully without making up
+facts about the test conversation. These calls are journaled as
+`openai-responses` side calls. Memory searches get deterministic, nonzero
+1536-dimensional vectors like `text-embedding-3-small`; Graphiti consumes its
+configured 1024 dimensions. They are journaled as `openai-embeddings`.
+
 ## Cost
 
 The server keeps the provider's invoice, priced in `invoice.py` from
@@ -95,16 +105,18 @@ Anthropic's list prices (the same as `backend/copilot/anthropic_rates.json`):
   Message ids are `msg_…`, not OpenRouter's `gen-…`, so the platform doesn't
   try to look the cost up on openrouter.ai.
 
-Each journal entry records `usage` and `cost_usd`, so a journey can check that
-the platform recorded exactly what the provider billed.
+Each scripted chat-reply entry records `usage` and `cost_usd`, so a journey can
+check that the platform recorded exactly what the provider billed.
 
 ## Journal
 
 `GET http://localhost:4010/__scripted__/journal?nonce=<nonce>` (or
-`?script=<name>`) lists every request: dialect, model, which turn answered it,
-the tool results it carried, expectation checks, usage, cost, and whether the
-whole reply reached the platform (`completed`). Refused requests are there
-with their reason. The container log has one line per request.
+`?script=<name>`) lists a scripted run's chat requests: dialect, model, which
+turn answered it, tool results, expectation checks, usage, cost, and whether
+the whole reply reached the platform (`completed`). Refused scripted turns are
+there with their reason. Unfiltered reads also include memory side calls and
+unexpected requests; memory calls deliberately have no script or nonce, usage,
+or billed cost. The container log has one line per request.
 
 ## Run it
 

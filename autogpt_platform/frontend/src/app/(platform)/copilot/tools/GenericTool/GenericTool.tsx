@@ -11,6 +11,11 @@ import {
 } from "../../components/ToolAccordion/AccordionContent";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
+  isBlankOutput,
+  isEmptyResult,
+  NOTHING_FOUND,
+} from "../../components/ToolChain/resultHelpers";
+import {
   globalRegistry,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
@@ -73,12 +78,13 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
 
+  // TODO(tokens): no exact role for green-500 #16A34A
   const iconClass = "text-green-500";
   switch (category) {
     case "bash":
@@ -265,18 +271,21 @@ function getBashAccordionData(
       <div className="space-y-2">
         {command && (
           <div>
+            {/* TODO(tokens): no exact role for slate-500 #64748B */}
             <p className="mb-1 text-xs font-medium text-slate-500">command</p>
             <ContentCodeBlock>{command}</ContentCodeBlock>
           </div>
         )}
         {stdout && (
           <div>
+            {/* TODO(tokens): no exact role for slate-500 #64748B */}
             <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
+            {/* TODO(tokens): no exact role for slate-500 #64748B */}
             <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
@@ -314,6 +323,7 @@ function getWebAccordionData(
       content: (
         <div className="space-y-3">
           {answer && (
+            // TODO(tokens): no exact role for slate-50 #F7F8F9, slate-800 #475263
             <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
               {answer}
             </div>
@@ -327,6 +337,7 @@ function getWebAccordionData(
             return (
               <div key={i} className="text-sm">
                 {citation !== null && (
+                  // TODO(tokens): no exact role for slate-500 #64748B
                   <span className="mr-1.5 text-xs tabular-nums text-slate-500">
                     [{citation}]
                   </span>
@@ -336,7 +347,7 @@ function getWebAccordionData(
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-blue-600 hover:underline"
+                    className="font-medium text-info-foreground hover:underline"
                   >
                     {title}
                   </a>
@@ -344,12 +355,15 @@ function getWebAccordionData(
                   <span className="font-medium">{title}</span>
                 )}
                 {href && (
+                  // TODO(tokens): no exact role for slate-500 #64748B
                   <div className="text-xs text-slate-500">
                     {truncate(href, 100)}
                   </div>
                 )}
+                {/* TODO(tokens): no exact role for slate-700 #475263 */}
                 {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
                 {pageAge && (
+                  // TODO(tokens): no exact role for slate-400 #8A97A8
                   <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
                 )}
               </div>
@@ -476,6 +490,15 @@ function getFileAccordionData(
   if (!displayContent) {
     displayContent = extractMcpText(output);
   }
+  // A search or listing that found nothing answers "[]"; a file read keeps
+  // its text, even when the file itself holds "[]".
+  if (
+    (category === "file-list" || category === "search") &&
+    displayContent &&
+    isBlankOutput(displayContent)
+  ) {
+    displayContent = NOTHING_FOUND;
+  }
 
   // For edit: show old/new diff; for write: show written content if output is just a status
   const oldString =
@@ -536,10 +559,12 @@ function getFileAccordionData(
         {oldString && newString != null ? (
           <>
             <div>
+              {/* TODO(tokens): no exact role for red-400 #F26969 */}
               <p className="mb-1 text-xs font-medium text-red-400">removed</p>
               <ContentCodeBlock>{oldString}</ContentCodeBlock>
             </div>
             <div>
+              {/* TODO(tokens): no exact role for green-400 #45B56E */}
               <p className="mb-1 text-xs font-medium text-green-400">added</p>
               <ContentCodeBlock>{newString}</ContentCodeBlock>
             </div>
@@ -604,18 +629,16 @@ function getTodoAccordionData(input: unknown): AccordionData {
                 <Icon
                   icon={CheckmarkCircle02Icon}
                   size={14}
+                  // TODO(tokens): no exact role for green-500 #16A34A
                   className="text-green-500"
                 />
               ) : todo.status === "in_progress" ? (
-                <Icon
-                  icon={CircleDashedIcon}
-                  size={14}
-                  className="text-blue-500"
-                />
+                <Icon icon={CircleDashedIcon} size={14} className="text-info" />
               ) : (
                 <Icon
                   icon={CircleIcon}
                   size={14}
+                  // TODO(tokens): no exact role for neutral-400 #A3A3A3
                   className="text-neutral-400"
                 />
               )}
@@ -696,9 +719,11 @@ function getDefaultAccordionData(
   if (typeof raw === "string") {
     displayContent = raw;
   } else if (mcpText) {
-    displayContent = mcpText;
+    displayContent = isBlankOutput(mcpText) ? NOTHING_FOUND : mcpText;
   } else if (message) {
     displayContent = message;
+  } else if (isEmptyResult(output)) {
+    displayContent = NOTHING_FOUND;
   } else {
     try {
       displayContent = JSON.stringify(output, null, 2);
@@ -787,7 +812,7 @@ export function GenericTool({ part }: Props) {
         <MorphingTextAnimation
           text={text}
           animate={isStreaming}
-          className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
+          className={cn("min-w-0 flex-1", isError ? "text-error" : undefined)}
         />
       </div>
 
@@ -796,7 +821,7 @@ export function GenericTool({ part }: Props) {
           icon={<AccordionIcon category={category} />}
           title={accordionData.title}
           description={accordionData.description}
-          titleClassName={isError ? "text-red-500" : undefined}
+          titleClassName={isError ? "text-error" : undefined}
           defaultExpanded={category === "todo"}
         >
           {accordionData.content}

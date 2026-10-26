@@ -20,10 +20,13 @@ export function WorkflowsMovedDialog({ isOpen, onDismiss }: Props) {
   return (
     <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onDismiss()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[100] bg-zinc-950/25 backdrop-blur-sm motion-safe:animate-fade-in" />
+        <Dialog.Overlay
+          // TODO(tokens): no fitting role for bg-zinc-950/25 #09090B; #09090B is foreground, a text colour
+          className="fixed inset-0 z-[100] bg-zinc-950/25 backdrop-blur-sm motion-safe:animate-fade-in"
+        />
         <Dialog.Content
           data-workflows-moved-notice=""
-          className="fixed left-1/2 top-1/2 z-[100] flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[44rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl outline-none motion-safe:animate-fade-in"
+          className="fixed left-1/2 top-1/2 z-[100] flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[44rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-white/80 bg-surface shadow-2xl outline-none motion-safe:animate-fade-in"
           onEscapeKeyDown={(event) => {
             if (isComposingEvent(event)) event.preventDefault();
           }}
@@ -48,7 +51,7 @@ export function WorkflowsMovedDialog({ isOpen, onDismiss }: Props) {
             aria-label="Close notice"
             onClick={onDismiss}
             withTooltip={false}
-            className="absolute right-4 top-4 z-10 rounded-full border-white/80 bg-white/80"
+            className="absolute right-4 top-4 z-10 rounded-full border-white/80 bg-surface/80"
           >
             <Icon icon={Cancel01Icon} size={16} aria-hidden />
           </Button>

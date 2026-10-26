@@ -219,16 +219,19 @@ async def _create_user_with_loop_retry(user_data: dict) -> None:
     bound to a now-closed test function loop. The first session-loop DB
     call after that surfaces as ``RuntimeError: Event loop is closed``;
     the pool re-establishes itself on the retry.
+
+    Uncached on purpose: the cached lookup is shared through Redis for five
+    minutes, so on a fresh database it can return a user without writing the row.
     """
-    from backend.data.user import get_or_create_user
+    from backend.data.user import get_or_create_user_with_status
     from backend.util.exceptions import DatabaseError
 
     try:
-        await get_or_create_user(user_data)
+        await get_or_create_user_with_status(user_data)
     except DatabaseError as e:
         if "Event loop is closed" not in str(e):
             raise
-        await get_or_create_user(user_data)
+        await get_or_create_user_with_status(user_data)
 
 
 @pytest.fixture
