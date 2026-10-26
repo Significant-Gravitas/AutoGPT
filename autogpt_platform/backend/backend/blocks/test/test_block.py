@@ -34,7 +34,7 @@ async def test_rss_feed_block_skips_final_sleep_for_one_shot(monkeypatch):
         sleep_calls.append(delay)
 
     monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.async_sleep", sleep)
 
     block = ReadRSSFeedBlock()
     input_data = ReadRSSFeedBlock.Input(
@@ -84,7 +84,7 @@ async def test_rss_feed_block_keeps_polling_for_continuous_reads(monkeypatch):
         raise StopPolling
 
     monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.async_sleep", sleep)
 
     block = ReadRSSFeedBlock()
     input_data = ReadRSSFeedBlock.Input(

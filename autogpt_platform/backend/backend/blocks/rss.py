@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from asyncio import sleep as async_sleep
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -175,4 +176,4 @@ class ReadRSSFeedBlock(Block):
 
             yield "entries", all_entries
             if input_data.run_continuously:
-                await asyncio.sleep(input_data.polling_rate)
+                await async_sleep(input_data.polling_rate)
