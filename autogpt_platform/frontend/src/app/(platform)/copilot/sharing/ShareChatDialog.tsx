@@ -27,7 +27,8 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+          {/* TODO(tokens): no exact role for amber-900 */}
+          <div className="space-y-2 rounded-md border border-warning-border bg-warning-surface p-3">
             <Text variant="small" className="text-amber-900">
               Anyone with the link will see this conversation. Don&apos;t share
               if it contains secrets you pasted, personal details, or
@@ -46,11 +47,11 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
             // owner knows what they're about to expose) and after
             // enable (so they can audit what the public viewer sees
             // right now).
-            <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-              <Text variant="small" className="font-medium text-zinc-900">
+            <div className="rounded-md border border-border-base bg-surface-muted p-3">
+              <Text variant="small-medium" tone="primary">
                 {state.isShared ? "Currently sharing" : "About to share"}
               </Text>
-              <ul className="mt-1 list-disc pl-5 text-xs text-zinc-700">
+              <ul className="mt-1 list-disc pl-5 text-xs text-foreground-body">
                 <li>
                   {state.messageCount}{" "}
                   {state.messageCount === 1 ? "message" : "messages"}
@@ -73,12 +74,12 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               run in this chat — past and future — is included in the
               share automatically.  Locked while shared so the toggle
               state always matches what the viewer sees. */}
-          <div className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded border border-border-base px-3 py-2.5">
             <div className="min-w-0">
-              <Text variant="body" className="font-medium">
+              <Text variant="body-medium">
                 Share workflow runs in this chat
               </Text>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" tone="muted">
                 Includes every run from this conversation, including ones that
                 happen after you share.
               </Text>
@@ -93,14 +94,12 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
 
           {state.isShared && state.shareUrl && (
             <div className="space-y-2">
-              <Text variant="small" className="font-medium">
-                Share link
-              </Text>
+              <Text variant="small-medium">Share link</Text>
               <div className="flex items-center gap-2">
                 <input
                   readOnly
                   value={state.shareUrl}
-                  className="flex-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 font-mono text-xs"
+                  className="flex-1 rounded border border-border-base bg-surface-muted px-2 py-1.5 font-mono text-xs"
                 />
                 <Button
                   size="small"

@@ -80,7 +80,7 @@ export function FireExpertPreview({
 
 function PauseItemsPanel({ items }: PauseItemsPanelProps) {
   return (
-    <div className="rounded-xl bg-zinc-50 px-3.5 py-3 ring-1 ring-inset ring-zinc-200/80">
+    <div className="rounded-xl bg-surface-muted px-3.5 py-3 ring-1 ring-inset ring-border-base/80">
       <Text variant="small" tone="muted">
         Pausing now
       </Text>
@@ -137,6 +137,7 @@ function FireLine({ children }: FireLineProps) {
     <li className="flex items-start gap-2.5">
       <span
         aria-hidden
+        // TODO(tokens): no fitting role for bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
         className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300"
       />
       <Text variant="body" tone="secondary">

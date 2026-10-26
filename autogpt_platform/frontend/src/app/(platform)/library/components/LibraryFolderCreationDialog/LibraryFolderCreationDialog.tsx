@@ -181,17 +181,26 @@ export default function LibraryFolderCreationDialog() {
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col gap-2">
-                  <Text variant="large-medium" as="span" className="text-black">
+                  <Text
+                    variant="large-medium"
+                    as="span"
+                    className="text-foreground-base"
+                  >
                     Folder icon
                   </Text>
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3">
-                      <Text variant="small" className="text-zinc-500">
+                      <Text
+                        variant="small"
+                        className="text-foreground-tertiary"
+                      >
                         Selected:
                       </Text>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-2xl">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-2xl">
                         {form.watch("folderIcon") || (
-                          <span className="text-sm text-zinc-400">—</span>
+                          <span className="text-sm text-foreground-subtle">
+                            —
+                          </span>
                         )}
                       </div>
                     </div>

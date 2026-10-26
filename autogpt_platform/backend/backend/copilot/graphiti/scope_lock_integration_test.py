@@ -106,12 +106,10 @@ async def test_the_chat_tool_tries_a_busy_forget_once_more(
         return tries[-1]
 
     session = ChatSession.new(scope.owner_user_id, dry_run=False)
-    enabled = AsyncMock(return_value=True)
     with (
         patch.object(recall_forget, "FORGET_LOCK_WAIT_SECONDS", 0.3),
         patch.object(graphiti_forget, "_BUSY_RETRY_SECONDS", 0.1),
         patch.object(graphiti_forget, "retract", then_the_ingestion_finishes),
-        patch.object(graphiti_forget, "is_enabled_for_user", enabled),
     ):
         response = await MemoryForgetConfirmTool()._execute(
             scope.owner_user_id, session, uuids=[alice]

@@ -42,7 +42,7 @@ export function RunLessOftenDialog({ scheduleKey, isOpen, setIsOpen }: Props) {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : dialog.refusal ? (
-          <Text variant="body" className="text-zinc-600">
+          <Text variant="body" className="text-foreground-secondary">
             {dialog.refusal}
           </Text>
         ) : dialog.isError || !dialog.cadence ? (
@@ -95,7 +95,7 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
 
   if (cadence.options.length === 0) {
     return (
-      <Text variant="body" className="text-zinc-600">
+      <Text variant="body" className="text-foreground-secondary">
         “{cadence.title}” already runs once a week or less, so there is nothing
         less often to switch it to.
       </Text>
@@ -103,7 +103,7 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
   }
   return (
     <div className="flex flex-col gap-3">
-      <Text variant="body" className="text-zinc-600">
+      <Text variant="body" className="text-foreground-secondary">
         {cadence.current ? `It runs ${lowerFirst(cadence.current)} now. ` : ""}
         Fewer runs use less of your allowance. Times are in {cadence.timezone}.
       </Text>
@@ -116,10 +116,10 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
           <label
             key={option.cron}
             className={cn(
-              "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm text-zinc-900",
+              "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm text-foreground-strong",
               selected === option.cron
-                ? "border-zinc-900 bg-zinc-50"
-                : "border-zinc-200 hover:bg-zinc-50",
+                ? "border-action-hover bg-surface-muted"
+                : "border-border-base hover:bg-surface-muted",
             )}
           >
             <input
@@ -128,7 +128,7 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
               value={option.cron}
               checked={selected === option.cron}
               onChange={() => onSelect(option.cron)}
-              className="size-4 accent-zinc-900"
+              className="size-4 accent-action-hover"
             />
             {option.label}
           </label>

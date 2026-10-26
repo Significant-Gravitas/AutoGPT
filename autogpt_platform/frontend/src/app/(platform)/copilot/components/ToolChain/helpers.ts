@@ -2,6 +2,11 @@ import type { ToolUIPart } from "ai";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { isQuestionTool } from "../QuestionDock/helpers";
+import {
+  type ClarifyingQuestion,
+  extractClarifyingQuestions,
+} from "../../tools/clarifying-questions";
 import {
   extractToolName,
   getAnimationText,
@@ -37,6 +42,8 @@ export interface ChainRow {
   supersededSubSession?: boolean;
   /** A call the action gate held: whether it waits, ran or was turned down. */
   held?: HeldRowInfo;
+  /** A lookup that found nothing, which the label already says. */
+  emptyResult?: boolean;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([
@@ -149,6 +156,15 @@ export function isLiftedSetupRow(row: ChainRow): boolean {
   return data.type === "setup_requirements" && !!asObject(data.setup_info);
 }
 
+/** The questions a settled row asked once the user has moved past them. They
+ *  render under the chain, where their card was, so collapsing the chain
+ *  cannot hide what the user was asked. */
+export function getAskedQuestions(row: ChainRow): ClarifyingQuestion[] {
+  if (row.state !== "done" || row.lifted) return [];
+  if (!isQuestionTool(row.tool, row.output)) return [];
+  return extractClarifyingQuestions(row);
+}
+
 function getProviderIconSrc(tool: ToolUIPart): string | undefined {
   for (const source of [tool.input, tool.output]) {
     if (source && typeof source === "object" && "provider" in source) {
@@ -216,6 +232,24 @@ function narrationText(part: MessagePart): string | null {
   return text;
 }
 
+/** Chats saved before the engines named a dispatched tool after itself store
+ *  `run_capability(id: "tool:<name>")`; those rows are labelled as the tool
+ *  that ran. A `connect` call only checks sign-in, so it keeps its own. */
+function getRowCatalogLabel(
+  row: ChainRow,
+  context: { displayName: unknown; output: unknown },
+) {
+  const target = capabilityTargetRow(row);
+  const viaDispatch =
+    target.tool && target !== row && asObject(target.input)?.connect !== true
+      ? getCatalogLabel(target.tool, target.input, row.state, context)
+      : null;
+  return (
+    viaDispatch ??
+    getCatalogLabel(row.tool ?? "", row.input, row.state, context)
+  );
+}
+
 export function toChainRow(part: MessagePart, index: number): ChainRow | null {
   const narration = narrationText(part);
   if (narration !== null) {
@@ -272,10 +306,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
-      displayName: tool.title,
-      output: tool.output,
-    });
+    const catalogLabel = getRowCatalogLabel(
+      { key: tool.toolCallId, category: "other", text: "", state, ...data },
+      { displayName: tool.title, output: tool.output },
+    );
     if (catalogLabel) {
       return {
         key: tool.toolCallId,

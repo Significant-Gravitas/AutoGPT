@@ -53,15 +53,12 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                 ),
                 ChatCompletionUserMessageParam(
                     role="user",
-                    content=f"""
-                           Respond with "True" if PASSAGE is relevant to QUERY and "False" otherwise.
-                           <PASSAGE>
-                           {passage}
-                           </PASSAGE>
-                           <QUERY>
-                           {query}
-                           </QUERY>
-                           """,
+                    content=(
+                        'Respond with "True" if PASSAGE is relevant to QUERY'
+                        ' and "False" otherwise.\n'
+                        f"<PASSAGE>\n{passage}\n</PASSAGE>\n"
+                        f"<QUERY>\n{query}\n</QUERY>"
+                    ),
                 ),
             ]
             for passage in passages

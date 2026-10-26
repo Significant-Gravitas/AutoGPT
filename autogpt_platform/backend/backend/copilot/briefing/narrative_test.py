@@ -16,12 +16,14 @@ from backend.copilot.briefing.narrative import (
     NarrativeResponse,
     compose_narrative,
 )
+from backend.copilot.config import ChatConfig
 from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import (
     InferenceError,
     InferenceUsage,
     RouteDecision,
 )
+from backend.util.llm.providers import small_call_reasoning
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 USER = "user-1"
@@ -399,3 +401,11 @@ async def test_cost_log_failure_does_not_lose_the_narrative(cost_log):
 
 
 usage_snapshot = usage_activation_fixtures.usage_snapshot
+
+
+def test_the_lede_runs_without_reasoning_on_the_aux_model():
+    # Haiku 5.5's thinking spent the whole 200-token cap on 2 ledes in 12.
+    model = ChatConfig.model_fields["title_model"].default
+    assert small_call_reasoning(model, narrative_module._MAX_OUTPUT_TOKENS) == {
+        "reasoning": {"enabled": False}
+    }

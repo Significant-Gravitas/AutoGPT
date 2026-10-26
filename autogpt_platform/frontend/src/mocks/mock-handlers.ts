@@ -7,6 +7,7 @@ import {
   getCompleteBrainDumpGreetingMockHandler200,
   getGetBrainDumpIntroMockHandler200,
   getGetBrainDumpRecommendedProvidersMockHandler200,
+  getGetBrainDumpSuggestedTasksMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import {
@@ -21,7 +22,11 @@ import {
   getExecutionsMock,
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
-import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
+import {
+  getExpertsMock,
+  getGetExpertOnboardingMockHandler200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
@@ -61,6 +66,8 @@ export const mockHandlers = [
     greeting_done: true,
   }),
   getCompleteBrainDumpGreetingMockHandler200({ greeting_done: true }),
+  // No suggested first tasks unless a test sets some up.
+  getGetBrainDumpSuggestedTasksMockHandler200({ tasks: [], stored: false }),
   // Ready by default so the preparing step's recommendation gate never
   // holds unrelated tests; gate tests override with ready: false.
   getGetBrainDumpRecommendedProvidersMockHandler200({
@@ -79,6 +86,11 @@ export const mockHandlers = [
   // seed receipts into every chat's approval box.
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
   ...getExecutionsMock(),
+  // Nobody is enrolled by default, so every test sees the control experience.
+  getGetExperimentsGetExperimentAssignmentMockHandler(null),
+  // No setup questions waiting unless a test sets some up; a random chat id
+  // would pull every empty expert chat into that chat.
+  getGetExpertOnboardingMockHandler200(null),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),

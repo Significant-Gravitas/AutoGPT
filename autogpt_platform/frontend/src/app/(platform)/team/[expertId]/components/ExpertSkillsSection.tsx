@@ -2,22 +2,22 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
+import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import {
   BookOpen01Icon,
   BulbIcon,
   PlusSignIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { SectionEmptyState } from "../../components/SectionEmptyState";
+import { ToolbarSearch } from "../../components/ToolbarSearch";
 import { AddSkillDialog } from "./AddSkillDialog";
 import { ExpertSkillListItem } from "./ExpertSkillListItem";
-import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import { useExpertLearning } from "./useExpertLearning";
 import { useExpertSkills } from "./useExpertSkills";
-import { ToolbarSearch } from "../../components/ToolbarSearch";
 
 interface Props {
   expert: Expert;
@@ -48,7 +48,6 @@ export function ExpertSkillsSection({
     setMarketQuery,
     marketplaceSkills,
     isMarketplaceLoading,
-    hasMarketplace,
     addSkill,
     addMarketplaceSkill,
     removeSkill,
@@ -66,12 +65,14 @@ export function ExpertSkillsSection({
           <Button
             variant="secondary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
             Add skill
           </Button>
           <ToolbarSearch
+            textSize="body-md"
             id="expert-skills-search"
             label="Search skills"
             value={query}
@@ -81,7 +82,7 @@ export function ExpertSkillsSection({
       </div>
       {learning.enabled ? (
         <div
-          className="mb-3 flex flex-col gap-2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
+          className="mb-3 flex flex-col gap-2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
           data-testid="expert-learning-summary"
         >
           <Text variant="small" tone="secondary">
@@ -111,18 +112,20 @@ export function ExpertSkillsSection({
               key="book"
               icon={BookOpen01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
               key="bulb"
               icon={BulbIcon}
               size={22}
-              className="text-amber-500"
+              className="text-warning"
             />,
             <Icon
               key="sparkles"
               icon={SparklesIcon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}
@@ -132,6 +135,7 @@ export function ExpertSkillsSection({
           <Button
             variant="primary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
@@ -139,7 +143,7 @@ export function ExpertSkillsSection({
           </Button>
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No skills match.
         </Text>
       ) : (
@@ -172,7 +176,6 @@ export function ExpertSkillsSection({
         onMarketQueryChange={setMarketQuery}
         marketplaceSkills={marketplaceSkills}
         isMarketplaceLoading={isMarketplaceLoading}
-        hasMarketplace={hasMarketplace}
         isSaving={isSaving}
         onAdd={addSkill}
         onAddMarketplace={addMarketplaceSkill}

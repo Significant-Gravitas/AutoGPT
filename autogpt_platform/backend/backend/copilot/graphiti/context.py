@@ -158,8 +158,7 @@ def _spawn_ratification_hits(scope: MemoryScope, edges: list[EntityEdge]) -> Non
 
     Imports lazily so the dream/ratification module isn't pulled into
     every retrieval boot path; keeps the cold-start cost zero for
-    users on the rare GRAPHITI_MEMORY=on / DREAM_PASS_ENABLED=off
-    combination.
+    users whose independent DREAM_PASS_ENABLED flag is off.
     """
     edge_uuids = [edge.uuid for edge in edges]
     if not edge_uuids:

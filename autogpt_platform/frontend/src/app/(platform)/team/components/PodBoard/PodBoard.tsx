@@ -75,7 +75,7 @@ export function PodBoard({
           ))}
         </div>
       ) : podGroups.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-white p-8 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border-strong bg-surface p-8 text-center">
           <Text variant="large-medium" tone="primary">
             No pods yet
           </Text>
@@ -114,10 +114,11 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
       type="button"
       onClick={onOpen}
       aria-label={`Open ${name} pod`}
-      className="flex flex-col gap-3 rounded-2xl bg-white p-4 text-left transition-colors smooth-shadow-ring-sm hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+      // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+      className="flex flex-col gap-3 rounded-2xl bg-surface p-4 text-left transition-colors smooth-shadow-ring-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <div className="flex items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-foreground-secondary">
           <Icon icon={Folder02Icon} size={20} />
         </span>
         <div className="min-w-0">
@@ -142,7 +143,7 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
               variant="small"
               as="li"
               tone="secondary"
-              className="max-w-full truncate rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-inset ring-zinc-200"
+              className="max-w-full truncate rounded-md bg-surface-muted px-2 py-0.5 ring-1 ring-inset ring-border-base"
             >
               {expert.name}
             </Text>

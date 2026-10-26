@@ -128,7 +128,6 @@ export default function useCredits({
     fetchTransactionHistory();
     // Note: We only need to fetch transaction history once.
     // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchInitialTransactionHistory]);
 
   const [refundRequests, setRefundRequests] = useState<RefundRequest[]>([]);

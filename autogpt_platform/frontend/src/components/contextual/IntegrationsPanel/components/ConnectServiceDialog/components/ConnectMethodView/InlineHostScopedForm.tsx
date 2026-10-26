@@ -114,7 +114,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
                 wrapperClassName="!mb-0"
               />
             </FormControl>
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" className="!text-foreground-tertiary">
               {host
                 ? "Taken from the URL this block calls."
                 : "The host of the URL this block will call."}
@@ -125,10 +125,10 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
       />
 
       <div className="space-y-2">
-        <Text variant="small-medium" className="text-zinc-900">
+        <Text variant="small-medium" className="text-foreground-strong">
           Headers
         </Text>
-        <Text variant="small" className="!text-zinc-500">
+        <Text variant="small" className="!text-foreground-tertiary">
           Sent with every request to this host, such as Authorization.
         </Text>
 

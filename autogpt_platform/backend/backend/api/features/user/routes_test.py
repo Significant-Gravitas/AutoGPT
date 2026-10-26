@@ -130,6 +130,28 @@ def test_get_or_create_user_route_reports_creation(
     assert response.headers["X-AutoGPT-User-Created"] == "true"
 
 
+@pytest.mark.parametrize("was_created", [False, True])
+def test_get_or_create_user_route_flags_an_internal_sign_in(
+    mocker: pytest_mock.MockFixture, test_user_id: str, was_created: bool
+) -> None:
+    """A sign-in sets is_internal again; a new account was sent it already."""
+    mock_user = Mock(id=test_user_id, email="test@example.com")
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {"id": test_user_id}
+    mocker.patch(
+        "backend.api.features.user.routes.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=was_created),
+    )
+    mark = mocker.patch("backend.api.features.user.routes.mark_internal_on_sign_in")
+
+    assert client.post("/auth/user").status_code == 200
+
+    if was_created:
+        mark.assert_not_called()
+    else:
+        mark.assert_called_once_with(test_user_id, "test@example.com", "user")
+
+
 def test_get_or_create_user_route_documents_creation_header() -> None:
     response_schema = app.openapi()["paths"]["/auth/user"]["post"]["responses"]["200"]
 

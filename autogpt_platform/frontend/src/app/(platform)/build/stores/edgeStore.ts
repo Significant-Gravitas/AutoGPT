@@ -49,6 +49,7 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
       markerEnd: {
         type: MarkerType.ArrowClosed,
         strokeWidth: 2,
+        // TODO(tokens): no exact role: #555 #555555
         color: "#555",
       },
       ...edge,

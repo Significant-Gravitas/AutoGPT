@@ -82,6 +82,23 @@ describe("useUploadQueue", () => {
     expect(uploadBrainDumpPart).toHaveBeenCalledTimes(1);
   });
 
+  // The server refuses a part of a discarded take unless it is sent again on
+  // purpose, so a late part from the original upload cannot reopen it.
+  it("tells the server which parts are sent again from the browser's copy", async () => {
+    uploadBrainDumpPart.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useUploadQueue());
+
+    await act(async () => {
+      result.current.enqueue(part(0));
+      result.current.enqueue({ ...part(1), resent: true });
+      await result.current.flush();
+    });
+
+    expect(uploadBrainDumpPart.mock.calls.map(([body]) => body.resent)).toEqual(
+      [undefined, true],
+    );
+  });
+
   it("uploads every queued part in order", async () => {
     const seen: number[] = [];
     uploadBrainDumpPart.mockImplementation(
@@ -326,6 +343,29 @@ describe("useUploadQueue", () => {
 
     expect(flushed).toBe(true);
     expect(uploadBrainDumpPart).not.toHaveBeenCalled();
+  });
+
+  // A discarded take's part 0 that reaches the server late claims the row
+  // for a take nobody will finalize, holding it against the user's next one.
+  it("stops retrying a part once its take is discarded", async () => {
+    uploadBrainDumpPart.mockRejectedValue(new Error("offline"));
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useUploadQueue());
+
+    await act(async () => {
+      result.current.enqueue(part(0));
+      await Promise.resolve();
+    });
+    expect(uploadBrainDumpPart).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.reset();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(uploadBrainDumpPart).toHaveBeenCalledTimes(1);
   });
 
   // The upload of the old take's last chunk is usually still on the wire

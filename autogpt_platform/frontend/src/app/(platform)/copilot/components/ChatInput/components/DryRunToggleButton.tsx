@@ -4,7 +4,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
@@ -25,24 +26,27 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
   const ariaLabel = isDryRun ? "Test mode active" : "Enable Test mode";
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
           type="button"
           aria-pressed={isDryRun}
           onClick={onToggle}
           className={cn(
-            "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
+            "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-surface-hover",
             isDryRun
-              ? "text-amber-600 hover:text-amber-700"
-              : "text-zinc-500 hover:text-zinc-700",
+              ? // TODO(tokens): no exact role for text-amber-600
+                "text-amber-600 hover:text-warning-foreground"
+              : "text-foreground-tertiary hover:text-foreground-body",
           )}
           aria-label={ariaLabel}
         >
           <Icon icon={FlaskConicalIcon} size={16} />
         </button>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

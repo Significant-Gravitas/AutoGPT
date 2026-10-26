@@ -71,7 +71,7 @@ def resolve_route(
 def anthropic_batch_route(model: str) -> RouteDecision:
     """The route of a dream phase the orchestrator sent to Anthropic's
     Message Batches API: the platform's Anthropic key, at the batch discount
-    (``dream/routing.batch_discount``), whatever the chat transport."""
+    (``inference/execution_path.batch_discount``), whatever the chat transport."""
     return RouteDecision(
         engine="provider_batch",
         auth_provider="platform",
@@ -132,17 +132,16 @@ def _missing_api_key_message(provider: ProviderLiteral) -> str:
     """Per-provider friendly error for the no-API-key case.
 
     Names the env var the operator needs to set and, for subscription mode,
-    why the OAuth token is not enough. Surfaced through the dream's JobStatus
-    ``error`` so an operator can fix it without a logs dive.
+    why the OAuth token is not enough. The calling job reports this error.
     """
     if provider == "anthropic":
         return (
             "Anthropic API key not configured — set ANTHROPIC_API_KEY to "
-            "enable the dream pass under subscription / direct-Anthropic "
+            "enable background inference under subscription / direct-Anthropic "
             "mode. The Claude Code OAuth token cannot be used for direct "
             "Messages API calls (see "
             "docs/platform/copilot-local-llm.md#subscription-mode-caveat)."
         )
     if provider == "open_router":
         return "OpenRouter API key not configured — set OPEN_ROUTER_API_KEY."
-    return f"No API key configured for dream pass provider={provider!r}."
+    return f"No API key configured for background inference provider={provider!r}."

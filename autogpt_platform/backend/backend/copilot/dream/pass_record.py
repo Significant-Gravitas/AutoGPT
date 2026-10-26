@@ -46,7 +46,13 @@ from .fetch import DreamInput
 from .locks import DEFAULT_LOCK_TTL_SECONDS
 from .pass_errors import is_pass_error, pass_error
 from .routing import ExecutionPath
-from .schemas import DreamOperations, DreamPassResult, DreamPassUsage, DreamPhase
+from .schemas import (
+    DreamOperations,
+    DreamPassResult,
+    DreamPassUsage,
+    DreamPhase,
+    IngestionDrainStatus,
+)
 
 # What started a pass: the nightly job, the admin trigger, or an eval run.
 DreamTrigger = Literal["cron", "admin", "eval"]
@@ -343,6 +349,18 @@ def stop_error(row: DreamPassRecord) -> str | None:
     return pass_error("expired", "stopped")
 
 
+def _drain_status(row: DreamPassRecord) -> IngestionDrainStatus:
+    """What *row* says of its writes' drain. Only an applied record knows.
+    Without one, a pass that never recorded apply starting (``applying``)
+    never applied; one that did may have applied before it ended, so its
+    drain is unknown."""
+    if row.operations.applied is not None:
+        return row.operations.applied.ingestion_drain_status
+    if row.operations.planned is None:
+        return IngestionDrainStatus.not_applied
+    return IngestionDrainStatus.unknown
+
+
 def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
     """The ``DreamPassResult`` a pass's row describes, on either route.
 
@@ -372,7 +390,7 @@ def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
         demotion_accounting_complete=applied.demotion_accounting_complete,
         summary_for_user=applied.summary_for_user,
         dream_session_id=applied.dream_session_id,
-        ingestion_drain_status=applied.ingestion_drain_status,
+        ingestion_drain_status=_drain_status(row),
         operations=applied.snapshot,
         usage=row.usage,
         error=row.error,

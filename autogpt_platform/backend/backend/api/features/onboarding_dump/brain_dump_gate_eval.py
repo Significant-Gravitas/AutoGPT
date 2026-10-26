@@ -35,6 +35,7 @@ class GateFileResult(BaseModel):
     expected: GateExpectation
     outcome: GateExpectation
     error_code: str | None = None
+    reason: str | None = None
     correct: bool
     transcript_preview: str = ""
     transcription_error: str | None = None
@@ -73,14 +74,20 @@ def build_report(
 async def evaluate_transcript(
     name: str, expected: GateExpectation, transcript: str
 ) -> GateFileResult:
-    error_code = await quality.check_transcript_quality(transcript)
-    outcome: GateExpectation = "pass" if error_code is None else "reject"
+    rejection = await quality.check_transcript_quality(transcript)
+    outcome: GateExpectation = "pass" if rejection is None else "reject"
+    # A judge that could not be asked made no call, so it confirms nothing,
+    # not even an expected reject.
+    judged = (
+        rejection is None or rejection.error_code != quality.QUALITY_CHECK_UNAVAILABLE
+    )
     return GateFileResult(
         name=name,
         expected=expected,
         outcome=outcome,
-        error_code=error_code,
-        correct=outcome == expected,
+        error_code=rejection.error_code if rejection else None,
+        reason=rejection.reason if rejection else None,
+        correct=judged and outcome == expected,
         transcript_preview=transcript.strip()[:TRANSCRIPT_PREVIEW_CHARS],
     )
 
@@ -156,7 +163,11 @@ def render_gate_report(report: GateReport) -> list[str]:
 
 
 def _gate_detail(result: GateFileResult) -> str:
-    detail = result.error_code or result.transcript_preview or "(empty transcript)"
+    detail = (
+        f"{result.error_code} ({result.reason})"
+        if result.error_code
+        else result.transcript_preview or "(empty transcript)"
+    )
     if result.transcription_error:
         detail += f"  [stt error: {result.transcription_error[:40]}]"
     return detail

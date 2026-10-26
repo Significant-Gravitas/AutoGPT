@@ -45,6 +45,7 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
+from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
     DEFERRED_TOOL_NAMES,
     TOOL_REGISTRY,
@@ -362,7 +363,8 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": [{"type": "text", "text": text}]
+        + ([result.image.mcp()] if result.image is not None else []),
         "isError": not result.success,
     }
 
@@ -863,7 +865,7 @@ def _make_truncating_wrapper(
                 return released
 
         result = await run(args)
-        truncated = truncate(result, _MCP_MAX_CHARS)
+        truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
         remember_cut_google_output(
             _text_from_mcp_result(result), _text_from_mcp_result(truncated)
         )
@@ -1139,7 +1141,9 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # ListAgents/SendMessage: reach other CLI sessions in the same pod.
 # NotebookEdit: writes files outside the MCP Write/Edit tools.
 # Skill: Claude Code's own skills; copilot skills go through read_skill.
-# Workflow: spawns multi-agent runs with no copilot budget or UI.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.  With
+#   slash commands disabled its description also grows from ~5K to ~20K
+#   chars on every request.
 # EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
 # TaskStop: unused here, and permissions cannot name it, so filtered sessions
 #   would drop it anyway.
@@ -1182,23 +1186,6 @@ BLOCKED_TOOLS = {
 # Allowed Glob/Grep calls must also stay within the session's local paths.
 # Native Read/Write/Edit stay blocked; MCP handlers provide file access.
 WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep"}
-
-# Dangerous patterns in tool inputs
-DANGEROUS_PATTERNS = [
-    r"sudo",
-    r"rm\s+-rf",
-    r"dd\s+if=",
-    r"/etc/passwd",
-    r"/etc/shadow",
-    r"chmod\s+777",
-    r"curl\s+.*\|.*sh",
-    r"wget\s+.*\|.*sh",
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"__import__",
-    r"os\.system",
-    r"subprocess",
-]
 
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode

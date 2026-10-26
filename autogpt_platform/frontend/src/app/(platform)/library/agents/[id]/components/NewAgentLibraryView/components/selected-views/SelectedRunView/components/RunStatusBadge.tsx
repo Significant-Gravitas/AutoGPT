@@ -22,48 +22,70 @@ type StatusIconMap = {
 
 const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
   INCOMPLETE: {
-    icon: <Icon icon={AlertCircleIcon} size={16} className="text-red-700" />,
-    bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    icon: (
+      <Icon
+        icon={AlertCircleIcon}
+        size={16}
+        className="text-error-foreground"
+      />
+    ),
+    bgColor: "bg-error-surface",
+    textColor: "!text-error-foreground",
   },
   QUEUED: {
+    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
     icon: <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
   },
   RUNNING: {
+    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
     icon: <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
   },
   REVIEW: {
+    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
     icon: <Icon icon={Alert01Icon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
   },
   COMPLETED: {
     icon: (
-      <Icon icon={CheckmarkCircle02Icon} size={16} className="text-green-700" />
+      <Icon
+        icon={CheckmarkCircle02Icon}
+        size={16}
+        className="text-success-foreground"
+      />
     ),
-    bgColor: "bg-green-50",
-    textColor: "!text-green-700",
+    bgColor: "bg-success-surface",
+    textColor: "!text-success-foreground",
   },
   TERMINATED: {
+    // TODO(tokens): no exact role for text-slate-700 (#475263)
     icon: <Icon icon={StopCircleIcon} size={16} className="text-slate-700" />,
     bgColor: "bg-slate-50",
     textColor: "!text-slate-700",
   },
   FAILED: {
-    icon: <Icon icon={CancelCircleIcon} size={16} className="text-red-700" />,
-    bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    icon: (
+      <Icon
+        icon={CancelCircleIcon}
+        size={16}
+        className="text-error-foreground"
+      />
+    ),
+    bgColor: "bg-error-surface",
+    textColor: "!text-error-foreground",
   },
 };
 
 const completedWithErrorsStyle: StatusIconMap = {
-  icon: <Icon icon={Alert02Icon} size={16} className="text-amber-700" />,
-  bgColor: "bg-amber-50",
-  textColor: "!text-amber-700",
+  icon: (
+    <Icon icon={Alert02Icon} size={16} className="text-warning-foreground" />
+  ),
+  bgColor: "bg-warning-surface",
+  textColor: "!text-warning-foreground",
 };
 
 type Props = {

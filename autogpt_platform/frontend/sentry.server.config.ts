@@ -10,6 +10,7 @@ import {
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
+import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 // import { NodeProfilingIntegration } from "@sentry/profiling-node";
@@ -35,14 +36,18 @@ Sentry.init({
   // No email or IP address reaches Sentry; the user id is enough.
   sendDefaultPii: false,
   beforeSend(event) {
-    return stripSpanPII(stripUserPII(stripRequestCredentials(event)));
+    return stripSpanPII(
+      stripUserPII(redactEventURLs(stripRequestCredentials(event))),
+    );
   },
   beforeSendTransaction(event) {
     return isSentryTunnelTransaction(event)
       ? null
-      : stripSpanPII(stripUserPII(stripRequestCredentials(event)));
+      : stripSpanPII(
+          stripUserPII(redactEventURLs(stripRequestCredentials(event))),
+        );
   },
-  beforeSendSpan: stripSpanDataPII,
+  beforeSendSpan: (span) => redactSpanURLs(stripSpanDataPII(span)),
   beforeSendLog: stripLogUserPII,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.

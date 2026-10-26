@@ -1,9 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
-import { notFound } from "next/navigation";
 
 const RaiseFlow = dynamic(
   () =>
@@ -14,15 +12,6 @@ const RaiseFlow = dynamic(
 );
 
 export default function RaisePage() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-
-  if (!ready) {
-    return <RaiseSkeleton />;
-  }
-  if (!enabled) {
-    notFound();
-  }
-
   return <RaiseFlow />;
 }
 

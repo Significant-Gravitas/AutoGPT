@@ -23,7 +23,7 @@ export function FileThumbnail({ file }: Props) {
 
   return (
     <div
-      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-white"
+      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border-base bg-surface"
       data-testid="artifacts-thumbnail"
     >
       {showImage ? (
@@ -39,7 +39,7 @@ export function FileThumbnail({ file }: Props) {
         <Icon
           icon={getFileTypeIcon(file.mime_type, file.name)}
           size={18}
-          className="text-zinc-500"
+          className="text-foreground-tertiary"
         />
       )}
     </div>
