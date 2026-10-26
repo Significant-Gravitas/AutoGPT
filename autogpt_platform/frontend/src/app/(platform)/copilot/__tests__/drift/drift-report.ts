@@ -186,7 +186,7 @@ async function renderReloaded(rows: Row[]) {
 }
 
 /**
- * One entry per rendered message, in order. The turn's "Thought for" label is
+ * One entry per rendered message, in order. The turn's time ("Done in 5s") is
  * left out: the client counts it live and the server stamps its own figure.
  */
 function readTranscript(): TranscriptEntry[] {
@@ -194,7 +194,7 @@ function readTranscript(): TranscriptEntry[] {
     (el) => ({
       role: el.classList.contains("is-user") ? "user" : "assistant",
       text: (el.textContent ?? "")
-        .replace(/Thought for (\d+m )?\d+s/g, "")
+        .replace(/(Done in|Stopped after|Thought for) (\d+m )?\d+s/g, "")
         .replace(/\s+/g, " ")
         .trim(),
     }),

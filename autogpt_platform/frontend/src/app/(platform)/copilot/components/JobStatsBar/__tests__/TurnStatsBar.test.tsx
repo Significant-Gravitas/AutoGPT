@@ -6,6 +6,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CANCELLED_MARKER } from "../../../useCopilotStop";
 import { TurnStatsBar } from "../TurnStatsBar";
 import { useElapsedTimer } from "../useElapsedTimer";
 
@@ -128,10 +129,137 @@ describe("TurnStatsBar", () => {
     const { container } = render(
       <TurnStatsBar turnMessages={messages} stats={{ durationMs: 4_000 }} />,
     );
-    expect(screen.getByText(/Thought for 4s/)).toBeDefined();
+    expect(screen.getByText("Done in 4s")).toBeDefined();
     const bar = container.querySelector("div.mt-2");
     expect(bar?.textContent).toMatch(/2\s*workflows run/);
     expect(bar?.textContent).toMatch(/1\s*action/);
+  });
+});
+
+function assistant(parts: unknown[]): Msg {
+  return { id: "a1", role: "assistant", parts: parts as Msg["parts"] };
+}
+
+const reply = { type: "text", text: "Here are your designs." };
+const ranWorkflow = {
+  type: "tool-run_agent",
+  toolCallId: "t1",
+  state: "output-available",
+  input: {},
+  output: {},
+};
+
+describe("TurnStatsBar — how the turn ended", () => {
+  it("says the turn is done, with a check and the time it took", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={[assistant([reply])]}
+        stats={{ durationMs: 134_000 }}
+      />,
+    );
+    const line = screen.getByTestId("turn-end-line");
+    expect(line.textContent).toBe("Done in 2m 14s");
+    expect(line.querySelector("svg")).not.toBeNull();
+  });
+
+  it("says done for a turn that ended in tools, with what it produced", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={[
+          assistant([ranWorkflow, { ...ranWorkflow, toolCallId: "t2" }]),
+        ]}
+        elapsedSeconds={95}
+      />,
+    );
+    expect(screen.getByTestId("turn-end-line").textContent).toMatch(
+      /^Done in 1m 35s·\s*2 workflows run$/,
+    );
+  });
+
+  it("says done without a time when only the work done is known", () => {
+    render(<TurnStatsBar turnMessages={[assistant([ranWorkflow])]} />);
+    expect(screen.getByTestId("turn-end-line").textContent).toMatch(
+      /^Done·\s*1 workflow run$/,
+    );
+  });
+
+  it("says stopped, not done, when the user stopped the turn", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={[
+          assistant([ranWorkflow, { type: "text", text: CANCELLED_MARKER }]),
+        ]}
+        elapsedSeconds={8}
+      />,
+    );
+    const line = screen.getByTestId("turn-end-line");
+    expect(line.textContent).toMatch(/^Stopped after 8s/);
+    expect(line.querySelector("svg")).toBeNull();
+  });
+
+  it("says stopped for the stop note the server saves", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={[
+          assistant([
+            reply,
+            {
+              type: "text",
+              text: "[__COPILOT_SYSTEM_e3b0__] Execution stopped by user",
+            },
+          ]),
+        ]}
+        stats={{ durationMs: 8_000 }}
+      />,
+    );
+    expect(screen.getByTestId("turn-end-line").textContent).toBe(
+      "Stopped after 8s",
+    );
+  });
+
+  it.each([
+    [
+      "an error",
+      [reply, { type: "text", text: "[__COPILOT_ERROR_f7a1__] Rate limited" }],
+    ],
+    [
+      "a note that the turn ended early",
+      [
+        {
+          type: "text",
+          text: "[__COPILOT_SYSTEM_e3b0__] The assistant ran into an error and stopped.",
+        },
+      ],
+    ],
+    [
+      "a call waiting for approval",
+      [
+        reply,
+        {
+          ...ranWorkflow,
+          output: { type: "approval_required", review_id: "r1" },
+        },
+      ],
+    ],
+    [
+      "a call with no result",
+      [reply, { ...ranWorkflow, state: "input-available", output: undefined }],
+    ],
+    [
+      "a pause",
+      [reply, { type: "data-turn-paused", data: { reason: "daily" } }],
+    ],
+  ])("never says done for a turn that ended in %s", (_, parts) => {
+    render(
+      <TurnStatsBar
+        turnMessages={[assistant(parts)]}
+        stats={{ durationMs: 12_000 }}
+      />,
+    );
+    const line = screen.getByTestId("turn-end-line");
+    expect(line.textContent).not.toMatch(/Done/);
+    expect(line.textContent).toMatch(/^Thought for 12s/);
+    expect(line.querySelector("svg")).toBeNull();
   });
 });
 

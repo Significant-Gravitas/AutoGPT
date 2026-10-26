@@ -17,6 +17,7 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
@@ -667,6 +668,12 @@ export function ChatMessagesContainer({
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
             <ChatErrorBanner error={error} />
+          )}
+          {!readOnly && (
+            <TurnEndAnnouncer
+              isStreaming={isActivelyStreaming}
+              messages={messages}
+            />
           )}
           <TailSpacer
             messageID={lastUserMessageID}
