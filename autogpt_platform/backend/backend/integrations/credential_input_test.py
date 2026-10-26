@@ -1,4 +1,5 @@
 import importlib
+import time
 
 import pytest
 from pydantic import SecretStr
@@ -103,3 +104,28 @@ def test_credentials_store_imports_with_empty_settings():
         and value.api_key.get_secret_value() == ""
     ]
     assert blank_system_creds, "expected unset system API keys to stay empty"
+
+
+@pytest.mark.parametrize("offset", [-3600, 0])
+def test_api_key_expiry_not_in_future_rejected(offset: int):
+    creds = APIKeyCredentials(
+        provider="openai",
+        api_key=SecretStr("k"),
+        expires_at=int(time.time()) + offset,
+    )
+
+    with pytest.raises(
+        InvalidCredentialInputError, match="Expiry must be in the future"
+    ):
+        normalize_user_supplied_credentials(creds)
+
+
+@pytest.mark.parametrize("expires_at", [None, int(time.time()) + 86400])
+def test_api_key_future_or_no_expiry_kept(expires_at: int | None):
+    creds = APIKeyCredentials(
+        provider="openai", api_key=SecretStr("k"), expires_at=expires_at
+    )
+
+    normalize_user_supplied_credentials(creds)
+
+    assert creds.expires_at == expires_at

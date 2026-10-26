@@ -1,5 +1,7 @@
-"""External v1 credential creation rejects blank secrets (#15727)."""
+"""External v1 credential creation rejects blank secrets (#15727) and past
+API key expiries (#16234)."""
 
+import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
@@ -139,3 +141,36 @@ def test_host_scoped_stripped(create: AsyncMock):
     assert isinstance(stored, HostScopedCredentials)
     assert stored.host == "api.example.com"
     assert stored.get_headers_dict() == {"Authorization": "Bearer x"}
+
+
+def test_past_api_key_expiry_rejected(create: AsyncMock):
+    resp = client.post(
+        "/integrations/openai/credentials",
+        json={
+            "type": "api_key",
+            "title": "K",
+            "api_key": "sk-x",
+            "expires_at": int(time.time()) - 60,
+        },
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "Expiry must be in the future"
+    create.assert_not_called()
+
+
+@pytest.mark.parametrize("offset", [86400, None], ids=["future", "none"])
+def test_future_or_no_api_key_expiry_stored(create: AsyncMock, offset: int | None):
+    expires_at = None if offset is None else int(time.time()) + offset
+    resp = client.post(
+        "/integrations/openai/credentials",
+        json={
+            "type": "api_key",
+            "title": "K",
+            "api_key": "sk-x",
+            "expires_at": expires_at,
+        },
+    )
+
+    assert resp.status_code == 201
+    assert create.await_args.args[1].expires_at == expires_at

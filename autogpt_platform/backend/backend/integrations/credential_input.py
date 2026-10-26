@@ -26,7 +26,8 @@ class InvalidCredentialInputError(ValueError):
 def normalize_user_supplied_credentials(credentials: Credentials) -> Credentials:
     """Strip and check the secrets of credentials that came from a user request.
 
-    - API key: stripped, and must not be empty.
+    - API key: stripped, and must not be empty. An expiry, if given, must be
+      in the future.
     - Username/password: the username is stripped and required. The password is
       left exactly as given, since it may legitimately contain surrounding
       spaces or be empty.
@@ -38,13 +39,16 @@ def normalize_user_supplied_credentials(credentials: Credentials) -> Credentials
     returned.
 
     Raises:
-        InvalidCredentialInputError: if a required value is blank.
+        InvalidCredentialInputError: if a required value is blank, or an API
+            key's expiry has already passed.
     """
     if isinstance(credentials, APIKeyCredentials):
         api_key = credentials.api_key.get_secret_value().strip()
         if not api_key:
             raise InvalidCredentialInputError("API key must not be empty")
         credentials.api_key = SecretStr(api_key)
+        if credentials.is_expired():
+            raise InvalidCredentialInputError("Expiry must be in the future")
 
     elif isinstance(credentials, UserPasswordCredentials):
         username = credentials.username.get_secret_value().strip()

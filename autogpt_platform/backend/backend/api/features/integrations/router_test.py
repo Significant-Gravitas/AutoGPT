@@ -1,5 +1,6 @@
 """Tests for credentials API security: no secret leakage, SDK defaults filtered."""
 
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -452,6 +453,44 @@ class TestCreateCredentialRejectsBlankSecrets:
         assert isinstance(stored, HostScopedCredentials)
         assert stored.host == "api.example.com"
         assert stored.get_headers_dict() == {"X-Api-Key": "secret"}
+
+
+class TestCreateCredentialChecksExpiry:
+    """POST /{provider}/credentials rejects an API key whose expiry has passed
+    (#16234)."""
+
+    @staticmethod
+    def _post(expires_at: int | None) -> tuple[httpx.Response, AsyncMock]:
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post(
+                "/openai/credentials",
+                json={
+                    "provider": "openai",
+                    "type": "api_key",
+                    "title": "K",
+                    "api_key": "sk-x",
+                    "expires_at": expires_at,
+                },
+            )
+        return resp, mock_mgr.create
+
+    def test_past_expiry_rejected(self):
+        resp, create = self._post(int(time.time()) - 60)
+
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Expiry must be in the future"
+        create.assert_not_called()
+
+    @pytest.mark.parametrize("offset", [86400, None], ids=["future", "none"])
+    def test_future_or_no_expiry_stored(self, offset: int | None):
+        expires_at = None if offset is None else int(time.time()) + offset
+        resp, create = self._post(expires_at)
+
+        assert resp.status_code == 201
+        assert create.await_args.args[1].expires_at == expires_at
 
 
 class TestManagedCredentials:

@@ -44,6 +44,7 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
     USER_TIMEZONE_NOT_SET,
+    APIKeyCredentials,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
@@ -598,6 +599,12 @@ async def _validate_node_input_credentials(
                     f"{credentials_meta.provider}<>{credentials.provider}"
                 )
                 credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
+                continue
+
+            if isinstance(credentials, APIKeyCredentials) and credentials.is_expired():
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {credentials.expired_error()}"
                 continue
 
         # Validate auto-credentials (GoogleDriveFileField-based)

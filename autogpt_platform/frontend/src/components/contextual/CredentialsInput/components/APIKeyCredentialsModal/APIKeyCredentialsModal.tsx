@@ -112,13 +112,14 @@ export function APIKeyCredentialsModal({
             <FormField
               control={form.control}
               name="expiresAt"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   id="expiresAt"
                   label="Expiration Date"
                   type="datetime-local"
                   placeholder="Select expiration date..."
                   value={field.value}
+                  error={fieldState.error?.message}
                   onChange={(e) => {
                     const value = e.target.value;
                     if (value) {

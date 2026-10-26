@@ -119,6 +119,38 @@ describe("APIKeyCredentialsModal", () => {
     expect(createAPIKeyCredentials).not.toHaveBeenCalled();
   });
 
+  // #16234: an expiry in the past is refused before anything is saved.
+  it("rejects a past expiry without saving", async () => {
+    renderModal();
+    type("Enter a name for this API Key...", "My key");
+    type("Enter API Key...", "sk-abc");
+    type("Select expiration date...", "2020-01-01T10:00");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add API Key" }));
+
+    expect(
+      await screen.findByText("Expiry must be in the future"),
+    ).toBeDefined();
+    expect(createAPIKeyCredentials).not.toHaveBeenCalled();
+  });
+
+  it("saves a future expiry as local midnight of that day", async () => {
+    renderModal();
+    type("Enter a name for this API Key...", "My key");
+    type("Enter API Key...", "sk-abc");
+    type("Select expiration date...", "2999-01-01T10:00");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add API Key" }));
+
+    await waitFor(() =>
+      expect(createAPIKeyCredentials).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expires_at: new Date(2999, 0, 1).getTime() / 1000,
+        }),
+      ),
+    );
+  });
+
   it("sends the key and name trimmed", async () => {
     const onCredentialsCreate = renderModal();
     type("Enter a name for this API Key...", "  My key ");

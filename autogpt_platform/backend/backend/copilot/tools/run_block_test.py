@@ -1,8 +1,11 @@
 """Tests for block execution guards and input validation in RunBlockTool."""
 
+import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
@@ -1444,7 +1447,9 @@ class TestExecuteBlockCredentialRejection:
         return block
 
     @staticmethod
-    async def _run(exc: Exception, load_error: Exception | None = None):
+    async def _run(
+        exc: Exception, load_error: Exception | None = None, stored: Any = None
+    ):
         from backend.copilot.tools.helpers import execute_block
         from backend.data.model import CredentialsMetaInput
 
@@ -1454,9 +1459,10 @@ class TestExecuteBlockCredentialRejection:
             provider="ayrshare",  # type: ignore[arg-type]
             type="api_key",
         )
-        stored = MagicMock()
-        stored.provider = "ayrshare"
-        stored.type = "api_key"
+        if stored is None:
+            stored = MagicMock()
+            stored.provider = "ayrshare"
+            stored.type = "api_key"
 
         creds_manager = MagicMock()
         creds_manager.get = AsyncMock(return_value=stored, side_effect=load_error)
@@ -1511,6 +1517,31 @@ class TestExecuteBlockCredentialRejection:
         assert "rt-secret" not in caplog.text
         assert "could not be refreshed" in response.message
         assert "Work Ayrshare key" in response.message
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_expired_api_key_returns_the_card(self):
+        # #16234: the block never runs on a key past its expiry.
+        from backend.data.model import APIKeyCredentials
+
+        from .models import SetupRequirementsResponse
+
+        response = await self._run(
+            RuntimeError("the block must not run"),
+            stored=APIKeyCredentials(
+                id="cred-1",
+                provider="ayrshare",
+                api_key=SecretStr("sk-expired"),
+                title="Work Ayrshare key",
+                expires_at=int(time.time()) - 60,
+            ),
+        )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert response.rejection is not None
+        assert response.rejection.credential_id == "cred-1"
+        assert "expired on" in response.rejection.detail
+        assert "sk-expired" not in response.rejection.detail
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
 
     @pytest.mark.asyncio(loop_scope="session")

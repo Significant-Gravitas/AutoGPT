@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import shutil
 import subprocess
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -212,6 +213,26 @@ class TestGetProviderToken:
 
         assert result == "my-api-key"
         assert _token_cache.get((_USER, _PROVIDER)) == "my-api-key"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expired_api_key_is_skipped(self):
+        """#16234: an API key past its expiry is never handed out."""
+        expired = _make_api_key_creds("expired-key")
+        expired.expires_at = int(time.time()) - 60
+        live = _make_api_key_creds("live-key")
+        live.expires_at = int(time.time()) + 3600
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[expired, live]
+        )
+
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert await get_provider_token(_USER, _PROVIDER) == "live-key"
+
+        _token_cache.clear()
+        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[expired])
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert await get_provider_token(_USER, _PROVIDER) is None
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth2_preferred_over_api_key(self):

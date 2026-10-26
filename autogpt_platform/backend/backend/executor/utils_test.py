@@ -3,6 +3,7 @@ from typing import Optional, cast
 
 import pytest
 from prisma.enums import ReviewStatus
+from pydantic import SecretStr
 from pytest_mock import MockerFixture
 
 from backend.blocks.anysearch.extract import AnySearchExtractBlock
@@ -19,7 +20,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
 )
 from backend.data.graph import Node
-from backend.data.model import User
+from backend.data.model import APIKeyCredentials, User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
     CRED_ERR_INVALID_TYPE_MISMATCH,
@@ -3927,3 +3928,56 @@ def test_validate_exec_rejects_unset_required_credentials():
 
     assert data is None
     assert "'id' is a required property" in msg
+
+
+# ============ _validate_node_input_credentials: API key expiry ============ #
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "offset, expired",
+    [(-60, True), (0, True), (86400, False), (None, False)],
+    ids=["past", "now", "future", "none"],
+)
+async def test_validate_node_input_credentials_rejects_expired_api_key(
+    mocker: MockerFixture, offset: int | None, expired: bool
+):
+    """#16234: a key past its expiry fails the pre-run check with a marker
+    Copilot reads as "reconnect"."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    now = 1_800_000_000
+    mocker.patch("backend.data.model.time.time", return_value=now)
+    key = APIKeyCredentials(
+        id="cred-1",
+        provider="github",
+        api_key=SecretStr("k"),
+        title="GitHub key",
+        expires_at=None if offset is None else now + offset,
+    )
+    store = mocker.MagicMock()
+    store.get_creds_by_id = mocker.AsyncMock(return_value=key)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=store,
+    )
+    node = Node(
+        block_id=GithubCommentBlock().id,
+        input_default={
+            "credentials": {"id": "cred-1", "provider": "github", "type": "api_key"}
+        },
+    )
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mocker.MagicMock(nodes=[node], links=[]),
+        user_id="user-1",
+        nodes_input_masks=None,
+    )
+
+    if expired:
+        message = errors[node.id]["credentials"]
+        assert message.startswith(CRED_ERR_NOT_AVAILABLE_PREFIX)
+        assert "API key 'GitHub key' expired on" in message
+        assert is_credential_validation_error_message(message)
+    else:
+        assert node.id not in errors

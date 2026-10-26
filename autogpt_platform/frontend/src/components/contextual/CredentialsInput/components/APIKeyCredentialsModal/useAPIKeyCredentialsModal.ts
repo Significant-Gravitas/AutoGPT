@@ -40,7 +40,12 @@ export function useAPIKeyCredentialsModal({
   const formSchema = z.object({
     apiKey: z.string().trim().min(1, "API Key is required"),
     title: z.string().trim().min(1, "Name is required"),
-    expiresAt: z.string().optional(),
+    expiresAt: z
+      .string()
+      .optional()
+      .refine((value) => !value || new Date(value).getTime() > Date.now(), {
+        message: "Expiry must be in the future",
+      }),
   });
 
   const form = useForm<APIKeyFormValues>({
