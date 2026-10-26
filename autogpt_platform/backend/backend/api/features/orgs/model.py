@@ -80,12 +80,6 @@ class OrgMemberResponse(BaseModel):
         )
 
 
-class AddMemberRequest(BaseModel):
-    user_id: str
-    is_admin: bool = False
-    is_billing_manager: bool = False
-
-
 class UpdateMemberRequest(BaseModel):
     is_admin: bool | None = None
     is_billing_manager: bool | None = None

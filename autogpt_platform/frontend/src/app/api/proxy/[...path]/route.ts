@@ -92,7 +92,10 @@ const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
 ]);
 
 function buildBackendUrl(path: string[], queryString: string): string {
-  return `${environment.getAGPTServerBaseUrl()}/${path.join("/")}${queryString}`;
+  // Next.js decodes each segment; encode it again so a `?`, `#` or `/` the
+  // browser sent encoded stays inside its segment.
+  const backendPath = path.map(encodeURIComponent).join("/");
+  return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
 }
 
 async function signCountry(country: string) {

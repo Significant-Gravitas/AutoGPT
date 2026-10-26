@@ -1,5 +1,5 @@
 import { HelpItem } from "@/components/auth/help-item";
-import { Card, CardContent } from "@/components/__legacy__/ui/card";
+import { Card, CardContent } from "@/components/atoms/Card/Card";
 import { AlertCircle, CheckCircle } from "lucide-react";
 import { BehaveAs } from "@/services/environment";
 
@@ -55,6 +55,7 @@ export default function AuthFeedback({
       {showCloudHelp &&
         (isSignupFlow ? (
           <Card
+            variant="outlined"
             // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
             className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
           >
@@ -84,6 +85,7 @@ export default function AuthFeedback({
           </Card>
         ) : (
           <Card
+            variant="outlined"
             // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
             className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
           >
@@ -106,6 +108,7 @@ export default function AuthFeedback({
       {/* Local-specific help */}
       {showLocalHelp && (
         <Card
+          variant="outlined"
           // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
           className="w-full overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
         >

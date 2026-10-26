@@ -55,7 +55,7 @@ export function WalletTrigger({
                 // TODO(tokens): no fitting role for focus-visible:ring-zinc-900 #2C2C30; #2C2C30 is foreground-strong (a text colour) and action-hover (the primary button's hover fill), not a focus ring
                 "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
                 compact
-                  ? "size-8 justify-center rounded-lg p-0 text-foreground-body transition-colors data-[state=open]:bg-surface-hover data-[state=open]:text-foreground-strong hover:bg-surface-hover"
+                  ? "size-8 justify-center rounded-lg p-0 text-foreground-body transition-colors hover:bg-surface-hover data-[state=open]:bg-surface-hover data-[state=open]:text-foreground-strong"
                   : "bg-surface-muted",
               )}
             >

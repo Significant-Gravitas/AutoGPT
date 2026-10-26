@@ -23,7 +23,7 @@ import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
-  name: string;
+  name: string | null;
   greeting: string;
   suggestions: ReturnType<typeof useSuggestedTasks>;
   transcript?: string;
@@ -117,7 +117,14 @@ export function OnboardingIntroCard({
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
           <Text variant="large-medium" tone="primary">
-            Hey, <span className="text-foreground-strong">{name}</span>
+            Hey
+            {name ? (
+              <>
+                , <span className="text-foreground-strong">{name}</span>
+              </>
+            ) : (
+              " there"
+            )}
           </Text>
         </motion.div>
         {transcript && (

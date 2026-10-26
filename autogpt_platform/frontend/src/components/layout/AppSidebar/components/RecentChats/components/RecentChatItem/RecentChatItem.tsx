@@ -13,7 +13,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import Link, { useLinkStatus } from "next/link";
 import { memo, useRef } from "react";
 import {
@@ -131,7 +131,7 @@ export const RecentChatItem = memo(function RecentChatItem({
             }
             onSubmitRename(session.id);
           }}
-          className="w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-sm text-foreground-emphasis outline-none focus:border-brand focus:ring-1 focus:ring-brand max-md:py-2 max-md:text-base"
+          className="w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-body leading-5 text-foreground-emphasis outline-none focus:border-brand focus:ring-1 focus:ring-brand max-md:py-2 max-md:text-body-lg max-md:leading-6"
         />
       </SidebarMenuItem>
     );
@@ -143,8 +143,8 @@ export const RecentChatItem = memo(function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        // leading-5 keeps the 20px line-height of SidebarMenuButton's text-sm.
-        className="font-normal data-[active=true]:!bg-surface-hover data-[active=true]:font-normal hover:!bg-surface-hover max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
+        // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
+        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (

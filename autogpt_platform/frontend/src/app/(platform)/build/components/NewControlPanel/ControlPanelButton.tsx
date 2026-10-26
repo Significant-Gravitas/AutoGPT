@@ -24,9 +24,10 @@ export const ControlPanelButton: React.FC<Props> = ({
       role={as === "div" ? "button" : undefined}
       disabled={as === "button" ? disabled : undefined}
       className={cn(
-        "flex w-auto items-center justify-center whitespace-normal bg-white px-4 py-4 text-zinc-800 shadow-none hover:cursor-pointer hover:bg-zinc-100 hover:text-zinc-950 focus:ring-0",
+        // TODO(tokens): no fitting role for hover:text-zinc-950 #09090B; #09090B is foreground, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154)
+        "flex w-auto items-center justify-center whitespace-normal bg-surface px-4 py-4 text-foreground-emphasis shadow-none hover:cursor-pointer hover:bg-surface-hover hover:text-zinc-950 focus:ring-0",
         selected &&
-          "bg-violet-50 text-violet-700 hover:cursor-default hover:bg-violet-50 hover:text-violet-700 active:bg-violet-50 active:text-violet-700",
+          "bg-accent-surface text-accent-strong hover:cursor-default hover:bg-accent-surface hover:text-accent-strong active:bg-accent-surface active:text-accent-strong",
         disabled && "cursor-not-allowed opacity-50 hover:cursor-not-allowed",
         className,
       )}
