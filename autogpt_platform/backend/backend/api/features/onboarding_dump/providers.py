@@ -63,6 +63,6 @@ def label_support(prompts: list[PromptT]) -> list[PromptT]:
     services = support.connectable_services()
     for prompt in prompts:
         prompt.unsupported = support.unsupported_in_task(
-            prompt.integrations, f"{prompt.title} {prompt.prompt}", services
+            prompt.integrations, f"{prompt.title}\n{prompt.prompt}", services
         )
     return prompts

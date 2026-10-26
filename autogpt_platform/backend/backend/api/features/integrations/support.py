@@ -74,6 +74,9 @@ _NOT_PRODUCT_WORDS = frozenset(
         *("august", "september", "october", "november", "december"),
     }
 )
+# A sentence ends at a line break or at .!? before a space, not inside a name
+# such as "monday.com".
+_SENTENCE_BREAK = re.compile(r"\n+|(?<=[.!?])\s+")
 # Words for how a vendor is reached rather than what it does: "Printify API"
 # is Printify.
 _ACCESS_WORDS = frozenset(
@@ -215,17 +218,39 @@ def _unconnectable_vendors_in(
 ) -> list[str]:
     """Each vendor the platform knows that ``text`` names, with its product,
     as written, when that cannot be connected here. Only a capitalised
-    mention counts, so "the notion of" is not Notion. The first word after
-    the vendor is its product ("Google Analytics"); later ones may be the
-    sentence going on in a Title Case title ("Printify Product Goes Live"),
-    so they are kept in the name but not judged."""
+    mention counts, so "the notion of" is not Notion.
+
+    Read a sentence at a time. In ordinary prose a capitalised word after
+    the vendor is its product ("Google Analytics"), judged by the first such
+    word; later ones are kept in the name but not judged. In a Title Case
+    sentence every word is capitalised, which says nothing ("Ask Notion
+    Questions"), so only the vendor is judged there."""
     found = []
-    for match in _vendor_pattern().finditer(text):
-        mention = match.group(0)
-        head = mention.split()[: len(match.group("vendor").split()) + 1]
-        if _match(" ".join(head), services) is None:
-            found.append(mention)
+    for sentence in _SENTENCE_BREAK.split(text):
+        matches = list(_vendor_pattern().finditer(sentence))
+        title_case = _is_title_case(sentence, [m.span() for m in matches])
+        for match in matches:
+            vendor = match.group("vendor")
+            mention = vendor if title_case else match.group(0)
+            head = mention.split()[: len(vendor.split()) + 1]
+            if _match(" ".join(head), services) is None:
+                found.append(mention)
     return found
+
+
+def _is_title_case(sentence: str, mentions: list[tuple[int, int]]) -> bool:
+    """Whether most of the other words of ``sentence`` start with a capital,
+    so a capital marks nothing. The vendor mentions themselves, the first
+    word (capitalised anyway) and small joining words are not counted."""
+    words = [
+        word.group(0)
+        for index, word in enumerate(re.finditer(r"[A-Za-z][A-Za-z']*", sentence))
+        if index > 0
+        and word.group(0).lower() not in _NOT_PRODUCT_WORDS
+        and not any(start <= word.start() < end for start, end in mentions)
+    ]
+    capitalised = sum(word[0].isupper() for word in words)
+    return bool(words) and capitalised >= 0.6 * len(words)
 
 
 @cached(ttl_seconds=3600)
@@ -252,7 +277,7 @@ def _vendor_pattern() -> re.Pattern[str]:
     # The vendor, then up to two capitalised words naming its product
     # ("Google Analytics", "Google Search Console"), so the whole name is
     # checked: "Google" alone would pass as supported.
-    product = rf"(?:\s+(?!(?i:{joiners})\b)[A-Z][A-Za-z0-9]*){{0,2}}"
+    product = rf"(?:[ \t]+(?!(?i:{joiners})\b)[A-Z][A-Za-z0-9]*){{0,2}}"
     return re.compile(rf"\b(?=[A-Z])(?P<vendor>(?i:{alternatives}))\b{product}")
 
 

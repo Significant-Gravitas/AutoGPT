@@ -316,7 +316,7 @@ def test_a_task_naming_a_service_we_know_but_cannot_connect_is_labelled(
         ("Post the update to Notion every Monday", []),
         ("Write the plan in Notion Monday morning", []),
         ("Ping Me When A New Notion Page Goes Live", []),  # page is Notion's
-        ("Open The Google Analytics Dashboard", ["Google Analytics Dashboard"]),
+        ("Open the Google Analytics Dashboard first", ["Google Analytics Dashboard"]),
     ],
 )
 def test_a_vendor_in_task_text_is_read_with_its_product(
@@ -327,3 +327,25 @@ def test_a_vendor_in_task_text_is_read_with_its_product(
     services = [GOOGLE, NOTION]
 
     assert support.unsupported_in_task([], text, services) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Ask Notion Questions About The Roadmap",
+        "Get Google Insights On Every Order",
+        "Send Notion Updates To The Whole Team",
+    ],
+)
+def test_a_title_case_title_never_makes_a_vendor_unsupported(text: str):
+    """In Title Case every word is capitalised, so the word after a
+    connectable vendor says nothing about its product."""
+    assert support.unsupported_in_task([], text, [GOOGLE, NOTION]) == []
+
+
+def test_a_product_named_in_the_prompt_is_still_read_beside_a_title_case_title():
+    text = "Track Traffic In Google Analytics\nPull last week's sessions from Google Analytics."
+
+    assert support.unsupported_in_task([], text, [GOOGLE, NOTION]) == [
+        "Google Analytics"
+    ]
