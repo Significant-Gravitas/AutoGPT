@@ -35,7 +35,7 @@ describe("containsLikelySecret", () => {
       "GitHub fine-grained token",
       sample("github_", "pat_11ABCDEFG0" + ALNUM_40 + "_" + ALNUM_40),
     ],
-    ["AWS access key", sample("AK", "IAIOSFODNN7EXAMPLE")],
+    ["AWS access key", sample("AK", "IAZ2Q4W6E8R0T2Y4U6")],
     ["AWS temporary key", sample("AS", "IAZ2Q4W6E8R0T2Y4U6")],
     ["Slack bot token", sample("xo", "xb-123456789012-1234567890123-AbCdEfGh")],
     ["Slack user token", sample("xo", "xp-123456789012-98765-AbCdEfGhIjKl")],
@@ -77,7 +77,20 @@ describe("containsLikelySecret", () => {
     ["a lowercase AKIA word", "akiaiosfodnn7example"],
     ["a public key block", "-----BEGIN PUBLIC KEY-----"],
     ["a certificate block", "-----BEGIN CERTIFICATE-----"],
+    [
+      "an sk- placeholder in a .env example",
+      sample("OPENAI_API_KEY=sk-", "x".repeat(24)),
+    ],
+    ["an OpenAI project key placeholder", sample("sk-proj-", "X".repeat(24))],
+    ["a GitHub token placeholder", sample("ghp_", "x".repeat(36))],
+    ["AWS's documentation key", sample("AK", "IAIOSFODNN7EXAMPLE")],
   ])("leaves %s alone", (_name, text) => {
     expect(containsLikelySecret(text)).toBe(false);
+  });
+
+  it("stays fast on a long run of sk- prefixes", () => {
+    const started = performance.now();
+    expect(containsLikelySecret("sk-".repeat(50_000))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 });
