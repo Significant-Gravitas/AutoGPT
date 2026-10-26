@@ -8,32 +8,41 @@ builds outbound blocks and parses the click payload's action_id.
 import re
 from typing import Any
 
-_ACTION_ID_RE = re.compile(r"^qans:([0-9a-f]{12}):(\d+)$")
+from backend.copilot.bot.choices import (
+    BUTTON_KINDS,
+    CARD_KIND,
+    QUESTION_KIND,
+    ButtonKind,
+)
+
+_ACTION_ID_RE = re.compile(r"^(qans|appr):([0-9a-f]{12}):(\d+)$")
 
 
-def choice_blocks(text: str, token: str, options: list[str]) -> list[dict[str, Any]]:
+def choice_blocks(
+    text: str, token: str, options: list[str], kind: ButtonKind = QUESTION_KIND
+) -> list[dict[str, Any]]:
+    buttons: list[dict[str, Any]] = [
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": option[:75]},
+            "action_id": _action_id(kind, token, index),
+        }
+        for index, option in enumerate(options)
+    ]
+    if kind == CARD_KIND and buttons:
+        buttons[0]["style"] = "primary"
     return [
         {"type": "section", "text": {"type": "mrkdwn", "text": text}},
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": option[:75]},
-                    "action_id": _action_id(token, index),
-                }
-                for index, option in enumerate(options)
-            ],
-        },
+        {"type": "actions", "elements": buttons},
     ]
 
 
-def _action_id(token: str, index: int) -> str:
-    return f"qans:{token}:{index}"
+def _action_id(kind: ButtonKind, token: str, index: int) -> str:
+    return f"{kind}:{token}:{index}"
 
 
-def parse_action_id(action_id: str) -> tuple[str, int] | None:
+def parse_action_id(action_id: str) -> tuple[ButtonKind, str, int] | None:
     match = _ACTION_ID_RE.match(action_id)
     if not match:
         return None
-    return match.group(1), int(match.group(2))
+    return BUTTON_KINDS[match.group(1)], match.group(2), int(match.group(3))

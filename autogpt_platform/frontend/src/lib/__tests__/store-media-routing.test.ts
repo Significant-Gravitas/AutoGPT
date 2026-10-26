@@ -21,9 +21,11 @@ vi.mock("@/services/environment", () => ({
 }));
 
 import { GET } from "@/app/api/proxy/[...path]/route";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_AGPT_SERVER_URL", "http://localhost:8006/api");
+  vi.mocked(getServerAuthToken).mockResolvedValue(null);
   vi.stubGlobal("fetch", vi.fn());
 });
 afterEach(() => {
@@ -101,6 +103,54 @@ it.each([
     }
   },
 );
+
+it("rewrites private media through the authenticated proxy without caching it", async () => {
+  vi.mocked(getServerAuthToken).mockResolvedValue("private-token");
+  const { default: nextConfig } = await vi.importActual<{
+    default: NextConfig;
+  }>(join(process.cwd(), "next.config.mjs"));
+  const relativeURL =
+    "/api/store/submissions/media/user-123/images/thumbnail.png";
+  const browserURL = `http://localhost:3000${relativeURL}?v=2`;
+  const routing = await unstable_getResponseFromNextConfig({
+    url: browserURL,
+    nextConfig,
+  });
+  const proxyURL = getRewrittenUrl(routing);
+  expect(proxyURL).toBe(`http://localhost:3000/api/proxy${relativeURL}?v=2`);
+
+  vi.mocked(fetch).mockResolvedValue(
+    new Response("private image", {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "public, max-age=3600",
+      },
+    }),
+  );
+  const response = await GET(new NextRequest(proxyURL!), {
+    params: Promise.resolve({
+      path: [
+        "api",
+        "store",
+        "submissions",
+        "media",
+        "user-123",
+        "images",
+        "thumbnail.png",
+      ],
+    }),
+  });
+
+  expect(fetch).toHaveBeenCalledWith(
+    `http://internal-backend:8006${relativeURL}?v=2`,
+    expect.anything(),
+  );
+  const requestHeaders = vi.mocked(fetch).mock.calls[0][1]?.headers as Headers;
+  expect(requestHeaders.get("authorization")).toBe("Bearer private-token");
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(isLocalStoreMediaUrl(relativeURL)).toBe(true);
+});
 
 it("does not rewrite unrelated frontend API routes", async () => {
   const { default: nextConfig } = await vi.importActual<{

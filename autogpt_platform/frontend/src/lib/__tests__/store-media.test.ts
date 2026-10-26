@@ -3,6 +3,8 @@ import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { isRenderableImageUrl } from "@/lib/next-image";
 
 const mediaPath = "/store/media/user-123/images/thumbnail.png";
+const privateMediaPath =
+  "/store/submissions/media/user-123/images/thumbnail.png";
 const defaultImageURLs = [
   `http://localhost:8006/api${mediaPath}`,
   `http://localhost:8006/api${mediaPath}?version=2#preview`,
@@ -11,6 +13,12 @@ const defaultImageURLs = [
   `http://localhost:3000/api${mediaPath}`,
   `/api/proxy/api${mediaPath}`,
   `http://localhost:3000/api/proxy/api${mediaPath}`,
+  `http://localhost:8006/api${privateMediaPath}`,
+  `http://localhost:8006/api${privateMediaPath}?version=2#preview`,
+  `/api${privateMediaPath}`,
+  `http://localhost:3000/api${privateMediaPath}`,
+  `/api/proxy/api${privateMediaPath}`,
+  `http://localhost:3000/api/proxy/api${privateMediaPath}`,
 ];
 
 beforeEach(() => {
@@ -148,6 +156,10 @@ describe("malformed and ordinary URLs", () => {
     "/images/thumbnail.png",
     "https://cdn.example.com/images/thumbnail.png",
     "/api/store/media/user-123/videos/preview.mp4",
+    "/api/store/submissions/media/user-123/videos/preview.mp4",
+    "/api/store/submissions/media/user-123/images/thumbnail.png/extra",
+    "/api/store/submissions/media//images/thumbnail.png",
+    "/api/store/submissions/media/user-123/images/%2e%2e",
     "/api/store/media/user-123/images/thumbnail.png/extra",
     "/api/store/media/user-123/images/thumbnail.png/",
     "/api/store/media/user-123/images/",

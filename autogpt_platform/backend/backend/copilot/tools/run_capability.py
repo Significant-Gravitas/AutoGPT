@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from backend.blocks import get_block
+from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
     needs_review,
@@ -23,6 +24,7 @@ from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
+from backend.copilot.context import get_current_permissions
 from backend.copilot.gate import METERED, gate_active
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
@@ -30,14 +32,26 @@ from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.activity_event import ActivityEventDraft
 
-from .base import GATE_APPROVED, BaseTool
+from .ayrshare_managed import connect_for_block as ayrshare_connect_for_block
+from .ayrshare_managed import is_ayrshare
+from .base import GATE_APPROVED, GATE_DECIDED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
-from .helpers import required_input_keys, resolve_block_credentials
+from .describe_capability import (
+    MCP_RUN_PARAMETERS,
+    UNKNOWN_ID_HINT,
+    describe_expert,
+    describe_skill,
+)
+from .helpers import (
+    prepare_block_for_execution,
+    required_input_keys,
+    resolve_block_credentials,
+)
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
     ReviewRequiredResponse,
+    SetupRequirementsResponse,
     ToolResponseBase,
 )
 from .run_block import RunBlockTool
@@ -76,6 +90,7 @@ class RunCapabilityTool(BaseTool):
                 "id": {
                     "type": "string",
                     "description": "Capability id from find_capability, or an MCP server URL.",
+                    "entity": None,
                 },
                 "input": {
                     "type": "object",
@@ -111,7 +126,7 @@ class RunCapabilityTool(BaseTool):
             return NO_OP
         if entry.kind == "mcp_server":
             return _mcp_subject(entry.implementations[0].ref, payload or {})
-        if entry.kind != "block":
+        if entry.kind != "block" or (payload or {}).get("connect", False):
             return NO_OP
         block_id = next(
             (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
@@ -157,15 +172,16 @@ class RunCapabilityTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         approved = bool(kwargs.pop(GATE_APPROVED, False))
+        decided = bool(kwargs.pop(GATE_DECIDED, False))
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
-            )
+            ).from_outside()
         if input is not None and not isinstance(input, dict):
             return ErrorResponse(
                 message="input must be an object", session_id=session_id
-            )
+            ).from_outside()
         payload: dict[str, Any] = dict(input or {})
         entry = await resolve_session_entry(user_id, session, id)
         if entry is None and id.strip().lower().startswith("https://"):
@@ -184,31 +200,37 @@ class RunCapabilityTool(BaseTool):
                     "server's secure endpoint."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
         if entry is None:
-            return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
+            return ErrorResponse(
+                message=UNKNOWN_ID_HINT, session_id=session_id
+            ).from_outside()
         if entry.kind == "block":
             return await _run_block(
-                entry, user_id, session, payload, validate_only, approved
+                entry, user_id, session, payload, validate_only, approved, decided
             )
         if entry.kind == "tool":
             return await _describe_tool(entry, session)
         if entry.kind == "skill":
             return await _run_skill(entry, user_id, session, validate_only)
+        if entry.kind == "expert":
+            # The engines run an expert id as the hire or delegate call it is
+            # (``capabilities/dispatch.py``), so this answers validate_only.
+            return describe_expert(entry, session_id)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
             if not server_url:
                 return ErrorResponse(
                     message=setup_hint(entry.schema_ref or entry.id),
                     session_id=session_id,
-                )
+                ).from_outside()
             return await _run_mcp(
                 entry, server_url, user_id, session, payload, validate_only
             )
         return ErrorResponse(
             message=f"Capabilities of kind '{entry.kind}' cannot run yet.",
             session_id=session_id,
-        )
+        ).from_outside()
 
 
 async def _run_block(
@@ -218,12 +240,69 @@ async def _run_block(
     payload: dict[str, Any],
     validate_only: bool,
     approved: bool,
+    decided: bool = False,
 ) -> ToolResponseBase:
     if gate_denied(BLOCK_GATE):
         return gate_denied_error("blocks", session.session_id)
     block_id = next(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
+    if payload.pop("connect", False):
+        permissions = get_current_permissions()
+        if permissions is not None and not permissions.is_block_allowed(
+            block_id, entry.name
+        ):
+            return ErrorResponse(
+                message=(
+                    f"Block '{entry.name}' ({block_id}) is not permitted by the "
+                    "current execution permissions. Use find_capability to discover "
+                    "blocks that are allowed."
+                ),
+                session_id=session.session_id,
+            )
+        block = get_block(block_id)
+        # Connecting creates the user's real Ayrshare profile; neither mode may.
+        managed = block is not None and is_ayrshare(get_block_provider(block))
+        if managed and (validate_only or session.dry_run):
+            return CapabilityDetailsResponse(
+                message=(
+                    f"Connecting {entry.name} creates the user's Ayrshare profile, "
+                    "so validate_only and dry runs skip it. Nothing was created."
+                ),
+                capability=entry.listing(),
+                parameters={},
+                session_id=session.session_id,
+            )
+        prep = await prepare_block_for_execution(
+            block_id=block_id,
+            input_data=payload,
+            user_id=user_id,
+            session=session,
+            session_id=session.session_id,
+            dry_run=False,
+            validate_only=False,
+        )
+        picker_only = (
+            isinstance(prep, SetupRequirementsResponse)
+            and prep.setup_info.user_readiness.has_all_credentials
+        )
+        if isinstance(prep, ToolResponseBase) and not picker_only:
+            return prep
+        # Holding the managed Ayrshare credential says nothing about which
+        # networks are linked, so connecting shows the connect card.
+        if managed and block is not None:
+            return await ayrshare_connect_for_block(
+                user_id, block, block_id, session.session_id, session.expert_id
+            )
+        return CapabilityDetailsResponse(
+            message=(
+                f"The user is already connected for {entry.name}. "
+                "Nothing was run. Call again without connect to act."
+            ),
+            capability=entry.listing(),
+            parameters={},
+            session_id=session.session_id,
+        )
     return await RunBlockTool()._execute(
         user_id,
         session,
@@ -231,6 +310,7 @@ async def _run_block(
         input_data=payload,
         validate_only=validate_only,
         gate_approved=approved,
+        gate_decided=decided,
     )
 
 
@@ -255,15 +335,17 @@ async def _describe_tool(
     name = entry.implementations[0].ref
     tool = configured_tool(name)
     if tool is None:
-        return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session.session_id)
+        return ErrorResponse(
+            message=UNKNOWN_ID_HINT, session_id=session.session_id
+        ).from_outside()
     if gate_denied(name):
         return gate_denied_error(name, session.session_id)
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
-        parameters=tool.parameters,
+        parameters=tool.model_parameters,
         session_id=session.session_id,
-    )
+    ).from_outside()
 
 
 async def _run_skill(
@@ -299,7 +381,7 @@ async def _run_mcp(
     if arguments is not None and not isinstance(arguments, dict):
         return ErrorResponse(
             message="input.arguments must be an object", session_id=session.session_id
-        )
+        ).from_outside()
     connect = bool(payload.get("connect", False))
     if validate_only:
         return CapabilityDetailsResponse(
@@ -312,7 +394,7 @@ async def _run_mcp(
             ),
             parameters=MCP_RUN_PARAMETERS,
             session_id=session.session_id,
-        )
+        ).from_outside()
     host = urlsplit(server_url).hostname or server_url
     # With the gate on it has already decided this call on the server's
     # effect map; the verb heuristic is the flag-off path only.
@@ -344,7 +426,7 @@ async def _run_mcp(
             block_name=f"{host}/{tool_name}",
             review_id=review_id,
             input_data=review.model_dump(),
-        )
+        ).from_outside()
     if tool_name:
         emit_tool_display_name(f"{host}: {tool_name}")
     return await RunMCPToolTool()._execute(

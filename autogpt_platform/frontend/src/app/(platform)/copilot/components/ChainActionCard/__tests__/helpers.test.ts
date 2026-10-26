@@ -60,6 +60,20 @@ describe("toConnectorRows", () => {
     expect(rows[0].provider).toBe("github");
   });
 
+  it("keeps every credential a merged card reported refused, once each", () => {
+    const rows = toConnectorRows(
+      [
+        connectorRequest({ id: "req-1", rejectedCredentialId: "cred-a" }),
+        connectorRequest({ id: "req-2" }),
+        connectorRequest({ id: "req-3", rejectedCredentialId: "cred-a" }),
+        connectorRequest({ id: "req-4", rejectedCredentialId: "cred-b" }),
+      ],
+      [],
+    );
+
+    expect(rows[0].rejectedCredentialIds).toEqual(["cred-a", "cred-b"]);
+  });
+
   it("asks for the union of the scopes every card needs", () => {
     const first = connectorRequest({
       id: "req-1",

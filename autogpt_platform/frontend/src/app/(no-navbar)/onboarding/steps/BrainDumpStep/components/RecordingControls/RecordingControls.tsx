@@ -114,7 +114,9 @@ export function RecordingControls({
           {pendingStatus && (
             <div className="flex h-8 items-start justify-center pt-2">
               <SwapFade swapKey={pendingAction ?? "idle"}>
-                <p className="text-sm text-zinc-500">{pendingStatus}</p>
+                <p className="text-sm text-foreground-tertiary">
+                  {pendingStatus}
+                </p>
               </SwapFade>
             </div>
           )}
@@ -177,8 +179,8 @@ function RecordingControlButton({
       className={cn(
         "border transition-[transform,opacity,background-color] duration-150 ease-out active:scale-[0.97]",
         primary
-          ? "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800"
-          : "border-zinc-200 bg-white hover:bg-zinc-50",
+          ? "border-action-hover bg-action-hover text-action-foreground hover:bg-action"
+          : "border-border-base bg-surface hover:bg-surface-muted",
         isInactive && "opacity-40",
       )}
     >

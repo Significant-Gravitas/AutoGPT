@@ -1,12 +1,10 @@
 "use client";
 
-import {
-  Form,
-  FormDescription,
-  FormField,
-} from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormDescription, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   TabsLine,
@@ -146,9 +144,9 @@ type OAuthTabContentProps = {
 function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-600">
+      <Text variant="body-tight" as="p" tone="secondary">
         Sign in with your {providerName} account using OAuth.
-      </p>
+      </Text>
       <Button
         variant="primary"
         size="small"
@@ -202,10 +200,12 @@ function APIKeyTabContent({
   return (
     <div className="space-y-4">
       {schemaDescription && (
-        <p className="text-sm text-zinc-600">{schemaDescription}</p>
+        <Text variant="body-tight" as="p" tone="secondary">
+          {schemaDescription}
+        </Text>
       )}
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
           <FormField
             control={form.control}
@@ -231,11 +231,21 @@ function APIKeyTabContent({
                 placeholder="Enter API Key..."
                 hint={
                   schema.credentials_scopes ? (
-                    <FormDescription>
+                    <FormDescription
+                      // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
+                      // dark:text-neutral-400: the legacy FormDescription's, moved verbatim (DS6, SECRT-3116)
+                      className="text-[0.8rem] leading-inherit dark:text-neutral-400"
+                    >
                       Required scope(s) for this block:{" "}
                       {schema.credentials_scopes?.map((s, i, a) => (
                         <span key={i}>
-                          <code className="text-xs font-bold">{s}</code>
+                          <Text
+                            variant="small-mono-bold-tight"
+                            as="code"
+                            tone="inherit"
+                          >
+                            {s}
+                          </Text>
                           {i < a.length - 1 && ", "}
                         </span>
                       ))}
@@ -271,7 +281,7 @@ function APIKeyTabContent({
             Add API Key
           </Button>
         </form>
-      </Form>
+      </FormProvider>
     </div>
   );
 }
@@ -289,7 +299,9 @@ function SimpleActionTab({
 }: SimpleActionTabProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-600">{description}</p>
+      <Text variant="body-tight" as="p" tone="secondary">
+        {description}
+      </Text>
       <Button variant="primary" size="small" onClick={onClick} type="button">
         {buttonLabel}
       </Button>

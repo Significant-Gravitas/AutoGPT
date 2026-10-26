@@ -1,0 +1,18 @@
+{{ content.headline }}
+
+{{ content.intro }} {{ content.preheader }} If you didn't request this, you can safely ignore this email.
+
+{{ content.action }}:
+{{ action_url }}
+{% if content.expiry %}
+The link expires in {{ content.expiry }}.
+{% endif %}{% if content.note %}
+{{ content.note }}
+{% endif %}
+{{ content.reason }}
+Something wrong? Ask in Discord: {{ urls.discord }}
+
+This is a service message about an AutoGPT account. It's sent even if you've opted out of product news.
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+https://agpt.co
+Discord: {{ urls.discord }}

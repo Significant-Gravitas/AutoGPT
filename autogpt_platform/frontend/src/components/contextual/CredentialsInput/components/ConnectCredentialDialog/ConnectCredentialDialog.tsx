@@ -139,6 +139,7 @@ export function ConnectCredentialDialog({
 
   const connectable: ConnectableProvider = {
     id: provider,
+    serviceId: provider,
     name: displayName,
     description: null,
     supportedAuthTypes: getConnectableCredentialTypes(
@@ -179,7 +180,11 @@ export function ConnectCredentialDialog({
             />
           )}
           {showExisting && existing?.error && (
-            <span role="alert" className="text-center text-xs text-red-600">
+            <span
+              // TODO(tokens): no exact role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
+              role="alert"
+              className="text-center text-xs text-red-600"
+            >
               {existing.error}
             </span>
           )}

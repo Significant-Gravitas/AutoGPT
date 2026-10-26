@@ -434,6 +434,7 @@ class TwitterSearchRecentTweetsBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

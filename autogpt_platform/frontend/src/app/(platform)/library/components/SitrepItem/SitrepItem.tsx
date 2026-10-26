@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
-import styles from "./SitrepItem.module.css";
 import { buildAutoPilotPrompt } from "./helpers";
 import {
+  Alert02Icon,
   AlertCircleIcon,
   Calendar03Icon,
   Chatting01Icon,
@@ -38,11 +38,11 @@ const PRIORITY_CONFIG: Record<
 > = {
   error: {
     icon: AlertCircleIcon,
-    color: "text-red-500",
-    bg: "bg-red-50",
+    color: "text-error",
+    bg: "bg-error-surface",
   },
   running: {
-    color: "text-zinc-800",
+    color: "text-foreground-emphasis",
     bg: "",
     cssSpinner: true,
   },
@@ -51,14 +51,19 @@ const PRIORITY_CONFIG: Record<
     color: "text-yellow-600",
     bg: "bg-yellow-50",
   },
+  warning: {
+    icon: Alert02Icon,
+    color: "text-amber-600",
+    bg: "bg-warning-surface",
+  },
   success: {
     icon: CheckmarkCircle02Icon,
-    color: "text-green-600",
-    bg: "bg-green-50",
+    color: "text-success",
+    bg: "bg-success-surface",
   },
   listening: {
     icon: EarIcon,
-    color: "text-purple-500",
+    color: "text-brand",
     bg: "bg-purple-50",
   },
   scheduled: {
@@ -68,8 +73,8 @@ const PRIORITY_CONFIG: Record<
   },
   idle: {
     icon: MoonIcon,
-    color: "text-zinc-400",
-    bg: "bg-zinc-100",
+    color: "text-foreground-subtle",
+    bg: "bg-surface-hover",
   },
 };
 
@@ -81,13 +86,13 @@ export function SitrepItem({ item }: Props) {
   function handleAskAutoPilot() {
     const prompt = buildAutoPilotPrompt(item);
     const encoded = encodeURIComponent(prompt);
-    router.push(`/copilot?autosubmit=true#prompt=${encoded}`);
+    router.push(`/home?autosubmit=true#prompt=${encoded}`);
   }
 
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-medium border border-zinc-200/50 bg-transparent p-2 sm:flex-row sm:items-center sm:gap-3",
+        "flex flex-col gap-2 rounded-medium border border-border-base/50 bg-transparent p-2 sm:flex-row sm:items-center sm:gap-3",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -107,10 +112,8 @@ export function SitrepItem({ item }: Props) {
           >
             {config.cssSpinner ? (
               <div
-                className={cn(
-                  styles.spinner,
-                  "h-[21px] w-[21px] text-zinc-800",
-                )}
+                // TODO(tokens): no token for the ring spinner's gradient and mask (#0000, #000)
+                className="aspect-square h-[21px] w-[21px] animate-spin rounded-[50%] text-foreground-emphasis [-webkit-mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)] [background:radial-gradient(farthest-side,currentColor_94%,#0000)_top/3px_3px_no-repeat,conic-gradient(#0000_30%,currentColor)] [mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)]"
               />
             ) : (
               config.icon && (
@@ -121,22 +124,25 @@ export function SitrepItem({ item }: Props) {
         )}
 
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium" className="leading-tight text-zinc-900">
+          <Text
+            variant="body-medium"
+            className="leading-tight text-foreground-strong"
+          >
             {item.agentName}
           </Text>
           <OverflowText
             value={item.message}
             variant="small"
-            className="leading-tight text-zinc-500"
+            className="leading-tight text-foreground-tertiary"
           />
         </div>
       </div>
 
       <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-1.5 sm:flex-nowrap sm:justify-end">
-        {item.priority === "success" ? (
+        {item.priority === "success" || item.priority === "warning" ? (
           <NextLink
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
           >
             <Icon icon={EyeIcon} size={14} className="shrink-0" />
             See task
@@ -151,7 +157,7 @@ export function SitrepItem({ item }: Props) {
         <button
           type="button"
           onClick={handleAskAutoPilot}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
         >
           <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
           Ask Otto

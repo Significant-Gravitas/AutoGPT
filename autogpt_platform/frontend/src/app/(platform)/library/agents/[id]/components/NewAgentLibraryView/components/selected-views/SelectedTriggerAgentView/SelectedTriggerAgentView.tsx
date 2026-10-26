@@ -59,7 +59,7 @@ export function SelectedTriggerAgentView({
         : queryError != null
           ? String(queryError)
           : "Failed to load trigger data";
-    return <ErrorCard responseError={{ message }} context="trigger agent" />;
+    return <ErrorCard responseError={{ message }} context="trigger workflow" />;
   }
 
   if (isLoading || !data) {
@@ -70,8 +70,8 @@ export function SelectedTriggerAgentView({
     return (
       <SelectedViewLayout agent={agent} banner={banner}>
         <RunDetailCard title="Trigger not found">
-          <Text variant="body" className="!text-zinc-500">
-            This trigger agent no longer exists.
+          <Text variant="body" className="!text-foreground-tertiary">
+            This trigger workflow no longer exists.
           </Text>
         </RunDetailCard>
       </SelectedViewLayout>
@@ -88,14 +88,14 @@ export function SelectedTriggerAgentView({
                 {triggerAgent.description ? (
                   <Text variant="body">{triggerAgent.description}</Text>
                 ) : (
-                  <Text variant="body" className="!text-zinc-500">
+                  <Text variant="body" className="!text-foreground-tertiary">
                     No description.
                   </Text>
                 )}
-                <Text variant="small" className="!text-zinc-500">
-                  Trigger agents run on a schedule and execute this agent when
-                  their conditions are met. Edit them in the builder to change
-                  what they do.
+                <Text variant="small" className="!text-foreground-tertiary">
+                  Trigger workflows run on a schedule and execute this workflow
+                  when their conditions are met. Edit them in the builder to
+                  change what they do.
                 </Text>
               </div>
             </RunDetailCard>
@@ -106,10 +106,11 @@ export function SelectedTriggerAgentView({
                   {schedule.graph_version !== triggerAgent.graph_version && (
                     <Text
                       variant="small"
-                      className="rounded-md bg-amber-50 px-3 py-2 !text-amber-800"
+                      // TODO(tokens): no exact role for !text-amber-800 (#92400E)
+                      className="rounded-md bg-warning-surface px-3 py-2 !text-amber-800"
                     >
                       This schedule is running version {schedule.graph_version}{" "}
-                      of the trigger agent, but the latest version is{" "}
+                      of the trigger workflow, but the latest version is{" "}
                       {triggerAgent.graph_version}. Ask your expert to recreate
                       the schedule to pick up your latest edits.
                     </Text>
@@ -118,8 +119,8 @@ export function SelectedTriggerAgentView({
                     <Text variant="large-medium">Recurrence</Text>
                     <Text variant="body" className="flex items-center gap-3">
                       {humanizeCronExpression(schedule.cron)}{" "}
-                      <span className="text-zinc-500">&middot;</span>{" "}
-                      <span className="text-zinc-500">
+                      <span className="text-foreground-tertiary">&middot;</span>{" "}
+                      <span className="text-foreground-tertiary">
                         {getTimezoneDisplayName(
                           displayTimezone || schedule.timezone || "UTC",
                         )}
@@ -141,8 +142,8 @@ export function SelectedTriggerAgentView({
                           hour12: false,
                         },
                       )}{" "}
-                      <span className="text-zinc-500">&middot;</span>{" "}
-                      <span className="text-zinc-500">
+                      <span className="text-foreground-tertiary">&middot;</span>{" "}
+                      <span className="text-foreground-tertiary">
                         {getTimezoneDisplayName(
                           displayTimezone || schedule.timezone || "UTC",
                         )}
@@ -155,8 +156,8 @@ export function SelectedTriggerAgentView({
 
             {!schedule && !isSchedulesLoading && (
               <RunDetailCard title="Schedule">
-                <Text variant="body" className="!text-zinc-500">
-                  No schedule configured for this trigger agent.
+                <Text variant="body" className="!text-foreground-tertiary">
+                  No schedule configured for this trigger workflow.
                 </Text>
               </RunDetailCard>
             )}

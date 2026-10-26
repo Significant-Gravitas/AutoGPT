@@ -137,10 +137,12 @@ describe("Wallet", () => {
     expect(screen.getByText(/1 of 8 rewards claimed/)).toBeDefined();
   });
 
-  it("hides the reward dot and tooltip in compact mode", () => {
+  it("shows an accessible icon-only trigger in compact mode", () => {
     render(<Wallet compact />);
 
-    expect(screen.getByText("$9.79")).toBeDefined();
+    const trigger = screen.getByRole("button", { name: "Usage and credits" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("$9.79")).toBeNull();
     expect(screen.queryByText(/rewards claimed/)).toBeNull();
   });
 
@@ -171,6 +173,9 @@ describe("Wallet", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Add automation credits")).toBeNull();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Usage and credits" }),
+      );
     });
   });
 

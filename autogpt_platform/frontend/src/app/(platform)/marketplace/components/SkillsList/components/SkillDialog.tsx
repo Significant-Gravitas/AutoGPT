@@ -52,7 +52,7 @@ export function SkillDialog({ slug, onClose }: Props) {
                 <Skeleton className="h-4 w-2/3" />
               </div>
             ) : isError || !skill ? (
-              <div className="flex items-center gap-2 text-sm text-zinc-600">
+              <div className="flex items-center gap-2 text-sm text-foreground-secondary">
                 <span>Couldn&apos;t load this skill right now.</span>
                 <button
                   type="button"
@@ -64,8 +64,8 @@ export function SkillDialog({ slug, onClose }: Props) {
               </div>
             ) : (
               <>
-                <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 pb-5">
-                  <p className="min-w-0 max-w-[52ch] flex-1 text-[15px] leading-6 text-zinc-600">
+                <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-border-base pb-5">
+                  <p className="min-w-0 max-w-[52ch] flex-1 text-body-md leading-6 text-foreground-secondary">
                     {skill.description}
                   </p>
                   <SkillActions
@@ -87,7 +87,7 @@ export function SkillDialog({ slug, onClose }: Props) {
                     onOpenFile={openFile}
                   />
                 ) : (
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-sm text-foreground-tertiary">
                     This skill has no instructions yet.
                   </p>
                 )}

@@ -49,6 +49,12 @@ class MCPServerMetadata(BaseModel):
         "also ships blocks for it. Lets the UI file an MCP connection under the "
         "same service as its API-key credential instead of a generic MCP group.",
     )
+    legacy_server_urls: list[str] = Field(
+        default_factory=list,
+        exclude=True,
+        description="Addresses this server was listed under before, so "
+        "connections saved against them still belong to it.",
+    )
 
     @field_validator("server_url", "documentation_url", "oauth_server_url")
     @classmethod
@@ -101,6 +107,8 @@ class MCPServerMetadata(BaseModel):
             raise ValueError("OAuth settings require OAuth authentication")
         for option in self.server_url_options:
             self.validate_public_url(option.url)
+        for url in self.legacy_server_urls:
+            self.validate_public_url(url)
         return self
 
     @field_validator("oauth_scopes", "oauth_write_scopes")
@@ -162,6 +170,7 @@ def get_mcp_catalog_entry_for_url(server_url: str) -> MCPCatalogEntry | None:
             server.server_url,
             server.oauth_server_url,
             *(option.url for option in server.server_url_options),
+            *server.legacy_server_urls,
         ]
         if any(url and _catalog_url_key(url) == key for url in urls):
             return entry

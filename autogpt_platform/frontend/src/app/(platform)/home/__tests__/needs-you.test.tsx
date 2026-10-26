@@ -9,7 +9,7 @@ import {
   heldRead,
   heldReview,
 } from "../../copilot/components/ApprovalQueue/__tests__/fixtures";
-import HomePage from "../page";
+import { HomeRecap } from "../components/HomeRecap/HomeRecap";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
@@ -18,11 +18,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: () => false,
   };
 });
 
@@ -138,7 +134,7 @@ function mockDashboard(attention: HomeAttentionItem[]) {
 test("lists every attention item without collapsing", async () => {
   mockDashboard([1, 2, 3, 4].map(makeApproval));
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Approve item 1")).toBeDefined();
   expect(screen.getByText("Approve item 4")).toBeDefined();
@@ -148,7 +144,7 @@ test("filters the attention list by kind", async () => {
   const user = userEvent.setup();
   mockDashboard([makeApproval(1), setupItem]);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("button", { name: "Filter interventions: All" }),
@@ -170,7 +166,7 @@ test("requires a second press to confirm a decline", async () => {
     }),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("button", { name: "Decline: Approve item 1" }),
@@ -206,7 +202,7 @@ test("keeps a rejected review actionable instead of dropping the row", async () 
     ),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const approve = await screen.findByRole("button", {
     name: "Approve: Approve item 1",
@@ -220,7 +216,7 @@ test("keeps a rejected review actionable instead of dropping the row", async () 
 test("shows an unanswered copilot question and links back to the chat", async () => {
   mockDashboard([questionItem]);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Maria has a question")).toBeDefined();
   expect(screen.getByText("Monday morning or Friday evening?")).toBeDefined();
@@ -232,7 +228,7 @@ test("shows an unanswered copilot question and links back to the chat", async ()
 test("offers no approve or decline on a question", async () => {
   mockDashboard([questionItem]);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await screen.findByText("Maria has a question");
   expect(
@@ -253,7 +249,7 @@ test("a held call's row sets its object in semibold, as its card does", async ()
     makeApproval(10),
   ]);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const object = await screen.findByText("Q3 reports");
   expect(object.tagName).toBe("B");
@@ -293,7 +289,7 @@ test("a held read's row gives its reason in plain words and quotes the passage",
     heldReadItem("unjudged", false),
   ]);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByText(
@@ -331,7 +327,7 @@ test.each([
       { ...makeApproval(0), id: `approval-${kind}`, description, review },
     ]);
 
-    render(<HomePage />);
+    render(<HomeRecap />);
 
     expect(await screen.findByText(description)).toBeDefined();
   },

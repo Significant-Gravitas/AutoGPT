@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { cn } from "@/lib/utils";
 
 import { DeleteConfirmDialog } from "../DeleteConfirmDialog/DeleteConfirmDialog";
 import { IntegrationsListEmpty } from "../IntegrationsListEmpty/IntegrationsListEmpty";
@@ -38,9 +39,15 @@ const REDUCED_MOTION_ITEM_VARIANTS: Variants = {
 interface Props {
   query: string;
   onQueryChange: (query: string) => void;
+  /** Background for the sticky rows; it must match the surface below. */
+  stickyClassName: string;
 }
 
-export function IntegrationsList({ query, onQueryChange: setQuery }: Props) {
+export function IntegrationsList({
+  query,
+  onQueryChange: setQuery,
+  stickyClassName,
+}: Props) {
   const {
     providers,
     isLoading,
@@ -116,7 +123,12 @@ export function IntegrationsList({ query, onQueryChange: setQuery }: Props) {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="sticky top-0 z-10 -mx-1 bg-[#F9F9FA] px-1 pb-1 pt-1">
+      <div
+        className={cn(
+          "sticky top-0 z-10 -mx-1 px-1 pb-1 pt-1",
+          stickyClassName,
+        )}
+      >
         <IntegrationsSearch value={query} onChange={setQuery} />
       </div>
 
@@ -140,7 +152,7 @@ export function IntegrationsList({ query, onQueryChange: setQuery }: Props) {
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-2 z-20 bg-[#F9F9FA] sm:top-0"
+            className={cn("sticky top-2 z-20 sm:top-0", stickyClassName)}
             style={{ overflow: "hidden" }}
           >
             <IntegrationsSelectionBar

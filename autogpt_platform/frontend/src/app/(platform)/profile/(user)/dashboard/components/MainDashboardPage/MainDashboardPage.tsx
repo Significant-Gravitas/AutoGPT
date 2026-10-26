@@ -1,5 +1,5 @@
 import { useMainDashboardPage } from "./useMainDashboardPage";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { AgentTable } from "../AgentTable/AgentTable";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { EditAgentModal } from "@/components/contextual/EditAgentModal/EditAgentModal";
@@ -32,19 +32,20 @@ export const MainDashboardPage = () => {
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-6">
           <Text variant="h1" size="h3">
-            Agent dashboard
+            Workflow dashboard
           </Text>
           <div className="space-y-2">
             <Text
               variant="h2"
               size="large-medium"
+              // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100)
               className="text-neutral-900 dark:text-neutral-100"
             >
-              Submit a New Agent
+              Submit a New Workflow
             </Text>
             <Text variant="body" size="small">
-              Select from the list of agents you currently have, or upload from
-              your local machine.
+              Select from the list of workflows you currently have, or upload
+              from your local machine.
             </Text>
           </div>
         </div>
@@ -57,7 +58,7 @@ export const MainDashboardPage = () => {
               size="small"
               onClick={onOpenSubmitModal}
             >
-              Submit agent
+              Submit workflow
             </Button>
           }
         />
@@ -70,9 +71,10 @@ export const MainDashboardPage = () => {
         <Text
           variant="h2"
           size="large-medium"
+          // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100)
           className="mb-4 text-neutral-900 dark:text-neutral-100"
         >
-          Your uploaded agents
+          Your uploaded workflows
         </Text>
 
         {error ? (

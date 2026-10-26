@@ -293,7 +293,7 @@ async def test_chatgpt_states_the_edge_a_user_can_actually_hit(
     (offer,) = await get_connection_offers(USER_ID)
 
     assert offer.limitations == [
-        "The agent builder's chat panel always runs on AutoGPT."
+        "The workflow builder's chat panel always runs on AutoGPT."
     ]
 
 

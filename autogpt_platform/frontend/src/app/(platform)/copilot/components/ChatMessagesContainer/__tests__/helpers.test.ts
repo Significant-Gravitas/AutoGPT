@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../../helpers/messageMarkers";
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
@@ -8,8 +9,8 @@ import {
   getLatestCompactionStats,
   getMessageArtifacts,
   getMostRecentArtifact,
-  parseSpecialMarkers,
   resolveWorkspaceUrls,
+  workspaceLinkFileID,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
 import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
@@ -203,12 +204,11 @@ describe("resolveWorkspaceUrls with custom fileUrlBuilder", () => {
     expect(out).toBe(`![pic](/share/files/${FILE_ID}.png)`);
   });
 
-  it("rewrites link syntax to absolute URL with origin prefix", () => {
-    const text = `Open [the file](workspace://${FILE_ID}) here.`;
-    const builder = (id: string) => `/share/files/${id}.dl`;
-    const out = resolveWorkspaceUrls(text, builder);
-    // jsdom's window.location.origin is "http://localhost:3000".
-    expect(out).toContain(`(http://localhost:3000/share/files/${FILE_ID}.dl)`);
+  it("rewrites a link to a token that names its file and keeps the label", () => {
+    const text = `Open [the file](workspace://${FILE_ID}#text/plain) here.`;
+    const match = resolveWorkspaceUrls(text).match(/!\[the file\]\((\S+)\)/);
+
+    expect(workspaceLinkFileID(match?.[1] ?? "")).toBe(FILE_ID);
   });
 
   it("default builder rewrites workspace:// to the workspace endpoint", () => {

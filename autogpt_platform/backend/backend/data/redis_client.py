@@ -44,6 +44,12 @@ USE_ANNOUNCED_ADDRESS = os.getenv("REDIS_USE_ANNOUNCED_ADDRESS", "").lower() in 
     "yes",
 )
 
+# Per-node pool cap. redis-py 8.x lowered the default from 2**31 to 100 and
+# raises MaxConnectionsError instead of waiting, so one wide graph fan-out on
+# an executor's shared loop failed lock and publish calls. 10000 matches the
+# server's default `maxclients`, so the server limit is the one that binds.
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "10000"))
+
 # Retry transient cluster errors internally so a rotation blip never surfaces
 # as a graph-exec 500.
 REDIS_RETRY_ATTEMPTS = int(os.getenv("REDIS_RETRY_ATTEMPTS", "5"))
@@ -103,6 +109,7 @@ def connect() -> RedisClient:
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
         address_remap=_address_remap,
         # Drives both per-command retries and the cluster-level retry counter.
         retry=_build_retry(),
@@ -129,6 +136,7 @@ def connect_once(timeout: float) -> RedisClient:
         socket_connect_timeout=timeout,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
         address_remap=_address_remap,
         retry=Retry(NoBackoff(), 0),
     )
@@ -164,6 +172,7 @@ async def connect_async() -> AsyncRedisClient:
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
         address_remap=_address_remap,
         # redis-py 6.x AsyncRedisCluster ignores `retry_on_error` — the cluster
         # retry path uses a hardcoded {Timeout, Connection, ClusterDown} set.

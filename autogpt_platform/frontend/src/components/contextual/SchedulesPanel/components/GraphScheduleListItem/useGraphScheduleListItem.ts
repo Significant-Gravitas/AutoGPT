@@ -42,7 +42,8 @@ export function useGraphScheduleListItem({ schedule }: Args) {
     ? safeHumanizeCronExpression(schedule.cron)
     : "Runs once";
 
-  const agentLabel = schedule.agent_name || schedule.name || "Scheduled agent";
+  const agentLabel =
+    schedule.agent_name || schedule.name || "Scheduled workflow";
   const agentHref = `/build?flowID=${schedule.graph_id}&flowVersion=${schedule.graph_version}`;
 
   function openDelete() {

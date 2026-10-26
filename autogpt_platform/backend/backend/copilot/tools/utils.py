@@ -6,7 +6,14 @@ from collections.abc import Mapping
 from typing import Any
 
 from backend.api.features.library import model as library_model
-from backend.copilot.credential_selection import selected_credentials
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
+from backend.copilot.context import is_unattended_turn
+from backend.copilot.credential_selection import (
+    selected_credentials,
+    turn_credential_pins,
+)
 from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
@@ -235,6 +242,8 @@ def _extract_credential_type_from_schema(cred_schema: dict[str, Any]) -> str:
 async def get_or_create_library_agent(
     graph: GraphModel,
     user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """
     Get existing library agent or create new one.
@@ -244,6 +253,9 @@ async def get_or_create_library_agent(
     Args:
         graph: The Graph to add to library
         user_id: The user's ID
+        organization_id, team_id: Tenancy for a new entry; None means the
+            user's default team. An existing entry in another organization
+            raises LibraryAgentInAnotherOrganizationError.
 
     Returns:
         LibraryAgent instance
@@ -252,12 +264,23 @@ async def get_or_create_library_agent(
         graph_id=graph.id, user_id=user_id
     )
     if existing:
+        # Unique per user and graph, so another organization's entry can be
+        # neither reused here nor joined by a second one.
+        if organization_id is not None and existing.organization_id not in (
+            None,
+            organization_id,
+        ):
+            raise LibraryAgentInAnotherOrganizationError(
+                "This agent is already in your library in another organization"
+            )
         return existing
 
     library_agents = await library_db().create_library_agent(
         graph=graph,
         user_id=user_id,
         create_library_agents_for_sub_graphs=False,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     assert len(library_agents) == 1, "Expected 1 library agent to be created"
     return library_agents[0]
@@ -268,6 +291,7 @@ async def match_credentials_to_requirements(
     requirements: dict[str, CredentialsFieldInfo],
     expert_id: str | None = None,
     session_id: str | None = None,
+    optional_fields: set[str] | frozenset[str] = frozenset(),
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
@@ -275,6 +299,9 @@ async def match_credentials_to_requirements(
     This is the core matching logic shared by both graph and block credential matching.
     With a ``session_id`` the match is a chat tool's: the credential the user
     picked in that chat is used, and a choice between several is left to them.
+    A field in ``optional_fields`` that no credential fits is left out rather
+    than reported missing, unless the running turn's schedule pinned its
+    account: running without it is the switch the pin exists to prevent.
     """
     matched: dict[str, CredentialsMetaInput] = {}
     missing: list[CredentialsMetaInput] = []
@@ -282,12 +309,13 @@ async def match_credentials_to_requirements(
     if not requirements:
         return matched, missing
 
-    available_creds = await get_user_credentials(user_id, expert_id)
+    available_creds = keep_to_pins(await get_user_credentials(user_id, expert_id))
     selected = await selected_credentials(session_id)
+    can_ask = _can_ask_user(session_id)
 
     for field_name, field_info in requirements.items():
         matching_cred = find_matching_credential(
-            available_creds, field_info, selected, ask_when_ambiguous=bool(session_id)
+            available_creds, field_info, selected, ask_when_ambiguous=can_ask
         )
 
         if matching_cred:
@@ -310,6 +338,12 @@ async def match_credentials_to_requirements(
                         title=f"{field_name} (validation failed: {e})",
                     )
                 )
+        elif (
+            field_name in optional_fields
+            and not _pinned_for(field_info)
+            and not any(_credential_fits(c, field_info) for c in available_creds)
+        ):
+            continue
         else:
             provider = next(iter(field_info.provider), "unknown")
             cred_type = next(iter(field_info.supported_types), "api_key")
@@ -356,6 +390,56 @@ async def scope_credentials_to_expert(
     return filter_credentials_for_expert(credentials, allowed)
 
 
+def keep_to_pins(available: list[Credentials]) -> list[Credentials]:
+    """For each provider the running turn's schedule pinned, leave only the
+    pinned account.
+
+    The user chose that account for the schedule. Running on another of
+    theirs, or on the platform's, is the silent switch the pin exists to
+    prevent, whether the pinned one was deleted or cannot do this step (a
+    missing scope). Then nothing fits, and the unattended error names the
+    pinned account (SECRT-2804). Host-scoped and MCP credentials are one per
+    target, not one per account, so a pin for one target leaves the others.
+    """
+    pins = turn_credential_pins()
+    if not pins:
+        return available
+    return [
+        c
+        for c in available
+        if _provider_slug(c) not in pins
+        or c.id == pins[_provider_slug(c)].id
+        or is_per_target_credential(c)
+    ]
+
+
+def _pinned_for(field_info: CredentialsFieldInfo) -> bool:
+    """Whether the running turn's schedule pinned an account for this field;
+    as in ``keep_to_pins``, a pin never covers a per-target credential."""
+    pins = turn_credential_pins()
+    return field_info.supported_types != {"host_scoped"} and any(
+        str(getattr(p, "value", p)) in pins
+        for p in field_info.provider
+        if p != ProviderName.MCP
+    )
+
+
+def is_per_target_credential(cred: Credentials) -> bool:
+    """One credential per host or MCP server, rather than one per account."""
+    return cred.type == "host_scoped" or cred.provider == ProviderName.MCP
+
+
+def _can_ask_user(session_id: str | None) -> bool:
+    """Whether a choice between the user's accounts can be handed back to them.
+
+    Only a chat tool can, and only on a turn someone is watching. A scheduled
+    turn's setup card goes unanswered and the step ends as "not configured"
+    (SECRT-2804), so there the first fit is used, as it is for every other
+    caller with nobody to ask. A pick made earlier in the chat still wins.
+    """
+    return bool(session_id) and not is_unattended_turn()
+
+
 def find_matching_credential(
     available_creds: list[Credentials],
     field_info: CredentialsFieldInfo,
@@ -377,9 +461,18 @@ def find_matching_credential(
         for cred in fits:
             if selected.get(_provider_slug(cred)) == cred.id:
                 return cred
-    if not ask_when_ambiguous:
-        return fits[0] if fits else None
     own = [c for c in fits if not is_system_credential(c.id)]
+    if not ask_when_ambiguous:
+        if len(own) > 1 and is_unattended_turn():
+            # A schedule made before accounts were chosen at creation.
+            logger.info(
+                "Unattended turn with no account pinned for %s: using the "
+                "first saved of %d (%s)",
+                _provider_slug(own[0]),
+                len(own),
+                fits[0].id,
+            )
+        return fits[0] if fits else None
     if len(own) > 1:
         return None
     return own[0] if own else (fits[0] if fits else None)
@@ -451,8 +544,10 @@ async def match_user_credentials_to_graph(
 
     # Get the credentials available for the user, narrowed to the expert's grants
     creds_manager = IntegrationCredentialsManager()
-    available_creds = await scope_credentials_to_expert(
-        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+    available_creds = keep_to_pins(
+        await scope_credentials_to_expert(
+            user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+        )
     )
     selected = await selected_credentials(session_id)
 
@@ -469,7 +564,7 @@ async def match_user_credentials_to_graph(
             available_creds,
             credential_requirements,
             selected,
-            ask_when_ambiguous=bool(session_id),
+            ask_when_ambiguous=_can_ask_user(session_id),
         )
 
         if matching_cred:

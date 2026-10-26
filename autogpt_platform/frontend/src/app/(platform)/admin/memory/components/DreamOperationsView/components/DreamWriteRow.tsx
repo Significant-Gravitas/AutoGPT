@@ -1,3 +1,6 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// border-violet-200 #DDD6FE, text-gray-500 #6B7280.
+
 import type { WriteSummary } from "@/app/api/__generated__/models/writeSummary";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
@@ -21,7 +24,7 @@ export function DreamWriteRow({ item }: Props) {
         ) : null}
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
-        <code className="font-mono text-[10px]">
+        <code className="font-mono text-tiny leading-inherit">
           edge: {shortenUuid(item.edge_uuid)}
         </code>
         {item.scope ? (

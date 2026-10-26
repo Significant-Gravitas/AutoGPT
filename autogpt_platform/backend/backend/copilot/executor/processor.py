@@ -8,28 +8,57 @@ import asyncio
 import concurrent.futures
 import logging
 import os
-import subprocess
 import threading
 import time
+import uuid
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
+
 from backend.copilot import stream_registry
+from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.baseline import stream_chat_completion_baseline
+from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
+from backend.copilot.context import set_turn_unattended
+from backend.copilot.credential_selection import set_turn_credential_pins
+from backend.copilot.credit_billing import (
+    CreditBilledTurn,
+    bill_to_credits,
+    credit_billing,
+)
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.response_model import StreamError, StreamStatus
+from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.model import maybe_append_user_message
+from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.response_model import (
+    StreamBaseResponse,
+    StreamError,
+    StreamStart,
+    StreamStatus,
+    StreamTurnPaused,
+)
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
+from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
+from backend.copilot.turn_pause import TurnPause
+from backend.copilot.turn_tracing import (
+    MODEL_OUTPUT_CHUNKS,
+    TurnTrace,
+    turn_transaction,
+)
 from backend.data.model import OAuth2Credentials
+from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -50,6 +79,7 @@ from backend.util.process import set_service_name
 from backend.util.retry import func_retry
 from backend.util.workspace_storage import shutdown_workspace_storage
 
+from .scheduled_turn_alert import ScheduledTurnWatch
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 if TYPE_CHECKING:
@@ -60,7 +90,13 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]"
 
 
 SHUTDOWN_ERROR_MESSAGE = (
-    "Copilot executor shut down before this turn finished. Please retry."
+    "The server running this turn shut down before it finished. Please retry."
+)
+# A platform turn whose allowance can't be read doesn't run unmetered.
+RATE_LIMIT_UNAVAILABLE_CODE = "rate_limit_unavailable"
+RATE_LIMIT_UNAVAILABLE_MESSAGE = (
+    "Usage limits can't be checked right now, so this didn't start. "
+    "Please try again in a moment."
 )
 
 # Max time execute() blocks after requesting async turn cancellation. The worker
@@ -218,14 +254,17 @@ async def _normalize_private_expert_session_tenancy(
     return await upsert_chat_session(session, persist_tenancy=True)
 
 
-async def _wait_for_expert_setup(session: "ChatSession") -> None:
+async def _wait_for_expert_setup(session: "ChatSession") -> bool:
     """Hold a fresh hire's turn until its skills and workflows are installed,
-    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them."""
+    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them.
+
+    Returns whether the turn waited."""
     if session.expert_id is None:
-        return
+        return False
     from backend.data.db_accessors import experts_db
 
     deadline = time.monotonic() + EXPERT_SETUP_WAIT_SECONDS
+    waited = False
     while (
         await experts_db().expert_setup_status(session.user_id, session.expert_id)
         == "installing"
@@ -235,8 +274,60 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
                 f"Expert #{session.expert_id} still setting up after "
                 f"{EXPERT_SETUP_WAIT_SECONDS}s; running the turn without waiting"
             )
-            return
+            return True
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
+        waited = True
+    return waited
+
+
+async def _closing_at_model_output(
+    stream: AsyncGenerator[StreamBaseResponse, None], trial_reads: SharedTrialReads
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    """Pass the engine's stream through, closing ``trial_reads`` at its first
+    model output.
+
+    The close happens here, inside the engine's stream, because the heartbeat
+    drains that stream ahead of the turn loop: closed from the loop, the
+    engine could already be running a tool that reads the trial.
+    """
+    try:
+        async for chunk in stream:
+            if isinstance(chunk, MODEL_OUTPUT_CHUNKS):
+                trial_reads.close()
+            yield chunk
+    finally:
+        # ``async for`` doesn't close the engine's stream on cancel or
+        # GeneratorExit; its cleanup (the SDK stream lock) must still run.
+        await stream.aclose()
+
+
+async def _refuse_turn(
+    entry: CoPilotExecutionEntry,
+    session: "ChatSession",
+    pause: TurnPause,
+    scheduled_watch: ScheduledTurnWatch | None,
+) -> None:
+    """End a turn the allowance can't cover without running it.
+
+    The chat keeps the turn's message, as a turn that ran would, followed by
+    a not-started marker; the live stream carries the same pause part the
+    engines end a landed turn with. A scheduled turn's watch sees it too, so
+    its streak counts the run as not run rather than as one that tried
+    nothing.
+    """
+    maybe_append_user_message(
+        session, entry.message or None, entry.is_user_message, entry.message_metadata
+    )
+    await record_refusal(session, pause)
+    for chunk in (
+        StreamStart(messageId=str(uuid.uuid4()), sessionId=entry.session_id),
+        StreamTurnPaused(pause=pause.as_part()),
+    ):
+        await stream_registry.publish_chunk(
+            entry.turn_id, chunk, session_id=entry.session_id
+        )
+        if scheduled_watch is not None:
+            scheduled_watch.observe(chunk)
 
 
 def execute_copilot_turn(
@@ -319,58 +410,11 @@ class CoPilotProcessor:
         # already version-matched to the SDK package.
         os.environ.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
 
-        # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
-        # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
-        # Read cli_path directly from env here so _prewarm_cli does not have
-        # to construct a ChatConfig() (which can raise and abort the worker).
-        # Priority: CHAT_CLAUDE_AGENT_CLI_PATH (prefixed) first, then
-        # CLAUDE_AGENT_CLI_PATH (unprefixed) — matches config.py's validator
-        # order so both paths resolve to the same binary.
-        cli_path = os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH") or os.getenv(
-            "CLAUDE_AGENT_CLI_PATH"
-        )
-        self._prewarm_cli(cli_path=cli_path or None)
+        # The CLI binary is warmed once per process at executor start
+        # (``cli_warmup``), not here: this runs when a thread takes its
+        # first turn, so work here delays that turn.
 
         logger.info(f"Worker {self.tid} started")
-
-    def _prewarm_cli(self, cli_path: str | None = None) -> None:
-        """Run the Claude Code CLI binary once to warm OS page caches.
-
-        Accepts an explicit ``cli_path`` so the caller can pass the value
-        already resolved at startup rather than constructing a full
-        ``ChatConfig()`` here (which reads env vars, runs validators, and
-        can raise — aborting the worker prewarm silently).  Falls back to
-        the ``CLAUDE_AGENT_CLI_PATH`` / ``CHAT_CLAUDE_AGENT_CLI_PATH`` env
-        vars (same precedence as ``ChatConfig``), and then to the SDK's
-        bundled binary when neither is set.
-        """
-        try:
-            if not cli_path:
-                from claude_agent_sdk._internal.transport.subprocess_cli import (
-                    SubprocessCLITransport,
-                )
-
-                # _find_bundled_cli is an instance method that never touches
-                # self (pure __file__-based lookup) — safe to call unbound.
-                finder = cast(
-                    Callable[[object], str | None],
-                    SubprocessCLITransport._find_bundled_cli,
-                )
-                cli_path = finder(None)
-            if cli_path:
-                result = subprocess.run(
-                    [cli_path, "-v"],
-                    capture_output=True,
-                    timeout=10,
-                )
-                if result.returncode == 0:
-                    logger.info(f"CLI pre-warm done: {cli_path}")
-                else:
-                    logger.warning(
-                        f"CLI pre-warm failed (rc={result.returncode}): {cli_path}"
-                    )
-        except Exception as e:
-            logger.debug(f"CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -537,7 +581,8 @@ class CoPilotProcessor:
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
     ):
-        """Async execution logic for a CoPilot turn.
+        """Async execution logic for a CoPilot turn, run as one Sentry
+        ``copilot.turn`` transaction.
 
         Calls the chat completion service (SDK or baseline) and publishes
         results to the stream registry.
@@ -548,14 +593,38 @@ class CoPilotProcessor:
             cluster_lock: Distributed lock for refresh
             log: Structured logger
         """
+        with turn_transaction(entry) as turn:
+            await self._run_turn(entry, cancel, cluster_lock, log, turn)
+
+    async def _run_turn(
+        self,
+        entry: CoPilotExecutionEntry,
+        cancel: threading.Event,
+        cluster_lock: ClusterLock,
+        log: CoPilotLogMetadata,
+        turn: TurnTrace,
+    ):
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
+        # Re-published with the error: the client keys its dialogs on the code.
+        error_code: str | None = None
         credential_lease = None
         cost_context_stack = AsyncExitStack()
+        scheduled_watch = ScheduledTurnWatch.for_entry(entry)
+        credit_turn: CreditBilledTurn | None = None
 
         try:
             from backend.copilot.model import get_chat_session
+
+            # Every copilot turn starts here, whatever queued it.
+            if entry.user_id and await is_user_banned(entry.user_id):
+                log.info("Turn not started: the account is banned")
+                error_msg = ACCOUNT_BANNED_DETAIL["message"]
+                error_code = ACCOUNT_BANNED_DETAIL["code"]
+                # A refused account is not a failed schedule worth alerting on.
+                scheduled_watch = None
+                return
 
             # Executor picked the turn up — replace the route's "Message
             # received…" status while feature-flag resolution and service
@@ -579,7 +648,56 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
-            await _wait_for_expert_setup(session)
+            # The allowance, budget and tier checks that set up the turn share
+            # one read of the trial and one of the usage state; closed at the
+            # model's first output, so tools running after it read afresh.
+            trial_reads = cost_context_stack.enter_context(trial_reads_shared())
+            if entry.llm_auth_provider == "platform":
+                # Every platform-billed turn passes the allowance here, from
+                # whichever path queued it (see backend.copilot.budget_gate).
+                # An AutoPilot block turn the allowance can't cover may run on
+                # the credit balance instead (see backend.copilot.credit_billing).
+                try:
+                    pause = await refusal_for(entry.user_id)
+                    if pause is not None:
+                        # Billed to the tenancy the turn runs under (as
+                        # streamed below), as the graph's other blocks are.
+                        is_expert_session = session.expert_id is not None
+                        credit_turn = await bill_to_credits(
+                            user_id=entry.user_id,
+                            session_id=entry.session_id,
+                            tool_name=entry.tool_name,
+                            refusal=pause,
+                            organization_id=(
+                                session.organization_id
+                                if is_expert_session
+                                else entry.organization_id
+                            ),
+                            team_id=(
+                                session.team_id if is_expert_session else entry.team_id
+                            ),
+                        )
+                except RateLimitUnavailable:
+                    error_msg = RATE_LIMIT_UNAVAILABLE_MESSAGE
+                    error_code = RATE_LIMIT_UNAVAILABLE_CODE
+                    return
+                if pause is not None and credit_turn is None:
+                    log.info(f"Turn not started: the {pause.reason} limit is used up")
+                    await _refuse_turn(entry, session, pause, scheduled_watch)
+                    return
+                if credit_turn is not None:
+                    log.info(
+                        f"The {credit_turn.refusal.reason} limit is used up: "
+                        f"billing this block turn to credits, up to "
+                        f"{credit_turn.cap_credits} credits"
+                    )
+                    await cost_context_stack.enter_async_context(
+                        credit_billing(credit_turn)
+                    )
+            if await _wait_for_expert_setup(session):
+                # Up to a minute: long enough for the user to convert or end
+                # their trial, so the rest of the setup reads both again.
+                trial_reads.forget()
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -634,6 +752,7 @@ class CoPilotProcessor:
                         credential_lease = None
                     raise RuntimeError("codex_credential_not_found") from None
                 stream_fn = sdk_service.stream_chat_completion_sdk
+                engine = "sdk"
                 log.info("Using Claude SDK with Codex subscription transport")
             elif entry.llm_auth_provider == "microsoft_365_copilot":
                 if entry.user_id is None:
@@ -673,6 +792,7 @@ class CoPilotProcessor:
                     )
                     raise RuntimeError(code) from error
                 stream_fn = cast(Callable, stream_chat_completion_microsoft_365)
+                engine = "microsoft_365_copilot"
                 log.info("Using Microsoft 365 Copilot Chat API transport")
             else:
                 if entry.llm_credential_id is not None:
@@ -683,6 +803,7 @@ class CoPilotProcessor:
 
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
+                    engine = "dummy"
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
                 else:
                     use_sdk = await resolve_use_sdk(
@@ -703,15 +824,21 @@ class CoPilotProcessor:
                             log.info(
                                 "Forcing SDK engine: session is in agent building mode"
                             )
+                    if credit_turn is not None and not use_sdk:
+                        # Only the SDK engine caps a turn's spend, and a turn
+                        # on the credit balance mustn't overdraw it.
+                        use_sdk = True
+                        log.info("Forcing SDK engine: turn is billed to credits")
                     stream_fn = (
                         sdk_service.stream_chat_completion_sdk
                         if use_sdk
                         else stream_chat_completion_baseline
                     )
+                    engine = "sdk" if use_sdk else "baseline"
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             await cost_context_stack.enter_async_context(
-                trial_cost_context(entry.user_id)
+                trial_cost_context(entry.user_id, entry.cost_context)
             )
 
             # Stream chat completion and publish chunks to Redis.
@@ -720,6 +847,13 @@ class CoPilotProcessor:
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
             envelope = taint_for_source_platform(entry.envelope, session)
+            set_turn_unattended(session, scheduled=entry.unattended)
+            set_turn_impersonated(entry.impersonated)
+            # A subtask's calls join the trace of the reply it works for.
+            set_turn_trace_id(trace_id_for(entry))
+            set_turn_span(entry.turn_id)
+            set_turn_credential_pins(entry.credential_pins)
+            turn.engine_started(engine)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message or None,
@@ -747,7 +881,9 @@ class CoPilotProcessor:
             # FE shows escalating ``StreamStatus`` messages during long
             # silent gaps (deep thinking, slow tool execution, inter-tool
             # gaps) instead of looping the generic "Thinking…" phrases.
-            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
+            heartbeat_stream = wrap_stream_with_heartbeat(
+                _closing_at_model_output(raw_stream, trial_reads)
+            )
             published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
@@ -759,15 +895,20 @@ class CoPilotProcessor:
             # until GC eventually runs.
             try:
                 async for chunk in published_stream:
+                    turn.observe(chunk)
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")
                         break
 
+                    # Before the StreamError break: the watch reports its code.
+                    if scheduled_watch is not None:
+                        scheduled_watch.observe(chunk)
                     # Capture StreamError so mark_session_completed receives
                     # the error message (stream_and_publish yields but does
                     # not publish StreamError — that's done by mark_session_completed).
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
+                        error_code = chunk.code
                         break
 
                     current_time = time.monotonic()
@@ -806,16 +947,34 @@ class CoPilotProcessor:
                     except Exception as release_err:
                         log.error(f"Failed to release chat credential: {release_err}")
             finally:
+                # After the release, which can still fail the turn.
+                turn.set_outcome(
+                    error_msg, stream_registry.CANCELLED_MESSAGE, error_code
+                )
+                if scheduled_watch is not None:
+                    scheduled_watch.report(error_msg)
                 try:
                     await stream_registry.mark_session_completed(
-                        entry.session_id, error_message=error_msg, turn_id=entry.turn_id
+                        entry.session_id,
+                        error_message=error_msg,
+                        error_code=error_code,
+                        turn_id=entry.turn_id,
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
                 finally:
-                    await cost_context_stack.aclose()
-                    # A browser turn leaves a Chromium tree on this pod that
-                    # nothing else ever stops; state is already persisted, so
-                    # the next turn restores it wherever it lands.
-                    if await close_browser_daemon(entry.session_id):
-                        log.info("Browser daemon teardown attempted for this turn")
+                    try:
+                        # After the turn is marked done, so the owner never
+                        # waits on it: counts the run toward its schedule's
+                        # failure streak. It can be cancelled while it waits,
+                        # so the cleanups below still run.
+                        if scheduled_watch is not None:
+                            await scheduled_watch.record(error_msg)
+                    finally:
+                        await cost_context_stack.aclose()
+                        # A browser turn leaves a Chromium tree on this pod
+                        # that nothing else ever stops; state is already
+                        # persisted, so the next turn restores it wherever it
+                        # lands.
+                        if await close_browser_daemon(entry.session_id):
+                            log.info("Browser daemon teardown attempted for this turn")

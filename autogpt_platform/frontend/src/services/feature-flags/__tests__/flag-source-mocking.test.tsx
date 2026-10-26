@@ -23,9 +23,13 @@ vi.mock("@/services/environment", () => ({
 
 describe("mocking the flag source controls every flag hook", () => {
   it("drives useGetFlag without mocking any vendor SDK", () => {
-    source.results = { "hire-experts": { value: true, resolved: true } };
+    source.results = {
+      "generic-trigger-agents": { value: true, resolved: true },
+    };
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(true);
   });
@@ -33,7 +37,9 @@ describe("mocking the flag source controls every flag hook", () => {
   it("drives useFlagStatus, including the not-answered-yet case", () => {
     source.results = {};
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toEqual({
       enabled: false,

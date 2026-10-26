@@ -2,11 +2,6 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useVoiceRecording } from "../useVoiceRecording";
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump" },
-  useGetFlag: () => false,
-}));
-
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));

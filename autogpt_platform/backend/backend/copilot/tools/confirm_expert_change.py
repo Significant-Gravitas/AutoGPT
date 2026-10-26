@@ -58,6 +58,7 @@ class ConfirmExpertChangeTool(BaseTool):
                 "confirmation_id": {
                     "type": "string",
                     "description": "The id returned by hire_expert/raise_expert.",
+                    "entity": "team_change",
                 },
             },
             "required": ["confirmation_id"],
