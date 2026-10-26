@@ -19,6 +19,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
+  savedMessageId?: string;
   className?: string;
 }
 
@@ -35,6 +36,7 @@ function extractTextFromParts(
 export function AssistantMessageActions({
   message,
   sessionID,
+  savedMessageId,
   className,
 }: Props) {
   const {
@@ -46,7 +48,7 @@ export function AssistantMessageActions({
     handleDownvoteClick,
     handleDownvoteSubmit,
     handleDownvoteCancel,
-  } = useMessageFeedback({ sessionID, message });
+  } = useMessageFeedback({ sessionID, message, savedMessageId });
 
   const text = extractTextFromParts(message.parts);
 
@@ -67,8 +69,10 @@ export function AssistantMessageActions({
           onClick={handleUpvote}
           variant="ghost"
           size="icon-sm"
-          disabled={!canRate || feedback === "downvote"}
+          disabled={feedback === "downvote"}
+          aria-disabled={!canRate}
           className={cn(
+            !canRate && "opacity-50",
             // TODO(tokens): no exact role for text-green-300, hover:text-green-300
             feedback === "upvote" && "text-green-300 hover:text-green-300",
             feedback === "downvote" && "!opacity-20",
@@ -82,8 +86,10 @@ export function AssistantMessageActions({
           onClick={handleDownvoteClick}
           variant="ghost"
           size="icon-sm"
-          disabled={!canRate || feedback === "upvote"}
+          disabled={feedback === "upvote"}
+          aria-disabled={!canRate}
           className={cn(
+            !canRate && "opacity-50",
             // TODO(tokens): no exact role for text-red-300, hover:text-red-300
             feedback === "downvote" && "text-red-300 hover:text-red-300",
             feedback === "upvote" && "!opacity-20",

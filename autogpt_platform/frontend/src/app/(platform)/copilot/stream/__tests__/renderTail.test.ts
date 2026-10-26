@@ -1,7 +1,24 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it } from "vitest";
 
-import { createAssistantRunJoiner, statsOfAssistantRuns } from "../renderTail";
+import {
+  createAssistantRunJoiner,
+  createTailRenderer,
+  statsOfAssistantRuns,
+} from "../renderTail";
+import type { RuntimeSnapshot } from "../turnRuntime";
+import {
+  emptyTurnLog,
+  logRowFromPersisted,
+  type LogRow,
+  type PersistedRow,
+} from "../turnLog";
+import {
+  newTurnSegment,
+  reconcileTurn,
+  userSegment,
+  type Segment,
+} from "../turnTail";
 
 type Msg = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -39,5 +56,108 @@ describe("statsOfAssistantRuns", () => {
     });
     // A user row between them keeps two bubbles apart.
     expect(joined.get("a3")).toEqual({ durationMs: 7_000 });
+  });
+});
+
+const SESSION = "sess-1";
+
+function snapshot(segments: Segment[]): RuntimeSnapshot {
+  return {
+    segments,
+    ownedFrom: 0,
+    phase: "idle",
+    notice: null,
+    error: null,
+    stopped: false,
+  };
+}
+
+function streamedRow(
+  key: string,
+  role: LogRow["role"],
+  content: string,
+): LogRow {
+  return {
+    key,
+    role,
+    content,
+    toolCalls: [],
+    toolCallId: null,
+    sequence: null,
+    metadata: null,
+  };
+}
+
+function finishedTurn() {
+  return newTurnSegment("turn-1", {
+    ...emptyTurnLog(),
+    turnId: "turn-1",
+    status: "finished",
+    rows: [
+      streamedRow("block-r", "reasoning", "Looking it up"),
+      streamedRow("block-1", "assistant", "Here is the summary."),
+    ],
+  });
+}
+
+const PERSISTED: PersistedRow[] = [
+  { role: "reasoning", content: "Looking it up", sequence: 4 },
+  { role: "assistant", content: "Here is the summary.", sequence: 5 },
+];
+
+const PROMPT = {
+  ...userSegment(
+    { id: "local:hi", role: "user", parts: [{ type: "text", text: "hi" }] },
+    "sent",
+  ),
+  sequence: 3,
+};
+
+describe("createTailRenderer saved bubble ids", () => {
+  it("names a finished turn's bubble by its last saved row once reconciled", () => {
+    const reconciled = reconcileTurn(finishedTurn(), {
+      raw: PERSISTED,
+      rows: PERSISTED.map(logRowFromPersisted),
+    });
+
+    const { messages, stats } = createTailRenderer(SESSION)(
+      snapshot([PROMPT, reconciled]),
+    );
+
+    const bubble = messages.find((m) => m.role === "assistant");
+    // The bubble keeps the turn's key, so React does not remount it.
+    expect(bubble?.id).toBe("turn:turn-1");
+    expect(stats.get("turn:turn-1")?.savedMessageId).toBe(`${SESSION}-seq-5`);
+  });
+
+  it("gives a turn that is not reconciled yet no saved id", () => {
+    const { stats } = createTailRenderer(SESSION)(
+      snapshot([PROMPT, finishedTurn()]),
+    );
+
+    expect(stats.get("turn:turn-1")?.savedMessageId).toBeUndefined();
+  });
+
+  it("lets a joined bubble's later saved row win, as a reload keys it", () => {
+    const reconciled = reconcileTurn(finishedTurn(), {
+      raw: PERSISTED,
+      rows: PERSISTED.map(logRowFromPersisted),
+    });
+    const later: Segment = {
+      kind: "rows",
+      key: "rows:6",
+      rows: [{ role: "assistant", content: "One more thing.", sequence: 6 }],
+    };
+
+    const { messages, stats } = createTailRenderer(SESSION)(
+      snapshot([PROMPT, reconciled, later]),
+    );
+    const joined = statsOfAssistantRuns(messages, stats);
+
+    expect(createAssistantRunJoiner()(messages).map((m) => m.id)).toEqual([
+      "local:hi",
+      "turn:turn-1",
+    ]);
+    expect(joined.get("turn:turn-1")?.savedMessageId).toBe(`${SESSION}-seq-6`);
   });
 });
