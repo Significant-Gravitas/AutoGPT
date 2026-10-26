@@ -154,9 +154,6 @@ vi.mock("@/services/environment", async (importOriginal) => {
     environment: { ...actual.environment, isLocal: () => local },
   };
 });
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useLDClient: () => ({ waitForInitialization: () => Promise.resolve() }),
-}));
 
 beforeEach(() => {
   user = {

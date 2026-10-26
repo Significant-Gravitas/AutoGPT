@@ -2006,7 +2006,7 @@ async def test_read_user_skill_with_body_returns_full_text():
 
 
 # ---------------------------------------------------------------------------
-# COPILOT_SKILLS LaunchDarkly kill-switch — default-on; LD-off must collapse
+# COPILOT_SKILLS PostHog kill-switch — default-on; flag-off must collapse
 # the per-turn ``<available_skills>`` block to empty AND make every MCP tool
 # return a structured ``feature_disabled`` error.  This is the rollback story
 # if the feature regresses in prod.

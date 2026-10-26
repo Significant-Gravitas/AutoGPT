@@ -431,7 +431,7 @@ class DatabaseManager(AppService):
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
-    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    # full flag context — see backend/util/feature_flag/__init__.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     # Background work skips a banned owner in Prisma-less workers too.
     is_auth_user_banned = _(is_auth_user_banned)

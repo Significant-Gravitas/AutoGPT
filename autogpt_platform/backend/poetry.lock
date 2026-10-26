@@ -3422,52 +3422,6 @@ strands-agents = ["opentelemetry-api (>=1.30.0)", "opentelemetry-exporter-otlp-p
 vcr = ["vcrpy (>=7.0.0)"]
 
 [[package]]
-name = "launchdarkly-eventsource"
-version = "1.7.2"
-description = "LaunchDarkly SSE Client"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "launchdarkly_eventsource-1.7.2-py3-none-any.whl", hash = "sha256:6e4ed9cfa97f79bb658d4d0f563c0c65234c4a413fce6980a32034ae4a9059eb"},
-    {file = "launchdarkly_eventsource-1.7.2.tar.gz", hash = "sha256:6e17aaf4a51838267e70e2b041f28e392157b09dc03e654b043e1add3c1944f9"},
-]
-
-[package.dependencies]
-urllib3 = ">=1.26.0,<3"
-
-[package.extras]
-async = ["aiohttp (>=3.8.0,<4)"]
-
-[[package]]
-name = "launchdarkly-server-sdk"
-version = "9.17.0"
-description = "LaunchDarkly SDK for Python"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "launchdarkly_server_sdk-9.17.0-py3-none-any.whl", hash = "sha256:ba2f308b87d47f200bd591040707cb9e0008654e14f0f93411a8c4530cbb5307"},
-    {file = "launchdarkly_server_sdk-9.17.0.tar.gz", hash = "sha256:0c7ff0bf25aeb2e2579df00b74bab28fefa891b4633832f45933e9d76d3a788c"},
-]
-
-[package.dependencies]
-certifi = ">=2018.4.16"
-expiringdict = ">=1.1.4"
-launchdarkly-eventsource = ">=1.7.2,<2.0.0"
-pyrfc3339 = ">=1.0"
-semver = ">=2.10.2"
-urllib3 = ">=1.26.0,<3"
-
-[package.extras]
-async = ["aiohttp (>=3.9,<4)"]
-async-dynamodb = ["aioboto3 (>=11.0)"]
-consul = ["python-consul (>=1.0.1)"]
-dynamodb = ["boto3 (>=1.9.71)"]
-redis = ["redis (>=2.10.5)"]
-test-filesource = ["pyyaml (>=5.3.1)", "watchdog (>=3.0.0)"]
-
-[[package]]
 name = "markdown-it-py"
 version = "4.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -6105,18 +6059,6 @@ files = [
 opentelemetry-api = ">=1.39.1"
 
 [[package]]
-name = "pyrfc3339"
-version = "2.1.0"
-description = "Generate and parse RFC 3339 timestamps"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "pyrfc3339-2.1.0-py3-none-any.whl", hash = "sha256:560f3f972e339f579513fe1396974352fd575ef27caff160a38b312252fcddf3"},
-    {file = "pyrfc3339-2.1.0.tar.gz", hash = "sha256:c569a9714faf115cdb20b51e830e798c1f4de8dabb07f6ff25d221b5d09d8d7f"},
-]
-
-[[package]]
 name = "pyright"
 version = "1.1.414"
 description = "Command line wrapper for pyright"
@@ -7065,18 +7007,6 @@ files = [
 [package.dependencies]
 cryptography = ">=2.0"
 jeepney = ">=0.6"
-
-[[package]]
-name = "semver"
-version = "3.0.4"
-description = "Python helper for Semantic Versioning (https://semver.org)"
-optional = false
-python-versions = ">=3.7"
-groups = ["main"]
-files = [
-    {file = "semver-3.0.4-py3-none-any.whl", hash = "sha256:9c824d87ba7f7ab4a1890799cec8596f15c1241cb473404ea1cb0c55e4b04746"},
-    {file = "semver-3.0.4.tar.gz", hash = "sha256:afc7d8c584a5ed0a11033af086e8af226a9c0b206f313e0301f8dd7b6b589602"},
-]
 
 [[package]]
 name = "sentry-sdk"
@@ -8870,4 +8800,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "b2e21cbb6aad136414dbbc9d12ac0ab980fa070ea106a4ab145d4cd8323946f9"
+content-hash = "98a762ae5d083bf8f9f4e4ee3777d51421e421cfa50e8d1834bcbc21114a9f10"

@@ -17,12 +17,6 @@ export const PageEvent = {
   PAGEVIEW: "$pageview",
 } as const;
 
-// Ops signal from the dual flag backend, not a user action: LaunchDarkly and
-// PostHog resolved the same flag to different values.
-export const FeatureFlagEvent = {
-  FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
-} as const;
-
 // Marketing email refusals made in the app. `surface` says where; the
 // refusal itself is stored on the user (`marketingOptOutAt`).
 export const MarketingConsentEvent = {
@@ -184,7 +178,6 @@ export const MonetizationEvent = {
 
 export const PostHogEvent = {
   ...PageEvent,
-  ...FeatureFlagEvent,
   ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,

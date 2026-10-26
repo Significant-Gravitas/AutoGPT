@@ -1715,8 +1715,8 @@ class TestSetUserTier:
         assert tier_after == SubscriptionTier.ENTERPRISE
 
     @pytest.mark.asyncio
-    async def test_drift_check_swallows_launchdarkly_failure(self):
-        """LaunchDarkly price-id lookup failures inside the drift check must
+    async def test_drift_check_swallows_posthog_failure(self):
+        """PostHog price-id lookup failures inside the drift check must
         never bubble up and 500 the admin tier write — the DB update is
         already committed by the time we check drift."""
         mock_prisma = AsyncMock()

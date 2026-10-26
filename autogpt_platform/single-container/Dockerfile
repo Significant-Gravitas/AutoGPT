@@ -22,7 +22,6 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_FRONTEND_BASE_URL="" \
     NEXT_PUBLIC_APP_ENV=local \
     NEXT_PUBLIC_BEHAVE_AS=LOCAL \
-    NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
     NEXT_PUBLIC_SOURCEMAPS=false \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
@@ -199,14 +198,7 @@ RUN groupadd --system --gid 10001 autogpt \
     && chmod -R a+rX /opt/autogpt/single-container /usr/share/licenses/autogpt-platform /usr/share/licenses/falkordb /usr/share/licenses/redis \
     && find /opt/autogpt/single-container -type f \( -name '*.sh' -o -name 'entrypoint' -o -name 'autogpt-*' \) -exec chmod 0755 {} + \
     && ln -sf /opt/autogpt/single-container/healthcheck.sh /usr/local/bin/autogpt-healthcheck \
-    && ln -sf /opt/autogpt/single-container/promote-admin.sh /usr/local/bin/autogpt-admin \
-    && site_packages="$(/app/autogpt_platform/backend/.venv/bin/python -c \
-        'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
-    && rm -f \
-        "${site_packages}/ldclient/testing/selfsigned.key" \
-        "${site_packages}/ldclient/testing/selfsigned.pem" \
-    && test ! -e "${site_packages}/ldclient/testing/selfsigned.key" \
-    && test ! -e "${site_packages}/ldclient/testing/selfsigned.pem"
+    && ln -sf /opt/autogpt/single-container/promote-admin.sh /usr/local/bin/autogpt-admin
 
 # Everything above changes only when dependencies do. Everything below changes
 # with AutoGPT's code, so it goes last and a new commit reuses the layers above.

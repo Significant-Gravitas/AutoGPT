@@ -123,7 +123,7 @@ async def _anonymous_flags() -> dict[FrontendFlag, Any]:
     return flags
 
 
-# Listing LaunchDarkly's flags evaluates all of them; "cannot tell yet" is retried.
+# Cached briefly; "cannot tell yet" (definitions not loaded) is retried.
 @cached(maxsize=1, ttl_seconds=30, cache_none=False)
 def _defined_flags() -> frozenset[str] | None:
     return defined_flag_keys()

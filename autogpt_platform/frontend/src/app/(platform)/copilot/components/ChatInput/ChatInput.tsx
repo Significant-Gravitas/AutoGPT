@@ -177,8 +177,8 @@ export const ChatInput = memo(function ChatInput({
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
   const setIsDryRun = useCopilotUIStore((s) => s.setIsDryRun);
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
-  // Fast/Thinking control it was created for is gone. Renaming it means an
-  // LaunchDarkly change, so it is left until the combined picker restructures
+  // Fast/Thinking control it was created for is gone. Renaming it means a
+  // PostHog change, so it is left until the combined picker restructures
   // these controls anyway. Splitting it now would need two new flags and would
   // hide both survivors until someone created them.
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);

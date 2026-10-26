@@ -1465,7 +1465,7 @@ async def get_copilot_usage(
 
     Returns the percentage of the daily/weekly allowance used — not the
     raw spend or cap — so clients cannot derive per-turn cost or platform
-    margins. Global defaults sourced from LaunchDarkly (falling back to
+    margins. Global defaults sourced from PostHog (falling back to
     config). Includes the user's rate-limit tier.
     """
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
