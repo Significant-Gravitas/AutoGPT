@@ -12,24 +12,10 @@ import {
   useGetOauthGetOauthAppInfo,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+import { SCOPE_DESCRIPTIONS } from "@/lib/api-key-scopes";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-
-// Human-readable scope descriptions
-const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
-  IDENTITY: "View your user ID, e-mail, and timezone",
-  EXECUTE_GRAPH: "Run your workflows",
-  READ_GRAPH: "View your workflows and their configurations",
-  WRITE_GRAPH: "Create workflows",
-  WRITE_LIBRARY: "Add workflows to your library",
-  EXECUTE_BLOCK: "Execute individual blocks",
-  READ_BLOCK: "View available blocks",
-  READ_STORE: "Access the Marketplace",
-  USE_TOOLS: "Use tools on your behalf",
-  MANAGE_INTEGRATIONS: "Set up new integrations",
-  READ_INTEGRATIONS: "View your connected integrations",
-  DELETE_INTEGRATIONS: "Remove connected integrations",
-};
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export default function AuthorizePage() {
   const searchParams = useSearchParams();
@@ -53,15 +39,19 @@ export default function AuthorizePage() {
     isLoading,
     error,
     refetch,
-  } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: {
-      enabled: !!clientID,
-      staleTime: Infinity,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+  } = useGetOauthGetOauthAppInfo(
+    encodeURIComponent(clientID || ""),
+    { redirect_uri: redirectURI },
+    {
+      query: {
+        enabled: !!clientID && !!redirectURI,
+        staleTime: Infinity,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+      },
     },
-  });
+  );
 
   const appInfo = appInfoResponse?.status === 200 ? appInfoResponse.data : null;
 
@@ -109,7 +99,8 @@ export default function AuthorizePage() {
   }
 
   function handleDeny() {
-    // Redirect back to client with access_denied error
+    // appInfo loads only once the backend accepts redirectURI for this client
+    if (!appInfo) return;
     const params = new URLSearchParams({
       error: "access_denied",
       error_description: "User denied access",
@@ -152,11 +143,14 @@ export default function AuthorizePage() {
     );
   }
 
-  // Show error if app not found
+  // Unknown app or unregistered redirect_uri: never send the user to it
   if (error || !appInfo) {
+    const redirectRejected = error instanceof ApiError && error.status === 400;
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
-        <AuthCard title="Application Not Found">
+        <AuthCard
+          title={redirectRejected ? "Invalid Request" : "Application Not Found"}
+        >
           <ErrorCard
             context="application"
             responseError={
@@ -169,15 +163,6 @@ export default function AuthorizePage() {
             }
             onRetry={refetch}
           />
-          {redirectURI && (
-            <Button
-              variant="secondary"
-              onClick={handleDeny}
-              className="mt-4 w-full"
-            >
-              Return to Application
-            </Button>
-          )}
         </AuthCard>
       </div>
     );

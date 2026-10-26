@@ -18,6 +18,8 @@ import { OrbControlButton } from "./components/OrbControlButton";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
 
 const FAILURE_HEADLINE = "That didn't go through.";
+const MIC_UNAVAILABLE_COPY =
+  "We couldn't open your microphone. You can write it instead.";
 const TYPING_HEADLINE = "Write to me about your work";
 // "Catch" fits a mishearing, not a typed answer — the typed reject asks
 // for more instead of implying the system misheard.
@@ -70,7 +72,7 @@ export function BrainDumpStep() {
               variant="ghost"
               size="xs"
               onClick={dump.handleSkip}
-              className="text-zinc-400 hover:text-zinc-700"
+              className="text-foreground-subtle hover:text-foreground-body"
             >
               Skip for now
             </Button>
@@ -117,6 +119,7 @@ export function BrainDumpStep() {
                 <TypedFallback
                   value={dump.typedText}
                   onChange={dump.setTypedText}
+                  isTooLong={dump.isTypedTooLong}
                   onSubmit={dump.handleSubmitTyped}
                 />
               ) : isRecording ? (
@@ -129,10 +132,23 @@ export function BrainDumpStep() {
                   isOffline={dump.isOffline}
                 />
               ) : orbScreen === "rest" ? (
-                <RestActions
-                  onTalk={dump.handleStart}
-                  onWrite={dump.showTyping}
-                />
+                <>
+                  <RestActions
+                    onTalk={dump.handleStart}
+                    onWrite={dump.showTyping}
+                    writeFirst={dump.isMicUnavailable}
+                  />
+                  {dump.isMicUnavailable && (
+                    <Text
+                      variant="body"
+                      tone="muted"
+                      role="alert"
+                      className="mt-3 text-center"
+                    >
+                      {MIC_UNAVAILABLE_COPY}
+                    </Text>
+                  )}
+                </>
               ) : (
                 orbScreen === "failed" && (
                   <OrbControlButton
@@ -157,6 +173,7 @@ export function BrainDumpStep() {
             <RecoveryPrompt
               durationSecs={dump.recoverable.durationSecs}
               onResume={dump.handleResumeRecovered}
+              onDownload={dump.handleDownloadRecording}
               onDiscard={dump.handleDiscardRecovered}
             />
           </RevealItem>
@@ -165,6 +182,8 @@ export function BrainDumpStep() {
         {dump.screen === "failed" && (
           <RevealItem>
             <FailureState
+              mode={dump.submittedMode}
+              reason={dump.failureReason}
               onDownload={dump.handleDownloadRecording}
               onSkip={dump.handleSkip}
             />
@@ -195,7 +214,9 @@ export function BrainDumpStep() {
                     onClick={dump.showTyping}
                     className="underline underline-offset-4"
                   >
-                    type instead
+                    {dump.submittedMode === "typed"
+                      ? "edit your text"
+                      : "type instead"}
                   </Button>
                 )}
                 {isTyping && !dump.isMicBlocked && (

@@ -5,18 +5,31 @@ does, and the OpenAI client is the baseline engine's own. A script that round
 trips through both is one the copilot can follow.
 """
 
+import asyncio
 import json
+import logging
 import re
 import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Literal
 
 import anthropic
 import openai
 import pytest
-
+from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
+from graphiti_core.embedder.client import EMBEDDING_DIM
+from graphiti_core.llm_client.config import LLMConfig
+from graphiti_core.prompts.extract_edges import ExtractedEdges
+from graphiti_core.prompts.extract_nodes import ExtractedEntities
+from graphiti_core.prompts.models import Message
+from pydantic import BaseModel, Field
+from scripted_model.responses import ResponseError
+from scripted_model.responses import response as structured_response
 from scripted_model.scripts import parse_script
+
+from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
 
 JOURNEY_SCRIPTS = (
     Path(__file__).resolve().parents[2]
@@ -59,6 +72,37 @@ CHAT_TOOLS = [
         "function": {"name": "find_library_agent", "parameters": {"type": "object"}},
     }
 ]
+
+
+class StructuredSummary(BaseModel):
+    label: str
+    count: int = Field(ge=1)
+
+
+class StructuredExtraction(BaseModel):
+    entities: list[str]
+    summary: StructuredSummary
+    accepted: bool
+
+
+class ConstrainedExtraction(BaseModel):
+    kind: Literal["fixed"]
+    status: Literal["ready", "waiting"]
+    labels: list[str] = Field(min_length=1)
+    code: str = Field(min_length=2)
+    score: int | None
+    ratio: float = Field(ge=0.25)
+
+
+class MaximumConstrainedExtraction(BaseModel):
+    integer: int = Field(le=-1, multiple_of=2)
+    number: float = Field(le=-0.25, multiple_of=0.5)
+
+
+class ExclusiveConstrainedExtraction(BaseModel):
+    integer: int = Field(gt=0, lt=3, multiple_of=2)
+    number: float = Field(gt=0.25, lt=0.75, multiple_of=0.25)
+    negative: int = Field(lt=-1, multiple_of=2)
 
 
 def test_messages_follow_the_script_through_a_tool_round(scripted_model):
@@ -162,6 +206,230 @@ def test_chat_completions_follow_the_script_and_bill_like_openrouter(
     text, calls, _ = _stream_chat(client, messages)
     assert (text, calls) == ("You have none yet.", [])
     assert scripted_model.journal(nonce="chat-run")[-1]["checks"][0]["ok"]
+
+
+def test_responses_parse_returns_schema_valid_structured_output(scripted_model, caplog):
+    caplog.set_level(logging.INFO, logger="scripted_model")
+    response = _openai(scripted_model).responses.parse(
+        model="gpt-6-luna",
+        input=[
+            {
+                "role": "user",
+                "content": "Extract entities. [[script:lookup#memory-side-call]]",
+            }
+        ],
+        text_format=StructuredExtraction,
+        reasoning={"effort": "none"},
+    )
+
+    content = response.output[0].content[0]
+    assert content.parsed == StructuredExtraction(
+        entities=[],
+        summary=StructuredSummary(label="", count=1),
+        accepted=False,
+    )
+    assert json.loads(response.output_text) == content.parsed.model_dump()
+    assert response.usage is not None
+    assert response.usage.total_tokens > 0
+
+    (entry,) = scripted_model.journal()
+    assert entry["kind"] == "side_call"
+    assert entry["dialect"] == "openai-responses"
+    assert entry["completed"]
+    assert scripted_model.journal(nonce="memory-side-call") == []
+    assert "openai-responses side call (gpt-6-luna)" in caplog.messages
+
+
+def test_responses_parse_honors_supported_schema_constraints(scripted_model):
+    response = _openai(scripted_model).responses.parse(
+        model="gpt-6-luna",
+        input="Extract constrained values.",
+        text_format=ConstrainedExtraction,
+    )
+
+    assert response.output_parsed == ConstrainedExtraction(
+        kind="fixed",
+        status="ready",
+        labels=[""],
+        code="xx",
+        score=0,
+        ratio=0.25,
+    )
+
+
+def test_responses_parse_honors_numeric_constraints(scripted_model):
+    response = _openai(scripted_model).responses.parse(
+        model="gpt-6-luna",
+        input="Extract upper-bounded values.",
+        text_format=MaximumConstrainedExtraction,
+    )
+
+    assert response.output_parsed == MaximumConstrainedExtraction(
+        integer=-2,
+        number=-0.5,
+    )
+
+
+def test_responses_parse_honors_exclusive_numeric_constraints(scripted_model):
+    response = _openai(scripted_model).responses.parse(
+        model="gpt-6-luna",
+        input="Extract exclusively bounded values.",
+        text_format=ExclusiveConstrainedExtraction,
+    )
+
+    assert response.output_parsed == ExclusiveConstrainedExtraction(
+        integer=2,
+        number=0.5,
+        negative=-2,
+    )
+
+
+def test_responses_rejects_unsatisfiable_numeric_constraints():
+    with pytest.raises(ResponseError, match="no value satisfying its constraints"):
+        structured_response(
+            {
+                "model": "gpt-6-luna",
+                "text": {
+                    "format": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "value": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1,
+                                    "multipleOf": 2,
+                                }
+                            },
+                            "required": ["value"],
+                        }
+                    }
+                },
+            }
+        )
+
+
+def test_responses_rejects_unsatisfiable_exclusive_numeric_constraints():
+    with pytest.raises(ResponseError, match="no value"):
+        structured_response(
+            {
+                "model": "gpt-6-luna",
+                "text": {
+                    "format": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "value": {
+                                    "type": "integer",
+                                    "exclusiveMinimum": 0,
+                                    "exclusiveMaximum": 1,
+                                }
+                            },
+                            "required": ["value"],
+                        }
+                    }
+                },
+            }
+        )
+
+
+def test_responses_rejects_a_non_object_body(scripted_model):
+    request = urllib.request.Request(
+        f"{scripted_model.url}/api/v1/responses",
+        data=b"[]",
+        headers={"Content-Type": "application/json"},
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(request, timeout=5)
+
+    assert refused.value.code == 400
+    assert "body is not a JSON object" in refused.value.read().decode()
+
+
+def test_responses_rejects_a_non_string_required_key(scripted_model):
+    request = urllib.request.Request(
+        f"{scripted_model.url}/api/v1/responses",
+        data=json.dumps(
+            {
+                "model": "gpt-6-luna",
+                "text": {
+                    "format": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {},
+                            "required": [[]],
+                        }
+                    }
+                },
+            }
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(request, timeout=5)
+
+    assert refused.value.code == 400
+    assert "required property [] has no schema" in refused.value.read().decode()
+
+
+def test_responses_preserve_large_numeric_minimums():
+    minimum = 10**400
+    _, output_text = structured_response(
+        {
+            "model": "gpt-6-luna",
+            "text": {
+                "format": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"value": {"type": "number", "minimum": minimum}},
+                        "required": ["value"],
+                    }
+                }
+            },
+        }
+    )
+
+    assert json.loads(output_text) == {"value": minimum}
+
+
+def test_graphiti_client_parses_its_real_extraction_schemas(scripted_model):
+    nodes, edges = asyncio.run(_graphiti_extract(scripted_model.url))
+
+    assert nodes == {"extracted_entities": []}
+    assert edges == {"edges": []}
+    assert [entry["dialect"] for entry in scripted_model.journal()] == [
+        "openai-responses",
+        "openai-responses",
+    ]
+
+
+def test_embeddings_return_graphiti_sized_vectors(scripted_model, caplog):
+    caplog.set_level(logging.INFO, logger="scripted_model")
+    response = _openai(scripted_model).embeddings.create(
+        model="text-embedding-3-small",
+        input=["today", "tomorrow"],
+    )
+
+    assert [item.index for item in response.data] == [0, 1]
+    assert all(len(item.embedding) == 1536 for item in response.data)
+    assert all(any(value != 0 for value in item.embedding) for item in response.data)
+
+    graphiti_embedding = asyncio.run(_graphiti_embedding(scripted_model.url))
+    assert len(graphiti_embedding) == EMBEDDING_DIM
+
+    entries = scripted_model.journal()
+    assert [entry["dialect"] for entry in entries] == [
+        "openai-embeddings",
+        "openai-embeddings",
+    ]
+    assert all(entry["kind"] == "side_call" for entry in entries)
+    assert all(entry["completed"] for entry in entries)
+    assert (
+        caplog.messages.count("openai-embeddings side call (text-embedding-3-small)")
+        == 2
+    )
 
 
 def test_a_failed_expectation_is_recorded_with_what_the_tool_said(scripted_model):
@@ -373,6 +641,44 @@ def _anthropic(server) -> anthropic.Anthropic:
 
 def _openai(server) -> openai.OpenAI:
     return openai.OpenAI(base_url=f"{server.url}/api/v1", api_key="any", max_retries=0)
+
+
+async def _graphiti_extract(base_url: str):
+    client = GraphitiOpenAIClient(
+        config=LLMConfig(
+            api_key="any",
+            model="gpt-6-luna",
+            base_url=f"{base_url}/api/v1",
+        )
+    )
+    try:
+        nodes = await client.generate_response(
+            [Message(role="user", content="Remember nothing from this turn.")],
+            response_model=ExtractedEntities,
+            prompt_name="extract_nodes.extract_message",
+        )
+        edges = await client.generate_response(
+            [Message(role="user", content="Relate nothing from this turn.")],
+            response_model=ExtractedEdges,
+            prompt_name="extract_edges.edge",
+        )
+        return nodes, edges
+    finally:
+        await client.client.close()
+
+
+async def _graphiti_embedding(base_url: str):
+    embedder = OpenAIEmbedder(
+        config=OpenAIEmbedderConfig(
+            api_key="any",
+            embedding_model="text-embedding-3-small",
+            base_url=f"{base_url}/api/v1",
+        )
+    )
+    try:
+        return await embedder.create("today")
+    finally:
+        await embedder.client.close()
 
 
 def _stream(client: anthropic.Anthropic, messages: list[dict], system=None):

@@ -16,7 +16,7 @@ const mockSidebar = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", () => ({
   useOptionalSidebar: () => mockSidebar.current,
 }));
 

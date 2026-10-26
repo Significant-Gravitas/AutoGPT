@@ -13,9 +13,11 @@ type CustomProps = {
   variant: Variant;
   as?: As;
   size?: Variant;
-  /** Semantic colour: primary zinc-900, secondary zinc-600, muted zinc-500, danger red-600. */
+  /** Semantic colour role; see `tones` in helpers.ts for each value. */
   tone?: Tone;
   className?: string;
+  /** With `as="label"`: the id of the control the label names. */
+  htmlFor?: string;
 };
 
 export type TextProps = React.PropsWithChildren<
@@ -38,6 +40,7 @@ export function Text({
   return React.createElement(
     Element,
     {
+      "data-slot": "text",
       className: combinedClassName,
       ...rest,
     },

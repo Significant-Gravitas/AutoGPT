@@ -80,6 +80,7 @@ export function showFeedbackLoadError() {
           href={FEEDBACK_FORM_URL}
           target="_blank"
           rel="noopener noreferrer"
+          data-slot="feedback-form-link"
           className="underline"
         >
           Open the form in a new tab

@@ -5,7 +5,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import {
   Form,
   FormControl,
@@ -20,7 +20,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
 import type { User } from "@/lib/auth/types";
 import * as React from "react";
@@ -52,7 +52,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
   });
 
   return (
-    <Card>
+    <Card variant="outlined">
       <CardHeader>
         <CardTitle>Timezone</CardTitle>
       </CardHeader>

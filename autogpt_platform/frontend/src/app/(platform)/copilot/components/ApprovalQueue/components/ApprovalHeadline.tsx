@@ -17,7 +17,7 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
     <div className="flex min-w-0 items-start gap-2.5">
       <span
         aria-hidden="true"
-        className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white"
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border-base bg-surface"
       >
         <RowIcon
           row={{ key: item.reviewId, category, text: "", state: "done" }}
@@ -27,14 +27,14 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
         variant="body"
         as={compact ? "span" : "h3"}
         className={cn(
-          "min-w-0 flex-1 pt-[3px] text-zinc-900",
+          "min-w-0 flex-1 pt-[3px] text-foreground-strong",
           compact ? "truncate" : "text-pretty",
         )}
       >
         <HeadlineText item={item} linked={!compact} />
       </Text>
       {item.subject.irreversible && (
-        <span className="mt-0.5 shrink-0 rounded-md bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700">
+        <span className="mt-0.5 shrink-0 rounded-md bg-error-surface px-1.5 py-0.5 text-xs font-medium text-error-foreground">
           Can&apos;t be undone
         </span>
       )}

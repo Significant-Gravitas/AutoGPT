@@ -12,6 +12,7 @@ import typing
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import update_wrapper
+from time import monotonic
 from typing import (
     Any,
     Awaitable,
@@ -34,6 +35,8 @@ from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from tenacity import RetryCallState
+from tenacity.stop import stop_base
 
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
@@ -43,6 +46,7 @@ from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
+from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -59,6 +63,9 @@ api_comm_max_wait = config.pyro_client_max_wait
 # call written into a connection as the server closes it fails with httpx.ReadError.
 rpc_server_keepalive_seconds = 60
 rpc_client_keepalive_expiry_seconds = rpc_server_keepalive_seconds / 2
+# How long a call waits, from its first missing-route answer, for a server on the
+# previous release to be replaced mid-rollout; past that the method is likelier misnamed.
+rpc_client_missing_route_wait_seconds = 300
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -127,7 +134,20 @@ def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
 # AppService for IPC service based on HTTP request through FastAPI
 # --------------------------------------------------
 class BaseAppService(AppProcess, ABC):
-    shared_event_loop: asyncio.AbstractEventLoop
+    # Created by `run()`, so a service stopped before then has none.
+    _shared_event_loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def shared_event_loop(self) -> asyncio.AbstractEventLoop:
+        if self._shared_event_loop is None:
+            raise AttributeError(
+                f"[{self.service_name}] has no event loop before run()"
+            )
+        return self._shared_event_loop
+
+    @shared_event_loop.setter
+    def shared_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._shared_event_loop = loop
 
     @classmethod
     @abstractmethod
@@ -192,9 +212,10 @@ class BaseAppService(AppProcess, ABC):
         # closed loop here means that thread is already gone (loop crash or
         # repeated cleanup) and there is nothing left to stop — scheduling
         # onto it would raise "Event loop is closed" mid-shutdown.
-        if not self.shared_event_loop.is_closed():
+        loop = self._shared_event_loop
+        if loop is not None and not loop.is_closed():
             try:
-                self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+                loop.call_soon_threadsafe(loop.stop)
             except RuntimeError:
                 # The loop thread closed the loop between the check above and
                 # the scheduling call; equivalent to the is_closed() case.
@@ -252,6 +273,16 @@ class HTTPClientError(Exception):
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
         super().__init__(f"HTTP {status_code}: {message}")
+
+
+class MissingRouteError(HTTPClientError):
+    """The server has no route for the method, e.g. it is on an older release."""
+
+    def __init__(self, method_name: str, base_url: str):
+        super().__init__(
+            404,
+            f"{base_url} has no RPC route '{method_name}'; it may be on an older release",
+        )
 
 
 class HTTPServerError(Exception):
@@ -564,6 +595,9 @@ class AppService(BaseAppService, ABC):
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
         self._register_exception_handlers(app)
+        # Last, so it is the outermost middleware: every request but the health
+        # checks and /metrics needs the internal key before anything reads it.
+        require_internal_key(app, self.service_name)
         return app
 
     @asynccontextmanager
@@ -676,11 +710,9 @@ def get_service_client(
         if not request_retry:
             return fn
 
-        # Use preconfigured retry decorator for service communication. It keeps
-        # fn's sync/async shape, which its overloads can't express.
-        return cast(
-            Callable[..., R],
-            create_retry_decorator(
+        def retrying() -> Callable[..., Any]:
+            # Built per call, so the missing-route deadline is one call's alone.
+            return create_retry_decorator(
                 max_attempts=api_comm_retry,
                 max_wait=api_comm_max_wait,
                 context="Service communication",
@@ -696,8 +728,21 @@ def get_service_client(
                     concurrent.futures.CancelledError,  # Future was cancelled
                     HTTPClientError,  # HTTP 4xx client errors - don't retry
                 ),
-            )(fn),
-        )
+                retry_anyway=(MissingRouteError,),
+                also_stop=_MissingRouteDeadline(),
+            )(fn)
+
+        if inspect.iscoroutinefunction(fn):
+
+            async def call_async(*args: Any, **kwargs: Any) -> Any:
+                return await retrying()(*args, **kwargs)
+
+            return cast(Callable[..., R], call_async)
+
+        def call_sync(*args: Any, **kwargs: Any) -> Any:
+            return retrying()(*args, **kwargs)
+
+        return cast(Callable[..., R], call_sync)
 
     class DynamicClient:
         def __init__(self) -> None:
@@ -705,14 +750,19 @@ def get_service_client(
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
+            self._headers = internal_auth_headers()
             self._connection_failure_count = 0
             self._last_client_reset = 0
             self._async_clients = {}  # None key for default async client
             self._sync_clients = {}  # For sync clients (no event loop concept)
 
+        # trust_env=False: an HTTP_PROXY meant for outbound traffic must never
+        # carry these plain-HTTP calls, nor the internal key they hold.
         def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
                 base_url=self.base_url,
+                headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
@@ -725,6 +775,8 @@ def get_service_client(
         def _create_async_client(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(
                 base_url=self.base_url,
+                headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
@@ -837,7 +889,10 @@ def get_service_client(
 
                     raise exception_class(*args)
 
-                # Otherwise categorize by HTTP status code
+                # Otherwise categorize by HTTP status code. An unmapped 404 is
+                # FastAPI's own: the server has no such route.
+                if status_code == 404:
+                    raise MissingRouteError(method_name, self.base_url)
                 if 400 <= status_code < 500:
                     # Client errors (4xx) - wrap to prevent retries
                     raise HTTPClientError(status_code, str(e))
@@ -985,6 +1040,24 @@ def get_service_client(
     client = cast(ASC, DynamicClient())
 
     return client
+
+
+class _MissingRouteDeadline(stop_base):
+    """Stops a call's retries, of any error, before an attempt that would start more
+    than ``rpc_client_missing_route_wait_seconds`` after its first missing route."""
+
+    def __init__(self) -> None:
+        self.expires_at: float | None = None
+
+    def __call__(self, retry_state: RetryCallState) -> bool:
+        now = monotonic()
+        if self.expires_at is None:
+            if not retry_state.outcome or not isinstance(
+                retry_state.outcome.exception(), MissingRouteError
+            ):
+                return False
+            self.expires_at = now + rpc_client_missing_route_wait_seconds
+        return now + retry_state.upcoming_sleep >= self.expires_at
 
 
 def endpoint_to_sync(

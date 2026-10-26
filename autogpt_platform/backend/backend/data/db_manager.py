@@ -42,7 +42,11 @@ from backend.api.features.library.triggers import (
     update_triggered_preset,
 )
 from backend.api.features.onboarding_dump import db as onboarding_dump_db
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.orgs.db import (
+    get_user_default_team,
+    resolve_default_tenancy,
+    resolve_member_tenancy,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     delete_content_embedding,
@@ -175,6 +179,7 @@ from backend.data.posthog_lifecycle_sync import (
     start_posthog_lifecycle_sweep,
 )
 from backend.data.pro_activation import get_usage_activation_state
+from backend.data.product_mail_audience import get_product_mail_standing
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -442,6 +447,7 @@ class DatabaseManager(AppService):
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
+    get_product_mail_standing = _(get_product_mail_standing)
     get_user_notification_preference = _(get_user_notification_preference)
 
     # ============ Human In The Loop ============ #
@@ -594,6 +600,7 @@ class DatabaseManager(AppService):
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
     resolve_default_tenancy = _(resolve_default_tenancy)
+    resolve_member_tenancy = _(resolve_member_tenancy)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -878,6 +885,9 @@ class DatabaseManagerClient(AppServiceClient):
     get_org_credits = _(d.get_org_credits)
     get_personal_org_owner = _(d.get_personal_org_owner)
 
+    # Orgs
+    resolve_member_tenancy = _(d.resolve_member_tenancy)
+
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
     # Execution accuracy monitoring
@@ -1002,6 +1012,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
     get_user_email_by_id = d.get_user_email_by_id
     get_user_email_verification = d.get_user_email_verification
+    get_product_mail_standing = d.get_product_mail_standing
     get_user_notification_preference = d.get_user_notification_preference
 
     # ============ Alerts ============ #
@@ -1155,6 +1166,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
+    resolve_member_tenancy = d.resolve_member_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link

@@ -75,13 +75,13 @@ function Card({ x, y, width }: CardProps) {
         rx={radius}
         ry={radius}
         strokeWidth={1}
-        className="fill-white stroke-zinc-200"
+        className="fill-surface stroke-border-base"
       />
       <circle
         cx={x + padding + dotRadius}
         cy={midY}
         r={dotRadius}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + padding + dotRadius * 2 + 8}
@@ -90,7 +90,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={4}
         ry={4}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + width - padding - 52}
@@ -99,7 +99,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={2}
         ry={2}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + width - padding - 38}
@@ -108,7 +108,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={2}
         ry={2}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + width - padding - 24}
@@ -117,7 +117,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={4}
         ry={4}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
     </g>
   );

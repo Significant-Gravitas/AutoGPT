@@ -29,6 +29,7 @@ from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .cli_session_entry import rewrite_user_entry
 from .hidden_rows import visible_to_model
 from .legacy_first_turn_memory import without_stored_first_turn_memory
 from .legacy_session_file import restore_session_file
@@ -38,6 +39,12 @@ logger = logging.getLogger(__name__)
 
 # UUIDs are hex + hyphens; strip everything else to prevent path injection.
 _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
+_MATCHED_SKILLS_RE = re.compile(
+    r"(?:\n\n)?<matched_skills>\n"
+    r"Possible procedures for this request, selected from your current skills\."
+    r"(?:(?!<matched_skills>).)*?</matched_skills>",
+    re.DOTALL,
+)
 
 # Entry types that can be safely removed from the transcript without breaking
 # the parentUuid conversation tree that ``--resume`` relies on.
@@ -264,8 +271,8 @@ def strip_stale_thinking_blocks(content: str) -> str:
 
 
 def strip_for_upload(content: str) -> str:
-    """Combined single-parse strip of progress entries, mention attachments and
-    stale thinking blocks.
+    """Strip progress, mention attachments, stale thinking and matched-skill
+    hints in a single parse.
 
     Like ``strip_stale_thinking_blocks(strip_progress_entries(content))``, but
     it also drops ``MENTION_ATTACHMENT_TYPES`` attachments and parses the JSONL
@@ -368,6 +375,14 @@ def strip_for_upload(content: str) -> str:
                     thinking_stripped += len(content_blocks) - len(filtered)
                     entry = {**entry, "message": {**msg, "content": filtered}}
                     needs_reserialize = True
+
+        if "matched_skills" in line:
+            rewritten = rewrite_user_entry(
+                entry, lambda text: _MATCHED_SKILLS_RE.sub("", text)
+            )
+            if rewritten is not None:
+                entry = rewritten
+                needs_reserialize = True
 
         if needs_reserialize:
             result_lines.append(json.dumps(entry, separators=(",", ":")))

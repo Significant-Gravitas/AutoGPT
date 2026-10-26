@@ -9,12 +9,18 @@ interface Props {
 
 export function TrialDetails({ offer }: Props) {
   return (
-    <div className="space-y-5">
+    <div data-slot="trial-details" className="space-y-5">
       <Text variant="body" tone="secondary">
         {offer.duration_days} days to put AutoGPT to work.
       </Text>
-      <dl className="divide-y divide-zinc-200 border-y border-zinc-200">
-        <div className="flex justify-between gap-4 py-4">
+      <dl
+        data-slot="trial-details-list"
+        className="divide-y divide-border-base border-y border-border-base"
+      >
+        <div
+          data-slot="trial-details-row"
+          className="flex justify-between gap-4 py-4"
+        >
           <Text as="dt" variant="body">
             Today
           </Text>
@@ -22,7 +28,10 @@ export function TrialDetails({ offer }: Props) {
             {formatPlanAmount(0, offer.currency)}
           </Text>
         </div>
-        <div className="flex justify-between gap-4 py-4">
+        <div
+          data-slot="trial-details-row"
+          className="flex justify-between gap-4 py-4"
+        >
           <Text as="dt" variant="body">
             After {offer.duration_days} days
           </Text>
