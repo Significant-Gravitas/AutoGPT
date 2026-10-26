@@ -1,0 +1,61 @@
+"use client";
+
+import { cn } from "@/lib/utils";
+import { useIsShortScreen } from "../useIsShortScreen";
+import type { MicrophonePermission } from "../useMicrophonePermission";
+import { MicBlockedNotice } from "./MicBlockedNotice";
+import { OttoMightAsk } from "./OttoMightAsk";
+import { TypedFallback } from "./TypedFallback";
+
+interface Props {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  isTooLong: boolean;
+  question: string;
+  onAnotherQuestion: () => void;
+  isMicBlocked: boolean;
+  micPermission: MicrophonePermission;
+  onRetryMicrophone: () => void;
+}
+
+export function TypingComposer({
+  value,
+  onChange,
+  onSubmit,
+  isTooLong,
+  question,
+  onAnotherQuestion,
+  isMicBlocked,
+  micPermission,
+  onRetryMicrophone,
+}: Props) {
+  const isShortScreen = useIsShortScreen();
+
+  return (
+    <div
+      className={cn("flex w-full flex-col", isShortScreen ? "gap-2" : "gap-3")}
+    >
+      <MicBlockedNotice
+        isBlocked={isMicBlocked}
+        permission={micPermission}
+        onRetry={onRetryMicrophone}
+      />
+      <OttoMightAsk
+        question={question}
+        onAnother={onAnotherQuestion}
+        align="left"
+      />
+      {/* Fewer rows on a short laptop screen, and one fewer while the
+          notice is up, keep "I'm done" and "record instead" above the fold
+          at 1280x720. */}
+      <TypedFallback
+        value={value}
+        onChange={onChange}
+        isTooLong={isTooLong}
+        onSubmit={onSubmit}
+        rows={(isShortScreen ? 4 : 6) - (isMicBlocked ? 1 : 0)}
+      />
+    </div>
+  );
+}
