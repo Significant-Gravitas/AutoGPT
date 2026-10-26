@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           submodules: recursive
@@ -71,7 +71,7 @@ jobs:
       # ------------------------ Backend setup ------------------------
 
       - name: Set up Backend - Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
@@ -83,7 +83,7 @@ jobs:
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
 
       - name: Set up Backend - Set up dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -115,12 +115,12 @@ jobs:
       # ------------------------ Frontend setup ------------------------
 
       - name: Set up Frontend - Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Frontend - Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24.22.1"
           cache: "pnpm"
@@ -169,7 +169,7 @@ jobs:
 
       - name: Upload validator test report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fullstack-validator-tests
           path: ${{ runner.temp }}/fullstack-validator-results/playwright-validator-tests.xml
@@ -221,23 +221,57 @@ jobs:
       packages: write
     env:
       BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-buildcache
+      E2E_SEED_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-seed
+      # Both legs build the same images; only smoke writes them.
+      WRITE_BUILD_CACHE: ${{ matrix.suite == 'smoke' && ((github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache)) }}
       BUILDKIT_IMAGE: docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           submodules: recursive
 
-      - name: Set up tests - Cache E2E test data
-        id: e2e-data-cache
+      # The seed dump is an image in GHCR, not an Actions cache entry.
+      # The key hashes only what changes the dump's content: the seed script
+      # and the graph it loads, the tables it fills, the backend modules the
+      # seed calls to write rows, and the step that dumps them. Other backend
+      # edits keep the key; a dump that no longer loads falls back to seeding.
+      # A dump that still loads is reused even when code outside these paths
+      # changes what the seed writes: if E2E sees old seeded data after such a
+      # change, bump v4 to force a fresh seed.
+      - name: Set up tests - Compute E2E test data cache key
+        id: e2e-seed-key
         if: matrix.seed
-        uses: actions/cache@v5
-        with:
-          path: /tmp/e2e_test_data.sql
-          # Hash checkout inputs before fresh secrets and resolved Compose exist.
-          key: e2e-test-data-v3-${{ matrix.embeddings && 'emb' || 'noemb' }}-${{ hashFiles('autogpt_platform/backend/**', 'autogpt_platform/autogpt_libs/**', 'autogpt_platform/docker-compose*.yml', 'autogpt_platform/.env.default', '.github/workflows/platform-fullstack-ci.yml') }}
+        working-directory: .
+        env:
+          EMBEDDINGS: ${{ matrix.embeddings && 'emb' || 'noemb' }}
+        run: |
+          inputs_hash=$(
+            {
+              git ls-files -s -- \
+                autogpt_platform/backend/test/e2e_test_data.py \
+                autogpt_platform/backend/agents/calculator-agent.json \
+                autogpt_platform/backend/schema.prisma \
+                autogpt_platform/backend/migrations \
+                autogpt_platform/backend/backend/api/features/library/db.py \
+                autogpt_platform/backend/backend/api/features/library/model.py \
+                autogpt_platform/backend/backend/api/features/orgs/db.py \
+                autogpt_platform/backend/backend/api/features/search/embeddings.py \
+                autogpt_platform/backend/backend/api/features/store/db.py \
+                autogpt_platform/backend/backend/data/auth/api_key.py \
+                autogpt_platform/backend/backend/data/credit.py \
+                autogpt_platform/backend/backend/data/graph.py \
+                autogpt_platform/backend/backend/data/org_migration.py \
+                autogpt_platform/backend/backend/data/profile.py \
+                autogpt_platform/backend/backend/data/user.py \
+                autogpt_platform/backend/backend/util/json.py
+              sed -n '/- name: Set up tests - Create E2E test data$/,/^      - name:/p' \
+                .github/workflows/platform-fullstack-ci.yml
+            } | sha256sum | cut -c1-40
+          )
+          echo "tag=v4-${EMBEDDINGS}-${inputs_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Platform - Pull BuildKit image
         id: buildkit-image
@@ -285,13 +319,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A miss, a pull error or no access (fork PRs) just means seeding below.
+      - name: Set up tests - Pull cached E2E test data from GHCR
+        id: e2e-seed-pull
+        if: matrix.seed
+        continue-on-error: true
+        timeout-minutes: 3
+        working-directory: /tmp
+        run: |
+          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
+          if ! docker pull --quiet "$ref"; then
+            echo "No cached E2E test data at $ref; seeding instead"
+            exit 0
+          fi
+          container=$(docker create "$ref" none)
+          docker cp "$container:/e2e_test_data.sql" /tmp/e2e_test_data.sql
+          docker rm "$container" >/dev/null
+          docker rmi "$ref" >/dev/null
+          echo "hit=true" >> "$GITHUB_OUTPUT"
+
       - name: Set up Platform - Prepare Docker build
         working-directory: autogpt_platform
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
-          # Both legs build the same images; only smoke writes them.
-          WRITE_BUILD_CACHE: ${{ matrix.suite == 'smoke' && ((github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache)) }}
         run: |
           pip install pyyaml
 
@@ -330,7 +381,7 @@ jobs:
         wait: [buildkit-image]
 
       - name: Set up Platform - Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
           # The runner is thrown away; removing the builder only costs ~30 s.
           cleanup: false
@@ -343,7 +394,7 @@ jobs:
       # mount. A fresh builder starts empty, so seed the mount from the last run.
       - name: Set up Platform - Restore Next.js build cache
         id: next-build-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: /tmp/next-build-cache
           # Next.js drops the whole cache when next.config.mjs or its dependencies change
@@ -387,21 +438,27 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
 
-      - name: Set up Platform - Start database
+      - name: Set up Platform - Pull service images and start database
         id: database
         background: true
         run: |
+          # Every image `up` would pull, pulled now through the retry, so a brief
+          # Docker Hub refusal can't fail a later `up`.
+          images=$(python -c "import yaml; s = yaml.safe_load(open('../docker-compose.resolved.yml'))['services']; built = {c.get('image') for c in s.values() if 'build' in c}; print(' '.join(sorted({c['image'] for c in s.values() if 'build' not in c} - built)))")
+          for image in $images; do
+            bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$image"
+          done
           docker compose -f ../docker-compose.resolved.yml up -d db --no-build
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
 
       - name: Set up tests - Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up tests - Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24.22.1"
           cache: "pnpm"
@@ -409,7 +466,7 @@ jobs:
 
       - name: Set up tests - Cache Playwright browsers
         if: matrix.suite == 'smoke'
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
@@ -418,7 +475,7 @@ jobs:
 
       - name: Set up tests - Restore Playwright browsers
         if: matrix.suite != 'smoke'
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
@@ -429,7 +486,9 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Set up tests - Install browser 'chromium'
-        run: pnpm playwright install --with-deps chromium
+        # No --with-deps: the runner image already has Chromium's libraries, and the
+        # apt fetch it adds took up to 16 minutes when Ubuntu's mirror was slow.
+        run: pnpm playwright install chromium
 
       - name: Wait for backend image build and database
         wait: [platform-build-backend, database]
@@ -443,18 +502,25 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
 
       - name: Set up tests - Load cached E2E test data
-        if: steps.e2e-data-cache.outputs.cache-hit == 'true'
+        id: e2e-seed-restore
+        if: steps.e2e-seed-pull.outputs.hit == 'true'
         run: |
           echo "✅ Found cached E2E test data, restoring..."
+          # One transaction: a dump that no longer fits the schema leaves
+          # nothing behind, and the seed step below runs instead.
           {
             echo "SET session_replication_role = 'replica';"
             cat /tmp/e2e_test_data.sql
             echo "SET session_replication_role = 'origin';"
-          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -b
+          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -X -v ON_ERROR_STOP=1 --single-transaction -U postgres -d postgres -b || {
+            echo "::warning title=e2e-seed-cache-stale::Cached E2E test data did not load; seeding instead"
+            exit 0
+          }
           # Refresh materialized views after restore
           docker compose -f ../docker-compose.resolved.yml exec -T db \
             psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -b -c "SET search_path TO platform; SELECT refresh_store_materialized_views();"
 
+          echo "restored=true" >> "$GITHUB_OUTPUT"
           echo "✅ E2E test data restored from cache"
 
       - name: Set up Platform - Start (all other services)
@@ -469,7 +535,9 @@ jobs:
             exit 1
           }
           echo "Waiting for scheduler_server to be ready..."
-          timeout 180 sh -c 'until curl -fsS http://localhost:8003/health_check >/dev/null; do sleep 2; done' || {
+          # Its port is internal (not published to the host), so ask from
+          # inside its own container; the image has Python but no curl.
+          timeout 180 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T scheduler_server python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:8003/health_check\", timeout=5)" >/dev/null 2>&1; do sleep 2; done' || {
             echo "scheduler_server did not become healthy in 180s"
             docker compose -f ../docker-compose.resolved.yml logs --tail=100 scheduler_server
             exit 1
@@ -478,11 +546,14 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
 
       - name: Set up tests - Create E2E test data
-        if: matrix.seed && steps.e2e-data-cache.outputs.cache-hit != 'true'
+        id: e2e-seed-create
+        if: matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'
+        env:
+          EMBEDDINGS: ${{ matrix.embeddings }}
         run: |
           echo "Creating E2E test data..."
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
-          docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" | tee /tmp/e2e_seed.log || {
             echo "❌ E2E test data creation failed!"
             docker compose -f ../docker-compose.resolved.yml logs --tail=50 rest_server
             exit 1
@@ -502,7 +573,16 @@ jobs:
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
+          # The seed only warns when the embedding backfill errors, stalls or
+          # times out. Such a dump serves this run but is not published.
+          if [[ "$EMBEDDINGS" != "true" ]] || grep -q 'Embeddings complete:' /tmp/e2e_seed.log; then
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=e2e-seed-not-published::Embedding coverage is incomplete; this dump will not be pushed to GHCR"
+          fi
+
       - name: Set up tests - Verify seeded credentials with fresh encryption key
+        id: e2e-seed-verify
         if: matrix.seed
         run: |
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
@@ -528,6 +608,7 @@ jobs:
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
 
       - name: Run Playwright E2E suite
+        id: e2e-playwright
         run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} ${{ matrix.suite == 'journeys' && format('--repeat-each={0}', inputs.journeys_repeat_each || 1) || '' }} --retries=0 --trace=retain-on-failure
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
@@ -561,6 +642,7 @@ jobs:
           du -sh /tmp/next-build-cache
 
       - name: Validate Playwright JSON report
+        id: e2e-playwright-report
         if: ${{ always() }}
         # Each leg's floor is pinned in the matrix; raise it when adding tests.
         run: >-
@@ -569,6 +651,21 @@ jobs:
           --min-tests ${{ matrix.min_tests }}
           ${{ matrix.known_failures && '--allow-known-failures' || '' }}
           test-results/results.json
+
+      # The seed logs and skips some failed inserts (graphs, store, fixtures),
+      # so only a dump the whole suite passed on is published. Pull requests
+      # only read it.
+      - name: Push E2E test data to GHCR
+        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-create.outputs.publishable == 'true' && steps.e2e-seed-verify.outcome == 'success' && steps.e2e-playwright.outcome == 'success' && steps.e2e-playwright-report.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        working-directory: /tmp
+        run: |
+          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
+          tar -C /tmp -c e2e_test_data.sql | docker import \
+            --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            - "$ref"
+          docker push "$ref"
 
       - name: Validate coverage report
         id: validate-e2e-coverage
@@ -579,7 +676,7 @@ jobs:
 
       - name: Upload E2E coverage to Codecov
         if: ${{ !cancelled() && steps.validate-e2e-coverage.outcome == 'success' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend-e2e
@@ -589,7 +686,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report-${{ matrix.suite }}
           path: autogpt_platform/frontend/playwright-report
@@ -598,7 +695,7 @@ jobs:
 
       - name: Upload Playwright test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-test-results-${{ matrix.suite }}
           path: |
@@ -617,7 +714,7 @@ jobs:
       - name: Save Next.js build cache
         if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache-export.outcome == 'success' }}
         continue-on-error: true
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: /tmp/next-build-cache
           key: ${{ steps.next-build-cache.outputs.cache-primary-key }}

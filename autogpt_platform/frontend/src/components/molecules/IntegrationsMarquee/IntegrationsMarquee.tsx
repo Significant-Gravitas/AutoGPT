@@ -26,16 +26,11 @@ export function IntegrationsMarquee({ variant = "light", className }: Props) {
   return (
     <div
       aria-hidden
+      data-slot="integrations-marquee"
       className={cn(
-        "relative flex h-[200px] w-[340px] flex-col justify-center gap-3 overflow-hidden",
+        "relative flex h-[200px] w-[340px] flex-col justify-center gap-3 overflow-hidden [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)] [mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)]",
         className,
       )}
-      style={{
-        maskImage:
-          "linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%)",
-        WebkitMaskImage:
-          "linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%)",
-      }}
     >
       <MarqueeRow
         providers={ROW_A}
@@ -68,6 +63,7 @@ function MarqueeRow({
 
   return (
     <motion.div
+      data-slot="integrations-marquee-row"
       className="flex w-max gap-3 will-change-transform"
       animate={reduceMotion ? undefined : { x: animateX }}
       transition={
@@ -93,17 +89,20 @@ function GhostIntegrationCard({
   const isDark = variant === "dark";
   return (
     <div
+      // TODO(tokens): no shadow token for 0 1px 2px rgba(0,0,0,0.03).
+      data-slot="integrations-marquee-card"
       className={cn(
         "flex h-[58px] w-[180px] shrink-0 items-center gap-3 rounded-xl border px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]",
         isDark
-          ? "border-white/10 bg-white/[0.04]"
-          : "border-zinc-200/50 bg-white/50 opacity-70",
+          ? "border-surface/10 bg-surface/[0.04]"
+          : "border-border-base/50 bg-surface/50 opacity-70",
       )}
     >
       <div
+        data-slot="integrations-marquee-card-logo-wrap"
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-lg",
-          isDark ? "bg-white/[0.06]" : "bg-zinc-50/60",
+          isDark ? "bg-surface/[0.06]" : "bg-surface-muted/60",
         )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- decorative tiny logo, no LCP candidate */}
@@ -114,23 +113,29 @@ function GhostIntegrationCard({
           height={20}
           loading="lazy"
           decoding="async"
+          data-slot="integrations-marquee-card-logo"
           className={cn(
             "size-5 rounded-sm object-contain",
             isDark ? "" : "opacity-80",
           )}
         />
       </div>
-      <div className="flex flex-1 flex-col gap-1.5">
+      <div
+        data-slot="integrations-marquee-card-lines"
+        className="flex flex-1 flex-col gap-1.5"
+      >
         <div
+          data-slot="integrations-marquee-card-line"
           className={cn(
             "h-2 w-3/4 rounded-full",
-            isDark ? "bg-white/15" : "bg-zinc-100/80",
+            isDark ? "bg-surface/15" : "bg-surface-hover/80",
           )}
         />
         <div
+          data-slot="integrations-marquee-card-line"
           className={cn(
             "h-2 w-1/2 rounded-full",
-            isDark ? "bg-white/10" : "bg-zinc-100/80",
+            isDark ? "bg-surface/10" : "bg-surface-hover/80",
           )}
         />
       </div>

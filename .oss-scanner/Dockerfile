@@ -347,6 +347,7 @@ EOF
 RUN { \
       echo "export ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')"; \
       echo "export UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')"; \
+      echo "export INTERNAL_API_KEY=$(openssl rand -base64 32 | tr '+/' '-_')"; \
       echo "export RABBITMQ_DEFAULT_USER=rabbitmq_user_default"; \
       echo "export RABBITMQ_DEFAULT_PASS=$(openssl rand -hex 16)"; \
     } > /etc/autogpt-scanner/secrets.env

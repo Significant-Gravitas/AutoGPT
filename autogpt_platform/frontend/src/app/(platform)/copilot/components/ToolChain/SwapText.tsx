@@ -7,7 +7,7 @@ import {
   m,
   useReducedMotion,
 } from "framer-motion";
-import { useRef } from "react";
+import { useState } from "react";
 import { ShimmerText } from "./ShimmerText";
 
 const EASE_OUT_CUBIC = [0.33, 1, 0.68, 1] as const;
@@ -15,6 +15,17 @@ const EASE_OUT_CUBIC = [0.33, 1, 0.68, 1] as const;
 // snaps instead of sliding — fast tools otherwise stack overlapping swap
 // animations and the text jitters.
 const RAPID_SWAP_MS = 250;
+
+interface Swap {
+  text: string;
+  at: number;
+  rapid: boolean;
+}
+
+function nextSwap(prev: Swap, text: string): Swap {
+  const now = Date.now();
+  return { text, at: now, rapid: now - prev.at < RAPID_SWAP_MS };
+}
 
 interface SwapTextProps {
   text: string;
@@ -35,14 +46,13 @@ const variants = {
 // Old label slides up + fades out, new one slides in from below.
 export function SwapText({ text, className, shimmer = false }: SwapTextProps) {
   const reducedMotion = useReducedMotion();
-  const swapRef = useRef({ text, at: 0, rapid: false });
-  if (swapRef.current.text !== text) {
-    const now = Date.now();
-    swapRef.current.rapid = now - swapRef.current.at < RAPID_SWAP_MS;
-    swapRef.current.at = now;
-    swapRef.current.text = text;
+  const [swap, setSwap] = useState<Swap>({ text, at: 0, rapid: false });
+  let current = swap;
+  if (swap.text !== text) {
+    current = nextSwap(swap, text);
+    setSwap(current);
   }
-  const instant = !!reducedMotion || swapRef.current.rapid;
+  const instant = !!reducedMotion || current.rapid;
 
   return (
     <LazyMotion features={domAnimation} strict>

@@ -59,7 +59,7 @@ export function AccountCard({ user, index = 0 }: Props) {
       }
       className="flex w-full flex-col gap-2"
     >
-      <div className="flex flex-col divide-y divide-zinc-200 rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex flex-col divide-y divide-border-base rounded-[18px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex items-center justify-between gap-4 px-4 py-4">
           <Text variant="body-medium" as="span" className="text-textBlack">
             Email
@@ -98,7 +98,11 @@ export function AccountCard({ user, index = 0 }: Props) {
               <Dialog.Content>
                 <Form form={emailForm} onSubmit={handleEmailSubmit}>
                   <div className="flex flex-col gap-4">
-                    <Text variant="small" as="span" className="text-zinc-500">
+                    <Text
+                      variant="small"
+                      as="span"
+                      className="text-foreground-tertiary"
+                    >
                       We&apos;ll send a confirmation link to verify your new
                       address.
                     </Text>

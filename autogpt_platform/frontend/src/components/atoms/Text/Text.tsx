@@ -13,14 +13,11 @@ type CustomProps = {
   variant: Variant;
   as?: As;
   size?: Variant;
-  /** Semantic colour: primary zinc-900, secondary zinc-600, muted zinc-500, danger red-600. */
+  /** Semantic colour role; see `tones` in helpers.ts for each value. */
   tone?: Tone;
   className?: string;
-  /**
-   * Shows the text in session replays, which mask all text by default.
-   * Only for static copy that is the same for every user.
-   */
-  unmask?: boolean;
+  /** With `as="label"`: the id of the control the label names. */
+  htmlFor?: string;
 };
 
 export type TextProps = React.PropsWithChildren<
@@ -34,21 +31,16 @@ export function Text({
   size,
   tone,
   className = "",
-  unmask = false,
   ...rest
 }: TextProps) {
   const variantClasses = variants[size || variant] || variants.body;
   const Element = outerAs || variantElementMap[variant];
-  const combinedClassName = cn(
-    variantClasses,
-    tone && tones[tone],
-    unmask && "sentry-unmask",
-    className,
-  );
+  const combinedClassName = cn(variantClasses, tone && tones[tone], className);
 
   return React.createElement(
     Element,
     {
+      "data-slot": "text",
       className: combinedClassName,
       ...rest,
     },

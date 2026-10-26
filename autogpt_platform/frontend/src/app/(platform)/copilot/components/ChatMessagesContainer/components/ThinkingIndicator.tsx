@@ -43,16 +43,16 @@ export function ThinkingIndicator({
     <span
       role="status"
       aria-live="polite"
-      className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600"
+      className="inline-flex w-fit items-center gap-2.5 text-sm text-foreground-secondary"
     >
-      <DrawnLineLoader className="text-zinc-600" size={16} />
+      <DrawnLineLoader className="text-foreground-secondary" size={16} />
       <SwapText
         text={statusMessage ?? "Thinking…"}
         shimmer
         className="text-sm"
       />
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-zinc-400">
+        <span className="font-mono text-xs tabular-nums text-foreground-subtle">
           {formatElapsed(seconds)}
         </span>
       )}

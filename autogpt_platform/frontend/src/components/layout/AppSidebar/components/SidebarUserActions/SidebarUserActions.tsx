@@ -6,7 +6,10 @@ import { okData } from "@/app/api/helpers";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
 import { Wallet } from "@/components/layout/Navbar/components/Wallet/Wallet";
 import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
-import { SidebarFooter, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarFooter,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import {
   Tooltip as SidebarTooltip,
   TooltipContent as SidebarTooltipContent,
@@ -51,7 +54,7 @@ export function SidebarUserActions() {
   );
 
   return (
-    <SidebarFooter className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-zinc-100 bg-sidebar px-4">
+    <SidebarFooter className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-separator bg-sidebar px-4">
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
           <SidebarTooltip>

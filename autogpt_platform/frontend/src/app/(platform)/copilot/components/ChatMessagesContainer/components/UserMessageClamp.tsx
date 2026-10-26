@@ -28,7 +28,8 @@ export function UserMessageClamp({ children, trailing }: Props) {
           {showToggle && (
             <button
               type="button"
-              className="text-xs font-medium text-zinc-300 hover:text-zinc-50 hover:underline"
+              // TODO(tokens): no fitting role for hover:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill)
+              className="text-xs font-medium text-foreground-disabled hover:text-zinc-50 hover:underline"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? "Show less" : "Read more"}

@@ -34,7 +34,7 @@ export function AutoPilotUsageSection({ userId }: Props) {
         </div>
       ) : !data ? (
         <div className="flex items-center justify-between gap-4">
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" className="text-foreground-tertiary">
             Couldn&apos;t load this user&apos;s usage.
           </Text>
           <Button

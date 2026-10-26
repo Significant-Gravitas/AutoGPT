@@ -9,7 +9,8 @@ export function TrialTitle({ children }: Props) {
     <Text
       variant="h5"
       as="h2"
-      className="font-poppins !text-[17px] !font-semibold !text-zinc-800"
+      // TODO(tokens): SECRT-3152, the 17px size has no role.
+      className="font-poppins !text-[17px] !font-semibold !text-foreground-emphasis"
     >
       {children}
     </Text>

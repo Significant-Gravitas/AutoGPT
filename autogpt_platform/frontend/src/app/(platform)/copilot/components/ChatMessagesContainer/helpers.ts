@@ -10,6 +10,7 @@ import {
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -137,6 +138,8 @@ export function getLastCompactionCallId(parts: MessagePart[]): string | null {
 export const WORKSPACE_FILE_PATTERN =
   /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
+// An image token the renderer draws as the file's own link (`WorkspaceLink`).
+const WORKSPACE_LINK_IMAGE_PREFIX = CHAT_IMAGE_TOKEN_PREFIXES.workspaceLink;
 
 export function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
@@ -185,7 +188,7 @@ const FULL_UUID =
 /** Build the default workspace-file URL — used wherever a caller
  *  doesn't supply its own ``fileUrlBuilder``.  Centralising it here
  *  keeps the owner-side default in one place. */
-function defaultWorkspaceFileUrl(fileId: string): string {
+export function defaultWorkspaceFileUrl(fileId: string): string {
   return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
 }
 
@@ -230,6 +233,16 @@ export function extractWorkspaceArtifacts(
   }
 
   return artifacts;
+}
+
+/** The file id a `resolveWorkspaceUrls` link token names, or null. */
+export function workspaceLinkFileID(src: string): string | null {
+  if (!src.startsWith(WORKSPACE_LINK_IMAGE_PREFIX)) return null;
+  try {
+    return decodeURIComponent(src.slice(WORKSPACE_LINK_IMAGE_PREFIX.length));
+  } catch {
+    return null;
+  }
 }
 
 export function getMessageArtifacts(
@@ -349,20 +362,14 @@ export function resolveWorkspaceUrls(
     },
   );
 
-  // Handle regular links: [text](workspace://id) — without the leading "!"
-  // These are blocked by Streamdown's rehype-harden sanitizer because
-  // "workspace://" is not in the allowed URL-scheme whitelist, which causes
-  // "[blocked]" to appear next to the link text.
-  // Use an absolute URL so Streamdown's "Copy link" button copies the full
-  // URL (including host) rather than just the path.
+  // Regular links: [text](workspace://id), without the leading "!". Streamdown
+  // draws a link as a button that keeps no destination, so a click on it can't
+  // say which file it meant; an image token lets the renderer draw the link.
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
-      const url = fileUrlBuilder(fileId);
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
-      return `[${linkText || "Download file"}](${absoluteUrl})`;
+      // The label is markdown already, valid inside `![…]` as it was in `[…]`.
+      return `![${linkText || "Download file"}](${WORKSPACE_LINK_IMAGE_PREFIX}${encodeURIComponent(fileId)})`;
     },
   );
 

@@ -7,6 +7,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { chatShareUrl } from "@/lib/share/routes";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 
 interface Props {
   sessionId: string;
@@ -40,22 +41,28 @@ export function SharedChatNotice({ sessionId }: Props) {
   }
 
   return (
-    <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-      <span className="font-medium">This chat is shared</span>
-      <Button
-        size="small"
-        variant="secondary"
-        onClick={copyShareUrl}
-        leftIcon={
-          copied ? (
-            <Icon icon={Tick02Icon} size={14} />
-          ) : (
-            <Icon icon={Copy01Icon} size={14} />
-          )
-        }
-      >
-        {copied ? "Copied" : "Copy link"}
-      </Button>
-    </div>
+    <AttentionCard.Root
+      variant="warning-outline"
+      density="cozy"
+      className="mb-2"
+    >
+      <AttentionCard.Row align="center" justify="between">
+        <span className="font-medium">This chat is shared</span>
+        <Button
+          size="small"
+          variant="secondary"
+          onClick={copyShareUrl}
+          leftIcon={
+            copied ? (
+              <Icon icon={Tick02Icon} size={14} />
+            ) : (
+              <Icon icon={Copy01Icon} size={14} />
+            )
+          }
+        >
+          {copied ? "Copied" : "Copy link"}
+        </Button>
+      </AttentionCard.Row>
+    </AttentionCard.Root>
   );
 }

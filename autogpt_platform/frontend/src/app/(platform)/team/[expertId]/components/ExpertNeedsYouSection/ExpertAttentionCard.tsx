@@ -47,20 +47,21 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
   }
 
   return (
-    <article className="flex flex-col gap-3 rounded-2xl bg-white px-3.5 py-2.5 smooth-shadow-ring-sm sm:flex-row sm:items-center">
+    <article className="flex flex-col gap-3 rounded-2xl bg-surface px-3.5 py-2.5 smooth-shadow-ring-sm sm:flex-row sm:items-center">
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
             size={32}
+            // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
             className="rounded-full border border-[#e3e3e3]"
           />
         ) : (
           <Icon
             icon={ICONS[item.kind]}
             size={18}
-            className="shrink-0 text-zinc-500"
+            className="shrink-0 text-foreground-tertiary"
             aria-hidden="true"
           />
         )}
@@ -69,7 +70,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             <Text
               variant="body-medium"
               as="span"
-              className="break-words !text-zinc-800"
+              className="break-words !text-foreground-emphasis"
             >
               {item.title}
             </Text>
@@ -77,7 +78,8 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
               <Text
                 variant="small-medium"
                 as="span"
-                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
+                // TODO(tokens): no exact role: ring-amber-600/10 #D97706
+                className="rounded bg-warning-surface px-1.5 py-px text-warning-foreground ring-1 ring-inset ring-amber-600/10"
               >
                 Waiting
               </Text>
@@ -86,7 +88,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
           <Text
             variant="small"
             as="span"
-            className="break-words !text-zinc-400"
+            className="break-words !text-foreground-subtle"
           >
             {reason?.line ?? item.description}
           </Text>

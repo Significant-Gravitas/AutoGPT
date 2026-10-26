@@ -75,18 +75,21 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
               key="image"
               icon={Image01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
               key="table"
               icon={Table01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-emerald-500 #10B981
               className="text-emerald-500"
             />,
             <Icon
               key="doc"
               icon={File02Icon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}
@@ -98,7 +101,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
           No files match.
         </Text>
       ) : (
-        <div className="mt-4 rounded-2xl bg-white p-2 smooth-shadow-ring-sm">
+        <div className="mt-4 rounded-2xl bg-surface p-2 smooth-shadow-ring-sm">
           <ul aria-label={`${expertName}'s files`} className="flex flex-col">
             {files.visible.map((file) => (
               <li key={file.id}>
@@ -107,7 +110,10 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
             ))}
           </ul>
           {files.hasMore ? (
-            <Text variant="small" className="px-2 pb-1 pt-2 !text-zinc-500">
+            <Text
+              variant="small"
+              className="px-2 pb-1 pt-2 !text-foreground-tertiary"
+            >
               Showing the latest 200 files.
             </Text>
           ) : null}
