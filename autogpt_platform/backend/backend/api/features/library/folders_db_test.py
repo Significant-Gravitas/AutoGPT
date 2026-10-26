@@ -87,12 +87,14 @@ async def test_graph_id_moves_its_library_agent(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_archived_agent_can_be_moved(server: SpinTestServer):
+@pytest.mark.parametrize("by", ["library_id", "graph_id"])
+async def test_archived_agent_can_be_moved(server: SpinTestServer, by: str):
     user = await _user()
     folder = await _folder(user)
     agent = await _agent(user, isArchived=True)
+    requested = agent.id if by == "library_id" else agent.agentGraphId
 
-    moved = await bulk_move_agents_to_folder([agent.agentGraphId], folder, user)
+    moved = await bulk_move_agents_to_folder([requested], folder, user)
 
     assert [a.id for a in moved] == [agent.id]
     assert await _folder_of(agent.id) == folder
