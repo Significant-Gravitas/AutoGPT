@@ -28,6 +28,8 @@ interface Props {
   iconClassName?: string;
   /** Size override for the View/Delete buttons, e.g. compact row actions. */
   actionClassName?: string;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 export function GraphScheduleListItem({
@@ -36,6 +38,7 @@ export function GraphScheduleListItem({
   className,
   iconClassName,
   actionClassName,
+  textSize = "body",
 }: Props) {
   const {
     nextRunLabel,
@@ -85,7 +88,7 @@ export function GraphScheduleListItem({
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text
-            variant="body-medium"
+            variant={textSize === "body-md" ? "body-md-medium" : "body-medium"}
             className="block w-full truncate text-ellipsis"
           >
             {agentLabel}
@@ -104,11 +107,13 @@ export function GraphScheduleListItem({
             </Text>
             <span className="text-foreground-disabled">•</span>
             <span
-              // TODO(tokens): no exact role for bg-emerald-100 #d1fae5, text-emerald-700 #047857
-              className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
+              // TODO(tokens): no exact role for bg-emerald-100 #d1fae5
+              className="flex rounded-md bg-emerald-100 px-2 py-0.5"
               data-testid="schedule-kind-badge"
             >
-              Workflow run
+              <Text variant="small-tight" as="span" tone="success-strong">
+                Workflow run
+              </Text>
             </span>
           </div>
         </div>
@@ -238,16 +243,15 @@ function ScheduleMetaRow({
       <dt className="flex-shrink-0 text-body-sm leading-inherit text-foreground-tertiary">
         {label}
       </dt>
-      <dd
-        className={cn(
-          "min-w-0 truncate text-right text-body-sm font-medium leading-inherit text-foreground-emphasis",
-          mono &&
-            "font-mono text-xs font-normal tracking-tight text-foreground-secondary",
-        )}
+      <Text
+        as="dd"
+        variant={mono ? "small-mono-tight-tracking" : "body-sm-medium-inherit"}
+        tone={mono ? "secondary" : "emphasis"}
+        className="min-w-0 truncate text-right"
         title={title ?? value}
       >
         {value}
-      </dd>
+      </Text>
     </div>
   );
 }
