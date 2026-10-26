@@ -1,7 +1,7 @@
 "use client";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 
 import type { ConnectableProvider } from "../helpers";
 import { ProviderRow } from "./ProviderRow";
@@ -42,7 +42,7 @@ export function ListView({
           placeholder="Search services..."
           aria-label="Search services"
           // TODO(tokens): no exact role for focus:border-purple-400 #925cf7, focus:ring-purple-400 #925cf7, text-[#1F1F20]
-          className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pl-12 pr-4 text-sm leading-5.5 text-[#1F1F20] placeholder:text-placeholder focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+          className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pl-12 pr-4 text-body text-[#1F1F20] placeholder:text-placeholder focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
         />
       </div>
 

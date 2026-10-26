@@ -12,6 +12,7 @@ import { IncompatibleUpdateDialog } from "./components/IncompatibleUpdateDialog"
 import { ResolutionModeBar } from "./components/ResolutionModeBar";
 import { Alert01Icon, ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 /**
  * Inline component for the update bar that can be placed after the header.
@@ -83,25 +84,40 @@ function SubAgentUpdateAvailableBar({
   onUpdate,
 }: SubAgentUpdateAvailableBarProps): React.ReactElement {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
+    <div
+      // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-blue-900/30 #1E3A8A
+      className="flex items-center justify-between gap-2 rounded-t-xl bg-info-surface px-3 py-2 dark:bg-blue-900/30"
+    >
       <div className="flex items-center gap-2">
         <Icon
           icon={ArrowUp02Icon}
-          className="h-4 w-4 text-blue-600 dark:text-blue-400"
+          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-blue-400 #60A5FA
+          className="h-4 w-4 text-info-foreground dark:text-blue-400"
         />
-        <span className="text-sm text-blue-700 dark:text-blue-300">
+        <Text
+          variant="body-tight"
+          as="span"
+          // TODO(tokens): no exact role: text-blue-700 #1D4ED8; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-blue-300 #93C5FD
+          className="text-blue-700 dark:text-blue-300"
+        >
           Update available (v{currentVersion} → v{latestVersion})
-        </span>
+        </Text>
         {!isCompatible && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Icon icon={Alert01Icon} className="h-4 w-4 text-amber-500" />
+              <Icon icon={Alert01Icon} className="h-4 w-4 text-warning" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              <p className="font-medium">Incompatible changes detected</p>
-              <p className="text-xs text-gray-400">
+              <Text variant="small-medium-lh-normal" tone="inherit">
+                Incompatible changes detected
+              </Text>
+              <Text
+                variant="small-tight"
+                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
+                className="text-gray-400"
+              >
                 Click Update to see details
-              </p>
+              </Text>
             </TooltipContent>
           </Tooltip>
         )}
@@ -111,11 +127,15 @@ function SubAgentUpdateAvailableBar({
         variant={isCompatible ? "primary" : "outline"}
         onClick={onUpdate}
         className={cn(
-          "h-7 text-xs",
-          !isCompatible && "border-amber-500 text-amber-600 hover:bg-amber-50",
+          "h-7",
+          // TODO(tokens): no exact role: text-amber-600 #D97706
+          !isCompatible &&
+            "border-warning text-amber-600 hover:bg-warning-surface",
         )}
       >
-        Update
+        <Text variant="small-medium-tight" as="span" tone="inherit">
+          Update
+        </Text>
       </Button>
     </div>
   );
