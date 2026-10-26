@@ -357,8 +357,8 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
 }
 
 /* DS5g keyframes */
-/* Copilot loaders, moved unchanged from the OrbitLoader, PixelGridLoader and
-   ScaleLoader CSS modules. The modules scoped the names, so they are prefixed
+/* Copilot loaders, moved unchanged from the OrbitLoader and ScaleLoader CSS
+   modules. The modules scoped the names, so they are prefixed
    here. */
 @keyframes orbit-loader-rotate {
   0% {
@@ -399,16 +399,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   100% {
     box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
     margin-top: 0;
-  }
-}
-
-@keyframes pixel-grid-loader-on {
-  0%,
-  100% {
-    opacity: 0.15;
-  }
-  50% {
-    opacity: 1;
   }
 }
 
