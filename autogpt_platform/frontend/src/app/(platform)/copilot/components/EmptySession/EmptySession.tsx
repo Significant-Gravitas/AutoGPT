@@ -104,6 +104,7 @@ export function EmptySession({
   const { inputPlaceholder } = useHomeComposer({
     enabled:
       !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
+    greetingPath: intro.isVisible ? intro.path : null,
   });
 
   if (isKickoffStarting) {
