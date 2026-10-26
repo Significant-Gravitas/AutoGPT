@@ -229,7 +229,10 @@ def build_message_text(
             for entry in convo.messages:
                 lines.append(format_history_entry(entry, platform_display))
     if thread_history:
-        lines.append("\n[Recent thread context before this message]")
+        where = (
+            "channel messages" if ctx.channel_type == "channel" else "thread context"
+        )
+        lines.append(f"\n[Recent {where} before this message]")
         for entry in thread_history:
             lines.append(format_history_entry(entry, platform_display))
     lines.append(f"\n[Current message]\n{text}")

@@ -59,6 +59,12 @@ logger = logging.getLogger(__name__)
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
 
+# An @mention in a channel threads off that one message, so without the
+# messages just before it the bot can't tell what "that" refers to. Channels
+# run long and mix topics, so only the recent stretch is read.
+CHANNEL_HISTORY_LIMIT = 30
+CHANNEL_HISTORY_CHAR_BUDGET = 8000
+
 # When a message links or @-mentions other threads/channels, the bot fetches
 # their recent content up-front (same guild only) so the model can read it
 # instead of trying to web-fetch a JS-rendered Discord page. Bounded so a
@@ -579,6 +585,8 @@ class DiscordAdapter(SocketAdapter):
             thread_history = ()
             if channel_type == "thread" and (bot_mentioned or replied_to_bot):
                 thread_history = await self._thread_history(message)
+            elif channel_type == "channel":
+                thread_history = await self._channel_history(message)
 
             # Options lead the user's own text; read them before the reply
             # context is put in front of it.
@@ -646,6 +654,8 @@ class DiscordAdapter(SocketAdapter):
         thread_history = ()
         if channel_type == "thread":
             thread_history = await self._thread_history(starter)
+        elif channel_type == "channel":
+            thread_history = await self._channel_history(starter)
         ctx = MessageContext(
             platform="discord",
             channel_type=channel_type,
@@ -979,6 +989,22 @@ class DiscordAdapter(SocketAdapter):
             history = ()
         starter = await self._thread_starter_entry(message.channel)
         return (starter, *history) if starter else history
+
+    async def _channel_history(
+        self, message: discord.Message
+    ) -> tuple[MessageHistoryEntry, ...]:
+        try:
+            return await self._budgeted_history(
+                message.channel.history(
+                    limit=CHANNEL_HISTORY_LIMIT,
+                    before=message,
+                    oldest_first=False,
+                ),
+                CHANNEL_HISTORY_CHAR_BUDGET,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Could not fetch Discord channel history", exc_info=True)
+            return ()
 
     async def _thread_starter_entry(
         self, thread: discord.Thread
