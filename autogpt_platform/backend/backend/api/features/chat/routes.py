@@ -18,6 +18,7 @@ from fastapi import (
     Security,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
+from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
@@ -98,6 +99,7 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_pending_for_http,
     resolve_attachments_for_http,
+    with_attachments_named,
 )
 from backend.copilot.pending_messages import (
     accept_client_message,
@@ -193,8 +195,10 @@ from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import build_files_block
-from backend.data.workspace_folder import resolve_attachable_workspace_folders
+from backend.data.workspace_folder import (
+    WorkspaceFolder,
+    resolve_attachable_workspace_folders,
+)
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -2278,7 +2282,8 @@ async def stream_chat_post(
     # Expert sessions may only attach files from the expert's own
     # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
-    files_block = ""
+    files: list[UserWorkspaceFile] = []
+    folders: list[WorkspaceFolder] = []
     if request.file_ids or request.folder_ids:
         files = await resolve_attachments_for_http(
             user_id,
@@ -2290,7 +2295,6 @@ async def stream_chat_post(
             user_id, request.folder_ids or [], expert_id=session.expert_id
         )
         sanitized_file_ids = [wf.id for wf in files] or None
-        files_block = build_files_block(files, folders)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -2322,12 +2326,12 @@ async def stream_chat_post(
             session_id,
             message,
             card_owner,
-            has_attachments=bool(files_block),
+            has_attachments=bool(files or folders),
         )
     if card_answer.admission == "refused":
         # Answered already: the client's refetch shows the answer.
         return _empty_ui_message_stream_response()
-    message = card_answer.message + files_block
+    message = with_attachments_named(card_answer.message, files, folders)
     if not request.expert_kickoff:
         message_metadata = card_answer.metadata
     claim_owner = uuid4().hex

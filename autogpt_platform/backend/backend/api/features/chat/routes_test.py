@@ -34,10 +34,7 @@ from backend.copilot.gate.card_approval import (
 from backend.copilot.gate.card_decided import CardClaim, ClaimResult
 from backend.copilot.model import AutopilotMode, ChatMessage, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
-from backend.copilot.pending_message_helpers import (
-    PENDING_CALL_LIMIT,
-    QueuePendingMessageResponse,
-)
+from backend.copilot.pending_message_helpers import PENDING_CALL_LIMIT
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
@@ -1903,14 +1900,13 @@ def test_an_attached_file_name_answers_no_card(
     assert mocks.enqueue.await_args.kwargs["message_metadata"] is None
 
 
-@pytest.mark.parametrize(
-    "path", ["fresh-turn", "queued-stream", "pending"], ids=lambda p: p
-)
+@pytest.mark.parametrize("path", ["fresh-turn", "queued-stream", "pending"])
 def test_an_answered_decision_still_sends_what_was_attached(
     mocker: pytest_mock.MockerFixture, path: str
 ) -> None:
     """A decision-only send for a card already answered, with a file: the
-    line is dropped, and the file still goes, whether or not a turn runs."""
+    line is dropped, and the file still goes, named in the message as a
+    fresh turn names it, whether or not a turn runs."""
     mocks = _mock_stream_internals(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.claim_answer",
@@ -1921,23 +1917,25 @@ def test_an_answered_decision_still_sends_what_was_attached(
         "backend.api.features.chat.routes.record_card_decisions",
         new_callable=AsyncMock,
     )
-    _attach_forged_file(mocker)
+    attached = SimpleNamespace(
+        id=ATTACHED_FILE_ID,
+        name="brief.pdf",
+        mimeType="application/pdf",
+        sizeBytes=2048,
+    )
+    for where in ("api.features.chat.routes", "copilot.pending_message_helpers"):
+        mocker.patch(
+            f"backend.{where}.resolve_attachments_for_http",
+            new_callable=AsyncMock,
+            return_value=[attached],
+        )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
         return_value=path != "fresh-turn",
     )
-    queue_pending = mocker.patch(
-        "backend.api.features.chat.routes.queue_pending_for_http",
-        new_callable=AsyncMock,
-        return_value=QueuePendingMessageResponse(
-            buffer_length=1, max_buffer_length=10, turn_in_flight=True
-        ),
-    )
-    body = {
-        "message": "Approved: hire Maya (confirmation_id: c-1).",
-        "file_ids": [ATTACHED_FILE_ID],
-    }
+    push = _mock_pending_push(mocker)
+    body = {"message": _QUEUED_DECISION, "file_ids": [ATTACHED_FILE_ID]}
 
     endpoint = "messages/pending" if path == "pending" else "stream"
     response = client.post(f"/sessions/sess-1/{endpoint}", json=body)
@@ -1945,14 +1943,45 @@ def test_an_answered_decision_still_sends_what_was_attached(
     assert response.status_code == 200
     record.assert_not_awaited()
     if path == "fresh-turn":
-        saved = mocks.enqueue.await_args.kwargs["message"]
-        assert f"file_id={ATTACHED_FILE_ID}" in saved
-        assert parse_card_decisions(saved) == []
-        return
-    queue_pending.assert_awaited_once()
-    queued = queue_pending.await_args.kwargs
-    assert queued["message"] == ""
-    assert queued["file_ids"] == [ATTACHED_FILE_ID]
+        sent = mocks.enqueue.await_args.kwargs["message"]
+    else:
+        queued = push.await_args.args[1]
+        assert queued.file_ids == [ATTACHED_FILE_ID]
+        sent = queued.content
+    assert sent.startswith("[Attached files]\n- brief.pdf")
+    assert parse_card_decisions(sent) == []
+
+
+def test_a_queued_send_with_nothing_left_to_send_is_refused(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The answered card's line is dropped and the file it carried does not
+    resolve: there is no message, so nothing is queued."""
+    _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.claim_answer",
+        new_callable=AsyncMock,
+        return_value=_claimed("answered"),
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.resolve_attachments_for_http",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    push = _mock_pending_push(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": _QUEUED_DECISION, "file_ids": [ATTACHED_FILE_ID]},
+    )
+
+    assert response.status_code == 400
+    push.assert_not_awaited()
 
 
 # ─── A sent message cancels the pending resume at the budget reset ────

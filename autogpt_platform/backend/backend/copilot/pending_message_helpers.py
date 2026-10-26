@@ -48,7 +48,10 @@ from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
 from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
-from backend.data.workspace_folder import resolve_attachable_workspace_folders
+from backend.data.workspace_folder import (
+    WorkspaceFolder,
+    resolve_attachable_workspace_folders,
+)
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 if TYPE_CHECKING:
@@ -202,6 +205,25 @@ async def queue_user_message(
     )
 
 
+def with_attachments_named(
+    message: str,
+    files: list["UserWorkspaceFile"],
+    folders: list[WorkspaceFolder],
+    *,
+    files_named: bool = True,
+) -> str:
+    """The message with its attachments named after what the user typed.
+
+    A queued message carries its files as ids, named when the turn reads it
+    (``files_named=False``), but its folders only in the text. When nothing
+    typed is left, as when an answered card's line was dropped, the
+    attachments are the whole message and are all named here, as a fresh
+    turn names them."""
+    if not message:
+        return build_files_block(files, folders).lstrip()
+    return message + build_files_block(files if files_named else [], folders)
+
+
 async def resolve_attachments_for_http(
     user_id: str,
     file_ids: list[str],
@@ -265,16 +287,22 @@ async def queue_pending_for_http(
     returns the ``QueuePendingMessageResponse`` the handler can serialise 1:1.
     """
     sanitized_file_ids: list[str] | None = None
+    files: list["UserWorkspaceFile"] = []
     if file_ids:
         files = await resolve_attachments_for_http(
             user_id, file_ids, session_id=session_id, expert_id=expert_id
         )
         sanitized_file_ids = [wf.id for wf in files] or None
+    folders: list[WorkspaceFolder] = []
     if folder_ids:
         folders = await resolve_attachable_workspace_folders(
             user_id, folder_ids, expert_id=expert_id
         )
-        message += build_files_block([], folders)
+    message = with_attachments_named(message, files, folders, files_named=False)
+    if not message:
+        # Nothing typed is left (an answered card's line was dropped) and
+        # nothing attached resolved: there is no message to queue.
+        raise HTTPException(status_code=400, detail="There is nothing to send.")
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
     # unknown keys in the loose HTTP-level ``context`` dict are silently
