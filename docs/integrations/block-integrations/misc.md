@@ -1009,6 +1009,7 @@ Each entry is output individually, enabling processing of new content as it appe
 | rss_url | The URL of the RSS feed to read | str | Yes |
 | time_period | The time period to check in minutes relative to the run block runtime, e.g. 60 would check for new entries in the last hour. | int | No |
 | polling_rate | The number of seconds to wait between polling attempts. | int | Yes |
+| max_duration_seconds | Maximum time to poll continuously before this block finishes. | int | No |
 | run_continuously | Whether to run the block continuously or just once. | bool | No |
 
 ### Outputs
