@@ -1,4 +1,4 @@
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -8,7 +8,7 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { z } from "zod";
 
 type Props = {
@@ -82,7 +82,7 @@ export function PasswordCredentialsModal({
       }}
     >
       <Dialog.Content>
-        <Form {...form}>
+        <FormProvider {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
             className="w-[98%] space-y-2 pt-4"
@@ -131,7 +131,7 @@ export function PasswordCredentialsModal({
               Save & use this user login
             </Button>
           </form>
-        </Form>
+        </FormProvider>
       </Dialog.Content>
     </Dialog>
   );
