@@ -14,7 +14,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
@@ -22,7 +23,7 @@ import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
-  name: string;
+  name: string | null;
   greeting: string;
   suggestions: ReturnType<typeof useSuggestedTasks>;
   transcript?: string;
@@ -116,12 +117,19 @@ export function OnboardingIntroCard({
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
           <Text variant="large-medium" tone="primary">
-            Hey, <span className="text-foreground-strong">{name}</span>
+            Hey
+            {name ? (
+              <>
+                , <span className="text-foreground-strong">{name}</span>
+              </>
+            ) : (
+              " there"
+            )}
           </Text>
         </motion.div>
         {transcript && (
           <motion.div className="ml-auto" {...reveal(HEADING_START)}>
-            <Tooltip>
+            <Tooltip inheritDelay>
               <TooltipTrigger asChild>
                 <button
                   type="button"
@@ -141,9 +149,11 @@ export function OnboardingIntroCard({
                   )}
                 </button>
               </TooltipTrigger>
-              <TooltipContent>
-                {isCopied ? "Copied!" : "Copy everything you told me"}
-              </TooltipContent>
+              <TooltipPortal>
+                <TooltipContent>
+                  {isCopied ? "Copied!" : "Copy everything you told me"}
+                </TooltipContent>
+              </TooltipPortal>
             </Tooltip>
           </motion.div>
         )}

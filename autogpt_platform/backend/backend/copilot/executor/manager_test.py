@@ -6,6 +6,7 @@ engine-switch flow (see ``backend.copilot.engine_switch``). These tests pin its
 retry/give-up contract, and the order it keeps with a turn's deferred work.
 """
 
+import contextlib
 import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -16,6 +17,7 @@ from backend.copilot import after_turn
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
 from backend.copilot.executor.utils import COPILOT_CANCEL_QUEUE_PREFIX
 
+from . import cli_warmup, manager
 from .manager import (
     _SWITCH_DISPATCH_ATTEMPTS,
     CoPilotExecutor,
@@ -276,6 +278,60 @@ def test_cancel_consumer_consumes_the_queue_it_just_declared():
     declared = channel.queue_declare.call_args.kwargs["queue"]
     assert declared.startswith(COPILOT_CANCEL_QUEUE_PREFIX)
     assert channel.basic_consume.call_args.kwargs["queue"] == declared
+
+
+class _Started(Exception):
+    """Ends ``run()`` at the first step after the CLI warm-up is launched."""
+
+
+def test_executor_start_does_not_wait_for_the_cli_warm_up(monkeypatch, tmp_path):
+    """The executor goes on to set up its workers while the warm-up is still
+    reading the CLI binary."""
+    reading = threading.Event()
+    release = threading.Event()
+
+    def stuck_read(_path: str) -> int:
+        reading.set()
+        release.wait(30)
+        return 0
+
+    # Nothing there to run once the read is released.
+    missing = str(tmp_path / "claude")
+    monkeypatch.setattr(cli_warmup, "_resolve_cli_path", lambda: missing)
+    monkeypatch.setattr(cli_warmup, "_read_through", stuck_read)
+    monkeypatch.setattr(manager, "start_http_server", lambda *args, **kwargs: None)
+    monkeypatch.setattr(manager, "_load_catalog", lambda: None)
+    monkeypatch.setattr(manager, "get_blocks", dict)
+    monkeypatch.setattr(manager, "freeze_startup_heap", lambda: None)
+    started = threading.Event()
+
+    def worker_setup(_size: int) -> None:
+        started.set()
+        raise _Started
+
+    monkeypatch.setattr(manager, "pool_size_gauge", MagicMock(set=worker_setup))
+    executor = object.__new__(CoPilotExecutor)
+    executor.executor_id = "executor-1"
+    executor.pool_size = 1
+    executor._active_tasks_lock_obj = threading.Lock()
+
+    def run() -> None:
+        with contextlib.suppress(_Started):
+            executor.run()
+
+    starting = threading.Thread(target=run, daemon=True)
+    starting.start()
+    try:
+        # The warm-up is held until ``release``, so a start that waited for
+        # it would not reach the workers' setup in time.
+        assert started.wait(5)
+        assert reading.wait(5)
+    finally:
+        release.set()
+        starting.join(5)
+        for thread in threading.enumerate():
+            if thread.name == "copilot-cli-warmup":
+                thread.join(5)
 
 
 def _recording(order: list[str], name: str) -> after_turn.Work:

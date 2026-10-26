@@ -12,25 +12,10 @@ import {
   useGetOauthGetOauthAppInfo,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+import { SCOPE_DESCRIPTIONS } from "@/lib/api-key-scopes";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-
-// Human-readable scope descriptions
-const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
-  IDENTITY: "View your user ID, e-mail, and timezone",
-  EXECUTE_GRAPH: "Run your workflows",
-  READ_GRAPH: "View your workflows and their configurations",
-  WRITE_GRAPH: "Create workflows",
-  WRITE_LIBRARY: "Add workflows to your library",
-  EXECUTE_BLOCK: "Execute individual blocks",
-  READ_BLOCK: "View available blocks",
-  READ_STORE: "Access the Marketplace",
-  USE_TOOLS: "Use tools on your behalf",
-  MANAGE_INTEGRATIONS: "Set up new integrations",
-  READ_INTEGRATIONS: "View your connected integrations",
-  DELETE_INTEGRATIONS: "Remove connected integrations",
-};
 
 export default function AuthorizePage() {
   const searchParams = useSearchParams();
@@ -114,6 +99,8 @@ export default function AuthorizePage() {
   }
 
   function handleDeny() {
+    // appInfo loads only once the backend accepts redirectURI for this client
+    if (!appInfo) return;
     const params = new URLSearchParams({
       error: "access_denied",
       error_description: "User denied access",

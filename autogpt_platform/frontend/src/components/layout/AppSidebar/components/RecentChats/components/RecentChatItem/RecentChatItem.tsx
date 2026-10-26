@@ -144,7 +144,7 @@ export const RecentChatItem = memo(function RecentChatItem({
         isActive={isActive}
         tooltip={title}
         // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
-        className="font-normal data-[active=true]:!bg-surface-hover data-[active=true]:font-normal hover:!bg-surface-hover max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
+        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (

@@ -520,8 +520,15 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
+        """Send a request, following redirects through the same SSRF checks.
+
+        ``max_body_bytes`` caps how much of a response body is read, counted
+        after decompression; a longer body comes back cut to that many bytes
+        plus one, so the caller can tell it was cut.
+        """
         retry_kwargs: dict[str, Any] = {
             "wait": wait_exponential_jitter(max=self.retry_max_wait),
             "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
@@ -544,6 +551,7 @@ class Requests:
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
                 drop_headers=drop_headers,
+                max_body_bytes=max_body_bytes,
                 **kwargs,
             )
 
@@ -561,6 +569,7 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
         # Convert auth tuple to aiohttp.BasicAuth if necessary
@@ -658,7 +667,9 @@ class Requests:
                     try:
                         response.raise_for_status()
                     except ClientResponseError as e:
-                        body = await _read_body(response, self.max_response_bytes)
+                        body = await _read_body(
+                            response, self.max_response_bytes, max_body_bytes
+                        )
                         raise http_status_error(
                             response.status, response.reason, body
                         ) from e
@@ -673,7 +684,9 @@ class Requests:
                         return Response(
                             response=response,
                             url=original_url,
-                            body=await _read_body(response, self.max_response_bytes),
+                            body=await _read_body(
+                                response, self.max_response_bytes, max_body_bytes
+                            ),
                         )
 
                     # The base URL is the pinned_url we just used
@@ -709,6 +722,7 @@ class Requests:
                         json=json,
                         drop_headers=drop_headers
                         | {k.lower() for k in req_headers.keys() - new_headers.keys()},
+                        max_body_bytes=max_body_bytes,
                         **redirect_kwargs,
                     )
 
@@ -722,7 +736,9 @@ class Requests:
                 return Response(
                     response=response,
                     url=original_url,
-                    body=await _read_body(response, self.max_response_bytes),
+                    body=await _read_body(
+                        response, self.max_response_bytes, max_body_bytes
+                    ),
                 )
 
     async def get(self, url: str, *args, **kwargs) -> Response:
@@ -747,19 +763,34 @@ class Requests:
         return await self.request("PATCH", url, *args, **kwargs)
 
 
-async def _read_body(response: ClientResponse, limit: int) -> bytes:
-    """Buffer the body, refusing it as soon as it's known to be over the limit."""
+async def _read_body(
+    response: ClientResponse, limit: int, cut_at: int | None = None
+) -> bytes:
+    """Buffer the body, refusing it as soon as it's known to be over ``limit``.
+
+    With ``cut_at`` below the limit, the body is instead cut to that many
+    bytes plus one, so the caller can tell it was cut, and never refused.
+    Both read the decompressed stream in chunks and stop at their bound, so
+    neither a long body nor a short compressed one that expands is held whole.
+    """
+    if cut_at is not None and cut_at < limit:
+        return await _read_up_to(response, cut_at + 1)
+
     declared = response.content_length
     if declared is not None and declared > limit:
         response.close()
         raise ResponseTooLargeError(limit)
+    body = await _read_up_to(response, limit + 1)
+    if len(body) > limit:
+        response.close()
+        raise ResponseTooLargeError(limit)
+    return body
 
-    chunks: list[bytes] = []
-    received = 0
+
+async def _read_up_to(response: ClientResponse, size: int) -> bytes:
+    body = bytearray()
     async for chunk in response.content.iter_chunked(RESPONSE_READ_CHUNK_SIZE):
-        received += len(chunk)
-        if received > limit:
-            response.close()
-            raise ResponseTooLargeError(limit)
-        chunks.append(chunk)
-    return b"".join(chunks)
+        body.extend(chunk[: size - len(body)])
+        if len(body) >= size:
+            break
+    return bytes(body)
