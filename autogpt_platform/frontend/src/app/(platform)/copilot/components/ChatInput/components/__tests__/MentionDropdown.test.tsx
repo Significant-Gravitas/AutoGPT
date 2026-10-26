@@ -1,11 +1,22 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
-import type { MutableRefObject } from "react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
+import { useState, type MutableRefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
-import { connectedIntegrationsFromCredentials } from "../../helpers";
+import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/FullscreenDialog";
+import {
+  connectedIntegrationsFromCredentials,
+  type IntegrationMention,
+} from "../../helpers";
 import { MentionDropdown } from "../MentionDropdown";
-import type { MentionOption } from "../../useChatMentions";
+import { useChatMentions, type MentionOption } from "../../useChatMentions";
 
 const FILE: WorkspaceFileItem = {
   id: "file-1",
@@ -17,22 +28,20 @@ const FILE: WorkspaceFileItem = {
   created_at: "2026-01-01T00:00:00Z",
 };
 const FILE_ITEM: MentionOption = { kind: "file", file: FILE };
-const GOOGLE_ITEM: MentionOption = {
-  kind: "integration",
-  integration: {
-    credentialId: "google-1",
-    providerName: "Google",
-    username: null,
-    provider: "google",
-    name: "Google",
-    token: "@Google",
-  },
+const GOOGLE: IntegrationMention = {
+  credentialId: "google-1",
+  providerName: "Google",
+  username: null,
+  provider: "google",
+  name: "Google",
+  token: "@Google",
 };
+const GOOGLE_ITEM: MentionOption = { kind: "integration", integration: GOOGLE };
 
-function renderDropdown(
-  overrides: Partial<Parameters<typeof MentionDropdown>[0]> = {},
-) {
-  const props = {
+type DropdownProps = Parameters<typeof MentionDropdown>[0];
+
+function dropdownProps(overrides: Partial<DropdownProps> = {}): DropdownProps {
+  return {
     options: [] as MentionOption[],
     showFiles: true,
     hasIntegrations: false,
@@ -46,8 +55,75 @@ function renderDropdown(
     onHighlight: vi.fn(),
     ...overrides,
   };
+}
+
+function renderDropdown(overrides: Partial<DropdownProps> = {}) {
+  const props = dropdownProps(overrides);
   render(<MentionDropdown {...props} />);
   return props;
+}
+
+function ComposerWithDropdown({
+  open,
+  onSelect = vi.fn(),
+}: {
+  open: boolean;
+  onSelect?: DropdownProps["onSelect"];
+}) {
+  return (
+    <form className="relative">
+      {open && (
+        <MentionDropdown
+          {...dropdownProps({ options: [FILE_ITEM], onSelect })}
+        />
+      )}
+      <textarea aria-label="Chat message" />
+    </form>
+  );
+}
+
+function MentionComposer() {
+  const [value, setValue] = useState("");
+  const mentions = useChatMentions({
+    enabled: true,
+    value,
+    setValue,
+    includeWorkspaceFiles: false,
+    integrations: [GOOGLE],
+    addWorkspaceFile: vi.fn(),
+    addWorkspaceFolder: vi.fn(),
+  });
+  return (
+    <form className="relative">
+      {mentions.isOpen && (
+        <MentionDropdown
+          {...mentions}
+          onSelect={mentions.accept}
+          onHighlight={mentions.setHighlightedIndex}
+        />
+      )}
+      <textarea
+        aria-label="Chat message"
+        value={value}
+        onChange={(e) => {
+          setValue(e.currentTarget.value);
+          mentions.detect(e.currentTarget);
+        }}
+        onKeyDown={mentions.onKeyDown}
+        onBlur={mentions.close}
+      />
+    </form>
+  );
+}
+
+function openMentionList() {
+  const textbox = screen.getByRole("textbox", { name: "Chat message" });
+  act(() => textbox.focus());
+  fireEvent.change(textbox, { target: { value: "@", selectionStart: 1 } });
+  expect(
+    screen.getByRole("listbox", { name: "Mention suggestions" }),
+  ).toBeTruthy();
+  return textbox as HTMLTextAreaElement;
 }
 
 afterEach(() => {
@@ -211,12 +287,103 @@ describe("MentionDropdown", () => {
     expect(screen.getByText("Files")).toBeTruthy();
   });
 
+  it("uses the fixed positioning strategy inside a scrolling ancestor", () => {
+    render(
+      <div className="overflow-y-auto">
+        <form className="relative">
+          <MentionDropdown {...dropdownProps({ options: [FILE_ITEM] })} />
+        </form>
+      </div>,
+    );
+    const list = screen.getByRole("listbox", { name: "Mention suggestions" });
+    expect(list.style.position).toBe("fixed");
+  });
+
+  it("keeps focus in the chat textbox when the list opens", () => {
+    const { rerender } = render(<ComposerWithDropdown open={false} />);
+    const textbox = screen.getByRole("textbox");
+    textbox.focus();
+    rerender(<ComposerWithDropdown open />);
+    expect(document.activeElement).toBe(textbox);
+    const list = screen.getByRole("listbox", { name: "Mention suggestions" });
+    expect(
+      within(list).getByRole("option", { name: /alpha\.txt/ }),
+    ).toBeTruthy();
+  });
+
+  it("selects an option on click without moving focus", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <ComposerWithDropdown open={false} onSelect={onSelect} />,
+    );
+    const textbox = screen.getByRole("textbox");
+    textbox.focus();
+    rerender(<ComposerWithDropdown open onSelect={onSelect} />);
+    await user.click(screen.getByRole("option", { name: /alpha\.txt/ }));
+    expect(onSelect).toHaveBeenCalledWith(FILE_ITEM);
+    expect(document.activeElement).toBe(textbox);
+  });
+
   it("selects a folder option on mousedown", () => {
     const { onSelect } = renderDropdown({
       options: [folderOption(FOLDER, 0)],
     });
     fireEvent.mouseDown(screen.getByRole("option", { name: /Folder Reports/ }));
     expect(onSelect).toHaveBeenCalledWith(folderOption(FOLDER, 0));
+  });
+});
+
+describe("MentionDropdown in the composer", () => {
+  it.each([{ isComposing: true }, { keyCode: 229 }])(
+    "leaves a composing Escape to the input method (%j)",
+    (composing) => {
+      render(<MentionComposer />);
+      const textbox = openMentionList();
+      const escape = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+        ...composing,
+      });
+      fireEvent(textbox, escape);
+      expect(escape.defaultPrevented).toBe(false);
+      expect(
+        screen.getByRole("listbox", { name: "Mention suggestions" }),
+      ).toBeTruthy();
+    },
+  );
+
+  it("closes on Escape and keeps focus in the chat textbox", () => {
+    render(<MentionComposer />);
+    const textbox = openMentionList();
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(textbox, escape);
+    expect(escape.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(document.activeElement).toBe(textbox);
+  });
+
+  it("selects an option inside a dialog without closing the dialog", () => {
+    const onClose = vi.fn();
+    render(
+      <FullscreenDialog title="Expert chat" onClose={onClose}>
+        <MentionComposer />
+      </FullscreenDialog>,
+    );
+    const textbox = openMentionList();
+    const option = screen.getByRole("option", { name: /Google/ });
+    fireEvent.pointerDown(option, { pointerType: "mouse" });
+    fireEvent.mouseDown(option);
+    expect(textbox.value).toBe("@Google ");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Expert chat" })).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(textbox);
   });
 });
 

@@ -60,6 +60,9 @@ jobs:
         # No --with-deps: the runner image already has Chromium's libraries, and the
         # apt fetch it adds can outlast the job's timeout when Ubuntu's mirror is slow.
         run: pnpm exec playwright install chromium
+      - name: Generate API client
+        # Fixtures render app components, whose imports reach the generated client.
+        run: pnpm generate:api
       - name: Test tooltip browser interactions
         run: pnpm test:tooltip
       - name: Upload browser failure artifacts

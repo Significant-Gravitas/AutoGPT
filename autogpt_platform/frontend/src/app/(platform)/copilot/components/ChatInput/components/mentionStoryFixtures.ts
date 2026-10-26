@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 
 export const storyCredentials: CredentialsMetaResponse[] = [
@@ -76,4 +76,23 @@ export const mentionStoryHandlers = [
       ],
     }),
   ),
+];
+
+export const lateFileResultsHandlers = [
+  http.get("*/api/workspace/files", async () => {
+    await delay(800);
+    return HttpResponse.json({
+      files: Array.from({ length: 8 }, (_, index) => ({
+        id: `file-report-${index + 1}`,
+        name: `Report ${index + 1}.pdf`,
+        path: `/workspace/Report ${index + 1}.pdf`,
+        mime_type: "application/pdf",
+        size_bytes: 42000,
+        origin: "uploaded",
+        created_at: "2026-09-24T10:00:00Z",
+      })),
+      has_more: false,
+    });
+  }),
+  ...mentionStoryHandlers,
 ];

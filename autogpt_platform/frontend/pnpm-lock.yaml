@@ -30,6 +30,9 @@ importers:
       '@ferrucc-io/emoji-picker':
         specifier: 0.0.48
         version: 0.0.48(@babel/core@7.29.7)(@babel/template@7.29.7)(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwindcss@4.3.3)
+      '@floating-ui/react-dom':
+        specifier: 2.1.6
+        version: 2.1.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@hookform/resolvers':
         specifier: 5.2.2
         version: 5.2.2(react-hook-form@7.66.0(react@19.3.0))
