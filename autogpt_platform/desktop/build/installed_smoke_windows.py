@@ -49,6 +49,98 @@ MAX_SUMMARY_BYTES = 64 * 1024 * 1024
 MAX_SUMMARY_LINE_BYTES = 16 * 1024
 MAX_DIAGNOSTICS = 128
 DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
+RUNTIME_DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
+MAX_RUNTIME_DIAGNOSTICS = 8
+MAX_RUNTIME_DIAGNOSTIC_BYTES = 2048
+RUNTIME_DIAGNOSTIC_ENUMS = {
+    "point": {"ready", "stop"},
+    "settle": {
+        "unknown",
+        "ready",
+        "fatal_event",
+        "stdout_eof",
+        "reader_error",
+        "deadline",
+    },
+    "progress": {
+        "unknown",
+        "config",
+        "profile",
+        "infrastructure",
+        "migrate",
+        "loading",
+        "services",
+        "stopping",
+    },
+    "phase": {
+        "unknown",
+        "config",
+        "database",
+        "cache",
+        "queue",
+        "migrations",
+        "services",
+        "frontend",
+        "total",
+    },
+    "error": {
+        "none",
+        "unknown",
+        "startup_cancelled",
+        "startup_abandoned",
+        "database_not_started",
+        "process_exited_starting",
+        "process_not_started",
+        "apps_not_ready",
+        "backend_contract",
+        "process_restart_limit",
+        "postgres_initdb",
+        "postgres_incompatible",
+        "postgres_option",
+        "migration_history_missing",
+        "migration_incompatible",
+        "migration_interrupted",
+        "migration_deploy",
+        "database_tools_library",
+        "stop_event",
+        "settlement_failed",
+        "tool_timeout",
+        "tool_failed",
+        "os_error",
+    },
+    "process": {
+        "unknown",
+        "postgres",
+        "valkey",
+        "rabbitmq",
+        "epmd",
+        "frontend",
+        "database-manager",
+        "swap-credentials",
+        "workers",
+        "api",
+        "scheduler",
+        "batch-executor",
+        "notification",
+        "executor",
+        "copilot-executor",
+        "websocket",
+        "rest",
+        "skills-catalog",
+    },
+    "os_error": {
+        "none",
+        "unknown",
+        "not_found",
+        "access_denied",
+        "invalid_executable",
+        "address_in_use",
+        "connection_refused",
+        "disk_full",
+        "resource_exhausted",
+    },
+    "stop": {"not_observed", "clean", "nonzero", "timeout", "unknown"},
+}
 DIAGNOSTIC_ENUMS = {
     "stage": {
         "smoke_driver",
@@ -429,7 +521,61 @@ def safe_diagnostic(payload: str) -> dict | None:
     return value
 
 
-def lifecycle_summary(log: Path) -> dict:
+def safe_runtime_diagnostic(payload: str) -> dict | None:
+    def unique(pairs):
+        record = {}
+        for key, value in pairs:
+            if key in record:
+                raise ValueError("duplicate runtime diagnostic key")
+            record[key] = value
+        return record
+
+    if len(payload.encode("utf-8")) > MAX_RUNTIME_DIAGNOSTIC_BYTES:
+        return None
+    try:
+        value = json.loads(payload, object_pairs_hook=unique)
+    except (ValueError, TypeError, RecursionError):
+        return None
+    flags = {"fatal", "events_rejected", "events_truncated"}
+    keys = (
+        set(RUNTIME_DIAGNOSTIC_ENUMS)
+        | flags
+        | {
+            "version",
+            "start",
+            "process_exit",
+            "stop_exit",
+            "runtime_exit",
+            "elapsed_ms",
+            "completed_phases",
+        }
+    )
+    if type(value) is not dict or set(value) != keys:
+        return None
+    if type(value["version"]) is not int or value["version"] != 1:
+        return None
+    if any(type(value[name]) is not bool for name in flags):
+        return None
+    for name, allowed in RUNTIME_DIAGNOSTIC_ENUMS.items():
+        if type(value[name]) is not str or value[name] not in allowed:
+            return None
+    for name, lower, upper in (
+        ("start", 1, 4),
+        ("process_exit", -2147483648, 4294967295),
+        ("stop_exit", -2147483648, 4294967295),
+        ("runtime_exit", -2147483648, 4294967295),
+        ("elapsed_ms", 0, 3600000),
+        ("completed_phases", 0, 127),
+    ):
+        number = value[name]
+        if name.endswith("_exit") and number is None:
+            continue
+        if type(number) is not int or not lower <= number <= upper:
+            return None
+    return value
+
+
+def lifecycle_summary(log: Path, *, runtime_diagnostics: dict | None = None) -> dict:
     starts = []
     diagnostics = []
     success = False
@@ -437,24 +583,42 @@ def lifecycle_summary(log: Path) -> dict:
     rejected = False
     consumed = 0
     skipping_line = False
+    runtime = {"records": [], "rejected": False, "truncated": False}
+    runtime_seen = False
     with log.open("rb") as stream:
         while raw := stream.readline(MAX_SUMMARY_LINE_BYTES + 1):
             consumed += len(raw)
             if consumed > MAX_SUMMARY_BYTES:
                 truncated = True
+                runtime["truncated"] = True
                 break
             if skipping_line or len(raw) > MAX_SUMMARY_LINE_BYTES:
                 if not skipping_line and raw.startswith(DIAGNOSTIC_PREFIX.encode()):
                     rejected = True
+                if not skipping_line and raw.startswith(
+                    RUNTIME_DIAGNOSTIC_PREFIX.encode()
+                ):
+                    runtime_seen = True
+                    runtime["rejected"] = True
                 skipping_line = not raw.endswith(b"\n")
                 continue
             line = raw.decode("utf-8", errors="replace")
+            if line.startswith(RUNTIME_DIAGNOSTIC_PREFIX):
+                runtime_seen = True
+                record = safe_runtime_diagnostic(line[len(RUNTIME_DIAGNOSTIC_PREFIX) :])
+                if record is None:
+                    runtime["rejected"] = True
+                elif len(runtime["records"]) >= MAX_RUNTIME_DIAGNOSTICS:
+                    runtime["truncated"] = True
+                else:
+                    runtime["records"].append(record)
             if line.startswith(DIAGNOSTIC_PREFIX):
                 diagnostic = safe_diagnostic(line[len(DIAGNOSTIC_PREFIX) :])
                 if diagnostic is None:
                     rejected = True
                 elif len(diagnostics) >= MAX_DIAGNOSTICS:
                     truncated = True
+                    runtime["truncated"] = True
                     break
                 else:
                     diagnostics.append(diagnostic)
@@ -466,6 +630,8 @@ def lifecycle_summary(log: Path) -> dict:
                         truncated = True
             if re.fullmatch(r"OK in [0-9]+s\s*", line):
                 success = True
+    if runtime_diagnostics is not None and (runtime_seen or runtime["truncated"]):
+        runtime_diagnostics.update(runtime)
     return {
         "starts": starts,
         "completed": starts == [1, 2, 3, 4]
@@ -749,7 +915,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         finally:
             try:
-                result["lifecycle"] = lifecycle_summary(private / "logs/lifecycle.log")
+                runtime_diagnostics = {}
+                result["lifecycle"] = lifecycle_summary(
+                    private / "logs/lifecycle.log",
+                    runtime_diagnostics=runtime_diagnostics,
+                )
+                if runtime_diagnostics:
+                    result["runtime_diagnostics"] = runtime_diagnostics
             except Exception:
                 result["lifecycle"] = {
                     "starts": [],

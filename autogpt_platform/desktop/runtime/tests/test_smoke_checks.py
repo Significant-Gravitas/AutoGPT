@@ -29,7 +29,822 @@ smoke_test = importlib.import_module("smoke_test")
 
 
 SAFE_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
+RUNTIME_PREFIX = "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
 PRIVATE_CANARY = "secret-token C:/private/settings.env bearer=do-not-upload"
+
+
+@pytest.mark.parametrize(
+    "message,error,process,code,os_error",
+    [
+        ("startup was cancelled", "startup_cancelled", "unknown", None, "none"),
+        (
+            "the other side of this start failed",
+            "startup_abandoned",
+            "unknown",
+            None,
+            "none",
+        ),
+        (
+            "the database did not start",
+            "database_not_started",
+            "postgres",
+            None,
+            "none",
+        ),
+        (
+            f"workers exited while starting. See {PRIVATE_CANARY} for details.",
+            "process_exited_starting",
+            "workers",
+            None,
+            "none",
+        ),
+        (
+            f"valkey did not start. See {PRIVATE_CANARY} for details.",
+            "process_not_started",
+            "valkey",
+            None,
+            "none",
+        ),
+        (
+            f"api cannot run with this version of the backend. See {PRIVATE_CANARY}.",
+            "backend_contract",
+            "api",
+            None,
+            "none",
+        ),
+        (
+            f"workers keeps stopping (exit code 78). See {PRIVATE_CANARY}.",
+            "process_restart_limit",
+            "workers",
+            78,
+            "none",
+        ),
+        (
+            f"unknown-private-process keeps stopping (exit code 3). See {PRIVATE_CANARY}.",
+            "unknown",
+            "unknown",
+            None,
+            "none",
+        ),
+        (
+            f"workers keeps stopping (exit code 4294967296). See {PRIVATE_CANARY}.",
+            "unknown",
+            "unknown",
+            None,
+            "none",
+        ),
+        (
+            "AutoGPT did not become ready in time: no answer from rest, frontend",
+            "apps_not_ready",
+            "unknown",
+            None,
+            "none",
+        ),
+        (
+            f"AutoGPT did not become ready in time: no answer from {PRIVATE_CANARY}",
+            "unknown",
+            "unknown",
+            None,
+            "none",
+        ),
+        (
+            f"initdb failed:\n{PRIVATE_CANARY}",
+            "postgres_initdb",
+            "postgres",
+            None,
+            "none",
+        ),
+        (
+            f"prisma migrate deploy failed:\n{PRIVATE_CANARY}",
+            "migration_deploy",
+            "unknown",
+            None,
+            "none",
+        ),
+        (
+            "This AutoGPT bundle has no database migration history.",
+            "migration_history_missing",
+            "unknown",
+            None,
+            "none",
+        ),
+        (
+            f"a PostgreSQL option may not contain a double quote: {PRIVATE_CANARY}",
+            "postgres_option",
+            "postgres",
+            None,
+            "none",
+        ),
+        (
+            f"[WinError 5] {PRIVATE_CANARY}",
+            "os_error",
+            "unknown",
+            None,
+            "access_denied",
+        ),
+        (
+            f"[WinError 193] {PRIVATE_CANARY}",
+            "os_error",
+            "unknown",
+            None,
+            "invalid_executable",
+        ),
+        (f"[Errno 2] {PRIVATE_CANARY}", "os_error", "unknown", None, "not_found"),
+        (f"[WinError 987654] {PRIVATE_CANARY}", "os_error", "unknown", None, "unknown"),
+        (PRIVATE_CANARY, "unknown", "unknown", None, "none"),
+    ],
+)
+def test_runtime_context_fatal_forms_never_echo(
+    message, error, process, code, os_error
+):
+    context = smoke_test.RuntimeContext()
+    context.observe(
+        {"event": "progress", "step": "services", "message": PRIVATE_CANARY}
+    )
+    context.observe({"event": "timing", "phase": "database", "seconds": 1.5})
+    context.observe({"event": "error", "fatal": True, "message": message})
+    record = context.record(1, "ready", smoke_test.StopObservation())
+    assert record["progress"] == "services"
+    assert record["phase"] == "database"
+    assert record["fatal"] is True
+    assert (
+        record["error"],
+        record["process"],
+        record["process_exit"],
+        record["os_error"],
+    ) == (error, process, code, os_error)
+    assert PRIVATE_CANARY not in json.dumps(record)
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"event": "error", "fatal": 1, "message": PRIVATE_CANARY},
+        {
+            "event": "error",
+            "fatal": True,
+            "message": PRIVATE_CANARY,
+            "extra": PRIVATE_CANARY,
+        },
+        {"event": "progress", "step": [], "message": PRIVATE_CANARY},
+        {"event": "timing", "phase": "database", "seconds": True},
+        {"event": "timing", "phase": "database", "seconds": -1},
+        {"event": "timing", "phase": "database", "seconds": float("nan")},
+        {"event": "timing", "phase": "database", "seconds": 3601},
+        {
+            "event": "timing",
+            "phase": "total",
+            "seconds": 2,
+            "phases": {PRIVATE_CANARY: 1},
+        },
+    ],
+)
+def test_runtime_context_rejects_untrusted_event_shapes(event):
+    context = smoke_test.RuntimeContext()
+    context.observe(event)
+    record = context.record(1, "ready", smoke_test.StopObservation())
+    assert record["events_rejected"] is True
+    assert record["fatal"] is False
+    assert PRIVATE_CANARY not in json.dumps(record)
+
+
+def test_runtime_context_unknown_phase_and_progress_are_closed():
+    context = smoke_test.RuntimeContext()
+    context.observe(
+        {"event": "progress", "step": PRIVATE_CANARY, "message": PRIVATE_CANARY}
+    )
+    context.observe({"event": "timing", "phase": PRIVATE_CANARY, "seconds": 1})
+    record = context.record(1, "ready", smoke_test.StopObservation())
+    assert record["progress"] == record["phase"] == "unknown"
+    assert PRIVATE_CANARY not in json.dumps(record)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"event":"error","fatal":false,"fatal":true,"message":"secret"}\n',
+        '{"event":"error","fatal":true,"message":"' + "x" * 16384 + '"}\n',
+        "[\n",
+        "[]\n",
+    ],
+)
+def test_runtime_context_reader_rejects_duplicate_overlong_and_malformed(
+    payload, tmp_path
+):
+    process = SimpleNamespace(stdout=io.StringIO(payload))
+    said = smoke_test.Said(process, time.monotonic(), smoke_test.Install(False))
+    assert said.finished.wait(2)
+    record = said.context.record(1, "ready", smoke_test.StopObservation())
+    assert record["events_rejected"]
+    assert not record["fatal"]
+
+
+@pytest.mark.parametrize(
+    "code,expected", [(0, "clean"), (7, "nonzero"), (-9, "nonzero"), (None, "timeout")]
+)
+def test_runtime_context_stop_uses_wait_observation_not_poll(code, expected):
+    process = Mock()
+    process.poll.return_value = None
+    process.wait.side_effect = (
+        subprocess.TimeoutExpired(PRIVATE_CANARY, 30) if code is None else None
+    )
+    process.wait.return_value = code
+    observation = smoke_test.StopObservation()
+    failures = smoke_test.stop(process, observation)
+    assert observation.outcome == expected
+    assert observation.child_exit == code
+    assert bool(failures) == (code != 0)
+    process.wait.assert_called_once_with(30)
+    assert process.kill.call_count == int(code is None)
+
+
+class RuntimeDiagnosticSink(io.StringIO):
+    def __init__(self, operation):
+        super().__init__()
+        self.operation, self.target, self.failures = operation, False, 0
+
+    def write(self, text):
+        self.target = text.startswith(RUNTIME_PREFIX) or (self.target and text == "\n")
+        if self.target and self.operation == "write":
+            self.failures += 1
+            raise OSError(28, PRIVATE_CANARY)
+        return super().write(text)
+
+    def flush(self):
+        if self.target and self.operation == "flush":
+            self.failures += 1
+            raise OSError(28, PRIVATE_CANARY)
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+@pytest.mark.parametrize("primary", [False, True])
+def test_runtime_context_output_loss_preserves_cleanup_and_primary(
+    diagnostic_runtime, tmp_path, operation, primary
+):
+    _process, said, leftovers = diagnostic_runtime
+    original = TimeoutError(PRIVATE_CANARY)
+    if primary:
+        said.wait_for_ready.side_effect = original
+    sink = RuntimeDiagnosticSink(operation)
+    install = smoke_test.Install(False)
+    install.start_number = 1
+    with redirect_stdout(sink):
+        if primary:
+            with pytest.raises(TimeoutError) as raised:
+                smoke_test.run(tmp_path, tmp_path, 1, lambda *args: [], install)
+            assert raised.value is original
+        else:
+            assert smoke_test.run(tmp_path, tmp_path, 1, lambda *args: [], install)
+    assert sink.failures
+    leftovers.assert_called_once()
+
+
+def test_runtime_context_four_start_parity(
+    diagnostic_smoke, diagnostic_runtime, monkeypatch, capsys
+):
+    monkeypatch.setattr(smoke_test, "checked", lambda *args: [])
+    assert smoke_test.smoke(*diagnostic_smoke) == 0
+    output = capsys.readouterr().out
+    records = [
+        json.loads(line[len(RUNTIME_PREFIX) :])
+        for line in output.splitlines()
+        if line.startswith(RUNTIME_PREFIX)
+    ]
+    assert [(r["start"], r["point"]) for r in records] == [
+        (n, point) for n in range(1, 5) for point in ("ready", "stop")
+    ]
+    assert diagnostic_runtime[2].call_count == 4
+
+
+def test_runtime_context_existing_v1_allowlists_are_unchanged():
+    import installed_smoke_windows as driver
+
+    for field in ("stage", "status", "reason", "exception", "contract"):
+        names = {"status": "STATUSES"}
+        assert driver.DIAGNOSTIC_ENUMS[field] == getattr(
+            smoke_test, "DIAGNOSTIC_" + names.get(field, field.upper() + "S")
+        )
+    assert smoke_test.DIAGNOSTIC_PREFIX == driver.DIAGNOSTIC_PREFIX == SAFE_PREFIX
+
+
+def test_runtime_context_bounded_events_and_first_fatal_are_sticky():
+    context = smoke_test.RuntimeContext()
+    context.observe(
+        {"event": "error", "fatal": True, "message": "the database did not start"}
+    )
+    context.observe({"event": "error", "fatal": False, "message": PRIVATE_CANARY})
+    context.observe({"event": "error", "fatal": True, "message": PRIVATE_CANARY})
+    for _ in range(smoke_test.MAX_RUNTIME_CONTEXT_EVENTS):
+        context.observe(
+            {"event": "progress", "step": "services", "message": PRIVATE_CANARY}
+        )
+    record = context.record(1, "stop", smoke_test.StopObservation("timeout"))
+    assert record["error"] == "database_not_started"
+    assert record["events_truncated"] is True
+    assert record["stop"] == "timeout" and record["stop_exit"] is None
+
+
+def test_runtime_context_said_first_start_failure_with_observed_stop(
+    diagnostic_smoke, diagnostic_runtime, monkeypatch, capsys
+):
+    process, _, leftovers = diagnostic_runtime
+    context = smoke_test.RuntimeContext()
+    context.observe(
+        {"event": "progress", "step": "infrastructure", "message": PRIVATE_CANARY}
+    )
+    context.observe(
+        {
+            "event": "error",
+            "fatal": True,
+            "message": "initdb failed:\n" + PRIVATE_CANARY,
+        }
+    )
+    monkeypatch.setattr(
+        smoke_test,
+        "Said",
+        lambda *args: SimpleNamespace(
+            context=context,
+            wait_for_ready=lambda _: None,
+            finished=SimpleNamespace(wait=lambda _: True),
+        ),
+    )
+    process.poll.return_value = None
+    process.wait.side_effect = subprocess.TimeoutExpired(PRIVATE_CANARY, 30)
+    monkeypatch.setattr(smoke_test, "stop", ORIGINAL_STOP)
+    assert smoke_test.smoke(*diagnostic_smoke) == 1
+    output = capsys.readouterr().out
+    records = [
+        json.loads(line[len(RUNTIME_PREFIX) :])
+        for line in output.splitlines()
+        if line.startswith(RUNTIME_PREFIX)
+    ]
+    assert records[0]["error"] == "postgres_initdb"
+    assert records[0]["progress"] == "infrastructure"
+    assert records[0]["stop"] == "not_observed"
+    assert records[1]["stop"] == "timeout"
+    assert records[1]["stop_exit"] is None
+    assert PRIVATE_CANARY not in json.dumps(records)
+    leftovers.assert_called_once()
+
+
+ORIGINAL_STOP = smoke_test.stop
+ORIGINAL_SAID = smoke_test.Said
+
+
+class InlineRuntimeReader:
+    def __init__(self, target, **kwargs):
+        self.target = target
+
+    def start(self):
+        self.target()
+
+
+@pytest.mark.parametrize(
+    "tail", ["duplicate", "oversized", "malformed", "nonobject", "unicode", "io_error"]
+)
+@pytest.mark.parametrize("mode", ["cancelled", "deadline", "hurried"])
+def test_runtime_context_lost_cancellation_input_fails_real_stop_checker(
+    tail, mode, lifecycle_stop, tmp_path, monkeypatch
+):
+    install, clock, Process = lifecycle_stop
+    install.stopping.cancels = mode == "cancelled"
+    install.stopping.hurried = mode == "hurried"
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    process = Process(20, 57)
+    cancellation = {
+        "event": "shutdown",
+        "phase": "cancellation",
+        "seconds": {"cancelled": 1, "deadline": 20, "hurried": 3}[mode],
+        "outcome": mode,
+    }
+    extra = {
+        "duplicate": json.dumps(cancellation).replace(
+            '"event": "shutdown"', '"event": "shutdown", "event": "shutdown"'
+        ),
+        "oversized": json.dumps({**cancellation, "detail": "x" * 16384}),
+        "malformed": "{",
+        "nonobject": "[]",
+    }.get(tail, "")
+    text = (
+        json.dumps(
+            {
+                "event": "progress",
+                "step": "stopping",
+                "message": "Stopping",
+                "grace_seconds": 120,
+            }
+        )
+        + "\n"
+        + json.dumps(cancellation)
+        + "\n"
+        + extra
+    )
+    stream = io.StringIO(text)
+    if tail in {"unicode", "io_error"}:
+
+        def readline(limit):
+            line = stream.readline(limit)
+            if line:
+                return line
+            if tail == "unicode":
+                raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, PRIVATE_CANARY)
+            raise OSError(PRIVATE_CANARY)
+
+        process.stdout = SimpleNamespace(readline=readline)
+    else:
+        process.stdout = stream
+    install.said = ORIGINAL_SAID(process, 0, install)
+
+    def wait(timeout):
+        clock.seconds = 57
+        install.said.read()
+        return 0
+
+    process.wait = wait
+    failures = smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install)
+    assert failures == [smoke_test.RUNTIME_EVENT_LOSS]
+    assert install.said.finished.is_set()
+    assert install.said.evidence_lost
+    assert not any("one cancellation phase" in failure for failure in failures)
+    assert PRIVATE_CANARY not in json.dumps(failures)
+
+
+@pytest.mark.parametrize(
+    "terminal", ["ready", "fatal_event", "stdout_eof", "reader_error", "deadline"]
+)
+def test_runtime_context_first_terminal_snapshot_is_separate_from_stop(
+    terminal, monkeypatch
+):
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    process = SimpleNamespace(stdout=io.StringIO(""))
+    said = ORIGINAL_SAID(process, time.monotonic(), smoke_test.Install(False))
+    said.hear(
+        {"event": "progress", "step": "infrastructure", "message": PRIVATE_CANARY}
+    )
+    said.hear({"event": "timing", "phase": "database", "seconds": 1})
+    if terminal == "ready":
+        said.hear({"event": "ready", "url": "http://unused.invalid"})
+    elif terminal == "fatal_event":
+        said.hear({"event": "error", "fatal": True, "message": PRIVATE_CANARY})
+    elif terminal == "deadline":
+        assert said.wait_for_ready(0) is None
+    else:
+        if terminal == "reader_error":
+            process.stdout = Mock()
+            process.stdout.readline.side_effect = UnicodeDecodeError(
+                "utf-8", b"\xff", 0, 1, PRIVATE_CANARY
+            )
+        said.read()
+    said.hear(
+        {
+            "event": "progress",
+            "step": "stopping",
+            "message": PRIVATE_CANARY,
+            "grace_seconds": 120,
+        }
+    )
+    said.hear({"event": "timing", "phase": "queue", "seconds": 2})
+    ready = said.diagnostic_context("ready").record(
+        1, "ready", smoke_test.StopObservation()
+    )
+    stopped = said.diagnostic_context("stop").record(
+        1, "stop", smoke_test.StopObservation()
+    )
+    assert ready["settle"] == stopped["settle"] == terminal
+    assert (ready["progress"], ready["phase"], ready["completed_phases"]) == (
+        "infrastructure",
+        "database",
+        2,
+    )
+    assert (stopped["progress"], stopped["phase"], stopped["completed_phases"]) == (
+        "stopping",
+        "queue",
+        10,
+    )
+    assert PRIVATE_CANARY not in json.dumps([ready, stopped])
+    said.diagnostic_context("ready").values["progress"] = "changed copy"
+    assert said.diagnostic_context("ready").values["progress"] == "infrastructure"
+
+
+def test_runtime_context_terminal_lock_order_resolves_timeout_race(monkeypatch):
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    said = ORIGINAL_SAID(
+        SimpleNamespace(stdout=io.StringIO("")),
+        time.monotonic(),
+        smoke_test.Install(False),
+    )
+
+    def expired_wait(timeout):
+        said.hear({"event": "ready", "url": "http://unused.invalid"})
+        return False
+
+    monkeypatch.setattr(said.settled, "wait", expired_wait)
+    assert said.wait_for_ready(0) == "http://unused.invalid"
+    assert said.diagnostic_context("ready").settle == "ready"
+
+
+def test_runtime_context_deadline_winner_cannot_become_late_ready(monkeypatch):
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    said = ORIGINAL_SAID(
+        SimpleNamespace(stdout=io.StringIO("")),
+        time.monotonic(),
+        smoke_test.Install(False),
+    )
+    assert said.wait_for_ready(0) is None
+    said.hear({"event": "ready", "url": "http://unused.invalid"})
+    assert said.wait_for_ready(0) is None
+    assert said.diagnostic_context("ready").settle == "deadline"
+
+
+@pytest.mark.parametrize("ready", [False, True])
+def test_runtime_context_unexpected_reader_exception_cannot_prove_eof(
+    ready, monkeypatch
+):
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    stream = Mock()
+    original = RuntimeError(PRIVATE_CANARY)
+    stream.readline.side_effect = original
+    said = ORIGINAL_SAID(
+        SimpleNamespace(stdout=stream), time.monotonic(), smoke_test.Install(False)
+    )
+    if ready:
+        said.hear({"event": "ready", "url": "http://unused.invalid"})
+    with pytest.raises(RuntimeError) as raised:
+        said.read()
+    assert raised.value is original
+    assert said.finished.is_set() and said.evidence_lost
+    assert said.diagnostic_context("ready").settle == (
+        "ready" if ready else "reader_error"
+    )
+    assert said.diagnostic_context("stop").rejected
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+@pytest.mark.parametrize("primary", [False, True])
+def test_runtime_context_late_reader_loss_and_io_failure_preserve_cleanup(
+    diagnostic_runtime, monkeypatch, tmp_path, operation, primary
+):
+    process, _, cleanup = diagnostic_runtime
+    install = smoke_test.Install(False)
+    install.start_number = 1
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    process.stdout = io.StringIO('{"event":"shutdown","event":"shutdown"}\n')
+
+    def reader(*args):
+        said = ORIGINAL_SAID(*args)
+        said.hear({"event": "ready", "url": "http://unused.invalid"})
+        return said
+
+    original = TimeoutError(PRIVATE_CANARY)
+
+    def wait(timeout):
+        install.said.read()
+        if primary:
+            raise original
+        return 0
+
+    process.wait.side_effect = wait
+    process.poll.return_value = None if primary else 0
+    monkeypatch.setattr(smoke_test, "Said", reader)
+    monkeypatch.setattr(smoke_test, "stop", ORIGINAL_STOP)
+    sink = RuntimeDiagnosticSink(operation)
+    with redirect_stdout(sink):
+        if primary:
+            with pytest.raises(TimeoutError) as raised:
+                smoke_test.run(tmp_path, tmp_path, 1, lambda *args: [], install)
+            assert raised.value is original
+        else:
+            failures = smoke_test.run(tmp_path, tmp_path, 1, lambda *args: [], install)
+            assert smoke_test.RUNTIME_EVENT_LOSS in failures
+    assert install.said.evidence_lost
+    assert install.said.diagnostic_context("ready").rejected is False
+    assert install.said.diagnostic_context("stop").rejected is True
+    assert sink.failures
+    assert process.kill.call_count == int(primary)
+    cleanup.assert_called_once()
+
+
+def test_runtime_context_plain_stop_requires_drain_within_existing_budget(
+    diagnostic_runtime, monkeypatch, tmp_path
+):
+    process, _, cleanup = diagnostic_runtime
+    clock = [0.0]
+    monkeypatch.setattr(
+        smoke_test,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock[0], time=lambda: clock[0]),
+    )
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    install = smoke_test.Install(False)
+
+    def reader(*args):
+        said = ORIGINAL_SAID(*args)
+        said.hear({"event": "ready", "url": "http://unused.invalid"})
+        said.finished = SimpleNamespace(wait=Mock(return_value=False))
+        return said
+
+    def wait(timeout):
+        clock[0] = 29
+        return 0
+
+    process.wait.side_effect = wait
+    monkeypatch.setattr(smoke_test, "Said", reader)
+    monkeypatch.setattr(smoke_test, "stop", ORIGINAL_STOP)
+    failures = smoke_test.run(tmp_path, tmp_path, 600, lambda *args: [], install)
+    assert failures == ["the runtime's shutdown events did not reach EOF"]
+    process.wait.assert_called_once_with(30)
+    install.said.finished.wait.assert_called_once_with(1)
+    cleanup.assert_called_once()
+
+
+def test_runtime_context_four_starts_keep_real_reader_completion(
+    diagnostic_smoke, diagnostic_runtime, monkeypatch, capsys
+):
+    process, _, cleanup = diagnostic_runtime
+    monkeypatch.setattr(smoke_test.threading, "Thread", InlineRuntimeReader)
+
+    def reader(*args):
+        process.stdout = io.StringIO(
+            json.dumps({"event": "ready", "url": "http://unused.invalid"}) + "\n"
+        )
+        return ORIGINAL_SAID(*args)
+
+    monkeypatch.setattr(smoke_test, "Said", reader)
+    monkeypatch.setattr(smoke_test, "checked", lambda *args: [])
+    assert smoke_test.smoke(*diagnostic_smoke) == 0
+    events = safe_events(capsys)
+    assert events[-1]["status"] == "passed"
+    assert cleanup.call_count == 4
+
+
+def test_runtime_context_optional_context_rejection_is_not_lost_history(monkeypatch):
+    monkeypatch.setattr(smoke_test.threading, "Thread", InlineRuntimeReader)
+    event = {"event": "timing", "phase": "database", "seconds": True}
+    process = SimpleNamespace(stdout=io.StringIO(json.dumps(event) + "\n"))
+    said = ORIGINAL_SAID(process, time.monotonic(), smoke_test.Install(False))
+    assert said.context.rejected
+    assert said.events == [event]
+    assert said.finished.is_set() and not said.evidence_lost
+
+
+@pytest.mark.parametrize(
+    "cause", ["ready", "fatal_event", "stdout_eof", "reader_error", "deadline"]
+)
+def test_runtime_context_distinguishes_how_readiness_wait_ended(cause, monkeypatch):
+    if cause == "reader_error":
+        stream = Mock()
+        stream.readline.side_effect = UnicodeDecodeError(
+            "utf-8", b"\xff", 0, 1, PRIVATE_CANARY
+        )
+    else:
+        event = (
+            {"event": "ready", "url": PRIVATE_CANARY}
+            if cause == "ready"
+            else {
+                "event": "error",
+                "message": "the database did not start",
+                "fatal": True,
+            }
+        )
+        stream = io.StringIO(
+            json.dumps(event) + "\n" if cause in {"ready", "fatal_event"} else ""
+        )
+    if cause == "deadline":
+        monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    said = smoke_test.Said(
+        SimpleNamespace(stdout=stream), time.monotonic(), smoke_test.Install(False)
+    )
+    if cause != "deadline":
+        assert said.finished.wait(2)
+    assert bool(said.wait_for_ready(0)) == (cause == "ready")
+    record = said.context.record(
+        1, "ready", smoke_test.StopObservation(), elapsed=12.345, runtime_exit=None
+    )
+    assert record["settle"] == cause
+    assert record["elapsed_ms"] == 12345
+    assert record["runtime_exit"] is None
+    assert PRIVATE_CANARY not in json.dumps(record)
+
+
+def test_runtime_context_completed_phases_survive_parallel_progress():
+    context = smoke_test.RuntimeContext()
+    for name in ("database", "queue"):
+        context.observe({"event": "timing", "phase": name, "seconds": 1})
+    context.observe({"event": "progress", "step": "loading", "message": PRIVATE_CANARY})
+    record = context.record(1, "ready", smoke_test.StopObservation())
+    assert record["phase"] == "queue"
+    assert record["progress"] == "loading"
+    assert record["completed_phases"] == 2 | 8
+    context.observe(
+        {
+            "event": "timing",
+            "phase": "total",
+            "seconds": 2,
+            "phases": {"config": 0.1, "frontend": 1},
+        }
+    )
+    assert (
+        context.record(1, "ready", smoke_test.StopObservation())["completed_phases"]
+        == 1 | 2 | 8 | 64
+    )
+
+
+def test_runtime_context_late_reader_cannot_rewrite_readiness_deadline(monkeypatch):
+    monkeypatch.setattr(smoke_test.threading, "Thread", Mock())
+    event = {"event": "error", "fatal": True, "message": PRIVATE_CANARY}
+    process = SimpleNamespace(stdout=io.StringIO(json.dumps(event) + "\n"))
+    said = smoke_test.Said(process, time.monotonic(), smoke_test.Install(False))
+    assert said.wait_for_ready(0) is None
+    said.read()
+    assert said.context.settle == "deadline"
+
+
+def test_runtime_context_ready_with_extra_fields_is_not_trusted():
+    event = {"event": "ready", "url": PRIVATE_CANARY, "extra": PRIVATE_CANARY}
+    said = smoke_test.Said(
+        SimpleNamespace(stdout=io.StringIO(json.dumps(event) + "\n")),
+        time.monotonic(),
+        smoke_test.Install(False),
+    )
+    assert said.finished.wait(2)
+    record = said.context.record(1, "ready", smoke_test.StopObservation())
+    assert record["events_rejected"]
+    assert record["settle"] == "unknown"
+    assert PRIVATE_CANARY not in json.dumps(record)
+
+
+@pytest.mark.parametrize("elapsed", [-1, True, float("nan"), float("inf"), 3601])
+def test_runtime_context_elapsed_and_exit_are_bounded(elapsed):
+    record = smoke_test.RuntimeContext().record(
+        1, "ready", smoke_test.StopObservation(), elapsed=elapsed, runtime_exit=True
+    )
+    assert type(record["elapsed_ms"]) is int and 0 <= record["elapsed_ms"] <= 3600000
+    assert record["runtime_exit"] is None
+
+
+def test_runtime_context_snapshot_precedes_stop_and_cleanup(
+    diagnostic_runtime, tmp_path, monkeypatch, capsys
+):
+    now = [10.0]
+    monkeypatch.setattr(smoke_test.time, "monotonic", lambda: now[0])
+    _process, said, _ = diagnostic_runtime
+
+    def wait(_):
+        now[0] = 12.5
+
+    def stop(*args):
+        now[0] = 42.5
+        return ["stop failed"]
+
+    def cleanup(*args):
+        now[0] = 100
+        return []
+
+    said.wait_for_ready.side_effect = wait
+    monkeypatch.setattr(smoke_test, "stop", stop)
+    monkeypatch.setattr(smoke_test, "left_running", cleanup)
+    install = smoke_test.Install(False)
+    install.start_number = 1
+    assert smoke_test.run(tmp_path, tmp_path, 600, lambda *args: [], install)
+    records = [
+        json.loads(line[len(RUNTIME_PREFIX) :])
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith(RUNTIME_PREFIX)
+    ]
+    assert [r["elapsed_ms"] for r in records] == [2500, 32500]
+    assert records[0]["runtime_exit"] == 0
+
+
+@pytest.mark.parametrize(
+    "message,category",
+    [
+        (
+            "This AutoGPT version cannot open this database: it lacks or changes applied migrations (private). Install the version last used with this data, or restore a complete backup made before upgrading. The database has not been migrated.",
+            "migration_incompatible",
+        ),
+        (
+            "A database update did not finish (private). This usually means AutoGPT was closed while it was starting for the first time. If you have no data yet, delete the AutoGPT data folder and start again.",
+            "migration_interrupted",
+        ),
+        (
+            "Your AutoGPT data was created with PostgreSQL 16, and this version of AutoGPT includes PostgreSQL 17, which cannot open it. Install the AutoGPT version you used before to keep your data, or move private away to start again without it.",
+            "postgres_incompatible",
+        ),
+        (
+            "AutoGPT cannot run its database tools: this system has no private.",
+            "database_tools_library",
+        ),
+        ("Command 'private' timed out after 600 seconds", "tool_timeout"),
+        ("Command 'private' returned non-zero exit status 3.", "tool_failed"),
+        ("could not set the stop event workers", "stop_event"),
+        (
+            "Could not settle stopped runs safely; restart AutoGPT to retry.",
+            "settlement_failed",
+        ),
+    ],
+)
+def test_runtime_context_additional_source_defined_failures(message, category):
+    assert smoke_test.runtime_failure(message)["error"] == category
 
 
 def safe_events(capsys):
@@ -94,9 +909,11 @@ def diagnostic_runtime(monkeypatch):
     monkeypatch.setattr(smoke_test.psutil, "Process", lambda _: object())
     monkeypatch.setattr(smoke_test, "Family", lambda *args: object())
     said = Mock()
+    said.evidence_lost = False
+    said.finished.wait.return_value = True
     said.wait_for_ready.return_value = "http://unused.invalid"
     monkeypatch.setattr(smoke_test, "Said", lambda *args: said)
-    monkeypatch.setattr(smoke_test, "stop", lambda _: [])
+    monkeypatch.setattr(smoke_test, "stop", lambda *args: [])
     monkeypatch.setattr(smoke_test, "stopped_gracefully", lambda *args: [])
     leftovers = Mock(return_value=[])
     monkeypatch.setattr(smoke_test, "left_running", leftovers)
@@ -1048,10 +1865,13 @@ def test_lifecycle_smoke_keeps_leftover_failures(tmp_path, monkeypatch):
     monkeypatch.setattr(
         smoke_test,
         "Said",
-        lambda *args: SimpleNamespace(wait_for_ready=lambda _: "url"),
+        lambda *args: SimpleNamespace(
+            wait_for_ready=lambda _: "url",
+            finished=SimpleNamespace(wait=lambda _: True),
+        ),
     )
     monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["bundle-python"])
-    monkeypatch.setattr(smoke_test, "stop", lambda _: [])
+    monkeypatch.setattr(smoke_test, "stop", lambda *args: [])
     monkeypatch.setattr(smoke_test, "stopped_gracefully", lambda *args: [])
     monkeypatch.setattr(
         smoke_test, "left_running", lambda _: ["owned process left running"]
@@ -1280,8 +2100,9 @@ def test_the_bundle_is_unwritable_for_the_run_and_as_it_was_afterwards(runtime: 
         for path in [runtime, *runtime.rglob("*")]
     }
 
-    with pytest.raises(RuntimeError, match="the run failed"), smoke_test.unwritable(
-        runtime
+    with (
+        pytest.raises(RuntimeError, match="the run failed"),
+        smoke_test.unwritable(runtime),
     ):
         assert stat.S_IMODE(script.stat().st_mode) == 0o555
         if os.geteuid() != 0:

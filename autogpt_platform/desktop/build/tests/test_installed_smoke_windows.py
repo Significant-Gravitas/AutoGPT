@@ -266,7 +266,7 @@ def test_safe_summary_requires_all_four_starts(
     log = tmp_path / "raw.log"
     log.write_text(
         "secret-token=do-not-upload\n"
-        + "\n".join(f"== start {n} of 4: {driver.STARTS[n-1]}" for n in starts)
+        + "\n".join(f"== start {n} of 4: {driver.STARTS[n - 1]}" for n in starts)
         + ("\nOK in 300s\n" if success else "\nFAILED\n"),
         encoding="utf-8",
     )
@@ -288,6 +288,179 @@ def diagnostic_record(**updates):
         "start": 0,
         **updates,
     }
+
+
+def runtime_record(**updates):
+    return {
+        "version": 1,
+        "start": 1,
+        "point": "ready",
+        "progress": "services",
+        "phase": "database",
+        "fatal": True,
+        "error": "process_exited_starting",
+        "process": "workers",
+        "process_exit": None,
+        "os_error": "none",
+        "stop": "not_observed",
+        "stop_exit": None,
+        "settle": "fatal_event",
+        "elapsed_ms": 21000,
+        "completed_phases": 3,
+        "runtime_exit": None,
+        "events_rejected": False,
+        "events_truncated": False,
+        **updates,
+    }
+
+
+def test_runtime_context_summary_is_separate_and_never_completes(driver, tmp_path):
+    log = tmp_path / "raw.log"
+    log.write_text(
+        "PRIVATE-SENTINEL\nDESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
+        + json.dumps(runtime_record())
+        + "\n"
+    )
+    extra = {}
+    lifecycle = driver.lifecycle_summary(log, runtime_diagnostics=extra)
+    assert set(lifecycle) == {
+        "starts",
+        "completed",
+        "diagnostics",
+        "diagnostics_rejected",
+        "truncated",
+    }
+    assert not lifecycle["completed"]
+    assert extra == {
+        "records": [runtime_record()],
+        "rejected": False,
+        "truncated": False,
+    }
+    assert "PRIVATE-SENTINEL" not in json.dumps(extra)
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"version": True},
+        {"version": 2},
+        {"start": True},
+        {"start": 0},
+        {"start": 5},
+        {"point": "PRIVATE-SENTINEL"},
+        {"progress": []},
+        {"phase": "PRIVATE-SENTINEL"},
+        {"fatal": 1},
+        {"error": "PRIVATE-SENTINEL"},
+        {"process": "PRIVATE-SENTINEL"},
+        {"process_exit": True},
+        {"process_exit": -2147483649},
+        {"process_exit": 4294967296},
+        {"stop_exit": 0.0},
+        {"stop_exit": True},
+        {"os_error": "PRIVATE-SENTINEL"},
+        {"stop": "PRIVATE-SENTINEL"},
+        {"events_rejected": 0},
+        {"events_truncated": []},
+        {"message": "PRIVATE-SENTINEL"},
+        {"settle": "PRIVATE-SENTINEL"},
+        {"elapsed_ms": True},
+        {"elapsed_ms": -1},
+        {"elapsed_ms": 3600001},
+        {"completed_phases": 128},
+        {"completed_phases": None},
+        {"runtime_exit": True},
+    ],
+)
+def test_runtime_context_consumer_rejects_untrusted_records(driver, tmp_path, updates):
+    log = tmp_path / "raw.log"
+    log.write_text(
+        "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
+        + json.dumps(runtime_record(**updates))
+        + "\n"
+    )
+    extra = {}
+    lifecycle = driver.lifecycle_summary(log, runtime_diagnostics=extra)
+    assert extra == {"records": [], "rejected": True, "truncated": False}
+    assert lifecycle["diagnostics"] == []
+    assert not lifecycle["completed"]
+    assert "PRIVATE-SENTINEL" not in json.dumps(extra)
+
+
+@pytest.mark.parametrize(
+    "payload", ["[]", "{", '{"version":1,"version":1}', " " * 2049]
+)
+def test_runtime_context_consumer_rejects_bad_json_and_size(driver, tmp_path, payload):
+    log = tmp_path / "raw.log"
+    log.write_text("DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC " + payload + "\n")
+    extra = {}
+    driver.lifecycle_summary(log, runtime_diagnostics=extra)
+    assert extra["rejected"] and not extra["records"]
+
+
+def test_runtime_context_consumer_caps_records_without_skipping_lifecycle(
+    driver, tmp_path
+):
+    log = tmp_path / "raw.log"
+    log.write_text(
+        ("DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC " + json.dumps(runtime_record()) + "\n") * 9
+        + "\n".join(
+            f"== start {i} of 4: {name}" for i, name in enumerate(driver.STARTS, 1)
+        )
+        + "\nOK in 1s\n"
+    )
+    extra = {}
+    lifecycle = driver.lifecycle_summary(log, runtime_diagnostics=extra)
+    assert len(extra["records"]) == 8
+    assert extra["truncated"]
+    assert lifecycle["completed"]
+
+
+def test_runtime_context_consumer_rejects_duplicate_in_otherwise_valid_record(
+    driver, tmp_path
+):
+    log = tmp_path / "raw.log"
+    payload = json.dumps(runtime_record()).replace(
+        '"version": 1', '"version": 1, "version": 1'
+    )
+    log.write_text("DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC " + payload + "\n")
+    extra = {}
+    driver.lifecycle_summary(log, runtime_diagnostics=extra)
+    assert extra == {"records": [], "rejected": True, "truncated": False}
+
+
+def test_runtime_context_overlong_line_cannot_smuggle_record(driver, tmp_path):
+    log = tmp_path / "raw.log"
+    record = "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC " + json.dumps(runtime_record())
+    log.write_text(
+        "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
+        + "x" * 17000
+        + record
+        + "\n"
+        + record
+        + "\n"
+    )
+    extra = {}
+    driver.lifecycle_summary(log, runtime_diagnostics=extra)
+    assert extra == {
+        "records": [runtime_record()],
+        "rejected": True,
+        "truncated": False,
+    }
+
+
+def test_runtime_context_absence_preserves_legacy_packet(driver, tmp_path):
+    log = tmp_path / "raw.log"
+    log.write_text("FAILED\n")
+    extra = {}
+    assert driver.lifecycle_summary(log, runtime_diagnostics=extra) == {
+        "starts": [],
+        "completed": False,
+        "diagnostics": [],
+        "diagnostics_rejected": False,
+        "truncated": False,
+    }
+    assert extra == {}
 
 
 def test_safe_failure_diagnostics_survive_without_private_output(driver, tmp_path):
@@ -820,16 +993,18 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
     owned = SimpleNamespace(
         observe=lambda: None,
         living=lambda: [],
-        cleanup=lambda: cleaned.append(True)
-        or {
-            "leftovers_before_cleanup": 0,
-            "live_owned_during_cleanup": [],
-            "surviving_owned_pids": [],
-            "ports_still_open": [],
-            "ports_not_checked": [],
-            "inspection_failed": False,
-            "allocated_ports": [18473],
-        },
+        cleanup=lambda: (
+            cleaned.append(True)
+            or {
+                "leftovers_before_cleanup": 0,
+                "live_owned_during_cleanup": [],
+                "surviving_owned_pids": [],
+                "ports_still_open": [],
+                "ports_not_checked": [],
+                "inspection_failed": False,
+                "allocated_ports": [18473],
+            }
+        ),
     )
     monkeypatch.setattr(driver, "OwnedProcesses", lambda *args: owned)
     runtime = tmp_path / "runtime"
@@ -838,7 +1013,7 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
     )
     if unreadable:
 
-        def cannot_read(log):
+        def cannot_read(log, **kwargs):
             raise OSError("PRIVATE-SENTINEL")
 
         monkeypatch.setattr(driver, "lifecycle_summary", cannot_read)
@@ -859,6 +1034,8 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
             + "\nOK in 1s\n"
             + "DESKTOP_SMOKE_DIAGNOSTIC "
             + json.dumps(diagnostic_record())
+            + "\nDESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
+            + json.dumps(runtime_record())
             + "\n",
             encoding="utf-8",
         )
@@ -892,6 +1069,12 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
             assert result["lifecycle"]["summary_unavailable"]
         else:
             assert result["lifecycle"]["diagnostics"] == [diagnostic_record()]
+            assert result["runtime_diagnostics"] == {
+                "records": [runtime_record()],
+                "rejected": False,
+                "truncated": False,
+            }
+            assert "runtime_diagnostics" not in result["lifecycle"]
     assert cleaned == [True]
     assert "PRIVATE-SENTINEL" not in json.dumps(result)
     assert result["upload_allowlist"] == ["result.json"]

@@ -121,6 +121,11 @@ from pathlib import Path
 
 import psutil
 import psycopg2
+from installed_smoke_windows import (
+    RUNTIME_DIAGNOSTIC_ENUMS,
+    RUNTIME_DIAGNOSTIC_PREFIX,
+    safe_runtime_diagnostic,
+)
 
 # The ordinary stdin-close smoke keeps its existing budget. A stop
 # that ends runs has a separate, advertised grace (currently 120 seconds).
@@ -306,8 +311,6 @@ def emit_diagnostic(
     failures: int = 0,
     start: int = 0,
 ) -> None:
-    global _diagnostic_io_failures
-
     def allowed(value: str, choices: set[str], fallback: str) -> str:
         return value if type(value) is str and value in choices else fallback
 
@@ -329,10 +332,329 @@ def emit_diagnostic(
         },
         separators=(",", ":"),
     )
+    write_diagnostic(line)
+
+
+def write_diagnostic(line: str) -> None:
+    global _diagnostic_io_failures
     try:
         print(line, flush=True)
     except (OSError, ValueError):
         _diagnostic_io_failures += 1
+
+
+MAX_RUNTIME_EVENT_BYTES = 16384
+MAX_RUNTIME_CONTEXT_EVENTS = 256
+RUNTIME_EVENT_LOSS = "the runtime's event history lost evidence"
+
+
+def runtime_failure(message: str) -> dict:
+    result = {
+        "error": "unknown",
+        "process": "unknown",
+        "process_exit": None,
+        "os_error": "none",
+    }
+    exact = {
+        "startup was cancelled": "startup_cancelled",
+        "the other side of this start failed": "startup_abandoned",
+        "the database did not start": "database_not_started",
+        "This AutoGPT bundle has no database migration history.": "migration_history_missing",
+        "Could not settle stopped runs safely; restart AutoGPT to retry.": "settlement_failed",
+    }
+    if message in exact:
+        result["error"] = exact[message]
+        if result["error"] == "database_not_started":
+            result["process"] = "postgres"
+        return result
+    for prefix, code in (
+        ("initdb failed:\n", "postgres_initdb"),
+        ("prisma migrate deploy failed:\n", "migration_deploy"),
+        ("a PostgreSQL option may not contain a double quote: ", "postgres_option"),
+    ):
+        if message.startswith(prefix):
+            result["error"] = code
+            if code.startswith("postgres_"):
+                result["process"] = "postgres"
+            return result
+    processes = RUNTIME_DIAGNOSTIC_ENUMS["process"] - {"unknown"}
+    for pattern, code in (
+        (
+            r"([a-z-]+) exited while starting\. See .+ for details\.",
+            "process_exited_starting",
+        ),
+        (r"([a-z-]+) did not start\. See .+ for details\.", "process_not_started"),
+        (
+            r"([a-z-]+) cannot run with this version of the backend\. See .+\.",
+            "backend_contract",
+        ),
+        (
+            r"([a-z-]+) keeps stopping \(exit code (-?[0-9]{1,10})\)\. See .+\.",
+            "process_restart_limit",
+        ),
+    ):
+        match = re.fullmatch(pattern, message)
+        if match and match[1] in processes:
+            number = int(match[2]) if code == "process_restart_limit" else None
+            if number is not None and not -2147483648 <= number <= 4294967295:
+                return result
+            return {
+                **result,
+                "error": code,
+                "process": match[1],
+                "process_exit": number,
+            }
+    prefix = "AutoGPT did not become ready in time: no answer from "
+    if message.startswith(prefix) and all(
+        name in processes for name in message[len(prefix) :].split(", ")
+    ):
+        return {**result, "error": "apps_not_ready"}
+    for pattern, code in (
+        (
+            r"Your AutoGPT data was created with PostgreSQL .+, and this version of AutoGPT includes PostgreSQL [0-9]+, which cannot open it\. Install the AutoGPT version you used before to keep your data, or move .+ away to start again without it\.",
+            "postgres_incompatible",
+        ),
+        (
+            r"This AutoGPT version cannot open this database: it lacks or changes applied migrations \(.+\)\. Install the version last used with this data, or restore a complete backup made before upgrading\. The database has not been migrated\.",
+            "migration_incompatible",
+        ),
+        (
+            r"A database update did not finish \(.+\)\. This usually means AutoGPT was closed while it was starting for the first time\. If you have no data yet, delete the AutoGPT data folder and start again\.",
+            "migration_interrupted",
+        ),
+        (
+            r"AutoGPT cannot run its database tools: this system has no .+\.",
+            "database_tools_library",
+        ),
+        (r"Command '.+' timed out after [0-9]+(?:\.[0-9]+)? seconds", "tool_timeout"),
+        (r"Command '.+' returned non-zero exit status [0-9]{1,10}\.", "tool_failed"),
+    ):
+        if re.fullmatch(pattern, message):
+            return {
+                **result,
+                "error": code,
+                "process": "postgres" if code == "postgres_incompatible" else "unknown",
+            }
+    match = re.fullmatch(r"could not set the stop event ([a-z-]+)", message)
+    if match and match[1] in processes:
+        return {**result, "error": "stop_event", "process": match[1]}
+    match = re.fullmatch(r"\[(WinError|Errno) ([0-9]{1,6})\] .+", message, re.DOTALL)
+    if match:
+        codes = (
+            {
+                2: "not_found",
+                3: "not_found",
+                5: "access_denied",
+                193: "invalid_executable",
+                216: "invalid_executable",
+                112: "disk_full",
+                8: "resource_exhausted",
+                1450: "resource_exhausted",
+                10048: "address_in_use",
+                10061: "connection_refused",
+            }
+            if match[1] == "WinError"
+            else {
+                2: "not_found",
+                13: "access_denied",
+                8: "invalid_executable",
+                28: "disk_full",
+                12: "resource_exhausted",
+                24: "resource_exhausted",
+                98: "address_in_use",
+                111: "connection_refused",
+            }
+        )
+        return {
+            **result,
+            "error": "os_error",
+            "os_error": codes.get(int(match[2]), "unknown"),
+        }
+    return result
+
+
+@dataclass
+class StopObservation:
+    outcome: str = "not_observed"
+    child_exit: int | None = None
+
+    def exited(self, code: int) -> None:
+        self.child_exit = (
+            code if type(code) is int and -2147483648 <= code <= 4294967295 else None
+        )
+        self.outcome = (
+            "unknown" if self.child_exit is None else "nonzero" if code else "clean"
+        )
+
+
+class RuntimeContext:
+    def __init__(self) -> None:
+        self.values = {
+            "progress": "unknown",
+            "phase": "unknown",
+            "fatal": False,
+            "error": "none",
+            "process": "unknown",
+            "process_exit": None,
+            "os_error": "none",
+            "completed_phases": 0,
+        }
+        self.settle = "unknown"
+        self.rejected = False
+        self.truncated = False
+        self.count = 0
+
+    def observe(self, event: dict) -> None:
+        kind = event.get("event")
+        if type(kind) is not str or kind not in {"progress", "timing", "error"}:
+            return
+        self.count += 1
+        if self.count > MAX_RUNTIME_CONTEXT_EVENTS:
+            self.truncated = True
+            return
+        keys = (
+            {"event", "step", "message"}
+            if kind == "progress"
+            else (
+                {"event", "phase", "seconds"}
+                if kind == "timing"
+                else {"event", "message", "fatal"}
+            )
+        )
+        if kind == "progress" and event.get("step") == "stopping":
+            keys.add("grace_seconds")
+        if kind == "timing" and event.get("phase") == "total":
+            keys.add("phases")
+        valid = set(event) == keys
+        if kind in {"progress", "error"}:
+            valid &= (
+                type(event.get("message")) is str
+                and len(event["message"]) <= MAX_RUNTIME_EVENT_BYTES
+            )
+        if kind == "error":
+            valid &= type(event.get("fatal")) is bool
+        if kind == "progress":
+            valid &= type(event.get("step")) is str
+            if "grace_seconds" in keys:
+                grace = event.get("grace_seconds")
+                valid &= type(grace) is int and 0 <= grace <= 3600
+        if kind == "timing":
+            valid &= type(event.get("phase")) is str and self.duration(
+                event.get("seconds")
+            )
+            if "phases" in keys:
+                phases = event.get("phases")
+                valid &= (
+                    type(phases) is dict
+                    and len(phases) <= len(PHASES)
+                    and all(
+                        name in PHASES and self.duration(value)
+                        for name, value in phases.items()
+                    )
+                )
+        if not valid:
+            self.rejected = True
+            return
+        if kind == "error":
+            if event["fatal"] and not self.values["fatal"]:
+                self.values = {
+                    **self.values,
+                    **runtime_failure(event["message"]),
+                    "fatal": True,
+                }
+        else:
+            field, value = (
+                ("progress", event["step"])
+                if kind == "progress"
+                else ("phase", event["phase"])
+            )
+            self.values = {
+                **self.values,
+                field: value if value in RUNTIME_DIAGNOSTIC_ENUMS[field] else "unknown",
+            }
+            if kind == "timing":
+                completed = (
+                    event["phases"] if value == "total" else {value: event["seconds"]}
+                )
+                mask = sum(
+                    1 << index
+                    for index, phase in enumerate(PHASES)
+                    if phase in completed
+                )
+                self.values = {
+                    **self.values,
+                    "completed_phases": self.values["completed_phases"] | mask,
+                }
+
+    @staticmethod
+    def duration(value) -> bool:
+        return (
+            type(value) in (int, float) and 0 <= value <= 3600 and math.isfinite(value)
+        )
+
+    def snapshot(self) -> RuntimeContext:
+        snapshot = RuntimeContext()
+        snapshot.values = self.values.copy()
+        snapshot.settle = self.settle
+        snapshot.rejected = self.rejected
+        snapshot.truncated = self.truncated
+        snapshot.count = self.count
+        return snapshot
+
+    def record(
+        self,
+        start: int,
+        point: str,
+        stop: StopObservation,
+        *,
+        elapsed: float = 0,
+        runtime_exit: int | None = None,
+    ) -> dict:
+        return {
+            "version": 1,
+            "start": start,
+            "point": point,
+            **self.values,
+            "settle": self.settle,
+            "elapsed_ms": (
+                int(min(3600, elapsed) * 1000)
+                if type(elapsed) in (int, float) and elapsed >= 0
+                else 0
+            ),
+            "runtime_exit": (
+                runtime_exit
+                if type(runtime_exit) is int
+                and -2147483648 <= runtime_exit <= 4294967295
+                else None
+            ),
+            "stop": stop.outcome,
+            "stop_exit": stop.child_exit,
+            "events_rejected": self.rejected,
+            "events_truncated": self.truncated,
+        }
+
+
+def emit_runtime_context(
+    install: Install, point: str, *, elapsed: float, runtime_exit: int | None = None
+) -> None:
+    context = getattr(install.said, "context", None)
+    snapshot = getattr(install.said, "diagnostic_context", None)
+    if isinstance(context, RuntimeContext) and callable(snapshot):
+        context = snapshot(point)
+    if not isinstance(context, RuntimeContext):
+        context = RuntimeContext()
+    payload = json.dumps(
+        context.record(
+            install.start_number,
+            point,
+            install.stop_observation,
+            elapsed=elapsed,
+            runtime_exit=runtime_exit,
+        ),
+        separators=(",", ":"),
+    )
+    if safe_runtime_diagnostic(payload) is not None:
+        write_diagnostic(RUNTIME_DIAGNOSTIC_PREFIX + payload)
 
 
 class Diagnostic:
@@ -482,6 +804,7 @@ class Install:
         self.quit_mid_run = False
         # What the runtime says, for as long as it runs.
         self.said: Said | None = None
+        self.stop_observation = StopObservation()
         # Set by a start's checks: its stop is the one that ends this run.
         self.stopping: Stopping | None = None
         # Service hosts that were frozen, and so could not answer a stop.
@@ -681,6 +1004,7 @@ def run(
     """One start and stop of the runtime, with `checks` made while it is up."""
     started = time.monotonic()
     output_failures_before = _diagnostic_io_failures
+    install.stop_observation = StopObservation()
     failures: list[str] = []
     with Diagnostic("runtime_launch", install.start_number):
         process = subprocess.Popen(
@@ -704,29 +1028,54 @@ def run(
             install.timing = None
             install.stopping, install.frozen, install.turn_taken = None, set(), False
             install.said = Said(process, started, install)
-            url = install.said.wait_for_ready(timeout)
+            try:
+                url = install.said.wait_for_ready(timeout)
+                diagnostic.child_exit = process.poll()
+            finally:
+                emit_runtime_context(
+                    install,
+                    "ready",
+                    elapsed=time.monotonic() - started,
+                    runtime_exit=diagnostic.child_exit,
+                )
             install.ready_at, install.ready_wall = time.monotonic(), time.time()
             to_ready = install.ready_at - started if url else None
             install.starts.append(Start(checks.__name__, to_ready, install.timing))
             failures += [] if url else ["the runtime never reported ready"]
             diagnostic.failures = int(not url)
             diagnostic.reason = "not_ready"
-            diagnostic.child_exit = process.poll()
         install.quit_mid_run = False
         if url:
             failures += checked(checks, url, data, install)
         with Diagnostic("runtime_stop", install.start_number) as diagnostic:
             prior = len(failures)
+            install.stop_observation.outcome = "unknown"
+            stop_started = time.monotonic()
             failures += (
                 stop_the_runs(process, runtime, data, install)
                 if install.stopping
-                else stop(process)
+                else stop(process, install.stop_observation)
             )
+            if not install.stopping and not install.said.finished.wait(
+                min(3, max(0, STOP_BUDGET_SECONDS - (time.monotonic() - stop_started)))
+            ):
+                failures.append("the runtime's shutdown events did not reach EOF")
+            if (
+                getattr(install.said, "evidence_lost", False)
+                and RUNTIME_EVENT_LOSS not in failures
+            ):
+                failures.append(RUNTIME_EVENT_LOSS)
             if url:
                 failures += stopped_gracefully(data, install)
             diagnostic.failures = len(failures) - prior
             diagnostic.child_exit = process.poll()
     finally:
+        emit_runtime_context(
+            install,
+            "stop",
+            elapsed=time.monotonic() - started,
+            runtime_exit=install.stop_observation.child_exit,
+        )
         with Diagnostic("runtime_cleanup", install.start_number) as diagnostic:
             if process.poll() is None:  # the smoke test itself is being ended
                 process.kill()
@@ -1075,17 +1424,24 @@ def checked(checks: Checks, url: str, data: Path, install: Install) -> list[str]
         return failures
 
 
-def stop(process: subprocess.Popen[str]) -> list[str]:
+def stop(
+    process: subprocess.Popen[str], observation: StopObservation | None = None
+) -> list[str]:
+    observation = observation if observation is not None else StopObservation()
+    observation.outcome = "unknown"
+    observation.child_exit = None
     assert process.stdin
     asked = time.monotonic()
     process.stdin.close()
     try:
         code = process.wait(STOP_BUDGET_SECONDS)
     except subprocess.TimeoutExpired:
+        observation.outcome = "timeout"
         process.kill()
         return [
             f"the runtime did not stop within {STOP_BUDGET_SECONDS}s of stdin closing"
         ]
+    observation.exited(code)
     print(f"  stopped in {time.monotonic() - asked:.1f}s")
     return [f"the runtime exited with code {code}"] if code != 0 else []
 
@@ -1159,6 +1515,7 @@ def stop_the_runs(
     what is running (src/runtime.js): the request on stdin, which stays
     open. The run must be durably TERMINATED before any later startup can
     reconcile it, and the runtime must have told the shell how long this may take."""
+    install.stop_observation = StopObservation("unknown")
     assert process.stdin and install.said and install.stopping
     stopping, report = install.stopping, Report()
     watcher = RunWatcher(data, stopping.run)
@@ -1188,10 +1545,12 @@ def stop_the_runs(
     try:
         code = process.wait(max(0, budget - (time.monotonic() - asked)))
     except subprocess.TimeoutExpired:
+        install.stop_observation.outcome = "timeout"
         process.kill()
         return [
             f"the runtime did not stop within {budget:g}s of being asked to stop the runs"
         ]
+    install.stop_observation.exited(code)
     took = time.monotonic() - asked
     print(f"  stopped, runs and all, in {took:.1f}s")
     report.expect("the runtime's exit code after stopping the runs", code, 0)
@@ -1200,6 +1559,8 @@ def stop_the_runs(
         install.said.finished.wait(min(3, max(0, budget - took))),
         True,
     )
+    if getattr(install.said, "evidence_lost", False):
+        report.failures.append(RUNTIME_EVENT_LOSS)
     shutdown = install.said.events[heard:]
     stopping_events = [event for event in shutdown if event.get("step") == "stopping"]
     asked_for = [event.get("grace_seconds") for event in stopping_events]
@@ -1310,9 +1671,10 @@ def persisted_run(runtime: Path, data: Path, run: str) -> tuple[str, int]:
     from autogpt_desktop.maintenance import DataLock
     from autogpt_desktop.process import wait_until
 
-    with DataLock(data), tempfile.TemporaryDirectory(
-        prefix="autogpt-stop-oracle-"
-    ) as temporary:
+    with (
+        DataLock(data),
+        tempfile.TemporaryDirectory(prefix="autogpt-stop-oracle-") as temporary,
+    ):
         source = data / "postgres"
         if (source / "postmaster.pid").exists():
             raise RuntimeError(
@@ -1672,29 +2034,60 @@ class Said:
         self.started = started
         self.install = install
         self.events: list[dict] = []
+        self.context = RuntimeContext()
+        self.ready_context: RuntimeContext | None = None
+        self.ready_url: str | None = None
+        self.evidence_lost = False
+        self.lock = threading.Lock()
         self.url: str | None = None
         self.settled = threading.Event()
         self.finished = threading.Event()
         threading.Thread(target=self.read, name="runtime-events", daemon=True).start()
 
     def read(self) -> None:
-        assert self.process.stdout
+        reached_eof = False
         try:
-            for line in self.process.stdout:
+            assert self.process.stdout
+            skipping = False
+            while line := self.process.stdout.readline(MAX_RUNTIME_EVENT_BYTES + 1):
+                if skipping or len(line.encode("utf-8")) > MAX_RUNTIME_EVENT_BYTES:
+                    self.lose_evidence()
+                    skipping = not line.endswith("\n")
+                    continue
                 try:
-                    event = json.loads(line)
-                except ValueError:
+                    event = json.loads(line, object_pairs_hook=self.unique)
+                except (ValueError, RecursionError):
+                    self.lose_evidence()
                     continue
                 if isinstance(event, dict):
                     self.hear(event)
-        except ValueError:
-            pass  # the pipe was closed under the reader
+                else:
+                    self.lose_evidence()
+            reached_eof = True
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
         finally:
-            self.settled.set()
+            with self.lock:
+                if not reached_eof:
+                    self.evidence_lost = True
+                    self.context.rejected = True
+                self.settle_locked("stdout_eof" if reached_eof else "reader_error")
             self.finished.set()
 
     def hear(self, event: dict) -> None:
-        self.events.append(event)
+        with self.lock:
+            self.context.observe(event)
+            self.events.append(event)
+            if event.get("event") == "ready":
+                self.url = event["url"]
+                valid = set(event) == {"event", "url"} and type(event["url"]) is str
+                if not valid:
+                    self.context.rejected = True
+                self.settle_locked("ready" if valid else "unknown")
+            if event.get("event") == "error" and event.get("fatal"):
+                self.settle_locked(
+                    "fatal_event" if self.context.values["fatal"] else "unknown"
+                )
         elapsed = time.monotonic() - self.started
         if event.get("event") == "timing":
             self.install.timing = event
@@ -1711,15 +2104,39 @@ class Said:
         if event.get("step") == "profile":
             named = re.search(r"Using the (\w+) profile", str(event.get("message")))
             self.install.profile = named.group(1) if named else None
-        if event.get("event") == "ready":
-            self.url = event["url"]
+
+    def lose_evidence(self) -> None:
+        with self.lock:
+            self.evidence_lost = True
+            self.context.rejected = True
+
+    def settle_locked(self, cause: str) -> None:
+        if self.ready_context is None:
+            self.context.settle = cause
+            self.ready_context = self.context.snapshot()
+            self.ready_url = self.url
             self.settled.set()
-        if event.get("event") == "error" and event.get("fatal"):
-            self.settled.set()
+
+    def diagnostic_context(self, point: str) -> RuntimeContext:
+        with self.lock:
+            context = self.ready_context if point == "ready" else self.context
+            return (context or self.context).snapshot()
+
+    @staticmethod
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate runtime event key")
+            value[key] = item
+        return value
 
     def wait_for_ready(self, timeout: int) -> str | None:
         self.settled.wait(timeout)
-        return self.url
+        with self.lock:
+            # The first terminal observation under this lock wins, including deadline.
+            self.settle_locked("deadline")
+            return self.ready_url
 
     def activity(self) -> tuple[int, int]:
         """(agent runs, AutoPilot turns) in progress, as the runtime last
@@ -2096,8 +2513,9 @@ def turn_in_progress(
     )
     if freeze:
         ports = json.loads((data / "config" / "ports.json").read_text(encoding="utf-8"))
-        cache, lock = valkey(data, ports), runs.lock_key(
-            "copilot-executor", install.chat
+        cache, lock = (
+            valkey(data, ports),
+            runs.lock_key("copilot-executor", install.chat),
         )
         taken = wait_often_for(lambda: bool(cache.exists(lock)), 60)
         freeze()
@@ -2131,9 +2549,10 @@ def send_message(owner: Browser, chat: str, message: str) -> None:
             "Authorization": f"Bearer {minted.get('token')}",
         },
     )
-    with contextlib.suppress(OSError, http.client.HTTPException), owner.opener.open(
-        request, timeout=120
-    ) as reply:
+    with (
+        contextlib.suppress(OSError, http.client.HTTPException),
+        owner.opener.open(request, timeout=120) as reply,
+    ):
         for _ in reply:
             pass
 
