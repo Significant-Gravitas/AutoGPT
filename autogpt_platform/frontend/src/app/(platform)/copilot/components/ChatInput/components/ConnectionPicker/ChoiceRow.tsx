@@ -63,7 +63,7 @@ export function ChoiceRow({
     <div
       className={cn(
         "flex w-full items-center gap-3 px-3 py-2.5 transition-colors",
-        "has-[button:focus-visible]:bg-neutral-50 hover:bg-neutral-50",
+        "hover:bg-background has-[button:focus-visible]:bg-background",
       )}
     >
       <button
@@ -83,15 +83,20 @@ export function ChoiceRow({
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-zinc-900">{title}</span>
+            <span className="text-sm font-medium text-foreground-strong">
+              {title}
+            </span>
             {badge && (
-              <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
+              <span
+                // TODO(tokens): no exact role for bg-green-500/10
+                className="rounded-full bg-green-500/10 px-1.5 py-px text-tiny font-medium leading-inherit text-success-foreground"
+              >
                 {badge}
               </span>
             )}
           </span>
           {subtitle && (
-            <span className="break-words text-sm leading-snug text-zinc-500">
+            <span className="break-words text-sm leading-snug text-foreground-tertiary">
               {subtitle}
             </span>
           )}
@@ -138,30 +143,32 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         icon={LockIcon}
         size={14}
         aria-hidden
-        className="mt-[3px] flex-none text-zinc-400"
+        className="mt-[3px] flex-none text-foreground-subtle"
       />
       <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium text-zinc-500">{title}</span>
+        <span className="text-sm font-medium text-foreground-tertiary">
+          {title}
+        </span>
         {subtitle && (
-          <span className="break-words text-sm leading-snug text-zinc-400">
+          <span className="break-words text-sm leading-snug text-foreground-subtle">
             {subtitle}
           </span>
         )}
         {notes?.map((note) => (
           <span
             key={note}
-            className="mt-0.5 text-[11px] leading-snug text-zinc-400"
+            className="mt-0.5 text-caption-sm leading-snug text-foreground-subtle"
           >
             {note}
           </span>
         ))}
-        <span className="mt-0.5 text-[11px] leading-snug text-zinc-400">
+        <span className="mt-0.5 text-caption-sm leading-snug text-foreground-subtle">
           {lock.reason}
         </span>
         {lock.href && (
           <Link
             href={lock.href}
-            className="mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className="mt-1 w-fit text-caption-sm font-medium leading-inherit text-foreground-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
           >
             See plans
           </Link>

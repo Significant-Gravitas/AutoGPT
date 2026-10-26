@@ -288,7 +288,14 @@ from ._test_data import make_session
 #     dev f0ae7dfd4                               77,501 (89 tools)
 #     + handoff_title / handoff_task   +218       77,719 (89 tools)
 # Plus one.
-_CHAR_BUDGET = 77_720
+# Re-measured on the v2 External API root merged with dev 8df80022bc, which
+# brings the MCP tools' external schemas and the preset tools back:
+#     merged tree                                 77,510 (89 tools)
+#     + headroom                       +300       77,810
+# Both met merging dev into #16101 (SECRT-3138); re-measured on that merged
+# tree, which is under dev's ceiling, so the higher value stands:
+#     merged tree                                 77,728 (89 tools)
+_CHAR_BUDGET = 77_810
 
 
 @pytest.fixture(scope="module")

@@ -19,15 +19,15 @@ export function ExpertAccess({ name, providers }: Props) {
         {providers.map((provider) => (
           <li
             key={provider}
-            className="flex min-w-0 items-center gap-3 rounded-2xl bg-white p-3 smooth-shadow-ring-sm"
+            className="flex min-w-0 items-center gap-3 rounded-2xl bg-surface p-3 smooth-shadow-ring-sm"
           >
             <span
               aria-hidden="true"
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border-base bg-gradient-to-b from-surface to-surface-muted"
             >
               <IntegrationLogo provider={provider} size={22} />
             </span>
-            <span className="min-w-0 break-words text-sm font-medium leading-5 text-zinc-800">
+            <span className="min-w-0 break-words text-sm font-medium leading-5 text-foreground-emphasis">
               {formatProviderName(provider)}
             </span>
           </li>

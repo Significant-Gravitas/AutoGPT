@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 
-from .jwt_utils import bearer_jwt_auth
 
-
-def add_auth_responses_to_openapi(app: FastAPI) -> None:
+def add_auth_responses_to_openapi(
+    app: FastAPI, supported_auth_schemes: list[str]
+) -> None:
     """
     Patch a FastAPI instance's `openapi()` method to add 401 responses
     to all authenticated endpoints.
@@ -29,7 +29,7 @@ def add_auth_responses_to_openapi(app: FastAPI) -> None:
                     for auth_option in details.get("security", [])
                     for schema in auth_option.keys()
                 ]
-                if bearer_jwt_auth.scheme_name not in security_schemas:
+                if not any(s in security_schemas for s in supported_auth_schemes):
                     continue
 
                 if "responses" not in details:

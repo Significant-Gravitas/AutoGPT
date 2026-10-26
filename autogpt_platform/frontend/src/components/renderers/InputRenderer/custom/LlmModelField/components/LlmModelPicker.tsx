@@ -159,7 +159,7 @@ export function LlmModelPicker({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="max-h-[45vh] w-[--radix-popover-trigger-width] min-w-[16rem] overflow-y-auto rounded-md border border-border-base bg-surface p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
+        className="w-(--radix-popover-trigger-width) max-h-[45vh] min-w-[16rem] overflow-y-auto rounded-md border border-border-base bg-surface p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
       >
         {view === "creator" && (
           <div className="flex flex-col">
