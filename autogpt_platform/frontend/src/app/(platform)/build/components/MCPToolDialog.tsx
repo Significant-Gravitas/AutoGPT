@@ -20,7 +20,7 @@ import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
 import { Label } from "@/components/atoms/Label/Label";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
@@ -649,7 +649,7 @@ function MCPToolCard({
           {tool.name}
         </Text>
         {paramNames.length > 0 && (
-          <Badge variant="secondary" className="text-tiny leading-inherit">
+          <Badge variant="secondary" size="tiny">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
           </Badge>
         )}
@@ -670,11 +670,7 @@ function MCPToolCard({
       {!expanded && paramNames.length > 0 && (
         <div className="flex flex-wrap gap-1 px-3 pb-2">
           {paramNames.slice(0, 6).map((name) => (
-            <Badge
-              key={name}
-              variant="outline"
-              className="text-tiny font-normal leading-inherit"
-            >
+            <Badge key={name} variant="outline" size="tiny-normal">
               {name}
               {required.has(name) && (
                 <span
@@ -687,10 +683,7 @@ function MCPToolCard({
             </Badge>
           ))}
           {paramNames.length > 6 && (
-            <Badge
-              variant="outline"
-              className="text-tiny font-normal leading-inherit"
-            >
+            <Badge variant="outline" size="tiny-normal">
               +{paramNames.length - 6} more
             </Badge>
           )}
