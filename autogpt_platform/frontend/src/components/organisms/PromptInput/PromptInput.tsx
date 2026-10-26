@@ -24,7 +24,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/molecules/InputGroup/InputGroup";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   Tooltip,
   TooltipContent,
@@ -356,7 +356,7 @@ export function PromptInputSubmit({
   let Icon = <UIIcon icon={ArrowUp02Icon} className="size-4" />;
 
   if (status === "submitted") {
-    Icon = <Spinner />;
+    Icon = <LoadingSpinner size="small" role="status" aria-label="Loading" />;
   } else if (status === "streaming") {
     Icon = <UIIcon icon={StopIcon} className="size-4" />;
   }
