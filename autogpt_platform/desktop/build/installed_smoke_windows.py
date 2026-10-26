@@ -45,6 +45,66 @@ STARTS = (
 INSTALL_SECONDS = 300
 LIFECYCLE_SECONDS = 1800
 CLEANUP_SECONDS = 120
+MAX_SUMMARY_BYTES = 64 * 1024 * 1024
+MAX_SUMMARY_LINE_BYTES = 16 * 1024
+MAX_DIAGNOSTICS = 128
+DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
+DIAGNOSTIC_ENUMS = {
+    "stage": {
+        "smoke_driver",
+        "smoke_setup",
+        "backend_contract",
+        "contract_collect",
+        "contract_check",
+        "runtime_launch",
+        "runtime_ready",
+        "runtime_checks",
+        "runtime_stop",
+        "runtime_cleanup",
+        "smoke_verification",
+        "smoke_result",
+    },
+    "status": {"started", "passed", "failed", "error"},
+    "reason": {
+        "none",
+        "assertion_failed",
+        "child_exit",
+        "not_ready",
+        "exception",
+        "timeout",
+        "unsupported",
+    },
+    "exception": {
+        "none",
+        "module_not_found",
+        "import_error",
+        "attribute_error",
+        "type_error",
+        "value_error",
+        "os_error",
+        "timeout",
+        "keyboard_interrupt",
+        "system_exit",
+        "other",
+    },
+    "contract": {
+        "none",
+        "unknown",
+        "collect",
+        "service_names_and_classes",
+        "nobody_is_connected",
+        "api_servers_call_uvicorn_run",
+        "services_answer_where_the_health_table_says",
+        "the_other_services_listen_on_the_ports_they_are_given",
+        "uvicorn_can_serve_on_the_hosts_loop",
+        "pool_sizes_come_from_the_environment",
+        "the_scheduler_holds_the_connections_the_limit_counts",
+        "lock_keys_are_the_ones_cleared",
+        "runs_are_cancelled_and_settled_under_the_runtimes_names",
+        "a_chat_can_be_closed_from_outside_its_turn",
+        "turns_are_locked_while_they_run_and_only_busy_chats_are_closed",
+    },
+}
 INSTALL_GUID = str(
     uuid.uuid5(
         uuid.UUID("50e065bc-3134-11e6-9bab-38c9862bdaf3"),
@@ -335,17 +395,87 @@ def smoke_command(python: Path, runtime: Path, data: Path) -> list[str]:
     ]
 
 
+def safe_diagnostic(payload: str) -> dict | None:
+    def unique(pairs):
+        record = {}
+        for key, value in pairs:
+            if key in record:
+                raise ValueError("duplicate diagnostic key")
+            record[key] = value
+        return record
+
+    try:
+        value = json.loads(payload, object_pairs_hook=unique)
+    except (ValueError, TypeError, RecursionError):
+        return None
+    keys = set(DIAGNOSTIC_ENUMS) | {"version", "child_exit", "failures", "start"}
+    if not isinstance(value, dict) or set(value) != keys:
+        return None
+    if type(value["version"]) is not int or value["version"] != 1:
+        return None
+    for name, allowed in DIAGNOSTIC_ENUMS.items():
+        if not isinstance(value[name], str) or value[name] not in allowed:
+            return None
+    for name, lower, upper in (
+        ("child_exit", -2147483648, 4294967295),
+        ("failures", 0, 65535),
+        ("start", 0, 4),
+    ):
+        number = value[name]
+        if name == "child_exit" and number is None:
+            continue
+        if type(number) is not int or not lower <= number <= upper:
+            return None
+    return value
+
+
 def lifecycle_summary(log: Path) -> dict:
     starts = []
+    diagnostics = []
     success = False
-    with log.open(encoding="utf-8", errors="replace") as stream:
-        for line in stream:
+    truncated = False
+    rejected = False
+    consumed = 0
+    skipping_line = False
+    with log.open("rb") as stream:
+        while raw := stream.readline(MAX_SUMMARY_LINE_BYTES + 1):
+            consumed += len(raw)
+            if consumed > MAX_SUMMARY_BYTES:
+                truncated = True
+                break
+            if skipping_line or len(raw) > MAX_SUMMARY_LINE_BYTES:
+                if not skipping_line and raw.startswith(DIAGNOSTIC_PREFIX.encode()):
+                    rejected = True
+                skipping_line = not raw.endswith(b"\n")
+                continue
+            line = raw.decode("utf-8", errors="replace")
+            if line.startswith(DIAGNOSTIC_PREFIX):
+                diagnostic = safe_diagnostic(line[len(DIAGNOSTIC_PREFIX) :])
+                if diagnostic is None:
+                    rejected = True
+                elif len(diagnostics) >= MAX_DIAGNOSTICS:
+                    truncated = True
+                    break
+                else:
+                    diagnostics.append(diagnostic)
             for index, name in enumerate(STARTS, 1):
                 if line.rstrip("\r\n") == f"== start {index} of 4: {name}":
-                    starts.append(index)
+                    if len(starts) < 5:
+                        starts.append(index)
+                    else:
+                        truncated = True
             if re.fullmatch(r"OK in [0-9]+s\s*", line):
                 success = True
-    return {"starts": starts, "completed": starts == [1, 2, 3, 4] and success}
+    return {
+        "starts": starts,
+        "completed": starts == [1, 2, 3, 4]
+        and success
+        and not truncated
+        and not rejected,
+        "diagnostics": diagnostics,
+        "diagnostics_rejected": rejected,
+        "truncated": truncated,
+    }
 
 
 class OwnedProcesses:
@@ -607,16 +737,25 @@ def main(argv: list[str] | None = None) -> int:
             result["stages"],
         )
         require(not any((private / "data").iterdir()), "data_directory_not_empty")
-        run_stage(
-            "lifecycle",
-            smoke_command(python, runtime, private / "data"),
-            LIFECYCLE_SECONDS,
-            private,
-            env,
-            owned,
-            result["stages"],
-        )
-        result["lifecycle"] = lifecycle_summary(private / "logs/lifecycle.log")
+        try:
+            run_stage(
+                "lifecycle",
+                smoke_command(python, runtime, private / "data"),
+                LIFECYCLE_SECONDS,
+                private,
+                env,
+                owned,
+                result["stages"],
+            )
+        finally:
+            try:
+                result["lifecycle"] = lifecycle_summary(private / "logs/lifecycle.log")
+            except Exception:
+                result["lifecycle"] = {
+                    "starts": [],
+                    "completed": False,
+                    "summary_unavailable": True,
+                }
         require(result["lifecycle"]["completed"], "incomplete_lifecycle")
         result["ok"] = True
     except SmokeError as exc:

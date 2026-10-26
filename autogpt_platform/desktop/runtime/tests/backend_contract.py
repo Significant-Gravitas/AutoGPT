@@ -19,13 +19,14 @@ from __future__ import annotations
 import ast
 import fnmatch
 import inspect
+import json
 import os
 import re
 import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 RUNTIME_PACKAGE_PARENT = Path(__file__).resolve().parents[1]
 DEFAULT_BUNDLE = RUNTIME_PACKAGE_PARENT.parent / "build" / "runtime"
@@ -65,32 +66,168 @@ CLOSES_AN_UNCONFIRMED_CANCEL = (
 )
 
 findings: list[tuple[bool, str]] = []
+_finding_exceptions: dict[int, str] = {}
+_diagnostic_output_failed = False
+_EXCEPTION_TYPES = (
+    (ModuleNotFoundError, "module_not_found"),
+    (ImportError, "import_error"),
+    (AttributeError, "attribute_error"),
+    (TypeError, "type_error"),
+    (ValueError, "value_error"),
+    (TimeoutError, "timeout"),
+    (OSError, "os_error"),
+    (KeyboardInterrupt, "keyboard_interrupt"),
+    (SystemExit, "system_exit"),
+)
+_EXCEPTION_IDS = frozenset({"none", "other", *(name for _, name in _EXCEPTION_TYPES)})
+
+
+def _exception_category(exc: BaseException) -> str:
+    for exception_type, category in _EXCEPTION_TYPES:
+        if isinstance(exc, exception_type):
+            return category
+    return "other"
+
+
+def _failure_count(start: int = 0) -> int:
+    return sum(not ok for ok, _ in findings[start:])
+
+
+def _finding_exception(start: int = 0) -> str:
+    return next(
+        (
+            _finding_exceptions[index]
+            for index in range(start, len(findings))
+            if not findings[index][0] and index in _finding_exceptions
+        ),
+        "none",
+    )
+
+
+def _diagnostic(
+    stage: Literal["contract_collect", "contract_check"],
+    status: Literal["started", "passed", "failed", "error"],
+    contract: str,
+    *,
+    failures: int = 0,
+    exception: str = "none",
+) -> None:
+    global _diagnostic_output_failed
+    exception = exception if exception in _EXCEPTION_IDS else "other"
+    reason = "none"
+    if exception == "timeout":
+        reason = "timeout"
+    elif exception != "none":
+        reason = "exception"
+    elif status == "failed":
+        reason = "assertion_failed"
+    message = "DESKTOP_SMOKE_DIAGNOSTIC " + json.dumps(
+        {
+            "version": 1,
+            "stage": stage,
+            "status": status,
+            "reason": reason,
+            "exception": exception,
+            "contract": contract if contract in _CONTRACT_NAMES else "unknown",
+            "child_exit": None,
+            "failures": int(max(0, min(failures, 65535))),
+            "start": 0,
+        },
+        separators=(",", ":"),
+    )
+    try:
+        print(message, flush=True)
+    except (OSError, ValueError):
+        _diagnostic_output_failed = True
 
 
 def main() -> int:
-    bundle_root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else DEFAULT_BUNDLE
-    scratch = tempfile.TemporaryDirectory(
-        prefix="autogpt-contract-", ignore_cleanup_errors=True
-    )
-    with scratch as directory:
-        services = collect(bundle_root, Path(directory))
-        for check in CHECKS if services else ():
-            try:
-                check(services, bundle_root / "backend" / "backend")
-            except Exception as exc:
-                what = check.__name__.replace("_", " ")
-                expect(
-                    False, what, f"The check itself failed: {type(exc).__name__}: {exc}"
-                )
+    global _diagnostic_output_failed
+    _diagnostic_output_failed = False
+    collecting = True
+    _diagnostic("contract_collect", "started", "collect")
+    try:
+        bundle_root = (
+            Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else DEFAULT_BUNDLE
+        )
+        scratch = tempfile.TemporaryDirectory(
+            prefix="autogpt-contract-", ignore_cleanup_errors=True
+        )
+        with scratch as directory:
+            services = collect(bundle_root, Path(directory))
+            broken = _failure_count()
+            _diagnostic(
+                "contract_collect",
+                "failed" if broken else "passed",
+                "collect",
+                failures=broken,
+                exception=_finding_exception(),
+            )
+            collecting = False
+            for check in CHECKS if services else ():
+                first = len(findings)
+                contract = _CONTRACT_IDS.get(check, "unknown")
+                _diagnostic("contract_check", "started", contract)
+                try:
+                    check(services, bundle_root / "backend" / "backend")
+                except Exception as exc:
+                    try:
+                        what = check.__name__.replace("_", " ")
+                        expect(
+                            False,
+                            what,
+                            f"The check itself failed: {type(exc).__name__}: {exc}",
+                            exception=exc,
+                        )
+                    finally:
+                        _diagnostic(
+                            "contract_check",
+                            "error",
+                            contract,
+                            failures=_failure_count(first),
+                            exception=_exception_category(exc),
+                        )
+                except BaseException as exc:
+                    _diagnostic(
+                        "contract_check",
+                        "error",
+                        contract,
+                        failures=_failure_count(first),
+                        exception=_exception_category(exc),
+                    )
+                    raise
+                else:
+                    broken = _failure_count(first)
+                    _diagnostic(
+                        "contract_check",
+                        "failed" if broken else "passed",
+                        contract,
+                        failures=broken,
+                        exception=_finding_exception(first),
+                    )
+    except BaseException as exc:
+        if collecting:
+            _diagnostic(
+                "contract_collect",
+                "error",
+                "collect",
+                failures=_failure_count(),
+                exception=_exception_category(exc),
+            )
+        raise
     for ok, message in findings:
         print(f"{'ok' if ok else 'BROKEN'}: {message}")
     broken = sum(not ok for ok, _ in findings)
     print(f"{len(findings) - broken} of {len(findings)} dependencies hold")
-    return 1 if broken else 0
+    return 1 if broken or _diagnostic_output_failed else 0
 
 
-def expect(ok: bool, holds: str, broken: str) -> None:
+def expect(
+    ok: bool, holds: str, broken: str, *, exception: BaseException | None = None
+) -> None:
     findings.append((bool(ok), holds if ok else f"{holds}. {broken}"))
+    if not ok and exception is not None:
+        _finding_exceptions[len(findings) - 1] = _exception_category(exception)
 
 
 def collect(bundle_root: Path, scratch: Path) -> dict[str, Any]:
@@ -110,6 +247,7 @@ def collect(bundle_root: Path, scratch: Path) -> dict[str, Any]:
             False,
             "every entry point hands one service to backend.app.run_processes",
             str(exc),
+            exception=exc,
         )
         return {}
     expect(
@@ -185,6 +323,7 @@ def nobody_is_connected(services: dict[str, Any], backend: Path) -> None:
             False,
             "backend.data.db.is_connected() exists",
             f"{exc}. The watchdog in {HOST} uses it.",
+            exception=exc,
         )
         return
     expect(
@@ -422,16 +561,19 @@ def runs_are_cancelled_and_settled_under_the_runtimes_names(
         (copilot.CancelCoPilotEvent, runs.COPILOT_SESSION_FIELD),
     )
     for model, name in requests:
+        error = None
         try:
             read = getattr(
                 model.model_validate_json(json.dumps({name: "an-id"})), name, None
             )
         except Exception as exc:
+            error = exc
             read = f"{type(exc).__name__}: {exc}"
         expect(
             read == "an-id",
             f"{model.__name__} is read from {{{name!r}: ...}} alone",
             f"The executor now makes of it: {read}. {update} Queue.cancel writes it.",
+            exception=error,
         )
     expect(
         {runs.COPILOT_SESSION_FIELD, "turn_id"}
@@ -465,6 +607,7 @@ def a_chat_can_be_closed_from_outside_its_turn(
             False,
             "backend.copilot.stream_registry closes a chat's turn",
             f"{exc}. {update}",
+            exception=exc,
         )
         return
     parameters = inspect.signature(close).parameters
@@ -558,6 +701,8 @@ CHECKS = (
     a_chat_can_be_closed_from_outside_its_turn,
     turns_are_locked_while_they_run_and_only_busy_chats_are_closed,
 )
+_CONTRACT_IDS = {check: check.__name__ for check in CHECKS}
+_CONTRACT_NAMES = frozenset({"collect", "unknown", *_CONTRACT_IDS.values()})
 
 
 if __name__ == "__main__":

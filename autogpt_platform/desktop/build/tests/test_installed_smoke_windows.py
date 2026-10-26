@@ -275,6 +275,138 @@ def test_safe_summary_requires_all_four_starts(
     assert "do-not-upload" not in json.dumps(summary)
 
 
+def diagnostic_record(**updates):
+    return {
+        "version": 1,
+        "stage": "backend_contract",
+        "status": "failed",
+        "reason": "child_exit",
+        "exception": "none",
+        "contract": "none",
+        "child_exit": 1,
+        "failures": 1,
+        "start": 0,
+        **updates,
+    }
+
+
+def test_safe_failure_diagnostics_survive_without_private_output(driver, tmp_path):
+    log = tmp_path / "raw.log"
+    record = diagnostic_record()
+    log.write_text(
+        "PRIVATE-SENTINEL\nDESKTOP_SMOKE_DIAGNOSTIC "
+        + json.dumps(record)
+        + "\nFAILED\nPRIVATE-SENTINEL\n",
+        encoding="utf-8",
+    )
+    summary = driver.lifecycle_summary(log)
+    assert summary["diagnostics"] == [record]
+    assert not summary["completed"]
+    assert "PRIVATE-SENTINEL" not in json.dumps(summary)
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"version": True},
+        {"version": 2},
+        {"stage": "PRIVATE-SENTINEL"},
+        {"status": "PRIVATE-SENTINEL"},
+        {"reason": "PRIVATE-SENTINEL"},
+        {"exception": "PRIVATE-SENTINEL"},
+        {"contract": "PRIVATE-SENTINEL"},
+        {"stage": ["smoke_result"]},
+        {"child_exit": True},
+        {"child_exit": 4294967296},
+        {"child_exit": -2147483649},
+        {"child_exit": 1.0},
+        {"failures": True},
+        {"failures": 65536},
+        {"failures": -1},
+        {"start": True},
+        {"start": 5},
+        {"extra": "PRIVATE-SENTINEL"},
+    ],
+)
+def test_invalid_diagnostic_is_never_uploaded_or_treated_as_success(
+    driver, tmp_path, updates
+):
+    log = tmp_path / "raw.log"
+    log.write_text(
+        "DESKTOP_SMOKE_DIAGNOSTIC "
+        + json.dumps(diagnostic_record(**updates))
+        + "\n"
+        + "\n".join(
+            f"== start {i} of 4: {name}" for i, name in enumerate(driver.STARTS, 1)
+        )
+        + "\nOK in 1s\n",
+        encoding="utf-8",
+    )
+    summary = driver.lifecycle_summary(log)
+    assert summary["diagnostics"] == []
+    assert summary["diagnostics_rejected"]
+    assert not summary["completed"]
+    assert "PRIVATE-SENTINEL" not in json.dumps(summary)
+
+
+@pytest.mark.parametrize("payload", ['{"version":1,"version":1}', "[]", "{"])
+def test_malformed_or_duplicate_diagnostic_json_is_rejected(driver, tmp_path, payload):
+    log = tmp_path / "raw.log"
+    log.write_text("DESKTOP_SMOKE_DIAGNOSTIC " + payload + "\n", encoding="utf-8")
+    summary = driver.lifecycle_summary(log)
+    assert summary["diagnostics"] == []
+    assert summary["diagnostics_rejected"]
+
+
+def test_summary_bounds_cannot_hide_later_contradictory_evidence(
+    driver, tmp_path, monkeypatch
+):
+    log = tmp_path / "raw.log"
+    success = (
+        "\n".join(
+            f"== start {i} of 4: {name}" for i, name in enumerate(driver.STARTS, 1)
+        )
+        + "\nOK in 1s\n"
+    )
+    log.write_text(success + "PRIVATE-SENTINEL\n" * 100, encoding="utf-8")
+    monkeypatch.setattr(driver, "MAX_SUMMARY_BYTES", len(success.encode()) + 1)
+    summary = driver.lifecycle_summary(log)
+    assert summary["truncated"]
+    assert not summary["completed"]
+    assert "PRIVATE-SENTINEL" not in json.dumps(summary)
+
+
+def test_oversized_line_cannot_forge_a_new_line_diagnostic(
+    driver, tmp_path, monkeypatch
+):
+    log = tmp_path / "raw.log"
+    record = diagnostic_record()
+    payload = "DESKTOP_SMOKE_DIAGNOSTIC " + json.dumps(record)
+    monkeypatch.setattr(driver, "MAX_SUMMARY_LINE_BYTES", len(payload.encode()) + 10)
+    log.write_text(
+        "x" * (len(payload) + 11) + payload + "\n" + payload, encoding="utf-8"
+    )
+    summary = driver.lifecycle_summary(log)
+    assert summary["diagnostics"] == [record]
+    assert "PRIVATE-SENTINEL" not in json.dumps(summary)
+
+
+def test_diagnostic_events_are_bounded_and_cannot_establish_completion(
+    driver, tmp_path, monkeypatch
+):
+    log = tmp_path / "raw.log"
+    monkeypatch.setattr(driver, "MAX_DIAGNOSTICS", 2)
+    record = diagnostic_record(stage="smoke_result", status="passed", reason="none")
+    log.write_text(
+        ("DESKTOP_SMOKE_DIAGNOSTIC " + json.dumps(record) + "\n") * 3,
+        encoding="utf-8",
+    )
+    summary = driver.lifecycle_summary(log)
+    assert summary["diagnostics"] == [record, record]
+    assert summary["truncated"]
+    assert not summary["completed"]
+
+
 @pytest.fixture
 def fake_stage(driver, tmp_path, monkeypatch):
     private = tmp_path / "private"
@@ -661,10 +793,19 @@ def test_main_late_cleanup_discovery_cannot_hide_lifecycle_leak(
 
 
 @pytest.mark.parametrize(
-    "failure", ["install_timeout", "lifecycle_exit", "incomplete_lifecycle", None]
+    "failure",
+    [
+        "install_timeout",
+        "lifecycle_exit",
+        "lifecycle_timeout",
+        "driver_exception_private_logs_only",
+        "incomplete_lifecycle",
+        None,
+    ],
 )
+@pytest.mark.parametrize("unreadable", [False, True])
 def test_main_failure_cleans_up_and_publishes_only_safe_summary(
-    driver, artifact, tmp_path, monkeypatch, failure
+    driver, artifact, tmp_path, monkeypatch, failure, unreadable
 ):
     directory, desktop, _, _ = artifact
     work = tmp_path / "new work"
@@ -695,6 +836,12 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
     monkeypatch.setattr(
         driver, "installed_runtime", lambda path: (runtime, runtime / "python.exe", {})
     )
+    if unreadable:
+
+        def cannot_read(log):
+            raise OSError("PRIVATE-SENTINEL")
+
+        monkeypatch.setattr(driver, "lifecycle_summary", cannot_read)
 
     def stage(name, command, timeout, private, env, tracker, stages):
         stages.append({"name": name, "exit_code": 0})
@@ -707,13 +854,22 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
             else ""
         )
         (private / "logs" / f"{name}.log").write_text(
-            "token=PRIVATE-SENTINEL\n" + headings + "\nOK in 1s\n", encoding="utf-8"
+            "token=PRIVATE-SENTINEL\n"
+            + headings
+            + "\nOK in 1s\n"
+            + "DESKTOP_SMOKE_DIAGNOSTIC "
+            + json.dumps(diagnostic_record())
+            + "\n",
+            encoding="utf-8",
         )
+        if name == "lifecycle" and failure == "driver_exception_private_logs_only":
+            raise RuntimeError("PRIVATE-SENTINEL")
         if failure and failure.startswith(name):
             stages[-1]["exit_code"] = 1
             raise driver.SmokeError(failure)
 
     monkeypatch.setattr(driver, "run_stage", stage)
+    expected_failure = failure or ("incomplete_lifecycle" if unreadable else None)
     assert driver.main(
         [
             "--artifact-dir",
@@ -723,10 +879,19 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
             "--expected-commit",
             COMMIT,
         ]
-    ) == (1 if failure else 0)
+    ) == (1 if expected_failure else 0)
     result = json.loads((work / "result.json").read_text("utf-8"))
-    assert result.get("error") == failure
-    assert result["ok"] is (failure is None)
+    assert result.get("error") == expected_failure
+    assert result["ok"] is (expected_failure is None)
+    if failure != "install_timeout":
+        assert result["lifecycle"]["starts"] == (
+            [1, 2, 3, 4] if expected_failure is None else []
+        )
+        assert result["lifecycle"]["completed"] is (expected_failure is None)
+        if unreadable:
+            assert result["lifecycle"]["summary_unavailable"]
+        else:
+            assert result["lifecycle"]["diagnostics"] == [diagnostic_record()]
     assert cleaned == [True]
     assert "PRIVATE-SENTINEL" not in json.dumps(result)
     assert result["upload_allowlist"] == ["result.json"]

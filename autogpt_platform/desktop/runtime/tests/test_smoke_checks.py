@@ -15,8 +15,10 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import psutil
 import pytest
@@ -24,6 +26,599 @@ import pytest
 DESKTOP = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(DESKTOP / "build"))
 smoke_test = importlib.import_module("smoke_test")
+
+
+SAFE_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
+PRIVATE_CANARY = "secret-token C:/private/settings.env bearer=do-not-upload"
+
+
+def safe_events(capsys):
+    events = [
+        json.loads(line.removeprefix(SAFE_PREFIX))
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith(SAFE_PREFIX)
+    ]
+    assert PRIVATE_CANARY not in json.dumps(events)
+    assert all(
+        set(event)
+        == {
+            "version",
+            "stage",
+            "status",
+            "reason",
+            "exception",
+            "contract",
+            "child_exit",
+            "failures",
+            "start",
+        }
+        for event in events
+    )
+    return events
+
+
+def contract_event(**changes):
+    return {
+        "version": 1,
+        "stage": "contract_check",
+        "status": "failed",
+        "reason": "assertion_failed",
+        "exception": "none",
+        "contract": "nobody_is_connected",
+        "child_exit": None,
+        "failures": 1,
+        "start": 0,
+        **changes,
+    }
+
+
+@pytest.fixture
+def diagnostic_smoke(monkeypatch, tmp_path):
+    monkeypatch.setattr(smoke_test, "configure_smoke", lambda _: None)
+    monkeypatch.setattr(smoke_test, "left_by_earlier_runs", lambda _: [])
+    monkeypatch.setattr(smoke_test, "snapshot", lambda _: {})
+    monkeypatch.setattr(smoke_test, "print_logs", lambda _: None)
+    monkeypatch.setattr(smoke_test, "backend_contract", lambda _: [])
+    args = SimpleNamespace(
+        profile=None, quick=False, timeout=600, restart_budget=120, read_only=False
+    )
+    return tmp_path / "bundle", tmp_path / "data", args
+
+
+@pytest.fixture
+def diagnostic_runtime(monkeypatch):
+    process = Mock(pid=123)
+    process.poll.return_value = 0
+    monkeypatch.setattr(smoke_test.subprocess, "Popen", Mock(return_value=process))
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["unused"])
+    monkeypatch.setattr(smoke_test.psutil, "Process", lambda _: object())
+    monkeypatch.setattr(smoke_test, "Family", lambda *args: object())
+    said = Mock()
+    said.wait_for_ready.return_value = "http://unused.invalid"
+    monkeypatch.setattr(smoke_test, "Said", lambda *args: said)
+    monkeypatch.setattr(smoke_test, "stop", lambda _: [])
+    monkeypatch.setattr(smoke_test, "stopped_gracefully", lambda *args: [])
+    leftovers = Mock(return_value=[])
+    monkeypatch.setattr(smoke_test, "left_running", leftovers)
+    return process, said, leftovers
+
+
+def test_safe_diagnostic_four_start_success_keeps_strict_sequence(
+    diagnostic_smoke, diagnostic_runtime, monkeypatch, capsys
+):
+    monkeypatch.setattr(smoke_test, "checked", lambda *args: [])
+    assert smoke_test.smoke(*diagnostic_smoke) == 0
+    events = safe_events(capsys)
+    assert events[-1]["stage"] == "smoke_result"
+    assert events[-1]["status"] == "passed"
+    launches = [e for e in events if e["stage"] == "runtime_launch"]
+    assert [(e["start"], e["status"]) for e in launches] == [
+        (n, status) for n in range(1, 5) for status in ("started", "passed")
+    ]
+    assert len(events) <= 128
+    assert diagnostic_runtime[2].call_count == 4
+
+
+def test_safe_diagnostic_contract_failure_skips_every_launch(
+    diagnostic_smoke, monkeypatch, capsys
+):
+    monkeypatch.setattr(smoke_test, "backend_contract", lambda _: [PRIVATE_CANARY])
+    launch = Mock(side_effect=AssertionError("must not launch"))
+    monkeypatch.setattr(smoke_test, "run", launch)
+    assert smoke_test.smoke(*diagnostic_smoke) == 1
+    events = safe_events(capsys)
+    assert events[-1]["stage"] == "smoke_result"
+    assert events[-1]["status"] == "failed"
+    assert events[-1]["failures"] == 1
+    launch.assert_not_called()
+
+
+def test_safe_diagnostic_setup_exception_is_classified_and_reraised(
+    diagnostic_smoke, monkeypatch, capsys
+):
+    error = PermissionError(PRIVATE_CANARY)
+    monkeypatch.setattr(smoke_test, "configure_smoke", Mock(side_effect=error))
+    with pytest.raises(PermissionError) as raised:
+        smoke_test.smoke(*diagnostic_smoke)
+    assert raised.value is error
+    events = safe_events(capsys)
+    assert [(e["stage"], e["exception"]) for e in events if e["status"] == "error"] == [
+        ("smoke_setup", "os_error"),
+        ("smoke_result", "os_error"),
+    ]
+
+
+def test_safe_diagnostic_launch_exception_identifies_first_start(
+    diagnostic_smoke, diagnostic_runtime, monkeypatch, capsys
+):
+    error = FileNotFoundError(PRIVATE_CANARY)
+    monkeypatch.setattr(smoke_test.subprocess, "Popen", Mock(side_effect=error))
+    with pytest.raises(FileNotFoundError) as raised:
+        smoke_test.smoke(*diagnostic_smoke)
+    assert raised.value is error
+    events = safe_events(capsys)
+    failure = next(
+        e for e in events if e["stage"] == "runtime_launch" and e["status"] == "error"
+    )
+    assert failure["start"] == 1
+    assert failure["exception"] == "os_error"
+    assert not any(e["stage"] == "runtime_ready" for e in events)
+
+
+def test_safe_diagnostic_never_ready_keeps_failure_and_cleanup(
+    diagnostic_smoke, diagnostic_runtime, capsys
+):
+    process, said, leftovers = diagnostic_runtime
+    said.wait_for_ready.return_value = None
+    process.poll.return_value = 7
+    assert smoke_test.smoke(*diagnostic_smoke) == 1
+    events = safe_events(capsys)
+    failure = next(
+        e for e in events if e["stage"] == "runtime_ready" and e["status"] == "failed"
+    )
+    assert failure["reason"] == "not_ready"
+    assert failure["child_exit"] == 7
+    assert not any(e["stage"] == "runtime_checks" for e in events)
+    leftovers.assert_called_once()
+
+
+def test_safe_diagnostic_check_exception_still_stops_and_cleans(
+    diagnostic_runtime, tmp_path, capsys
+):
+    def broken(*args):
+        raise ValueError(PRIVATE_CANARY)
+
+    install = smoke_test.Install(False)
+    install.start_number = 1
+    failures = smoke_test.run(tmp_path, tmp_path, 600, broken, install)
+    assert PRIVATE_CANARY in failures[0]
+    events = safe_events(capsys)
+    failure = next(
+        e for e in events if e["stage"] == "runtime_checks" and e["status"] == "error"
+    )
+    assert failure["exception"] == "value_error"
+    assert events[-1]["stage"] == "runtime_cleanup"
+    assert events[-1]["status"] == "passed"
+    diagnostic_runtime[2].assert_called_once()
+
+
+@pytest.mark.parametrize("exit_code", [0, 1, -9, 3221225477])
+def test_safe_diagnostic_preflight_emits_safe_child_outcome(
+    exit_code, monkeypatch, tmp_path, capsys
+):
+    child = contract_event(status="passed" if exit_code == 0 else "failed")
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["unused"])
+    monkeypatch.setattr(smoke_test, "contract_environment", lambda _: {})
+    command = Mock(
+        return_value=SimpleNamespace(
+            returncode=exit_code,
+            stdout=SAFE_PREFIX + json.dumps(child) + "\nBROKEN: " + PRIVATE_CANARY,
+            stderr=PRIVATE_CANARY,
+        )
+    )
+    monkeypatch.setattr(smoke_test.subprocess, "run", command)
+    failures = smoke_test.backend_contract(tmp_path)
+    assert bool(failures) is (exit_code != 0)
+    events = safe_events(capsys)
+    assert child in events
+    assert events[-1]["stage"] == "backend_contract"
+    assert events[-1]["child_exit"] == exit_code
+    assert events[-1]["status"] == ("passed" if exit_code == 0 else "failed")
+    assert command.call_args.kwargs["timeout"] == 180
+
+
+@pytest.mark.parametrize(
+    "error,category",
+    [
+        (subprocess.TimeoutExpired(PRIVATE_CANARY, 180), "timeout"),
+        (ModuleNotFoundError(PRIVATE_CANARY), "module_not_found"),
+        (RuntimeError(PRIVATE_CANARY), "other"),
+        (KeyboardInterrupt(PRIVATE_CANARY), "keyboard_interrupt"),
+    ],
+)
+def test_safe_diagnostic_preflight_exceptions_preserve_identity(
+    error, category, monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["unused"])
+    monkeypatch.setattr(smoke_test, "contract_environment", lambda _: {})
+    monkeypatch.setattr(smoke_test.subprocess, "run", Mock(side_effect=error))
+    with pytest.raises(type(error)) as raised:
+        smoke_test.backend_contract(tmp_path)
+    assert raised.value is error
+    events = safe_events(capsys)
+    assert events[-1]["status"] == "error"
+    assert events[-1]["exception"] == category
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"contract": PRIVATE_CANARY},
+        {"extra": PRIVATE_CANARY},
+        {"stage": "runtime_launch"},
+        {"version": True},
+        {"failures": True},
+        {"failures": 65536},
+        {"child_exit": True},
+        {"start": 1},
+        {"exception": PRIVATE_CANARY},
+        {"child_exit": 4294967296},
+    ],
+)
+def test_safe_diagnostic_child_forwarding_rejects_unknown_or_invalid_fields(
+    changes, capsys
+):
+    smoke_test.forward_contract_diagnostics(
+        SAFE_PREFIX + json.dumps(contract_event(**changes))
+    )
+    assert safe_events(capsys) == []
+
+
+def test_safe_diagnostic_child_forwarding_rejects_duplicate_keys(capsys):
+    payload = json.dumps(contract_event())[:-1] + ', "contract": "collect"}'
+    smoke_test.forward_contract_diagnostics(SAFE_PREFIX + payload)
+    assert safe_events(capsys) == []
+
+
+def test_safe_diagnostic_emitter_has_closed_values_and_bounded_numbers(capsys):
+    smoke_test.emit_diagnostic(
+        PRIVATE_CANARY,
+        PRIVATE_CANARY,
+        reason=PRIVATE_CANARY,
+        exception=PRIVATE_CANARY,
+        contract=PRIVATE_CANARY,
+        child_exit=2**64,
+        failures=2**64,
+        start=-3,
+    )
+    (event,) = safe_events(capsys)
+    assert event == {
+        "version": 1,
+        "stage": "smoke_driver",
+        "status": "error",
+        "reason": "exception",
+        "exception": "other",
+        "contract": "unknown",
+        "child_exit": None,
+        "failures": 65535,
+        "start": 0,
+    }
+
+
+def test_safe_diagnostic_early_read_only_refusal_keeps_exit_two(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["smoke_test.py", str(DESKTOP), "--read-only"])
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(smoke_test, "cannot_run_read_only", lambda: PRIVATE_CANARY)
+    assert smoke_test.main() == 2
+    events = safe_events(capsys)
+    assert events[-1]["stage"] == "smoke_driver"
+    assert events[-1]["status"] == "failed"
+    assert events[-1]["reason"] == "unsupported"
+
+
+def test_safe_diagnostic_timeout_forwards_only_valid_partial_child_events(
+    monkeypatch, tmp_path, capsys
+):
+    child = contract_event(
+        stage="contract_collect", status="started", contract="collect", failures=0
+    )
+    partial = (PRIVATE_CANARY + "\n" + SAFE_PREFIX + json.dumps(child) + "\n").encode()
+    error = subprocess.TimeoutExpired(PRIVATE_CANARY, 180, output=partial)
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["unused"])
+    monkeypatch.setattr(smoke_test, "contract_environment", lambda _: {})
+    monkeypatch.setattr(smoke_test.subprocess, "run", Mock(side_effect=error))
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        smoke_test.backend_contract(tmp_path)
+    assert raised.value is error
+    events = safe_events(capsys)
+    assert child in events
+    assert events[-1]["reason"] == "timeout"
+
+
+@pytest.mark.parametrize(
+    "operation,stage", [("stop", "runtime_stop"), ("left_running", "runtime_cleanup")]
+)
+def test_safe_diagnostic_stop_and_cleanup_exceptions_preserve_identity(
+    operation, stage, diagnostic_runtime, monkeypatch, tmp_path, capsys
+):
+    error = OSError(PRIVATE_CANARY)
+    monkeypatch.setattr(smoke_test, operation, Mock(side_effect=error))
+    with pytest.raises(OSError) as raised:
+        smoke_test.run(
+            tmp_path, tmp_path, 600, lambda *args: [], smoke_test.Install(False)
+        )
+    assert raised.value is error
+    events = safe_events(capsys)
+    assert any(
+        e["stage"] == stage and e["status"] == "error" and e["exception"] == "os_error"
+        for e in events
+    )
+    if operation == "stop":
+        diagnostic_runtime[2].assert_called_once()
+
+
+def test_safe_diagnostic_main_cleanup_error_cannot_report_driver_pass(
+    monkeypatch, capsys
+):
+    error = OSError(PRIVATE_CANARY)
+    monkeypatch.setattr(
+        sys, "argv", ["smoke_test.py", str(DESKTOP), "--data-dir", str(DESKTOP)]
+    )
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(smoke_test, "end_on_signals", lambda: None)
+    monkeypatch.setattr(smoke_test, "smoke", lambda *args: 0)
+    monkeypatch.setattr(
+        smoke_test,
+        "Aliases",
+        lambda *args: SimpleNamespace(remove_new=Mock(side_effect=error)),
+    )
+    with pytest.raises(OSError) as raised:
+        smoke_test.main()
+    assert raised.value is error
+    events = safe_events(capsys)
+    assert events[-1]["stage"] == "smoke_driver"
+    assert events[-1]["status"] == "error"
+
+
+def test_safe_diagnostic_child_forwarding_bounds_events_and_scan(capsys):
+    valid = SAFE_PREFIX + json.dumps(contract_event()) + "\n"
+    smoke_test.forward_contract_diagnostics(valid * 70)
+    assert len(safe_events(capsys)) == 64
+    smoke_test.forward_contract_diagnostics("x" * 262144 + "\n" + valid)
+    assert safe_events(capsys) == []
+    smoke_test.forward_contract_diagnostics("noise\n" * 1024 + valid)
+    assert safe_events(capsys) == []
+
+
+@pytest.mark.parametrize("ok", [False, True])
+def test_safe_diagnostic_contract_script_events_survive_parent_preflight(
+    ok, monkeypatch, tmp_path, capsys
+):
+    spec = importlib.util.spec_from_file_location(
+        "diagnostic_contract_integration", smoke_test.CONTRACT_SCRIPT
+    )
+    assert spec and spec.loader
+    contract = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(contract)
+
+    def collect(*args):
+        contract.expect(ok, PRIVATE_CANARY, PRIVATE_CANARY)
+        return {"fake": object()} if ok else {}
+
+    monkeypatch.setattr(contract, "collect", collect)
+    monkeypatch.setattr(contract, "CHECKS", ())
+    monkeypatch.setattr(sys, "argv", ["backend_contract.py", str(tmp_path)])
+    output = io.StringIO()
+    with redirect_stdout(output):
+        code = contract.main()
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["unused"])
+    monkeypatch.setattr(smoke_test, "contract_environment", lambda _: {})
+    monkeypatch.setattr(
+        smoke_test.subprocess,
+        "run",
+        Mock(return_value=subprocess.CompletedProcess([], code, output.getvalue(), "")),
+    )
+    failures = smoke_test.backend_contract(tmp_path)
+    assert bool(failures) is not ok
+    events = safe_events(capsys)
+    assert [(e["stage"], e["status"]) for e in events] == [
+        ("backend_contract", "started"),
+        ("contract_collect", "started"),
+        ("contract_collect", "passed" if ok else "failed"),
+        ("backend_contract", "passed" if ok else "failed"),
+    ]
+
+
+class DiagnosticSink(io.StringIO):
+    def __init__(self, stage, status, operation):
+        super().__init__()
+        self.stage, self.status, self.operation = stage, status, operation
+        self.target = False
+        self.failures = 0
+
+    def fail_once(self):
+        if self.target and not self.failures:
+            self.failures += 1
+            raise OSError(28, PRIVATE_CANARY)
+
+    def write(self, text):
+        if text.startswith(SAFE_PREFIX):
+            event = json.loads(text[len(SAFE_PREFIX) :])
+            self.target = (event["stage"], event["status"]) == (self.stage, self.status)
+            if self.operation == "write":
+                self.fail_once()
+        return super().write(text)
+
+    def flush(self):
+        if self.operation == "flush":
+            self.fail_once()
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+@pytest.mark.parametrize(
+    "stage,status",
+    [
+        ("runtime_cleanup", "started"),
+        ("runtime_launch", "passed"),
+        ("runtime_ready", "error"),
+    ],
+)
+def test_diagnostic_io_preserves_primary_and_required_cleanup(
+    diagnostic_runtime, tmp_path, operation, stage, status
+):
+    process, said, leftovers = diagnostic_runtime
+    process.poll.return_value = None
+    original = TimeoutError(PRIVATE_CANARY)
+    said.wait_for_ready.side_effect = original
+    sink = DiagnosticSink(stage, status, operation)
+    with redirect_stdout(sink), pytest.raises(TimeoutError) as raised:
+        smoke_test.run(
+            tmp_path, tmp_path, 600, lambda *args: [], smoke_test.Install(False)
+        )
+    assert raised.value is original
+    assert sink.failures == 1
+    process.kill.assert_called_once()
+    leftovers.assert_called_once()
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+@pytest.mark.parametrize(
+    "stage,status",
+    [
+        ("runtime_launch", "passed"),
+        ("runtime_ready", "passed"),
+        ("runtime_checks", "passed"),
+        ("runtime_stop", "passed"),
+        ("runtime_cleanup", "started"),
+        ("runtime_cleanup", "passed"),
+    ],
+)
+def test_diagnostic_io_only_failure_waits_for_cleanup_and_stays_failed(
+    diagnostic_runtime, tmp_path, operation, stage, status
+):
+    process, _said, leftovers = diagnostic_runtime
+    process.poll.return_value = None
+    sink = DiagnosticSink(stage, status, operation)
+    with redirect_stdout(sink):
+        failures = smoke_test.run(
+            tmp_path, tmp_path, 600, lambda *args: [], smoke_test.Install(False)
+        )
+    assert failures and PRIVATE_CANARY not in str(failures)
+    assert sink.failures == 1
+    process.kill.assert_called_once()
+    leftovers.assert_called_once()
+    with redirect_stdout(io.StringIO()):
+        assert (
+            smoke_test.run(
+                tmp_path, tmp_path, 600, lambda *args: [], smoke_test.Install(False)
+            )
+            == []
+        )
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+@pytest.mark.parametrize(
+    "stage,status",
+    [
+        ("smoke_result", "started"),
+        ("smoke_result", "passed"),
+        ("smoke_setup", "passed"),
+        ("smoke_verification", "passed"),
+    ],
+)
+def test_diagnostic_io_smoke_cannot_return_success_after_lost_event(
+    diagnostic_smoke, monkeypatch, operation, stage, status
+):
+    monkeypatch.setattr(smoke_test, "run", lambda *args: [])
+    sink = DiagnosticSink(stage, status, operation)
+    with redirect_stdout(sink):
+        assert smoke_test.smoke(*diagnostic_smoke) == 1
+    assert sink.failures == 1
+    assert "\nOK in " not in sink.getvalue()
+    with redirect_stdout(io.StringIO()):
+        assert smoke_test.smoke(*diagnostic_smoke) == 0
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+@pytest.mark.parametrize("original_code", [0, 1, 2])
+def test_diagnostic_io_main_checks_latch_after_its_final_event(
+    monkeypatch, operation, original_code
+):
+    monkeypatch.setattr(
+        sys, "argv", ["smoke_test.py", str(DESKTOP), "--data-dir", str(DESKTOP)]
+    )
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(smoke_test, "end_on_signals", lambda: None)
+    cleanup = Mock()
+    monkeypatch.setattr(
+        smoke_test, "Aliases", lambda *args: SimpleNamespace(remove_new=cleanup)
+    )
+    monkeypatch.setattr(smoke_test, "smoke", lambda *args: original_code)
+    status = "passed" if original_code == 0 else "failed"
+    sink = DiagnosticSink("smoke_driver", status, operation)
+    with redirect_stdout(sink):
+        assert smoke_test.main() == (original_code or 1)
+    assert sink.failures == 1
+    cleanup.assert_called_once()
+    with redirect_stdout(io.StringIO()):
+        assert smoke_test.main() == original_code
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+@pytest.mark.parametrize("code", [0, 1])
+def test_diagnostic_io_preflight_cannot_return_success_after_final_event(
+    monkeypatch, tmp_path, operation, code
+):
+    monkeypatch.setattr(smoke_test, "shell_command", lambda _: ["unused"])
+    monkeypatch.setattr(smoke_test, "contract_environment", lambda _: {})
+    monkeypatch.setattr(
+        smoke_test.subprocess,
+        "run",
+        Mock(return_value=subprocess.CompletedProcess([], code, "", "")),
+    )
+    sink = DiagnosticSink(
+        "backend_contract", "passed" if code == 0 else "failed", operation
+    )
+    with redirect_stdout(sink):
+        assert smoke_test.backend_contract(tmp_path)
+    assert sink.failures == 1
+    with redirect_stdout(io.StringIO()):
+        assert bool(smoke_test.backend_contract(tmp_path)) is (code != 0)
+
+
+@pytest.mark.parametrize(
+    "original", [None, ValueError(PRIVATE_CANARY), KeyboardInterrupt(PRIVATE_CANARY)]
+)
+def test_diagnostic_io_closed_real_stream_preserves_runtime_exceptions(
+    diagnostic_runtime, tmp_path, original
+):
+    process, said, leftovers = diagnostic_runtime
+    process.poll.return_value = None
+    if original is not None:
+        said.wait_for_ready.side_effect = original
+    sink = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    sink.close()
+    with redirect_stdout(sink):
+        if original is None:
+            assert smoke_test.run(
+                tmp_path, tmp_path, 600, lambda *args: [], smoke_test.Install(False)
+            )
+        else:
+            with pytest.raises(type(original)) as raised:
+                smoke_test.run(
+                    tmp_path, tmp_path, 600, lambda *args: [], smoke_test.Install(False)
+                )
+            assert raised.value is original
+    process.kill.assert_called_once()
+    leftovers.assert_called_once()
+
+
+def test_diagnostic_io_does_not_hide_json_construction_value_errors(monkeypatch):
+    error = ValueError(PRIVATE_CANARY)
+    monkeypatch.setattr(smoke_test.json, "dumps", Mock(side_effect=error))
+    with pytest.raises(ValueError) as raised:
+        smoke_test.emit_diagnostic("smoke_setup", "started")
+    assert raised.value is error
 
 
 def test_lifecycle_smoke_configures_local_catalog_before_any_child(

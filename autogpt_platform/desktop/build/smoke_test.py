@@ -116,6 +116,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 
 import psutil
@@ -218,6 +219,249 @@ CONTRACT_SCRIPT = (
     Path(__file__).resolve().parents[1] / "runtime" / "tests" / "backend_contract.py"
 )
 
+DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
+_diagnostic_io_failures = 0
+DIAGNOSTIC_IO_FAILURE = "diagnostic output could not be written"
+DIAGNOSTIC_STAGES = {
+    "smoke_driver",
+    "smoke_setup",
+    "backend_contract",
+    "contract_collect",
+    "contract_check",
+    "runtime_launch",
+    "runtime_ready",
+    "runtime_checks",
+    "runtime_stop",
+    "runtime_cleanup",
+    "smoke_verification",
+    "smoke_result",
+}
+DIAGNOSTIC_STATUSES = {"started", "passed", "failed", "error"}
+DIAGNOSTIC_REASONS = {
+    "none",
+    "assertion_failed",
+    "child_exit",
+    "not_ready",
+    "exception",
+    "timeout",
+    "unsupported",
+}
+DIAGNOSTIC_EXCEPTIONS = {
+    "none",
+    "module_not_found",
+    "import_error",
+    "attribute_error",
+    "type_error",
+    "value_error",
+    "os_error",
+    "timeout",
+    "keyboard_interrupt",
+    "system_exit",
+    "other",
+}
+DIAGNOSTIC_CONTRACTS = {
+    "none",
+    "unknown",
+    "collect",
+    "service_names_and_classes",
+    "nobody_is_connected",
+    "api_servers_call_uvicorn_run",
+    "services_answer_where_the_health_table_says",
+    "the_other_services_listen_on_the_ports_they_are_given",
+    "uvicorn_can_serve_on_the_hosts_loop",
+    "pool_sizes_come_from_the_environment",
+    "the_scheduler_holds_the_connections_the_limit_counts",
+    "lock_keys_are_the_ones_cleared",
+    "runs_are_cancelled_and_settled_under_the_runtimes_names",
+    "a_chat_can_be_closed_from_outside_its_turn",
+    "turns_are_locked_while_they_run_and_only_busy_chats_are_closed",
+}
+
+
+def diagnostic_exception(exc: BaseException) -> str:
+    for kind, code in (
+        ((subprocess.TimeoutExpired, TimeoutError), "timeout"),
+        (ModuleNotFoundError, "module_not_found"),
+        (ImportError, "import_error"),
+        (AttributeError, "attribute_error"),
+        (TypeError, "type_error"),
+        (ValueError, "value_error"),
+        (OSError, "os_error"),
+        (KeyboardInterrupt, "keyboard_interrupt"),
+        (SystemExit, "system_exit"),
+    ):
+        if isinstance(exc, kind):
+            return code
+    return "other"
+
+
+def emit_diagnostic(
+    stage: str,
+    status: str,
+    *,
+    reason: str = "none",
+    exception: str = "none",
+    contract: str = "none",
+    child_exit: int | None = None,
+    failures: int = 0,
+    start: int = 0,
+) -> None:
+    global _diagnostic_io_failures
+
+    def allowed(value: str, choices: set[str], fallback: str) -> str:
+        return value if type(value) is str and value in choices else fallback
+
+    line = DIAGNOSTIC_PREFIX + json.dumps(
+        {
+            "version": 1,
+            "stage": allowed(stage, DIAGNOSTIC_STAGES, "smoke_driver"),
+            "status": allowed(status, DIAGNOSTIC_STATUSES, "error"),
+            "reason": allowed(reason, DIAGNOSTIC_REASONS, "exception"),
+            "exception": allowed(exception, DIAGNOSTIC_EXCEPTIONS, "other"),
+            "contract": allowed(contract, DIAGNOSTIC_CONTRACTS, "unknown"),
+            "child_exit": (
+                child_exit
+                if type(child_exit) is int and -2147483648 <= child_exit <= 4294967295
+                else None
+            ),
+            "failures": (min(65535, max(0, failures)) if type(failures) is int else 0),
+            "start": start if type(start) is int and 0 <= start <= 4 else 0,
+        },
+        separators=(",", ":"),
+    )
+    try:
+        print(line, flush=True)
+    except (OSError, ValueError):
+        _diagnostic_io_failures += 1
+
+
+class Diagnostic:
+    def __init__(self, stage: str, start: int = 0) -> None:
+        self.stage, self.start = stage, start
+        self.failures = 0
+        self.reason = "assertion_failed"
+        self.exception = "none"
+        self.child_exit: int | None = None
+        self.output_failures_before = _diagnostic_io_failures
+
+    @property
+    def output_failed(self) -> bool:
+        return _diagnostic_io_failures != self.output_failures_before
+
+    def __enter__(self):
+        emit_diagnostic(self.stage, "started", start=self.start)
+        return self
+
+    def __exit__(self, kind, exc, traceback):
+        if exc is not None:
+            self.exception = diagnostic_exception(exc)
+            self.failures = max(1, self.failures)
+        elif self.output_failed:
+            if self.exception == "none":
+                self.exception = "os_error"
+            self.failures = max(1, self.failures)
+        error = self.exception != "none"
+        reason = (
+            ("timeout" if self.exception == "timeout" else "exception")
+            if error
+            else self.reason if self.failures else "none"
+        )
+        emit_diagnostic(
+            self.stage,
+            "error" if error else "failed" if self.failures else "passed",
+            reason=reason,
+            exception=self.exception,
+            child_exit=self.child_exit,
+            failures=self.failures,
+            start=self.start,
+        )
+        return False
+
+
+def diagnosed_result(stage: str):
+    def decorate(function):
+        @wraps(function)
+        def diagnosed(*args, **kwargs):
+            with Diagnostic(stage) as diagnostic:
+                result = function(*args, **kwargs)
+                diagnostic.failures = int(result != 0)
+                if result == 2:
+                    diagnostic.reason = "unsupported"
+            return result or int(diagnostic.output_failed)
+
+        return diagnosed
+
+    return decorate
+
+
+def forward_contract_diagnostics(output: str | bytes | None) -> None:
+    if isinstance(output, bytes):
+        output = output[:262144].decode("utf-8", errors="replace")
+    if not isinstance(output, str):
+        return
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate key")
+            result[key] = value
+        return result
+
+    emitted = 0
+    for line in output[:262144].splitlines()[:1024]:
+        if not line.startswith(DIAGNOSTIC_PREFIX) or len(line) > 16384:
+            continue
+        try:
+            event = json.loads(line[len(DIAGNOSTIC_PREFIX) :], object_pairs_hook=unique)
+        except (ValueError, RecursionError):
+            continue
+        if not isinstance(event, dict) or set(event) != {
+            "version",
+            "stage",
+            "status",
+            "reason",
+            "exception",
+            "contract",
+            "child_exit",
+            "failures",
+            "start",
+        }:
+            continue
+        enums = {
+            "stage": {"contract_collect", "contract_check"},
+            "status": DIAGNOSTIC_STATUSES,
+            "reason": DIAGNOSTIC_REASONS,
+            "exception": DIAGNOSTIC_EXCEPTIONS,
+            "contract": DIAGNOSTIC_CONTRACTS,
+        }
+        if any(
+            type(event[key]) is not str or event[key] not in choices
+            for key, choices in enums.items()
+        ):
+            continue
+        if (
+            type(event["version"]) is not int
+            or event["version"] != 1
+            or type(event["start"]) is not int
+            or event["start"] != 0
+            or type(event["failures"]) is not int
+            or not 0 <= event["failures"] <= 65535
+            or (
+                event["child_exit"] is not None
+                and (
+                    type(event["child_exit"]) is not int
+                    or not -2147483648 <= event["child_exit"] <= 4294967295
+                )
+            )
+        ):
+            continue
+        event.pop("version")
+        emit_diagnostic(**event)
+        emitted += 1
+        if emitted >= 64:
+            break
+
 
 class Install:
     """What one start leaves for the next ones to check against."""
@@ -257,6 +501,7 @@ class Install:
         # The runtime's last `timing` event of the start that is running.
         self.timing: dict | None = None
         self.starts: list[Start] = []
+        self.start_number = 0
 
 
 class Start:
@@ -276,6 +521,7 @@ class Start:
 Checks = Callable[[str, Path, Install], list[str]]
 
 
+@diagnosed_result("smoke_driver")
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("runtime", type=Path)
@@ -377,42 +623,53 @@ def smoke(
     args: argparse.Namespace,
     give_back: Callable[[], None] | None = None,
 ) -> int:
-    if args.profile:
-        choose_profile(data, args.profile)
-    configure_smoke(data)
-    stale = left_by_earlier_runs(runtime)
-    bundle_before = snapshot(runtime)
-    starts: list[Checks] = [fresh_install]
-    if not args.quick:
-        starts += [
-            restart,
-            restart_with_a_password_reset,
-            restart_after_runs_were_stopped,
-        ]
+    with Diagnostic("smoke_result") as outcome:
+        with Diagnostic("smoke_setup"):
+            if args.profile:
+                choose_profile(data, args.profile)
+            configure_smoke(data)
+            stale = left_by_earlier_runs(runtime)
+            bundle_before = snapshot(runtime)
+            starts: list[Checks] = [fresh_install]
+            if not args.quick:
+                starts += [
+                    restart,
+                    restart_with_a_password_reset,
+                    restart_after_runs_were_stopped,
+                ]
 
-    started = time.monotonic()
-    failures = backend_contract(runtime)
-    install = Install(args.quick)
-    install.give_back = give_back
-    for number, checks in enumerate(starts, start=1):
+        started = time.monotonic()
+        failures = backend_contract(runtime)
+        install = Install(args.quick)
+        install.give_back = give_back
+        for number, checks in enumerate(starts, start=1):
+            if failures:
+                break
+            print(
+                f"\n== start {number} of {len(starts)}: {checks.__name__.replace('_', ' ')}"
+            )
+            install.start_number = number
+            failures += run(runtime, data, args.timeout, checks, install)
+        with Diagnostic("smoke_verification") as diagnostic:
+            prior = len(failures)
+            failures += changed_files(bundle_before, snapshot(runtime))
+            failures += stale
+            print_starts(install.starts)
+            failures += slow_restarts(install.starts, args.restart_budget)
+            if args.read_only:
+                failures += refused_writes(data)
+            diagnostic.failures = len(failures) - prior
+
+        if not failures and outcome.output_failed:
+            failures.append(DIAGNOSTIC_IO_FAILURE)
+        outcome.failures = len(failures)
         if failures:
-            break
-        print(
-            f"\n== start {number} of {len(starts)}: {checks.__name__.replace('_', ' ')}"
-        )
-        failures += run(runtime, data, args.timeout, checks, install)
-    failures += changed_files(bundle_before, snapshot(runtime))
-    failures += stale
-    print_starts(install.starts)
-    failures += slow_restarts(install.starts, args.restart_budget)
-    if args.read_only:
-        failures += refused_writes(data)
-
-    if failures:
-        print("\nFAILED")
-        for failure in failures:
-            print(f"  - {failure}")
-        print_logs(data)
+            print("\nFAILED")
+            for failure in failures:
+                print(f"  - {failure}")
+            print_logs(data)
+            return 1
+    if outcome.output_failed:
         return 1
     print(f"\nOK in {time.monotonic() - started:.0f}s")
     return 0
@@ -423,48 +680,65 @@ def run(
 ) -> list[str]:
     """One start and stop of the runtime, with `checks` made while it is up."""
     started = time.monotonic()
-    process = subprocess.Popen(
-        shell_command(runtime),
-        cwd=runtime,
-        env={
-            **os.environ,
-            **NO_WAY_OUT,
-            **NO_SIGN_IN,
-            "AUTOGPT_DESKTOP_DATA_DIR": str(data),
-        },
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-    )
+    output_failures_before = _diagnostic_io_failures
     failures: list[str] = []
-    install.runtime = psutil.Process(process.pid)
-    family = Family(install.runtime, data, runtime)
+    with Diagnostic("runtime_launch", install.start_number):
+        process = subprocess.Popen(
+            shell_command(runtime),
+            cwd=runtime,
+            env={
+                **os.environ,
+                **NO_WAY_OUT,
+                **NO_SIGN_IN,
+                "AUTOGPT_DESKTOP_DATA_DIR": str(data),
+            },
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        )
+        install.runtime = psutil.Process(process.pid)
+        family = Family(install.runtime, data, runtime)
     try:
-        install.timing = None
-        install.stopping, install.frozen, install.turn_taken = None, set(), False
-        install.said = Said(process, started, install)
-        url = install.said.wait_for_ready(timeout)
-        install.ready_at, install.ready_wall = time.monotonic(), time.time()
-        to_ready = install.ready_at - started if url else None
-        install.starts.append(Start(checks.__name__, to_ready, install.timing))
-        failures += [] if url else ["the runtime never reported ready"]
+        with Diagnostic("runtime_ready", install.start_number) as diagnostic:
+            install.timing = None
+            install.stopping, install.frozen, install.turn_taken = None, set(), False
+            install.said = Said(process, started, install)
+            url = install.said.wait_for_ready(timeout)
+            install.ready_at, install.ready_wall = time.monotonic(), time.time()
+            to_ready = install.ready_at - started if url else None
+            install.starts.append(Start(checks.__name__, to_ready, install.timing))
+            failures += [] if url else ["the runtime never reported ready"]
+            diagnostic.failures = int(not url)
+            diagnostic.reason = "not_ready"
+            diagnostic.child_exit = process.poll()
         install.quit_mid_run = False
         if url:
             failures += checked(checks, url, data, install)
-        failures += (
-            stop_the_runs(process, runtime, data, install)
-            if install.stopping
-            else stop(process)
-        )
-        if url:
-            failures += stopped_gracefully(data, install)
+        with Diagnostic("runtime_stop", install.start_number) as diagnostic:
+            prior = len(failures)
+            failures += (
+                stop_the_runs(process, runtime, data, install)
+                if install.stopping
+                else stop(process)
+            )
+            if url:
+                failures += stopped_gracefully(data, install)
+            diagnostic.failures = len(failures) - prior
+            diagnostic.child_exit = process.poll()
     finally:
-        if process.poll() is None:  # the smoke test itself is being ended
-            process.kill()
-            if install.give_back:  # first: what follows is slow, and may be cut short
-                install.give_back()
-        failures += left_running(family)
+        with Diagnostic("runtime_cleanup", install.start_number) as diagnostic:
+            if process.poll() is None:  # the smoke test itself is being ended
+                process.kill()
+                if (
+                    install.give_back
+                ):  # first: what follows is slow, and may be cut short
+                    install.give_back()
+            leftovers = left_running(family)
+            failures += leftovers
+            diagnostic.failures = len(leftovers)
+    if not failures and _diagnostic_io_failures != output_failures_before:
+        failures.append(DIAGNOSTIC_IO_FAILURE)
     return failures
 
 
@@ -791,10 +1065,14 @@ def phases_of(start: Start) -> str:
 
 def checked(checks: Checks, url: str, data: Path, install: Install) -> list[str]:
     """A check that blows up is a failure, and the runtime is still stopped."""
-    try:
-        return checks(url, data, install)
-    except Exception as exc:
-        return [f"{checks.__name__} raised {type(exc).__name__}: {exc}"]
+    with Diagnostic("runtime_checks", install.start_number) as diagnostic:
+        try:
+            failures = checks(url, data, install)
+        except Exception as exc:
+            diagnostic.exception = diagnostic_exception(exc)
+            failures = [f"{checks.__name__} raised {type(exc).__name__}: {exc}"]
+        diagnostic.failures = len(failures)
+        return failures
 
 
 def stop(process: subprocess.Popen[str]) -> list[str]:
@@ -1243,25 +1521,45 @@ def backend_contract(runtime: Path) -> list[str]:
     """The bundle's backend still has the shape the service host depends on.
     Checked in an interpreter of its own, as a service would import it."""
     print("== the backend against the service host's contract")
-    with tempfile.TemporaryDirectory(prefix="autogpt-smoke-contract-") as home:
-        result = subprocess.run(
-            [shell_command(runtime)[0], "-B", str(CONTRACT_SCRIPT), str(runtime)],
-            env=contract_environment(Path(home)),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdin=subprocess.DEVNULL,
-            timeout=180,
-            check=False,
-        )
-    lines = result.stdout.splitlines()  # among the backend's own logging
-    broken = [line for line in lines if line.startswith("BROKEN:")]
-    print("  " + "\n  ".join([*broken, *lines[-1:]]))
-    if result.returncode == 0:
-        return []
-    report = "\n".join(broken) or (result.stdout + result.stderr).strip()[-2000:]
-    return [f"the backend broke the service host's contract:\n{report}"]
+    with Diagnostic("backend_contract") as diagnostic:
+        try:
+            with tempfile.TemporaryDirectory(prefix="autogpt-smoke-contract-") as home:
+                result = subprocess.run(
+                    [
+                        shell_command(runtime)[0],
+                        "-B",
+                        str(CONTRACT_SCRIPT),
+                        str(runtime),
+                    ],
+                    env=contract_environment(Path(home)),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    stdin=subprocess.DEVNULL,
+                    timeout=180,
+                    check=False,
+                )
+        except subprocess.TimeoutExpired as exc:
+            forward_contract_diagnostics(exc.stdout)
+            raise
+        forward_contract_diagnostics(result.stdout)
+        diagnostic.child_exit = result.returncode
+        diagnostic.failures = int(result.returncode != 0)
+        diagnostic.reason = "child_exit"
+        lines = result.stdout.splitlines()  # among the backend's own logging
+        broken = [line for line in lines if line.startswith("BROKEN:")]
+        print("  " + "\n  ".join([*broken, *lines[-1:]]))
+        if result.returncode == 0:
+            failures = []
+        else:
+            report = (
+                "\n".join(broken) or (result.stdout + result.stderr).strip()[-2000:]
+            )
+            failures = [f"the backend broke the service host's contract:\n{report}"]
+    if not failures and diagnostic.output_failed:
+        failures.append(DIAGNOSTIC_IO_FAILURE)
+    return failures
 
 
 def stopped_gracefully(data: Path, install: Install) -> list[str]:
