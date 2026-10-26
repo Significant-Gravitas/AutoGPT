@@ -50,7 +50,11 @@ from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.model import create_chat_session
-from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
+from backend.copilot.tools.skills import (
+    _NAME_RE,
+    read_user_skill_with_body,
+    store_user_skill,
+)
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
@@ -1545,20 +1549,10 @@ async def test_raise_expert_rejects_other_users_library_workflow(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_attaches_library_skill(server: SpinTestServer):
     owner = await _create_seed_user()
-    skill = SimpleNamespace(name="oauth_flow")
-    with (
-        patch.object(
-            experts_db.raise_attachments,
-            "get_default_skill_with_body",
-            return_value=None,
-        ),
-        patch.object(
-            experts_db.raise_attachments,
-            "read_user_skill_with_body",
-            new_callable=AsyncMock,
-            return_value=skill,
-        ),
-    ):
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        await store_user_skill(
+            owner.id, name="oauth_flow", description="OAuth flow", body="Private steps"
+        )
         raised = await experts_db.create_raised_expert(
             owner.id,
             name="Nova",
@@ -1566,6 +1560,10 @@ async def test_raise_expert_attaches_library_skill(server: SpinTestServer):
             voice_preferences=None,
             attachments=_library_skill("oauth_flow"),
         )
+        copied = await read_user_skill_with_body(
+            owner.id, "oauth_flow", expert_id=raised.expert.id
+        )
+        assert copied is not None and copied.body.strip() == "Private steps"
     assert raised.expert.skills == ["oauth_flow"]
     assert raised.failed_attachments == []
 
@@ -1669,6 +1667,7 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
     """The picker can attach one slug from both halves; the two differ only by
     source, so the failed Hub install must not take the library copy with it."""
     owner = await _create_seed_user()
+    copy_skill = AsyncMock(return_value="copied")
     monkeypatch.setattr(
         raise_attachments.skill_db,
         "install_marketplace_skill",
@@ -1684,8 +1683,20 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
             experts_db.raise_attachments,
             "read_user_skill_with_body",
             new_callable=AsyncMock,
-            return_value=SimpleNamespace(name="My Own Playbook"),
+            return_value=SimpleNamespace(name=hub_listing.slug),
         ),
+        patch.object(
+            experts_db,
+            "get_default_skill_with_body",
+            return_value=None,
+        ),
+        patch.object(
+            experts_db,
+            "find_user_skill_slugs",
+            new_callable=AsyncMock,
+            return_value={hub_listing.slug: hub_listing.slug},
+        ),
+        patch.object(experts_db, "copy_skill_to_expert", copy_skill),
     ):
         raised = await experts_db.create_raised_expert(
             owner.id,
@@ -1696,10 +1707,11 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
             + _library_skill(hub_listing.slug),
         )
 
-    assert raised.expert.skills == ["My Own Playbook"]
+    assert raised.expert.skills == [hub_listing.slug]
     assert [(f.source, f.reason) for f in raised.failed_attachments] == [
         ("marketplace", "installation_failed")
     ]
+    copy_skill.assert_awaited_once_with(owner.id, raised.expert.id, hub_listing.slug)
 
 
 @pytest.mark.asyncio(loop_scope="session")
