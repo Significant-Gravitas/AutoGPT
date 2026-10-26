@@ -8,7 +8,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -307,6 +307,18 @@ def execute_graph(
 
 
 T = TypeVar("T")
+
+
+async def _finish_despite_cancel(work: Awaitable[T]) -> T:
+    """Await ``work`` to its end even if the caller is cancelled meanwhile,
+    then re-raise the cancel. A failure of ``work`` itself wins over the
+    cancel, since it is the more useful error to surface."""
+    task = asyncio.ensure_future(work)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await task
+        raise
 
 
 async def execute_node(
@@ -916,8 +928,9 @@ class ExecutionProcessor:
 
         # A stop cancels this task, even after the block has finished. The
         # block's charge, its final status and the run's totals must still be
-        # written, so they run shielded: a cancel arriving now waits for them
-        # and then ends the task.
+        # written, so a cancel arriving now waits for them and then ends the
+        # task. The run's cleanup waits for them too (see wait_for_done):
+        # its terminal sweep would otherwise fail the node first.
         settle = asyncio.ensure_future(
             self._settle_node(
                 node=node,
@@ -929,11 +942,8 @@ class ExecutionProcessor:
                 log_metadata=log_metadata,
             )
         )
-        try:
-            return await asyncio.shield(settle)
-        except asyncio.CancelledError:
-            await settle
-            raise
+        node_exec_progress.track_settling(node_exec.node_exec_id, settle)
+        return await _finish_despite_cancel(settle)
 
     async def _settle_node(
         self,
@@ -1129,9 +1139,15 @@ class ExecutionProcessor:
 
         finally:
             if status == ExecutionStatus.FAILED and stats.error is not None:
-                await persist_output(
-                    "error", str(stats.error) or type(stats.error).__name__
-                )
+                try:
+                    await _finish_despite_cancel(
+                        persist_output(
+                            "error", str(stats.error) or type(stats.error).__name__
+                        )
+                    )
+                except asyncio.CancelledError:
+                    # The block has already failed: settle it, don't end here.
+                    pass
             tracing.set_data("executor.node.output_count", outputs)
         return status
 

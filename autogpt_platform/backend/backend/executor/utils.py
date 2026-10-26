@@ -1955,9 +1955,21 @@ class NodeExecutionProgress:
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self._lock = threading.Lock()
+        # Node runs still writing up a finished block. A stop marks their
+        # task done at once, so wait_for_done watches these as well.
+        self._settling: set[str] = set()
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
+
+    def track_settling(self, node_exec_id: str, settle: asyncio.Future) -> None:
+        with self._lock:
+            self._settling.add(node_exec_id)
+        settle.add_done_callback(lambda _: self._settled(node_exec_id))
+
+    def _settled(self, node_exec_id: str) -> None:
+        with self._lock:
+            self._settling.discard(node_exec_id)
 
     def add_output(self, output: ExecutionOutputEntry):
         with self._lock:
@@ -2026,13 +2038,14 @@ class NodeExecutionProgress:
             while self.pop_output():
                 pass
 
-            if self.is_done():
+            if self.is_done() and not self._settling:
                 return
 
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
         raise TimeoutError(
-            f"Timeout waiting for cancellation of tasks: {list(self.tasks.keys())}"
+            "Timeout waiting for cancellation of tasks: "
+            f"{list(self.tasks.keys()) + sorted(self._settling)}"
         )
 
     def _pop_done_task(self, exec_id: str) -> bool:
