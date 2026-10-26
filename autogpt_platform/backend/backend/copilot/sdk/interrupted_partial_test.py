@@ -286,9 +286,15 @@ class TestClassifyFinalFailure:
     @pytest.mark.parametrize(
         "attempts_exhausted, transient_exhausted, code, retryable",
         [
-            pytest.param(True, False, "all_attempts_exhausted", False, id="attempts"),
-            pytest.param(False, True, "transient_api_error", True, id="transient"),
-            pytest.param(False, False, "sdk_stream_error", False, id="stream_err"),
+            pytest.param(
+                True, False, "all_attempts_exhausted", False, id="attempts_exhausted"
+            ),
+            pytest.param(
+                False, True, "transient_api_error", True, id="transient_exhausted"
+            ),
+            pytest.param(
+                False, False, "sdk_stream_error", False, id="stream_err_fallback"
+            ),
         ],
     )
     def test_exhaustion_and_stream_error_codes(

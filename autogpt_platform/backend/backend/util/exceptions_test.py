@@ -198,8 +198,12 @@ class TestBlockExecutionErrorNoneHandling:
 
     @pytest.mark.parametrize(
         "message, expected",
-        # Only None is replaced; an empty string is kept as it is.
-        [(None, "Output error was None"), ("Actual error", "Actual error"), ("", "")],
+        [
+            pytest.param(None, "Output error was None", id="none_message"),
+            pytest.param("Actual error", "Actual error", id="valid_message"),
+            # Only None is replaced; an empty string is kept as it is.
+            pytest.param("", "", id="empty_string"),
+        ],
     )
     def test_execution_error_message(self, message, expected):
         error = BlockExecutionError(

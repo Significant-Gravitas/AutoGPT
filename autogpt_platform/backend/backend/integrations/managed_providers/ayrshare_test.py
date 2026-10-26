@@ -60,7 +60,11 @@ class TestSettingsAvailable:
 
     @pytest.mark.parametrize(
         "api_key, jwt_key, available",
-        [("api-key", "jwt-key", True), ("", "jwt-key", False), ("api-key", "", False)],
+        [
+            pytest.param("api-key", "jwt-key", True, id="both_secrets_set"),
+            pytest.param("", "jwt-key", False, id="api_key_missing"),
+            pytest.param("api-key", "", False, id="jwt_key_missing"),
+        ],
     )
     def test_needs_both_secrets(self, api_key, jwt_key, available):
         with patch(
