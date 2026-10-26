@@ -38,8 +38,8 @@ export function useAPIKeyCredentialsModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formSchema = z.object({
-    apiKey: z.string().min(1, "API Key is required"),
-    title: z.string().min(1, "Name is required"),
+    apiKey: z.string().trim().min(1, "API Key is required"),
+    title: z.string().trim().min(1, "Name is required"),
     expiresAt: z.string().optional(),
   });
 
@@ -60,8 +60,8 @@ export function useAPIKeyCredentialsModal({
         ? new Date(values.expiresAt).getTime() / 1000
         : undefined;
       const newCredentials = await credentials.createAPIKeyCredentials({
-        api_key: values.apiKey,
-        title: values.title,
+        api_key: values.apiKey.trim(),
+        title: values.title.trim(),
         expires_at: expiresAt,
       });
       onCredentialsCreate({
