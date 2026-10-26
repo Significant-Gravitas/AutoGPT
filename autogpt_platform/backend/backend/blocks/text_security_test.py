@@ -153,6 +153,30 @@ async def test_extract_text_information_returns_no_matches_when_the_regex_times_
 
 
 @pytest.mark.asyncio
+async def test_extract_text_information_stops_at_the_first_match_unless_find_all(
+    mocker,
+):
+    block = ExtractTextInformationBlock()
+    pulled: list[str] = []
+
+    def matches():
+        for found in ("12", "34"):
+            pulled.append(found)
+            match = MagicMock()
+            match.groups.return_value = ()
+            match.group.return_value = found
+            yield match
+
+    mocker.patch("backend.blocks.text.regex.finditer", return_value=matches())
+    input_data = block.Input(text="12 34", pattern=r"\d\d", find_all=False)
+
+    outputs = await _collect_outputs(block, input_data)
+
+    assert outputs[0] == ("positive", "12")
+    assert pulled == ["12"]
+
+
+@pytest.mark.asyncio
 async def test_extract_text_information_skips_an_oversized_pattern(mocker):
     block = ExtractTextInformationBlock()
     finditer = mocker.patch("backend.blocks.text.regex.finditer")

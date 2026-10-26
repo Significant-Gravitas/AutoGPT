@@ -217,6 +217,8 @@ class ExtractTextInformationBlock(Block):
                         match_text = match_text[:MAX_MATCH_LENGTH]
                     matches.append(match_text)
                     match_count += 1
+                    if not input_data.find_all:
+                        break
 
             if not input_data.find_all:
                 matches = matches[:1]
