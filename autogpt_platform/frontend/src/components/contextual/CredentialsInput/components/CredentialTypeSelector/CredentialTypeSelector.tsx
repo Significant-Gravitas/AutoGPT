@@ -6,6 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { toDateTimeLocalValue } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import {
   TabsLine,
   TabsLineContent,
@@ -267,6 +268,7 @@ function APIKeyTabContent({
                 placeholder="Select expiration date..."
                 value={field.value}
                 error={fieldState.error?.message}
+                min={toDateTimeLocalValue(new Date())}
                 onChange={(e) => field.onChange(e.target.value)}
                 onBlur={field.onBlur}
                 name={field.name}

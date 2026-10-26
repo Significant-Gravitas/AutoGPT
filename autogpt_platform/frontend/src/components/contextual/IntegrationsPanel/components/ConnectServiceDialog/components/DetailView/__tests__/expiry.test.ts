@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { postV1CreateCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 
-import { apiKeyConnectSchema, dateInputToEndOfLocalDayUnix } from "../schema";
+import {
+  apiKeyConnectSchema,
+  dateInputToEndOfLocalDayUnix,
+  expiryInputToUnix,
+  toDateTimeLocalValue,
+} from "../schema";
 import { useApiKeyConnectForm } from "../useApiKeyConnectForm";
 
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
@@ -54,6 +59,38 @@ describe("dateInputToEndOfLocalDayUnix", () => {
       expect(dateInputToEndOfLocalDayUnix(value)).toBeUndefined();
     },
   );
+});
+
+describe("expiryInputToUnix", () => {
+  it("keeps the picked local time of a date-time", () => {
+    inZone("America/Chicago");
+    // 2026-10-26T20:15:00-05:00
+    expect(expiryInputToUnix("2026-10-26T20:15")).toBe(1793063700);
+    inZone("Asia/Tokyo");
+    // 2026-10-26T20:15:00+09:00
+    expect(expiryInputToUnix("2026-10-26T20:15")).toBe(1793013300);
+  });
+
+  it("uses the end of the local day for a date", () => {
+    inZone("America/Chicago");
+    expect(expiryInputToUnix("2026-12-31")).toBe(1798783199);
+  });
+
+  it.each(["", "2026-02-31T10:00", "2026-10-26T24:00", "2026-10-26 10:00"])(
+    "returns undefined for %j",
+    (value) => {
+      expect(expiryInputToUnix(value)).toBeUndefined();
+    },
+  );
+});
+
+describe("toDateTimeLocalValue", () => {
+  it("formats local wall-clock time", () => {
+    inZone("America/Chicago");
+    expect(toDateTimeLocalValue(new Date("2026-01-05T15:07:00Z"))).toBe(
+      "2026-01-05T09:07",
+    );
+  });
 });
 
 describe("apiKeyConnectSchema expiry", () => {

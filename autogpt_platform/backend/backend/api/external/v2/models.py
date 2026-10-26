@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Collection, Literal, Optional, Self, TypeAlias
 
-from pydantic import BaseModel, Field, JsonValue, field_validator
+from pydantic import AwareDatetime, BaseModel, Field, JsonValue, field_validator
 
 import backend.blocks._base as block_types
 from backend.data.model import CredentialsMetaInput
@@ -1286,6 +1286,13 @@ class APIKeyCredentialCreateRequest(_CredentialCreateBase):
 
     type: Literal["api_key"]
     api_key: str
+    expires_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the API key expires, as an ISO 8601 timestamp with a time zone. "
+            "Must be in the future."
+        ),
+    )
 
 
 class UserPasswordCredentialCreateRequest(_CredentialCreateBase):
