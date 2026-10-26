@@ -24,12 +24,10 @@ MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
 MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a formatted field
 
-# One %-style conversion: an optional "(key)", flags, a width and a precision
-# that are digits or "*", a length modifier and the conversion type, e.g.
-# "%(n)-12.4f" -> ("n", "12", "4", "f"); "%*d" -> ("", "*", "", "d")
-_PERCENT_CONVERSION = re.compile(
-    r"%(?:\(([^)]*)\))?[-+ #0]*(\*|\d*)(?:\.(\*|\d*))?[hlL]?([\s\S])"
-)
+# The rest of one %-style conversion after its optional "(key)": flags, a
+# width and a precision that are digits or "*", a length modifier and the
+# conversion type, e.g. "-12.4f" -> ("12", "4", "f"); "*d" -> ("*", "", "d")
+_PERCENT_CONVERSION = re.compile(r"[-+ #0]*(\*|\d*)(?:\.(\*|\d*))?[hlL]?([\s\S])")
 # The size fields of one str.format() spec, with any fill character, e.g.
 # "<12.4f" -> ("12", "4"). A type's own spec language (a datetime's "%Y")
 # doesn't match and isn't checked.
@@ -54,8 +52,8 @@ def _check_percent_format(format_string: str, args: Any = ()) -> None:
     """
     values = args if isinstance(args, tuple) else (args,)
     position = 0
-    for key, width, precision, conversion in _PERCENT_CONVERSION.findall(format_string):
-        if conversion == "%" and not key:
+    for key, width, precision, conversion in _percent_conversions(format_string):
+        if conversion == "%" and key is None:
             continue
         sizes: list[str | int | None] = []
         for size in (width, precision):
@@ -65,6 +63,34 @@ def _check_percent_format(format_string: str, args: Any = ()) -> None:
             sizes.append(size if isinstance(size, (str, int)) else 0)
         position += 1
         _check_field_size(*sizes)
+
+
+def _percent_conversions(
+    format_string: str,
+) -> list[tuple[str | None, str, str, str]]:
+    """Each %-style conversion as (key, width, precision, type).
+
+    A "(key)" may hold balanced parentheses, as the % operator allows, so
+    it's scanned by depth rather than matched up to the first ")".
+    """
+    conversions = []
+    position = format_string.find("%")
+    while position != -1:
+        position += 1
+        key = None
+        if format_string.startswith("(", position):
+            depth, start = 1, position + 1
+            position = start
+            while position < len(format_string) and depth:
+                depth += {"(": 1, ")": -1}.get(format_string[position], 0)
+                position += 1
+            key = format_string[start : position - 1]
+        rest = _PERCENT_CONVERSION.match(format_string, position)
+        if rest is None:
+            break
+        conversions.append((key, *rest.groups()))
+        position = format_string.find("%", rest.end())
+    return conversions
 
 
 def _check_format_spec(format_spec: str) -> None:
