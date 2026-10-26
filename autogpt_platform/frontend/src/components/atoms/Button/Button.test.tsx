@@ -20,48 +20,6 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Button in session replay", () => {
-  it.each([
-    ["primary", {}],
-    ["secondary", { variant: "secondary" }],
-    ["ghost", { variant: "ghost" }],
-    ["link", { variant: "link" }],
-    ["loading", { loading: true }],
-  ] as const)("is masked by default (%s)", (_, props) => {
-    renderButton({ ...props, children: "Account name" });
-    const el = screen.getByRole("button");
-    expect(el.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-  });
-
-  it("is masked by default as a NextLink", () => {
-    renderButton({ as: "NextLink", href: "/save", children: "Go" });
-    const el = screen.getByRole("link", { name: "Go" });
-    expect(el.className).not.toContain("sentry-unmask");
-  });
-
-  it("opts into unmasking only when asked", () => {
-    renderButton({ unmask: true, className: "my-class", children: "Save" });
-    const el = screen.getByRole("button", { name: "Save" });
-    expect(el.className).toContain("sentry-unmask");
-    expect(el.className).toContain("my-class");
-  });
-
-  it("opts into unmasking in the loading state and as a NextLink", () => {
-    renderButton({ loading: true, unmask: true, children: "Saving" });
-    expect(screen.getByRole("button").className).toContain("sentry-unmask");
-    cleanup();
-    renderButton({
-      as: "NextLink",
-      href: "/save",
-      unmask: true,
-      children: "Go",
-    });
-    expect(screen.getByRole("link", { name: "Go" }).className).toContain(
-      "sentry-unmask",
-    );
-  });
-});
-
 describe("Button compact sizes", () => {
   it("renders xs as a 28px rounded-rectangle chip", () => {
     renderButton({ variant: "secondary", size: "xs", children: "Chat" });
@@ -114,6 +72,72 @@ describe("Button compact sizes", () => {
       pressed: true,
     });
     expect(el.className).toContain("aria-pressed:bg-surface-hover");
+  });
+});
+
+describe("Button legacy variants", () => {
+  it("renders a plain button with the children as they are", () => {
+    render(
+      <Button variant="legacy-outline" className="space-x-3">
+        <span>One</span>
+        <span>Two</span>
+      </Button>,
+    );
+    const el = screen.getByRole("button", { name: "One Two" });
+    expect(el.children).toHaveLength(2);
+    expect(el.querySelector(".contents")).toBeNull();
+    expect(el.className).toContain("border-neutral-200");
+    expect(el.className).toContain("h-9 px-4 py-2");
+    expect(el.className).toContain("space-x-3");
+  });
+
+  it("applies the size, and lets the caller's classes win", () => {
+    render(
+      <Button variant="legacy-default" size="legacy-sm" className="text-xs">
+        Save
+      </Button>,
+    );
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("h-8");
+    expect(el.className).toContain("text-xs");
+    expect(el.className).not.toContain("text-caption");
+    expect(el.className).not.toContain("leading-4");
+  });
+
+  it("forwards the ref and the caller's props", () => {
+    let node: HTMLButtonElement | null = null;
+    render(
+      <Button
+        variant="legacy-ghost"
+        ref={(el) => {
+          node = el;
+        }}
+        disabled
+        data-testid="ghost"
+      >
+        Ghost
+      </Button>,
+    );
+    const el = screen.getByTestId("ghost");
+    expect(node).toBe(el);
+    expect(el).toHaveProperty("disabled", true);
+  });
+
+  it("adds no slot of its own, like the old component, and keeps the caller's", () => {
+    render(
+      <>
+        <Button variant="legacy-outline">Plain</Button>
+        <Button variant="legacy-ghost" data-slot="date-input-trigger">
+          Pick
+        </Button>
+      </>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Plain" }).hasAttribute("data-slot"),
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
+    ).toBe("date-input-trigger");
   });
 });
 

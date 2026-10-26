@@ -1,0 +1,220 @@
+"""
+V2 External API - Idempotent run creation
+
+Starting a run costs the caller money, and a timed-out request says nothing
+about whether it started. Without a key the only safe retry is no retry.
+
+The caller sends `Idempotency-Key: <a value they choose>`. The first request to
+claim it runs; a later request with the same key gets back the run the first one
+created. A request that arrives while the first is still in flight is a 409 —
+there is no run to hand back yet. A key is bound to the request it first came
+with: reusing it for another agent or other inputs is a 422, never a replay of
+a run the caller didn't ask for.
+"""
+
+import hashlib
+import json
+import logging
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Optional
+
+from fastapi import Header, HTTPException
+from starlette import status
+
+from backend.data import execution as execution_db
+from backend.data.redis_client import get_redis_async
+
+from .models import AgentGraphRun
+from .tenancy import TenantContext, in_tenant
+
+logger = logging.getLogger(__name__)
+
+IDEMPOTENCY_HEADER = "Idempotency-Key"
+
+# Long enough to cover any sane retry window, short enough that a key is not a
+# permanent reservation on a name the caller picked.
+_TTL_SECONDS = 24 * 60 * 60
+
+
+def idempotency_key(
+    key: Optional[str] = Header(
+        default=None,
+        alias=IDEMPOTENCY_HEADER,
+        max_length=255,
+        description=(
+            "Retry-safety token. Repeating a request with the same value returns "
+            "the run the first one started instead of starting another. Scoped to "
+            "the caller and its organization, and bound to the request it first "
+            "came with: reusing it for another agent or other inputs is a 422. "
+            "Expires after 24 hours."
+        ),
+    ),
+) -> Optional[str]:
+    return (key or "").strip() or None
+
+
+def request_fingerprint(**request: Any) -> str:
+    """A digest of what a request asks for, to bind its idempotency key to."""
+    canonical = json.dumps(request, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+@asynccontextmanager
+async def idempotent_run(
+    key: Optional[str], auth: TenantContext, fingerprint: str
+) -> AsyncIterator["RunClaim"]:
+    """Claim `key` for this request, or report the run it already produced.
+
+    A key the store can't claim is a retryable 503: running anyway would make
+    the retry the caller sent the key for a second run and a second charge.
+    """
+    claim = RunClaim(
+        key=key,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
+        fingerprint=fingerprint,
+    )
+    if key is None:
+        yield claim
+        return
+
+    try:
+        redis = await get_redis_async()
+        claimed = await redis.set(
+            claim.redis_key, claim.stored_value(), nx=True, ex=_TTL_SECONDS
+        )
+    except Exception as e:
+        logger.warning(f"Idempotency store unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Cannot claim the {IDEMPOTENCY_HEADER} right now; retry shortly.",
+            headers={"Retry-After": "5"},
+        )
+
+    if not claimed:
+        claim.existing_run_id = await claim.resolve_existing()
+        yield claim
+        return
+
+    claim.holds_key = True
+    try:
+        yield claim
+    except BaseException:
+        # No run came of it (a cancelled request included), so free the key for a
+        # retry. A run that started keeps it, so a retry finds it, not a second run.
+        await claim.release()
+        raise
+
+
+async def replayed_run(claim: "RunClaim", auth: TenantContext) -> AgentGraphRun:
+    """The run a previous request with this key started."""
+    return AgentGraphRun.from_internal(
+        in_tenant(
+            await execution_db.get_graph_execution(
+                user_id=auth.user_id,
+                execution_id=claim.existing_run_id or "",
+                organization_id=auth.organization_id,
+            ),
+            auth,
+            f"Run #{claim.existing_run_id}",
+        )
+    )
+
+
+class RunClaim:
+    """One request's hold on an idempotency key."""
+
+    def __init__(
+        self,
+        key: Optional[str],
+        user_id: str,
+        organization_id: str,
+        fingerprint: str,
+        team_id: Optional[str] = None,
+    ) -> None:
+        self.key = key
+        self.user_id = user_id
+        self.organization_id = organization_id
+        self.team_id = team_id
+        self.fingerprint = fingerprint
+        self.holds_key = False
+        self.run_id: Optional[str] = None
+        self.existing_run_id: Optional[str] = None
+
+    @property
+    def redis_key(self) -> str:
+        # Per organization and team, where a run lands: a shared key there must
+        # start its own run rather than replay one from elsewhere.
+        team = self.team_id or "-"
+        return f"v2:idem:{self.user_id}:{self.organization_id}:{team}:{self.key}"
+
+    def stored_value(self, run_id: Optional[str] = None) -> str:
+        """What the key holds: the request it was claimed for, and its run."""
+        return json.dumps({"request": self.fingerprint, "run": run_id})
+
+    async def resolve_existing(self) -> str:
+        """The run the first request recorded; 409 while it is still running,
+        422 if the key was first sent with a different request."""
+        try:
+            redis = await get_redis_async()
+            stored = await redis.get(self.redis_key)
+        except Exception as e:
+            logger.warning(f"Idempotency store unavailable on replay: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Cannot tell whether this request already ran; retry shortly.",
+                headers={"Retry-After": "5"},
+            )
+        claimed = _parse(stored)
+        if claimed is not None and claimed.get("request") != self.fingerprint:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{IDEMPOTENCY_HEADER} '{self.key}' was already used for a "
+                "different request. Use a new key for a new request.",
+            )
+        run_id = claimed.get("run") if claimed is not None else None
+        if not isinstance(run_id, str) or not run_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A request with {IDEMPOTENCY_HEADER} '{self.key}' is still "
+                "in flight. Retry once it completes.",
+            )
+        return run_id
+
+    async def record(self, run_id: str) -> None:
+        """Point the key at the run, so a later retry gets this one back."""
+        self.run_id = run_id
+        if not self.holds_key:
+            return
+        try:
+            redis = await get_redis_async()
+            await redis.set(self.redis_key, self.stored_value(run_id), ex=_TTL_SECONDS)
+        except Exception as e:
+            logger.warning(f"Could not record idempotent run {run_id}: {e}")
+
+    async def release(self) -> None:
+        # Once a run exists the key stays, even unrecorded: a retry then gets a
+        # 409 until the key expires, never a second run.
+        if not self.holds_key or self.run_id is not None:
+            return
+        try:
+            redis = await get_redis_async()
+            await redis.delete(self.redis_key)
+        except Exception as e:
+            logger.warning(f"Could not release idempotency key: {e}")
+
+
+def _parse(stored: Any) -> Optional[dict[str, Any]]:
+    """What a key holds, or None while its first request hasn't written it.
+
+    The client decodes responses; the redis stubs still admit bytes.
+    """
+    if stored is None:
+        return None
+    text = stored if isinstance(stored, str) else stored.decode()
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None

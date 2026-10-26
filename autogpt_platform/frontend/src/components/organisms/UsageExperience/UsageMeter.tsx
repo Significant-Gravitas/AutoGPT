@@ -36,7 +36,7 @@ export function UsageMeter({ label, percent, detail }: Props) {
         <div
           data-slot="usage-meter-fill"
           className={cn(
-            "h-full w-[--usage-meter-width] rounded-full transition-[width]",
+            "w-(--usage-meter-width) h-full rounded-full transition-[width]",
             // TODO(tokens): no role for orange-500, the full-meter fill.
             value >= 100 ? "bg-orange-500" : "bg-brand",
           )}

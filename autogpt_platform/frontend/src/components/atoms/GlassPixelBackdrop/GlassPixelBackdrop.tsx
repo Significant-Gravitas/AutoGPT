@@ -26,7 +26,7 @@ export function GlassPixelBackdrop() {
           data-slot="glass-pixel-backdrop-cell"
           // TODO(tokens): no border width is 0.5px. The opacity differs per
           // cell, so it is a custom property read by an arbitrary value.
-          className="border-[0.5px] border-surface/10 bg-surface opacity-[--cell-opacity]"
+          className="opacity-(--cell-opacity) border-[0.5px] border-surface/10 bg-surface"
           style={
             { "--cell-opacity": cellOpacity(index) } as React.CSSProperties
           }
