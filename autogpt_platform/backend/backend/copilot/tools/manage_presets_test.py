@@ -380,6 +380,7 @@ async def test_update_trigger_config_on_a_flat_preset_is_stored_nested(session):
         patch(f"{tp}.get_graph", new=AsyncMock(return_value=graph)),
         patch(f"{tp}.make_node_credentials_input_map", return_value={}),
         patch(f"{tp}.validate_and_construct_node_execution_input", new=AsyncMock()),
+        patch(f"{tp}.resolve_member_tenancy", new=AsyncMock(return_value=("o", "t"))),
         patch(
             f"{tp}.setup_webhook_for_block",
             new=AsyncMock(return_value=(MagicMock(id="wh-1"), None)),

@@ -1,4 +1,5 @@
 import json
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import cast
@@ -15,11 +16,14 @@ from backend.api.features.store.store_listing_versions import (
 )
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
+from backend.data.user import get_or_create_user
 from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
 )
+from backend.util.json import SafeJson
+from backend.util.test import SpinTestServer
 
 from . import db
 from . import model as library_model
@@ -2477,7 +2481,14 @@ async def test_migrate_webhook_presets_rekeys_input_mask(mocker):
     preset_prisma.update_many = AsyncMock(return_value=1)
     mocker.patch("prisma.models.AgentPreset.prisma", return_value=preset_prisma)
 
+    mask_row = MagicMock(
+        id="row-1",
+        agentPresetId="preset-1",
+        data={"repo": "a/b"},
+    )
+    mask_row.name = library_model.node_input_mask_key(old_trigger.id)
     io_prisma = MagicMock()
+    io_prisma.find_many = AsyncMock(return_value=[mask_row])
     io_prisma.update_many = AsyncMock(return_value=1)
     mocker.patch(
         "prisma.models.AgentNodeExecutionInputOutput.prisma",
@@ -2487,15 +2498,87 @@ async def test_migrate_webhook_presets_rekeys_input_mask(mocker):
 
     await db.migrate_webhook_presets_to_new_version("user-1", new_graph)
 
-    io_prisma.update_many.assert_awaited_once()
-    kwargs = io_prisma.update_many.await_args.kwargs
-    assert kwargs["data"] == {"name": library_model.node_input_mask_key(new_trigger.id)}
-    assert kwargs["where"]["agentPresetId"] == {"in": ["preset-1"]}
-    assert kwargs["where"]["name"] == {
-        "startswith": library_model.NODE_INPUT_MASK_PREFIX
-    }
-    assert kwargs["where"]["AgentPreset"] == {
-        "is": {"agentGraphVersion": new_graph.version}
+    where = io_prisma.find_many.await_args.kwargs["where"]
+    assert where["agentPresetId"] == {"in": ["preset-1"]}
+    assert where["AgentPreset"] == {"is": {"agentGraphVersion": new_graph.version}}
+    io_prisma.update_many.assert_awaited_once_with(
+        where={"id": {"in": ["row-1"]}},
+        data={"name": library_model.node_input_mask_key(new_trigger.id)},
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_version_move_rekeys_only_the_trigger_config_row(
+    server: SpinTestServer,
+):
+    """On Postgres: a graph input named with the mask prefix is not trigger
+    config, so it keeps its name while the config row moves to the new node."""
+    user_id = str(uuid.uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"rekey-{user_id}@example.com"})
+    graph_id = str(uuid.uuid4())
+    for version in (1, 2):
+        await prisma.models.AgentGraph.prisma().create(
+            data={"id": graph_id, "version": version, "userId": user_id}
+        )
+    webhook = await prisma.models.IntegrationWebhook.prisma().create(
+        data={
+            "userId": user_id,
+            "provider": "generic_webhook",
+            "credentialsId": "",
+            "webhookType": "plain",
+            "resource": "",
+            "events": [],
+            "config": "{}",
+            "secret": "",
+            "providerWebhookId": "",
+        }
+    )
+    preset = await prisma.models.AgentPreset.prisma().create(
+        data={
+            "name": "p",
+            "description": "",
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": 1,
+            "webhookId": webhook.id,
+        }
+    )
+    for name, value in (
+        (library_model.node_input_mask_key("oldnode1-x"), {"repo": "a/b"}),
+        ("_node_input_mask_note", "hello"),
+    ):
+        await prisma.models.AgentNodeExecutionInputOutput.prisma().create(
+            data={"name": name, "data": SafeJson(value), "agentPresetId": preset.id}
+        )
+    new_graph = MagicMock(
+        id=graph_id,
+        version=2,
+        webhook_input_node=MagicMock(id="newnode2-x", block_id="block-github"),
+    )
+    old_graph = MagicMock(webhook_input_node=MagicMock(block_id="block-github"))
+
+    try:
+        with patch.object(db.graph_db, "get_graph", AsyncMock(return_value=old_graph)):
+            result = await db.migrate_webhook_presets_to_new_version(user_id, new_graph)
+        rows = await prisma.models.AgentNodeExecutionInputOutput.prisma().find_many(
+            where={"agentPresetId": preset.id}
+        )
+    finally:
+        await prisma.models.AgentNodeExecutionInputOutput.prisma().delete_many(
+            where={"agentPresetId": preset.id}
+        )
+        await prisma.models.AgentPreset.prisma().delete(where={"id": preset.id})
+        await prisma.models.IntegrationWebhook.prisma().delete(where={"id": webhook.id})
+        await prisma.models.AgentGraph.prisma().delete_many(where={"id": graph_id})
+
+    new_key = library_model.node_input_mask_key("newnode2-x")
+    assert result.migrated_count == 1
+    assert sorted(row.name for row in rows) == sorted(
+        [new_key, "_node_input_mask_note"]
+    )
+    assert {row.name: row.data for row in rows} == {
+        new_key: {"repo": "a/b"},
+        "_node_input_mask_note": "hello",
     }
 
 
@@ -2733,7 +2816,9 @@ async def test_presets_move_and_rekey_in_one_transaction_within_the_organization
     preset_prisma = mocker.patch(
         "prisma.models.AgentPreset.prisma", return_value=presets
     )
-    rows = MagicMock(update_many=AsyncMock(return_value=1))
+    rows = MagicMock(
+        find_many=AsyncMock(return_value=[]), update_many=AsyncMock(return_value=0)
+    )
     rows_prisma = mocker.patch(
         "prisma.models.AgentNodeExecutionInputOutput.prisma", return_value=rows
     )
@@ -2749,7 +2834,7 @@ async def test_presets_move_and_rekey_in_one_transaction_within_the_organization
         "name": library_model.node_input_mask_key(new_trigger.id)
     }
     assert preset_prisma.call_args_list[-1] == call(tx)
-    assert rows_prisma.call_args_list == [call(tx)]
+    assert rows_prisma.call_args_list == [call(tx), call(tx)]
 
 
 @pytest.mark.asyncio
