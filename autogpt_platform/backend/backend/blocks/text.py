@@ -23,6 +23,8 @@ formatter = text.TextFormatter()
 MAX_REGEX_PATTERN_LENGTH = 10_000
 MAX_REGEX_TEXT_LENGTH = 1_000_000
 REGEX_TIMEOUT_SECONDS = 1.0
+MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
+MAX_MATCH_LENGTH = 10_000  # Maximum length per match
 
 
 class MatchTextPatternBlock(Block):
@@ -175,11 +177,6 @@ class ExtractTextInformationBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Security fix: Add limits to prevent ReDoS and memory exhaustion
-        MAX_TEXT_LENGTH = 1_000_000  # 1MB character limit
-        MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
-        MAX_MATCH_LENGTH = 10_000  # Maximum length per match
-
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -192,8 +189,8 @@ class ExtractTextInformationBlock(Block):
             txt = json.dumps(input_data.text)
 
         # Limit text size to prevent DoS
-        if len(txt) > MAX_TEXT_LENGTH:
-            txt = txt[:MAX_TEXT_LENGTH]
+        if len(txt) > MAX_REGEX_TEXT_LENGTH:
+            txt = txt[:MAX_REGEX_TEXT_LENGTH]
 
         try:
             # Compiling a pattern isn't covered by the timeout below
@@ -208,8 +205,6 @@ class ExtractTextInformationBlock(Block):
             for match in regex.finditer(
                 input_data.pattern, txt, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
             ):
-                if match_count >= MAX_MATCHES:
-                    break
                 if input_data.group <= len(match.groups()):
                     match_text = match.group(input_data.group)
                     # Limit match length to prevent memory exhaustion
@@ -217,7 +212,8 @@ class ExtractTextInformationBlock(Block):
                         match_text = match_text[:MAX_MATCH_LENGTH]
                     matches.append(match_text)
                     match_count += 1
-                    if not input_data.find_all:
+                    # Stop before the next match is searched for
+                    if not input_data.find_all or match_count >= MAX_MATCHES:
                         break
 
             if not input_data.find_all:

@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.blocks.text import (
+    MAX_MATCHES,
     MAX_REGEX_PATTERN_LENGTH,
     MAX_REGEX_TEXT_LENGTH,
     REGEX_TIMEOUT_SECONDS,
@@ -174,6 +175,29 @@ async def test_extract_text_information_stops_at_the_first_match_unless_find_all
 
     assert outputs[0] == ("positive", "12")
     assert pulled == ["12"]
+
+
+@pytest.mark.asyncio
+async def test_extract_text_information_stops_searching_at_the_match_cap(mocker):
+    block = ExtractTextInformationBlock()
+    pulled = 0
+
+    def matches():
+        nonlocal pulled
+        for number in range(MAX_MATCHES + 1):
+            pulled += 1
+            match = MagicMock()
+            match.groups.return_value = ()
+            match.group.return_value = str(number)
+            yield match
+
+    mocker.patch("backend.blocks.text.regex.finditer", return_value=matches())
+    input_data = block.Input(text="numbers", pattern=r"\d+", find_all=True)
+
+    outputs = await _collect_outputs(block, input_data)
+
+    assert ("matched_count", MAX_MATCHES) in outputs
+    assert pulled == MAX_MATCHES
 
 
 @pytest.mark.asyncio
